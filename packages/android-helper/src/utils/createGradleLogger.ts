@@ -3,103 +3,84 @@ import { BuildLogger } from "@hot-updater/cli-tools";
 export const createGradleLogger = ({ logPrefix }: { logPrefix: string }) =>
   new BuildLogger({
     logPrefix,
-    failurePatterns: ["BUILD FAILED"],
-    progressMapping: [
-      /* Initial setup and code generation */ [
-        [
-          "buildKotlinToolingMetadata",
-          "generateAutolinkingNewArchitectureFiles",
-          "generateAutolinkingPackageList",
-          "generateCodegenSchemaFromJavaScript",
-          "generateCodegenArtifactsFromSchema",
-          "generateReactNativeEntryPoint",
-        ],
-        5,
+    progressStages: [
+      /* Initial setup and code generation */
+      [
+        "buildKotlinToolingMetadata",
+        "generateAutolinkingNewArchitectureFiles",
+        "generateAutolinkingPackageList",
+        "generateCodegenSchemaFromJavaScript",
+        "generateCodegenArtifactsFromSchema",
+        "generateReactNativeEntryPoint",
       ],
-      /* Bundle JS and assets creation (React Native specific) */ [
-        [
-          "createBundleReleaseJsAndAssets",
-          "bundleReleaseJsAndAssets",
-          "bundleDebugJsAndAssets",
-        ],
-        15,
+      /* Bundle JS and assets creation (React Native specific) */
+      [
+        "createBundleReleaseJsAndAssets",
+        "bundleReleaseJsAndAssets",
+        "bundleDebugJsAndAssets",
       ],
-      /* Resource processing */ [
-        [
-          "generateReleaseResValues",
-          "generateDebugResValues",
-          "generateReleaseResources",
-          "generateDebugResources",
-          "mergeReleaseResources",
-          "mergeDebugResources",
-        ],
-        25,
+      /* Resource processing */
+      [
+        "generateReleaseResValues",
+        "generateDebugResValues",
+        "generateReleaseResources",
+        "generateDebugResources",
+        "mergeReleaseResources",
+        "mergeDebugResources",
       ],
-      /* Manifest and resource processing */ [
-        [
-          "processReleaseResources",
-          "processDebugResources",
-          "processReleaseManifest",
-          "processDebugManifest",
-          "processDebugMainManifest",
-          "parseReleaseLocalResources",
-          "parseDebugLocalResources",
-        ],
-        35,
+      /* Manifest and resource processing */
+      [
+        "processReleaseResources",
+        "processDebugResources",
+        "processReleaseManifest",
+        "processDebugManifest",
+        "processDebugMainManifest",
+        "parseReleaseLocalResources",
+        "parseDebugLocalResources",
       ],
-      /* Kotlin compilation */ [
-        ["compileReleaseKotlin", "compileDebugKotlin"],
-        50,
+      /* Kotlin compilation */
+      ["compileReleaseKotlin", "compileDebugKotlin"],
+      /* Java compilation */
+      ["compileReleaseJavaWithJavac", "compileDebugJavaWithJavac"],
+      /* Native build (CMake/JNI) */
+      [
+        /configureCMake\w+\[/,
+        /buildCMake\w+\[/,
+        "mergeReleaseJniLibFolders",
+        "mergeDebugJniLibFolders",
+        "mergeReleaseNativeLibs",
+        "mergeDebugNativeLibs",
       ],
-      /* Java compilation */ [
-        ["compileReleaseJavaWithJavac", "compileDebugJavaWithJavac"],
-        60,
+      /* DEX processing */
+      [
+        "desugarReleaseFileDependencies",
+        "desugarDebugFileDependencies",
+        "dexBuilderRelease",
+        "dexBuilderDebug",
+        "mergeDexRelease",
+        "mergeExtDexRelease",
+        "mergeExtDexDebug",
+        "mergeProjectDexRelease",
+        "mergeProjectDexDebug",
+        "mergeLibDexRelease",
+        "mergeLibDexDebug",
+        "mergeDebugGlobalSynthetics",
+        "mergeReleaseGlobalSynthetics",
+        "transformClassesWithDex",
       ],
-      /* Native build (CMake/JNI) */ [
-        [
-          /configureCMake\w+\[/,
-          /buildCMake\w+\[/,
-          "mergeReleaseJniLibFolders",
-          "mergeDebugJniLibFolders",
-          "mergeReleaseNativeLibs",
-          "mergeDebugNativeLibs",
-        ],
-        70,
+      /* Asset optimization and packaging */
+      [
+        "compressReleaseAssets",
+        "compressDebugAssets",
+        "optimizeReleaseResources",
+        "mergeReleaseAssets",
+        "mergeDebugAssets",
       ],
-      /* DEX processing */ [
-        [
-          "desugarReleaseFileDependencies",
-          "desugarDebugFileDependencies",
-          "dexBuilderRelease",
-          "dexBuilderDebug",
-          "mergeDexRelease",
-          "mergeExtDexRelease",
-          "mergeExtDexDebug",
-          "mergeProjectDexRelease",
-          "mergeProjectDexDebug",
-          "mergeLibDexRelease",
-          "mergeLibDexDebug",
-          "mergeDebugGlobalSynthetics",
-          "mergeReleaseGlobalSynthetics",
-          "transformClassesWithDex",
-        ],
-        75,
-      ],
-      /* Asset optimization and packaging */ [
-        [
-          "compressReleaseAssets",
-          "compressDebugAssets",
-          "optimizeReleaseResources",
-          "mergeReleaseAssets",
-          "mergeDebugAssets",
-        ],
-        85,
-      ],
-      /* Final packaging and assembly */ [
-        ["packageRelease", "packageDebug", "assembleRelease", "assembleDebug"],
-        90,
-      ],
-      /* Bundle creation (AAB) */ [["bundleRelease", "bundleDebug"], 95],
-      /* Build completion */ [["BUILD SUCCESSFUL", /\d+ actionable tasks:/], 100],
+      /* Final packaging and assembly */
+      ["packageRelease", "packageDebug", "assembleRelease", "assembleDebug"],
+      /* Bundle creation (AAB) */
+      ["bundleRelease", "bundleDebug"],
+      /* Build completion */
+      ["BUILD SUCCESSFUL", /\d+ actionable tasks:/],
     ],
   });

@@ -81,7 +81,7 @@ Args       ${gradleArgs.join(" ")}
   }
 
   const logger = createGradleLogger({ logPrefix });
-  await logger.start(`${appModuleName}`);
+  await logger.start();
 
   try {
     const process = execa(getGradleWrapper(), gradleArgs, {

@@ -12,7 +12,7 @@ export type HotUpdaterLogWriter = {
 
 const initializedLogFilesInProcess = new Set<string>();
 
-const stripAnsi = (value: string) => {
+export const stripAnsi = (value: string) => {
   let result = "";
 
   for (let i = 0; i < value.length; i += 1) {
@@ -30,6 +30,8 @@ const stripAnsi = (value: string) => {
     if (value[i] !== "[") {
       continue;
     }
+
+    i += 1;
 
     while (i < value.length) {
       const codePoint = value.charCodeAt(i);
@@ -58,23 +60,31 @@ const sanitizeFileNamePart = (value: string) => {
 
 export const createLogWriter = async ({
   prefix,
+  logFilePath,
 }: {
   prefix: string;
+  logFilePath?: string;
 }): Promise<HotUpdaterLogWriter> => {
   try {
     const logDir = path.join(getCwd(), ".hot-updater", "log");
-    await fs.promises.mkdir(logDir, { recursive: true });
 
     const sanitizedPrefix = sanitizeFileNamePart(prefix);
-    const logFileName = `${createTimestamp()}-${sanitizedPrefix}.log`;
-    const logFilePath = path.join(logDir, logFileName);
-    const fileOpenFlag = initializedLogFilesInProcess.has(logFilePath)
+    const resolvedLogFilePath =
+      logFilePath ?? path.join(logDir, `${createTimestamp()}-${sanitizedPrefix}.log`);
+
+    await fs.promises.mkdir(path.dirname(resolvedLogFilePath), {
+      recursive: true,
+    });
+
+    const fileOpenFlag = initializedLogFilesInProcess.has(resolvedLogFilePath)
       ? "a"
       : "w";
-    const stream = fs.createWriteStream(logFilePath, { flags: fileOpenFlag });
+    const stream = fs.createWriteStream(resolvedLogFilePath, {
+      flags: fileOpenFlag,
+    });
 
-    if (!initializedLogFilesInProcess.has(logFilePath)) {
-      initializedLogFilesInProcess.add(logFilePath);
+    if (!initializedLogFilesInProcess.has(resolvedLogFilePath)) {
+      initializedLogFilesInProcess.add(resolvedLogFilePath);
     }
 
     stream.write(`[${new Date().toISOString()}] ${sanitizedPrefix}\n`);
@@ -116,7 +126,7 @@ export const createLogWriter = async ({
       });
     };
 
-    return { logFilePath, writeLine, writeError, close };
+    return { logFilePath: resolvedLogFilePath, writeLine, writeError, close };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.warn(`Failed to initialize build log file: ${message}`);

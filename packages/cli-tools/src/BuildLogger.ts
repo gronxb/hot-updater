@@ -1,88 +1,137 @@
 import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
 import { type PromptProgress, p } from "./prompts";
 
-const MAX_PROGRESS = 100;
+type LinePattern = string | RegExp;
+
+type BuildLoggerState = {
+  completedStages: number;
+  latestMessage: string;
+  started: boolean;
+  stopped: boolean;
+};
+
+const createInitialState = (): BuildLoggerState => ({
+  completedStages: 0,
+  latestMessage: "",
+  started: false,
+  stopped: false,
+});
+
+const normalizeLine = ({ line }: { line: string }) => {
+  return line.replace(/[\r\n]/g, "").trim();
+};
+
+const matchesAnyPattern = ({
+  line,
+  patterns,
+}: {
+  line: string;
+  patterns: LinePattern[];
+}) => {
+  const trimmedLine = line.trim();
+  const normalizedLine = trimmedLine.toLowerCase();
+
+  return patterns.some((pattern) => {
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      return pattern.test(trimmedLine);
+    }
+
+    return normalizedLine.includes(pattern.toLowerCase());
+  });
+};
+
+const resolveNextCompletedStage = ({
+  line,
+  progressStages,
+  completedStages,
+}: {
+  line: string;
+  progressStages: LinePattern[][];
+  completedStages: number;
+}) => {
+  for (
+    let stageIndex = completedStages;
+    stageIndex < progressStages.length;
+    stageIndex += 1
+  ) {
+    if (matchesAnyPattern({ line, patterns: progressStages[stageIndex] })) {
+      return stageIndex + 1;
+    }
+  }
+
+  return completedStages;
+};
 
 export interface BuildLoggerConfig {
   logPrefix: string;
-  /** Patterns that indicate build failure (string or regex) */
-  failurePatterns: Array<string | RegExp>;
-  /** Progress mapping: [patterns, progress percentage] (string or regex) */
-  progressMapping: Array<[Array<string | RegExp>, number]>;
+  /** Progress stages: one stage advances by one step when a pattern is matched */
+  progressStages: LinePattern[][];
 }
 
 export class BuildLogger {
-  private currentProgress = 0;
-  private latestInlineMessage = "";
-  private renderedProgress = 0;
-  private stopped = false;
-  private started = false;
-  private readonly promptProgress: PromptProgress;
+  private state = createInitialState();
   private logWriter?: HotUpdaterLogWriter;
-  private config: BuildLoggerConfig;
+  private readonly promptProgress: PromptProgress;
+  private readonly stageCount: number;
 
-  constructor(config: BuildLoggerConfig) {
-    this.config = config;
-    this.promptProgress = p.progress({ max: MAX_PROGRESS });
+  constructor(private readonly config: BuildLoggerConfig) {
+    this.stageCount = config.progressStages.length;
+    this.promptProgress = p.progress({
+      indicator: "timer",
+      max: config.progressStages.length,
+    });
   }
 
-  async start(projectName: string) {
-    this.started = true;
-    this.stopped = false;
-    this.currentProgress = 0;
-    this.renderedProgress = 0;
-    this.latestInlineMessage = "";
-    this.promptProgress.start(`Building ${projectName}`);
+  async start() {
+    this.state = { ...createInitialState(), started: true };
     this.logWriter = await createLogWriter({
-      prefix: this.config.logPrefix ?? projectName,
+      prefix: this.config.logPrefix,
     });
-    this.updateProgressBar();
+    this.promptProgress.start();
   }
 
   processLine(line: string) {
-    const normalizedLine = this.normalizeLine(line);
-
-    if (this.logWriter && line) {
-      this.logWriter.writeLine(line);
+    if (line) {
+      this.logWriter?.writeLine(line);
     }
+    const normalizedLine = normalizeLine({ line });
 
-    if (this.stopped || !normalizedLine) {
+    if (!normalizedLine) {
       return;
     }
 
-    if (this.matchesAnyPattern(normalizedLine, this.config.failurePatterns)) {
-      this.stop("Build failed", false);
-      return;
-    }
+    const nextCompletedStages = resolveNextCompletedStage({
+      line: normalizedLine,
+      progressStages: this.config.progressStages,
+      completedStages: this.state.completedStages,
+    });
 
-    for (const [patterns, progress] of this.config.progressMapping) {
-      if (this.matchesAnyPattern(normalizedLine, patterns)) {
-        if (progress >= this.currentProgress) {
-          this.currentProgress = progress;
-        }
-        break;
-      }
-    }
-
-    this.latestInlineMessage = normalizedLine;
-
-    this.updateProgressBar();
+    this.updateProgress({
+      nextCompletedStages,
+      latestMessage: normalizedLine,
+    });
   }
 
   stop(message?: string, success = true) {
-    if (!this.started || this.stopped) {
+    if (!this.state.started || this.state.stopped) {
       return;
     }
 
-    if (success && this.currentProgress < MAX_PROGRESS) {
-      this.currentProgress = MAX_PROGRESS;
-      this.updateProgressBar();
+    if (success) {
+      this.finishRemainingProgress();
     }
 
     const finalMessage =
       message || (success ? "Build completed successfully" : "Build failed");
-    this.promptProgress.stop(finalMessage);
-    this.stopped = true;
+
+    if (success) {
+      this.promptProgress.stop(finalMessage);
+    } else {
+      this.promptProgress.error(finalMessage);
+    }
+
+    this.state = { ...this.state, stopped: true };
   }
 
   writeError(error: unknown) {
@@ -98,38 +147,42 @@ export class BuildLogger {
     this.logWriter = undefined;
   }
 
-  private updateProgressBar() {
-    if (this.stopped) {
-      this.promptProgress.stop();
+  private updateProgress({
+    nextCompletedStages,
+    latestMessage,
+  }: {
+    nextCompletedStages: number;
+    latestMessage: string;
+  }) {
+    if (this.state.stopped) {
       return;
     }
 
-    if (this.currentProgress > this.renderedProgress) {
-      const targetProgress = Math.min(this.currentProgress, MAX_PROGRESS);
-      const delta = targetProgress - this.renderedProgress;
-      this.promptProgress.advance(delta, this.latestInlineMessage);
-      this.renderedProgress = targetProgress;
-    }
-  }
+    const progressDelta = nextCompletedStages - this.state.completedStages;
 
-  private normalizeLine(line: string) {
-    if (!this.started || this.stopped) {
-      return "";
+    if (progressDelta > 0) {
+      this.promptProgress.advance(progressDelta, latestMessage);
+    } else if (latestMessage && latestMessage !== this.state.latestMessage) {
+      this.promptProgress.message(latestMessage);
     }
 
-    return line.replace(/[\r\n]/g, " ").trim();
+    this.state = {
+      ...this.state,
+      completedStages: Math.max(
+        this.state.completedStages,
+        nextCompletedStages,
+      ),
+      latestMessage,
+    };
   }
 
-  private matchesAnyPattern(
-    line: string,
-    patterns: Array<string | RegExp>,
-  ): boolean {
-    const trimmed = line.trim();
-    return patterns.some((pattern) => {
-      if (pattern instanceof RegExp) {
-        return pattern.test(trimmed);
-      }
-      return trimmed.toLowerCase().trim().includes(pattern.toLowerCase());
-    });
+  private finishRemainingProgress() {
+    if (!this.promptProgress || this.state.completedStages >= this.stageCount) {
+      return;
+    }
+
+    const remainingStages = this.stageCount - this.state.completedStages;
+    this.promptProgress.advance(remainingStages, this.state.latestMessage);
+    this.state = { ...this.state, completedStages: this.stageCount };
   }
 }

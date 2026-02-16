@@ -60,7 +60,7 @@ export const runXcodebuildWithLogging = async ({
 }) => {
   const useXcbeautify = await isXcbeautifyAvailable();
   const logger = createXcodebuildLogger({ logPrefix });
-  await logger.start("xcodebuild");
+  await logger.start();
 
   try {
     const process = useXcbeautify
