@@ -1,5 +1,4 @@
 import { getCwd, p } from "@hot-updater/cli-tools";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
@@ -7,17 +6,15 @@ import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { createRandomTmpDir } from "./utils/createRandomTmpDir";
-import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
 export const buildIos = async ({
-  schemeConfig: _schemeConfig,
+  schemeConfig,
 }: {
-  schemeConfig: NativeBuildIosScheme;
+  schemeConfig: EnrichedNativeBuildIosScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
-
-  const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
 
   const buildDirectory = await createRandomTmpDir();
   const archiveDir = path.join(buildDirectory, "archive");
@@ -36,8 +33,9 @@ export const buildIos = async ({
 
     const { appPath } = await buildXcodeProject({
       sourceDir: iosProjectRoot,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build`,
       platform: schemeConfig.platform,
-      scheme: schemeConfig.scheme,
+      xcodeScheme: schemeConfig.scheme,
       configuration: schemeConfig.configuration,
       deviceType: "simulator",
       installPods: schemeConfig.installPods,
@@ -60,11 +58,12 @@ export const buildIos = async ({
       platform: schemeConfig.platform,
       sourceDir: iosProjectRoot,
       xcconfig: schemeConfig.xcconfig,
-      scheme: schemeConfig.scheme,
+      xcodeScheme: schemeConfig.scheme,
       destination: schemeConfig.destination,
       extraParams: schemeConfig.extraParams,
       configuration: schemeConfig.configuration,
       installPods: schemeConfig.installPods,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-archive`,
     });
 
     const finalArchivePath = path.join(archiveDir, path.basename(archivePath));
@@ -91,6 +90,7 @@ export const buildIos = async ({
         exportExtraParams: schemeConfig.exportExtraParams,
         exportOptionsPlist: schemeConfig.exportOptionsPlist!,
         sourceDir: iosProjectRoot,
+        logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
       });
 
       await fs.promises.cp(exportPath, exportDir, { recursive: true });

@@ -1,5 +1,4 @@
 import { getCwd, p } from "@hot-updater/cli-tools";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import path from "path";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import {
@@ -12,20 +11,18 @@ import {
 } from "./runner/simulatorRunner";
 import type { IosNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
-import { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 
 export const runIos = async ({
-  schemeConfig: _schemeConfig,
+  schemeConfig,
   runOption,
 }: {
-  schemeConfig: NativeBuildIosScheme;
+  schemeConfig: EnrichedNativeBuildIosScheme;
   runOption: IosNativeRunOptions;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
 
   const iosProjectPath = path.join(getCwd(), "ios");
-
-  const schemeConfig = await enrichNativeBuildIosScheme(_schemeConfig);
 
   const device = await Device.selectTargetDevice({
     platform: "ios",
@@ -51,12 +48,13 @@ export const runIos = async ({
     const result = await buildXcodeProject({
       sourceDir: iosProjectPath,
       platform: schemeConfig.platform,
-      scheme: schemeConfig.scheme,
+      xcodeScheme: schemeConfig.scheme,
       configuration: schemeConfig.configuration,
       deviceType: selectedDevice.type,
       destination: [{ id: selectedDevice.udid }],
       installPods: schemeConfig.installPods,
       extraParams: schemeConfig.extraParams,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
     });
 
     const runnerOptions: SimulatorRunnerOptions = {
@@ -81,12 +79,13 @@ export const runIos = async ({
   const result = await buildXcodeProject({
     sourceDir: iosProjectPath,
     platform: schemeConfig.platform,
-    scheme: schemeConfig.scheme,
+    xcodeScheme: schemeConfig.scheme,
     configuration: schemeConfig.configuration,
     deviceType: device.type,
     destination: [{ id: device.udid }],
     installPods: schemeConfig.installPods,
     extraParams: schemeConfig.extraParams,
+    logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
   });
 
   const runnerOptions: DeviceRunnerOptions | SimulatorRunnerOptions = {

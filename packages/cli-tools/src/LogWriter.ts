@@ -3,29 +3,60 @@ import path from "path";
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
 
-type HotUpdaterLogWriter = {
+export type HotUpdaterLogWriter = {
   logFilePath: string | null;
   writeLine: (line: string) => void;
+  writeError: (error: unknown) => void;
   close: () => Promise<void>;
 };
 
 const initializedLogFilesInProcess = new Set<string>();
 
+const stripAnsi = (value: string) => {
+  let result = "";
+
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] !== "\u001b") {
+      result += value[i];
+      continue;
+    }
+
+    i += 1;
+
+    if (i >= value.length) {
+      break;
+    }
+
+    if (value[i] !== "[") {
+      continue;
+    }
+
+    while (i < value.length) {
+      const codePoint = value.charCodeAt(i);
+      if (codePoint >= 0x40 && codePoint <= 0x7e) {
+        break;
+      }
+      i += 1;
+    }
+  }
+
+  return result;
+};
+
 const createTimestamp = () => {
   const now = new Date();
-  const year = String(now.getFullYear()).slice(-2);
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const date = String(now.getDate()).padStart(2, "0");
   const hour = String(now.getHours()).padStart(2, "0");
   const minute = String(now.getMinutes()).padStart(2, "0");
-  return `${year}${month}${date}-${hour}${minute}`;
+  return `${month}${date}${hour}${minute}`;
 };
 
 const sanitizeFileNamePart = (value: string) => {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 };
 
-export const createHotUpdaterLogWriter = async ({
+export const createLogWriter = async ({
   prefix,
 }: {
   prefix: string;
@@ -48,7 +79,7 @@ export const createHotUpdaterLogWriter = async ({
 
     stream.write(`[${new Date().toISOString()}] ${sanitizedPrefix}\n`);
 
-    stream.on("error", (error) => {
+    stream.on("error", (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       p.log.warn(`Failed to write build logs: ${message}`);
     });
@@ -57,7 +88,22 @@ export const createHotUpdaterLogWriter = async ({
       if (!stream.writable || stream.destroyed) {
         return;
       }
-      stream.write(`${line}\n`);
+      const plainLine = stripAnsi(line).replace(/\r/g, "");
+      stream.write(`${plainLine}\n`);
+    };
+
+    const writeError = (error: unknown) => {
+      if (error instanceof Error) {
+        const message = error.stack ?? error.message;
+        for (const line of message.split("\n")) {
+          if (line.trim()) {
+            writeLine(line);
+          }
+        }
+        return;
+      }
+
+      writeLine(String(error));
     };
 
     const close = () => {
@@ -70,7 +116,7 @@ export const createHotUpdaterLogWriter = async ({
       });
     };
 
-    return { logFilePath, writeLine, close };
+    return { logFilePath, writeLine, writeError, close };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     p.log.warn(`Failed to initialize build log file: ${message}`);
@@ -78,6 +124,7 @@ export const createHotUpdaterLogWriter = async ({
     return {
       logFilePath: null,
       writeLine: () => {},
+      writeError: () => {},
       close: async () => {},
     };
   }

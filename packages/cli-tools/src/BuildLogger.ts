@@ -1,86 +1,123 @@
-import { p } from "./prompts";
+import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
+import { type PromptProgress, p } from "./prompts";
+
+const MAX_PROGRESS = 100;
 
 export interface BuildLoggerConfig {
+  logPrefix: string;
   /** Patterns that indicate build failure (string or regex) */
   failurePatterns: Array<string | RegExp>;
-  /** Patterns for important messages that should be logged (string or regex) */
-  importantLogPatterns: Array<string | RegExp>;
   /** Progress mapping: [patterns, progress percentage] (string or regex) */
   progressMapping: Array<[Array<string | RegExp>, number]>;
 }
 
 export class BuildLogger {
   private currentProgress = 0;
-  private spinner?: ReturnType<typeof p.spinner>;
+  private latestInlineMessage = "";
+  private renderedProgress = 0;
+  private stopped = false;
+  private started = false;
+  private readonly promptProgress: PromptProgress;
+  private logWriter?: HotUpdaterLogWriter;
   private config: BuildLoggerConfig;
 
   constructor(config: BuildLoggerConfig) {
     this.config = config;
+    this.promptProgress = p.progress({ max: MAX_PROGRESS });
   }
 
-  start(projectName: string) {
-    this.spinner = p.spinner();
-    this.spinner.start(`Building ${projectName}`);
-    this.updateSpinner();
+  async start(projectName: string) {
+    this.started = true;
+    this.stopped = false;
+    this.currentProgress = 0;
+    this.renderedProgress = 0;
+    this.latestInlineMessage = "";
+    this.promptProgress.start(`Building ${projectName}`);
+    this.logWriter = await createLogWriter({
+      prefix: this.config.logPrefix ?? projectName,
+    });
+    this.updateProgressBar();
   }
 
   processLine(line: string) {
-    // Check for build failure
-    if (this.matchesAnyPattern(line, this.config.failurePatterns)) {
+    const normalizedLine = this.normalizeLine(line);
+
+    if (this.logWriter && line) {
+      this.logWriter.writeLine(line);
+    }
+
+    if (this.stopped || !normalizedLine) {
+      return;
+    }
+
+    if (this.matchesAnyPattern(normalizedLine, this.config.failurePatterns)) {
       this.stop("Build failed", false);
       return;
     }
 
-    // Update progress based on mapping
     for (const [patterns, progress] of this.config.progressMapping) {
-      if (this.matchesAnyPattern(line, patterns)) {
-        if (progress < this.currentProgress) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn(
-              `[BuildLogger] Progress regression detected: ${progress}% < current ${this.currentProgress}% for patterns: ${patterns.join(", ")}`,
-            );
-          }
-          // Don't update if progress would go backwards
-          break;
+      if (this.matchesAnyPattern(normalizedLine, patterns)) {
+        if (progress >= this.currentProgress) {
+          this.currentProgress = progress;
         }
-        this.currentProgress = progress;
-        this.updateSpinner();
         break;
       }
     }
 
-    // Log important messages
-    if (this.shouldLogLine(line)) {
-      p.log.info(line.trim());
-    }
+    this.latestInlineMessage = normalizedLine;
+
+    this.updateProgressBar();
   }
 
   stop(message?: string, success = true) {
-    if (this.spinner) {
-      if (success) {
-        this.spinner.stop(message || "Build completed successfully");
-      } else {
-        this.spinner.stop(message || "Build failed");
-      }
+    if (!this.started || this.stopped) {
+      return;
+    }
+
+    if (success && this.currentProgress < MAX_PROGRESS) {
+      this.currentProgress = MAX_PROGRESS;
+      this.updateProgressBar();
+    }
+
+    const finalMessage =
+      message || (success ? "Build completed successfully" : "Build failed");
+    this.promptProgress.stop(finalMessage);
+    this.stopped = true;
+  }
+
+  writeError(error: unknown) {
+    this.logWriter?.writeError(error);
+  }
+
+  async close() {
+    if (!this.logWriter) {
+      return;
+    }
+
+    await this.logWriter.close();
+    this.logWriter = undefined;
+  }
+
+  private updateProgressBar() {
+    if (this.stopped) {
+      this.promptProgress.stop();
+      return;
+    }
+
+    if (this.currentProgress > this.renderedProgress) {
+      const targetProgress = Math.min(this.currentProgress, MAX_PROGRESS);
+      const delta = targetProgress - this.renderedProgress;
+      this.promptProgress.advance(delta, this.latestInlineMessage);
+      this.renderedProgress = targetProgress;
     }
   }
 
-  private updateSpinner() {
-    if (!this.spinner) return;
+  private normalizeLine(line: string) {
+    if (!this.started || this.stopped) {
+      return "";
+    }
 
-    const progressBar = this.generateProgressBar(this.currentProgress);
-    this.spinner.message(`${progressBar} ${this.currentProgress}%`);
-  }
-
-  private generateProgressBar(progress: number) {
-    const width = 20;
-    const filled = Math.round((progress / 100) * width);
-    const empty = width - filled;
-    return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
-  }
-
-  private shouldLogLine(line: string) {
-    return this.matchesAnyPattern(line, this.config.importantLogPatterns);
+    return line.replace(/[\r\n]/g, "").trim();
   }
 
   private matchesAnyPattern(

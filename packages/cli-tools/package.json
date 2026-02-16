@@ -49,7 +49,7 @@
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
-    "@clack/prompts": "0.11.0",
+    "@clack/prompts": "^1.0.1",
     "boxen": "^8.0.1",
     "cosmiconfig": "9.0.0",
     "cosmiconfig-typescript-loader": "5.0.0",

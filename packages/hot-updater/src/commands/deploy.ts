@@ -15,6 +15,7 @@ import open from "open";
 import path from "path";
 import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
+import { createSignedFileHash } from "@/signedHashUtils";
 import {
   isFingerprintEquals,
   nativeFingerprint,
@@ -32,7 +33,6 @@ import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { createSignedFileHash } from "../signedHashUtils";
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
@@ -142,9 +142,8 @@ export const deploy = async (options: DeployOptions) => {
     const s = p.spinner();
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
-      s.stop(
+      s.error(
         "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
-        1,
       );
       process.exit(1);
     }
@@ -154,9 +153,8 @@ export const deploy = async (options: DeployOptions) => {
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      s.stop(
+      s.error(
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-        1,
       );
 
       // Show what changed
@@ -351,7 +349,7 @@ export const deploy = async (options: DeployOptions) => {
               fileHash = createSignedFileHash(signature);
               s.stop("Bundle signed successfully");
             } catch (error) {
-              s.stop("Failed to sign bundle", 1);
+              s.error("Failed to sign bundle");
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
                 "Ensure private key path is correct and file has proper permissions",

@@ -1,23 +1,16 @@
 import { getCwd } from "@hot-updater/cli-tools";
-import {
-  generateMinBundleId,
-  type NativeBuildAndroidScheme,
-} from "@hot-updater/plugin-core";
+import { generateMinBundleId } from "@hot-updater/plugin-core";
 import path from "path";
 import { runGradle } from "./builder/runGradle";
-import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
+import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 
 export const buildAndroid = async ({
-  schemeConfig: _schemeConfig,
+  schemeConfig,
 }: {
-  schemeConfig: NativeBuildAndroidScheme;
+  schemeConfig: EnrichedNativeBuildAndroidScheme;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const androidProjectPath = path.join(getCwd(), "android");
   const minBundleId = generateMinBundleId();
-
-  const schemeConfig = await enrichNativeBuildAndroidScheme({
-    schemeConfig: _schemeConfig,
-  });
 
   return runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${minBundleId}`] },
@@ -25,6 +18,7 @@ export const buildAndroid = async ({
     tasks: schemeConfig.aab
       ? [`bundle${schemeConfig.variant}`]
       : [`assemble${schemeConfig.variant}`],
+    logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-build`,
     androidProjectPath,
   });
 };

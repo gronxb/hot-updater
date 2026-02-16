@@ -32,10 +32,14 @@ export type EnrichedNativeBuildIosScheme = NativeBuildIosScheme &
       NativeBuildIosScheme,
       "platform" | "installPods" | "configuration" | "destination" | "simulator"
     >
-  >;
-export const enrichNativeBuildIosScheme = async (
-  scheme: NativeBuildIosScheme,
-): Promise<EnrichedNativeBuildIosScheme> => {
+  > & { hotUpdaterSchemeName: string };
+export const enrichNativeBuildIosScheme = async ({
+  scheme,
+  hotUpdaterSchemeName,
+}: {
+  scheme: NativeBuildIosScheme;
+  hotUpdaterSchemeName: string;
+}): Promise<EnrichedNativeBuildIosScheme> => {
   return {
     platform: "ios",
     installPods: false,
@@ -44,5 +48,6 @@ export const enrichNativeBuildIosScheme = async (
     simulator: false,
     ...scheme,
     exportOptionsPlist: resolveExportOptionsPlist(scheme.exportOptionsPlist),
+    hotUpdaterSchemeName,
   };
 };

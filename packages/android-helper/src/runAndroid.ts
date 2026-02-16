@@ -1,30 +1,23 @@
 import { getCwd, p } from "@hot-updater/cli-tools";
-import {
-  generateMinBundleId,
-  type NativeBuildAndroidScheme,
-} from "@hot-updater/plugin-core";
+import { generateMinBundleId } from "@hot-updater/plugin-core";
 import path from "path";
 import { runGradle } from "./builder/runGradle";
 import { tryInstallAppOnDevice } from "./runner/tryInstallAppOnDevice";
 import { tryLaunchAppOnDevice } from "./runner/tryLaunchAppOnDevice";
 import type { AndroidNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
-import { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
+import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 
 export const runAndroid = async ({
-  schemeConfig: _schemeConfig,
+  schemeConfig,
   runOption,
 }: {
-  schemeConfig: NativeBuildAndroidScheme;
+  schemeConfig: EnrichedNativeBuildAndroidScheme;
   runOption: AndroidNativeRunOptions;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
 
   const androidProjectPath = path.join(getCwd(), "android");
-
-  const schemeConfig = await enrichNativeBuildAndroidScheme({
-    schemeConfig: _schemeConfig,
-  });
 
   if (schemeConfig.aab) {
     p.log.error("aab scheme can't not be run");
@@ -58,6 +51,7 @@ export const runAndroid = async ({
   const result = await runGradle({
     args: { extraParams: [`-PMIN_BUNDLE_ID=${generateMinBundleId()}`] },
     appModuleName: schemeConfig.appModuleName,
+    logPrefix: `android-${schemeConfig.hotUpdaterSchemeName}-run`,
     tasks: [task],
     androidProjectPath,
   });

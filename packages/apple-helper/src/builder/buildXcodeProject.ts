@@ -9,7 +9,6 @@ import path from "path";
 import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
-import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -20,13 +19,15 @@ import {
 } from "../utils/parseXcodeProjectInfo";
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
+import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
 export const buildXcodeProject = async ({
   sourceDir,
   platform,
-  scheme,
+  xcodeScheme,
   configuration,
   deviceType,
+  logPrefix,
   destination = [],
   useGenericDestination = false,
   installPods,
@@ -34,7 +35,8 @@ export const buildXcodeProject = async ({
 }: {
   sourceDir: string;
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
+  logPrefix: string;
   configuration: string;
   deviceType: AppleDeviceType;
   destination?: IosBuildDestination[];
@@ -71,44 +73,38 @@ export const buildXcodeProject = async ({
     resolvedDestinations,
     extraParams,
     platform,
-    scheme,
+    xcodeScheme,
     sourceDir,
     xcodeProject,
   });
 
   p.log.info(`Xcode Build Settings:
 Project        ${xcodeProject.name}
-Scheme         ${scheme}
+Scheme         ${xcodeScheme}
 Configuration  ${configuration}
 Platform       ${platform}
 Device Type    ${deviceType}
 Command        xcodebuild ${buildArgs.join(" ")}
 `);
 
-  const logger = createXcodebuildLogger();
-  logger.start(`${xcodeProject.name} (Build)`);
-
   try {
-    const process = execa("xcodebuild", buildArgs, {
-      cwd: sourceDir,
+    await runXcodebuildWithLogging({
+      args: buildArgs,
+      sourceDir,
+      logPrefix,
+      successMessage: "Build completed successfully",
+      failureMessage: "Build failed",
     });
-
-    for await (const line of process) {
-      logger.processLine(line);
-    }
-
-    logger.stop("Build completed successfully");
 
     return await getBuildSettings({
       configuration,
       derivedDataPath,
       resolvedDestinations,
-      scheme,
+      xcodeScheme,
       sourceDir,
       xcodeProject,
     });
   } catch (error) {
-    logger.stop("Build failed", false);
     throw prettifyXcodebuildError(error);
   }
 };
@@ -117,7 +113,7 @@ const prepareBuildArgs = ({
   xcodeProject,
   sourceDir,
   platform,
-  scheme,
+  xcodeScheme,
   configuration,
   deviceType,
   resolvedDestinations,
@@ -130,7 +126,7 @@ const prepareBuildArgs = ({
   resolvedDestinations: string[];
   extraParams?: string[];
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
   sourceDir: string;
   xcodeProject: XcodeProjectInfo;
 }): string[] => {
@@ -143,7 +139,7 @@ const prepareBuildArgs = ({
     xcodeProject.isWorkspace ? "-workspace" : "-project",
     path.join(sourceDir, xcodeProject.name),
     "-scheme",
-    scheme,
+    xcodeScheme,
     "-configuration",
     configuration,
     "-sdk",
@@ -168,7 +164,7 @@ const prepareBuildArgs = ({
 const getBuildSettings = async ({
   xcodeProject,
   sourceDir,
-  scheme,
+  xcodeScheme,
   configuration,
   resolvedDestinations,
   derivedDataPath,
@@ -176,7 +172,7 @@ const getBuildSettings = async ({
   configuration: string;
   derivedDataPath: string;
   resolvedDestinations: string[];
-  scheme: string;
+  xcodeScheme: string;
   sourceDir: string;
   xcodeProject: XcodeProjectInfo;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
@@ -191,7 +187,7 @@ const getBuildSettings = async ({
       xcodeProject.isWorkspace ? "-workspace" : "-project",
       xcodeProject.name,
       "-scheme",
-      scheme,
+      xcodeScheme,
       "-configuration",
       configuration,
       ...destinationArgs,
