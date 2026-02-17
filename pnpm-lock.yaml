@@ -6,9 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@types/node':
-      specifier: ^20
-      version: 20.19.11
     execa:
       specifier: 9.5.2
       version: 9.5.2
@@ -32,9 +29,6 @@ importers:
       '@swc/helpers':
         specifier: ^0.5.17
         version: 0.5.17
-      chokidar:
-        specifier: ^4.0.3
-        version: 4.0.3
       execa:
         specifier: 'catalog:'
         version: 9.5.2
@@ -1210,6 +1204,9 @@ importers:
 
   packages/cli-tools:
     dependencies:
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -1218,8 +1215,8 @@ importers:
         version: 0.82.1
     devDependencies:
       '@clack/prompts':
-        specifier: 0.11.0
-        version: 0.11.0
+        specifier: ^1.0.1
+        version: 1.0.1
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../test-utils
@@ -3924,8 +3921,14 @@ packages:
   '@clack/core@0.5.0':
     resolution: {integrity: sha512-p3y0FIOwaYRUPRcMO7+dlmLh8PSRcrjuTndsiA0WAFbWES0mLZlrjVoBRZ9DzkPFJZG6KGkJmoEAY0ZcVWTkow==}
 
+  '@clack/core@1.0.1':
+    resolution: {integrity: sha512-WKeyK3NOBwDOzagPR5H08rFk9D/WuN705yEbuZvKqlkmoLM2woKtXb10OO2k1NoSU4SFG947i2/SCYh+2u5e4g==}
+
   '@clack/prompts@0.11.0':
     resolution: {integrity: sha512-pMN5FcrEw9hUkZA4f+zLlzivQSeQf5dRGJjSUbvVYDLvpKCdQx5OaknvKzgbtXOizhP+SJJJjqEbOe55uKKfAw==}
+
+  '@clack/prompts@1.0.1':
+    resolution: {integrity: sha512-/42G73JkuYdyWZ6m8d/CJtBrGl1Hegyc7Fy78m5Ob+jF85TOUmLR5XLce/U3LxYAw0kJ8CT5aI99RIvPHcGp/Q==}
 
   '@cloudflare/kv-asset-handler@0.4.0':
     resolution: {integrity: sha512-+tv3z+SPp+gqTIcImN9o0hqE9xyfQjI1XD9pL6NuKjua9B1y7mNYv0S9cP+QEbA4ppVgGZEmKOvHX5G5Ei1CVA==}
@@ -12611,10 +12614,12 @@ packages:
   glob@10.4.1:
     resolution: {integrity: sha512-2jelhlq3E4ho74ZyVLN03oKdAZVUa6UDZzFLVH1H7dnoax+y9qyaq8zBkfDIggjniU19z0wU18y16jMB2eyVIw==}
     engines: {node: '>=16 || 14 >=14.18'}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@10.4.5:
     resolution: {integrity: sha512-7Bv8RF0k6xjo7d4A/PxYLbUCfb6c+Vpd2/mB2yRDlew7Jb5hEXiCD9ibfO7wpk8i4sevK6DFny9h7EYbM3/sHg==}
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@13.0.0:
@@ -12623,16 +12628,16 @@ packages:
 
   glob@7.1.6:
     resolution: {integrity: sha512-LwaxwyZ72Lk7vZINtNNrywX0ZuLyStrdDtabefZKAY5ZGJhVtgdznluResxNmPitE0SAO+O26sWTHeKSI2wMBA==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   glob@8.1.0:
     resolution: {integrity: sha512-r8hpEjiQEYlF2QU0df3dS+nxxSIreXQS1qRhMJM0Q5NDdR386C7jb7Hwwod8Fgiuex+k0GFjgft18yvxm5XoCQ==}
     engines: {node: '>=12'}
-    deprecated: Glob versions prior to v9 are no longer supported
+    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   global-dirs@3.0.1:
     resolution: {integrity: sha512-NBcGGFbBA9s1VzD41QXDG+3++t9Mn5t1FpLdhESY6oKY4gYTFpX4wO3sqGUa0Srjtbfj3szX0RnemmrVRUdULA==}
@@ -17560,14 +17565,17 @@ packages:
   tar@6.2.1:
     resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
     engines: {node: '>=10'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tar@7.4.3:
     resolution: {integrity: sha512-5S7Va8hKfV7W5U6g3aYxXmlPoZVAwUMy9AOKyF2fVuZa2UD3qZjg578OrLRt8PcNN1PleVaL/5/yYATNL0ICUw==}
     engines: {node: '>=18'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   tar@7.5.1:
     resolution: {integrity: sha512-nlGpxf+hv0v7GkWBK2V9spgactGOp0qvfWRxUMjqHyzrt3SgwE48DIv/FhqPHJYLHpgW1opq3nERbz5Anq7n1g==}
     engines: {node: '>=18'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   taskkill@5.0.0:
     resolution: {integrity: sha512-+HRtZ40Vc+6YfCDWCeAsixwxJgMbPY4HHuTgzPYH3JXvqHWUlsCfy+ylXlAKhFNcuLp4xVeWeFBUhDk+7KYUvQ==}
@@ -23146,9 +23154,20 @@ snapshots:
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
+  '@clack/core@1.0.1':
+    dependencies:
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
   '@clack/prompts@0.11.0':
     dependencies:
       '@clack/core': 0.5.0
+      picocolors: 1.1.1
+      sisteransi: 1.0.5
+
+  '@clack/prompts@1.0.1':
+    dependencies:
+      '@clack/core': 1.0.1
       picocolors: 1.1.1
       sisteransi: 1.0.5
 
@@ -23207,7 +23226,7 @@ snapshots:
       miniflare: 4.20250902.0
       semver: 7.7.2
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@24.10.0)(jiti@2.6.1)(jsdom@25.0.1)(lightningcss@1.30.2)(msw@2.7.0(@types/node@24.10.0)(typescript@5.8.3))(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.20.6)(yaml@2.6.1)
-      wrangler: 4.34.0(@cloudflare/workers-types@4.20250828.1)
+      wrangler: 4.34.0
       zod: 3.25.7
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -31596,7 +31615,7 @@ snapshots:
 
   axios@1.8.3:
     dependencies:
-      follow-redirects: 1.15.9(debug@4.4.3)
+      follow-redirects: 1.15.9
       form-data: 4.0.2
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -34756,6 +34775,8 @@ snapshots:
       vlq: 0.2.3
 
   fn.name@1.1.0: {}
+
+  follow-redirects@1.15.9: {}
 
   follow-redirects@1.15.9(debug@4.4.3):
     optionalDependencies:
@@ -39097,7 +39118,7 @@ snapshots:
       path-to-regexp: 6.3.0
       picocolors: 1.1.1
       strict-event-emitter: 0.5.1
-      type-fest: 4.35.0
+      type-fest: 4.37.0
       yargs: 17.7.2
     optionalDependencies:
       typescript: 5.8.3
@@ -44029,6 +44050,22 @@ snapshots:
       workerd: 1.20250813.0
     optionalDependencies:
       '@cloudflare/workers-types': 4.20250828.1
+      fsevents: 2.3.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  wrangler@4.34.0:
+    dependencies:
+      '@cloudflare/kv-asset-handler': 0.4.0
+      '@cloudflare/unenv-preset': 2.7.2(unenv@2.0.0-rc.20)(workerd@1.20250902.0)
+      blake3-wasm: 2.1.5
+      esbuild: 0.25.4
+      miniflare: 4.20250902.0
+      path-to-regexp: 6.3.0
+      unenv: 2.0.0-rc.20
+      workerd: 1.20250902.0
+    optionalDependencies:
       fsevents: 2.3.3
     transitivePeerDependencies:
       - bufferutil

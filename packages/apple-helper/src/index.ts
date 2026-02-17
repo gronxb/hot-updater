@@ -6,3 +6,5 @@ export type {
   DeviceState,
   IosNativeRunOptions,
 } from "./types";
+export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";

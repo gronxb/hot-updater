@@ -1,10 +1,19 @@
 import {
+  type EnrichedNativeBuildAndroidScheme,
+  enrichNativeBuildAndroidScheme,
+} from "@hot-updater/android-helper";
+import {
+  type EnrichedNativeBuildIosScheme,
+  enrichNativeBuildIosScheme,
+} from "@hot-updater/apple-helper";
+import {
   type ConfigResponse,
   colors,
   getCwd,
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
 import path from "path";
 import {
@@ -12,17 +21,19 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
 import { setIosMinBundleIdSlotIntoInfoPlist } from "@/utils/setIosMinBundleIdSlotIntoInfoPlist";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
-export async function prepareNativeBuild(
-  options: NativeBuildOptions & { platform: Platform },
-): Promise<{
+type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
-  scheme: string;
-} | null> {
+  androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
+  iosSchemeConfig?: EnrichedNativeBuildIosScheme;
+};
+
+export async function prepareNativeBuild(
+  options: NativeBuildOptions & { platform: Platform },
+): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
   const platform = options.platform;
 
@@ -116,7 +127,12 @@ export async function prepareNativeBuild(
 
   const artifactResultStorePath =
     options.outputPath ??
-    path.join(getDefaultOutputPath(), "build", platform, scheme);
+    path.join(
+      HotUpdateDirUtil.getDefaultOutputPath({ cwd }),
+      "build",
+      platform,
+      scheme,
+    );
 
   const resolvedOutputPath = path.isAbsolute(artifactResultStorePath)
     ? artifactResultStorePath
@@ -126,7 +142,25 @@ export async function prepareNativeBuild(
     await setIosMinBundleIdSlotIntoInfoPlist({
       infoPlistPaths: config.platform?.ios.infoPlistPaths,
     });
+
+    return {
+      outputPath: resolvedOutputPath,
+      config,
+      iosSchemeConfig: await enrichNativeBuildIosScheme({
+        scheme: config.nativeBuild.ios[scheme]!,
+        hotUpdaterSchemeName: scheme,
+      }),
+    };
+  } else if (platform === "android") {
+    return {
+      outputPath: resolvedOutputPath,
+      config,
+      androidSchemeConfig: await enrichNativeBuildAndroidScheme({
+        schemeConfig: config.nativeBuild.android[scheme]!,
+        hotUpdaterSchemeName: scheme,
+      }),
+    };
   }
 
-  return { outputPath: resolvedOutputPath, config, scheme };
+  return null;
 }

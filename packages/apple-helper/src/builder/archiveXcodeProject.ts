@@ -5,12 +5,10 @@ import {
   generateMinBundleId,
   type IosBuildDestination,
 } from "@hot-updater/plugin-core";
-import { execa } from "execa";
 import path from "path";
 
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
-import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
 import {
   getDefaultDestination,
   resolveDestinations,
@@ -20,6 +18,7 @@ import {
   type XcodeProjectInfo,
 } from "../utils/parseXcodeProjectInfo";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
+import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -28,17 +27,19 @@ export const archiveXcodeProject = async ({
   destination,
   extraParams,
   configuration,
-  scheme,
+  xcodeScheme,
   xcconfig,
+  logPrefix,
 }: {
   configuration?: string;
   destination?: IosBuildDestination[];
   extraParams?: string[];
   installPods: boolean;
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
   sourceDir: string;
   xcconfig?: string;
+  logPrefix: string;
 }): Promise<{ archivePath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
@@ -60,39 +61,33 @@ export const archiveXcodeProject = async ({
     extraParams,
     destination,
     xcconfig,
-    scheme,
+    xcodeScheme,
   });
 
   p.log.info(`Xcode Archive Settings:
 Project    ${xcodeProject.name}
-Scheme     ${scheme}
+Scheme     ${xcodeScheme}
 Platform   ${platform}
 Command    xcodebuild ${archiveArgs.join(" ")}
 `);
 
-  const logger = createXcodebuildLogger();
-  logger.start(`${xcodeProject.name} (Archive)`);
-
   try {
-    const process = execa("xcodebuild", archiveArgs, {
-      cwd: sourceDir,
+    await runXcodebuildWithLogging({
+      args: archiveArgs,
+      failureMessage: "Archive failed",
+      logPrefix,
+      sourceDir,
+      successMessage: "Archive completed successfully",
     });
-
-    for await (const line of process) {
-      logger.processLine(line);
-    }
-
-    logger.stop("Archive completed successfully");
 
     return { archivePath };
   } catch (error) {
-    logger.stop("Archive failed", false);
     throw prettifyXcodebuildError(error);
   }
 };
 
 const prepareArchiveArgs = ({
-  scheme,
+  xcodeScheme,
   archivePath,
   platform,
   sourceDir,
@@ -107,7 +102,7 @@ const prepareArchiveArgs = ({
   destination?: IosBuildDestination[];
   extraParams?: string[];
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
   xcconfig?: string;
   sourceDir: string;
   xcodeProject: XcodeProjectInfo;
@@ -116,7 +111,7 @@ const prepareArchiveArgs = ({
     xcodeProject.isWorkspace ? "-workspace" : "-project",
     path.join(sourceDir, xcodeProject.name),
     "-scheme",
-    scheme,
+    xcodeScheme,
     "-configuration",
     configuration,
     "archive",

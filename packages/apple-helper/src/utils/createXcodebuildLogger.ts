@@ -1,20 +1,37 @@
 import { BuildLogger } from "@hot-updater/cli-tools";
 
-export const createXcodebuildLogger = () =>
+export const createXcodebuildLogger = ({ logPrefix }: { logPrefix: string }) =>
   new BuildLogger({
-    failurePatterns: ["BUILD FAILED", "ARCHIVE FAILED"],
+    logPrefix,
     importantLogPatterns: [
+      // Keep errors and explicit failure points visible.
       "error:",
       "** BUILD FAILED **",
       "** ARCHIVE FAILED **",
       "The following build commands failed:",
+      // Keep small set of high-signal build lifecycle markers.
+      "note: Building targets in dependency order",
+      "note: Target dependency graph",
+      "Running script",
+      "[CP-User]",
+      "[CP] Check Pods Manifest.lock",
+      "Build Succeeded",
     ],
-    progressMapping: [
-      [["[CP-User] [RN]Check rncore"], 10],
-      [["[CP-User] [Hermes] Replace Hermes"], 35],
-      [["[CP-User] [RN]Check FBReactNativeSpec"], 53],
-      [["React-FabricComponents"], 66],
-      [["[CP] Check Pods Manifest.lock"], 90],
-      [["BUILD SUCCEEDED", "ARCHIVE SUCCEEDED"], 100],
+    progressStages: [
+      ["Building targets in dependency order", "Target dependency graph"],
+      ["Write Auxiliary File", "[CP] Check Pods Manifest.lock"],
+      [
+        "Running script",
+        "[CP-User] [RN]Check rncore",
+        "[CP-User] [Hermes] Replace Hermes",
+        "[CP-User] [RN]Check FBReactNativeSpec",
+      ],
+      ["Processing", "ProcessProductPackaging", "ProcessProductPackagingDER"],
+      ["Compiling"],
+      ["RegisterExecutionPolicyException"],
+      ["Touching"],
+      ["Building library", "Create Universal Binary"],
+      ["Copying"],
+      ["Build Succeeded", "BUILD SUCCEEDED", "ARCHIVE SUCCEEDED"],
     ],
   });

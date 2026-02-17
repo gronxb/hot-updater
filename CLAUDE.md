@@ -40,9 +40,6 @@ pnpm install
 # Build all packages and plugins
 pnpm build
 
-# Build in watch mode for development
-pnpm build:dev
-
 # Run tests
 pnpm test
 

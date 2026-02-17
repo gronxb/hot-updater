@@ -23,7 +23,8 @@ const buildNativeInternal = async ({
     p.log.error("preparing native build failed");
     return;
   }
-  const { config, scheme, outputPath } = preparedConfig;
+  const { config, outputPath, androidSchemeConfig, iosSchemeConfig } =
+    preparedConfig;
 
   const cwd = getCwd();
   const buildPlugin = await config.build({ cwd });
@@ -33,11 +34,11 @@ const buildNativeInternal = async ({
     platform === "android"
       ? () =>
           buildAndroid({
-            schemeConfig: config.nativeBuild.android[scheme]!,
+            schemeConfig: androidSchemeConfig!,
           })
       : () =>
           buildIos({
-            schemeConfig: config.nativeBuild.ios[scheme]!,
+            schemeConfig: iosSchemeConfig!,
           });
 
   try {
