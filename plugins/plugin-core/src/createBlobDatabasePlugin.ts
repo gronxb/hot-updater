@@ -170,12 +170,23 @@ export const createBlobDatabasePlugin = <TConfig>({
       platform: string,
     ): Promise<Set<string>> {
       // Retrieve all update.json files for the platform across channels.
-      const pattern = new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`);
+      const updateJsonPattern = new RegExp(
+        `^[^/]+/${platform}/[^/]+/update\\.json$`,
+      );
+      const targetVersionsPattern = new RegExp(
+        `^[^/]+/${platform}/target-app-versions\\.json$`,
+      );
 
-      const keys = (await listObjects("")).filter((key) => pattern.test(key));
+      const allKeys = await listObjects("");
+      const updateJsonKeys = allKeys.filter((key) =>
+        updateJsonPattern.test(key),
+      );
+      const targetVersionsKeys = allKeys.filter((key) =>
+        targetVersionsPattern.test(key),
+      );
 
-      // Group keys by channel (channel is the first part of the key)
-      const keysByChannel = keys.reduce(
+      // Group update.json keys by channel (channel is the first part of the key)
+      const keysByChannel = updateJsonKeys.reduce(
         (acc, key) => {
           const parts = key.split("/");
           const channel = parts[0];
@@ -185,6 +196,15 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
         {} as Record<string, string[]>,
       );
+
+      // Also include channels that still have target-app-versions.json
+      // even when all update.json files were moved out.
+      for (const key of targetVersionsKeys) {
+        const channel = key.split("/")[0];
+        if (!keysByChannel[channel]) {
+          keysByChannel[channel] = [];
+        }
+      }
 
       const updatedTargetFiles = new Set<string>();
 
@@ -314,10 +334,14 @@ export const createBlobDatabasePlugin = <TConfig>({
           const pathsToInvalidate: Set<string> = new Set();
 
           let isTargetAppVersionChanged = false;
+          let isChannelChanged = false;
 
           for (const { operation, data } of changedSets) {
             if (data.targetAppVersion !== undefined) {
               isTargetAppVersionChanged = true;
+            }
+            if (operation === "update" && data.channel !== undefined) {
+              isChannelChanged = true;
             }
 
             // Insert operation.
@@ -651,7 +675,7 @@ export const createBlobDatabasePlugin = <TConfig>({
 
           // Update target-app-versions.json for each platform and collect paths that were actually updated
           const updatedTargetFilePaths = new Set<string>();
-          if (isTargetAppVersionChanged) {
+          if (isTargetAppVersionChanged || isChannelChanged) {
             for (const platform of PLATFORMS) {
               const updatedPaths =
                 await updateTargetVersionsForPlatform(platform);
