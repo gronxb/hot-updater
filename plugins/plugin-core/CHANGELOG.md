@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.25.10
+
+### Patch Changes
+
+- 03c5adc: fix(plugin-core): update target-app-versions on channel promotion
+  - @hot-updater/core@0.25.10
+
 ## 0.25.9
 
 ### Patch Changes
