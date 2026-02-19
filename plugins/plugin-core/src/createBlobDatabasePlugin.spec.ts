@@ -2043,4 +2043,60 @@ describe("blobDatabase plugin", () => {
       expect(encodedUpdateJsonPath).toContain("%3C");
     });
   });
+
+  describe("issue #745 promotion scenario", () => {
+    it("should update target-app-versions.json while invalidating expected paths when promoting from test to prod", async () => {
+      // Regression scenario from:
+      // https://github.com/gronxb/hot-updater/issues/745
+      // 1) deploy disabled bundle to test
+      // 2) promote bundle from test to prod (no copy)
+      const bundle = createBundleJson(
+        "test",
+        "android",
+        "8.1.3",
+        "issue-745-promote-bundle",
+      );
+      bundle.enabled = false;
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Clear initial deployment invalidations; we only want promotion invalidation.
+      cloudfrontInvalidations.length = 0;
+
+      await plugin.updateBundle("issue-745-promote-bundle", {
+        channel: "prod",
+      });
+      await plugin.commitBundle();
+
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+
+      // Expected invalidation definition for this S3 transition.
+      expect(invalidatedPaths).toEqual(
+        expect.arrayContaining([
+          "/test/android/8.1.3/update.json",
+          "/prod/android/8.1.3/update.json",
+          "/test/android/target-app-versions.json",
+          "/prod/android/target-app-versions.json",
+          "/api/check-update/app-version/android/8.1.3/test/*",
+          "/api/check-update/app-version/android/8.1.3/prod/*",
+        ]),
+      );
+
+      // Expected S3 state after promotion:
+      // - prod target-app-versions should include 8.1.3
+      // - test target-app-versions should no longer include 8.1.3
+      const prodTargetVersions = JSON.parse(
+        fakeStore["prod/android/target-app-versions.json"] || "[]",
+      );
+      const testTargetVersions = JSON.parse(
+        fakeStore["test/android/target-app-versions.json"] || "[]",
+      );
+
+      expect(prodTargetVersions).toContain("8.1.3");
+      expect(testTargetVersions).not.toContain("8.1.3");
+    });
+  });
 });
