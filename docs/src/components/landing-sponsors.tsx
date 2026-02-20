@@ -101,7 +101,7 @@ export function LandingSponsors() {
         <div
           className={
             hasSponsors
-              ? "mt-10 sm:mt-14 text-center"
+              ? "mt-12 sm:mt-16 text-center"
               : "mt-6 sm:mt-8 text-center"
           }
         >
@@ -114,6 +114,25 @@ export function LandingSponsors() {
             <Heart className="w-4 h-4" />
             Become a Sponsor
           </a>
+
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <span className="text-[11px] uppercase tracking-[0.14em] text-fd-muted-foreground/80">
+              Supported by
+            </span>
+            <a
+              href="https://vercel.com/oss"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex rounded-md border border-fd-border/60 bg-fd-card/40 px-2.5 py-1.5 opacity-80 transition-opacity hover:opacity-100"
+            >
+              <img
+                alt="Vercel OSS Program"
+                src="https://vercel.com/oss/program-badge.svg"
+                loading="lazy"
+                className="h-6 w-auto"
+              />
+            </a>
+          </div>
         </div>
       </div>
     </div>
