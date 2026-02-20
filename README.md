@@ -1,9 +1,16 @@
   # Hot Updater
+
+<a href="https://vercel.com/oss">
+  <img alt="Vercel OSS Program" src="https://vercel.com/oss/program-badge.svg" />
+</a>
+  
+<br />
+<br />
+
   
 [![NPM](https://img.shields.io/npm/v/hot-updater)](https://www.npmjs.com/package/hot-updater)
 [![pkg.pr.new](https://pkg.pr.new/badge/gronxb/hot-updater)](https://pkg.pr.new/~/gronxb/hot-updater)
 
-  
   
   <img width="2594" height="1264" alt="image" src="https://github.com/user-attachments/assets/82c52334-a0c2-48d4-a9f1-8d9c45e79bb2" />
 
