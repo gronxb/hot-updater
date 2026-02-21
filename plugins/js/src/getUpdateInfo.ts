@@ -9,6 +9,16 @@ import {
 } from "@hot-updater/core";
 import { semverSatisfies } from "./semverSatisfies";
 
+function hashUserId(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash % 100);
+}
+
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   message: null,
   id: NIL_UUID,
@@ -26,6 +36,43 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
   storageUri: bundle.storageUri,
   fileHash: bundle.fileHash,
 });
+
+const makeResponseWithRollout = (
+  bundle: Bundle,
+  status: UpdateStatus,
+  deviceId: string | undefined,
+): UpdateInfo | null => {
+  if (status === "UPDATE" && deviceId) {
+    // Inline eligibility check
+    const targetDeviceIds = bundle.targetDeviceIds;
+    const rolloutPercentage = bundle.rolloutPercentage;
+
+    // Priority 1: targetDeviceIds
+    if (targetDeviceIds && targetDeviceIds.length > 0) {
+      if (!targetDeviceIds.includes(deviceId)) {
+        return null;
+      }
+    } else {
+      // Priority 2: rolloutPercentage
+      if (
+        rolloutPercentage !== null &&
+        rolloutPercentage !== undefined &&
+        rolloutPercentage < 100
+      ) {
+        if (rolloutPercentage <= 0) {
+          return null;
+        }
+
+        const userHash = hashUserId(deviceId);
+        if (userHash >= rolloutPercentage) {
+          return null;
+        }
+      }
+    }
+  }
+
+  return makeResponse(bundle, status);
+};
 
 export const getUpdateInfo = async (
   bundles: Bundle[],
@@ -49,6 +96,7 @@ const appVersionStrategy = async (
     platform,
     appVersion,
     bundleId,
+    deviceId,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   // Initial filtering: apply platform, channel, semver conditions, enabled status, and minBundleId condition
@@ -114,7 +162,7 @@ const appVersionStrategy = async (
   if (bundleId === NIL_UUID) {
     // For NIL_UUID, return an update if there's a latest candidate
     if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
-      return makeResponse(latestCandidate, "UPDATE");
+      return makeResponseWithRollout(latestCandidate, "UPDATE", deviceId);
     }
     return null;
   }
@@ -125,14 +173,14 @@ const appVersionStrategy = async (
       latestCandidate &&
       latestCandidate.id.localeCompare(currentBundle.id) > 0
     ) {
-      return makeResponse(latestCandidate, "UPDATE");
+      return makeResponseWithRollout(latestCandidate, "UPDATE", deviceId);
     }
     return null;
   }
 
   // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
-    return makeResponse(updateCandidate, "UPDATE");
+    return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
   }
   if (rollbackCandidate) {
     return makeResponse(rollbackCandidate, "ROLLBACK");
@@ -152,6 +200,7 @@ const fingerprintStrategy = async (
     platform,
     fingerprintHash,
     bundleId,
+    deviceId,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const candidateBundles: Bundle[] = [];
@@ -216,7 +265,7 @@ const fingerprintStrategy = async (
   if (bundleId === NIL_UUID) {
     // For NIL_UUID, return an update if there's a latest candidate
     if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
-      return makeResponse(latestCandidate, "UPDATE");
+      return makeResponseWithRollout(latestCandidate, "UPDATE", deviceId);
     }
     return null;
   }
@@ -227,14 +276,14 @@ const fingerprintStrategy = async (
       latestCandidate &&
       latestCandidate.id.localeCompare(currentBundle.id) > 0
     ) {
-      return makeResponse(latestCandidate, "UPDATE");
+      return makeResponseWithRollout(latestCandidate, "UPDATE", deviceId);
     }
     return null;
   }
 
   // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
-    return makeResponse(updateCandidate, "UPDATE");
+    return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
   }
   if (rollbackCandidate) {
     return makeResponse(rollbackCandidate, "ROLLBACK");
