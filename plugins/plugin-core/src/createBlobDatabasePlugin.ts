@@ -130,25 +130,19 @@ export const createBlobDatabasePlugin = <TConfig>({
 
     const PLATFORMS = ["ios", "android"] as const;
 
-    // Reload all bundle data from S3.
-    async function reloadBundles() {
+    // Reload bundle data from blob storage.
+    async function reloadBundles(where?: { platform?: string; channel?: string }) {
       bundlesMap.clear();
 
-      const platformPromises = PLATFORMS.map(async (platform) => {
-        // Retrieve update.json files for the platform across all channels.
-        const keys = await listUpdateJsonKeys(platform);
-        const filePromises = keys.map(async (key) => {
-          const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
-          return bundlesData.map((bundle) => ({
-            ...bundle,
-            _updateJsonKey: key,
-          }));
-        });
-        const results = await Promise.all(filePromises);
-        return results.flat();
+      const keys = await listUpdateJsonKeys(where?.platform, where?.channel);
+      const filePromises = keys.map(async (key) => {
+        const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+        return bundlesData.map((bundle) => ({
+          ...bundle,
+          _updateJsonKey: key,
+        }));
       });
-
-      const allBundles = (await Promise.all(platformPromises)).flat();
+      const allBundles = (await Promise.all(filePromises)).flat();
 
       for (const bundle of allBundles) {
         bundlesMap.set(bundle.id, bundle as BundleWithUpdateJsonKey);
@@ -279,9 +273,13 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getBundles(options) {
-          // Always load the latest data from S3.
-          let allBundles = await reloadBundles();
           const { where, limit, offset } = options;
+          const normalizedWhere = {
+            channel: where?.channel ?? undefined,
+            platform: where?.platform ?? undefined,
+          };
+          // Always load the latest data from S3.
+          let allBundles = await reloadBundles(normalizedWhere);
 
           // Apply filtering conditions first to get the total count after filtering
           if (where) {
@@ -317,13 +315,8 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getChannels() {
-          const allBundles = await reloadBundles();
-          const total = allBundles.length;
-          const result = await this.getBundles({
-            limit: total,
-            offset: 0,
-          });
-          return [...new Set(result.data.map((bundle) => bundle.channel))];
+          const keys = await listUpdateJsonKeys();
+          return [...new Set(keys.map((key) => key.split("/")[0]))];
         },
 
         async commitBundle({ changedSets }) {
