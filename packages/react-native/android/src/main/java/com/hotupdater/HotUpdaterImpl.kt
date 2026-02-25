@@ -99,7 +99,7 @@ class HotUpdaterImpl {
          */
         private fun getIsolationKey(context: Context): String {
             // Get fingerprint hash directly from resources
-            val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val fingerprintId = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
             val fingerprintHash =
                 if (fingerprintId != 0) {
                     context.getString(fingerprintId).takeIf { it.isNotEmpty() }
@@ -141,7 +141,7 @@ class HotUpdaterImpl {
             }
 
         fun getChannel(context: Context): String {
-            val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+            val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
             return if (id != 0) {
                 context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
             } else {
@@ -215,7 +215,7 @@ class HotUpdaterImpl {
          * @return The fingerprint hash or null if not set
          */
         fun getFingerprintHash(context: Context): String? {
-            val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
             return if (id != 0) {
                 context.getString(id).takeIf { it.isNotEmpty() }
             } else {
@@ -229,7 +229,7 @@ class HotUpdaterImpl {
      * @return The fingerprint hash or null if not set
      */
     fun getFingerprintHash(): String? {
-        val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+        val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() }
         } else {
@@ -242,7 +242,7 @@ class HotUpdaterImpl {
      * @return The channel name or null if not set
      */
     fun getChannel(): String {
-        val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+        val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
         } else {
