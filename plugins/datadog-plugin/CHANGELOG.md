@@ -1,5 +1,12 @@
 # @hot-updater/datadog-plugin
 
+## 0.25.11
+
+### Patch Changes
+
+- @hot-updater/core@0.25.11
+- @hot-updater/plugin-core@0.25.11
+
 ## 0.25.10
 
 ### Patch Changes
