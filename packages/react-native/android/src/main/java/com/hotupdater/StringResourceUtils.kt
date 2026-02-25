@@ -13,7 +13,10 @@ object StringResourceUtils {
      * @param resourceName The string resource name to resolve
      * @return The resolved resource ID, or 0 if not found
      */
-    fun getIdentifier(context: Context, resourceName: String): Int {
+    fun getIdentifier(
+        context: Context,
+        resourceName: String,
+    ): Int {
         var resourceId =
             context.resources.getIdentifier(
                 resourceName,
