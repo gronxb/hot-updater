@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.25.12
+
+### Patch Changes
+
+- 38b2af0: fix(expo): android template SDK 55
+  - @hot-updater/android-helper@0.25.12
+  - @hot-updater/apple-helper@0.25.12
+  - @hot-updater/cli-tools@0.25.12
+  - @hot-updater/console@0.25.12
+  - @hot-updater/core@0.25.12
+  - @hot-updater/server@0.25.12
+  - @hot-updater/plugin-core@0.25.12
+
 ## 0.25.11
 
 ### Patch Changes
