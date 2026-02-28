@@ -31,7 +31,7 @@
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "execa": "catalog:",
-    "fast-xml-parser": "5.2.3"
+    "fast-xml-parser": "5.4.1"
   },
   "devDependencies": {
     "@types/node": "catalog:"
