@@ -1,7 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import type { ColumnDef } from "@tanstack/solid-table";
 import dayjs from "dayjs";
-import { Check, Fingerprint, Package, X } from "lucide-solid";
+import { AlertCircle, Check, Fingerprint, Package, X } from "lucide-solid";
 import { AiFillAndroid, AiFillApple } from "solid-icons/ai";
 import { Show } from "solid-js";
 import {
@@ -113,6 +113,30 @@ export const columns: ColumnDef<Bundle>[] = [
           <X class="text-red-500" />
         </div>
       ),
+  },
+  {
+    accessorKey: "rolloutPercentage",
+    header: "Rollout",
+    cell: (info) => {
+      const percentage = (info.getValue() as number | null | undefined) ?? 100;
+      return (
+        <div class="flex items-center gap-2">
+          <span class={percentage < 100 ? "text-orange-600 font-semibold" : ""}>
+            {percentage}%
+          </span>
+          <Show when={percentage < 100}>
+            <Tooltip openDelay={0} closeDelay={0}>
+              <TooltipTrigger>
+                <AlertCircle class="text-orange-500" size={14} />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Gradual rollout in progress</p>
+              </TooltipContent>
+            </Tooltip>
+          </Show>
+        </div>
+      );
+    },
   },
   {
     accessorKey: "message",

@@ -16,6 +16,23 @@ export interface PaginationInfo {
   totalPages: number;
 }
 
+export interface DeviceEvent {
+  deviceId: string;
+  bundleId: string;
+  eventType: "PROMOTED" | "RECOVERED";
+  platform: Platform;
+  appVersion?: string;
+  channel: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RolloutStats {
+  totalDevices: number;
+  promotedCount: number;
+  recoveredCount: number;
+  successRate: number;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -40,6 +57,9 @@ export interface DatabasePlugin {
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (deleteBundle: Bundle) => Promise<void>;
+
+  trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
+  getRolloutStats?: (bundleId: string) => Promise<RolloutStats>;
 }
 
 export interface DatabasePluginHooks {

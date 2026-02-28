@@ -53,15 +53,27 @@ const getIOSVersionFromXcodeProject = async (): Promise<string | null> => {
     const project = XcodeProject.open(xcodeprojPath).toJSON();
     const objects = project.objects ?? {};
 
+    type XcodeBuildConfiguration = {
+      isa?: string;
+      name?: string;
+      buildSettings?: {
+        MARKETING_VERSION?: string;
+      };
+    };
+
     for (const key of Object.keys(objects)) {
-      const obj = objects[key] as any;
-      if (
-        obj?.isa === "XCBuildConfiguration" &&
-        obj?.name === "Release" &&
-        typeof obj.buildSettings?.MARKETING_VERSION === "string"
-      ) {
-        return obj.buildSettings.MARKETING_VERSION;
+      const obj = objects[key];
+      if (!obj || typeof obj !== "object") {
+        continue;
       }
+
+      const record = obj as unknown as XcodeBuildConfiguration;
+      if (record.isa !== "XCBuildConfiguration" || record.name !== "Release") {
+        continue;
+      }
+
+      const marketingVersion = record.buildSettings?.MARKETING_VERSION;
+      if (marketingVersion) return marketingVersion;
     }
 
     return null;

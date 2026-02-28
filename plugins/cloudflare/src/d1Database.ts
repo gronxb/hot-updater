@@ -1,11 +1,17 @@
 import type { SnakeCaseBundle } from "@hot-updater/core";
-import type { Bundle, PaginationOptions } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DeviceEvent,
+  PaginationOptions,
+  RolloutStats,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
+import { uuidv7 } from "uuidv7";
 
 export interface D1DatabaseConfig {
   databaseId: string;
@@ -54,6 +60,24 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   return { sql: whereClause, params };
 }
 
+function parseTargetDeviceIds(value: unknown): string[] | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === "string");
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 // Helper function to transform snake_case row to Bundle
 function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   return {
@@ -69,6 +93,8 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
     metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+    rolloutPercentage: (row.rollout_percentage as number | null) ?? 100,
+    targetDeviceIds: parseTargetDeviceIds(row.target_device_ids as unknown),
   };
 }
 
@@ -221,9 +247,11 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 target_app_version,
                 storage_uri,
                 fingerprint_hash,
-                metadata
+                metadata,
+                rollout_percentage,
+                target_device_ids
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             const params = [
@@ -241,6 +269,10 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               bundle.metadata
                 ? JSON.stringify(bundle.metadata)
                 : JSON.stringify({}),
+              bundle.rolloutPercentage ?? 100,
+              bundle.targetDeviceIds
+                ? JSON.stringify(bundle.targetDeviceIds)
+                : null,
             ];
 
             await cf.d1.database.query(config.databaseId, {
@@ -250,6 +282,91 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
             });
           }
         }
+      },
+
+      async trackDeviceEvent(event: DeviceEvent): Promise<void> {
+        const id = uuidv7();
+        const sql = minify(/* sql */ `
+          INSERT INTO device_events (
+            id,
+            device_id,
+            bundle_id,
+            event_type,
+            platform,
+            app_version,
+            channel,
+            metadata
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [
+            id,
+            event.deviceId,
+            event.bundleId,
+            event.eventType,
+            event.platform,
+            event.appVersion ?? "",
+            event.channel,
+            JSON.stringify(event.metadata ?? {}),
+          ],
+        });
+      },
+
+      async getRolloutStats(bundleId: string): Promise<RolloutStats> {
+        const sql = minify(/* sql */ `
+          WITH ranked AS (
+            SELECT
+              device_id,
+              event_type,
+              ROW_NUMBER() OVER (PARTITION BY device_id ORDER BY id DESC) as rn
+            FROM device_events
+            WHERE bundle_id = ?
+          ),
+          latest AS (
+            SELECT device_id, event_type
+            FROM ranked
+            WHERE rn = 1
+          )
+          SELECT
+            COUNT(*) as total_devices,
+            SUM(CASE WHEN event_type = 'PROMOTED' THEN 1 ELSE 0 END) as promoted_count,
+            SUM(CASE WHEN event_type = 'RECOVERED' THEN 1 ELSE 0 END) as recovered_count
+          FROM latest
+        `);
+
+        const result = await cf.d1.database.query(config.databaseId, {
+          account_id: config.accountId,
+          sql,
+          params: [bundleId],
+        });
+
+        const rows = await resolvePage<{
+          total_devices: number;
+          promoted_count: number;
+          recovered_count: number;
+        }>(result);
+
+        const row = rows[0] ?? {
+          total_devices: 0,
+          promoted_count: 0,
+          recovered_count: 0,
+        };
+
+        const successRate =
+          row.total_devices > 0
+            ? (row.promoted_count / row.total_devices) * 100
+            : 0;
+
+        return {
+          totalDevices: row.total_devices,
+          promotedCount: row.promoted_count,
+          recoveredCount: row.recovered_count,
+          successRate: Number(successRate.toFixed(2)),
+        };
       },
     };
   },

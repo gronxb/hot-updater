@@ -5,7 +5,8 @@ CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
     bundle_id  uuid,
     min_bundle_id uuid,
     target_channel text,
-    target_fingerprint_hash text
+    target_fingerprint_hash text,
+    device_id TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     id            uuid,
@@ -37,6 +38,10 @@ BEGIN
           AND b.id > min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
+          AND (
+            device_id IS NULL
+            OR is_device_eligible(device_id, b.rollout_percentage, b.target_device_ids)
+          )
         ORDER BY b.id DESC
         LIMIT 1
     ),

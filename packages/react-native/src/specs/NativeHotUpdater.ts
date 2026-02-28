@@ -93,6 +93,20 @@ export interface Spec extends TurboModule {
    */
   getBaseURL: () => string;
 
+  /**
+   * Sets a custom user ID for rollout calculations.
+   * If not called, native device ID (IDFV/ANDROID_ID) will be used.
+   */
+  setUserId: (customId: string) => void;
+
+  /**
+   * Gets the user ID used for rollout calculations.
+   * Returns custom ID if set, otherwise returns native device ID.
+   * - iOS: IDFV (Identifier For Vendor)
+   * - Android: ANDROID_ID
+   */
+  getUserId: () => string;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

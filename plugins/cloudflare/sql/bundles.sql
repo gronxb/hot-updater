@@ -12,7 +12,10 @@ CREATE TABLE bundles (
     channel TEXT NOT NULL,
     storage_uri TEXT,
     fingerprint_hash TEXT,
-    metadata JSONB DEFAULT '{}'
+    metadata JSONB DEFAULT '{}',
+    rollout_percentage INTEGER DEFAULT 100
+      CHECK (rollout_percentage >= 0 AND rollout_percentage <= 100),
+    target_device_ids TEXT
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

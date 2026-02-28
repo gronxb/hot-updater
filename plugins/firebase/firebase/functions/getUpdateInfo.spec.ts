@@ -47,6 +47,8 @@ const createGetUpdateInfo =
           channel: bundle.channel || "production",
           storage_uri: bundle.storageUri || null,
           fingerprint_hash: bundle.fingerprintHash || null,
+          rollout_percentage: bundle.rolloutPercentage ?? 100,
+          target_device_ids: bundle.targetDeviceIds || null,
         });
 
         if (bundle.targetAppVersion) {

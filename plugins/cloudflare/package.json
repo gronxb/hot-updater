@@ -50,7 +50,8 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "cloudflare": "4.2.0"
+    "cloudflare": "4.2.0",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.70",
