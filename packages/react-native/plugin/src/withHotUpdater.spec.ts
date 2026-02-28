@@ -23,7 +23,7 @@ class MainApplication : Application(), ReactApplication {
         PackageList(this).packages.apply {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
-        },
+        }
     )
   }
 
@@ -278,6 +278,114 @@ class MainApplication : Application(), ReactApplication {
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
     ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
+  }
+}`;
+
+      const result = transformAndroid(_input);
+      expect(result).toBe(_expected);
+    });
+
+    it("Expo 55 Kotlin: adds jsBundleFilePath with missing trailing comma", () => {
+      const _input = `package com.gronxb.expo55
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import expo.modules.ExpoReactHostFactory
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    ExpoReactHostFactory.getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // add(MyReactNativePackage())
+        }
+    )
+  }
+}`;
+
+      const _expected = `package com.gronxb.expo55
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.hotupdater.HotUpdater
+import com.facebook.react.ReactHost
+import expo.modules.ExpoReactHostFactory
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    ExpoReactHostFactory.getDefaultReactHost(
+      context = applicationContext,
+      packageList =
+        PackageList(this).packages.apply {
+          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // add(MyReactNativePackage())
+        },
+      jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+    )
+  }
+}`;
+
+      const result = transformAndroid(_input);
+      expect(result).toBe(_expected);
+    });
+
+    it("Android Kotlin: inserts inside getDefaultReactHost closed with ),", () => {
+      const _input = `package com.gronxb.reacthost
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import expo.modules.ExpoReactHostFactory
+import expo.modules.ReactNativeHostWrapper
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    ReactNativeHostWrapper.createReactHost(
+      context = applicationContext,
+      reactHost = ExpoReactHostFactory.getDefaultReactHost(
+        context = applicationContext,
+        packageList =
+          PackageList(this).packages.apply {
+            // add(MyReactNativePackage())
+          }
+      ),
+    )
+  }
+}`;
+
+      const _expected = `package com.gronxb.reacthost
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.hotupdater.HotUpdater
+import com.facebook.react.ReactHost
+import expo.modules.ExpoReactHostFactory
+import expo.modules.ReactNativeHostWrapper
+
+class MainApplication : Application(), ReactApplication {
+
+  override val reactHost: ReactHost by lazy {
+    ReactNativeHostWrapper.createReactHost(
+      context = applicationContext,
+      reactHost = ExpoReactHostFactory.getDefaultReactHost(
+        context = applicationContext,
+        packageList =
+          PackageList(this).packages.apply {
+            // add(MyReactNativePackage())
+          },
+        jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),
+      ),
+    )
   }
 }`;
 

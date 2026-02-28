@@ -3,6 +3,31 @@
  * These utilities handle code transformations for different React Native patterns
  */
 
+function findMatchingClosingParen(
+  source: string,
+  openParenIndex: number,
+): number {
+  let depth = 0;
+
+  for (let i = openParenIndex; i < source.length; i += 1) {
+    const char = source[i];
+
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+
+  return -1;
+}
+
 /**
  * Helper to add lines if they don't exist, anchored by a specific string.
  */
@@ -33,7 +58,6 @@ function addLinesOnce(
 function transformAndroidReactHost(contents: string): string {
   const kotlinImport = "import com.hotupdater.HotUpdater";
   const kotlinImportAnchor = "import com.facebook.react.ReactApplication";
-  const kotlinMethodCheck = "HotUpdater.getJSBundleFile(applicationContext)";
 
   // Quick pattern detection: only touch files using getDefaultReactHost
   // with the new RN 0.82+ parameter style.
@@ -47,27 +71,29 @@ function transformAndroidReactHost(contents: string): string {
   // 1. Ensure HotUpdater import exists (idempotent via addLinesOnce)
   const result = addLinesOnce(contents, kotlinImportAnchor, [kotlinImport]);
 
-  // 2. If jsBundleFilePath is already wired to HotUpdater, do nothing
-  if (
-    result.includes(kotlinMethodCheck) &&
-    result.includes("jsBundleFilePath")
-  ) {
+  const callNeedle = "getDefaultReactHost(";
+  const callStartIndex = result.indexOf(callNeedle);
+  if (callStartIndex === -1) {
     return result;
   }
 
-  const lines = result.split("\n");
-
-  const callIndex = lines.findIndex((line) =>
-    line.includes("getDefaultReactHost("),
-  );
-  if (callIndex === -1) {
+  const openParenIndex = callStartIndex + callNeedle.length - 1;
+  const closeParenIndex = findMatchingClosingParen(result, openParenIndex);
+  if (closeParenIndex === -1) {
     return result;
   }
+
+  const callContents = result.slice(callStartIndex, closeParenIndex + 1);
+  if (callContents.includes("jsBundleFilePath")) {
+    return result;
+  }
+
+  const callLines = callContents.split("\n");
 
   // Determine the indentation used for parameters (e.g. "      ")
   let paramIndent = "";
-  for (let i = callIndex + 1; i < lines.length; i += 1) {
-    const line = lines[i];
+  for (let i = 1; i < callLines.length; i += 1) {
+    const line = callLines[i];
     const trimmed = line.trim();
     if (trimmed.length === 0) {
       continue;
@@ -85,31 +111,33 @@ function transformAndroidReactHost(contents: string): string {
     return result;
   }
 
-  // Find the closing line of the call (a line that is just ")" with indentation).
-  let closingIndex = -1;
-  for (let i = callIndex + 1; i < lines.length; i += 1) {
-    if (lines[i].trim() === ")") {
-      closingIndex = i;
-      break;
-    }
+  const closingLineStartIndex = result.lastIndexOf("\n", closeParenIndex);
+  const insertionIndex =
+    closingLineStartIndex === -1 ? 0 : closingLineStartIndex + 1;
+
+  let prefix = result.slice(0, insertionIndex);
+  const suffix = result.slice(insertionIndex);
+
+  let prevNonWhitespaceIndex = prefix.length - 1;
+  while (
+    prevNonWhitespaceIndex >= 0 &&
+    /\s/.test(prefix[prevNonWhitespaceIndex])
+  ) {
+    prevNonWhitespaceIndex -= 1;
   }
 
-  if (closingIndex === -1) {
-    return result;
-  }
-
-  // Avoid inserting twice if jsBundleFilePath already added somewhere in the call.
-  for (let i = callIndex; i < closingIndex; i += 1) {
-    if (lines[i].includes("jsBundleFilePath")) {
-      return result;
-    }
+  if (
+    prevNonWhitespaceIndex >= 0 &&
+    prefix[prevNonWhitespaceIndex] !== "," &&
+    prefix[prevNonWhitespaceIndex] !== "("
+  ) {
+    prefix = `${prefix.slice(0, prevNonWhitespaceIndex + 1)},${prefix.slice(
+      prevNonWhitespaceIndex + 1,
+    )}`;
   }
 
   const jsBundleLine = `${paramIndent}jsBundleFilePath = HotUpdater.getJSBundleFile(applicationContext),`;
-
-  lines.splice(closingIndex, 0, jsBundleLine);
-
-  return lines.join("\n");
+  return `${prefix}${jsBundleLine}\n${suffix}`;
 }
 
 /**
