@@ -69,7 +69,7 @@
   },
   "devDependencies": {
     "semver": "^7.6.3",
-    "fast-xml-parser": "^5.2.3",
+    "fast-xml-parser": "5.4.1",
     "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",
     "@commander-js/extra-typings": "^14.0.0",
