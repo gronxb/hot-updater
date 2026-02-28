@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.25.13
+
+### Patch Changes
+
+- 169b019: chore: bump fast-xml-parser
+- Updated dependencies [169b019]
+  - @hot-updater/apple-helper@0.25.13
+  - @hot-updater/android-helper@0.25.13
+  - @hot-updater/cli-tools@0.25.13
+  - @hot-updater/console@0.25.13
+  - @hot-updater/core@0.25.13
+  - @hot-updater/server@0.25.13
+  - @hot-updater/plugin-core@0.25.13
+
 ## 0.25.12
 
 ### Patch Changes
