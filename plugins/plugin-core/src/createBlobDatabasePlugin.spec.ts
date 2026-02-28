@@ -73,11 +73,15 @@ const bundlesData = [
 
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
+let listObjectPrefixes: string[] = [];
+let loadObjectCallCount = 0;
 // 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[] }[] = [];
 
 beforeEach(() => {
   fakeStore = {};
+  listObjectPrefixes = [];
+  loadObjectCallCount = 0;
   cloudfrontInvalidations = [];
 });
 
@@ -87,11 +91,13 @@ afterEach(() => {
 
 describe("blobDatabase plugin", () => {
   async function listObjects(prefix: string): Promise<string[]> {
+    listObjectPrefixes.push(prefix);
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
   async function loadObject<T>(path: string): Promise<T | null> {
+    loadObjectCallCount += 1;
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -732,6 +738,44 @@ describe("blobDatabase plugin", () => {
       currentPage: 1,
       totalPages: 0,
     });
+  });
+
+  it("should use channel prefix when filtering bundles by channel", async () => {
+    const productionIosBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "prod-ios-1",
+    );
+    const betaIosBundle = createBundleJson("beta", "ios", "1.0.0", "beta-ios-1");
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      productionIosBundle,
+    ]);
+    fakeStore["beta/ios/1.0.0/update.json"] = JSON.stringify([betaIosBundle]);
+
+    const result = await plugin.getBundles({
+      where: { channel: "beta" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(result.data).toEqual([betaIosBundle]);
+    expect(listObjectPrefixes).toEqual(["beta/"]);
+  });
+
+  it("should get channels without loading update.json content", async () => {
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      createBundleJson("production", "ios", "1.0.0", "prod-ios-1"),
+    ]);
+    fakeStore["beta/android/2.0.0/update.json"] = JSON.stringify([
+      createBundleJson("beta", "android", "2.0.0", "beta-android-1"),
+    ]);
+
+    const channels = await plugin.getChannels();
+
+    expect(channels).toEqual(["production", "beta"]);
+    expect(listObjectPrefixes).toEqual([""]);
+    expect(loadObjectCallCount).toBe(0);
   });
 
   it("should append multiple bundles and commit them to the correct update.json files", async () => {
