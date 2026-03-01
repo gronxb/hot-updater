@@ -157,6 +157,7 @@ import React
 
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
+            let updatePlanJson = data["updatePlanJson"] as? String
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
@@ -164,7 +165,7 @@ import React
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, updatePlanJson: updatePlanJson, progressHandler: { progress in
                 // Call JS progress callback if provided
                 if let callback = progressCallback {
                     DispatchQueue.main.async {
@@ -240,6 +241,10 @@ import React
         "SIGNATURE_VERIFICATION_FAILED",
         "MOVE_OPERATION_FAILED",
         "BUNDLE_IN_CRASHED_HISTORY",
+        "PATCH_PLAN_INVALID",
+        "PATCH_APPLY_FAILED",
+        "ASSET_HASH_MISMATCH",
+        "BASE_BUNDLE_MISMATCH",
         "SELF_DEALLOCATED",
         "UNKNOWN_ERROR",
     ]
@@ -280,5 +285,12 @@ import React
      */
     public func getBaseURL() -> String {
         return bundleStorage.getBaseURL()
+    }
+
+    /**
+     * Gets SHA256 hash for the current active bundle.
+     */
+    public func getCurrentBundleHash() -> String? {
+        return bundleStorage.getCurrentBundleHash()
     }
 }

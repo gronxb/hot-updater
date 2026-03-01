@@ -286,6 +286,9 @@ RCT_EXPORT_MODULE();
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
+    if (params.updatePlanJson()) {
+        paramDict[@"updatePlanJson"] = params.updatePlanJson();
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
@@ -320,6 +323,13 @@ RCT_EXPORT_MODULE();
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+- (NSString *)getCurrentBundleHash {
+    NSLog(@"[HotUpdater.mm] getCurrentBundleHash called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *hash = [impl getCurrentBundleHash];
+    return hash ?: nil;
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -396,6 +406,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCurrentBundleHash) {
+    NSLog(@"[HotUpdater.mm] getCurrentBundleHash called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *hash = [impl getCurrentBundleHash];
+    return hash ?: [NSNull null];
 }
 
 - (NSDictionary *)constantsToExport {

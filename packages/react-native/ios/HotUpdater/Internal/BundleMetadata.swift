@@ -10,7 +10,9 @@ public struct BundleMetadata: Codable {
     let schema: String
     var isolationKey: String?
     var stableBundleId: String?
+    var stableBundleHash: String?
     var stagingBundleId: String?
+    var stagingBundleHash: String?
     var verificationPending: Bool
     var verificationAttemptedAt: Double?
     var stagingExecutionCount: Int?
@@ -20,7 +22,9 @@ public struct BundleMetadata: Codable {
         case schema
         case isolationKey = "isolation_key"
         case stableBundleId = "stable_bundle_id"
+        case stableBundleHash = "stable_bundle_hash"
         case stagingBundleId = "staging_bundle_id"
+        case stagingBundleHash = "staging_bundle_hash"
         case verificationPending = "verification_pending"
         case verificationAttemptedAt = "verification_attempted_at"
         case stagingExecutionCount = "staging_execution_count"
@@ -31,7 +35,9 @@ public struct BundleMetadata: Codable {
         schema: String = BundleMetadata.schemaVersion,
         isolationKey: String? = nil,
         stableBundleId: String? = nil,
+        stableBundleHash: String? = nil,
         stagingBundleId: String? = nil,
+        stagingBundleHash: String? = nil,
         verificationPending: Bool = false,
         verificationAttemptedAt: Double? = nil,
         stagingExecutionCount: Int? = nil,
@@ -40,7 +46,9 @@ public struct BundleMetadata: Codable {
         self.schema = schema
         self.isolationKey = isolationKey
         self.stableBundleId = stableBundleId
+        self.stableBundleHash = stableBundleHash
         self.stagingBundleId = stagingBundleId
+        self.stagingBundleHash = stagingBundleHash
         self.verificationPending = verificationPending
         self.verificationAttemptedAt = verificationAttemptedAt
         self.stagingExecutionCount = stagingExecutionCount

@@ -5,6 +5,7 @@ import {
   getAppVersion,
   getBundleId,
   getChannel,
+  getCurrentBundleHash,
   getFingerprintHash,
   getMinBundleId,
   updateBundle,
@@ -61,6 +62,9 @@ export async function checkForUpdate(
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
   const channel = getChannel();
+  // Always negotiate via OTA v2 (`currentHash` query presence).
+  // Unknown current hash is sent as an empty value and treated as no-update.
+  const currentHash = getCurrentBundleHash() ?? "";
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
@@ -87,6 +91,7 @@ export async function checkForUpdate(
       channel,
       updateStrategy: options.updateStrategy,
       fingerprintHash,
+      currentHash,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,
     });
@@ -106,6 +111,9 @@ export async function checkForUpdate(
         bundleId: updateInfo.id,
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
+        updatePlanJson: updateInfo.incremental
+          ? JSON.stringify(updateInfo.incremental)
+          : null,
         status: updateInfo.status,
       });
     },

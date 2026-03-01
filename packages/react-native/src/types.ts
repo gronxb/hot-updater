@@ -41,6 +41,12 @@ export interface ResolverCheckUpdateParams {
   fingerprintHash: string | null;
 
   /**
+   * SHA256 hash of the currently active bundle file.
+   * Used by OTA v2 server to negotiate incremental patch plans.
+   */
+  currentHash: string | null;
+
+  /**
    * Request headers from global config (for optional use)
    */
   requestHeaders?: Record<string, string>;

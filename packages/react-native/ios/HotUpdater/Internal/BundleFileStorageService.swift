@@ -10,6 +10,10 @@ public enum BundleStorageError: Error, CustomNSError {
     case signatureVerificationFailed(SignatureVerificationError)
     case moveOperationFailed(Error)
     case bundleInCrashedHistory(String)
+    case patchPlanInvalid(String)
+    case patchApplyFailed(Error?)
+    case assetHashMismatch(String)
+    case baseBundleMismatch
     case unknown(Error?)
 
     // CustomNSError protocol implementation
@@ -32,6 +36,10 @@ public enum BundleStorageError: Error, CustomNSError {
         case .signatureVerificationFailed: return "SIGNATURE_VERIFICATION_FAILED"
         case .moveOperationFailed: return "MOVE_OPERATION_FAILED"
         case .bundleInCrashedHistory: return "BUNDLE_IN_CRASHED_HISTORY"
+        case .patchPlanInvalid: return "PATCH_PLAN_INVALID"
+        case .patchApplyFailed: return "PATCH_APPLY_FAILED"
+        case .assetHashMismatch: return "ASSET_HASH_MISMATCH"
+        case .baseBundleMismatch: return "BASE_BUNDLE_MISMATCH"
         case .unknown: return "UNKNOWN_ERROR"
         }
     }
@@ -80,6 +88,25 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedDescriptionKey] = "Bundle '\(bundleId)' is in crashed history and cannot be applied"
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "This bundle previously caused a crash and was blocked for safety"
 
+        case .patchPlanInvalid(let message):
+            userInfo[NSLocalizedDescriptionKey] = message
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Incremental patch plan is malformed or unsupported"
+
+        case .patchApplyFailed(let underlyingError):
+            userInfo[NSLocalizedDescriptionKey] = "Failed to apply incremental patch"
+            if let error = underlyingError {
+                userInfo[NSUnderlyingErrorKey] = error
+            }
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Patch bytes may be invalid or base bundle may not match"
+
+        case .assetHashMismatch(let path):
+            userInfo[NSLocalizedDescriptionKey] = "Asset hash mismatch for '\(path)'"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Downloaded/copied asset did not match manifest hash"
+
+        case .baseBundleMismatch:
+            userInfo[NSLocalizedDescriptionKey] = "Current/base bundle hash mismatch"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "Re-check update with latest currentHash and baseline registration"
+
         case .unknown(let underlyingError):
             userInfo[NSLocalizedDescriptionKey] = "An unknown error occurred during bundle update"
             if let error = underlyingError {
@@ -106,7 +133,7 @@ public protocol BundleStorageService {
     func getBundleURL(bundle: Bundle) -> URL?
 
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, updatePlanJson: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
     func notifyAppReady(bundleId: String) -> [String: Any]
@@ -118,6 +145,52 @@ public protocol BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     func getBaseURL() -> String
+
+    /**
+     * Gets SHA256 hash for the current active bundle.
+     * Used for OTA v2 incremental negotiation.
+     */
+    func getCurrentBundleHash() -> String?
+}
+
+private struct IncrementalPatchFile: Decodable {
+    let fileUrl: String
+    let fileHash: String
+    let size: Int64
+}
+
+private struct IncrementalManifestItem: Decodable {
+    let path: String
+    let hash: String
+    let size: Int64
+    let kind: String
+}
+
+private struct IncrementalChangedAsset: Decodable {
+    let path: String
+    let fileUrl: String
+    let hash: String
+    let size: Int64
+}
+
+private struct IncrementalUpdatePlan: Decodable {
+    let protocolVersion: String
+    let baseBundleId: String
+    let baseBundleHash: String
+    let bundlePath: String
+    let patch: IncrementalPatchFile
+    let manifest: [IncrementalManifestItem]
+    let changedAssets: [IncrementalChangedAsset]
+
+    enum CodingKeys: String, CodingKey {
+        case protocolVersion = "protocol"
+        case baseBundleId
+        case baseBundleHash
+        case bundlePath
+        case patch
+        case manifest
+        case changedAssets
+    }
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -318,7 +391,9 @@ class BundleFileStorageService: BundleStorageService {
 
         let oldStableId = metadata.stableBundleId
         metadata.stableBundleId = stagingId
+        metadata.stableBundleHash = metadata.stagingBundleHash
         metadata.stagingBundleId = nil
+        metadata.stagingBundleHash = nil
         metadata.verificationPending = false
         metadata.verificationAttemptedAt = nil
         metadata.stagingExecutionCount = nil
@@ -354,6 +429,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Clear staging
         metadata.stagingBundleId = nil
+        metadata.stagingBundleHash = nil
         metadata.verificationPending = false
         metadata.verificationAttemptedAt = nil
         metadata.stagingExecutionCount = nil
@@ -655,6 +731,239 @@ class BundleFileStorageService: BundleStorageService {
         // Fallback to app bundle
         return getFallbackBundleURL(bundle: bundle)
     }
+
+    private func parseIncrementalPlan(_ updatePlanJson: String?) -> Result<IncrementalUpdatePlan?, Error> {
+        guard let updatePlanJson, !updatePlanJson.isEmpty else {
+            return .success(nil)
+        }
+
+        do {
+            let data = Data(updatePlanJson.utf8)
+            let decoder = JSONDecoder()
+            let plan = try decoder.decode(IncrementalUpdatePlan.self, from: data)
+
+            guard plan.protocolVersion == "bsdiff-v1" else {
+                return .failure(BundleStorageError.patchPlanInvalid("Unsupported incremental protocol: \(plan.protocolVersion)"))
+            }
+            guard !plan.baseBundleId.isEmpty, !plan.baseBundleHash.isEmpty, !plan.bundlePath.isEmpty else {
+                return .failure(BundleStorageError.patchPlanInvalid("Invalid incremental plan fields"))
+            }
+            guard !plan.patch.fileUrl.isEmpty, !plan.patch.fileHash.isEmpty, plan.patch.size >= 0 else {
+                return .failure(BundleStorageError.patchPlanInvalid("Invalid patch metadata"))
+            }
+            for item in plan.manifest {
+                guard !item.path.isEmpty, !item.hash.isEmpty, item.size >= 0 else {
+                    return .failure(BundleStorageError.patchPlanInvalid("Invalid manifest item"))
+                }
+                guard item.kind == "bundle" || item.kind == "asset" else {
+                    return .failure(BundleStorageError.patchPlanInvalid("Unknown manifest kind: \(item.kind)"))
+                }
+            }
+
+            return .success(plan)
+        } catch {
+            return .failure(BundleStorageError.patchPlanInvalid("Invalid incremental patch plan"))
+        }
+    }
+
+    private func resolvePath(in root: String, relativePath: String) -> String {
+        let normalized = relativePath.replacingOccurrences(of: "\\", with: "/")
+        return (root as NSString).appendingPathComponent(normalized)
+    }
+
+    private func isPathWithin(root: String, candidate: String) -> Bool {
+        let rootURL = URL(fileURLWithPath: root).standardizedFileURL
+        let candidateURL = URL(fileURLWithPath: candidate).standardizedFileURL
+        return candidateURL.path == rootURL.path || candidateURL.path.hasPrefix(rootURL.path + "/")
+    }
+
+    private func applyIncrementalUpdate(
+        bundleId: String,
+        fileHash: String?,
+        plan: IncrementalUpdatePlan,
+        progressHandler: @escaping (Double) -> Void,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        fileOperationQueue.async {
+            do {
+                guard let currentHash = self.getCurrentBundleHash(),
+                      currentHash.caseInsensitiveCompare(plan.baseBundleHash) == .orderedSame else {
+                    completion(.failure(BundleStorageError.baseBundleMismatch))
+                    return
+                }
+
+                guard case .success(let storeDir) = self.bundleStoreDir() else {
+                    completion(.failure(BundleStorageError.directoryCreationFailed))
+                    return
+                }
+
+                let baseBundleDir = (storeDir as NSString).appendingPathComponent(plan.baseBundleId)
+                let baseBundlePath = self.resolvePath(in: baseBundleDir, relativePath: plan.bundlePath)
+                guard self.fileSystem.fileExists(atPath: baseBundlePath) else {
+                    completion(.failure(BundleStorageError.baseBundleMismatch))
+                    return
+                }
+
+                let workDir = (storeDir as NSString).appendingPathComponent("\(bundleId).work")
+                if self.fileSystem.fileExists(atPath: workDir) {
+                    try? self.fileSystem.removeItem(atPath: workDir)
+                }
+                _ = self.fileSystem.createDirectory(atPath: workDir)
+
+                defer {
+                    try? self.fileSystem.removeItem(atPath: workDir)
+                }
+
+                progressHandler(0.05)
+
+                guard let patchURL = URL(string: plan.patch.fileUrl) else {
+                    completion(.failure(BundleStorageError.patchPlanInvalid("Invalid patch fileUrl")))
+                    return
+                }
+                let patchData = try Data(contentsOf: patchURL)
+                let patchPath = (workDir as NSString).appendingPathComponent("bundle.patch")
+                try patchData.write(to: URL(fileURLWithPath: patchPath))
+                guard HashUtils.verifyHash(fileURL: URL(fileURLWithPath: patchPath), expectedHash: plan.patch.fileHash) else {
+                    completion(.failure(BundleStorageError.patchApplyFailed(nil)))
+                    return
+                }
+
+                progressHandler(0.25)
+
+                let baseData = try Data(contentsOf: URL(fileURLWithPath: baseBundlePath))
+                let patchedData: Data
+                do {
+                    patchedData = try Bspatch.apply(base: baseData, patch: patchData)
+                } catch {
+                    completion(.failure(BundleStorageError.patchApplyFailed(error)))
+                    return
+                }
+
+                var changedAssetsByPath: [String: IncrementalChangedAsset] = [:]
+                for changed in plan.changedAssets {
+                    if changedAssetsByPath[changed.path] != nil {
+                        completion(.failure(BundleStorageError.patchPlanInvalid("Duplicate changed asset path: \(changed.path)")))
+                        return
+                    }
+                    changedAssetsByPath[changed.path] = changed
+                }
+
+                let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
+                if self.fileSystem.fileExists(atPath: tmpDir) {
+                    try? self.fileSystem.removeItem(atPath: tmpDir)
+                }
+                _ = self.fileSystem.createDirectory(atPath: tmpDir)
+
+                let manifest = plan.manifest.sorted {
+                    if $0.kind == $1.kind {
+                        return $0.path < $1.path
+                    }
+                    return $0.kind == "bundle"
+                }
+
+                let total = max(manifest.count, 1)
+                for (index, item) in manifest.enumerated() {
+                    let destinationPath = self.resolvePath(in: tmpDir, relativePath: item.path)
+                    if !self.isPathWithin(root: tmpDir, candidate: destinationPath) {
+                        completion(.failure(BundleStorageError.patchPlanInvalid("Manifest path traversal detected")))
+                        return
+                    }
+
+                    let destinationDir = (destinationPath as NSString).deletingLastPathComponent
+                    _ = self.fileSystem.createDirectory(atPath: destinationDir)
+
+                    if item.kind == "bundle" {
+                        guard item.path == plan.bundlePath else {
+                            completion(.failure(BundleStorageError.patchPlanInvalid("Unexpected bundle path in manifest")))
+                            return
+                        }
+                        try patchedData.write(to: URL(fileURLWithPath: destinationPath))
+                    } else {
+                        if let changed = changedAssetsByPath[item.path] {
+                            guard let assetURL = URL(string: changed.fileUrl) else {
+                                completion(.failure(BundleStorageError.patchPlanInvalid("Invalid changed asset URL")))
+                                return
+                            }
+                            let assetData = try Data(contentsOf: assetURL)
+                            try assetData.write(to: URL(fileURLWithPath: destinationPath))
+                        } else {
+                            let sourcePath = self.resolvePath(in: baseBundleDir, relativePath: item.path)
+                            guard self.fileSystem.fileExists(atPath: sourcePath) else {
+                                completion(.failure(BundleStorageError.patchPlanInvalid("Missing base asset: \(item.path)")))
+                                return
+                            }
+                            try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
+                        }
+
+                        guard HashUtils.verifyHash(fileURL: URL(fileURLWithPath: destinationPath), expectedHash: item.hash) else {
+                            completion(.failure(BundleStorageError.assetHashMismatch(item.path)))
+                            return
+                        }
+                    }
+
+                    let progress = 0.25 + (Double(index + 1) / Double(total)) * 0.55
+                    progressHandler(progress)
+                }
+
+                let finalDir = (storeDir as NSString).appendingPathComponent(bundleId)
+                if self.fileSystem.fileExists(atPath: finalDir) {
+                    try? self.fileSystem.removeItem(atPath: finalDir)
+                }
+
+                do {
+                    try self.fileSystem.moveItem(atPath: tmpDir, toPath: finalDir)
+                } catch {
+                    do {
+                        try self.fileSystem.copyItem(atPath: tmpDir, toPath: finalDir)
+                        try? self.fileSystem.removeItem(atPath: tmpDir)
+                    } catch {
+                        completion(.failure(BundleStorageError.moveOperationFailed(error)))
+                        return
+                    }
+                }
+
+                let finalBundlePath = self.resolvePath(in: finalDir, relativePath: plan.bundlePath)
+                guard self.fileSystem.fileExists(atPath: finalBundlePath) else {
+                    completion(.failure(BundleStorageError.invalidBundle))
+                    return
+                }
+
+                let verifyResult = SignatureVerifier.verifyBundle(fileURL: URL(fileURLWithPath: finalBundlePath), fileHash: fileHash)
+                if case .failure(let verifyError) = verifyResult {
+                    completion(.failure(BundleStorageError.signatureVerificationFailed(verifyError)))
+                    return
+                }
+
+                guard let bundleSha = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: finalBundlePath)) else {
+                    completion(.failure(BundleStorageError.patchApplyFailed(nil)))
+                    return
+                }
+
+                var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
+                metadata.stagingBundleId = bundleId
+                metadata.stagingBundleHash = bundleSha
+                metadata.verificationPending = true
+                metadata.verificationAttemptedAt = nil
+                metadata.stagingExecutionCount = 0
+                metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+                let _ = self.saveMetadata(metadata)
+
+                let setResult = self.setBundleURL(localPath: finalBundlePath)
+                if case .failure(let error) = setResult {
+                    completion(.failure(error))
+                    return
+                }
+
+                let stableId = metadata.stableBundleId
+                let _ = self.cleanupOldBundles(currentBundleId: stableId, bundleId: bundleId)
+
+                progressHandler(1.0)
+                completion(.success(true))
+            } catch {
+                completion(.failure(BundleStorageError.patchApplyFailed(error)))
+            }
+        }
+    }
     
     // MARK: - Bundle Update
     
@@ -666,12 +975,33 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, updatePlanJson: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+        let parsedPlanResult = parseIncrementalPlan(updatePlanJson)
+        let incrementalPlan: IncrementalUpdatePlan?
+        switch parsedPlanResult {
+        case .success(let plan):
+            incrementalPlan = plan
+        case .failure(let error):
+            completion(.failure(error))
+            return
+        }
+
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
             completion(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
+            return
+        }
+
+        if let incrementalPlan {
+            applyIncrementalUpdate(
+                bundleId: bundleId,
+                fileHash: fileHash,
+                plan: incrementalPlan,
+                progressHandler: progressHandler,
+                completion: completion
+            )
             return
         }
 
@@ -725,6 +1055,7 @@ class BundleFileStorageService: BundleStorageService {
                             // Set staging metadata for rollback support
                             var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
                             metadata.stagingBundleId = bundleId
+                            metadata.stagingBundleHash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: bundlePath))
                             metadata.verificationPending = true
                             metadata.verificationAttemptedAt = nil
                             metadata.stagingExecutionCount = 0
@@ -1042,6 +1373,7 @@ class BundleFileStorageService: BundleStorageService {
                         // 13) Set staging metadata for rollback support
                         var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
                         metadata.stagingBundleId = bundleId
+                        metadata.stagingBundleHash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: finalBundlePath))
                         metadata.verificationPending = true
                         metadata.verificationAttemptedAt = nil
                         metadata.stagingExecutionCount = 0
@@ -1224,6 +1556,72 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
         }
+    }
+
+    func getCurrentBundleHash() -> String? {
+        let metadata = loadMetadataOrNull()
+        if let metadata {
+            if metadata.verificationPending, let stagingHash = metadata.stagingBundleHash, !stagingHash.isEmpty {
+                return stagingHash
+            }
+            if let stableHash = metadata.stableBundleHash, !stableHash.isEmpty {
+                return stableHash
+            }
+        }
+
+        var activeBundlePath: String?
+
+        if let metadata, metadata.verificationPending, let stagingId = metadata.stagingBundleId {
+            if case .success(let storeDir) = bundleStoreDir() {
+                let bundleDir = (storeDir as NSString).appendingPathComponent(stagingId)
+                if case .success(let bundlePath) = findBundleFile(in: bundleDir), let bundlePath {
+                    activeBundlePath = bundlePath
+                }
+            }
+        } else if let metadata, let stableId = metadata.stableBundleId {
+            if case .success(let storeDir) = bundleStoreDir() {
+                let bundleDir = (storeDir as NSString).appendingPathComponent(stableId)
+                if case .success(let bundlePath) = findBundleFile(in: bundleDir), let bundlePath {
+                    activeBundlePath = bundlePath
+                }
+            }
+        } else {
+            activeBundlePath = getCachedBundleURL()?.path
+        }
+
+        guard let activeBundlePath,
+              fileSystem.fileExists(atPath: activeBundlePath),
+              let hash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: activeBundlePath)) else {
+            return nil
+        }
+
+        if var metadata {
+            if metadata.verificationPending, metadata.stagingBundleId != nil {
+                metadata.stagingBundleHash = hash
+            } else if metadata.stableBundleId != nil {
+                metadata.stableBundleHash = hash
+            }
+            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+            let _ = saveMetadata(metadata)
+        } else {
+            var stableBundleId: String?
+            if let range = activeBundlePath.range(of: "bundle-store/([^/]+)/", options: .regularExpression) {
+                let match = activeBundlePath[range]
+                let parts = match.split(separator: "/")
+                if parts.count >= 2 {
+                    stableBundleId = String(parts[1])
+                }
+            }
+            let metadata = BundleMetadata(
+                stableBundleId: stableBundleId,
+                stableBundleHash: hash,
+                verificationPending: false,
+                updatedAt: Date().timeIntervalSince1970 * 1000
+            )
+            let _ = saveMetadata(metadata)
+        }
+
+        return hash
     }
 }
 

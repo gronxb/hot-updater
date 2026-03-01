@@ -1,12 +1,5 @@
-import {
-  colors,
-  createTarBrTargetFiles,
-  createTarGzTargetFiles,
-  createZipTargetFiles,
-  getCwd,
-  loadConfig,
-  p,
-} from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import type { IncrementalManifestEntry } from "@hot-updater/core";
 import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
@@ -46,17 +39,26 @@ export interface DeployOptions {
   targetAppVersion?: string;
 }
 
-const getExtensionFromCompressStrategy = (compressStrategy: string) => {
-  switch (compressStrategy) {
-    case "tar.br":
-      return ".tar.br";
-    case "tar.gz":
-      return ".tar.gz";
-    case "zip":
-      return ".zip";
-    default:
-      throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
-  }
+type UploadManifestEntry = IncrementalManifestEntry & {
+  storageUri: string;
+};
+
+type PreparedUploadTarget = {
+  sourcePath: string;
+  uploadPath: string;
+  logicalPath: string;
+  hash: string;
+  size: number;
+  kind: IncrementalManifestEntry["kind"];
+};
+
+const MAIN_BUNDLE_BY_PLATFORM: Record<Platform, string> = {
+  ios: "index.ios.bundle",
+  android: "index.android.bundle",
+};
+
+const normalizeRelativePathForFs = (relativePath: string): string => {
+  return relativePath.split("/").join(path.sep);
 };
 
 export const deploy = async (options: DeployOptions) => {
@@ -235,19 +237,18 @@ export const deploy = async (options: DeployOptions) => {
     options.bundleOutputPath ?? HotUpdateDirUtil.getDefaultOutputPath({ cwd });
 
   let bundleId: string | null = null;
-  let fileHash: string;
+  let fileHash = "";
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
     : path.join(cwd, outputPath);
 
-  const compressStrategy = config.compressStrategy;
-  const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
-  const bundlePath = path.join(
-    normalizeOutputPath,
-    "bundle",
-    `bundle${bundleExtension}`,
-  );
+  const ignoredCompressStrategy = config.compressStrategy;
+  if (ignoredCompressStrategy) {
+    p.log.info(
+      `compressStrategy=${ignoredCompressStrategy} is ignored in deploy (OTA v2 uncompressed manifest mode).`,
+    );
+  }
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -257,19 +258,27 @@ export const deploy = async (options: DeployOptions) => {
     config.database(),
   ]);
 
-  try {
-    const taskRef: {
-      buildResult: {
-        buildPath: string;
-        bundleId: string;
-        stdout: string | null;
-      } | null;
-      storageUri: string | null;
-    } = {
-      buildResult: null,
-      storageUri: null,
-    };
+  const taskRef: {
+    buildResult: {
+      buildPath: string;
+      bundleId: string;
+      stdout: string | null;
+    } | null;
+    preparedTargets: PreparedUploadTarget[];
+    manifest: UploadManifestEntry[];
+    mainBundleHash: string | null;
+    mainBundleStorageUri: string | null;
+    uploadWorkDir: string | null;
+  } = {
+    buildResult: null,
+    preparedTargets: [],
+    manifest: [],
+    mainBundleHash: null,
+    mainBundleStorageUri: null,
+    uploadWorkDir: null,
+  };
 
+  try {
     await p.tasks([
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
@@ -284,47 +293,53 @@ export const deploy = async (options: DeployOptions) => {
           if (!buildPath) {
             throw new Error("Build result not found");
           }
+
           const files = await fs.promises.readdir(buildPath, {
             recursive: true,
           });
+          const filePaths: string[] = [];
+          for (const relativePath of files) {
+            const absolutePath = path.join(buildPath, relativePath);
+            const stat = await fs.promises.stat(absolutePath);
+            if (stat.isFile()) {
+              filePaths.push(absolutePath);
+            }
+          }
 
-          const targetFiles = await getBundleZipTargets(
-            buildPath,
-            files
-              .filter(
-                (file) =>
-                  !fs.statSync(path.join(buildPath, file)).isDirectory(),
-              )
-              .map((file) => path.join(buildPath, file)),
-          );
+          const targetFiles = await getBundleZipTargets(buildPath, filePaths);
 
-          switch (compressStrategy) {
-            case "tar.br":
-              await createTarBrTargetFiles({
-                outfile: bundlePath,
-                targetFiles: targetFiles,
-              });
-              break;
-            case "tar.gz":
-              await createTarGzTargetFiles({
-                outfile: bundlePath,
-                targetFiles: targetFiles,
-              });
-              break;
-            case "zip":
-              await createZipTargetFiles({
-                outfile: bundlePath,
-                targetFiles: targetFiles,
-              });
-              break;
-            default:
-              throw new Error(
-                `Unsupported compression strategy: ${compressStrategy}`,
-              );
+          const mainBundlePath = MAIN_BUNDLE_BY_PLATFORM[platform];
+          const preparedTargets: PreparedUploadTarget[] = [];
+
+          for (const targetFile of targetFiles) {
+            const stat = await fs.promises.stat(targetFile.path);
+            const hash = await getFileHashFromFile(targetFile.path);
+            const kind: IncrementalManifestEntry["kind"] =
+              targetFile.name === mainBundlePath ? "bundle" : "asset";
+
+            preparedTargets.push({
+              sourcePath: targetFile.path,
+              uploadPath: targetFile.path,
+              logicalPath: targetFile.name,
+              hash,
+              size: stat.size,
+              kind,
+            });
           }
 
           bundleId = taskRef.buildResult.bundleId;
-          fileHash = await getFileHashFromFile(bundlePath);
+          taskRef.preparedTargets = preparedTargets;
+
+          const mainTarget = preparedTargets.find(
+            (targetFile) => targetFile.logicalPath === mainBundlePath,
+          );
+          if (!mainTarget) {
+            throw new Error(
+              `Main bundle file not found in build output: ${mainBundlePath}`,
+            );
+          }
+          taskRef.mainBundleHash = mainTarget.hash;
+          fileHash = mainTarget.hash;
 
           // Sign bundle if signing is enabled
           if (config.signing?.enabled) {
@@ -358,9 +373,7 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
-          p.log.success(
-            `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
-          );
+          p.log.success(`Prepared ${preparedTargets.length} files for upload`);
 
           return `✅ Build Complete (${buildPlugin.name})`;
         },
@@ -378,18 +391,81 @@ export const deploy = async (options: DeployOptions) => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
+          if (!taskRef.mainBundleHash) {
+            throw new Error("Main bundle hash not found");
+          }
+          if (taskRef.preparedTargets.length === 0) {
+            throw new Error("Prepared target files not found");
+          }
+
+          const uploadWorkDir = path.join(
+            normalizeOutputPath,
+            ".upload-work",
+            bundleId,
+          );
+          taskRef.uploadWorkDir = uploadWorkDir;
+          await fs.promises.rm(uploadWorkDir, { recursive: true, force: true });
+          await fs.promises.mkdir(uploadWorkDir, { recursive: true });
+
+          const manifest: UploadManifestEntry[] = [];
 
           try {
-            const { storageUri } = await storagePlugin.upload(
-              bundleId,
-              bundlePath,
-            );
-            taskRef.storageUri = storageUri;
+            for (const preparedTarget of taskRef.preparedTargets) {
+              const logicalBasename = path.posix.basename(
+                preparedTarget.logicalPath,
+              );
+              const sourceBasename = path.basename(preparedTarget.sourcePath);
+              let uploadPath = preparedTarget.sourcePath;
+
+              if (sourceBasename !== logicalBasename) {
+                const targetUploadPath = path.join(
+                  uploadWorkDir,
+                  normalizeRelativePathForFs(preparedTarget.logicalPath),
+                );
+                await fs.promises.mkdir(path.dirname(targetUploadPath), {
+                  recursive: true,
+                });
+                await fs.promises.copyFile(
+                  preparedTarget.sourcePath,
+                  targetUploadPath,
+                );
+                uploadPath = targetUploadPath;
+              }
+
+              const relativeDir = path.posix.dirname(
+                preparedTarget.logicalPath,
+              );
+              const storageKey =
+                relativeDir === "." ? bundleId : `${bundleId}/${relativeDir}`;
+
+              const { storageUri } = await storagePlugin.upload(
+                storageKey,
+                uploadPath,
+              );
+
+              manifest.push({
+                path: preparedTarget.logicalPath,
+                hash: preparedTarget.hash,
+                size: preparedTarget.size,
+                kind: preparedTarget.kind,
+                storageUri,
+              });
+
+              if (preparedTarget.kind === "bundle") {
+                taskRef.mainBundleStorageUri = storageUri;
+              }
+            }
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
             }
-            throw new Error("Failed to upload bundle to storage");
+            throw new Error("Failed to upload files to storage");
+          }
+
+          taskRef.manifest = manifest;
+
+          if (!taskRef.mainBundleStorageUri) {
+            throw new Error("Main bundle storage URI not found after upload");
           }
           return `✅ Upload Complete (${storagePlugin.name})`;
         },
@@ -400,8 +476,11 @@ export const deploy = async (options: DeployOptions) => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
-          if (!taskRef.storageUri) {
+          if (!taskRef.mainBundleStorageUri) {
             throw new Error("Storage URI not found");
+          }
+          if (!taskRef.mainBundleHash) {
+            throw new Error("Main bundle hash not found");
           }
           const appVersion = await getNativeAppVersion(platform);
 
@@ -417,13 +496,20 @@ export const deploy = async (options: DeployOptions) => {
               channel,
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
-              storageUri: taskRef.storageUri,
+              storageUri: taskRef.mainBundleStorageUri,
               metadata: {
                 ...(appVersion
                   ? {
                       app_version: appVersion,
                     }
                   : {}),
+                incremental: {
+                  bundleHash: taskRef.mainBundleHash,
+                  manifest: taskRef.manifest.map(
+                    ({ storageUri, ...rest }) => rest,
+                  ),
+                  patchCache: {},
+                },
               },
             });
             await databasePlugin.commitBundle();
@@ -474,10 +560,21 @@ export const deploy = async (options: DeployOptions) => {
     p.outro("🚀 Deployment Successful");
   } catch (e) {
     await databasePlugin.onUnmount?.();
-    await fs.promises.rm(bundlePath, { force: true });
+    if (taskRef.uploadWorkDir) {
+      await fs.promises.rm(taskRef.uploadWorkDir, {
+        recursive: true,
+        force: true,
+      });
+    }
     console.error(e);
     process.exit(1);
   } finally {
+    if (taskRef.uploadWorkDir) {
+      await fs.promises.rm(taskRef.uploadWorkDir, {
+        recursive: true,
+        force: true,
+      });
+    }
     await databasePlugin.onUnmount?.();
   }
 };

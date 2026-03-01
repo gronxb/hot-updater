@@ -25,6 +25,11 @@ export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
         url = `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}`;
       }
 
+      if (params.currentHash !== null) {
+        const separator = url.includes("?") ? "&" : "?";
+        url = `${url}${separator}currentHash=${encodeURIComponent(params.currentHash)}`;
+      }
+
       // Use existing fetchUpdateInfo
       return fetchUpdateInfo({
         url,

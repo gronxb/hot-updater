@@ -85,6 +85,35 @@ class HotUpdaterException(
                 "Bundle '$bundleId' is in crashed history and cannot be applied",
             )
 
+        fun patchPlanInvalid(message: String = "Invalid incremental patch plan") =
+            HotUpdaterException(
+                "PATCH_PLAN_INVALID",
+                message,
+            )
+
+        fun patchApplyFailed(cause: Throwable? = null) =
+            HotUpdaterException(
+                "PATCH_APPLY_FAILED",
+                "Failed to apply incremental patch",
+                cause,
+            )
+
+        fun assetHashMismatch(path: String? = null) =
+            HotUpdaterException(
+                "ASSET_HASH_MISMATCH",
+                if (path != null) {
+                    "Asset hash mismatch for '$path'"
+                } else {
+                    "Asset hash mismatch"
+                },
+            )
+
+        fun baseBundleMismatch() =
+            HotUpdaterException(
+                "BASE_BUNDLE_MISMATCH",
+                "Current/base bundle hash mismatch",
+            )
+
         // Signature verification errors
         fun publicKeyNotConfigured() =
             HotUpdaterException(

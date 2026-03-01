@@ -107,6 +107,30 @@ export enum HotUpdaterErrorCode {
    */
   BUNDLE_IN_CRASHED_HISTORY = "BUNDLE_IN_CRASHED_HISTORY",
 
+  /**
+   * Incremental patch plan payload is missing required fields or malformed.
+   * @retryable false
+   */
+  PATCH_PLAN_INVALID = "PATCH_PLAN_INVALID",
+
+  /**
+   * bspatch failed while reconstructing the target bundle.
+   * @retryable false
+   */
+  PATCH_APPLY_FAILED = "PATCH_APPLY_FAILED",
+
+  /**
+   * Downloaded/copied asset did not match expected manifest hash.
+   * @retryable false
+   */
+  ASSET_HASH_MISMATCH = "ASSET_HASH_MISMATCH",
+
+  /**
+   * Current/base bundle hash mismatch for incremental plan.
+   * @retryable false
+   */
+  BASE_BUNDLE_MISMATCH = "BASE_BUNDLE_MISMATCH",
+
   // ==================== Signature Verification Errors ====================
   // (Collapsed into SIGNATURE_VERIFICATION_FAILED)
 

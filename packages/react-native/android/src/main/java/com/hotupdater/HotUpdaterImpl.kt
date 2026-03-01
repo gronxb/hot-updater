@@ -268,9 +268,16 @@ class HotUpdaterImpl {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        updatePlanJson: String?,
         progressCallback: (Double) -> Unit,
     ) {
-        bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+        bundleStorage.updateBundle(
+            bundleId,
+            fileUrl,
+            fileHash,
+            updatePlanJson,
+            progressCallback,
+        )
     }
 
     /**
@@ -318,4 +325,10 @@ class HotUpdaterImpl {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
+
+    /**
+     * Gets SHA256 hash for the currently active bundle.
+     * Used for OTA v2 incremental negotiation.
+     */
+    fun getCurrentBundleHash(): String? = bundleStorage.getCurrentBundleHash()
 }

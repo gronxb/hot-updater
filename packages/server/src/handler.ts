@@ -47,7 +47,9 @@ const handleVersion: RouteHandler = async () => {
   });
 };
 
-const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
+const handleFingerprintUpdate: RouteHandler = async (params, request, api) => {
+  const url = new URL(request.url);
+  const currentHash = url.searchParams.get("currentHash");
   const updateInfo = await api.getAppUpdateInfo({
     _updateStrategy: "fingerprint",
     platform: params.platform as "ios" | "android",
@@ -55,6 +57,7 @@ const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
+    currentHash,
   });
 
   return new Response(JSON.stringify(updateInfo), {
@@ -63,7 +66,9 @@ const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
   });
 };
 
-const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
+const handleAppVersionUpdate: RouteHandler = async (params, request, api) => {
+  const url = new URL(request.url);
+  const currentHash = url.searchParams.get("currentHash");
   const updateInfo = await api.getAppUpdateInfo({
     _updateStrategy: "appVersion",
     platform: params.platform as "ios" | "android",
@@ -71,6 +76,7 @@ const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
+    currentHash,
   });
 
   return new Response(JSON.stringify(updateInfo), {

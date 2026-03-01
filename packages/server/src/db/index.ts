@@ -50,6 +50,10 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     []
   ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
 
+  const getStoragePlugin = (protocol: string): StoragePlugin | null => {
+    return storagePlugins.find((p) => p.supportedProtocol === protocol) ?? null;
+  };
+
   const resolveFileUrl = async (
     storageUri: string | null,
   ): Promise<string | null> => {
@@ -61,7 +65,7 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     if (protocol === "http" || protocol === "https") {
       return storageUri;
     }
-    const plugin = storagePlugins.find((p) => p.supportedProtocol === protocol);
+    const plugin = getStoragePlugin(protocol);
 
     if (!plugin) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
@@ -73,17 +77,34 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     return fileUrl;
   };
 
+  const uploadPatch = async ({
+    protocol,
+    key,
+    filePath,
+  }: {
+    protocol: string;
+    key: string;
+    filePath: string;
+  }): Promise<{ storageUri: string } | null> => {
+    const plugin = getStoragePlugin(protocol);
+    if (!plugin) {
+      return null;
+    }
+    return plugin.upload(key, filePath);
+  };
+
   let core: HotUpdaterCoreInternal;
 
   const database = options.database;
 
   if (isDatabasePluginFactory(database) || isDatabasePlugin(database)) {
     const plugin = isDatabasePluginFactory(database) ? database() : database;
-    core = createPluginDatabaseCore(plugin, resolveFileUrl);
+    core = createPluginDatabaseCore(plugin, resolveFileUrl, uploadPatch);
   } else {
     core = createOrmDatabaseCore({
       database,
       resolveFileUrl,
+      uploadPatch,
     });
   }
 

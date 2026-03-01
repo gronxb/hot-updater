@@ -6,6 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Interface for bundle storage operations
@@ -49,6 +51,7 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        updatePlanJson: String?,
         progressCallback: (Double) -> Unit,
     )
 
@@ -76,7 +79,43 @@ interface BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     fun getBaseURL(): String
+
+    /**
+     * Gets SHA256 hash for the current active bundle.
+     * Used for OTA v2 incremental negotiation.
+     */
+    fun getCurrentBundleHash(): String?
 }
+
+private data class IncrementalPatchFile(
+    val fileUrl: String,
+    val fileHash: String,
+    val size: Long,
+)
+
+private data class IncrementalManifestItem(
+    val path: String,
+    val hash: String,
+    val size: Long,
+    val kind: String,
+)
+
+private data class IncrementalChangedAsset(
+    val path: String,
+    val fileUrl: String,
+    val hash: String,
+    val size: Long,
+)
+
+private data class IncrementalUpdatePlan(
+    val protocol: String,
+    val baseBundleId: String,
+    val baseBundleHash: String,
+    val bundlePath: String,
+    val patch: IncrementalPatchFile,
+    val manifest: List<IncrementalManifestItem>,
+    val changedAssets: Map<String, IncrementalChangedAsset>,
+)
 
 /**
  * Implementation of BundleStorageService
@@ -129,7 +168,9 @@ class BundleFileStorageService(
         Log.d(TAG, "Creating initial metadata with stableBundleId: $currentBundleId")
         return BundleMetadata(
             stableBundleId = currentBundleId,
+            stableBundleHash = null,
             stagingBundleId = null,
+            stagingBundleHash = null,
             verificationPending = false,
             verificationAttemptedAt = null,
         )
@@ -140,6 +181,114 @@ class BundleFileStorageService(
         // "bundle-store/abc123/index.android.bundle" -> "abc123"
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
+    }
+
+    private fun parseIncrementalPlan(updatePlanJson: String?): IncrementalUpdatePlan? {
+        if (updatePlanJson.isNullOrBlank()) {
+            return null
+        }
+
+        return try {
+            val json = JSONObject(updatePlanJson)
+            val protocol = json.optString("protocol")
+            val baseBundleId = json.optString("baseBundleId")
+            val baseBundleHash = json.optString("baseBundleHash")
+            val bundlePath = json.optString("bundlePath")
+            if (
+                protocol.isBlank() ||
+                baseBundleId.isBlank() ||
+                baseBundleHash.isBlank() ||
+                bundlePath.isBlank()
+            ) {
+                null
+            } else {
+                val patchJson = json.optJSONObject("patch") ?: return null
+                val patch =
+                    IncrementalPatchFile(
+                        fileUrl = patchJson.optString("fileUrl"),
+                        fileHash = patchJson.optString("fileHash"),
+                        size = patchJson.optLong("size", -1),
+                    )
+                if (patch.fileUrl.isBlank() || patch.fileHash.isBlank() || patch.size < 0) {
+                    return null
+                }
+
+                val manifestJson = json.optJSONArray("manifest") ?: return null
+                val manifest = parseManifest(manifestJson) ?: return null
+
+                val changedAssetsJson = json.optJSONArray("changedAssets") ?: JSONArray()
+                val changedAssets = parseChangedAssets(changedAssetsJson) ?: return null
+
+                IncrementalUpdatePlan(
+                    protocol = protocol,
+                    baseBundleId = baseBundleId,
+                    baseBundleHash = baseBundleHash,
+                    bundlePath = bundlePath,
+                    patch = patch,
+                    manifest = manifest,
+                    changedAssets = changedAssets.associateBy { it.path },
+                )
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseManifest(json: JSONArray): List<IncrementalManifestItem>? {
+        val manifest = mutableListOf<IncrementalManifestItem>()
+        for (index in 0 until json.length()) {
+            val entry = json.optJSONObject(index) ?: return null
+            val path = entry.optString("path")
+            val hash = entry.optString("hash")
+            val size = entry.optLong("size", -1)
+            val kind = entry.optString("kind")
+            if (path.isBlank() || hash.isBlank() || size < 0) {
+                return null
+            }
+            if (kind != "bundle" && kind != "asset") {
+                return null
+            }
+            manifest.add(
+                IncrementalManifestItem(
+                    path = path,
+                    hash = hash,
+                    size = size,
+                    kind = kind,
+                ),
+            )
+        }
+        return manifest
+    }
+
+    private fun parseChangedAssets(json: JSONArray): List<IncrementalChangedAsset>? {
+        val assets = mutableListOf<IncrementalChangedAsset>()
+        for (index in 0 until json.length()) {
+            val entry = json.optJSONObject(index) ?: return null
+            val path = entry.optString("path")
+            val fileUrl = entry.optString("fileUrl")
+            val hash = entry.optString("hash")
+            val size = entry.optLong("size", -1)
+            if (path.isBlank() || fileUrl.isBlank() || hash.isBlank() || size < 0) {
+                return null
+            }
+            assets.add(
+                IncrementalChangedAsset(
+                    path = path,
+                    fileUrl = fileUrl,
+                    hash = hash,
+                    size = size,
+                ),
+            )
+        }
+        return assets
+    }
+
+    private fun resolvePathInBundleDir(
+        bundleDir: File,
+        relativePath: String,
+    ): File {
+        val normalized = relativePath.split("/").joinToString(File.separator)
+        return File(bundleDir, normalized)
     }
 
     /**
@@ -229,7 +378,9 @@ class BundleFileStorageService(
         val updatedMetadata =
             metadata.copy(
                 stableBundleId = stagingBundleId,
+                stableBundleHash = metadata.stagingBundleHash,
                 stagingBundleId = null,
+                stagingBundleHash = null,
                 verificationPending = false,
                 verificationAttemptedAt = null,
                 updatedAt = System.currentTimeMillis(),
@@ -266,6 +417,7 @@ class BundleFileStorageService(
         val updatedMetadata =
             metadata.copy(
                 stagingBundleId = null,
+                stagingBundleHash = null,
                 verificationPending = false,
                 verificationAttemptedAt = null,
                 stagingExecutionCount = null,
@@ -450,16 +602,337 @@ class BundleFileStorageService(
         return result
     }
 
+    private fun isPathWithinDirectory(
+        root: File,
+        candidate: File,
+    ): Boolean {
+        val rootCanonical = root.canonicalFile
+        val candidateCanonical = candidate.canonicalFile
+        return candidateCanonical.path == rootCanonical.path ||
+            candidateCanonical.path.startsWith("${rootCanonical.path}${File.separator}")
+    }
+
+    private fun findMainBundleFile(bundleDir: File): File? {
+        return bundleDir.walk().find { it.name == "index.android.bundle" }
+    }
+
+    private suspend fun downloadToFile(
+        fileUrl: String,
+        destination: File,
+        progressStart: Double,
+        progressEnd: Double,
+        progressCallback: (Double) -> Unit,
+    ) {
+        val downloadResult =
+            downloadService.downloadFile(
+                URL(fileUrl),
+                destination,
+            ) { progress ->
+                val mapped = progressStart + ((progressEnd - progressStart) * progress)
+                progressCallback(mapped)
+            }
+
+        when (downloadResult) {
+            is DownloadResult.Success -> Unit
+            is DownloadResult.Error -> {
+                if (downloadResult.exception is IncompleteDownloadException) {
+                    val incomplete = downloadResult.exception as IncompleteDownloadException
+                    throw HotUpdaterException.incompleteDownload(
+                        expectedSize = incomplete.expectedSize,
+                        actualSize = incomplete.actualSize,
+                    )
+                }
+                throw HotUpdaterException.downloadFailed(downloadResult.exception)
+            }
+        }
+    }
+
+    private suspend fun applyIncrementalUpdate(
+        bundleId: String,
+        fileHash: String?,
+        plan: IncrementalUpdatePlan,
+        bundleStoreDir: File,
+        progressCallback: (Double) -> Unit,
+    ) {
+        if (plan.protocol != "bsdiff-v1") {
+            throw HotUpdaterException.patchPlanInvalid("Unsupported incremental protocol: ${plan.protocol}")
+        }
+
+        val currentHash = getCurrentBundleHash()
+        if (currentHash.isNullOrBlank() || !currentHash.equals(plan.baseBundleHash, ignoreCase = true)) {
+            throw HotUpdaterException.baseBundleMismatch()
+        }
+
+        val baseBundleDir = File(bundleStoreDir, plan.baseBundleId)
+        if (!baseBundleDir.exists()) {
+            throw HotUpdaterException.baseBundleMismatch()
+        }
+        val baseBundleFile = resolvePathInBundleDir(baseBundleDir, plan.bundlePath)
+        if (!baseBundleFile.exists()) {
+            throw HotUpdaterException.baseBundleMismatch()
+        }
+
+        val tempDir = File(bundleStoreDir, "${bundleId}.work")
+        if (tempDir.exists()) {
+            tempDir.deleteRecursively()
+        }
+        tempDir.mkdirs()
+
+        val patchFile = File(tempDir, "bundle.patch")
+        val changedAssetTempDir = File(tempDir, "changed-assets")
+        changedAssetTempDir.mkdirs()
+
+        try {
+            // 0.0 ~ 0.35
+            downloadToFile(
+                fileUrl = plan.patch.fileUrl,
+                destination = patchFile,
+                progressStart = 0.0,
+                progressEnd = 0.35,
+                progressCallback = progressCallback,
+            )
+
+            if (!HashUtils.verifyHash(patchFile, plan.patch.fileHash)) {
+                throw HotUpdaterException.patchApplyFailed()
+            }
+
+            val baseBytes = baseBundleFile.readBytes()
+            val patchBytes = patchFile.readBytes()
+            val patchedBytes =
+                try {
+                    Bspatch.apply(baseBytes, patchBytes)
+                } catch (e: Exception) {
+                    throw HotUpdaterException.patchApplyFailed(e)
+                }
+
+            // Build a complete target tree from manifest into tmp directory.
+            val tmpBundleDir = File(bundleStoreDir, "$bundleId.tmp")
+            if (tmpBundleDir.exists()) {
+                tmpBundleDir.deleteRecursively()
+            }
+            tmpBundleDir.mkdirs()
+
+            val sortedManifest =
+                plan.manifest.sortedWith(
+                    compareBy<IncrementalManifestItem>({ it.kind != "bundle" }, { it.path }),
+                )
+
+            val totalEntries = sortedManifest.size.coerceAtLeast(1)
+
+            for ((index, entry) in sortedManifest.withIndex()) {
+                val destination = resolvePathInBundleDir(tmpBundleDir, entry.path)
+                destination.parentFile?.mkdirs()
+                if (!isPathWithinDirectory(tmpBundleDir, destination)) {
+                    throw HotUpdaterException.patchPlanInvalid("Manifest path traversal detected: ${entry.path}")
+                }
+
+                when (entry.kind) {
+                    "bundle" -> {
+                        if (entry.path != plan.bundlePath) {
+                            throw HotUpdaterException.patchPlanInvalid("Unexpected bundlePath in manifest: ${entry.path}")
+                        }
+                        destination.writeBytes(patchedBytes)
+                    }
+
+                    "asset" -> {
+                        val changedAsset = plan.changedAssets[entry.path]
+                        if (changedAsset != null) {
+                            val changedAssetFile = resolvePathInBundleDir(changedAssetTempDir, entry.path)
+                            changedAssetFile.parentFile?.mkdirs()
+                            val progressStart = 0.35 + ((index.toDouble() / totalEntries) * 0.45)
+                            val progressEnd = 0.35 + (((index + 1).toDouble() / totalEntries) * 0.45)
+                            downloadToFile(
+                                fileUrl = changedAsset.fileUrl,
+                                destination = changedAssetFile,
+                                progressStart = progressStart,
+                                progressEnd = progressEnd,
+                                progressCallback = progressCallback,
+                            )
+
+                            if (!HashUtils.verifyHash(changedAssetFile, entry.hash)) {
+                                throw HotUpdaterException.assetHashMismatch(entry.path)
+                            }
+                            changedAssetFile.copyTo(destination, overwrite = true)
+                        } else {
+                            val baseAssetFile = resolvePathInBundleDir(baseBundleDir, entry.path)
+                            if (!baseAssetFile.exists()) {
+                                throw HotUpdaterException.patchPlanInvalid("Missing base asset: ${entry.path}")
+                            }
+                            baseAssetFile.copyTo(destination, overwrite = true)
+                            if (!HashUtils.verifyHash(destination, entry.hash)) {
+                                throw HotUpdaterException.assetHashMismatch(entry.path)
+                            }
+                        }
+                    }
+
+                    else -> {
+                        throw HotUpdaterException.patchPlanInvalid("Unknown manifest kind: ${entry.kind}")
+                    }
+                }
+            }
+
+            progressCallback(0.85)
+
+            val finalBundleDir = File(bundleStoreDir, bundleId)
+            if (finalBundleDir.exists()) {
+                finalBundleDir.deleteRecursively()
+            }
+
+            val renamed = File(bundleStoreDir, "$bundleId.tmp").renameTo(finalBundleDir)
+            if (!renamed) {
+                val sourceTmpDir = File(bundleStoreDir, "$bundleId.tmp")
+                if (!fileSystem.moveItem(sourceTmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                    if (!fileSystem.copyItem(sourceTmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                        throw HotUpdaterException.moveOperationFailed()
+                    }
+                    sourceTmpDir.deleteRecursively()
+                }
+            }
+
+            val finalBundleFile = resolvePathInBundleDir(finalBundleDir, plan.bundlePath)
+            if (!finalBundleFile.exists()) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            try {
+                SignatureVerifier.verifyBundle(context, finalBundleFile, fileHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            val finalBundleHash = HashUtils.calculateSHA256(finalBundleFile)
+            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val updatedMetadata =
+                currentMetadata.copy(
+                    stagingBundleId = bundleId,
+                    stagingBundleHash = finalBundleHash,
+                    verificationPending = true,
+                    verificationAttemptedAt = null,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            saveMetadata(updatedMetadata)
+
+            setBundleURL(finalBundleFile.absolutePath)
+
+            val stableBundleId = currentMetadata.stableBundleId
+            cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
+            progressCallback(1.0)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    override fun getCurrentBundleHash(): String? {
+        val metadata = loadMetadataOrNull()
+        if (metadata != null) {
+            if (metadata.verificationPending && !metadata.stagingBundleHash.isNullOrBlank()) {
+                return metadata.stagingBundleHash
+            }
+            if (!metadata.stableBundleHash.isNullOrBlank()) {
+                return metadata.stableBundleHash
+            }
+        }
+
+        val bundleStoreDir = getBundleStoreDir()
+        val activeBundleFile: File? =
+            when {
+                metadata?.verificationPending == true && metadata.stagingBundleId != null ->
+                    findMainBundleFile(File(bundleStoreDir, metadata.stagingBundleId))
+
+                metadata?.stableBundleId != null ->
+                    findMainBundleFile(File(bundleStoreDir, metadata.stableBundleId))
+
+                else ->
+                    getCachedBundleURL()?.let { path ->
+                        val file = File(path)
+                        if (file.exists()) file else null
+                    }
+            }
+
+        if (activeBundleFile == null || !activeBundleFile.exists()) {
+            return null
+        }
+
+        val hash = HashUtils.calculateSHA256(activeBundleFile)
+        if (metadata != null) {
+            val updatedMetadata =
+                when {
+                    metadata.verificationPending && metadata.stagingBundleId != null ->
+                        metadata.copy(
+                            stagingBundleHash = hash,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+
+                    metadata.stableBundleId != null ->
+                        metadata.copy(
+                            stableBundleHash = hash,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+
+                    else -> metadata
+                }
+            saveMetadata(updatedMetadata)
+        } else {
+            val extractedBundleId = extractBundleIdFromCurrentURL()
+            val initialMetadata =
+                BundleMetadata(
+                    stableBundleId = extractedBundleId,
+                    stableBundleHash = hash,
+                    verificationPending = false,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            saveMetadata(initialMetadata)
+        }
+
+        return hash
+    }
+
     override suspend fun updateBundle(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        updatePlanJson: String?,
         progressCallback: (Double) -> Unit,
     ) {
         Log.d(
             TAG,
-            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
+            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash hasPlan=${!updatePlanJson.isNullOrBlank()}",
         )
+
+        val incrementalPlan = parseIncrementalPlan(updatePlanJson)
+        if (!updatePlanJson.isNullOrBlank() && incrementalPlan == null) {
+            throw HotUpdaterException.patchPlanInvalid()
+        }
+
+        if (isBundleInCrashedHistory(bundleId)) {
+            Log.w(TAG, "Bundle $bundleId is in crashed history, rejecting update")
+            throw HotUpdaterException.bundleInCrashedHistory(bundleId)
+        }
+
+        // Initialize metadata if it doesn't exist (lazy initialization)
+        val existingMetadata = loadMetadataOrNull()
+        if (existingMetadata == null) {
+            saveMetadata(createInitialMetadata())
+            Log.d(TAG, "Created initial metadata during updateBundle")
+        }
+
+        val bundleStoreDir = getBundleStoreDir()
+        if (!bundleStoreDir.exists()) {
+            bundleStoreDir.mkdirs()
+        }
+
+        if (incrementalPlan != null) {
+            withContext(Dispatchers.IO) {
+                applyIncrementalUpdate(
+                    bundleId = bundleId,
+                    fileHash = fileHash,
+                    plan = incrementalPlan,
+                    bundleStoreDir = bundleStoreDir,
+                    progressCallback = progressCallback,
+                )
+            }
+            return
+        }
 
         // If no URL is provided, reset to fallback and clean up all bundles
         if (fileUrl.isNullOrEmpty()) {
@@ -489,25 +962,7 @@ class BundleFileStorageService(
             return
         }
 
-        // Check if bundle is in crashed history
-        if (isBundleInCrashedHistory(bundleId)) {
-            Log.w(TAG, "Bundle $bundleId is in crashed history, rejecting update")
-            throw HotUpdaterException.bundleInCrashedHistory(bundleId)
-        }
-
-        // Initialize metadata if it doesn't exist (lazy initialization)
-        val existingMetadata = loadMetadataOrNull()
-        val metadata =
-            existingMetadata ?: createInitialMetadata().also {
-                saveMetadata(it)
-                Log.d(TAG, "Created initial metadata during updateBundle")
-            }
-
         val baseDir = fileSystem.getExternalFilesDir()
-        val bundleStoreDir = getBundleStoreDir()
-        if (!bundleStoreDir.exists()) {
-            bundleStoreDir.mkdirs()
-        }
 
         val finalBundleDir = File(bundleStoreDir, bundleId)
         if (finalBundleDir.exists()) {
@@ -522,6 +977,7 @@ class BundleFileStorageService(
                 val updatedMetadata =
                     currentMetadata.copy(
                         stagingBundleId = bundleId,
+                        stagingBundleHash = HashUtils.calculateSHA256(existingIndexFile),
                         verificationPending = true,
                         verificationAttemptedAt = null,
                         updatedAt = System.currentTimeMillis(),
@@ -718,6 +1174,7 @@ class BundleFileStorageService(
                     val updatedMetadata =
                         currentMetadata.copy(
                             stagingBundleId = bundleId,
+                            stagingBundleHash = HashUtils.calculateSHA256(finalIndexFile),
                             verificationPending = true,
                             verificationAttemptedAt = null,
                             updatedAt = System.currentTimeMillis(),

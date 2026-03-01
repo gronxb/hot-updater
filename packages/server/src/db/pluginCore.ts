@@ -6,17 +6,32 @@ import type {
 } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { buildIncrementalAppUpdateInfo } from "./incremental";
 import type { DatabaseAPI } from "./types";
 
 export function createPluginDatabaseCore(
   plugin: DatabasePlugin,
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
+  uploadPatch: (args: {
+    protocol: string;
+    key: string;
+    filePath: string;
+  }) => Promise<{ storageUri: string } | null>,
 ): {
   api: DatabaseAPI;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
 } {
+  const patchLocks = new Map<
+    string,
+    Promise<{
+      storageUri: string;
+      fileHash: string;
+      size: number;
+    } | null>
+  >();
+
   const api: DatabaseAPI = {
     async getBundleById(id: string): Promise<Bundle | null> {
       return plugin.getBundleById(id);
@@ -56,6 +71,21 @@ export function createPluginDatabaseCore(
     async getAppUpdateInfo(
       args: GetBundlesArgs,
     ): Promise<AppUpdateInfo | null> {
+      if (args.currentHash !== null && args.currentHash !== undefined) {
+        const incrementalInfo = await buildIncrementalAppUpdateInfo(args, {
+          getUpdateInfo: this.getUpdateInfo.bind(this),
+          getBundleById: this.getBundleById.bind(this),
+          updateBundleById: this.updateBundleById.bind(this),
+          resolveFileUrl,
+          uploadPatch,
+          patchLocks,
+        });
+        if (incrementalInfo) {
+          return incrementalInfo;
+        }
+        return null;
+      }
+
       const info = await this.getUpdateInfo(args);
       if (!info) {
         return null;

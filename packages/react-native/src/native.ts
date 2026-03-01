@@ -100,6 +100,10 @@ export async function updateBundle(
     typeof paramsOrBundleId === "string"
       ? undefined
       : paramsOrBundleId.fileHash;
+  const updatePlanJson =
+    typeof paramsOrBundleId === "string"
+      ? null
+      : (paramsOrBundleId.updatePlanJson ?? null);
 
   const promise = (async () => {
     try {
@@ -107,6 +111,7 @@ export async function updateBundle(
         bundleId: updateBundleId,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        updatePlanJson,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;
@@ -177,6 +182,15 @@ export const getChannel = (): string => {
 export const getFingerprintHash = (): string | null => {
   const constants = HotUpdaterNative.getConstants();
   return constants.FINGERPRINT_HASH;
+};
+
+/**
+ * Fetches SHA256 hash of the current active bundle file.
+ *
+ * @returns {string | null} Lowercase SHA256 hex string or null when unavailable.
+ */
+export const getCurrentBundleHash = (): string | null => {
+  return HotUpdaterNative.getCurrentBundleHash();
 };
 
 /**

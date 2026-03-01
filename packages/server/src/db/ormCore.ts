@@ -15,6 +15,7 @@ import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import type { PaginationInfo } from "../types";
+import { buildIncrementalAppUpdateInfo } from "./incremental";
 import type { DatabaseAPI } from "./types";
 
 export const HotUpdaterDB = fumadb({
@@ -29,9 +30,15 @@ export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 export function createOrmDatabaseCore({
   database,
   resolveFileUrl,
+  uploadPatch,
 }: {
   database: FumaDBAdapter;
   resolveFileUrl: (storageUri: string | null) => Promise<string | null>;
+  uploadPatch: (args: {
+    protocol: string;
+    key: string;
+    filePath: string;
+  }) => Promise<{ storageUri: string } | null>;
 }): {
   api: DatabaseAPI;
   adapterName: string;
@@ -39,6 +46,14 @@ export function createOrmDatabaseCore({
   generateSchema: HotUpdaterClient["generateSchema"];
 } {
   const client = HotUpdaterDB.client(database);
+  const patchLocks = new Map<
+    string,
+    Promise<{
+      storageUri: string;
+      fileHash: string;
+      size: number;
+    } | null>
+  >();
 
   const api: DatabaseAPI = {
     async getBundleById(id: string): Promise<Bundle | null> {
@@ -74,6 +89,7 @@ export function createOrmDatabaseCore({
         storageUri: result.storage_uri,
         targetAppVersion: result.target_app_version ?? null,
         fingerprintHash: result.fingerprint_hash ?? null,
+        metadata: (result.metadata ?? {}) as Bundle["metadata"],
       };
       return bundle;
     },
@@ -287,6 +303,21 @@ export function createOrmDatabaseCore({
     async getAppUpdateInfo(
       args: GetBundlesArgs,
     ): Promise<AppUpdateInfo | null> {
+      if (args.currentHash !== null && args.currentHash !== undefined) {
+        const incrementalInfo = await buildIncrementalAppUpdateInfo(args, {
+          getUpdateInfo: this.getUpdateInfo.bind(this),
+          getBundleById: this.getBundleById.bind(this),
+          updateBundleById: this.updateBundleById.bind(this),
+          resolveFileUrl,
+          uploadPatch,
+          patchLocks,
+        });
+        if (incrementalInfo) {
+          return incrementalInfo;
+        }
+        return null;
+      }
+
       const info = await this.getUpdateInfo(args);
       if (!info) return null;
       const { storageUri, ...rest } = info as UpdateInfo & {
@@ -356,6 +387,7 @@ export function createOrmDatabaseCore({
             storageUri: r.storage_uri,
             targetAppVersion: r.target_app_version ?? null,
             fingerprintHash: r.fingerprint_hash ?? null,
+            metadata: (r.metadata ?? {}) as Bundle["metadata"],
           }),
         )
         .sort((a, b) => b.id.localeCompare(a.id));

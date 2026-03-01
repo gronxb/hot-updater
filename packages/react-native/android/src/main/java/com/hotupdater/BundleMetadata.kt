@@ -12,7 +12,9 @@ data class BundleMetadata(
     val schema: String = SCHEMA_VERSION,
     val isolationKey: String? = null,
     val stableBundleId: String? = null,
+    val stableBundleHash: String? = null,
     val stagingBundleId: String? = null,
+    val stagingBundleHash: String? = null,
     val verificationPending: Boolean = false,
     val verificationAttemptedAt: Long? = null,
     val stagingExecutionCount: Int? = null,
@@ -38,9 +40,21 @@ data class BundleMetadata(
                     } else {
                         null
                     },
+                stableBundleHash =
+                    if (json.has("stableBundleHash") && !json.isNull("stableBundleHash")) {
+                        json.getString("stableBundleHash").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
                 stagingBundleId =
                     if (json.has("stagingBundleId") && !json.isNull("stagingBundleId")) {
                         json.getString("stagingBundleId").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
+                stagingBundleHash =
+                    if (json.has("stagingBundleHash") && !json.isNull("stagingBundleHash")) {
+                        json.getString("stagingBundleHash").takeIf { it.isNotEmpty() }
                     } else {
                         null
                     },
@@ -98,7 +112,9 @@ data class BundleMetadata(
             put("schema", schema)
             put("isolationKey", isolationKey ?: JSONObject.NULL)
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
+            put("stableBundleHash", stableBundleHash ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
+            put("stagingBundleHash", stagingBundleHash ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
             put("verificationAttemptedAt", verificationAttemptedAt ?: JSONObject.NULL)
             put("stagingExecutionCount", stagingExecutionCount ?: JSONObject.NULL)

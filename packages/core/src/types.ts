@@ -1,7 +1,42 @@
 export type Platform = "ios" | "android";
 
+export type IncrementalManifestKind = "bundle" | "asset";
+
+export interface IncrementalManifestEntry {
+  path: string;
+  hash: string;
+  size: number;
+  kind: IncrementalManifestKind;
+}
+
+export interface IncrementalPatchInfo {
+  fileUrl: string;
+  fileHash: string;
+  size: number;
+}
+
+export interface IncrementalChangedAsset {
+  path: string;
+  fileUrl: string;
+  hash: string;
+  size: number;
+}
+
+export interface IncrementalPatchCacheEntry {
+  storageUri: string;
+  fileHash: string;
+  size: number;
+}
+
+export interface BundleIncrementalMetadata {
+  bundleHash: string;
+  manifest: IncrementalManifestEntry[];
+  patchCache?: Record<string, IncrementalPatchCacheEntry>;
+}
+
 export type BundleMetadata = {
   app_version?: string;
+  incremental?: BundleIncrementalMetadata;
 };
 
 export interface Bundle {
@@ -110,6 +145,23 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    * The client parses this to extract signature for native verification.
    */
   fileHash: string | null;
+  /**
+   * Optional incremental update plan.
+   *
+   * When present, clients should ignore `fileUrl` and use this plan:
+   * - patch main Hermes bundle via bspatch
+   * - download changed assets only
+   * - reconstruct target directory from manifest
+   */
+  incremental?: {
+    protocol: "bsdiff-v1";
+    baseBundleId: string;
+    baseBundleHash: string;
+    bundlePath: string;
+    patch: IncrementalPatchInfo;
+    manifest: IncrementalManifestEntry[];
+    changedAssets: IncrementalChangedAsset[];
+  };
 }
 
 export type UpdateStrategy = "fingerprint" | "appVersion";
@@ -144,6 +196,11 @@ export type FingerprintGetBundlesArgs = {
    * The fingerprint hash of the bundle.
    */
   fingerprintHash: string;
+  /**
+   * SHA256 hash of the currently active bundle file.
+   * Used for incremental diff planning.
+   */
+  currentHash?: string | null;
 };
 
 export type AppVersionGetBundlesArgs = {
@@ -176,6 +233,11 @@ export type AppVersionGetBundlesArgs = {
    * The current app version.
    */
   appVersion: string;
+  /**
+   * SHA256 hash of the currently active bundle file.
+   * Used for incremental diff planning.
+   */
+  currentHash?: string | null;
 };
 
 export type GetBundlesArgs =
@@ -189,4 +251,5 @@ export type UpdateBundleParams = {
   channel: string;
   appVersion: string;
   fingerprintHash: string | null;
+  currentHash?: string | null;
 };

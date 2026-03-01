@@ -14,6 +14,11 @@ export interface UpdateBundleParams {
    * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
+  /**
+   * Optional OTA v2 incremental plan payload.
+   * JSON-serialized object delivered by server (`incremental` response field).
+   */
+  updatePlanJson?: string | null;
 }
 
 export interface Spec extends TurboModule {
@@ -39,6 +44,10 @@ export interface Spec extends TurboModule {
    *   - INSUFFICIENT_DISK_SPACE: Insufficient disk space
    *   - MOVE_OPERATION_FAILED: Failed to move bundle files
    *   - BUNDLE_IN_CRASHED_HISTORY: Bundle was previously marked as crashed
+   *   - PATCH_PLAN_INVALID: Incremental patch plan JSON is invalid
+   *   - PATCH_APPLY_FAILED: bspatch failed while reconstructing target bundle
+   *   - ASSET_HASH_MISMATCH: Downloaded/copied asset hash doesn't match manifest
+   *   - BASE_BUNDLE_MISMATCH: Current/base bundle hash does not match update plan
    *
    *   Signature:
    *   - SIGNATURE_VERIFICATION_FAILED: Any signature/hash verification failure
@@ -92,6 +101,14 @@ export interface Spec extends TurboModule {
    * @returns Base URL string (e.g., "file:///data/.../bundle-store/abc123") or "" if not available
    */
   getBaseURL: () => string;
+
+  /**
+   * Gets the SHA256 hash of the current active bundle file.
+   * Used for OTA v2 incremental diff negotiation (`currentHash` query).
+   *
+   * @returns Lowercase SHA256 hex string or null when unavailable.
+   */
+  getCurrentBundleHash: () => string | null;
 
   // EventEmitter
   addListener(eventName: string): void;

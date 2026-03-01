@@ -12,6 +12,7 @@ import {
   getBundleId,
   getChannel,
   getCrashHistory,
+  getCurrentBundleHash,
   getFingerprintHash,
   getMinBundleId,
   reload,
@@ -327,6 +328,12 @@ function createHotUpdaterClient() {
      * ```
      */
     getFingerprintHash,
+
+    /**
+     * Returns SHA256 hash of the current active bundle.
+     * This value is sent as `currentHash` during update checks (OTA v2).
+     */
+    getCurrentBundleHash,
 
     /**
      * Gets the list of bundle IDs that have been marked as crashed.

@@ -1598,6 +1598,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@hot-updater/bsdiff':
+        specifier: workspace:*
+        version: link:../bsdiff
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core

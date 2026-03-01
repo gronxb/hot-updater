@@ -74,6 +74,7 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val updatePlanJson = params.getString("updatePlanJson")
 
                 val impl = getInstance()
 
@@ -81,6 +82,7 @@ class HotUpdaterModule internal constructor(
                     bundleId,
                     fileUrl,
                     fileHash,
+                    updatePlanJson,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {
@@ -164,6 +166,11 @@ class HotUpdaterModule internal constructor(
     override fun getBaseURL(): String {
         val impl = getInstance()
         return impl.getBaseURL()
+    }
+
+    override fun getCurrentBundleHash(): String? {
+        val impl = getInstance()
+        return impl.getCurrentBundleHash()
     }
 
     companion object {

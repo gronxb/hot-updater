@@ -339,11 +339,8 @@ export type ConfigInput = {
   /**
    * The compression strategy used for bundle deployment.
    *
-   * - `zip`: Standard ZIP compression (default). Fast and widely supported.
-   * - `tar.br`: TAR archive with Brotli compression. Highest compression ratio, smaller bundle size.
-   * - `tar.gz`: TAR archive with Gzip compression. Balanced speed and compression ratio.
-   *
-   * The compression format is determined by the storage plugin used for bundle upload.
+   * @deprecated Deployment now uploads uncompressed files + manifest (OTA v2).
+   * This option is kept only for backward compatibility and is ignored by deploy.
    *
    * @default "zip"
    */

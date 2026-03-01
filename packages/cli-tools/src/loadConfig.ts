@@ -77,6 +77,8 @@ const getDefaultConfig = (): ConfigInput => {
   return {
     releaseChannel: "production",
     updateStrategy: "appVersion",
+    // Backward compatibility only.
+    // Deploy ignores this value in OTA v2 uncompressed manifest mode.
     compressStrategy: "zip",
     fingerprint: {
       extraSources: [],
