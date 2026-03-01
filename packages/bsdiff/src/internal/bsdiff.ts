@@ -136,64 +136,19 @@ async function loadBsdiffWasm(): Promise<BsdiffExports> {
     return toBsdiffExports(instance.exports);
   }
 
-  const instance = (await WebAssembly.instantiate(await loadWasmBytes(resolveBsdiffWasmUrl())))
-    .instance;
-  return toBsdiffExports(instance.exports);
-}
-
-async function loadWasmBytes(urlText: string): Promise<ArrayBuffer> {
-  const url = safeUrl(urlText);
-
-  if (url?.protocol === "file:") {
-    const fs = await import("node:fs/promises");
-    const buf = await fs.readFile(url);
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  }
-
-  if (typeof fetch === "function") {
-    const response = await fetch(urlText);
-    if (response.ok) {
-      return await response.arrayBuffer();
-    }
-  }
-
-  throw new HdiffError("PATCH_FAILED", `Unable to load WASM from ${urlText}`);
-}
-
-function resolveBsdiffWasmUrl(): string {
-  const overrideBase = (globalThis as { __HDIFF_WASM_BASE_URL__?: unknown }).__HDIFF_WASM_BASE_URL__;
-  if (typeof overrideBase === "string" && overrideBase.length > 0) {
-    try {
-      return new URL("hdiff.wasm", overrideBase).toString();
-    } catch {
-      // ignore
-    }
-  }
-
-  try {
-    return new URL("../../assets/hdiff.wasm", import.meta.url).toString();
-  } catch {
-    // ignore
-  }
-
-  if (typeof location !== "undefined" && typeof location.origin === "string") {
-    return new URL("/vendor/hermes-bundle-diff/hdiff.wasm", location.origin).toString();
-  }
-
-  return "hdiff.wasm";
-}
-
-function safeUrl(urlText: string): URL | undefined {
-  try {
-    return new URL(urlText);
-  } catch {
-    return undefined;
-  }
+  throw new HdiffError(
+    "PATCH_FAILED",
+    "No precompiled bsdiff WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker."
+  );
 }
 
 function getPrecompiledBsdiffModule(): unknown {
-  const mod = (globalThis as { __HDIFF_PRECOMPILED_BSDIFF_WASM__?: unknown })
-    .__HDIFF_PRECOMPILED_BSDIFF_WASM__;
+  const hdiffGlobal = globalThis as {
+    __HDIFF_PRECOMPILED_WASM__?: unknown;
+    __HDIFF_PRECOMPILED_BSDIFF_WASM__?: unknown;
+  };
+
+  const mod = hdiffGlobal.__HDIFF_PRECOMPILED_BSDIFF_WASM__ ?? hdiffGlobal.__HDIFF_PRECOMPILED_WASM__;
   if (mod && typeof mod === "object" && "default" in mod) {
     return (mod as { default?: unknown }).default;
   }

@@ -2,7 +2,7 @@
  * Manual smoke entry for Cloudflare Worker style runtime.
  * Run with your own worker harness (wrangler/miniflare).
  */
-import { hdiff } from "../../dist/index.js";
+import { hdiff } from "../../dist/worker.js";
 
 export default {
   async fetch() {

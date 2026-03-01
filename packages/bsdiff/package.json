@@ -3,15 +3,39 @@
   "version": "0.25.13",
   "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
   "type": "module",
+  "main": "./dist/node.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./errors": "./dist/errors.js",
-    "./hdiff": "./dist/hdiff.js",
-    "./internal/bsdiff": "./dist/internal/bsdiff.js",
-    "./internal/bytes": "./dist/internal/bytes.js",
-    "./internal/hermes-validate": "./dist/internal/hermes-validate.js",
-    "./package.json": "./package.json"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "workerd": "./dist/worker.js",
+      "worker": "./dist/worker.js",
+      "deno": "./dist/deno.js",
+      "bun": "./dist/bun.js",
+      "node": "./dist/node.js",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./deno": {
+      "types": "./dist/deno.d.ts",
+      "import": "./dist/deno.js",
+      "default": "./dist/deno.js"
+    },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js",
+      "default": "./dist/bun.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js",
+      "default": "./dist/worker.js"
+    }
   },
   "files": [
     "dist",
@@ -26,7 +50,8 @@
     "build:wasm": "node ./scripts/wasm-build/build-wasm.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:runtime:node": "vitest run tests/runtime.node.test.ts"
+    "test:runtime:node": "vitest run tests/runtime.node.test.ts",
+    "test:runtime:endpoints": "vitest run tests/runtime.endpoints.test.ts"
   },
   "keywords": [
     "hermes",
@@ -39,7 +64,8 @@
     "@types/node": "^25.3.2",
     "tsdown": "0.21.0-beta.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "wrangler": "^4.69.0"
   },
   "engines": {
     "node": ">=20.0.0"
