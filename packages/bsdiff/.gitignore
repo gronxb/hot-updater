@@ -1,0 +1,8 @@
+node_modules
+.DS_Store
+.idea
+.vscode
+rust/hdiff-wasm/target
+rust/hdiff-wasm/Cargo.lock
+dist
+*.tgz

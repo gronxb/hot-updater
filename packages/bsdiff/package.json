@@ -1,0 +1,47 @@
+{
+  "name": "@hot-updater/bsdiff",
+  "version": "0.25.13",
+  "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./errors": "./dist/errors.js",
+    "./hdiff": "./dist/hdiff.js",
+    "./internal/bsdiff": "./dist/internal/bsdiff.js",
+    "./internal/bytes": "./dist/internal/bytes.js",
+    "./internal/hermes-validate": "./dist/internal/hermes-validate.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "scripts/wasm-build",
+    "rust/hdiff-wasm/Cargo.toml",
+    "rust/hdiff-wasm/src"
+  ],
+  "scripts": {
+    "build": "pnpm run build:wasm && tsdown",
+    "build:watch": "tsdown --watch",
+    "build:wasm": "node ./scripts/wasm-build/build-wasm.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:runtime:node": "vitest run tests/runtime.node.test.ts"
+  },
+  "keywords": [
+    "hermes",
+    "hbc",
+    "bsdiff",
+    "bspatch",
+    "react-native"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "tsdown": "0.21.0-beta.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
