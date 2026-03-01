@@ -355,7 +355,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       return createHash("sha256").update(input).digest("hex");
     };
 
-    it("returns incremental plan, computes changed assets, and reuses patch cache", async () => {
+    const createMemoryHotUpdater = () => {
       const objects = new Map<string, Uint8Array>();
       let patchUploadCount = 0;
 
@@ -389,13 +389,22 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       };
 
-      const incrementalHotUpdater = createHotUpdater({
-        database: kyselyAdapter({
-          db: kysely,
-          provider: "postgresql",
+      return {
+        objects,
+        getPatchUploadCount: () => patchUploadCount,
+        hotUpdater: createHotUpdater({
+          database: kyselyAdapter({
+            db: kysely,
+            provider: "postgresql",
+          }),
+          storages: [memoryStorage],
         }),
-        storages: [memoryStorage],
-      });
+      };
+    };
+
+    it("returns incremental plan, computes changed assets, and reuses patch cache", async () => {
+      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
+        createMemoryHotUpdater();
 
       const [baseBundleBytes, targetBundleBytes] = await Promise.all([
         fs.readFile(fixtureOnePath),
@@ -525,7 +534,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           size: changedAsset.length,
         }),
       ]);
-      expect(patchUploadCount).toBe(1);
+      expect(getPatchUploadCount()).toBe(1);
 
       const updateSecond = await incrementalHotUpdater.getAppUpdateInfo({
         _updateStrategy: "appVersion",
@@ -540,7 +549,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateSecond?.incremental?.patch.fileHash).toBe(
         update?.incremental?.patch.fileHash,
       );
-      expect(patchUploadCount).toBe(1);
+      expect(getPatchUploadCount()).toBe(1);
 
       const mismatchHashResult = await incrementalHotUpdater.getAppUpdateInfo({
         _updateStrategy: "appVersion",
@@ -565,6 +574,219 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       expect(emptyHashResult).toBeNull();
+    });
+
+    it("returns legacy response when currentHash is omitted", async () => {
+      const { hotUpdater: incrementalHotUpdater, objects } =
+        createMemoryHotUpdater();
+
+      const targetBundleId = "00000000-0000-0000-0000-000000000202";
+      const targetBytes = await fs.readFile(fixtureTwoPath);
+      const targetHash = sha256(targetBytes);
+
+      objects.set(`${targetBundleId}/index.ios.bundle`, new Uint8Array(targetBytes));
+
+      await incrementalHotUpdater.insertBundle({
+        id: targetBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: targetHash,
+        gitCommitHash: null,
+        message: "legacy",
+        channel: "production",
+        storageUri: `memory://bucket/${targetBundleId}/index.ios.bundle`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      });
+
+      const update = await incrementalHotUpdater.getAppUpdateInfo({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        platform: "ios",
+        bundleId: NIL_UUID,
+        minBundleId: NIL_UUID,
+        channel: "production",
+      });
+
+      expect(update).not.toBeNull();
+      expect(update?.incremental).toBeUndefined();
+      expect(update?.fileHash).toBe(targetHash);
+      expect(update?.fileUrl).toContain("data:application/octet-stream;base64,");
+    });
+
+    it("returns null when metadata.bundleHash mismatches manifest bundle hash", async () => {
+      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
+        createMemoryHotUpdater();
+
+      const [baseBundleBytes, targetBundleBytes] = await Promise.all([
+        fs.readFile(fixtureOnePath),
+        fs.readFile(fixtureTwoPath),
+      ]);
+
+      const baseBundleId = "00000000-0000-0000-0000-000000000300";
+      const targetBundleId = "00000000-0000-0000-0000-000000000301";
+      const baseBundleHash = sha256(baseBundleBytes);
+      const targetBundleHash = sha256(targetBundleBytes);
+
+      objects.set(`${baseBundleId}/index.ios.bundle`, new Uint8Array(baseBundleBytes));
+      objects.set(
+        `${targetBundleId}/index.ios.bundle`,
+        new Uint8Array(targetBundleBytes),
+      );
+
+      await incrementalHotUpdater.insertBundle({
+        id: baseBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: baseBundleHash,
+        gitCommitHash: null,
+        message: "base",
+        channel: "production",
+        storageUri: `memory://bucket/${baseBundleId}/index.ios.bundle`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          incremental: {
+            bundleHash: baseBundleHash,
+            manifest: [
+              {
+                path: "index.ios.bundle",
+                hash: baseBundleHash,
+                size: baseBundleBytes.length,
+                kind: "bundle",
+              },
+            ],
+            patchCache: {},
+          },
+        },
+      });
+
+      await incrementalHotUpdater.insertBundle({
+        id: targetBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: targetBundleHash,
+        gitCommitHash: null,
+        message: "target",
+        channel: "production",
+        storageUri: `memory://bucket/${targetBundleId}/index.ios.bundle`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          incremental: {
+            bundleHash: "deadbeef",
+            manifest: [
+              {
+                path: "index.ios.bundle",
+                hash: targetBundleHash,
+                size: targetBundleBytes.length,
+                kind: "bundle",
+              },
+            ],
+            patchCache: {},
+          },
+        },
+      });
+
+      const update = await incrementalHotUpdater.getAppUpdateInfo({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        platform: "ios",
+        bundleId: baseBundleId,
+        minBundleId: NIL_UUID,
+        channel: "production",
+        currentHash: baseBundleHash,
+      });
+
+      expect(update).toBeNull();
+      expect(getPatchUploadCount()).toBe(0);
+    });
+
+    it("returns null for non-Hermes bundle bytes when currentHash is provided", async () => {
+      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
+        createMemoryHotUpdater();
+
+      const baseBundleId = "00000000-0000-0000-0000-000000000400";
+      const targetBundleId = "00000000-0000-0000-0000-000000000401";
+      const baseBytes = Buffer.from("plain-js-bundle-base");
+      const targetBytes = Buffer.from("plain-js-bundle-target");
+      const baseHash = sha256(baseBytes);
+      const targetHash = sha256(targetBytes);
+
+      objects.set(`${baseBundleId}/index.ios.bundle`, baseBytes);
+      objects.set(`${targetBundleId}/index.ios.bundle`, targetBytes);
+
+      await incrementalHotUpdater.insertBundle({
+        id: baseBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: baseHash,
+        gitCommitHash: null,
+        message: "base",
+        channel: "production",
+        storageUri: `memory://bucket/${baseBundleId}/index.ios.bundle`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          incremental: {
+            bundleHash: baseHash,
+            manifest: [
+              {
+                path: "index.ios.bundle",
+                hash: baseHash,
+                size: baseBytes.length,
+                kind: "bundle",
+              },
+            ],
+            patchCache: {},
+          },
+        },
+      });
+
+      await incrementalHotUpdater.insertBundle({
+        id: targetBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: targetHash,
+        gitCommitHash: null,
+        message: "target",
+        channel: "production",
+        storageUri: `memory://bucket/${targetBundleId}/index.ios.bundle`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          incremental: {
+            bundleHash: targetHash,
+            manifest: [
+              {
+                path: "index.ios.bundle",
+                hash: targetHash,
+                size: targetBytes.length,
+                kind: "bundle",
+              },
+            ],
+            patchCache: {},
+          },
+        },
+      });
+
+      const update = await incrementalHotUpdater.getAppUpdateInfo({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        platform: "ios",
+        bundleId: baseBundleId,
+        minBundleId: NIL_UUID,
+        channel: "production",
+        currentHash: baseHash,
+      });
+
+      expect(update).toBeNull();
+      expect(getPatchUploadCount()).toBe(0);
     });
   });
 });
