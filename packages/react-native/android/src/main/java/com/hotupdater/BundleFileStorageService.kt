@@ -4,10 +4,10 @@ import android.os.StatFs
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.net.URL
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.net.URL
 
 /**
  * Interface for bundle storage operations
@@ -612,9 +612,7 @@ class BundleFileStorageService(
             candidateCanonical.path.startsWith("${rootCanonical.path}${File.separator}")
     }
 
-    private fun findMainBundleFile(bundleDir: File): File? {
-        return bundleDir.walk().find { it.name == "index.android.bundle" }
-    }
+    private fun findMainBundleFile(bundleDir: File): File? = bundleDir.walk().find { it.name == "index.android.bundle" }
 
     private suspend fun downloadToFile(
         fileUrl: String,
@@ -672,7 +670,7 @@ class BundleFileStorageService(
             throw HotUpdaterException.baseBundleMismatch()
         }
 
-        val tempDir = File(bundleStoreDir, "${bundleId}.work")
+        val tempDir = File(bundleStoreDir, "$bundleId.work")
         if (tempDir.exists()) {
             tempDir.deleteRecursively()
         }

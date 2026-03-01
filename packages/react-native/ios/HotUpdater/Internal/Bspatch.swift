@@ -48,9 +48,9 @@ enum Bspatch {
         let diffCompressed = patch.subdata(in: ctrlEnd..<diffEnd)
         let extraCompressed = patch.subdata(in: diffEnd..<patch.count)
 
-        let ctrlData = try BZip2Archive.unarchive(archive: ctrlCompressed)
-        let diffData = try BZip2Archive.unarchive(archive: diffCompressed)
-        let extraData = try BZip2Archive.unarchive(archive: extraCompressed)
+        let ctrlData = try BZip2.decompress(data: ctrlCompressed)
+        let diffData = try BZip2.decompress(data: diffCompressed)
+        let extraData = try BZip2.decompress(data: extraCompressed)
 
         var ctrlCursor = 0
         var diffCursor = 0

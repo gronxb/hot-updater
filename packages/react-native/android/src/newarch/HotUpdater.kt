@@ -38,6 +38,7 @@ class HotUpdater {
          * @param bundleId ID of the bundle to update
          * @param fileUrl URL of the bundle file to download (or null to reset)
          * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
+         * @param updatePlanJson Serialized OTA v2 incremental update plan (or null)
          * @param progressCallback Callback for download progress updates
          * @throws HotUpdaterException if the update fails
          */
@@ -46,9 +47,16 @@ class HotUpdater {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
+            updatePlanJson: String?,
             progressCallback: (Double) -> Unit,
         ) {
-            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+            getInstance(context).updateBundle(
+                bundleId,
+                fileUrl,
+                fileHash,
+                updatePlanJson,
+                progressCallback,
+            )
         }
 
         /**
