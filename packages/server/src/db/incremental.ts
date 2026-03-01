@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { hdiff } from "@hot-updater/bsdiff/node";
+import { hdiff } from "@hot-updater/bsdiff";
 import type {
   AppUpdateInfo,
   Bundle,

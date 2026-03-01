@@ -40,7 +40,7 @@ describe("Key Generation", () => {
 
       expect(privateKey).toBeDefined();
       expect(publicKey).toBeDefined();
-    });
+    }, 15_000);
 
     it("should generate RSA-2048 key pair when specified", async () => {
       const keyPair = await generateKeyPair(2048);

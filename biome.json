@@ -13,6 +13,8 @@
       "!**/*.js",
       "!**/ios",
       "!**/android",
+      "!**/.wrangler",
+      "!**/.wrangler/**",
       "!**/.source",
       "!**/pages.gen.ts"
     ]

@@ -76,6 +76,82 @@ vi.mock("@/utils/signing/validateSigningConfig", () => ({
   validateSigningConfig: mockValidateSigningConfig,
 }));
 
+vi.mock("@/prompts/getPlatform", () => ({
+  getPlatform: vi.fn(),
+}));
+
+vi.mock("@/signedHashUtils", () => ({
+  createSignedFileHash: vi.fn((signature: string) => `sig:${signature}`),
+}));
+
+vi.mock("@/utils/fingerprint", () => ({
+  isFingerprintEquals: vi.fn(() => true),
+  nativeFingerprint: vi.fn(),
+  readLocalFingerprint: vi.fn(),
+}));
+
+vi.mock("@/utils/fingerprint/diff", () => ({
+  getFingerprintDiff: vi.fn(),
+  showFingerprintDiff: vi.fn(),
+}));
+
+vi.mock("@/utils/signing/bundleSigning", () => ({
+  signBundle: vi.fn(),
+}));
+
+vi.mock("@/utils/getFileHash", () => ({
+  getFileHashFromFile: async (filePath: string) => {
+    const crypto = await import("node:crypto");
+    const fileSystem = await import("node:fs/promises");
+    const bytes = await fileSystem.readFile(filePath);
+    return crypto.createHash("sha256").update(bytes).digest("hex");
+  },
+}));
+
+vi.mock("@/utils/getBundleZipTargets", () => ({
+  getBundleZipTargets: async (basePath: string, files: string[]) => {
+    const nodePath = await import("node:path");
+    const normalizeToPosix = (filePath: string) =>
+      filePath.split(nodePath.sep).join("/");
+
+    const normalizedBase = normalizeToPosix(nodePath.normalize(basePath));
+    const targets: Array<{ path: string; name: string }> = [];
+    const bundleCandidates = new Map<string, string>();
+
+    const getRelative = (filePath: string) => {
+      const normalized = normalizeToPosix(nodePath.normalize(filePath));
+      if (normalized.startsWith(`${normalizedBase}/`)) {
+        return normalized.slice(normalizedBase.length + 1);
+      }
+      return normalized;
+    };
+
+    for (const file of files) {
+      const relative = getRelative(file);
+      if (relative.endsWith(".map")) {
+        continue;
+      }
+      if (relative.endsWith(".bundle") || relative.endsWith(".bundle.hbc")) {
+        const bundleBase = relative.endsWith(".bundle.hbc")
+          ? relative.slice(0, -4)
+          : relative;
+        const prev = bundleCandidates.get(bundleBase);
+        if (!prev || (!prev.endsWith(".hbc") && relative.endsWith(".hbc"))) {
+          bundleCandidates.set(bundleBase, file);
+        }
+        continue;
+      }
+      targets.push({ path: file, name: relative });
+    }
+
+    for (const [name, targetPath] of bundleCandidates.entries()) {
+      targets.push({ path: targetPath, name });
+    }
+
+    return targets;
+  },
+}));
+
 vi.mock("./console", () => ({
   getConsolePort: vi.fn(),
   openConsole: vi.fn(),
@@ -88,7 +164,9 @@ describe("deploy OTA v2 integration", () => {
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
-    rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-deploy-it-"));
+    rootDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-deploy-it-"),
+    );
     buildDir = path.join(rootDir, "build");
     await fs.mkdir(path.join(buildDir, "assets"), { recursive: true });
   });
@@ -105,7 +183,10 @@ describe("deploy OTA v2 integration", () => {
     const legacyBundleBytes = Buffer.from("legacy-bundle-file");
     const assetBytes = Buffer.from("asset-image-data");
 
-    await fs.writeFile(path.join(buildDir, "index.android.bundle.hbc"), hbcBytes);
+    await fs.writeFile(
+      path.join(buildDir, "index.android.bundle.hbc"),
+      hbcBytes,
+    );
     await fs.writeFile(
       path.join(buildDir, "index.android.bundle"),
       legacyBundleBytes,
@@ -198,12 +279,12 @@ describe("deploy OTA v2 integration", () => {
       uploaded.some((item) => item.filePath.endsWith("index.android.bundle")),
     ).toBe(true);
     expect(
-      uploaded.some((item) => item.filePath.endsWith("index.android.bundle.hbc")),
+      uploaded.some((item) =>
+        item.filePath.endsWith("index.android.bundle.hbc"),
+      ),
     ).toBe(false);
     expect(
-      uploaded.some((item) =>
-        item.filePath.match(/\.(zip|tar|gz|br)$/),
-      ),
+      uploaded.some((item) => item.filePath.match(/\.(zip|tar|gz|br)$/)),
     ).toBe(false);
 
     expect(appendedBundles).toHaveLength(1);
@@ -212,7 +293,9 @@ describe("deploy OTA v2 integration", () => {
     if (!inserted) {
       throw new Error("inserted bundle not found");
     }
-    const expectedBundleHash = createHash("sha256").update(hbcBytes).digest("hex");
+    const expectedBundleHash = createHash("sha256")
+      .update(hbcBytes)
+      .digest("hex");
 
     expect(inserted.fileHash).toBe(expectedBundleHash);
     expect(inserted.storageUri).toBe(

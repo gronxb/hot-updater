@@ -136,7 +136,8 @@ export async function waitForServer(
  * Creates test database path with timestamp isolation
  */
 export function createTestDbPath(projectRoot: string): string {
-  return path.join(projectRoot, "data", `snapshot-${Date.now()}`);
+  // Prisma SQLite requires a file path (extensionless paths may fail in db push).
+  return path.join(projectRoot, "data", `snapshot-${Date.now()}.db`);
 }
 
 /**

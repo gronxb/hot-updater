@@ -1,9 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  getCurrentBundleHash,
-  updateBundle as updateBundleNative,
-} from "../src/native";
-import HotUpdaterNative from "../src/specs/NativeHotUpdater";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-native", () => ({
   NativeEventEmitter: class {
@@ -33,16 +28,34 @@ vi.mock("../src/specs/NativeHotUpdater", () => ({
 }));
 
 describe("native OTA v2 integration", () => {
-  const mockedHotUpdaterNative = vi.mocked(HotUpdaterNative);
+  let nativeModule: typeof import("../src/native");
+  let hotUpdaterNative: typeof import("../src/specs/NativeHotUpdater").default;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    mockedHotUpdaterNative.updateBundle.mockResolvedValue(true);
-    mockedHotUpdaterNative.getCurrentBundleHash.mockReturnValue("sha256-current");
+    vi.stubGlobal(
+      "__HOT_UPDATER_BUNDLE_ID",
+      "00000000-0000-0000-0000-000000000000",
+    );
+    vi.resetModules();
+
+    nativeModule = await import("../src/native");
+    ({ default: hotUpdaterNative } = await import(
+      "../src/specs/NativeHotUpdater"
+    ));
+
+    vi.mocked(hotUpdaterNative.updateBundle).mockResolvedValue(true);
+    vi.mocked(hotUpdaterNative.getCurrentBundleHash).mockReturnValue(
+      "sha256-current",
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("forwards updatePlanJson when params object is used", async () => {
-    await updateBundleNative({
+    await nativeModule.updateBundle({
       bundleId: "00000000-0000-0000-0000-000000000100",
       fileUrl: "https://cdn.example.com/bundle",
       fileHash: "target-hash",
@@ -50,7 +63,7 @@ describe("native OTA v2 integration", () => {
       status: "UPDATE",
     });
 
-    expect(mockedHotUpdaterNative.updateBundle).toHaveBeenCalledWith({
+    expect(hotUpdaterNative.updateBundle).toHaveBeenCalledWith({
       bundleId: "00000000-0000-0000-0000-000000000100",
       fileUrl: "https://cdn.example.com/bundle",
       fileHash: "target-hash",
@@ -59,12 +72,12 @@ describe("native OTA v2 integration", () => {
   });
 
   it("keeps updatePlanJson null for deprecated overload", async () => {
-    await updateBundleNative(
+    await nativeModule.updateBundle(
       "00000000-0000-0000-0000-000000000101",
       "https://cdn.example.com/legacy",
     );
 
-    expect(mockedHotUpdaterNative.updateBundle).toHaveBeenCalledWith({
+    expect(hotUpdaterNative.updateBundle).toHaveBeenCalledWith({
       bundleId: "00000000-0000-0000-0000-000000000101",
       fileUrl: "https://cdn.example.com/legacy",
       fileHash: null,
@@ -73,7 +86,7 @@ describe("native OTA v2 integration", () => {
   });
 
   it("returns current bundle hash from native module", () => {
-    expect(getCurrentBundleHash()).toBe("sha256-current");
-    expect(mockedHotUpdaterNative.getCurrentBundleHash).toHaveBeenCalledTimes(1);
+    expect(nativeModule.getCurrentBundleHash()).toBe("sha256-current");
+    expect(hotUpdaterNative.getCurrentBundleHash).toHaveBeenCalledTimes(1);
   });
 });

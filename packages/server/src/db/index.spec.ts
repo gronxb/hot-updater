@@ -403,8 +403,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     };
 
     it("returns incremental plan, computes changed assets, and reuses patch cache", async () => {
-      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
-        createMemoryHotUpdater();
+      const {
+        hotUpdater: incrementalHotUpdater,
+        objects,
+        getPatchUploadCount,
+      } = createMemoryHotUpdater();
 
       const [baseBundleBytes, targetBundleBytes] = await Promise.all([
         fs.readFile(fixtureOnePath),
@@ -584,7 +587,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const targetBytes = await fs.readFile(fixtureTwoPath);
       const targetHash = sha256(targetBytes);
 
-      objects.set(`${targetBundleId}/index.ios.bundle`, new Uint8Array(targetBytes));
+      objects.set(
+        `${targetBundleId}/index.ios.bundle`,
+        new Uint8Array(targetBytes),
+      );
 
       await incrementalHotUpdater.insertBundle({
         id: targetBundleId,
@@ -612,12 +618,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(update).not.toBeNull();
       expect(update?.incremental).toBeUndefined();
       expect(update?.fileHash).toBe(targetHash);
-      expect(update?.fileUrl).toContain("data:application/octet-stream;base64,");
+      expect(update?.fileUrl).toContain(
+        "data:application/octet-stream;base64,",
+      );
     });
 
     it("returns null when metadata.bundleHash mismatches manifest bundle hash", async () => {
-      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
-        createMemoryHotUpdater();
+      const {
+        hotUpdater: incrementalHotUpdater,
+        objects,
+        getPatchUploadCount,
+      } = createMemoryHotUpdater();
 
       const [baseBundleBytes, targetBundleBytes] = await Promise.all([
         fs.readFile(fixtureOnePath),
@@ -629,7 +640,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const baseBundleHash = sha256(baseBundleBytes);
       const targetBundleHash = sha256(targetBundleBytes);
 
-      objects.set(`${baseBundleId}/index.ios.bundle`, new Uint8Array(baseBundleBytes));
+      objects.set(
+        `${baseBundleId}/index.ios.bundle`,
+        new Uint8Array(baseBundleBytes),
+      );
       objects.set(
         `${targetBundleId}/index.ios.bundle`,
         new Uint8Array(targetBundleBytes),
@@ -706,8 +720,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("returns null for non-Hermes bundle bytes when currentHash is provided", async () => {
-      const { hotUpdater: incrementalHotUpdater, objects, getPatchUploadCount } =
-        createMemoryHotUpdater();
+      const {
+        hotUpdater: incrementalHotUpdater,
+        objects,
+        getPatchUploadCount,
+      } = createMemoryHotUpdater();
 
       const baseBundleId = "00000000-0000-0000-0000-000000000400";
       const targetBundleId = "00000000-0000-0000-0000-000000000401";

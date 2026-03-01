@@ -48,12 +48,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       "dist/index.js",
     );
 
-    // Generate Prisma Client first from existing schema
-    await execa("npx", ["prisma", "generate"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-    });
-
     // Generate Prisma schema from hotUpdater instance
     await execa(
       "node",
@@ -89,10 +83,21 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       throw new Error("HOT-UPDATER marker not found in schema after generate");
     }
 
+    // Generate Prisma Client from the merged schema (includes hot-updater models)
+    await execa("npx", ["prisma", "generate"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+    });
+
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
       cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+      env: {
+        TEST_DB_PATH: testDbPath,
+        DATABASE_URL: `file:${testDbPath}`,
+        // Workaround for Prisma sqlite schema-engine instability in CI.
+        RUST_LOG: "info",
+      },
     });
 
     serverProcess = spawnServerProcess({
