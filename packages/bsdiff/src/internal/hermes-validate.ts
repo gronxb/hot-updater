@@ -77,7 +77,7 @@ async function loadHermesValidator(): Promise<HermesValidateExports> {
 
   throw new HdiffError(
     "INVALID_HBC",
-    "No precompiled Hermes validator WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker.",
+    "No precompiled Hermes validator WASM configured. Import a runtime entry such as @hot-updater/bsdiff/node, /bun, /deno, or /worker.",
   );
 }
 

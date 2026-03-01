@@ -189,7 +189,7 @@ async function loadBsdiffWasm(): Promise<BsdiffExports> {
 
   throw new HdiffError(
     "PATCH_FAILED",
-    "No precompiled bsdiff WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker.",
+    "No precompiled bsdiff WASM configured. Import a runtime entry such as @hot-updater/bsdiff/node, /bun, /deno, or /worker.",
   );
 }
 

@@ -24,6 +24,7 @@ const hasNode = hasCommand("node", ["--version"]);
 const hasBun = hasCommand("bun", ["--version"]);
 const hasDeno = hasCommand("deno", ["--version"]);
 const hasWrangler = hasCommand("pnpm", ["exec", "wrangler", "--version"]);
+const CLOUDFLARE_ENDPOINT_TIMEOUT_MS = 60_000;
 
 let expected: EndpointExpectation;
 
@@ -94,6 +95,7 @@ describe.sequential("runtime endpoint integration", () => {
         env: {},
       });
     },
+    CLOUDFLARE_ENDPOINT_TIMEOUT_MS,
   );
 });
 

@@ -16,18 +16,41 @@ const config = JSON.parse(readFileSync(configPath, "utf8"));
 const cargoBin = config.tools?.cargo || "cargo";
 const rustupBin = config.tools?.rustup || "rustup";
 const target = resolveBuildTarget(config.wasm || {});
+const missingRustTools = getMissingRustTools(cargoBin, rustupBin);
+
+if (missingRustTools.length > 0) {
+  if (!existsSync(target.outputWasm)) {
+    throw new Error(
+      `[wasm] missing Rust toolchain binaries (${missingRustTools.join(", ")}). Install rustup/cargo or restore precompiled wasm at ${target.outputWasm}`,
+    );
+  }
+
+  console.log(
+    `[wasm] skipping Rust build; missing binaries: ${missingRustTools.join(", ")}`,
+  );
+  console.log(`[wasm] using precompiled ${target.outputWasm}`);
+  console.log(`[wasm] sha256 ${sha256File(target.outputWasm)}`);
+  process.exit(0);
+}
 
 ensureRustTargetInstalled(rustupBin, target.rustTarget);
 
 console.log(`[wasm] building ${target.manifestPath}`);
-execFileSync(
-  cargoBin,
-  ["build", "--manifest-path", target.manifestPath, "--target", target.rustTarget, "--release"],
-  { stdio: "inherit" }
-);
+execFileSync(cargoBin, [
+  "build",
+  "--manifest-path",
+  target.manifestPath,
+  "--target",
+  target.rustTarget,
+  "--release",
+], {
+  stdio: "inherit",
+});
 
 if (!existsSync(target.sourceWasm)) {
-  throw new Error(`[wasm] build succeeded but wasm output is missing: ${target.sourceWasm}`);
+  throw new Error(
+    `[wasm] build succeeded but wasm output is missing: ${target.sourceWasm}`,
+  );
 }
 
 mkdirSync(path.dirname(target.outputWasm), { recursive: true });
@@ -75,6 +98,26 @@ function ensureRustTargetInstalled(rustup, target) {
 
   console.log(`[wasm] installing rust target: ${target}`);
   execFileSync(rustup, ["target", "add", target], { stdio: "inherit" });
+}
+
+function getMissingRustTools(cargo, rustup) {
+  const missing = [];
+  if (!canRun(cargo, ["--version"])) {
+    missing.push(cargo);
+  }
+  if (!canRun(rustup, ["--version"])) {
+    missing.push(rustup);
+  }
+  return missing;
+}
+
+function canRun(bin, args) {
+  try {
+    execFileSync(bin, args, { stdio: ["ignore", "ignore", "ignore"] });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readCargoPackageName(manifestPath) {

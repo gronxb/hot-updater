@@ -39,7 +39,7 @@ describe.sequential("runtime: node precompiled entry", () => {
     const { hdiff } = await importFreshCore();
 
     await expect(hdiff(base, next)).rejects.toThrow(
-      /No precompiled .* WASM configured/,
+      /No precompiled .* WASM configured\. Import a runtime entry such as @hot-updater\/bsdiff\/node, \/bun, \/deno, or \/worker\./,
     );
   });
 });
