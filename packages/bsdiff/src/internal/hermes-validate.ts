@@ -12,7 +12,7 @@ type ValidatedHbc = {
   version: number;
 };
 
-const enum ValidateCode {
+enum ValidateCode {
   OK = 0,
   TOO_SMALL = 1,
   INVALID_MAGIC = 2,
@@ -22,7 +22,9 @@ const enum ValidateCode {
 
 let wasmPromise: Promise<HermesValidateExports> | undefined;
 
-export async function validateExecutionHbc(input: Uint8Array): Promise<ValidatedHbc> {
+export async function validateExecutionHbc(
+  input: Uint8Array,
+): Promise<ValidatedHbc> {
   const wasm = await getHermesValidator();
   if (typeof wasm.alloc === "function" && typeof wasm.dealloc === "function") {
     const ptr = wasm.alloc(input.byteLength);
@@ -75,7 +77,7 @@ async function loadHermesValidator(): Promise<HermesValidateExports> {
 
   throw new HdiffError(
     "INVALID_HBC",
-    "No precompiled Hermes validator WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker."
+    "No precompiled Hermes validator WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker.",
   );
 }
 
@@ -86,14 +88,18 @@ function getPrecompiledHermesModule(): unknown {
   };
 
   const mod =
-    hdiffGlobal.__HDIFF_PRECOMPILED_HERMES_HBC_WASM__ ?? hdiffGlobal.__HDIFF_PRECOMPILED_WASM__;
+    hdiffGlobal.__HDIFF_PRECOMPILED_HERMES_HBC_WASM__ ??
+    hdiffGlobal.__HDIFF_PRECOMPILED_WASM__;
   if (mod && typeof mod === "object" && "default" in mod) {
     return (mod as { default?: unknown }).default;
   }
   return mod;
 }
 
-function ensureMemorySize(memory: WebAssembly.Memory, requiredBytes: number): void {
+function ensureMemorySize(
+  memory: WebAssembly.Memory,
+  requiredBytes: number,
+): void {
   const pageSize = 64 * 1024;
   const currentBytes = memory.buffer.byteLength;
   if (currentBytes >= requiredBytes) {
@@ -109,7 +115,7 @@ function mapValidationError(code: number): HdiffError {
   if (code === ValidateCode.DELTA_MAGIC) {
     return new HdiffError(
       "NON_EXECUTION_FORM",
-      "Input HBC is delta-form. execution-form HBC is required."
+      "Input HBC is delta-form. execution-form HBC is required.",
     );
   }
   if (
@@ -117,9 +123,15 @@ function mapValidationError(code: number): HdiffError {
     code === ValidateCode.INVALID_MAGIC ||
     code === ValidateCode.INVALID_LENGTH
   ) {
-    return new HdiffError("INVALID_HBC", "Input is not a valid execution-form HBC");
+    return new HdiffError(
+      "INVALID_HBC",
+      "Input is not a valid execution-form HBC",
+    );
   }
-  return new HdiffError("INVALID_HBC", `Unknown Hermes validation error: ${code}`);
+  return new HdiffError(
+    "INVALID_HBC",
+    `Unknown Hermes validation error: ${code}`,
+  );
 }
 
 function isWasmModuleLike(mod: unknown): mod is WebAssembly.Module {
@@ -133,7 +145,9 @@ function isWasmMemoryLike(memory: unknown): memory is WebAssembly.Memory {
   if (memory instanceof WebAssembly.Memory) {
     return true;
   }
-  return Object.prototype.toString.call(memory) === "[object WebAssembly.Memory]";
+  return (
+    Object.prototype.toString.call(memory) === "[object WebAssembly.Memory]"
+  );
 }
 
 function toHermesExports(source: unknown): HermesValidateExports {
@@ -142,7 +156,10 @@ function toHermesExports(source: unknown): HermesValidateExports {
     return direct;
   }
 
-  throw new HdiffError("INVALID_HBC", "Hermes validator WASM exports are incomplete");
+  throw new HdiffError(
+    "INVALID_HBC",
+    "Hermes validator WASM exports are incomplete",
+  );
 }
 
 function asHermesExports(source: unknown): HermesValidateExports | undefined {

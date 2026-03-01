@@ -13,7 +13,7 @@ function loadBunWasmModule(): WebAssembly.Module {
   } catch {
     throw new HdiffError(
       "PATCH_FAILED",
-      `Failed to load hdiff.wasm for Bun runtime: ${HDIFF_WASM_URL.toString()}`
+      `Failed to load hdiff.wasm for Bun runtime: ${HDIFF_WASM_URL.toString()}`,
     );
   }
 }

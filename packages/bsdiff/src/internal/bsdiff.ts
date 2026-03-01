@@ -4,14 +4,24 @@ type BsdiffExports = {
   memory: WebAssembly.Memory;
   alloc: (len: number) => number;
   dealloc: (ptr: number, len: number) => void;
-  create_patch: (basePtr: number, baseLen: number, nextPtr: number, nextLen: number) => number;
-  apply_patch: (basePtr: number, baseLen: number, patchPtr: number, patchLen: number) => number;
+  create_patch: (
+    basePtr: number,
+    baseLen: number,
+    nextPtr: number,
+    nextLen: number,
+  ) => number;
+  apply_patch: (
+    basePtr: number,
+    baseLen: number,
+    patchPtr: number,
+    patchLen: number,
+  ) => number;
   output_ptr: () => number;
   output_len: () => number;
   free_output: () => void;
 };
 
-const enum BsdiffStatus {
+enum BsdiffStatus {
   OK = 0,
   INVALID_INPUT = 1,
   PATCH_FAILED = 2,
@@ -20,11 +30,18 @@ const enum BsdiffStatus {
 
 let wasmPromise: Promise<BsdiffExports> | undefined;
 
-export async function createBsdiffPatch(base: Uint8Array, next: Uint8Array): Promise<Uint8Array> {
+export async function createBsdiffPatch(
+  base: Uint8Array,
+  next: Uint8Array,
+): Promise<Uint8Array> {
   const wasm = await getBsdiffWasm();
 
-  const status = runBinaryOperation(wasm, base, next, (basePtr, baseLen, nextPtr, nextLen) =>
-    wasm.create_patch(basePtr, baseLen, nextPtr, nextLen)
+  const status = runBinaryOperation(
+    wasm,
+    base,
+    next,
+    (basePtr, baseLen, nextPtr, nextLen) =>
+      wasm.create_patch(basePtr, baseLen, nextPtr, nextLen),
   );
 
   if (status !== BsdiffStatus.OK) {
@@ -34,11 +51,18 @@ export async function createBsdiffPatch(base: Uint8Array, next: Uint8Array): Pro
   return readAndFreeOutput(wasm);
 }
 
-export async function applyBsdiffPatch(base: Uint8Array, patch: Uint8Array): Promise<Uint8Array> {
+export async function applyBsdiffPatch(
+  base: Uint8Array,
+  patch: Uint8Array,
+): Promise<Uint8Array> {
   const wasm = await getBsdiffWasm();
 
-  const status = runBinaryOperation(wasm, base, patch, (basePtr, baseLen, patchPtr, patchLen) =>
-    wasm.apply_patch(basePtr, baseLen, patchPtr, patchLen)
+  const status = runBinaryOperation(
+    wasm,
+    base,
+    patch,
+    (basePtr, baseLen, patchPtr, patchLen) =>
+      wasm.apply_patch(basePtr, baseLen, patchPtr, patchLen),
   );
 
   if (status !== BsdiffStatus.OK) {
@@ -52,7 +76,12 @@ function runBinaryOperation(
   wasm: BsdiffExports,
   left: Uint8Array,
   right: Uint8Array,
-  run: (leftPtr: number, leftLen: number, rightPtr: number, rightLen: number) => number
+  run: (
+    leftPtr: number,
+    leftLen: number,
+    rightPtr: number,
+    rightLen: number,
+  ) => number,
 ): number {
   const leftPtr = wasm.alloc(left.byteLength);
   const rightPtr = wasm.alloc(right.byteLength);
@@ -71,7 +100,11 @@ function runBinaryOperation(
   }
 }
 
-function writeBytesToMemory(memory: WebAssembly.Memory, ptr: number, bytes: Uint8Array): void {
+function writeBytesToMemory(
+  memory: WebAssembly.Memory,
+  ptr: number,
+  bytes: Uint8Array,
+): void {
   if (bytes.byteLength === 0) {
     return;
   }
@@ -95,28 +128,46 @@ function readAndFreeOutput(wasm: BsdiffExports): Uint8Array {
 
 function mapPatchError(status: number): HdiffError {
   if (status === BsdiffStatus.INVALID_INPUT) {
-    return new HdiffError("PATCH_FAILED", "Invalid input bytes provided to bsdiff wasm");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Invalid input bytes provided to bsdiff wasm",
+    );
   }
   if (status === BsdiffStatus.PATCH_FAILED) {
     return new HdiffError("PATCH_FAILED", "Failed to generate BSDIFF40 patch");
   }
   if (status === BsdiffStatus.INVALID_PATCH) {
-    return new HdiffError("PATCH_FAILED", "Unexpected patch-validation status while creating patch");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Unexpected patch-validation status while creating patch",
+    );
   }
-  return new HdiffError("PATCH_FAILED", `Unknown bsdiff wasm status: ${status}`);
+  return new HdiffError(
+    "PATCH_FAILED",
+    `Unknown bsdiff wasm status: ${status}`,
+  );
 }
 
 function mapApplyError(status: number): HdiffError {
   if (status === BsdiffStatus.INVALID_INPUT) {
-    return new HdiffError("PATCH_FAILED", "Invalid input bytes provided to bspatch wasm");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Invalid input bytes provided to bspatch wasm",
+    );
   }
   if (status === BsdiffStatus.INVALID_PATCH) {
     return new HdiffError("PATCH_FAILED", "Invalid BSDIFF40 patch bytes");
   }
   if (status === BsdiffStatus.PATCH_FAILED) {
-    return new HdiffError("PATCH_FAILED", "Unexpected patch-generation status while applying patch");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Unexpected patch-generation status while applying patch",
+    );
   }
-  return new HdiffError("PATCH_FAILED", `Unknown bspatch wasm status: ${status}`);
+  return new HdiffError(
+    "PATCH_FAILED",
+    `Unknown bspatch wasm status: ${status}`,
+  );
 }
 
 async function getBsdiffWasm(): Promise<BsdiffExports> {
@@ -138,7 +189,7 @@ async function loadBsdiffWasm(): Promise<BsdiffExports> {
 
   throw new HdiffError(
     "PATCH_FAILED",
-    "No precompiled bsdiff WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker."
+    "No precompiled bsdiff WASM configured. Import a runtime entry such as hermes-bundle-diff/node, /bun, /deno, or /worker.",
   );
 }
 
@@ -148,7 +199,9 @@ function getPrecompiledBsdiffModule(): unknown {
     __HDIFF_PRECOMPILED_BSDIFF_WASM__?: unknown;
   };
 
-  const mod = hdiffGlobal.__HDIFF_PRECOMPILED_BSDIFF_WASM__ ?? hdiffGlobal.__HDIFF_PRECOMPILED_WASM__;
+  const mod =
+    hdiffGlobal.__HDIFF_PRECOMPILED_BSDIFF_WASM__ ??
+    hdiffGlobal.__HDIFF_PRECOMPILED_WASM__;
   if (mod && typeof mod === "object" && "default" in mod) {
     return (mod as { default?: unknown }).default;
   }
@@ -166,7 +219,9 @@ function isWasmMemoryLike(memory: unknown): memory is WebAssembly.Memory {
   if (memory instanceof WebAssembly.Memory) {
     return true;
   }
-  return Object.prototype.toString.call(memory) === "[object WebAssembly.Memory]";
+  return (
+    Object.prototype.toString.call(memory) === "[object WebAssembly.Memory]"
+  );
 }
 
 function toBsdiffExports(source: unknown): BsdiffExports {

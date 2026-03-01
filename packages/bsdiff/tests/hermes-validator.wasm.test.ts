@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { readFixtureHbc, toDeltaMagic, withFileLength } from "./test-helpers.js";
+import {
+  readFixtureHbc,
+  toDeltaMagic,
+  withFileLength,
+} from "./test-helpers.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +31,9 @@ describe("hermes-hbc wasm validator", () => {
     expect(runValidate(exports, valid.subarray(0, 16))).toBe(1);
     expect(runValidate(exports, new Uint8Array(128))).toBe(2);
     expect(runValidate(exports, toDeltaMagic(valid))).toBe(3);
-    expect(runValidate(exports, withFileLength(valid, valid.byteLength + 1))).toBe(4);
+    expect(
+      runValidate(exports, withFileLength(valid, valid.byteLength + 1)),
+    ).toBe(4);
   });
 
   it("reads version field from offset 8", async () => {
@@ -38,10 +44,11 @@ describe("hermes-hbc wasm validator", () => {
     try {
       writeToMemory(exports.memory, ptr, valid);
 
-      const expected = new DataView(valid.buffer, valid.byteOffset, valid.byteLength).getUint32(
-        8,
-        true
-      );
+      const expected = new DataView(
+        valid.buffer,
+        valid.byteOffset,
+        valid.byteLength,
+      ).getUint32(8, true);
       expect(exports.version(ptr) >>> 0).toBe(expected >>> 0);
     } finally {
       exports.dealloc(ptr, valid.byteLength);
@@ -69,6 +76,10 @@ function runValidate(exports: HermesWasmExports, input: Uint8Array): number {
   }
 }
 
-function writeToMemory(memory: WebAssembly.Memory, ptr: number, input: Uint8Array): void {
+function writeToMemory(
+  memory: WebAssembly.Memory,
+  ptr: number,
+  input: Uint8Array,
+): void {
   new Uint8Array(memory.buffer, ptr, input.byteLength).set(input);
 }

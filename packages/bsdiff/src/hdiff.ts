@@ -1,9 +1,12 @@
 import { HdiffError } from "./errors.js";
 import { createBsdiffPatch } from "./internal/bsdiff.js";
-import { toUint8Array, type BytesLike } from "./internal/bytes.js";
+import { type BytesLike, toUint8Array } from "./internal/bytes.js";
 import { validateExecutionHbc } from "./internal/hermes-validate.js";
 
-export async function hdiff(base: BytesLike, next: BytesLike): Promise<Uint8Array> {
+export async function hdiff(
+  base: BytesLike,
+  next: BytesLike,
+): Promise<Uint8Array> {
   const baseBytes = toUint8Array(base);
   const nextBytes = toUint8Array(next);
 
@@ -13,7 +16,7 @@ export async function hdiff(base: BytesLike, next: BytesLike): Promise<Uint8Arra
   if (baseMeta.version !== nextMeta.version) {
     throw new HdiffError(
       "BYTECODE_VERSION_MISMATCH",
-      `HBC version mismatch: base=${baseMeta.version}, next=${nextMeta.version}`
+      `HBC version mismatch: base=${baseMeta.version}, next=${nextMeta.version}`,
     );
   }
 

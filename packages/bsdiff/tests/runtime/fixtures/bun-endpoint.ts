@@ -2,7 +2,10 @@ import { hdiff } from "../../../dist/bun.js";
 
 const port = readPortArg();
 
-const [baseBytes, nextBytes] = await Promise.all([readFixture("one"), readFixture("two")]);
+const [baseBytes, nextBytes] = await Promise.all([
+  readFixture("one"),
+  readFixture("two"),
+]);
 
 const server = Bun.serve({
   hostname: "127.0.0.1",
@@ -15,7 +18,10 @@ const server = Bun.serve({
     }
 
     if (url.pathname !== "/demo/patch" || request.method !== "GET") {
-      return Response.json({ code: "NOT_FOUND", message: "Not found" }, { status: 404 });
+      return Response.json(
+        { code: "NOT_FOUND", message: "Not found" },
+        { status: 404 },
+      );
     }
 
     try {
@@ -38,7 +44,7 @@ const server = Bun.serve({
           code: "INTERNAL_ERROR",
           message: err.message ?? "Unknown error",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
   },
@@ -53,7 +59,9 @@ process.on("SIGINT", close);
 process.on("SIGTERM", close);
 
 async function readFixture(name: "one" | "two"): Promise<Uint8Array> {
-  const file = Bun.file(new URL(`../../../fixture/${name}/index.ios.bundle.hbc`, import.meta.url));
+  const file = Bun.file(
+    new URL(`../../../fixture/${name}/index.ios.bundle.hbc`, import.meta.url),
+  );
   return new Uint8Array(await file.arrayBuffer());
 }
 
@@ -71,7 +79,7 @@ function readPortArg(): number {
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    ""
-  );
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }

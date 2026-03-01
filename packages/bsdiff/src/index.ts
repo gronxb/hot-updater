@@ -1,1 +1,1 @@
-export { hdiff, HdiffError, type HdiffErrorCode } from "./node.js";
+export { HdiffError, type HdiffErrorCode, hdiff } from "./node.js";

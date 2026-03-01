@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { HdiffError, hdiff } from "../src/index.js";
+import { type HdiffError, hdiff } from "../src/index.js";
 import {
   applyBspatch,
   equalsBytes,
   readFixtureHbc,
-  withFileLength,
   toDeltaMagic,
+  withFileLength,
   withVersion,
 } from "./test-helpers.js";
 
@@ -69,7 +69,10 @@ describe("hdiff", () => {
     const next = await readFixtureHbc("two");
 
     const baseBuffer = Buffer.from(base);
-    const nextArrayBuffer = next.buffer.slice(next.byteOffset, next.byteOffset + next.byteLength);
+    const nextArrayBuffer = next.buffer.slice(
+      next.byteOffset,
+      next.byteOffset + next.byteLength,
+    );
 
     const patch = await hdiff(baseBuffer, nextArrayBuffer);
     const restored = await applyBspatch(base, patch);

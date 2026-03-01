@@ -7,10 +7,16 @@ const HDIFF_WASM_URL = new URL("../assets/hdiff.wasm", import.meta.url);
 installPrecompiledWasm(loadDenoWasmModule());
 
 function loadDenoWasmModule(): WebAssembly.Module {
-  const deno = (globalThis as { Deno?: { readFileSync?: (path: string | URL) => Uint8Array } })
-    .Deno;
+  const deno = (
+    globalThis as {
+      Deno?: { readFileSync?: (path: string | URL) => Uint8Array };
+    }
+  ).Deno;
   if (!deno || typeof deno.readFileSync !== "function") {
-    throw new HdiffError("PATCH_FAILED", "Deno runtime does not expose Deno.readFileSync");
+    throw new HdiffError(
+      "PATCH_FAILED",
+      "Deno runtime does not expose Deno.readFileSync",
+    );
   }
 
   try {
@@ -18,7 +24,7 @@ function loadDenoWasmModule(): WebAssembly.Module {
   } catch {
     throw new HdiffError(
       "PATCH_FAILED",
-      `Failed to load hdiff.wasm for Deno runtime: ${HDIFF_WASM_URL.toString()}`
+      `Failed to load hdiff.wasm for Deno runtime: ${HDIFF_WASM_URL.toString()}`,
     );
   }
 }

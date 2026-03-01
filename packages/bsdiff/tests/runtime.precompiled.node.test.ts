@@ -12,13 +12,18 @@ describe.sequential("runtime: node precompiled entry", () => {
   });
 
   it("succeeds even when BufferSource wasm instantiation is blocked", async () => {
-    const [base, next] = await Promise.all([readFixtureHbc("one"), readFixtureHbc("two")]);
+    const [base, next] = await Promise.all([
+      readFixtureHbc("one"),
+      readFixtureHbc("two"),
+    ]);
 
     blockBufferSourceInstantiate();
     const { hdiff } = await importFreshNodeRuntime();
 
     const patch = await hdiff(base, next);
-    expect(Buffer.from(patch.subarray(0, 8)).toString("ascii")).toBe("BSDIFF40");
+    expect(Buffer.from(patch.subarray(0, 8)).toString("ascii")).toBe(
+      "BSDIFF40",
+    );
     expect(patch.byteLength).toBeGreaterThan(0);
 
     restoreWebAssemblyInstantiate();
@@ -27,10 +32,15 @@ describe.sequential("runtime: node precompiled entry", () => {
   });
 
   it("fails when bypassing runtime entry and importing core hdiff directly", async () => {
-    const [base, next] = await Promise.all([readFixtureHbc("one"), readFixtureHbc("two")]);
+    const [base, next] = await Promise.all([
+      readFixtureHbc("one"),
+      readFixtureHbc("two"),
+    ]);
     const { hdiff } = await importFreshCore();
 
-    await expect(hdiff(base, next)).rejects.toThrow(/No precompiled .* WASM configured/);
+    await expect(hdiff(base, next)).rejects.toThrow(
+      /No precompiled .* WASM configured/,
+    );
   });
 });
 
@@ -44,17 +54,22 @@ function blockBufferSourceInstantiate(): void {
   const nativeInstantiate = WebAssembly.instantiate.bind(WebAssembly);
   const patched = ((
     source: BufferSource | WebAssembly.Module,
-    imports?: WebAssembly.Imports
+    imports?: WebAssembly.Imports,
   ) => {
     if (isBufferSource(source)) {
-      throw new WebAssembly.CompileError("Wasm code generation disallowed by embedder");
+      throw new WebAssembly.CompileError(
+        "Wasm code generation disallowed by embedder",
+      );
     }
     return nativeInstantiate(source, imports);
   }) as typeof WebAssembly.instantiate;
 
-  (WebAssembly as { instantiate: typeof WebAssembly.instantiate }).instantiate = patched;
+  (WebAssembly as { instantiate: typeof WebAssembly.instantiate }).instantiate =
+    patched;
   restoreInstantiateFn = () => {
-    (WebAssembly as { instantiate: typeof WebAssembly.instantiate }).instantiate = nativeInstantiate;
+    (
+      WebAssembly as { instantiate: typeof WebAssembly.instantiate }
+    ).instantiate = nativeInstantiate;
     restoreInstantiateFn = undefined;
   };
 }
@@ -78,7 +93,8 @@ async function importFreshCore(): Promise<CoreModule> {
 }
 
 function clearHdiffGlobals(): void {
-  delete (globalThis as { __HDIFF_PRECOMPILED_WASM__?: unknown }).__HDIFF_PRECOMPILED_WASM__;
+  delete (globalThis as { __HDIFF_PRECOMPILED_WASM__?: unknown })
+    .__HDIFF_PRECOMPILED_WASM__;
   delete (globalThis as { __HDIFF_PRECOMPILED_HERMES_HBC_WASM__?: unknown })
     .__HDIFF_PRECOMPILED_HERMES_HBC_WASM__;
   delete (globalThis as { __HDIFF_PRECOMPILED_BSDIFF_WASM__?: unknown })

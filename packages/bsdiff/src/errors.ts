@@ -7,7 +7,11 @@ export type HdiffErrorCode =
 export class HdiffError extends Error {
   public readonly code: HdiffErrorCode;
 
-  public constructor(code: HdiffErrorCode, message: string, options?: ErrorOptions) {
+  public constructor(
+    code: HdiffErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = "HdiffError";
     this.code = code;

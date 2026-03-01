@@ -1,4 +1,8 @@
-import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  type ChildProcessWithoutNullStreams,
+  spawn,
+  spawnSync,
+} from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +30,10 @@ let expected: EndpointExpectation;
 beforeAll(async () => {
   ensureBuildArtifacts();
 
-  const [base, next] = await Promise.all([readFixtureHbc("one"), readFixtureHbc("two")]);
+  const [base, next] = await Promise.all([
+    readFixtureHbc("one"),
+    readFixtureHbc("two"),
+  ]);
   const patch = await hdiff(base, next);
   expected = {
     patch,
@@ -58,28 +65,36 @@ describe.sequential("runtime endpoint integration", () => {
     await assertEndpointRuntime({
       runtime: "deno",
       command: "deno",
-      args: ["run", "--allow-read", "--allow-net", "tests/runtime/fixtures/deno-endpoint.ts"],
-      env: {},
-    });
-  });
-
-  it.skipIf(!hasWrangler)("cloudflare worker endpoint returns valid patch", async () => {
-    await assertEndpointRuntime({
-      runtime: "cloudflare",
-      command: "pnpm",
       args: [
-        "exec",
-        "wrangler",
-        "dev",
-        "--config",
-        "tests/runtime/fixtures/wrangler.endpoint.jsonc",
-        "--local",
-        "--log-level",
-        "error",
+        "run",
+        "--allow-read",
+        "--allow-net",
+        "tests/runtime/fixtures/deno-endpoint.ts",
       ],
       env: {},
     });
   });
+
+  it.skipIf(!hasWrangler)(
+    "cloudflare worker endpoint returns valid patch",
+    async () => {
+      await assertEndpointRuntime({
+        runtime: "cloudflare",
+        command: "pnpm",
+        args: [
+          "exec",
+          "wrangler",
+          "dev",
+          "--config",
+          "tests/runtime/fixtures/wrangler.endpoint.jsonc",
+          "--local",
+          "--log-level",
+          "error",
+        ],
+        env: {},
+      });
+    },
+  );
 });
 
 type RuntimeCommand = {
@@ -89,7 +104,9 @@ type RuntimeCommand = {
   env: Record<string, string>;
 };
 
-async function assertEndpointRuntime(commandSpec: RuntimeCommand): Promise<void> {
+async function assertEndpointRuntime(
+  commandSpec: RuntimeCommand,
+): Promise<void> {
   const port = await findOpenPort();
   const args = [...commandSpec.args, "--port", String(port)];
 
@@ -100,18 +117,30 @@ async function assertEndpointRuntime(commandSpec: RuntimeCommand): Promise<void>
   });
 
   try {
-    await waitForHealthy(`http://127.0.0.1:${port}/healthz`, processResult.child, processResult.logs);
-
-    const response = await fetch(`http://127.0.0.1:${port}/demo/patch`);
-    expect(response.status, formatLogs(commandSpec.runtime, processResult.logs)).toBe(200);
-
-    const patch = new Uint8Array(await response.arrayBuffer());
-    expect(Buffer.from(patch), formatLogs(commandSpec.runtime, processResult.logs)).toEqual(
-      Buffer.from(expected.patch)
+    await waitForHealthy(
+      `http://127.0.0.1:${port}/healthz`,
+      processResult.child,
+      processResult.logs,
     );
 
-    expect(response.headers.get("x-hdiff-patch-bytes")).toBe(String(expected.patchSize));
-    expect(response.headers.get("x-hdiff-patch-sha256")).toBe(expected.patchSha256);
+    const response = await fetch(`http://127.0.0.1:${port}/demo/patch`);
+    expect(
+      response.status,
+      formatLogs(commandSpec.runtime, processResult.logs),
+    ).toBe(200);
+
+    const patch = new Uint8Array(await response.arrayBuffer());
+    expect(
+      Buffer.from(patch),
+      formatLogs(commandSpec.runtime, processResult.logs),
+    ).toEqual(Buffer.from(expected.patch));
+
+    expect(response.headers.get("x-hdiff-patch-bytes")).toBe(
+      String(expected.patchSize),
+    );
+    expect(response.headers.get("x-hdiff-patch-sha256")).toBe(
+      expected.patchSha256,
+    );
   } finally {
     await stopRuntime(processResult.child);
   }
@@ -121,7 +150,10 @@ function spawnRuntime(input: {
   command: string;
   args: string[];
   env: Record<string, string>;
-}): { child: ChildProcessWithoutNullStreams; logs: { stdout: string[]; stderr: string[] } } {
+}): {
+  child: ChildProcessWithoutNullStreams;
+  logs: { stdout: string[]; stderr: string[] };
+} {
   const child = spawn(input.command, input.args, {
     cwd: ROOT,
     env: { ...process.env, ...input.env, NO_COLOR: "1" },
@@ -150,7 +182,7 @@ function appendLog(store: string[], value: string): void {
 async function waitForHealthy(
   url: string,
   child: ChildProcessWithoutNullStreams,
-  logs: { stdout: string[]; stderr: string[] }
+  logs: { stdout: string[]; stderr: string[] },
 ): Promise<void> {
   const deadline = Date.now() + 45_000;
 
@@ -171,10 +203,14 @@ async function waitForHealthy(
     await sleep(200);
   }
 
-  throw new Error(`runtime health check timed out: ${formatLogs("runtime", logs)}`);
+  throw new Error(
+    `runtime health check timed out: ${formatLogs("runtime", logs)}`,
+  );
 }
 
-async function stopRuntime(child: ChildProcessWithoutNullStreams): Promise<void> {
+async function stopRuntime(
+  child: ChildProcessWithoutNullStreams,
+): Promise<void> {
   if (child.exitCode !== null) {
     return;
   }
@@ -189,7 +225,10 @@ async function stopRuntime(child: ChildProcessWithoutNullStreams): Promise<void>
   await waitForExit(child, 3_000);
 }
 
-function waitForExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
+function waitForExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+): Promise<boolean> {
   return new Promise((resolve) => {
     if (child.exitCode !== null) {
       resolve(true);
@@ -224,7 +263,9 @@ function ensureBuildArtifacts(): void {
   if (buildResult.status !== 0) {
     const stdout = buildResult.stdout ?? "";
     const stderr = buildResult.stderr ?? "";
-    throw new Error(`failed to build artifacts before endpoint tests\n${stdout}\n${stderr}`);
+    throw new Error(
+      `failed to build artifacts before endpoint tests\n${stdout}\n${stderr}`,
+    );
   }
 }
 
@@ -258,7 +299,10 @@ async function findOpenPort(): Promise<number> {
   });
 }
 
-function formatLogs(runtime: string, logs: { stdout: string[]; stderr: string[] }): string {
+function formatLogs(
+  runtime: string,
+  logs: { stdout: string[]; stderr: string[] },
+): string {
   return [
     `[${runtime}] stdout:`,
     logs.stdout.join("").trim() || "(empty)",
@@ -273,7 +317,7 @@ function sleep(ms: number): Promise<void> {
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
-    ""
-  );
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
 }
