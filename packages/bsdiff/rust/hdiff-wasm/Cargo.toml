@@ -1,0 +1,18 @@
+[package]
+name = "hdiff_wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bsdiff = "0.2.1"
+bzip2 = "0.6.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
