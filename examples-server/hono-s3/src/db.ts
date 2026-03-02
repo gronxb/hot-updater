@@ -1,4 +1,5 @@
 import { s3Database, s3Storage } from "@hot-updater/aws";
+import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { config } from "dotenv";
@@ -10,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load optional .env.hotupdater file for local development
 config({ path: path.join(__dirname, ".env.hotupdater") });
 
-const options =
+export const s3Options: S3ClientConfig & { bucketName: string } =
   process.env.NODE_ENV === "test"
     ? {
         region: process.env.AWS_REGION || "us-east-1",
@@ -35,10 +36,13 @@ const options =
       };
 
 export const hotUpdater = createHotUpdater({
-  database: s3Database(options),
-  storages: [mockStorage({}), s3Storage(options)],
+  database: s3Database(s3Options),
+  storages: [mockStorage({}), s3Storage(s3Options)],
   basePath: "/hot-updater",
 });
+
+export const metadataBucketName = s3Options.bucketName;
+export const metadataS3Client = new S3Client(s3Options);
 
 export async function closeDatabase() {
   // No persistent database connections to close for S3-backed storage.

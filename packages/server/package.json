@@ -50,6 +50,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
