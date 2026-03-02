@@ -23,6 +23,12 @@ class HotUpdaterException(
                 "Invalid 'fileUrl' provided",
             )
 
+        fun invalidIncrementalRequest(message: String) =
+            HotUpdaterException(
+                "INVALID_INCREMENTAL_REQUEST",
+                message,
+            )
+
         // Bundle storage errors
         fun directoryCreationFailed() =
             HotUpdaterException(
@@ -83,6 +89,19 @@ class HotUpdaterException(
             HotUpdaterException(
                 "BUNDLE_IN_CRASHED_HISTORY",
                 "Bundle '$bundleId' is in crashed history and cannot be applied",
+            )
+
+        fun baseBundleNotFound(bundleId: String) =
+            HotUpdaterException(
+                "BASE_BUNDLE_NOT_FOUND",
+                "Base bundle '$bundleId' not found for incremental update",
+            )
+
+        fun patchApplyFailed(cause: Throwable? = null) =
+            HotUpdaterException(
+                "PATCH_APPLY_FAILED",
+                "Failed to apply binary patch",
+                cause,
             )
 
         // Signature verification errors

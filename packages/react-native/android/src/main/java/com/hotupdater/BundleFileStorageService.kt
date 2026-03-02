@@ -7,6 +7,26 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
 
+data class IncrementalFileEntry(
+    val path: String,
+    val size: Long,
+    val hash: String,
+    val signedHash: String,
+)
+
+data class IncrementalUpdateRequest(
+    val bundleId: String,
+    val baseBundleId: String,
+    val contentBaseUrl: String,
+    val jsBundlePath: String,
+    val patchHash: String,
+    val patchSignedHash: String,
+    val sourceHash: String,
+    val targetHash: String,
+    val targetSignedHash: String,
+    val files: List<IncrementalFileEntry>,
+)
+
 /**
  * Interface for bundle storage operations
  */
@@ -49,6 +69,14 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        progressCallback: (Double) -> Unit,
+    )
+
+    /**
+     * Applies an incremental update flow based on a base bundle.
+     */
+    suspend fun updateBundleIncremental(
+        request: IncrementalUpdateRequest,
         progressCallback: (Double) -> Unit,
     )
 
@@ -740,6 +768,310 @@ class BundleFileStorageService(
                 }
             }
         }
+    }
+
+    override suspend fun updateBundleIncremental(
+        request: IncrementalUpdateRequest,
+        progressCallback: (Double) -> Unit,
+    ) {
+        Log.d(
+            TAG,
+            "updateBundleIncremental bundleId=${request.bundleId} baseBundleId=${request.baseBundleId}",
+        )
+
+        if (isBundleInCrashedHistory(request.bundleId)) {
+            Log.w(TAG, "Bundle ${request.bundleId} is in crashed history, rejecting update")
+            throw HotUpdaterException.bundleInCrashedHistory(request.bundleId)
+        }
+
+        if (request.files.isEmpty()) {
+            throw HotUpdaterException.invalidIncrementalRequest("Incremental manifest files are empty")
+        }
+
+        // Initialize metadata if it doesn't exist (lazy initialization)
+        val existingMetadata = loadMetadataOrNull()
+        val currentMetadata =
+            existingMetadata ?: createInitialMetadata().also {
+                saveMetadata(it)
+                Log.d(TAG, "Created initial metadata during updateBundleIncremental")
+            }
+
+        val bundleStoreDir = getBundleStoreDir()
+        if (!bundleStoreDir.exists()) {
+            bundleStoreDir.mkdirs()
+        }
+
+        val finalBundleDir = File(bundleStoreDir, request.bundleId)
+        if (finalBundleDir.exists()) {
+            val existingJsPath =
+                resolveBundleRelativePath(
+                    finalBundleDir,
+                    request.jsBundlePath,
+                ).takeIf { it.exists() && it.isFile }
+                    ?: finalBundleDir.walk().find { it.name == "index.android.bundle" }
+
+            if (existingJsPath != null) {
+                finalBundleDir.setLastModified(System.currentTimeMillis())
+
+                val updatedMetadata =
+                    currentMetadata.copy(
+                        stagingBundleId = request.bundleId,
+                        verificationPending = true,
+                        verificationAttemptedAt = null,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                saveMetadata(updatedMetadata)
+                setBundleURL(existingJsPath.absolutePath)
+                cleanupOldBundles(bundleStoreDir, currentMetadata.stableBundleId, request.bundleId)
+                Log.d(TAG, "Existing incremental bundle found, set as staging: ${request.bundleId}")
+                return
+            } else {
+                finalBundleDir.deleteRecursively()
+            }
+        }
+
+        val baseBundleDir = File(bundleStoreDir, request.baseBundleId)
+        if (!baseBundleDir.exists() || !baseBundleDir.isDirectory) {
+            throw HotUpdaterException.baseBundleNotFound(request.baseBundleId)
+        }
+
+        val normalizedJsPath = normalizeBundleRelativePath(request.jsBundlePath)
+        val baseJsFile = resolveBundleRelativePath(baseBundleDir, normalizedJsPath)
+        if (!baseJsFile.exists() || !baseJsFile.isFile) {
+            throw HotUpdaterException.baseBundleNotFound(request.baseBundleId)
+        }
+
+        if (!HashUtils.verifyHash(baseJsFile, request.sourceHash)) {
+            throw HotUpdaterException.patchApplyFailed(
+                IllegalStateException("Base JS source hash mismatch"),
+            )
+        }
+
+        val jsEntry =
+            request.files.find {
+                normalizeBundleRelativePath(it.path) == normalizedJsPath
+            } ?: throw HotUpdaterException.invalidIncrementalRequest(
+                "Incremental manifest does not include JS bundle path: ${request.jsBundlePath}",
+            )
+
+        val baseDir =
+            fileSystem.getExternalFilesDir()
+                ?: throw HotUpdaterException.directoryCreationFailed()
+        val tempDir = File(baseDir, "bundle-incremental-temp")
+        if (tempDir.exists()) {
+            tempDir.deleteRecursively()
+        }
+        tempDir.mkdirs()
+
+        val tmpDir = File(bundleStoreDir, "${request.bundleId}.tmp")
+        if (tmpDir.exists()) {
+            tmpDir.deleteRecursively()
+        }
+        tmpDir.mkdirs()
+
+        try {
+            progressCallback(0.02)
+
+            val patchFile = File(tempDir, "bundle.patch")
+            val patchUrl = URL("${request.contentBaseUrl.trimEnd('/')}/${request.patchHash}")
+            downloadIncrementalFile(patchUrl, patchFile) { patchProgress ->
+                progressCallback(patchProgress * 0.2)
+            }
+
+            // Verify patch hash and signature even when patch application is unavailable.
+            if (!HashUtils.verifyHash(patchFile, request.patchHash)) {
+                throw HotUpdaterException.patchApplyFailed(
+                    IllegalStateException("Patch hash mismatch"),
+                )
+            }
+            try {
+                SignatureVerifier.verifyBundle(context, patchFile, request.patchSignedHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            // Prototype behavior: reconstruct target bundle from full target manifest.
+            // JS bundle file is downloaded by target hash when patch apply isn't available yet.
+            val jsTempFile = File(tempDir, "patched-js.bundle")
+            val jsUrl = URL("${request.contentBaseUrl.trimEnd('/')}/${jsEntry.hash}")
+            downloadIncrementalFile(jsUrl, jsTempFile) {}
+            try {
+                SignatureVerifier.verifyBundle(context, jsTempFile, jsEntry.signedHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            if (!HashUtils.verifyHash(jsTempFile, request.targetHash)) {
+                throw HotUpdaterException.patchApplyFailed(
+                    IllegalStateException("Patched JS target hash mismatch"),
+                )
+            }
+            try {
+                SignatureVerifier.verifyBundle(context, jsTempFile, request.targetSignedHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            val manifestEntries = request.files.map { entry ->
+                normalizeBundleRelativePath(entry.path) to entry
+            }.sortedBy { it.first }
+
+            val totalFiles = manifestEntries.size.coerceAtLeast(1)
+
+            for ((index, pair) in manifestEntries.withIndex()) {
+                val normalizedPath = pair.first
+                val entry = pair.second
+                val targetFile = resolveBundleRelativePath(tmpDir, normalizedPath)
+                targetFile.parentFile?.mkdirs()
+
+                if (normalizedPath == normalizedJsPath) {
+                    jsTempFile.copyTo(targetFile, overwrite = true)
+                } else {
+                    val baseFile = resolveBundleRelativePath(baseBundleDir, normalizedPath)
+                    if (
+                        baseFile.exists() &&
+                        baseFile.isFile &&
+                        HashUtils.verifyHash(baseFile, entry.hash)
+                    ) {
+                        baseFile.copyTo(targetFile, overwrite = true)
+                    } else {
+                        val contentTempFile = File(tempDir, "content-$index.bin")
+                        val contentUrl =
+                            URL("${request.contentBaseUrl.trimEnd('/')}/${entry.hash}")
+                        downloadIncrementalFile(contentUrl, contentTempFile) {}
+                        try {
+                            SignatureVerifier.verifyBundle(
+                                context,
+                                contentTempFile,
+                                entry.signedHash,
+                            )
+                        } catch (e: SignatureVerificationException) {
+                            throw HotUpdaterException.signatureVerificationFailed(e)
+                        }
+                        contentTempFile.copyTo(targetFile, overwrite = true)
+                        contentTempFile.delete()
+                    }
+                }
+
+                if (!HashUtils.verifyHash(targetFile, entry.hash)) {
+                    throw HotUpdaterException.patchApplyFailed(
+                        IllegalStateException("Reconstructed file hash mismatch: $normalizedPath"),
+                    )
+                }
+
+                val progress = 0.2 + (((index + 1).toDouble() / totalFiles.toDouble()) * 0.8)
+                progressCallback(progress.coerceIn(0.0, 1.0))
+            }
+
+            val finalJsFile = resolveBundleRelativePath(tmpDir, normalizedJsPath)
+            if (!finalJsFile.exists() || !finalJsFile.isFile) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            if (finalBundleDir.exists()) {
+                finalBundleDir.deleteRecursively()
+            }
+
+            val renamed = tmpDir.renameTo(finalBundleDir)
+            if (!renamed) {
+                if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                    if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                        throw HotUpdaterException.moveOperationFailed()
+                    }
+                    tmpDir.deleteRecursively()
+                }
+            }
+
+            val resolvedFinalJs = resolveBundleRelativePath(finalBundleDir, normalizedJsPath)
+            if (!resolvedFinalJs.exists() || !resolvedFinalJs.isFile) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            val updatedMetadata =
+                currentMetadata.copy(
+                    stagingBundleId = request.bundleId,
+                    verificationPending = true,
+                    verificationAttemptedAt = null,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            saveMetadata(updatedMetadata)
+            setBundleURL(resolvedFinalJs.absolutePath)
+            cleanupOldBundles(bundleStoreDir, currentMetadata.stableBundleId, request.bundleId)
+            progressCallback(1.0)
+            Log.d(TAG, "Incremental update applied and set as staging: ${request.bundleId}")
+        } finally {
+            if (tmpDir.exists() && !finalBundleDir.exists()) {
+                tmpDir.deleteRecursively()
+            }
+            if (tempDir.exists()) {
+                tempDir.deleteRecursively()
+            }
+        }
+    }
+
+    private suspend fun downloadIncrementalFile(
+        url: URL,
+        destination: File,
+        progressCallback: (Double) -> Unit,
+    ) {
+        destination.parentFile?.mkdirs()
+        val result =
+            downloadService.downloadFile(
+                url,
+                destination,
+                fileSizeCallback = null,
+                progressCallback = progressCallback,
+            )
+
+        when (result) {
+            is DownloadResult.Success -> {
+                if (!destination.exists() || destination.length() <= 0L) {
+                    throw HotUpdaterException.downloadFailed(
+                        IllegalStateException("Incremental download produced empty file"),
+                    )
+                }
+            }
+
+            is DownloadResult.Error -> {
+                if (result.exception is IncompleteDownloadException) {
+                    val incomplete = result.exception as IncompleteDownloadException
+                    throw HotUpdaterException.incompleteDownload(
+                        incomplete.expectedSize,
+                        incomplete.actualSize,
+                    )
+                }
+
+                throw HotUpdaterException.downloadFailed(result.exception)
+            }
+        }
+    }
+
+    private fun normalizeBundleRelativePath(rawPath: String): String {
+        val normalized = rawPath.replace("\\", "/").removePrefix("/")
+        if (normalized.isEmpty()) {
+            throw HotUpdaterException.invalidIncrementalRequest("File path cannot be empty")
+        }
+
+        val segments = normalized.split("/")
+        if (segments.any { it == ".." || it.isEmpty() }) {
+            throw HotUpdaterException.invalidIncrementalRequest("Invalid file path: $rawPath")
+        }
+
+        return normalized
+    }
+
+    private fun resolveBundleRelativePath(root: File, rawPath: String): File {
+        val normalized = normalizeBundleRelativePath(rawPath)
+        val candidate = File(root, normalized)
+        val rootCanonical = root.canonicalFile
+        val candidateCanonical = candidate.canonicalFile
+        if (
+            candidateCanonical != rootCanonical &&
+            !candidateCanonical.path.startsWith("${rootCanonical.path}${File.separator}")
+        ) {
+            throw HotUpdaterException.invalidIncrementalRequest("Path escapes bundle root: $rawPath")
+        }
+        return candidateCanonical
     }
 
     /**

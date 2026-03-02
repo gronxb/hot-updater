@@ -274,6 +274,16 @@ class HotUpdaterImpl {
     }
 
     /**
+     * Applies incremental update based on a local base bundle.
+     */
+    suspend fun updateBundleIncremental(
+        request: IncrementalUpdateRequest,
+        progressCallback: (Double) -> Unit,
+    ) {
+        bundleStorage.updateBundleIncremental(request, progressCallback)
+    }
+
+    /**
      * Reloads the React Native application
      * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */

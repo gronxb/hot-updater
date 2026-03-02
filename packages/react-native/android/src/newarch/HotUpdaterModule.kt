@@ -108,6 +108,131 @@ class HotUpdaterModule internal constructor(
         }
     }
 
+    private fun parseIncrementalRequest(params: ReadableMap): IncrementalUpdateRequest {
+        val bundleId = params.getString("bundleId")
+        val baseBundleId = params.getString("baseBundleId")
+        val contentBaseUrl = params.getString("contentBaseUrl")
+        val jsBundlePath = params.getString("jsBundlePath")
+        val patchHash = params.getString("patchHash")
+        val patchSignedHash = params.getString("patchSignedHash")
+        val sourceHash = params.getString("sourceHash")
+        val targetHash = params.getString("targetHash")
+        val targetSignedHash = params.getString("targetSignedHash")
+
+        if (bundleId.isNullOrBlank()) {
+            throw HotUpdaterException.invalidIncrementalRequest("Missing 'bundleId'")
+        }
+        if (baseBundleId.isNullOrBlank()) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "Missing 'baseBundleId'",
+            )
+        }
+        if (contentBaseUrl.isNullOrBlank()) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "Missing 'contentBaseUrl'",
+            )
+        }
+        if (jsBundlePath.isNullOrBlank()) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "Missing 'jsBundlePath'",
+            )
+        }
+        if (patchHash.isNullOrBlank() || patchSignedHash.isNullOrBlank()) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "Missing patch hash/signature",
+            )
+        }
+        if (
+            sourceHash.isNullOrBlank() ||
+            targetHash.isNullOrBlank() ||
+            targetSignedHash.isNullOrBlank()
+        ) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "Missing source/target hash metadata",
+            )
+        }
+
+        val filesArray = params.getArray("files")
+            ?: throw HotUpdaterException.invalidIncrementalRequest("Missing 'files'")
+
+        val files = mutableListOf<IncrementalFileEntry>()
+        for (i in 0 until filesArray.size()) {
+            val file = filesArray.getMap(i)
+                ?: throw HotUpdaterException.invalidIncrementalRequest(
+                    "Invalid file entry at index $i",
+                )
+            val filePath = file.getString("path")
+            val fileSize = file.getDouble("size").toLong()
+            val fileHash = file.getString("hash")
+            val fileSignedHash = file.getString("signedHash")
+
+            if (
+                filePath.isNullOrBlank() ||
+                fileHash.isNullOrBlank() ||
+                fileSignedHash.isNullOrBlank()
+            ) {
+                throw HotUpdaterException.invalidIncrementalRequest(
+                    "Invalid file metadata at index $i",
+                )
+            }
+
+            files += IncrementalFileEntry(
+                path = filePath,
+                size = fileSize,
+                hash = fileHash,
+                signedHash = fileSignedHash,
+            )
+        }
+
+        return IncrementalUpdateRequest(
+            bundleId = bundleId,
+            baseBundleId = baseBundleId,
+            contentBaseUrl = contentBaseUrl,
+            jsBundlePath = jsBundlePath,
+            patchHash = patchHash,
+            patchSignedHash = patchSignedHash,
+            sourceHash = sourceHash,
+            targetHash = targetHash,
+            targetSignedHash = targetSignedHash,
+            files = files,
+        )
+    }
+
+    override fun updateBundleIncremental(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        moduleScope.launch {
+            try {
+                val request = parseIncrementalRequest(params)
+                val impl = getInstance()
+
+                impl.updateBundleIncremental(request) { progress ->
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            val progressParams =
+                                WritableNativeMap().apply {
+                                    putDouble("progress", progress)
+                                }
+
+                            this@HotUpdaterModule
+                                .mReactApplicationContext
+                                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                                ?.emit("onProgress", progressParams)
+                        } catch (e: Exception) {
+                            Log.w("HotUpdater", "Failed to emit progress (bridge may be unavailable): ${e.message}")
+                        }
+                    }
+                }
+                promise.resolve(true)
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
+            } catch (e: Exception) {
+                promise.reject("UNKNOWN_ERROR", e.message ?: "An unknown error occurred")
+            }
+        }
+    }
+
     override fun getTypedExportedConstants(): Map<String, Any?> {
         val constants: MutableMap<String, Any?> = HashMap()
         constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()

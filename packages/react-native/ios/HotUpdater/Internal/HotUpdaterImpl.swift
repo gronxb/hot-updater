@@ -204,6 +204,134 @@ import React
         }
     }
 
+    public func updateBundleIncremental(_ params: NSDictionary?,
+                                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard let data = params else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing or invalid parameters for updateBundleIncremental"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let bundleId = data["bundleId"] as? String, !bundleId.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing 'bundleId'"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let baseBundleId = data["baseBundleId"] as? String, !baseBundleId.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing 'baseBundleId'"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let contentBaseUrl = data["contentBaseUrl"] as? String, !contentBaseUrl.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing 'contentBaseUrl'"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let jsBundlePath = data["jsBundlePath"] as? String, !jsBundlePath.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing 'jsBundlePath'"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let patchHash = data["patchHash"] as? String, !patchHash.isEmpty,
+              let patchSignedHash = data["patchSignedHash"] as? String, !patchSignedHash.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing patch hash/signature"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let sourceHash = data["sourceHash"] as? String, !sourceHash.isEmpty,
+              let targetHash = data["targetHash"] as? String, !targetHash.isEmpty,
+              let targetSignedHash = data["targetSignedHash"] as? String, !targetSignedHash.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing source/target hash metadata"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        guard let rawFiles = data["files"] as? [NSDictionary], !rawFiles.isEmpty else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Missing 'files' metadata"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        var files: [IncrementalFileEntry] = []
+        files.reserveCapacity(rawFiles.count)
+        for (index, rawFile) in rawFiles.enumerated() {
+            guard let path = rawFile["path"] as? String, !path.isEmpty,
+                  let hash = rawFile["hash"] as? String, !hash.isEmpty,
+                  let signedHash = rawFile["signedHash"] as? String, !signedHash.isEmpty else {
+                let error = NSError(domain: "HotUpdater", code: 0,
+                                    userInfo: [NSLocalizedDescriptionKey: "Invalid file metadata at index \(index)"])
+                reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+                return
+            }
+
+            let sizeNumber = rawFile["size"] as? NSNumber
+            let size = sizeNumber?.int64Value ?? 0
+            files.append(
+                IncrementalFileEntry(
+                    path: path,
+                    size: size,
+                    hash: hash,
+                    signedHash: signedHash
+                )
+            )
+        }
+
+        guard URL(string: contentBaseUrl) != nil else {
+            let error = NSError(domain: "HotUpdater", code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Invalid 'contentBaseUrl'"])
+            reject("INVALID_INCREMENTAL_REQUEST", error.localizedDescription, error)
+            return
+        }
+
+        let request = IncrementalUpdateRequest(
+            bundleId: bundleId,
+            baseBundleId: baseBundleId,
+            contentBaseUrl: contentBaseUrl,
+            jsBundlePath: jsBundlePath,
+            patchHash: patchHash,
+            patchSignedHash: patchSignedHash,
+            sourceHash: sourceHash,
+            targetHash: targetHash,
+            targetSignedHash: targetSignedHash,
+            files: files
+        )
+
+        let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
+
+        bundleStorage.updateBundleIncremental(request: request, progressHandler: { progress in
+            if let callback = progressCallback {
+                DispatchQueue.main.async {
+                    callback([progress])
+                }
+            }
+        }) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    resolve(true)
+                case .failure(let error):
+                    let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
+                    let nsError = error as NSError
+                    reject(normalizedCode, nsError.localizedDescription, nsError)
+                }
+            }
+        }
+    }
+
     /**
      * Normalizes native errors to a small, predictable set of JS-facing error codes.
      * Rare or platform-specific codes are collapsed to UNKNOWN_ERROR to reduce surface area.
@@ -231,12 +359,15 @@ import React
     private static let userFacingErrorCodes: Set<String> = [
         "MISSING_BUNDLE_ID",
         "INVALID_FILE_URL",
+        "INVALID_INCREMENTAL_REQUEST",
         "DIRECTORY_CREATION_FAILED",
         "DOWNLOAD_FAILED",
         "INCOMPLETE_DOWNLOAD",
         "EXTRACTION_FORMAT_ERROR",
         "INVALID_BUNDLE",
         "INSUFFICIENT_DISK_SPACE",
+        "BASE_BUNDLE_NOT_FOUND",
+        "PATCH_APPLY_FAILED",
         "SIGNATURE_VERIFICATION_FAILED",
         "MOVE_OPERATION_FAILED",
         "BUNDLE_IN_CRASHED_HISTORY",
