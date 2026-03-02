@@ -161,7 +161,7 @@ import React
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
+            NSLog("[HotUpdaterNative][MODE=FULL][START] bundleId=\(bundleId), fileUrl=\(fileUrl?.absoluteString ?? "nil"), fileHash=\(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
@@ -184,10 +184,10 @@ import React
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                        NSLog("[HotUpdaterNative][MODE=FULL][SUCCESS] bundleId=\(bundleId)")
                         resolve(true)
                     case .failure(let error):
-                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
+                        NSLog("[HotUpdaterNative][MODE=FULL][FAILURE] bundleId=\(bundleId), error=\(error)")
 
                         let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
                         let nsError = error as NSError
@@ -312,6 +312,8 @@ import React
 
         let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
+        NSLog("[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=\(bundleId), baseBundleId=\(baseBundleId), jsBundlePath=\(jsBundlePath), files=\(files.count)")
+
         bundleStorage.updateBundleIncremental(request: request, progressHandler: { progress in
             if let callback = progressCallback {
                 DispatchQueue.main.async {
@@ -322,8 +324,10 @@ import React
             DispatchQueue.main.async {
                 switch result {
                 case .success:
+                    NSLog("[HotUpdaterNative][MODE=INCREMENTAL][SUCCESS] bundleId=\(bundleId), baseBundleId=\(baseBundleId)")
                     resolve(true)
                 case .failure(let error):
+                    NSLog("[HotUpdaterNative][MODE=INCREMENTAL][FAILURE] bundleId=\(bundleId), baseBundleId=\(baseBundleId), error=\(error)")
                     let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
                     let nsError = error as NSError
                     reject(normalizedCode, nsError.localizedDescription, nsError)

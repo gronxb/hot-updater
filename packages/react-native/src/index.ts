@@ -29,11 +29,11 @@ export {
   type HotUpdaterResolver,
   type IncrementalCheckResponse,
   type IncrementalFileEntry,
-  type IncrementalPayload,
   type IncrementalPatchInfo,
-  type ResolverCheckUpdateResult,
+  type IncrementalPayload,
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
+  type ResolverCheckUpdateResult,
   type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";

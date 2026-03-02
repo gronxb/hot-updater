@@ -36,7 +36,8 @@ describe("createDefaultResolver incremental route", () => {
             toBundleId: "00000000-0000-0000-0000-000000000222",
             platform: "android",
             jsBundlePath: "index.android.bundle",
-            contentBaseUrl: "https://example.com/hot-updater/incremental/content",
+            contentBaseUrl:
+              "https://example.com/hot-updater/incremental/content",
             patch: {
               hash: "a".repeat(64),
               signedHash: "sig:patch",
@@ -84,7 +85,9 @@ describe("createDefaultResolver incremental route", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("not found", { status: 404 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(fullPayload), { status: 200 }));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(fullPayload), { status: 200 }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     const resolver = createDefaultResolver("https://example.com/hot-updater");

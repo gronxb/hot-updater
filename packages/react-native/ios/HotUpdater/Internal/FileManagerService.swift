@@ -37,9 +37,27 @@ class FileManagerService: FileSystemService {
     }
     
     func removeItem(atPath path: String) throws {
+        if !fileManager.fileExists(atPath: path) {
+            return
+        }
+
         do {
             try fileManager.removeItem(atPath: path)
-        } catch let error {
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError {
+                return
+            }
+
+            if error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
+                return
+            }
+
+            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+               underlying.domain == NSPOSIXErrorDomain,
+               underlying.code == Int(ENOENT) {
+                return
+            }
+
             NSLog("[FileSystemService] Failed to remove item at \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }

@@ -247,8 +247,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func extractBundleIdFromCurrentURL() -> String? {
-        guard let currentUrl = try? preferences.getItem(forKey: "HotUpdaterBundleURL"),
-              let url = currentUrl,
+        guard let url = try? preferences.getItem(forKey: "HotUpdaterBundleURL"),
               !url.isEmpty else {
             return nil
         }

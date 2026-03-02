@@ -40,6 +40,11 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     process.env.TEST_DB_PATH = testDbPath;
 
     baseUrl = `http://localhost:${port}`;
+    const prismaEnv = {
+      TEST_DB_PATH: testDbPath,
+      DATABASE_URL: `file:${testDbPath}`,
+      RUST_LOG: "info",
+    };
 
     // Run database migrations before starting server
     const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
@@ -51,7 +56,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     // Generate Prisma Client first from existing schema
     await execa("npx", ["prisma", "generate"], {
       cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+      env: prismaEnv,
     });
 
     // Generate Prisma schema from hotUpdater instance
@@ -92,7 +97,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
       cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+      env: prismaEnv,
     });
 
     serverProcess = spawnServerProcess({
