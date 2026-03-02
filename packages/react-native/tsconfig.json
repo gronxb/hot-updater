@@ -3,5 +3,6 @@
   "compilerOptions": {
     "jsx": "react-native"
   },
-  "include": ["src/*", "vitest.config.mts"]
+  "include": ["src/*", "vitest.config.mts"],
+  "exclude": ["src/**/*.spec.ts", "src/**/*.test.ts"]
 }

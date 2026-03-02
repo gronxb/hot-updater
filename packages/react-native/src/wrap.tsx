@@ -118,6 +118,13 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      */
     updateMode: "auto";
 
+    /**
+     * Enable incremental endpoint with patch-based updates.
+     * Falls back to full bundle update when incremental flow fails.
+     * @default false
+     */
+    incremental?: boolean;
+
     onError?: (error: HotUpdaterError | Error | unknown) => void;
 
     /**
@@ -191,6 +198,7 @@ type InternalCommonOptions = {
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
+  incremental?: boolean;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
   fallbackComponent?: React.FC<{
     status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
@@ -278,6 +286,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           const updateInfo = await checkForUpdate({
             resolver: restOptions.resolver,
             updateStrategy: restOptions.updateStrategy,
+            incremental: restOptions.incremental,
             requestHeaders: restOptions.requestHeaders,
             requestTimeout: restOptions.requestTimeout,
             onError: restOptions.onError,

@@ -27,6 +27,11 @@ export * from "./store";
 export {
   extractSignatureFailure,
   type HotUpdaterResolver,
+  type IncrementalCheckResponse,
+  type IncrementalFileEntry,
+  type IncrementalPayload,
+  type IncrementalPatchInfo,
+  type ResolverCheckUpdateResult,
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
   type ResolverNotifyAppReadyParams,

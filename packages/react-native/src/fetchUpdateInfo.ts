@@ -23,7 +23,7 @@ export const fetchUpdateInfo = async ({
     };
 
     const response = await fetch(url, {
-      signal: controller.signal,
+      signal: controller.signal as any,
       headers,
     });
     clearTimeout(timeoutId);
@@ -31,7 +31,7 @@ export const fetchUpdateInfo = async ({
     if (response.status !== 200) {
       throw new Error(response.statusText);
     }
-    return response.json();
+    return (await response.json()) as AppUpdateInfo;
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") {
       onError?.(new Error("Request timed out"));
