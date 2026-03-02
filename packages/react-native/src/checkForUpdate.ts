@@ -2,8 +2,8 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
-  resolveIncrementalConfig,
   type IncrementalConfigInput,
+  resolveIncrementalConfig,
 } from "./incrementalConfig";
 import {
   getAppVersion,
