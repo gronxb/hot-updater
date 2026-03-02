@@ -157,15 +157,17 @@ class HotUpdaterModule internal constructor(
             )
         }
 
-        val filesArray = params.getArray("files")
-            ?: throw HotUpdaterException.invalidIncrementalRequest("Missing 'files'")
+        val filesArray =
+            params.getArray("files")
+                ?: throw HotUpdaterException.invalidIncrementalRequest("Missing 'files'")
 
         val files = mutableListOf<IncrementalFileEntry>()
         for (i in 0 until filesArray.size()) {
-            val file = filesArray.getMap(i)
-                ?: throw HotUpdaterException.invalidIncrementalRequest(
-                    "Invalid file entry at index $i",
-                )
+            val file =
+                filesArray.getMap(i)
+                    ?: throw HotUpdaterException.invalidIncrementalRequest(
+                        "Invalid file entry at index $i",
+                    )
             val filePath = file.getString("path")
             val fileSize = file.getDouble("size").toLong()
             val fileHash = file.getString("hash")
@@ -181,12 +183,13 @@ class HotUpdaterModule internal constructor(
                 )
             }
 
-            files += IncrementalFileEntry(
-                path = filePath,
-                size = fileSize,
-                hash = fileHash,
-                signedHash = fileSignedHash,
-            )
+            files +=
+                IncrementalFileEntry(
+                    path = filePath,
+                    size = fileSize,
+                    hash = fileHash,
+                    signedHash = fileSignedHash,
+                )
         }
 
         return IncrementalUpdateRequest(

@@ -36,9 +36,7 @@ enum class IncrementalPatchStrategy(
     ;
 
     companion object {
-        fun fromWire(value: String?): IncrementalPatchStrategy {
-            return values().firstOrNull { it.wireValue == value } ?: MANIFEST
-        }
+        fun fromWire(value: String?): IncrementalPatchStrategy = values().firstOrNull { it.wireValue == value } ?: MANIFEST
     }
 }
 
@@ -953,9 +951,11 @@ class BundleFileStorageService(
                 throw HotUpdaterException.signatureVerificationFailed(e)
             }
 
-            val manifestEntries = request.files.map { entry ->
-                normalizeBundleRelativePath(entry.path) to entry
-            }.sortedBy { it.first }
+            val manifestEntries =
+                request.files
+                    .map { entry ->
+                        normalizeBundleRelativePath(entry.path) to entry
+                    }.sortedBy { it.first }
 
             val totalFiles = manifestEntries.size.coerceAtLeast(1)
 
@@ -1101,7 +1101,10 @@ class BundleFileStorageService(
         return normalized
     }
 
-    private fun resolveBundleRelativePath(root: File, rawPath: String): File {
+    private fun resolveBundleRelativePath(
+        root: File,
+        rawPath: String,
+    ): File {
         val normalized = normalizeBundleRelativePath(rawPath)
         val candidate = File(root, normalized)
         val rootCanonical = root.canonicalFile
