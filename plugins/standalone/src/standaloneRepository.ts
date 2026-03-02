@@ -133,8 +133,20 @@ export const standaloneRepository =
           };
         },
         async getChannels(): Promise<string[]> {
-          const result = await this.getBundles({ limit: 50, offset: 0 });
-          return [...new Set(result.data.map((b: Bundle) => b.channel))];
+          const { path, headers: routeHeaders } = routes.list!();
+
+          const response = await fetch(buildUrl(path), {
+            method: "GET",
+            headers: getHeaders(routeHeaders),
+          });
+
+          if (!response.ok) {
+            throw new Error(`API Error: ${response.statusText}`);
+          }
+
+          const bundles = (await response.json()) as Bundle[];
+          const channels = bundles.map((b) => b.channel);
+          return [...new Set(channels)];
         },
         async commitBundle({ changedSets }) {
           if (changedSets.length === 0) {
