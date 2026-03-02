@@ -2,6 +2,10 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
+  resolveIncrementalConfig,
+  type IncrementalConfigInput,
+} from "./incrementalConfig";
+import {
   getAppVersion,
   getBundleId,
   getChannel,
@@ -27,7 +31,7 @@ export interface CheckForUpdateOptions {
   updateStrategy: "appVersion" | "fingerprint";
 
   requestHeaders?: Record<string, string>;
-  incremental?: boolean;
+  incremental?: IncrementalConfigInput;
   onError?: (error: Error) => void;
   /**
    * The timeout duration for the request.
@@ -111,6 +115,7 @@ export async function checkForUpdate(
   }
 
   const fingerprintHash = getFingerprintHash();
+  const incrementalConfig = resolveIncrementalConfig(options.incremental);
 
   if (!options.resolver?.checkUpdate) {
     options.onError?.(
@@ -129,7 +134,7 @@ export async function checkForUpdate(
       minBundleId,
       channel,
       updateStrategy: options.updateStrategy,
-      incremental: options.incremental,
+      incremental: incrementalConfig.enabled,
       fingerprintHash,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,
@@ -165,6 +170,7 @@ export async function checkForUpdate(
             sourceHash: incremental.patch.sourceHash,
             targetHash: incremental.patch.targetHash,
             targetSignedHash: incremental.patch.targetSignedHash,
+            patchStrategy: incrementalConfig.strategy,
             files: incremental.files,
           });
 

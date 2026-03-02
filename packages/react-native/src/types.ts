@@ -1,6 +1,13 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 import type { NotifyAppReadyResult } from "./native";
 
+export type IncrementalPatchStrategy = "manifest" | "bsdiff";
+
+export interface IncrementalOptions {
+  enable?: boolean;
+  strategy?: IncrementalPatchStrategy;
+}
+
 export interface IncrementalFileEntry {
   path: string;
   size: number;

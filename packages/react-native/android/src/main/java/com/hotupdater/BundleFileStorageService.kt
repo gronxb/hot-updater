@@ -24,8 +24,23 @@ data class IncrementalUpdateRequest(
     val sourceHash: String,
     val targetHash: String,
     val targetSignedHash: String,
+    val patchStrategy: IncrementalPatchStrategy,
     val files: List<IncrementalFileEntry>,
 )
+
+enum class IncrementalPatchStrategy(
+    val wireValue: String,
+) {
+    MANIFEST("manifest"),
+    BSDIFF("bsdiff"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): IncrementalPatchStrategy {
+            return values().firstOrNull { it.wireValue == value } ?: MANIFEST
+        }
+    }
+}
 
 /**
  * Interface for bundle storage operations
@@ -854,6 +869,12 @@ class BundleFileStorageService(
                 "Incremental manifest does not include JS bundle path: ${request.jsBundlePath}",
             )
 
+        if (jsEntry.hash != request.targetHash) {
+            throw HotUpdaterException.invalidIncrementalRequest(
+                "JS manifest hash does not match targetHash",
+            )
+        }
+
         val baseDir =
             fileSystem.getExternalFilesDir()
                 ?: throw HotUpdaterException.directoryCreationFailed()
@@ -890,15 +911,27 @@ class BundleFileStorageService(
                 throw HotUpdaterException.signatureVerificationFailed(e)
             }
 
-            // Prototype behavior: reconstruct target bundle from full target manifest.
-            // JS bundle file is downloaded by target hash when patch apply isn't available yet.
             val jsTempFile = File(tempDir, "patched-js.bundle")
-            val jsUrl = URL("${request.contentBaseUrl.trimEnd('/')}/${jsEntry.hash}")
-            downloadIncrementalFile(jsUrl, jsTempFile) {}
-            try {
-                SignatureVerifier.verifyBundle(context, jsTempFile, jsEntry.signedHash)
-            } catch (e: SignatureVerificationException) {
-                throw HotUpdaterException.signatureVerificationFailed(e)
+            if (request.patchStrategy == IncrementalPatchStrategy.BSDIFF) {
+                val patchError =
+                    BSPatchBridge.applyPatch(
+                        baseJsFile.absolutePath,
+                        patchFile.absolutePath,
+                        jsTempFile.absolutePath,
+                    )
+                if (patchError != null) {
+                    throw HotUpdaterException.patchApplyFailed(
+                        IllegalStateException("Failed to apply bspatch output: $patchError"),
+                    )
+                }
+            } else {
+                val jsUrl = URL("${request.contentBaseUrl.trimEnd('/')}/${jsEntry.hash}")
+                downloadIncrementalFile(jsUrl, jsTempFile) {}
+                try {
+                    SignatureVerifier.verifyBundle(context, jsTempFile, jsEntry.signedHash)
+                } catch (e: SignatureVerificationException) {
+                    throw HotUpdaterException.signatureVerificationFailed(e)
+                }
             }
 
             if (!HashUtils.verifyHash(jsTempFile, request.targetHash)) {

@@ -323,6 +323,9 @@ RCT_EXPORT_MODULE();
     if (params.targetSignedHash()) {
         paramDict[@"targetSignedHash"] = params.targetSignedHash();
     }
+    if (params.patchStrategy()) {
+        paramDict[@"patchStrategy"] = params.patchStrategy();
+    }
 
     NSMutableArray *files = [NSMutableArray array];
     for (const auto &entry : params.files()) {

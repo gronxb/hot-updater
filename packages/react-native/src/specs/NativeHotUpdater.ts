@@ -33,6 +33,7 @@ export interface UpdateBundleIncrementalParams {
   sourceHash: string;
   targetHash: string;
   targetSignedHash: string;
+  patchStrategy?: "manifest" | "bsdiff";
   files: IncrementalFileEntry[];
 }
 

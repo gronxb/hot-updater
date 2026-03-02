@@ -307,6 +307,7 @@ import React
             sourceHash: sourceHash,
             targetHash: targetHash,
             targetSignedHash: targetSignedHash,
+            patchStrategy: IncrementalPatchStrategy.from(rawValue: data["patchStrategy"] as? String),
             files: files
         )
 

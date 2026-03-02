@@ -123,6 +123,18 @@ public struct IncrementalFileEntry {
     let signedHash: String
 }
 
+public enum IncrementalPatchStrategy: String {
+    case manifest
+    case bsdiff
+
+    static func from(rawValue: String?) -> IncrementalPatchStrategy {
+        guard let rawValue, !rawValue.isEmpty else {
+            return .manifest
+        }
+        return IncrementalPatchStrategy(rawValue: rawValue) ?? .manifest
+    }
+}
+
 public struct IncrementalUpdateRequest {
     let bundleId: String
     let baseBundleId: String
@@ -133,6 +145,7 @@ public struct IncrementalUpdateRequest {
     let sourceHash: String
     let targetHash: String
     let targetSignedHash: String
+    let patchStrategy: IncrementalPatchStrategy
     let files: [IncrementalFileEntry]
 }
 
@@ -1017,6 +1030,11 @@ class BundleFileStorageService: BundleStorageService {
                 return
             }
 
+            if jsEntry.hash != request.targetHash {
+                completion(.failure(BundleStorageError.invalidIncrementalRequest("JS manifest hash does not match targetHash")))
+                return
+            }
+
             guard case .success(let tempDirectory) = self.tempDir() else {
                 completion(.failure(BundleStorageError.directoryCreationFailed))
                 return
@@ -1061,18 +1079,38 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.signatureVerificationFailed(error)
                 }
 
-                // Prototype path: reconstruct from full target manifest, while still validating patch metadata.
-                let jsUrl = URL(string: "\(request.contentBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(jsEntry.hash)")!
-                try self.downloadIncrementalFileSync(from: jsUrl, to: jsTempPath, progressHandler: { _ in })
+                if request.patchStrategy == .bsdiff {
+                    var patchError: NSError?
+                    let applied = BSPatchBridge.applyPatch(
+                        from: baseJsPath,
+                        patchPath: patchPath,
+                        outputPath: jsTempPath,
+                        error: &patchError
+                    )
+                    if !applied {
+                        throw BundleStorageError.patchApplyFailed(
+                            patchError ?? NSError(
+                                domain: "HotUpdater",
+                                code: 0,
+                                userInfo: [NSLocalizedDescriptionKey: "Failed to apply bspatch output"]
+                            )
+                        )
+                    }
+                } else {
+                    // Manifest strategy: download the target JS bytes directly.
+                    let jsUrl = URL(string: "\(request.contentBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(jsEntry.hash)")!
+                    try self.downloadIncrementalFileSync(from: jsUrl, to: jsTempPath, progressHandler: { _ in })
 
-                let jsTempURL = URL(fileURLWithPath: jsTempPath)
-                switch SignatureVerifier.verifyBundle(fileURL: jsTempURL, fileHash: jsEntry.signedHash) {
-                case .success:
-                    break
-                case .failure(let error):
-                    throw BundleStorageError.signatureVerificationFailed(error)
+                    let jsTempURL = URL(fileURLWithPath: jsTempPath)
+                    switch SignatureVerifier.verifyBundle(fileURL: jsTempURL, fileHash: jsEntry.signedHash) {
+                    case .success:
+                        break
+                    case .failure(let error):
+                        throw BundleStorageError.signatureVerificationFailed(error)
+                    }
                 }
 
+                let jsTempURL = URL(fileURLWithPath: jsTempPath)
                 guard HashUtils.verifyHash(fileURL: jsTempURL, expectedHash: request.targetHash) else {
                     throw BundleStorageError.patchApplyFailed(NSError(
                         domain: "HotUpdater",

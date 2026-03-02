@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useState } from "react";
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
+import type { IncrementalConfigInput } from "./incrementalConfig";
 import {
   getBundleId,
   type NotifyAppReadyResult,
@@ -119,11 +120,13 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
     updateMode: "auto";
 
     /**
-     * Enable incremental endpoint with patch-based updates.
-     * Falls back to full bundle update when incremental flow fails.
+     * Incremental update options.
+     * - `true`: enable incremental endpoint with manifest reconstruction strategy
+     * - `{ enable: true, strategy: "bsdiff" }`: enable incremental endpoint and apply patch in native layer
+     * - Falls back to full bundle update when incremental flow fails
      * @default false
      */
-    incremental?: boolean;
+    incremental?: IncrementalConfigInput;
 
     onError?: (error: HotUpdaterError | Error | unknown) => void;
 
@@ -198,7 +201,7 @@ type InternalCommonOptions = {
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
-  incremental?: boolean;
+  incremental?: IncrementalConfigInput;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
   fallbackComponent?: React.FC<{
     status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
