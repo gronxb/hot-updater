@@ -149,6 +149,55 @@ public struct IncrementalUpdateRequest {
     let files: [IncrementalFileEntry]
 }
 
+@_silgen_name("hotupdater_bspatch_file")
+private func hotupdaterBspatchFile(
+    _ oldPath: UnsafePointer<CChar>?,
+    _ patchPath: UnsafePointer<CChar>?,
+    _ newPath: UnsafePointer<CChar>?,
+    _ errorMessage: UnsafeMutablePointer<CChar>?,
+    _ errorMessageLen: Int
+) -> Int32
+
+private enum NativeBSPatchBridge {
+    static func applyPatch(from oldPath: String, patchPath: String, outputPath: String) throws {
+        let errorBufferSize = 1024
+        let errorBuffer = UnsafeMutablePointer<CChar>.allocate(capacity: errorBufferSize)
+        defer {
+            errorBuffer.deallocate()
+        }
+        errorBuffer.initialize(repeating: 0, count: errorBufferSize)
+
+        let resultCode = oldPath.withCString { oldPathC in
+            patchPath.withCString { patchPathC in
+                outputPath.withCString { outputPathC in
+                    hotupdaterBspatchFile(
+                        oldPathC,
+                        patchPathC,
+                        outputPathC,
+                        errorBuffer,
+                        errorBufferSize
+                    )
+                }
+            }
+        }
+
+        if resultCode == 0 {
+            return
+        }
+
+        let message = String(cString: errorBuffer)
+        throw NSError(
+            domain: "HotUpdater.BSPatchBridge",
+            code: Int(resultCode),
+            userInfo: [
+                NSLocalizedDescriptionKey: message.isEmpty
+                    ? "Failed to apply bspatch output"
+                    : message
+            ]
+        )
+    }
+}
+
 public protocol BundleStorageService {
 
     // Bundle URL operations
@@ -1080,24 +1129,18 @@ class BundleFileStorageService: BundleStorageService {
                 }
 
                 if request.patchStrategy == .bsdiff {
-                    var patchError: NSError?
-                    let applied = BSPatchBridge.applyPatch(
-                        from: baseJsPath,
-                        patchPath: patchPath,
-                        outputPath: jsTempPath,
-                        error: &patchError
-                    )
-                    if !applied {
-                        throw BundleStorageError.patchApplyFailed(
-                            patchError ?? NSError(
-                                domain: "HotUpdater",
-                                code: 0,
-                                userInfo: [NSLocalizedDescriptionKey: "Failed to apply bspatch output"]
-                            )
+                    NSLog("[HotUpdaterNative][MODE=INCREMENTAL][PATCH] strategy=bsdiff applying native bspatch")
+                    do {
+                        try NativeBSPatchBridge.applyPatch(
+                            from: baseJsPath,
+                            patchPath: patchPath,
+                            outputPath: jsTempPath
                         )
+                    } catch {
+                        throw BundleStorageError.patchApplyFailed(error)
                     }
                 } else {
-                    // Manifest strategy: download the target JS bytes directly.
+                    NSLog("[HotUpdaterNative][MODE=INCREMENTAL][PATCH] strategy=manifest downloading target JS")
                     let jsUrl = URL(string: "\(request.contentBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(jsEntry.hash)")!
                     try self.downloadIncrementalFileSync(from: jsUrl, to: jsTempPath, progressHandler: { _ in })
 

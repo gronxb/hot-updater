@@ -138,7 +138,10 @@ export default HotUpdater.wrap({
   baseURL: "http://localhost:3007/hot-updater",
   updateStrategy: "appVersion",
   updateMode: "auto",
-  incremental: true,
+  incremental: {
+    enable: true,
+    strategy: "bsdiff",
+  },
   onUpdateProcessCompleted: (result) => {
     console.log("[HotUpdater][incremental] update process completed:", result);
   },

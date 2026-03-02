@@ -135,6 +135,7 @@ export async function checkForUpdate(
       channel,
       updateStrategy: options.updateStrategy,
       incremental: incrementalConfig.enabled,
+      incrementalStrategy: incrementalConfig.strategy,
       fingerprintHash,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,

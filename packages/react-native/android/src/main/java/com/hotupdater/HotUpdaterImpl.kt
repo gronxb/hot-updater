@@ -292,7 +292,7 @@ class HotUpdaterImpl {
     ) {
         Log.d(
             TAG,
-            "[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=${request.bundleId} baseBundleId=${request.baseBundleId} jsBundlePath=${request.jsBundlePath} files=${request.files.size}",
+            "[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=${request.bundleId} baseBundleId=${request.baseBundleId} jsBundlePath=${request.jsBundlePath} files=${request.files.size} strategy=${request.patchStrategy.wireValue}",
         )
         try {
             bundleStorage.updateBundleIncremental(request, progressCallback)

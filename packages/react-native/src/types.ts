@@ -86,6 +86,13 @@ export interface ResolverCheckUpdateParams {
   incremental?: boolean;
 
   /**
+   * Incremental patch strategy for native apply path.
+   * - "manifest": reconstruct JS from full target file
+   * - "bsdiff": apply BSDIFF patch over base JS in native layer
+   */
+  incrementalStrategy?: IncrementalPatchStrategy;
+
+  /**
    * The fingerprint hash (only present when using fingerprint strategy)
    */
   fingerprintHash: string | null;

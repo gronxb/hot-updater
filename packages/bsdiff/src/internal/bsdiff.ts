@@ -134,7 +134,10 @@ function mapPatchError(status: number): HdiffError {
     );
   }
   if (status === BsdiffStatus.PATCH_FAILED) {
-    return new HdiffError("PATCH_FAILED", "Failed to generate BSDIFF40 patch");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Failed to generate ENDSLEY/BSDIFF43 patch",
+    );
   }
   if (status === BsdiffStatus.INVALID_PATCH) {
     return new HdiffError(
@@ -156,7 +159,10 @@ function mapApplyError(status: number): HdiffError {
     );
   }
   if (status === BsdiffStatus.INVALID_PATCH) {
-    return new HdiffError("PATCH_FAILED", "Invalid BSDIFF40 patch bytes");
+    return new HdiffError(
+      "PATCH_FAILED",
+      "Invalid ENDSLEY/BSDIFF43 patch bytes",
+    );
   }
   if (status === BsdiffStatus.PATCH_FAILED) {
     return new HdiffError(

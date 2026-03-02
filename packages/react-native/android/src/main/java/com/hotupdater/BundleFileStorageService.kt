@@ -913,6 +913,10 @@ class BundleFileStorageService(
 
             val jsTempFile = File(tempDir, "patched-js.bundle")
             if (request.patchStrategy == IncrementalPatchStrategy.BSDIFF) {
+                Log.d(
+                    TAG,
+                    "[HotUpdaterNative][MODE=INCREMENTAL][PATCH] strategy=bsdiff applying native bspatch",
+                )
                 val patchError =
                     BSPatchBridge.applyPatch(
                         baseJsFile.absolutePath,
@@ -925,6 +929,10 @@ class BundleFileStorageService(
                     )
                 }
             } else {
+                Log.d(
+                    TAG,
+                    "[HotUpdaterNative][MODE=INCREMENTAL][PATCH] strategy=manifest downloading target JS",
+                )
                 val jsUrl = URL("${request.contentBaseUrl.trimEnd('/')}/${jsEntry.hash}")
                 downloadIncrementalFile(jsUrl, jsTempFile) {}
                 try {

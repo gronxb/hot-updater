@@ -22,7 +22,6 @@ Pod::Spec.new do |s|
     "DEFINES_MODULE" => "YES",
     "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"
   }
-  s.libraries = "bz2"
 
   # SWCompression dependency for ZIP/TAR/GZIP/Brotli extraction support
   # Native Compression framework is used for GZIP and Brotli decompression

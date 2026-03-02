@@ -313,7 +313,7 @@ import React
 
         let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-        NSLog("[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=\(bundleId), baseBundleId=\(baseBundleId), jsBundlePath=\(jsBundlePath), files=\(files.count)")
+        NSLog("[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=\(bundleId), baseBundleId=\(baseBundleId), jsBundlePath=\(jsBundlePath), files=\(files.count), strategy=\(request.patchStrategy.rawValue)")
 
         bundleStorage.updateBundleIncremental(request: request, progressHandler: { progress in
             if let callback = progressCallback {

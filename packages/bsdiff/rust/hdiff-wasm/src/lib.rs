@@ -1,9 +1,4 @@
-use bzip2::read::BzDecoder;
-use bzip2::write::BzEncoder;
-use bzip2::Compression;
-use std::io::Cursor;
-use std::io::Read;
-use std::io::Write;
+const BSDIFF43_MAGIC: &[u8; 16] = b"ENDSLEY/BSDIFF43";
 
 const MIN_HEADER_LEN: u32 = 128;
 const EXEC_MAGIC_LO: u32 = 0x03BC_1FC6;
@@ -100,7 +95,7 @@ pub unsafe extern "C" fn create_patch(
         Err(_) => return STATUS_INVALID_INPUT,
     };
 
-    match generate_bsdiff40_patch(&base, &next) {
+    match generate_bsdiff43_patch(&base, &next) {
         Ok(patch) => {
             store_output(patch);
             STATUS_OK
@@ -125,7 +120,7 @@ pub unsafe extern "C" fn apply_patch(
         Err(_) => return STATUS_INVALID_INPUT,
     };
 
-    match apply_bsdiff40_patch(&base, &patch) {
+    match apply_bsdiff43_patch(&base, &patch) {
         Ok(next) => {
             store_output(next);
             STATUS_OK
@@ -197,114 +192,48 @@ unsafe fn free_output_buffer() {
     LAST_OUTPUT_CAP = 0;
 }
 
-fn generate_bsdiff40_patch(old: &[u8], new: &[u8]) -> Result<Vec<u8>, String> {
-    let mut legacy_patch = Vec::new();
-    bsdiff::diff(old, new, &mut legacy_patch).map_err(|error| format!("{error}"))?;
+fn generate_bsdiff43_patch(old: &[u8], new: &[u8]) -> Result<Vec<u8>, String> {
+    let mut body = Vec::new();
+    bsdiff::diff(old, new, &mut body).map_err(|error| format!("{error}"))?;
 
-    let (ctrl_block, diff_block, extra_block) = split_legacy_patch(&legacy_patch)?;
-
-    let ctrl_bz = bzip2_compress(&ctrl_block)?;
-    let diff_bz = bzip2_compress(&diff_block)?;
-    let extra_bz = bzip2_compress(&extra_block)?;
-
-    let mut patch = Vec::with_capacity(32 + ctrl_bz.len() + diff_bz.len() + extra_bz.len());
-    patch.extend_from_slice(b"BSDIFF40");
-    write_offt(ctrl_bz.len() as i64, &mut patch)?;
-    write_offt(diff_bz.len() as i64, &mut patch)?;
+    let mut patch = Vec::with_capacity(24 + body.len());
+    patch.extend_from_slice(BSDIFF43_MAGIC);
     write_offt(new.len() as i64, &mut patch)?;
-    patch.extend_from_slice(&ctrl_bz);
-    patch.extend_from_slice(&diff_bz);
-    patch.extend_from_slice(&extra_bz);
+    patch.extend_from_slice(&body);
 
     Ok(patch)
 }
 
-fn split_legacy_patch(legacy_patch: &[u8]) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), String> {
-    let mut controls = Vec::new();
-    let mut diff_data = Vec::new();
-    let mut extra_data = Vec::new();
-
-    let mut cursor = 0usize;
-    while cursor < legacy_patch.len() {
-        if legacy_patch.len() - cursor < 24 {
-            return Err("invalid legacy patch control length".to_string());
-        }
-
-        let ctrl_bytes = &legacy_patch[cursor..cursor + 24];
-        let add_len = read_offt(&ctrl_bytes[0..8])?;
-        let copy_len = read_offt(&ctrl_bytes[8..16])?;
-        let _seek = read_offt(&ctrl_bytes[16..24])?;
-
-        if add_len < 0 || copy_len < 0 {
-            return Err("invalid legacy patch control values".to_string());
-        }
-
-        let add_len = usize::try_from(add_len).map_err(|_| "add length overflow".to_string())?;
-        let copy_len =
-            usize::try_from(copy_len).map_err(|_| "copy length overflow".to_string())?;
-        cursor += 24;
-
-        if legacy_patch.len() - cursor < add_len {
-            return Err("legacy patch truncated in diff section".to_string());
-        }
-        diff_data.extend_from_slice(&legacy_patch[cursor..cursor + add_len]);
-        cursor += add_len;
-
-        if legacy_patch.len() - cursor < copy_len {
-            return Err("legacy patch truncated in extra section".to_string());
-        }
-        extra_data.extend_from_slice(&legacy_patch[cursor..cursor + copy_len]);
-        cursor += copy_len;
-
-        controls.extend_from_slice(ctrl_bytes);
+fn apply_bsdiff43_patch(old: &[u8], patch: &[u8]) -> Result<Vec<u8>, String> {
+    if patch.len() < 24 || &patch[0..16] != BSDIFF43_MAGIC {
+        return Err("invalid ENDSLEY/BSDIFF43 header".to_string());
     }
 
-    Ok((controls, diff_data, extra_data))
-}
-
-fn apply_bsdiff40_patch(old: &[u8], patch: &[u8]) -> Result<Vec<u8>, String> {
-    if patch.len() < 32 || &patch[0..8] != b"BSDIFF40" {
-        return Err("invalid BSDIFF40 header".to_string());
+    let new_size = read_offt(&patch[16..24])?;
+    if new_size < 0 {
+        return Err("negative ENDSLEY/BSDIFF43 header values".to_string());
     }
-
-    let ctrl_len = read_offt(&patch[8..16])?;
-    let diff_len = read_offt(&patch[16..24])?;
-    let new_size = read_offt(&patch[24..32])?;
-    if ctrl_len < 0 || diff_len < 0 || new_size < 0 {
-        return Err("negative BSDIFF40 header values".to_string());
-    }
-
-    let ctrl_len = usize::try_from(ctrl_len).map_err(|_| "control length overflow".to_string())?;
-    let diff_len = usize::try_from(diff_len).map_err(|_| "diff length overflow".to_string())?;
     let new_size = usize::try_from(new_size).map_err(|_| "new size overflow".to_string())?;
-
-    let ctrl_start = 32usize;
-    let ctrl_end = ctrl_start
-        .checked_add(ctrl_len)
-        .ok_or_else(|| "control block overflow".to_string())?;
-    let diff_end = ctrl_end
-        .checked_add(diff_len)
-        .ok_or_else(|| "diff block overflow".to_string())?;
-    if diff_end > patch.len() {
-        return Err("BSDIFF40 block bounds are invalid".to_string());
-    }
-
-    let mut ctrl_reader = BzDecoder::new(Cursor::new(&patch[ctrl_start..ctrl_end]));
-    let mut diff_reader = BzDecoder::new(Cursor::new(&patch[ctrl_end..diff_end]));
-    let mut extra_reader = BzDecoder::new(Cursor::new(&patch[diff_end..]));
 
     let mut out = Vec::with_capacity(new_size);
     let mut old_pos: i64 = 0;
+    let mut cursor = 24usize;
 
     while out.len() < new_size {
-        let mut ctrl_buf = [0u8; 24];
-        ctrl_reader
-            .read_exact(&mut ctrl_buf)
-            .map_err(|error| format!("failed to read control block: {error}"))?;
+        if patch
+            .len()
+            .checked_sub(cursor)
+            .ok_or_else(|| "invalid patch cursor".to_string())?
+            < 24
+        {
+            return Err("patch truncated in control block".to_string());
+        }
 
-        let add_len = read_offt(&ctrl_buf[0..8])?;
-        let copy_len = read_offt(&ctrl_buf[8..16])?;
-        let seek_len = read_offt(&ctrl_buf[16..24])?;
+        let add_len = read_offt(&patch[cursor..cursor + 8])?;
+        let copy_len = read_offt(&patch[cursor + 8..cursor + 16])?;
+        let seek_len = read_offt(&patch[cursor + 16..cursor + 24])?;
+        cursor += 24;
+
         if add_len < 0 || copy_len < 0 {
             return Err("negative add/copy length in control block".to_string());
         }
@@ -313,32 +242,61 @@ fn apply_bsdiff40_patch(old: &[u8], patch: &[u8]) -> Result<Vec<u8>, String> {
         let copy_len =
             usize::try_from(copy_len).map_err(|_| "copy length overflow".to_string())?;
 
-        let mut diff_bytes = vec![0u8; add_len];
-        diff_reader
-            .read_exact(&mut diff_bytes)
-            .map_err(|error| format!("failed to read diff block: {error}"))?;
-        for delta_byte in diff_bytes {
-            if old_pos < 0 || old_pos as usize >= old.len() {
-                return Err("old file offset out of bounds".to_string());
-            }
-            let old_byte = old[old_pos as usize];
-            out.push(delta_byte.wrapping_add(old_byte));
-            old_pos += 1;
+        let expected_after_add = out
+            .len()
+            .checked_add(add_len)
+            .ok_or_else(|| "patch output length overflow".to_string())?;
+        if expected_after_add > new_size {
+            return Err("patch output exceeds target size".to_string());
         }
 
-        let mut extra_bytes = vec![0u8; copy_len];
-        extra_reader
-            .read_exact(&mut extra_bytes)
-            .map_err(|error| format!("failed to read extra block: {error}"))?;
-        out.extend_from_slice(&extra_bytes);
+        if patch
+            .len()
+            .checked_sub(cursor)
+            .ok_or_else(|| "invalid patch cursor".to_string())?
+            < add_len
+        {
+            return Err("patch truncated in diff segment".to_string());
+        }
+
+        for i in 0..add_len {
+            let mut value = patch[cursor + i];
+            let source = old_pos
+                .checked_add(i as i64)
+                .ok_or_else(|| "old file offset overflow".to_string())?;
+            if source >= 0 && (source as usize) < old.len() {
+                value = value.wrapping_add(old[source as usize]);
+            }
+            out.push(value);
+        }
+        cursor += add_len;
+        old_pos = old_pos
+            .checked_add(add_len as i64)
+            .ok_or_else(|| "old file offset overflow".to_string())?;
+
+        let expected_after_copy = out
+            .len()
+            .checked_add(copy_len)
+            .ok_or_else(|| "patch output length overflow".to_string())?;
+        if expected_after_copy > new_size {
+            return Err("patch output exceeds target size".to_string());
+        }
+
+        if patch
+            .len()
+            .checked_sub(cursor)
+            .ok_or_else(|| "invalid patch cursor".to_string())?
+            < copy_len
+        {
+            return Err("patch truncated in extra segment".to_string());
+        }
+
+        out.extend_from_slice(&patch[cursor..cursor + copy_len]);
+        cursor += copy_len;
 
         old_pos = old_pos
             .checked_add(seek_len)
             .ok_or_else(|| "old file seek overflow".to_string())?;
-
-        if out.len() > new_size {
-            return Err("patch output exceeds target size".to_string());
-        }
     }
 
     if out.len() != new_size {
@@ -346,12 +304,6 @@ fn apply_bsdiff40_patch(old: &[u8], patch: &[u8]) -> Result<Vec<u8>, String> {
     }
 
     Ok(out)
-}
-
-fn bzip2_compress(input: &[u8]) -> Result<Vec<u8>, String> {
-    let mut encoder = BzEncoder::new(Vec::new(), Compression::new(6));
-    encoder.write_all(input).map_err(|error| format!("{error}"))?;
-    encoder.finish().map_err(|error| format!("{error}"))
 }
 
 fn read_offt(bytes: &[u8]) -> Result<i64, String> {

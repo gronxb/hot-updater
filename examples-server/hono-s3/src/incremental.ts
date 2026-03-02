@@ -1,3 +1,8 @@
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { brotliDecompressSync } from "node:zlib";
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -14,12 +19,7 @@ import type {
 } from "@hot-updater/core";
 import type { Context } from "hono";
 import JSZip from "jszip";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import * as tar from "tar";
-import { brotliDecompressSync } from "node:zlib";
 import { hotUpdater, metadataBucketName, metadataS3Client } from "./db.js";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -114,7 +114,11 @@ function detectArchiveFormatFromPath(filePath: string): ArchiveFormat | null {
   if (lower.endsWith(".tar.br") || lower.endsWith(".br")) {
     return "tar.br";
   }
-  if (lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".gz")) {
+  if (
+    lower.endsWith(".tar.gz") ||
+    lower.endsWith(".tgz") ||
+    lower.endsWith(".gz")
+  ) {
     return "tar.gz";
   }
   if (lower.endsWith(".zip")) {
@@ -124,7 +128,9 @@ function detectArchiveFormatFromPath(filePath: string): ArchiveFormat | null {
   return null;
 }
 
-function parseS3StorageUri(storageUri: string): { bucket: string; key: string } | null {
+function parseS3StorageUri(
+  storageUri: string,
+): { bucket: string; key: string } | null {
   if (!storageUri.startsWith("s3://")) {
     return null;
   }
@@ -222,7 +228,9 @@ async function putS3Json<T>(key: string, value: T): Promise<void> {
 async function fetchHttpBytes(url: string): Promise<Buffer> {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`HTTP download failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `HTTP download failed: ${response.status} ${response.statusText}`,
+    );
   }
   const arr = new Uint8Array(await response.arrayBuffer());
   return Buffer.from(arr);
@@ -260,7 +268,9 @@ async function loadBundleArchive(bundle: Bundle): Promise<{
     const bytes = await fetchHttpBytes(bundle.storageUri);
     const format = detectArchiveFormatFromPath(url.pathname);
     if (!format) {
-      throw new Error(`Unsupported archive extension for path: ${url.pathname}`);
+      throw new Error(
+        `Unsupported archive extension for path: ${url.pathname}`,
+      );
     }
 
     return { bytes, format };
@@ -322,7 +332,10 @@ async function extractArchiveToFiles(
   }
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-inc-"));
-  const archivePath = path.join(tempRoot, `bundle.${format === "tar.br" ? "tar.br" : "tar.gz"}`);
+  const archivePath = path.join(
+    tempRoot,
+    `bundle.${format === "tar.br" ? "tar.br" : "tar.gz"}`,
+  );
   const extractDir = path.join(tempRoot, "extract");
 
   await fs.mkdir(extractDir, { recursive: true });
@@ -346,14 +359,19 @@ async function extractArchiveToFiles(
   }
 }
 
-function resolveJsBundlePath(platform: Platform, filePaths: string[]): string | null {
+function resolveJsBundlePath(
+  platform: Platform,
+  filePaths: string[],
+): string | null {
   const normalized = filePaths.map((p) => p.replace(/\\/g, "/"));
 
   if (platform === "android") {
     const exact = normalized.find((file) => file === "index.android.bundle");
     if (exact) return exact;
 
-    const nested = normalized.find((file) => file.endsWith("/index.android.bundle"));
+    const nested = normalized.find((file) =>
+      file.endsWith("/index.android.bundle"),
+    );
     return nested ?? null;
   }
 
@@ -369,7 +387,11 @@ function resolveJsBundlePath(platform: Platform, filePaths: string[]): string | 
   return normalized.find((file) => file.endsWith(".bundle")) ?? null;
 }
 
-function createCacheKey(platform: Platform, fromBundleId: string, toBundleId: string): string {
+function createCacheKey(
+  platform: Platform,
+  fromBundleId: string,
+  toBundleId: string,
+): string {
   return `${CACHE_PREFIX}/${platform}/${fromBundleId}/${toBundleId}.json`;
 }
 
@@ -377,7 +399,10 @@ function createContentKey(hash: string): string {
   return `${CONTENT_PREFIX}/${hash}`;
 }
 
-async function ensureContentStored(hash: string, bytes: Uint8Array | Buffer): Promise<void> {
+async function ensureContentStored(
+  hash: string,
+  bytes: Uint8Array | Buffer,
+): Promise<void> {
   const key = createContentKey(hash);
   if (await hasS3Object(key)) {
     return;
@@ -528,7 +553,10 @@ async function buildIncrementalResponse(
     return { mode: "full", full };
   }
 
-  const jsBundlePath = resolveJsBundlePath(args.platform, Array.from(targetFiles.keys()));
+  const jsBundlePath = resolveJsBundlePath(
+    args.platform,
+    Array.from(targetFiles.keys()),
+  );
   if (!jsBundlePath) {
     return { mode: "full", full };
   }
@@ -552,7 +580,9 @@ async function buildIncrementalResponse(
 
   const patchHash = sha256Hex(patchBytes);
   const patchSignedHash = createSignedHash(signHashHex(patchHash, privateKey));
-  const targetSignedHash = createSignedHash(signHashHex(targetHash, privateKey));
+  const targetSignedHash = createSignedHash(
+    signHashHex(targetHash, privateKey),
+  );
 
   await ensureContentStored(patchHash, patchBytes);
 
@@ -606,7 +636,9 @@ function isHexHash(value: string): boolean {
   return /^[0-9a-f]{64}$/i.test(value);
 }
 
-export async function handleIncrementalAppVersion(c: Context): Promise<Response> {
+export async function handleIncrementalAppVersion(
+  c: Context,
+): Promise<Response> {
   const params = c.req.param();
   const args = toAppVersionArgs(params);
 
@@ -618,7 +650,9 @@ export async function handleIncrementalAppVersion(c: Context): Promise<Response>
   return c.json(result, 200);
 }
 
-export async function handleIncrementalFingerprint(c: Context): Promise<Response> {
+export async function handleIncrementalFingerprint(
+  c: Context,
+): Promise<Response> {
   const params = c.req.param();
   const args = toFingerprintArgs(params);
 

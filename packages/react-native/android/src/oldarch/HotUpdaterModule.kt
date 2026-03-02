@@ -122,6 +122,7 @@ class HotUpdaterModule internal constructor(
         val sourceHash = params.getString("sourceHash")
         val targetHash = params.getString("targetHash")
         val targetSignedHash = params.getString("targetSignedHash")
+        val patchStrategy = IncrementalPatchStrategy.fromWire(params.getString("patchStrategy"))
 
         if (bundleId.isNullOrBlank()) {
             throw HotUpdaterException.invalidIncrementalRequest("Missing 'bundleId'")
@@ -198,6 +199,7 @@ class HotUpdaterModule internal constructor(
             sourceHash = sourceHash,
             targetHash = targetHash,
             targetSignedHash = targetSignedHash,
+            patchStrategy = patchStrategy,
             files = files,
         )
     }
