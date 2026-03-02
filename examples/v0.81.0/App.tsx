@@ -137,7 +137,12 @@ export default HotUpdater.wrap({
   baseURL: "http://localhost:3007/hot-updater",
   updateStrategy: "appVersion",
   updateMode: "auto",
+  incremental: true,
+  onUpdateProcessCompleted: (result) => {
+    console.log("[HotUpdater][incremental] update process completed:", result);
+  },
   onNotifyAppReady: (result) => {
+    console.log("[HotUpdater][incremental] notifyAppReady:", result);
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;
   },
@@ -167,6 +172,7 @@ export default HotUpdater.wrap({
     </Modal>
   ),
   onError: (error) => {
+    console.log("[HotUpdater][incremental] error:", error);
     if (error instanceof Error) {
       Alert.alert("Error", error.message);
     } else {
