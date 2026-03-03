@@ -24,19 +24,6 @@ const DEFAULT_BUNDLE = {
   message: null,
 } as const;
 
-const testBundles: Bundle[] = [
-  {
-    ...DEFAULT_BUNDLE,
-    targetAppVersion: "*",
-    shouldForceUpdate: false,
-    enabled: true,
-    id: "00000000-0000-0000-0000-000000000001",
-    channel: "production",
-    storageUri: "gs://test-bucket/test-key",
-    fingerprintHash: null,
-  },
-];
-
 const TEST_BUNDLE_1 = {
   id: "bundle1",
   channel: "production",
@@ -78,6 +65,22 @@ const TEST_BUNDLE_3 = {
   storageUri: "gs://test-bucket/test-key",
   fingerprintHash: null,
 } as const;
+
+const testBundles: Bundle[] = [
+  {
+    ...DEFAULT_BUNDLE,
+    targetAppVersion: "*",
+    shouldForceUpdate: false,
+    enabled: true,
+    id: "00000000-0000-0000-0000-000000000001",
+    channel: "production",
+    storageUri: "gs://test-bucket/test-key",
+    fingerprintHash: null,
+  },
+  TEST_BUNDLE_1,
+  TEST_BUNDLE_2,
+  TEST_BUNDLE_3,
+];
 
 const server = setupServer();
 
@@ -579,6 +582,17 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
       await customRepo.appendBundle(testBundles[0]);
       await customRepo.commitBundle();
+    });
+
+    it("getChannels", async () => {
+      server.use(
+        http.get("http://localhost/api/custom/bundles", ({ request }) => {
+          return HttpResponse.json(testBundles);
+        }),
+      );
+
+      const bundles = await customRepo.getChannels();
+      expect(bundles).toEqual([...new Set(testBundles.map((b) => b.channel))]);
     });
   });
 });
