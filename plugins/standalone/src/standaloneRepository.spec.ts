@@ -586,13 +586,38 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     it("getChannels", async () => {
       server.use(
-        http.get("http://localhost/api/custom/bundles", ({ request }) => {
+        http.get("http://localhost/api/custom/bundles", () => {
           return HttpResponse.json(testBundles);
         }),
       );
 
       const bundles = await customRepo.getChannels();
       expect(bundles).toEqual([...new Set(testBundles.map((b) => b.channel))]);
+    });
+
+    it("getChannels: includes channels beyond the first 50 bundles", async () => {
+      const bundlesWithChannelAfter50: Bundle[] = Array.from(
+        { length: 51 },
+        (_, index) => ({
+          ...DEFAULT_BUNDLE,
+          id: `bundle-${index + 1}`,
+          channel: index < 50 ? "production" : "qa",
+          enabled: true,
+          shouldForceUpdate: false,
+          targetAppVersion: "*",
+          storageUri: "gs://test-bucket/test-key",
+          fingerprintHash: null,
+        }),
+      );
+
+      server.use(
+        http.get("http://localhost/api/custom/bundles", ({ request }) => {
+          return HttpResponse.json(bundlesWithChannelAfter50);
+        }),
+      );
+
+      const channels = await customRepo.getChannels();
+      expect(channels).toEqual(["production", "qa"]);
     });
   });
 });
