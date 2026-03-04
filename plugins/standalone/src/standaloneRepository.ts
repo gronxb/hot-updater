@@ -133,7 +133,7 @@ export const standaloneRepository =
           };
         },
         async getChannels(): Promise<string[]> {
-          const { path, headers: routeHeaders } = routes.list!();
+          const { path, headers: routeHeaders } = routes.list();
 
           const response = await fetch(buildUrl(path), {
             method: "GET",
