@@ -186,6 +186,120 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
+## Switching Channels at Runtime
+
+In addition to setting the channel at build time, you can dynamically switch channels at runtime using `HotUpdater.getBundleChannel()`. This allows users or developers to change which channel receives updates without rebuilding the app.
+
+### When to Switch Channels
+
+- **User opt-in**: Allow users to choose between production, beta, or development channels
+- **Testing**: Switch between channels during development without rebuilding
+- **Staged rollouts**: Gradually roll out updates by routing users to different channels
+- **A/B testing**: Test different update versions with different user groups
+
+### Example: Channel Switcher
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { TouchableOpacity, Text } from "react-native";
+
+async function switchChannel(channelName: string) {
+  const bundleInfo = await HotUpdater.getBundleChannel(channelName, {
+    updateStrategy: "appVersion",
+  });
+
+  if (!bundleInfo) {
+    console.log(`No bundle available for: ${channelName}`);
+    return;
+  }
+
+  await bundleInfo.updateBundle();
+  await HotUpdater.reload();
+}
+
+export default function Settings() {
+  return (
+    <>
+      <TouchableOpacity onPress={() => switchChannel("production")}>
+        <Text>Switch to Production</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => switchChannel("staging")}>
+        <Text>Switch to Staging</Text>
+      </TouchableOpacity>
+    </>
+  );
+}
+```
+
+### Important Notes on Runtime Switching
+
+- **Downloads update**: Unlike a simple channel preference change, this actually downloads and installs the bundle from the new channel
+- **Requires app reload**: Call `HotUpdater.reload()` to restart the app with the new bundle
+- **Checks availability**: Returns `null` if no bundle is available for the requested channel
+- **Requires server communication**: Must query the update server for the target channel's bundle
+
+## Resetting to Original Bundle
+
+Use `HotUpdater.resetToOriginalBundle()` to completely reset the app to its original state, clearing all downloaded bundles and restoring the original channel.
+
+### When to Reset
+
+- **Troubleshooting**: Verify that issues are related to updates, not the original app
+- **User opt-out**: Allow users to uninstall OTA updates and return to the original app
+- **Clean state**: Reset to a known-good state during testing or debugging
+- **Error recovery**: Recover from a problematic downloaded bundle
+
+### Example: Reset Button in Settings
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { TouchableOpacity, Text, View, Alert } from "react-native";
+
+function SettingsScreen() {
+  const handleReset = async () => {
+    Alert.alert(
+      "Reset to Original Bundle",
+      "This will remove all downloaded updates and restore the original app.",
+      [
+        { text: "Cancel", onPress: () => {}, style: "cancel" },
+        {
+          text: "Reset",
+          onPress: async () => {
+            try {
+              const success = await HotUpdater.resetToOriginalBundle();
+              if (success) {
+                Alert.alert("Success", "Reset complete. Restarting app...");
+                // Reload the app with the original bundle
+                await HotUpdater.reload();
+              }
+            } catch (error) {
+              Alert.alert("Error", `Failed to reset: ${error}`);
+            }
+          },
+          style: "destructive",
+        },
+      ]
+    );
+  };
+
+  return (
+    <View>
+      <TouchableOpacity onPress={handleReset}>
+        <Text style={{ color: "red" }}>Reset to Original Bundle</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+export default SettingsScreen;
+```
+
+### What Reset Does
+
+- **Removes all downloaded bundles**: Clears all OTA-installed bundles from storage
+- **Clears crash history**: Resets the record of bundles that have crashed
+- **Restores original channel**: Reverts to the default channel specified at build time
+
 ## Channel Behavior
 
 - Defaults to `production` if no channel is specified.

@@ -40,6 +40,7 @@ export type CheckForUpdateResult = AppUpdateInfo & {
 // Internal type that includes resolver for use within index.ts
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
   resolver: HotUpdaterResolver;
+  channel?: string;
 }
 
 export async function checkForUpdate(
@@ -60,7 +61,7 @@ export async function checkForUpdate(
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
-  const channel = getChannel();
+  const channel = options.channel ?? getChannel();
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));

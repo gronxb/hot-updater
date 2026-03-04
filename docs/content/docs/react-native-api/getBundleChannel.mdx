@@ -1,0 +1,109 @@
+---
+title: "getBundleChannel"
+description: "The `HotUpdater.getBundleChannel()` function retrieves bundle information for a specific channel and allows you to switch channels and download updates from that channel."
+icon: GitBranch
+---
+
+## Usage
+
+Use `getBundleChannel()` to fetch bundle information for a specific channel, check if updates are available, and switch to that channel by downloading the bundle.
+
+### Example
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { useState } from "react";
+import { TouchableOpacity, Text, View, Alert } from "react-native";
+
+function ChannelSelector() {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSwitchChannel = async (channelName: string) => {
+    try {
+      setIsLoading(true);
+
+      // Get bundle info for the target channel
+      const bundleInfo = await HotUpdater.getBundleChannel(channelName, {
+        updateStrategy: "appVersion",
+      });
+
+      if (!bundleInfo) {
+        Alert.alert("No Update", `No bundle available for channel: ${channelName}`);
+        return;
+      }
+
+      // Download and install the bundle from the target channel
+      await bundleInfo.updateBundle();
+
+      Alert.alert("Success", "Update complete. Restarting app...");
+      // Reload the app with the new bundle
+      await HotUpdater.reload();
+    } catch (error) {
+      Alert.alert("Error", `Failed to switch channel: ${error}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <View>
+      <TouchableOpacity
+        onPress={() => handleSwitchChannel("production")}
+        disabled={isLoading}
+      >
+        <Text>Switch to Production</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => handleSwitchChannel("staging")}
+        disabled={isLoading}
+      >
+        <Text>Switch to Staging</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => handleSwitchChannel("dev")}
+        disabled={isLoading}
+      >
+        <Text>Switch to Development</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+export default ChannelSelector;
+```
+
+## Parameters
+
+- `channelName` (string): The target channel to query (e.g., `"production"`, `"staging"`, `"dev"`)
+- `options` (optional object):
+  - `updateStrategy`: `"appVersion"` or `"fingerprint"` - determines how updates are checked
+  - Other options from `CheckForUpdateOptions`
+
+## Return Value
+
+Returns a `Promise<BundleInfo | null>`:
+- `BundleInfo` object if a bundle is available for the channel, with methods like `updateBundle()`
+- `null` if no bundle is available for the requested channel
+
+## Behavior
+
+- **Async operation**: Queries the server for the latest bundle on the specified channel
+- **Does not automatically download**: Only retrieves information; you must call `updateBundle()` to download
+- **Channel override**: Allows checking and downloading from channels different from the current channel
+- **Requires app reload**: After calling `updateBundle()`, call `HotUpdater.reload()` to restart with the new bundle
+
+## When to Use
+
+- **User-facing channel switcher**: Let users choose which channel to receive updates from
+- **Conditional channel switching**: Switch channels based on user preferences, device properties, or feature flags
+- **Testing channels**: Check if updates are available on different channels without automatically downloading
+- **Staged rollouts**: Allow beta testers or early adopters to opt into newer update channels
+
+## Related APIs
+
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate) - Check for updates on the current channel
+- [`HotUpdater.updateBundle()`](/docs/react-native-api/updateBundle) - Update to a specific bundle
+- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel) - Get the current channel
+- [`HotUpdater.resetToOriginalBundle()`](/docs/react-native-api/resetToOriginalBundle) - Reset to the original bundle

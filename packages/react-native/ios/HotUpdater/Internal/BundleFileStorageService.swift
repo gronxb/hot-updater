@@ -118,6 +118,13 @@ public protocol BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     func getBaseURL() -> String
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     * Returns true if reset was successful, false otherwise.
+     */
+    func resetToOriginalBundle() -> Result<Bool, Error>
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -1223,6 +1230,76 @@ class BundleFileStorageService: BundleStorageService {
         } catch {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
+        }
+    }
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     */
+    func resetToOriginalBundle() -> Result<Bool, Error> {
+        NSLog("[BundleStorage('\(id)')] Starting reset to original bundle")
+
+        guard case .success = setBundleURL(localPath: nil) else {
+            NSLog("[BundleStorage] Failed to clear bundle URL")
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        let initialMetadata = BundleMetadata(
+            isolationKey: isolationKey,
+            stableBundleId: nil,
+            stagingBundleId: nil,
+            verificationPending: false,
+            verificationAttemptedAt: nil,
+            stagingExecutionCount: nil
+        )
+
+        guard saveMetadata(initialMetadata) else {
+            NSLog("[BundleStorage] Failed to save cleared metadata")
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        // Clear crash history
+        let clearedHistory = CrashedHistory()
+        guard saveCrashedHistory(clearedHistory) else {
+            NSLog("[BundleStorage] Failed to clear crash history")
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        // Remove all bundle directories
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            NSLog("[BundleStorage] Failed to get bundle store directory")
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        do {
+            let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
+            var removedCount = 0
+
+            for item in contents {
+                // Skip metadata and crash history files
+                if item == BundleMetadata.metadataFilename || item == CrashedHistory.crashedHistoryFilename {
+                    continue
+                }
+
+                let bundlePath = (storeDir as NSString).appendingPathComponent(item)
+                if fileSystem.fileExists(atPath: bundlePath) {
+                    do {
+                        try fileSystem.removeItem(atPath: bundlePath)
+                        removedCount += 1
+                        NSLog("[BundleStorage] Removed bundle: \(item)")
+                    } catch {
+                        NSLog("[BundleStorage] Failed to remove bundle '\(item)': \(error)")
+                        return .failure(BundleStorageError.moveOperationFailed(error))
+                    }
+                }
+            }
+
+            NSLog("[BundleStorage('\(id)')] Successfully reset to original bundle (removed \(removedCount) bundle directories)")
+            return .success(true)
+        } catch {
+            NSLog("[BundleStorage] Failed to list bundle directory: \(error)")
+            return .failure(BundleStorageError.moveOperationFailed(error))
         }
     }
 }

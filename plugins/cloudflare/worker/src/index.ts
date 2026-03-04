@@ -154,6 +154,28 @@ app.get(
   },
 );
 
+app.get("/api/bundles/channels", async (c) => {
+  try {
+    const result = await c.env.DB.prepare(
+      /* sql */ `
+      SELECT DISTINCT channel
+      FROM bundles
+      ORDER BY channel ASC
+    `,
+    ).all<{ channel: string }>();
+
+    const channels = result.results?.map((row) => row.channel) || [];
+
+    return c.json({ channels }, 200);
+  } catch (error) {
+    console.error("Error fetching channels:", error);
+    return c.json(
+      { error: "Failed to fetch channels" },
+      500,
+    );
+  }
+});
+
 app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({
     path: c.req.path,

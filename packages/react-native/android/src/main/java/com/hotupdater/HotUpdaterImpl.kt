@@ -61,6 +61,7 @@ class HotUpdaterImpl {
     companion object {
         private const val TAG = "HotUpdaterImpl"
         private const val DEFAULT_CHANNEL = "production"
+        private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
         /**
          * Create BundleStorageService with all dependencies
@@ -242,6 +243,11 @@ class HotUpdaterImpl {
      * @return The channel name or null if not set
      */
     fun getChannel(): String {
+        val storedChannel = preferences.getItem(CHANNEL_STORAGE_KEY)
+        if (!storedChannel.isNullOrEmpty()) {
+            return storedChannel
+        }
+
         val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
@@ -261,6 +267,7 @@ class HotUpdaterImpl {
      * @param bundleId ID of the bundle to update
      * @param fileUrl URL of the bundle file to download (or null to reset)
      * @param fileHash Combined hash string for verification (sig:<signature> or <hex_hash>)
+     * @param channel Optional channel to persist after successful update
      * @param progressCallback Callback for download progress updates
      * @throws HotUpdaterException if the update fails
      */
@@ -268,9 +275,16 @@ class HotUpdaterImpl {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        channel: String?,
         progressCallback: (Double) -> Unit,
     ) {
+        // First, perform the bundle update
         bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+        
+        // Only persist channel after successful update
+        if (!channel.isNullOrEmpty()) {
+            preferences.setItem(CHANNEL_STORAGE_KEY, channel)
+        }
     }
 
     /**
@@ -318,4 +332,23 @@ class HotUpdaterImpl {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     * Also clears the channel cache to restore the default channel.
+     * @return true if reset was successful
+     * @throws HotUpdaterException if reset fails
+     */
+    suspend fun resetToOriginalBundle(): Boolean {
+        val success = bundleStorage.resetToOriginalBundle()
+        
+        if (success) {
+            // Clear the channel cache to restore default
+            preferences.setItem(CHANNEL_STORAGE_KEY, null)
+            Log.d(TAG, "Cleared channel cache to restore default")
+        }
+        
+        return success
+    }
 }

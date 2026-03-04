@@ -46,9 +46,10 @@ class HotUpdater {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
+            channel: String?,
             progressCallback: (Double) -> Unit,
         ) {
-            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, channel, progressCallback)
         }
 
         /**
@@ -80,13 +81,6 @@ class HotUpdater {
         fun getFingerprintHash(context: Context): String? = HotUpdaterImpl.getFingerprintHash(context)
 
         /**
-         * Gets the current update channel - delegates to HotUpdaterImpl static method
-         * @param context Application context
-         * @return The channel name or null if not set
-         */
-        fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
-
-        /**
          * Sets the ReactHost for brownfield apps (New Architecture).
          * Sets the ReactHost for brownfield apps that don't have ReactApplication.
          * When set, reload() will use this ReactHost instead of accessing Application.
@@ -101,6 +95,17 @@ class HotUpdater {
          */
         fun clearReactHost() {
             ReactHostHolder.clear()
+        }
+
+        /**
+         * Resets the app to use the original/fallback bundle included at build time.
+         * This clears all OTA-installed bundles and removes the entire bundle cache.
+         * @param context Application context
+         * @return true if reset was successful
+         * @throws HotUpdaterException if reset fails
+         */
+        suspend fun resetToOriginalBundle(context: Context): Boolean {
+            return getInstance(context).resetToOriginalBundle()
         }
     }
 }

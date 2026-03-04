@@ -45,9 +45,10 @@ class HotUpdater {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
+            channel: String?,
             progressCallback: (Double) -> Unit,
         ) {
-            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, channel, progressCallback)
         }
 
         /**
@@ -77,13 +78,6 @@ class HotUpdater {
          * @return The fingerprint hash or null if not set
          */
         fun getFingerprintHash(context: Context): String? = HotUpdaterImpl.getFingerprintHash(context)
-
-        /**
-         * Gets the current update channel - delegates to HotUpdaterImpl static method
-         * @param context Application context
-         * @return The channel name or null if not set
-         */
-        fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
 
         /**
          * Sets the ReactHost for brownfield apps (Old Architecture - No-op).
