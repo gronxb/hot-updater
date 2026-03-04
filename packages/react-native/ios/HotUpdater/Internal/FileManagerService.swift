@@ -14,6 +14,7 @@ protocol FileSystemService {
     func removeItem(atPath path: String) throws
     func moveItem(atPath srcPath: String, toPath dstPath: String) throws
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
+    func linkItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
     func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any]
     func documentsPath() -> String
@@ -77,6 +78,15 @@ class FileManagerService: FileSystemService {
             try fileManager.copyItem(atPath: srcPath, toPath: dstPath)
         } catch let error {
             NSLog("[FileSystemService] Failed to copy item from \(srcPath) to \(dstPath): \(error)")
+            throw FileSystemError.fileOperationFailed(srcPath, error)
+        }
+    }
+
+    func linkItem(atPath srcPath: String, toPath dstPath: String) throws {
+        do {
+            try fileManager.linkItem(atPath: srcPath, toPath: dstPath)
+        } catch let error {
+            NSLog("[FileSystemService] Failed to hardlink item from \(srcPath) to \(dstPath): \(error)")
             throw FileSystemError.fileOperationFailed(srcPath, error)
         }
     }

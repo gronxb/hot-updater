@@ -149,6 +149,24 @@ public struct IncrementalUpdateRequest {
     let files: [IncrementalFileEntry]
 }
 
+private struct BundleManifestEntry: Codable {
+    let path: String
+    let hash: String
+    let size: Int64
+    let isJs: Bool
+}
+
+private struct BundleManifest: Codable {
+    static let schemaVersion = "bundle-manifest-v1"
+
+    let schema: String
+    let bundleId: String
+    let createdAt: Double
+    let baseBundleId: String?
+    let strategy: String?
+    let files: [BundleManifestEntry]
+}
+
 @_silgen_name("hotupdater_bspatch_file")
 private func hotupdaterBspatchFile(
     _ oldPath: UnsafePointer<CChar>?,
@@ -223,6 +241,7 @@ public protocol BundleStorageService {
 }
 
 class BundleFileStorageService: BundleStorageService {
+    private static let bundleManifestFilename = "HOTUPDATER_MANIFEST.json"
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
@@ -253,8 +272,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
-                                               qos: .utility,
-                                               attributes: .concurrent)
+                                               qos: .utility)
 
         // Ensure bundle store directory exists
         _ = bundleStoreDir()
@@ -277,6 +295,153 @@ class BundleFileStorageService: BundleStorageService {
             return nil
         }
         return URL(fileURLWithPath: storeDir).appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+    }
+
+    private func manifestFileURL(bundleDir: String) -> URL {
+        URL(fileURLWithPath: bundleDir)
+            .appendingPathComponent(Self.bundleManifestFilename)
+    }
+
+    private func manifestPath(bundleDir: String) -> String {
+        manifestFileURL(bundleDir: bundleDir).path
+    }
+
+    private func isLikelyJsBundlePath(_ relativePath: String) -> Bool {
+        let normalized = relativePath.lowercased()
+        return normalized == "index.ios.bundle" ||
+            normalized == "index.android.bundle" ||
+            normalized == "main.jsbundle" ||
+            normalized.hasSuffix("/index.ios.bundle") ||
+            normalized.hasSuffix("/index.android.bundle") ||
+            normalized.hasSuffix("/main.jsbundle")
+    }
+
+    private func loadBundleManifest(bundleDir: String) -> BundleManifest? {
+        let url = manifestFileURL(bundleDir: bundleDir)
+        guard fileSystem.fileExists(atPath: url.path) else {
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            let manifest = try decoder.decode(BundleManifest.self, from: data)
+            guard manifest.schema == BundleManifest.schemaVersion else {
+                return nil
+            }
+            return manifest
+        } catch {
+            NSLog("[BundleStorage] Failed to load bundle manifest at \(url.path): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func saveBundleManifest(_ manifest: BundleManifest, bundleDir: String) -> Bool {
+        let url = manifestFileURL(bundleDir: bundleDir)
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(manifest)
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            NSLog("[BundleStorage] Failed to save bundle manifest at \(url.path): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func makeManifestFromDirectory(
+        bundleDir: String,
+        bundleId: String,
+        baseBundleId: String?,
+        strategy: String?,
+        jsBundlePathHint: String?
+    ) -> BundleManifest? {
+        let rootURL = URL(fileURLWithPath: bundleDir, isDirectory: true)
+        let rootPath = rootURL.path
+        let normalizedHint = jsBundlePathHint?.replacingOccurrences(of: "\\", with: "/")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let manifestFilePath = manifestPath(bundleDir: bundleDir)
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var files: [BundleManifestEntry] = []
+
+        for case let fileURL as URL in enumerator {
+            if fileURL.path == manifestFilePath {
+                continue
+            }
+
+            let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values?.isRegularFile == true else {
+                continue
+            }
+
+            guard let hash = HashUtils.calculateSHA256(fileURL: fileURL) else {
+                return nil
+            }
+
+            let relativePath = fileURL.path.replacingOccurrences(
+                of: rootPath + "/",
+                with: ""
+            )
+            let normalizedPath = relativePath.replacingOccurrences(of: "\\", with: "/")
+            let isJs = normalizedHint != nil
+                ? normalizedHint == normalizedPath
+                : isLikelyJsBundlePath(normalizedPath)
+
+            files.append(
+                BundleManifestEntry(
+                    path: normalizedPath,
+                    hash: hash,
+                    size: Int64(values?.fileSize ?? 0),
+                    isJs: isJs
+                )
+            )
+        }
+
+        files.sort { $0.path < $1.path }
+
+        return BundleManifest(
+            schema: BundleManifest.schemaVersion,
+            bundleId: bundleId,
+            createdAt: Date().timeIntervalSince1970 * 1000,
+            baseBundleId: baseBundleId,
+            strategy: strategy,
+            files: files
+        )
+    }
+
+    @discardableResult
+    private func ensureBundleManifest(
+        bundleDir: String,
+        bundleId: String,
+        baseBundleId: String? = nil,
+        strategy: String? = nil,
+        jsBundlePathHint: String? = nil
+    ) -> BundleManifest? {
+        if let existing = loadBundleManifest(bundleDir: bundleDir) {
+            return existing
+        }
+
+        guard let generated = makeManifestFromDirectory(
+            bundleDir: bundleDir,
+            bundleId: bundleId,
+            baseBundleId: baseBundleId,
+            strategy: strategy,
+            jsBundlePathHint: jsBundlePathHint
+        ) else {
+            return nil
+        }
+
+        _ = saveBundleManifest(generated, bundleDir: bundleDir)
+        return generated
     }
 
     // MARK: - Metadata Operations
@@ -727,12 +892,24 @@ class BundleFileStorageService: BundleStorageService {
                 return nil
             }
 
-            return (!item.hasSuffix(".tmp") && self.fileSystem.fileExists(atPath: fullPath)) ? fullPath : nil
+            guard !item.hasSuffix(".tmp"), self.fileSystem.fileExists(atPath: fullPath) else {
+                return nil
+            }
+
+            // Only treat directories as bundle candidates.
+            guard let attributes = try? self.fileSystem.attributesOfItem(atPath: fullPath),
+                  let fileType = attributes[.type] as? FileAttributeType,
+                  fileType == .typeDirectory else {
+                return nil
+            }
+
+            return fullPath
         }
         
         // Keep only the specified bundle IDs
         let bundleIdsToKeep = Set([currentBundleId, bundleId].compactMap { $0 })
         
+        var bundleDeletionRetryQueue: [String] = []
         bundles.forEach { bundlePath in
             let bundleName = (bundlePath as NSString).lastPathComponent
             
@@ -741,14 +918,27 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.removeItem(atPath: bundlePath)
                     NSLog("[BundleStorage] Removing old bundle: \(bundleName)")
                 } catch {
-                    NSLog("[BundleStorage] Failed to remove old bundle at \(bundlePath): \(error)")
+                    NSLog("[BundleStorage] Failed to remove old bundle at \(bundlePath), scheduling retry: \(error)")
+                    bundleDeletionRetryQueue.append(bundlePath)
                 }
             } else {
                 NSLog("[BundleStorage] Keeping bundle: \(bundleName)")
             }
         }
+
+        // Retry failed bundle deletions once.
+        bundleDeletionRetryQueue.forEach { bundlePath in
+            guard self.fileSystem.fileExists(atPath: bundlePath) else { return }
+            do {
+                try self.fileSystem.removeItem(atPath: bundlePath)
+                NSLog("[BundleStorage] Retried and removed old bundle: \((bundlePath as NSString).lastPathComponent)")
+            } catch {
+                NSLog("[BundleStorage] Retried and failed removing old bundle at \(bundlePath): \(error)")
+            }
+        }
         
         // Remove any leftover .tmp directories
+        var tmpDeletionRetryQueue: [String] = []
         contents.forEach { item in
             if item.hasSuffix(".tmp") {
                 let fullPath = (storeDir as NSString).appendingPathComponent(item)
@@ -756,8 +946,20 @@ class BundleFileStorageService: BundleStorageService {
                     try self.fileSystem.removeItem(atPath: fullPath)
                     NSLog("[BundleStorage] Removing stale tmp directory: \(item)")
                 } catch {
-                    NSLog("[BundleStorage] Failed to remove stale tmp directory \(fullPath): \(error)")
+                    NSLog("[BundleStorage] Failed to remove stale tmp directory \(fullPath), scheduling retry: \(error)")
+                    tmpDeletionRetryQueue.append(fullPath)
                 }
+            }
+        }
+
+        // Retry failed tmp deletions once.
+        tmpDeletionRetryQueue.forEach { fullPath in
+            guard self.fileSystem.fileExists(atPath: fullPath) else { return }
+            do {
+                try self.fileSystem.removeItem(atPath: fullPath)
+                NSLog("[BundleStorage] Retried and removed stale tmp directory: \((fullPath as NSString).lastPathComponent)")
+            } catch {
+                NSLog("[BundleStorage] Retried and failed removing stale tmp directory \(fullPath): \(error)")
             }
         }
         
@@ -878,11 +1080,23 @@ class BundleFileStorageService: BundleStorageService {
      * @param completion Callback with result of the operation
      */
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+        NSLog("[HotUpdaterNative][MODE=FULL][START] bundleId=\(bundleId), hasFileUrl=\(fileUrl != nil)")
+        let completeWithMode: (Result<Bool, Error>) -> Void = { result in
+            switch result {
+            case .success:
+                NSLog("[HotUpdaterNative][MODE=FULL][SUCCESS] bundleId=\(bundleId)")
+            case .failure(let error):
+                let reason = (error as? BundleStorageError)?.errorCodeString ?? "UNKNOWN_ERROR"
+                NSLog("[HotUpdaterNative][MODE=FULL][FAILURE] bundleId=\(bundleId), reason=\(reason), error=\(error)")
+            }
+            completion(result)
+        }
+
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
-            completion(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
+            completeWithMode(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
             return
         }
 
@@ -900,14 +1114,14 @@ class BundleFileStorageService: BundleStorageService {
                     let cleanupResult = self.cleanupOldBundles(currentBundleId: currentBundleId, bundleId: bundleId)
                     switch cleanupResult {
                     case .success:
-                        completion(.success(true))
+                        completeWithMode(.success(true))
                     case .failure(let error):
                         NSLog("[BundleStorage] Error during cleanup after reset: \(error)")
-                        completion(.failure(error))
+                        completeWithMode(.failure(error))
                     }
                 case .failure(let error):
                     NSLog("[BundleStorage] Error resetting bundle URL: \(error)")
-                    completion(.failure(error))
+                    completeWithMode(.failure(error))
                 }
             }
             return
@@ -918,7 +1132,7 @@ class BundleFileStorageService: BundleStorageService {
 
             let storeDirResult = self.bundleStoreDir()
             guard case .success(let storeDir) = storeDirResult else {
-                completion(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
+                completeWithMode(.failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil)))
                 return
             }
             
@@ -930,6 +1144,10 @@ class BundleFileStorageService: BundleStorageService {
                 case .success(let existingBundlePath):
                     if let bundlePath = existingBundlePath {
                         NSLog("[BundleStorage] Using cached bundle at path: \(bundlePath)")
+                        _ = self.ensureBundleManifest(
+                            bundleDir: finalBundleDir,
+                            bundleId: bundleId
+                        )
                         let setResult = self.setBundleURL(localPath: bundlePath)
                         switch setResult {
                         case .success:
@@ -950,9 +1168,9 @@ class BundleFileStorageService: BundleStorageService {
                                 let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
                             }
 
-                            completion(.success(true))
+                            completeWithMode(.success(true))
                         case .failure(let error):
-                            completion(.failure(error))
+                            completeWithMode(.failure(error))
                         }
                         return
                     } else {
@@ -960,17 +1178,17 @@ class BundleFileStorageService: BundleStorageService {
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success
-                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completeWithMode)
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
-                            completion(.failure(BundleStorageError.unknown(error)))
+                            completeWithMode(.failure(BundleStorageError.unknown(error)))
                         }
                     }
                 case .failure(let error):
-                    completion(.failure(error))
+                    completeWithMode(.failure(error))
                 }
             } else {
-                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completeWithMode)
             }
         }
     }
@@ -980,6 +1198,10 @@ class BundleFileStorageService: BundleStorageService {
         progressHandler: @escaping (Double) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
+        NSLog(
+            "[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=\(request.bundleId), baseBundleId=\(request.baseBundleId), strategy=\(request.patchStrategy.rawValue), files=\(request.files.count)"
+        )
+
         if loadCrashedHistory().contains(request.bundleId) {
             completion(.failure(BundleStorageError.bundleInCrashedHistory(request.bundleId)))
             return
@@ -1004,6 +1226,13 @@ class BundleFileStorageService: BundleStorageService {
                     let normalizedJsPath = try self.normalizeBundleRelativePath(request.jsBundlePath)
                     let jsPath = try self.resolveBundleRelativePath(rootPath: finalBundleDir, relativePath: normalizedJsPath)
                     if self.fileSystem.fileExists(atPath: jsPath) {
+                        _ = self.ensureBundleManifest(
+                            bundleDir: finalBundleDir,
+                            bundleId: request.bundleId,
+                            baseBundleId: request.baseBundleId,
+                            strategy: request.patchStrategy.rawValue,
+                            jsBundlePathHint: normalizedJsPath
+                        )
                         let metadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
                         var updatedMetadata = metadata
                         updatedMetadata.stagingBundleId = request.bundleId
@@ -1036,6 +1265,23 @@ class BundleFileStorageService: BundleStorageService {
             let metadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
             if self.loadMetadataOrNull() == nil {
                 _ = self.saveMetadata(metadata)
+            }
+
+            let expectedBaseBundleId: String? = {
+                if metadata.verificationPending, let stagingId = metadata.stagingBundleId {
+                    return stagingId
+                }
+                return metadata.stableBundleId
+            }()
+
+            guard let expectedBaseBundleId else {
+                completion(.failure(BundleStorageError.invalidIncrementalRequest("No active base bundle is available for incremental apply")))
+                return
+            }
+
+            guard request.baseBundleId == expectedBaseBundleId else {
+                completion(.failure(BundleStorageError.invalidIncrementalRequest("baseBundleId mismatch: expected \(expectedBaseBundleId), got \(request.baseBundleId)")))
+                return
             }
 
             let baseBundleDir = (storeDir as NSString).appendingPathComponent(request.baseBundleId)
@@ -1084,6 +1330,16 @@ class BundleFileStorageService: BundleStorageService {
                 return
             }
 
+            let baseManifest = self.ensureBundleManifest(
+                bundleDir: baseBundleDir,
+                bundleId: request.baseBundleId
+            )
+            let baseManifestByPath: [String: BundleManifestEntry] = (baseManifest?.files ?? []).reduce(
+                into: [String: BundleManifestEntry]()
+            ) { partialResult, entry in
+                partialResult[entry.path] = entry
+            }
+
             guard case .success(let tempDirectory) = self.tempDir() else {
                 completion(.failure(BundleStorageError.directoryCreationFailed))
                 return
@@ -1099,6 +1355,11 @@ class BundleFileStorageService: BundleStorageService {
 
             let patchPath = (incrementalTempDir as NSString).appendingPathComponent("patch.bin")
             let jsTempPath = (incrementalTempDir as NSString).appendingPathComponent("patched-js.bundle")
+
+            var linkedCount = 0
+            var copiedCount = 0
+            var downloadedCount = 0
+            var verifiedCount = 0
 
             do {
                 progressHandler(0.02)
@@ -1185,19 +1446,35 @@ class BundleFileStorageService: BundleStorageService {
                             try? self.fileSystem.removeItem(atPath: targetPath)
                         }
                         try self.fileSystem.copyItem(atPath: jsTempPath, toPath: targetPath)
+                        copiedCount += 1
                     } else {
-                        let basePath = try self.resolveBundleRelativePath(
-                            rootPath: baseBundleDir,
-                            relativePath: normalizedPath
-                        )
-                        let baseURL = URL(fileURLWithPath: basePath)
-                        if self.fileSystem.fileExists(atPath: basePath)
-                            && HashUtils.verifyHash(fileURL: baseURL, expectedHash: entry.hash) {
-                            if self.fileSystem.fileExists(atPath: targetPath) {
-                                try? self.fileSystem.removeItem(atPath: targetPath)
+                        var reusedFromBase = false
+                        let manifestEntry = baseManifestByPath[normalizedPath]
+                        if let manifestEntry,
+                           manifestEntry.hash.caseInsensitiveCompare(entry.hash) == .orderedSame {
+                            let basePath = try self.resolveBundleRelativePath(
+                                rootPath: baseBundleDir,
+                                relativePath: normalizedPath
+                            )
+                            let baseURL = URL(fileURLWithPath: basePath)
+                            if self.fileSystem.fileExists(atPath: basePath)
+                                && HashUtils.verifyHash(fileURL: baseURL, expectedHash: entry.hash) {
+                                if self.fileSystem.fileExists(atPath: targetPath) {
+                                    try? self.fileSystem.removeItem(atPath: targetPath)
+                                }
+                                do {
+                                    try self.fileSystem.linkItem(atPath: basePath, toPath: targetPath)
+                                    linkedCount += 1
+                                } catch {
+                                    try self.fileSystem.copyItem(atPath: basePath, toPath: targetPath)
+                                    copiedCount += 1
+                                }
+                                reusedFromBase = true
                             }
-                            try self.fileSystem.copyItem(atPath: basePath, toPath: targetPath)
-                        } else {
+                        }
+
+                        if !reusedFromBase {
+                            downloadedCount += 1
                             let contentTempPath = (incrementalTempDir as NSString).appendingPathComponent("content-\(index).bin")
                             let contentUrl = URL(string: "\(request.contentBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/\(entry.hash)")!
                             try self.downloadIncrementalFileSync(from: contentUrl, to: contentTempPath, progressHandler: { _ in })
@@ -1215,6 +1492,7 @@ class BundleFileStorageService: BundleStorageService {
                             }
                             try self.fileSystem.copyItem(atPath: contentTempPath, toPath: targetPath)
                             try? self.fileSystem.removeItem(atPath: contentTempPath)
+                            copiedCount += 1
                         }
                     }
 
@@ -1225,6 +1503,7 @@ class BundleFileStorageService: BundleStorageService {
                             userInfo: [NSLocalizedDescriptionKey: "Reconstructed file hash mismatch: \(normalizedPath)"]
                         ))
                     }
+                    verifiedCount += 1
 
                     let progress = 0.2 + (Double(index + 1) / Double(max(sortedFiles.count, 1))) * 0.8
                     progressHandler(progress)
@@ -1258,6 +1537,24 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.invalidBundle
                 }
 
+                let manifestEntries = sortedFiles.map { file in
+                    BundleManifestEntry(
+                        path: file.path.replacingOccurrences(of: "\\", with: "/"),
+                        hash: file.hash,
+                        size: file.size,
+                        isJs: (try? self.normalizeBundleRelativePath(file.path)) == normalizedJsPath
+                    )
+                }
+                let incrementalManifest = BundleManifest(
+                    schema: BundleManifest.schemaVersion,
+                    bundleId: request.bundleId,
+                    createdAt: Date().timeIntervalSince1970 * 1000,
+                    baseBundleId: request.baseBundleId,
+                    strategy: request.patchStrategy.rawValue,
+                    files: manifestEntries
+                )
+                _ = self.saveBundleManifest(incrementalManifest, bundleDir: finalBundleDir)
+
                 var updatedMetadata = metadata
                 updatedMetadata.stagingBundleId = request.bundleId
                 updatedMetadata.verificationPending = true
@@ -1278,11 +1575,21 @@ class BundleFileStorageService: BundleStorageService {
                 }
 
                 try? self.fileSystem.removeItem(atPath: incrementalTempDir)
+                NSLog(
+                    "[HotUpdaterNative][MODE=INCREMENTAL][RECONSTRUCT] bundleId=\(request.bundleId), linked=\(linkedCount), copied=\(copiedCount), downloaded=\(downloadedCount), verified=\(verifiedCount)"
+                )
+                NSLog(
+                    "[HotUpdaterNative][MODE=INCREMENTAL][SUCCESS] bundleId=\(request.bundleId), baseBundleId=\(request.baseBundleId)"
+                )
                 progressHandler(1.0)
                 completion(.success(true))
             } catch {
                 try? self.fileSystem.removeItem(atPath: tmpDir)
                 try? self.fileSystem.removeItem(atPath: incrementalTempDir)
+                let reason = (error as? BundleStorageError)?.errorCodeString ?? "UNKNOWN_ERROR"
+                NSLog(
+                    "[HotUpdaterNative][MODE=INCREMENTAL][FAILURE] bundleId=\(request.bundleId), baseBundleId=\(request.baseBundleId), reason=\(reason), error=\(error)"
+                )
                 completion(.failure(error))
             }
         }
@@ -1556,6 +1863,12 @@ class BundleFileStorageService: BundleStorageService {
 
                     // 11) Construct final bundlePath for preferences
                     let finalBundlePath = (realDir as NSString).appendingPathComponent((bundlePathInTmp as NSString).lastPathComponent)
+                    let relativeJsPath = finalBundlePath.replacingOccurrences(of: realDir + "/", with: "")
+                    _ = self.ensureBundleManifest(
+                        bundleDir: realDir,
+                        bundleId: bundleId,
+                        jsBundlePathHint: relativeJsPath
+                    )
 
                     // 12) Set the bundle URL in preferences (for backwards compatibility)
                     let setResult = self.setBundleURL(localPath: finalBundlePath)

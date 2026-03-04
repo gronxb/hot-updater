@@ -88,7 +88,7 @@ public struct BundleMetadata: Codable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             }
 
-            try data.write(to: file)
+            try data.write(to: file, options: .atomic)
             print("[BundleMetadata] Saved metadata to file: \(file.path)")
             return true
         } catch {
@@ -157,7 +157,7 @@ public struct CrashedHistory: Codable {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             }
 
-            try data.write(to: file)
+            try data.write(to: file, options: .atomic)
             print("[CrashedHistory] Saved crashed history to file: \(file.path)")
             return true
         } catch {

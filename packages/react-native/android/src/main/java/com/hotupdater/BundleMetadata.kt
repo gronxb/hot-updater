@@ -4,6 +4,44 @@ import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
+private fun writeTextAtomically(
+    file: File,
+    contents: String,
+) {
+    val parentDir =
+        file.parentFile
+            ?: file.absoluteFile.parentFile
+            ?: throw IllegalStateException("Cannot resolve parent directory for ${file.absolutePath}")
+    parentDir.mkdirs()
+    val tmpFile = File(parentDir, "${file.name}.tmp")
+    tmpFile.writeText(contents)
+
+    try {
+        Files.move(
+            tmpFile.toPath(),
+            file.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    } catch (_: Exception) {
+        try {
+            Files.move(
+                tmpFile.toPath(),
+                file.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: Exception) {
+            tmpFile.copyTo(file, overwrite = true)
+        }
+    } finally {
+        if (tmpFile.exists()) {
+            tmpFile.delete()
+        }
+    }
+}
 
 /**
  * Bundle metadata for managing stable/staging bundles and verification state
@@ -107,8 +145,7 @@ data class BundleMetadata(
 
     fun saveToFile(file: File): Boolean =
         try {
-            file.parentFile?.mkdirs()
-            file.writeText(toJson().toString(2))
+            writeTextAtomically(file, toJson().toString(2))
             Log.d(TAG, "Saved metadata to file: ${file.absolutePath}")
             true
         } catch (e: Exception) {
@@ -192,8 +229,7 @@ data class CrashedHistory(
 
     fun saveToFile(file: File): Boolean =
         try {
-            file.parentFile?.mkdirs()
-            file.writeText(toJson().toString(2))
+            writeTextAtomically(file, toJson().toString(2))
             Log.d(TAG, "Saved crashed history to file: ${file.absolutePath}")
             true
         } catch (e: Exception) {

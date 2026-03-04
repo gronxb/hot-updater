@@ -178,8 +178,15 @@ export async function checkForUpdate(
           if (result) {
             return true;
           }
+          console.warn(
+            "[HotUpdater][incremental] incremental apply returned false, falling back to full update",
+          );
         } catch (error) {
           options.onError?.(error as Error);
+          console.warn(
+            "[HotUpdater][incremental] incremental apply failed, falling back to full update",
+            error,
+          );
         }
       }
 
