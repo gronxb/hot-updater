@@ -12,6 +12,7 @@
     "resetToOriginalBundle",
     "isOriginalBundle",
     "isUpdateDownloaded",
+    "getAppVersion",
     "useHotUpdaterStore",
     "addListener",
     "getCrashHistory",
