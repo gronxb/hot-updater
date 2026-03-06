@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   type Bundle,
   type GetBundlesArgs,
+  isDeviceEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
@@ -12,23 +13,43 @@ import { afterAll, beforeEach, describe } from "vitest";
 import { prepareSql } from "./prepareSql";
 
 const createInsertBundleQuery = (bundle: Bundle) => {
+  const rolloutPercentage = bundle.rolloutPercentage ?? 100;
+  const targetDeviceIds = bundle.targetDeviceIds
+    ? `ARRAY[${bundle.targetDeviceIds.map((id) => `'${id}'`).join(",")}]::TEXT[]`
+    : "NULL";
+
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash
+      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash,
+      rollout_percentage, target_device_ids
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
       '${bundle.platform}',
-      '${bundle.targetAppVersion}',
+      ${bundle.targetAppVersion ? `'${bundle.targetAppVersion}'` : "null"},
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
       '${bundle.channel}',
       '${bundle.storageUri}',
-      '${bundle.fingerprintHash}'
-    );
+      ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"},
+      ${rolloutPercentage},
+      ${targetDeviceIds}
+    ) ON CONFLICT (id) DO UPDATE SET
+      file_hash = EXCLUDED.file_hash,
+      platform = EXCLUDED.platform,
+      target_app_version = EXCLUDED.target_app_version,
+      should_force_update = EXCLUDED.should_force_update,
+      enabled = EXCLUDED.enabled,
+      git_commit_hash = EXCLUDED.git_commit_hash,
+      message = EXCLUDED.message,
+      channel = EXCLUDED.channel,
+      storage_uri = EXCLUDED.storage_uri,
+      fingerprint_hash = EXCLUDED.fingerprint_hash,
+      rollout_percentage = EXCLUDED.rollout_percentage,
+      target_device_ids = EXCLUDED.target_device_ids;
   `;
 };
 
@@ -49,11 +70,16 @@ const createGetUpdateInfo =
 
     if (_updateStrategy === "fingerprint") {
       const fingerprintHash = args.fingerprintHash;
+      const deviceId = args.deviceId;
       const result = await db.query<{
         id: string;
         should_force_update: boolean;
         message: string;
         status: string;
+        storage_uri: string | null;
+        file_hash: string | null;
+        rollout_percentage: number | null;
+        target_device_ids: string[] | null;
       }>(
         `
       SELECT * FROM get_update_info_by_fingerprint_hash(
@@ -66,9 +92,25 @@ const createGetUpdateInfo =
       `,
       );
 
-      return result.rows[0]
-        ? (camelcaseKeys(result.rows[0]) as UpdateInfo)
-        : null;
+      if (!result.rows[0]) {
+        return null;
+      }
+
+      const row = result.rows[0];
+
+      if (deviceId && row.status === "UPDATE") {
+        const eligible = isDeviceEligibleForUpdate(
+          deviceId,
+          row.rollout_percentage,
+          row.target_device_ids,
+        );
+
+        if (!eligible) {
+          return null;
+        }
+      }
+
+      return camelcaseKeys(row) as UpdateInfo;
     }
 
     const appVersion = args.appVersion;
@@ -85,11 +127,16 @@ const createGetUpdateInfo =
       appVersion,
     );
 
+    const deviceId = args.deviceId;
     const result = await db.query<{
       id: string;
       should_force_update: boolean;
       message: string;
       status: string;
+      storage_uri: string | null;
+      file_hash: string | null;
+      rollout_percentage: number | null;
+      target_device_ids: string[] | null;
     }>(
       `
       SELECT * FROM get_update_info_by_app_version(
@@ -103,9 +150,25 @@ const createGetUpdateInfo =
       `,
     );
 
-    return result.rows[0]
-      ? (camelcaseKeys(result.rows[0]) as UpdateInfo)
-      : null;
+    if (!result.rows[0]) {
+      return null;
+    }
+
+    const row = result.rows[0];
+
+    if (deviceId && row.status === "UPDATE") {
+      const eligible = isDeviceEligibleForUpdate(
+        deviceId,
+        row.rollout_percentage,
+        row.target_device_ids,
+      );
+
+      if (!eligible) {
+        return null;
+      }
+    }
+
+    return camelcaseKeys(row) as UpdateInfo;
   };
 
 const createInsertBundleQuerys = (bundles: Bundle[]) => {
