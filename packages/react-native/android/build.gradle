@@ -71,6 +71,12 @@ android {
 
     def minBundleId = project.hasProperty("MIN_BUNDLE_ID") ? project.properties["MIN_BUNDLE_ID"] : null
     buildConfigField "String", "MIN_BUNDLE_ID", minBundleId == null ? "\"null\"" : "\"${minBundleId}\""
+
+    externalNativeBuild {
+      cmake {
+        cFlags "-O2"
+      }
+    }
   }
 
   buildFeatures {
@@ -104,6 +110,12 @@ android {
           "generated/jni"
         ]
       }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "src/main/jni/CMakeLists.txt"
     }
   }
 }

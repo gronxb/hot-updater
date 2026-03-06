@@ -2,6 +2,7 @@ import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
+  type UpdateBundleIncrementalParams,
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
 
@@ -37,6 +38,8 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
 export type UpdateParams = UpdateBundleParams & {
   status: UpdateStatus;
 };
+
+export type IncrementalUpdateParams = UpdateBundleIncrementalParams;
 
 // In-flight update deduplication by bundleId (session-scoped).
 const inflightUpdates = new Map<string, Promise<boolean>>();
@@ -118,6 +121,45 @@ export async function updateBundle(
   })();
 
   inflightUpdates.set(updateBundleId, promise);
+  return promise;
+}
+
+/**
+ * Applies an incremental update flow in native layer.
+ *
+ * @param {IncrementalUpdateParams} params - Incremental update parameters
+ * @returns {Promise<boolean>} Resolves with true if incremental update was successful
+ */
+export async function updateBundleIncremental(
+  params: IncrementalUpdateParams,
+): Promise<boolean> {
+  if (lastInstalledBundleId === params.bundleId) {
+    return true;
+  }
+
+  const currentBundleId = getBundleId();
+  if (params.bundleId.localeCompare(currentBundleId) <= 0) {
+    throw new Error(
+      "Update bundle id is the same as the current bundle id. Preventing infinite update loop.",
+    );
+  }
+
+  const existing = inflightUpdates.get(params.bundleId);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const ok = await HotUpdaterNative.updateBundleIncremental(params);
+      if (ok) {
+        lastInstalledBundleId = params.bundleId;
+      }
+      return ok;
+    } finally {
+      inflightUpdates.delete(params.bundleId);
+    }
+  })();
+
+  inflightUpdates.set(params.bundleId, promise);
   return promise;
 }
 

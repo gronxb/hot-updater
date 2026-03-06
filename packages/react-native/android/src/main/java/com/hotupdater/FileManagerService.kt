@@ -2,6 +2,7 @@ package com.hotupdater
 
 import android.content.Context
 import java.io.File
+import java.nio.file.Files
 
 /**
  * Interface for file system operations
@@ -39,6 +40,14 @@ interface FileSystemService {
     ): Boolean
 
     /**
+     * Creates a hard link from source file to destination file
+     */
+    fun linkItem(
+        sourcePath: String,
+        destinationPath: String,
+    ): Boolean
+
+    /**
      * Lists the contents of a directory
      */
     fun contentsOfDirectory(path: String): List<String>
@@ -57,9 +66,18 @@ class FileManagerService(
 ) : FileSystemService {
     override fun fileExists(path: String): Boolean = File(path).exists()
 
-    override fun createDirectory(path: String): Boolean = File(path).mkdirs()
+    override fun createDirectory(path: String): Boolean {
+        val directory = File(path)
+        return (directory.exists() && directory.isDirectory) || directory.mkdirs()
+    }
 
-    override fun removeItem(path: String): Boolean = File(path).deleteRecursively()
+    override fun removeItem(path: String): Boolean {
+        val target = File(path)
+        if (!target.exists()) {
+            return true
+        }
+        return target.deleteRecursively()
+    }
 
     override fun moveItem(
         sourcePath: String,
@@ -69,10 +87,21 @@ class FileManagerService(
         val destination = File(destinationPath)
 
         return try {
-            if (destination.exists()) {
-                destination.deleteRecursively()
+            if (!source.exists()) {
+                return false
             }
-            source.renameTo(destination)
+
+            destination.parentFile?.mkdirs()
+            if (destination.exists() && !destination.deleteRecursively()) {
+                return false
+            }
+
+            if (source.renameTo(destination)) {
+                return true
+            }
+
+            source.copyRecursively(target = destination, overwrite = true)
+            source.deleteRecursively()
         } catch (e: Exception) {
             false
         }
@@ -86,11 +115,40 @@ class FileManagerService(
         val destination = File(destinationPath)
 
         return try {
-            if (destination.exists()) {
-                destination.deleteRecursively()
+            if (!source.exists()) {
+                return false
+            }
+
+            destination.parentFile?.mkdirs()
+            if (destination.exists() && !destination.deleteRecursively()) {
+                return false
             }
             source.copyRecursively(target = destination, overwrite = true)
         } catch (e: Exception) {
+            false
+        }
+    }
+
+    override fun linkItem(
+        sourcePath: String,
+        destinationPath: String,
+    ): Boolean {
+        val source = File(sourcePath)
+        val destination = File(destinationPath)
+
+        return try {
+            if (!source.exists() || !source.isFile) {
+                return false
+            }
+
+            destination.parentFile?.mkdirs()
+            if (destination.exists()) {
+                destination.delete()
+            }
+
+            Files.createLink(destination.toPath(), source.toPath())
+            true
+        } catch (_: Exception) {
             false
         }
     }

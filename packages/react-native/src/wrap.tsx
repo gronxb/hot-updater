@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useState } from "react";
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
+import type { IncrementalConfigInput } from "./incrementalConfig";
 import {
   getBundleId,
   type NotifyAppReadyResult,
@@ -118,6 +119,15 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      */
     updateMode: "auto";
 
+    /**
+     * Incremental update options.
+     * - `true`: enable incremental endpoint with manifest reconstruction strategy
+     * - `{ enable: true, strategy: "bsdiff" }`: enable incremental endpoint and apply patch in native layer
+     * - Falls back to full bundle update when incremental flow fails
+     * @default false
+     */
+    incremental?: IncrementalConfigInput;
+
     onError?: (error: HotUpdaterError | Error | unknown) => void;
 
     /**
@@ -191,6 +201,7 @@ type InternalCommonOptions = {
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
+  incremental?: IncrementalConfigInput;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
   fallbackComponent?: React.FC<{
     status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
@@ -278,6 +289,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           const updateInfo = await checkForUpdate({
             resolver: restOptions.resolver,
             updateStrategy: restOptions.updateStrategy,
+            incremental: restOptions.incremental,
             requestHeaders: restOptions.requestHeaders,
             requestTimeout: restOptions.requestTimeout,
             onError: restOptions.onError,

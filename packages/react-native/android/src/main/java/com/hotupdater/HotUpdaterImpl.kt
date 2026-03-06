@@ -270,7 +270,44 @@ class HotUpdaterImpl {
         fileHash: String?,
         progressCallback: (Double) -> Unit,
     ) {
-        bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+        Log.d(
+            TAG,
+            "[HotUpdaterNative][MODE=FULL][START] bundleId=$bundleId fileUrl=$fileUrl fileHash=$fileHash",
+        )
+        try {
+            bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+            Log.d(TAG, "[HotUpdaterNative][MODE=FULL][SUCCESS] bundleId=$bundleId")
+        } catch (e: Exception) {
+            Log.e(TAG, "[HotUpdaterNative][MODE=FULL][FAILURE] bundleId=$bundleId", e)
+            throw e
+        }
+    }
+
+    /**
+     * Applies incremental update based on a local base bundle.
+     */
+    suspend fun updateBundleIncremental(
+        request: IncrementalUpdateRequest,
+        progressCallback: (Double) -> Unit,
+    ) {
+        Log.d(
+            TAG,
+            "[HotUpdaterNative][MODE=INCREMENTAL][START] bundleId=${request.bundleId} baseBundleId=${request.baseBundleId} jsBundlePath=${request.jsBundlePath} files=${request.files.size} strategy=${request.patchStrategy.wireValue}",
+        )
+        try {
+            bundleStorage.updateBundleIncremental(request, progressCallback)
+            Log.d(
+                TAG,
+                "[HotUpdaterNative][MODE=INCREMENTAL][SUCCESS] bundleId=${request.bundleId} baseBundleId=${request.baseBundleId}",
+            )
+        } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "[HotUpdaterNative][MODE=INCREMENTAL][FAILURE] bundleId=${request.bundleId} baseBundleId=${request.baseBundleId}",
+                e,
+            )
+            throw e
+        }
     }
 
     /**

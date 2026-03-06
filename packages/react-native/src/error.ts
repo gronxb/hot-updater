@@ -33,6 +33,12 @@ export enum HotUpdaterErrorCode {
    */
   INVALID_FILE_URL = "INVALID_FILE_URL",
 
+  /**
+   * Incremental update parameters are missing or malformed.
+   * @retryable false
+   */
+  INVALID_INCREMENTAL_REQUEST = "INVALID_INCREMENTAL_REQUEST",
+
   // ==================== Bundle Storage Errors ====================
 
   /**
@@ -106,6 +112,18 @@ export enum HotUpdaterErrorCode {
    * @retryable false - Bundle was marked as crashed for safety
    */
   BUNDLE_IN_CRASHED_HISTORY = "BUNDLE_IN_CRASHED_HISTORY",
+
+  /**
+   * Base bundle required for incremental patching was not found locally.
+   * @retryable false
+   */
+  BASE_BUNDLE_NOT_FOUND = "BASE_BUNDLE_NOT_FOUND",
+
+  /**
+   * Binary patch application failed.
+   * @retryable false
+   */
+  PATCH_APPLY_FAILED = "PATCH_APPLY_FAILED",
 
   // ==================== Signature Verification Errors ====================
   // (Collapsed into SIGNATURE_VERIFICATION_FAILED)

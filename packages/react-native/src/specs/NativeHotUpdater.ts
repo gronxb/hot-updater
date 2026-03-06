@@ -16,6 +16,27 @@ export interface UpdateBundleParams {
   fileHash: string | null;
 }
 
+export interface IncrementalFileEntry {
+  path: string;
+  size: number;
+  hash: string;
+  signedHash: string;
+}
+
+export interface UpdateBundleIncrementalParams {
+  bundleId: string;
+  baseBundleId: string;
+  contentBaseUrl: string;
+  jsBundlePath: string;
+  patchHash: string;
+  patchSignedHash: string;
+  sourceHash: string;
+  targetHash: string;
+  targetSignedHash: string;
+  patchStrategy?: "manifest" | "bsdiff";
+  files: IncrementalFileEntry[];
+}
+
 export interface Spec extends TurboModule {
   // Methods
   reload(): Promise<void>;
@@ -51,6 +72,14 @@ export interface Spec extends TurboModule {
    *   or UNKNOWN_ERROR to keep the JS error surface small.
    */
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
+
+  /**
+   * Applies an incremental update by patching base JS bundle and reconstructing
+   * target files from base bundle + downloaded content files.
+   */
+  updateBundleIncremental(
+    params: UpdateBundleIncrementalParams,
+  ): Promise<boolean>;
 
   /**
    * Notifies the native side that the app has successfully started with the given bundle.

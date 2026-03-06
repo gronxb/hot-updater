@@ -291,6 +291,63 @@ RCT_EXPORT_MODULE();
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 
+- (void)updateBundleIncremental:(JS::NativeHotUpdater::UpdateBundleIncrementalParams &)params
+                        resolve:(RCTPromiseResolveBlock)resolve
+                         reject:(RCTPromiseRejectBlock)reject {
+    NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
+
+    if (params.bundleId()) {
+        paramDict[@"bundleId"] = params.bundleId();
+    }
+    if (params.baseBundleId()) {
+        paramDict[@"baseBundleId"] = params.baseBundleId();
+    }
+    if (params.contentBaseUrl()) {
+        paramDict[@"contentBaseUrl"] = params.contentBaseUrl();
+    }
+    if (params.jsBundlePath()) {
+        paramDict[@"jsBundlePath"] = params.jsBundlePath();
+    }
+    if (params.patchHash()) {
+        paramDict[@"patchHash"] = params.patchHash();
+    }
+    if (params.patchSignedHash()) {
+        paramDict[@"patchSignedHash"] = params.patchSignedHash();
+    }
+    if (params.sourceHash()) {
+        paramDict[@"sourceHash"] = params.sourceHash();
+    }
+    if (params.targetHash()) {
+        paramDict[@"targetHash"] = params.targetHash();
+    }
+    if (params.targetSignedHash()) {
+        paramDict[@"targetSignedHash"] = params.targetSignedHash();
+    }
+    if (params.patchStrategy()) {
+        paramDict[@"patchStrategy"] = params.patchStrategy();
+    }
+
+    NSMutableArray *files = [NSMutableArray array];
+    for (const auto &entry : params.files()) {
+        NSMutableDictionary *fileDict = [NSMutableDictionary dictionary];
+        if (entry.path()) {
+            fileDict[@"path"] = entry.path();
+        }
+        fileDict[@"size"] = @(entry.size());
+        if (entry.hash()) {
+            fileDict[@"hash"] = entry.hash();
+        }
+        if (entry.signedHash()) {
+            fileDict[@"signedHash"] = entry.signedHash();
+        }
+        [files addObject:fileDict];
+    }
+    paramDict[@"files"] = files;
+
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl updateBundleIncremental:paramDict resolver:resolve rejecter:reject];
+}
+
 - (NSDictionary *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
     NSString *bundleId = nil;
     if (params.bundleId()) {
@@ -368,6 +425,14 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:params resolver:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(updateBundleIncremental:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    NSLog(@"[HotUpdater.mm] updateBundleIncremental called. params: %@", params);
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl updateBundleIncremental:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {

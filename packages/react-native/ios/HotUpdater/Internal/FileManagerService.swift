@@ -14,6 +14,7 @@ protocol FileSystemService {
     func removeItem(atPath path: String) throws
     func moveItem(atPath srcPath: String, toPath dstPath: String) throws
     func copyItem(atPath srcPath: String, toPath dstPath: String) throws
+    func linkItem(atPath srcPath: String, toPath dstPath: String) throws
     func contentsOfDirectory(atPath path: String) throws -> [String]
     func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any]
     func documentsPath() -> String
@@ -37,9 +38,27 @@ class FileManagerService: FileSystemService {
     }
     
     func removeItem(atPath path: String) throws {
+        if !fileManager.fileExists(atPath: path) {
+            return
+        }
+
         do {
             try fileManager.removeItem(atPath: path)
-        } catch let error {
+        } catch let error as NSError {
+            if error.domain == NSCocoaErrorDomain && error.code == NSFileNoSuchFileError {
+                return
+            }
+
+            if error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
+                return
+            }
+
+            if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+               underlying.domain == NSPOSIXErrorDomain,
+               underlying.code == Int(ENOENT) {
+                return
+            }
+
             NSLog("[FileSystemService] Failed to remove item at \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
@@ -59,6 +78,15 @@ class FileManagerService: FileSystemService {
             try fileManager.copyItem(atPath: srcPath, toPath: dstPath)
         } catch let error {
             NSLog("[FileSystemService] Failed to copy item from \(srcPath) to \(dstPath): \(error)")
+            throw FileSystemError.fileOperationFailed(srcPath, error)
+        }
+    }
+
+    func linkItem(atPath srcPath: String, toPath dstPath: String) throws {
+        do {
+            try fileManager.linkItem(atPath: srcPath, toPath: dstPath)
+        } catch let error {
+            NSLog("[FileSystemService] Failed to hardlink item from \(srcPath) to \(dstPath): \(error)")
             throw FileSystemError.fileOperationFailed(srcPath, error)
         }
     }

@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/bsdiff",
   "version": "0.25.13",
-  "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
+  "description": "Hot Updater BSdiff library that produces ENDSLEY/BSDIFF43 patches for RN bspatch flows",
   "type": "module",
   "main": "./dist/node.js",
   "types": "./dist/index.d.ts",

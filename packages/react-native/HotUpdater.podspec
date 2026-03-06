@@ -13,7 +13,7 @@ Pod::Spec.new do |s|
 
   s.platforms    = { :ios => "13.4", :tvos => "13.4" }
   s.source       = { :git => "https://github.com/gronxb/hot-updater.git", :tag => "#{s.version}" }
-  s.source_files  = "ios/**/*.{h,m,mm,swift}"
+  s.source_files  = ["ios/**/*.{h,m,mm,swift}", "cpp/**/*.{h,c,cpp}"]
   s.public_header_files = "ios/HotUpdater/Public/*.h"
   s.private_header_files = "ios/HotUpdater/Internal/*.h"
   s.exclude_files = ["ios/HotUpdater/Package.swift", "ios/HotUpdater/Test/**/*.{swift,h,m,mm}"]

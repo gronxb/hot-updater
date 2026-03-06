@@ -9,7 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bsdiff = "0.2.1"
-bzip2 = "0.6.1"
 
 [profile.release]
 opt-level = "z"

@@ -1,6 +1,51 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 import type { NotifyAppReadyResult } from "./native";
 
+export type IncrementalPatchStrategy = "manifest" | "bsdiff";
+
+export interface IncrementalOptions {
+  enable?: boolean;
+  strategy?: IncrementalPatchStrategy;
+}
+
+export interface IncrementalFileEntry {
+  path: string;
+  size: number;
+  hash: string;
+  signedHash: string;
+}
+
+export interface IncrementalPatchInfo {
+  hash: string;
+  signedHash: string;
+  sourceHash: string;
+  targetHash: string;
+  targetSignedHash: string;
+}
+
+export interface IncrementalPayload {
+  fromBundleId: string;
+  toBundleId: string;
+  platform: "ios" | "android";
+  jsBundlePath: string;
+  contentBaseUrl: string;
+  patch: IncrementalPatchInfo;
+  files: IncrementalFileEntry[];
+}
+
+export type IncrementalCheckResponse =
+  | { mode: "none" }
+  | { mode: "full"; full: AppUpdateInfo }
+  | {
+      mode: "incremental";
+      full: AppUpdateInfo;
+      incremental: IncrementalPayload;
+    };
+
+export type ResolverCheckUpdateResult =
+  | AppUpdateInfo
+  | IncrementalCheckResponse;
+
 /**
  * Parameters passed to resolver.checkUpdate method
  */
@@ -34,6 +79,18 @@ export interface ResolverCheckUpdateParams {
    * Update strategy being used
    */
   updateStrategy: "fingerprint" | "appVersion";
+
+  /**
+   * Whether incremental endpoint should be used.
+   */
+  incremental?: boolean;
+
+  /**
+   * Incremental patch strategy for native apply path.
+   * - "manifest": reconstruct JS from full target file
+   * - "bsdiff": apply BSDIFF patch over base JS in native layer
+   */
+  incrementalStrategy?: IncrementalPatchStrategy;
 
   /**
    * The fingerprint hash (only present when using fingerprint strategy)
@@ -106,7 +163,7 @@ export interface HotUpdaterResolver {
    */
   checkUpdate?: (
     params: ResolverCheckUpdateParams,
-  ) => Promise<AppUpdateInfo | null>;
+  ) => Promise<ResolverCheckUpdateResult | null>;
 
   /**
    * Custom implementation for notifying app ready.

@@ -21,8 +21,8 @@ describe.sequential("runtime: node precompiled entry", () => {
     const { hdiff } = await importFreshNodeRuntime();
 
     const patch = await hdiff(base, next);
-    expect(Buffer.from(patch.subarray(0, 8)).toString("ascii")).toBe(
-      "BSDIFF40",
+    expect(Buffer.from(patch.subarray(0, 16)).toString("ascii")).toBe(
+      "ENDSLEY/BSDIFF43",
     );
     expect(patch.byteLength).toBeGreaterThan(0);
 

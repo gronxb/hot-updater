@@ -2,14 +2,24 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
+  type IncrementalConfigInput,
+  resolveIncrementalConfig,
+} from "./incrementalConfig";
+import {
   getAppVersion,
   getBundleId,
   getChannel,
   getFingerprintHash,
   getMinBundleId,
   updateBundle,
+  updateBundleIncremental,
 } from "./native";
-import type { HotUpdaterResolver } from "./types";
+import type {
+  HotUpdaterResolver,
+  IncrementalCheckResponse,
+  IncrementalPayload,
+  ResolverCheckUpdateResult,
+} from "./types";
 
 export interface CheckForUpdateOptions {
   /**
@@ -21,6 +31,7 @@ export interface CheckForUpdateOptions {
   updateStrategy: "appVersion" | "fingerprint";
 
   requestHeaders?: Record<string, string>;
+  incremental?: IncrementalConfigInput;
   onError?: (error: Error) => void;
   /**
    * The timeout duration for the request.
@@ -36,6 +47,42 @@ export type CheckForUpdateResult = AppUpdateInfo & {
    */
   updateBundle: () => Promise<boolean>;
 };
+
+function normalizeUpdateInfo(
+  updateInfo: ResolverCheckUpdateResult,
+): { full: AppUpdateInfo; incremental: IncrementalPayload | null } | null {
+  if (
+    updateInfo &&
+    typeof updateInfo === "object" &&
+    "mode" in updateInfo &&
+    typeof updateInfo.mode === "string"
+  ) {
+    const incrementalResponse = updateInfo as IncrementalCheckResponse;
+
+    if (incrementalResponse.mode === "none") {
+      return null;
+    }
+
+    if (incrementalResponse.mode === "full") {
+      return {
+        full: incrementalResponse.full,
+        incremental: null,
+      };
+    }
+
+    if (incrementalResponse.mode === "incremental") {
+      return {
+        full: incrementalResponse.full,
+        incremental: incrementalResponse.incremental,
+      };
+    }
+  }
+
+  return {
+    full: updateInfo as AppUpdateInfo,
+    incremental: null,
+  };
+}
 
 // Internal type that includes resolver for use within index.ts
 export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
@@ -68,6 +115,7 @@ export async function checkForUpdate(
   }
 
   const fingerprintHash = getFingerprintHash();
+  const incrementalConfig = resolveIncrementalConfig(options.incremental);
 
   if (!options.resolver?.checkUpdate) {
     options.onError?.(
@@ -76,7 +124,7 @@ export async function checkForUpdate(
     return null;
   }
 
-  let updateInfo: AppUpdateInfo | null = null;
+  let updateInfo: ResolverCheckUpdateResult | null = null;
 
   try {
     updateInfo = await options.resolver.checkUpdate({
@@ -86,6 +134,8 @@ export async function checkForUpdate(
       minBundleId,
       channel,
       updateStrategy: options.updateStrategy,
+      incremental: incrementalConfig.enabled,
+      incrementalStrategy: incrementalConfig.strategy,
       fingerprintHash,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,
@@ -99,14 +149,52 @@ export async function checkForUpdate(
     return null;
   }
 
+  const normalizedUpdateInfo = normalizeUpdateInfo(updateInfo);
+  if (!normalizedUpdateInfo) {
+    return null;
+  }
+
+  const { full, incremental } = normalizedUpdateInfo;
+
   return {
-    ...updateInfo,
+    ...full,
     updateBundle: async () => {
-      return updateBundle({
-        bundleId: updateInfo.id,
-        fileUrl: updateInfo.fileUrl,
-        fileHash: updateInfo.fileHash,
-        status: updateInfo.status,
+      if (incremental) {
+        try {
+          const result = await updateBundleIncremental({
+            bundleId: full.id,
+            baseBundleId: incremental.fromBundleId,
+            contentBaseUrl: incremental.contentBaseUrl,
+            jsBundlePath: incremental.jsBundlePath,
+            patchHash: incremental.patch.hash,
+            patchSignedHash: incremental.patch.signedHash,
+            sourceHash: incremental.patch.sourceHash,
+            targetHash: incremental.patch.targetHash,
+            targetSignedHash: incremental.patch.targetSignedHash,
+            patchStrategy: incrementalConfig.strategy,
+            files: incremental.files,
+          });
+
+          if (result) {
+            return true;
+          }
+          console.warn(
+            "[HotUpdater][incremental] incremental apply returned false, falling back to full update",
+          );
+        } catch (error) {
+          options.onError?.(error as Error);
+          console.warn(
+            "[HotUpdater][incremental] incremental apply failed, falling back to full update",
+            error,
+          );
+        }
+      }
+
+      return await updateBundle({
+        bundleId: full.id,
+        fileUrl: full.fileUrl,
+        fileHash: full.fileHash,
+        status: full.status,
       });
     },
   };

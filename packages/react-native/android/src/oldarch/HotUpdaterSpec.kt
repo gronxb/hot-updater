@@ -13,6 +13,11 @@ abstract class HotUpdaterSpec internal constructor(
         promise: Promise,
     )
 
+    abstract fun updateBundleIncremental(
+        params: ReadableMap,
+        promise: Promise,
+    )
+
     abstract fun reload(promise: Promise)
 
     abstract fun notifyAppReady(params: ReadableMap): String

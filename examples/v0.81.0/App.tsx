@@ -8,15 +8,7 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Button,
-  Image,
-  Modal,
-  SafeAreaView,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Button, Modal, SafeAreaView, Text, View } from "react-native";
 import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
@@ -112,6 +104,15 @@ function App(): React.JSX.Element {
           {crash}
         </Text>
       ))}
+      {/* 
+      <Image
+        style={{
+          width: 100,
+          height: 100,
+        }}
+        source={require("./src/logo.png")}
+        // source={require("./src/test/_image.png")}
+      />
 
       <Image
         style={{
@@ -120,7 +121,7 @@ function App(): React.JSX.Element {
         }}
         // source={require("./src/logo.png")}
         source={require("./src/test/_image.png")}
-      />
+      /> */}
 
       <Text>{JSON.stringify(state, null, 2)}</Text>
 
@@ -137,7 +138,15 @@ export default HotUpdater.wrap({
   baseURL: "http://localhost:3007/hot-updater",
   updateStrategy: "appVersion",
   updateMode: "auto",
+  incremental: {
+    enable: true,
+    strategy: "bsdiff",
+  },
+  onUpdateProcessCompleted: (result) => {
+    console.log("[HotUpdater][incremental] update process completed:", result);
+  },
   onNotifyAppReady: (result) => {
+    console.log("[HotUpdater][incremental] notifyAppReady:", result);
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;
   },
@@ -167,6 +176,7 @@ export default HotUpdater.wrap({
     </Modal>
   ),
   onError: (error) => {
+    console.log("[HotUpdater][incremental] error:", error);
     if (error instanceof Error) {
       Alert.alert("Error", error.message);
     } else {
