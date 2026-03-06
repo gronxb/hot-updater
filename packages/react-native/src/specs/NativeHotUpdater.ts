@@ -14,6 +14,7 @@ export interface UpdateBundleParams {
    * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
+  channel?: string;
 }
 
 export interface Spec extends TurboModule {
@@ -92,6 +93,15 @@ export interface Spec extends TurboModule {
    * @returns Base URL string (e.g., "file:///data/.../bundle-store/abc123") or "" if not available
    */
   getBaseURL: () => string;
+
+  /**
+   * Resets the app to use the original/fallback bundle included at build time.
+   * This clears all OTA-installed bundles and removes the entire bundle cache.
+   *
+   * @returns Promise that resolves to true if successful
+   * @throws {HotUpdaterErrorCode} Rejects with error if reset fails
+   */
+  resetToOriginalBundle(): Promise<boolean>;
 
   // EventEmitter
   addListener(eventName: string): void;

@@ -85,6 +85,20 @@ class HotUpdaterException(
                 "Bundle '$bundleId' is in crashed history and cannot be applied",
             )
 
+        fun bundleRemovalFailed(bundleName: String, cause: Throwable) =
+            HotUpdaterException(
+                "BUNDLE_REMOVAL_FAILED",
+                "Failed to remove bundle '$bundleName': ${cause.message}",
+                cause,
+            )
+
+        fun resetToOriginalFailed(cause: Throwable) =
+            HotUpdaterException(
+                "RESET_TO_ORIGINAL_FAILED",
+                "Failed to reset to original bundle: ${cause.message}",
+                cause,
+            )
+
         // Signature verification errors
         fun publicKeyNotConfigured() =
             HotUpdaterException(
@@ -124,10 +138,10 @@ class HotUpdaterException(
             )
 
         // Internal errors
-        fun unknownError(cause: Throwable? = null) =
+        fun unknownError(message: String? = null, cause: Throwable? = null) =
             HotUpdaterException(
                 "UNKNOWN_ERROR",
-                "An unknown error occurred",
+                message ?: "An unknown error occurred",
                 cause,
             )
     }

@@ -76,6 +76,14 @@ interface BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     fun getBaseURL(): String
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     * @return true if reset was successful
+     * @throws HotUpdaterException if the reset fails
+     */
+    suspend fun resetToOriginalBundle(): Boolean
 }
 
 /**
@@ -827,6 +835,78 @@ class BundleFileStorageService(
         } catch (e: Exception) {
             Log.e(TAG, "Error getting base URL: ${e.message}")
             ""
+        }
+    }
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     */
+    override suspend fun resetToOriginalBundle(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Starting reset to original bundle")
+
+            // Clear bundle URL (resets to fallback)
+            if (!setBundleURL(null)) {
+                Log.e(TAG, "Failed to clear bundle URL")
+                return@withContext false
+            }
+
+            // Clear metadata
+            val initialMetadata = BundleMetadata(
+                stableBundleId = null,
+                stagingBundleId = null,
+                verificationPending = false,
+                verificationAttemptedAt = null,
+                stagingExecutionCount = null,
+                isolationKey = isolationKey
+            )
+
+            if (!saveMetadata(initialMetadata)) {
+                Log.e(TAG, "Failed to save cleared metadata")
+                return@withContext false
+            }
+
+            // Clear crash history
+            val clearedHistory = CrashedHistory()
+            if (!saveCrashedHistory(clearedHistory)) {
+                Log.e(TAG, "Failed to clear crash history")
+                return@withContext false
+            }
+
+            // Remove all bundle directories
+            val bundleStoreDir = getBundleStoreDir()
+            if (!bundleStoreDir.exists()) {
+                Log.d(TAG, "Bundle store directory doesn't exist, nothing to clean up")
+                return@withContext true
+            }
+
+            var removedCount = 0
+            bundleStoreDir.listFiles()?.forEach { file ->
+                // Skip metadata and crash history files
+                if (file.name == BundleMetadata.METADATA_FILENAME || 
+                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME) {
+                    return@forEach
+                }
+
+                if (file.isDirectory) {
+                    try {
+                        if (file.deleteRecursively()) {
+                            removedCount++
+                            Log.d(TAG, "Removed bundle: ${file.name}")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to remove bundle '${file.name}': ${e.message}")
+                        throw HotUpdaterException.bundleRemovalFailed(file.name, e)
+                    }
+                }
+            }
+
+            Log.d(TAG, "Successfully reset to original bundle (removed $removedCount bundle directories)")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error resetting to original bundle: ${e.message}")
+            throw if (e is HotUpdaterException) e else HotUpdaterException.resetToOriginalFailed(e)
         }
     }
 }

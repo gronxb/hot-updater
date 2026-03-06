@@ -1,0 +1,80 @@
+---
+title: "isOriginalBundle"
+description: "The `HotUpdater.isOriginalBundle()` function checks whether the app is currently running the original/fallback bundle that was included at build time, or if it's running an OTA-installed bundle."
+icon: CheckCircle
+---
+
+## Usage
+
+Use `isOriginalBundle()` to determine if the app is running the original build-time bundle or an OTA-downloaded bundle. This is useful for debugging and displaying the app's update status to users.
+
+### Example
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+  const isOriginal = HotUpdater.isOriginalBundle();
+
+  return (
+    <View>
+      <Text>
+        {isOriginal
+          ? "Running original app bundle"
+          : "Running OTA-downloaded bundle"}
+      </Text>
+    </View>
+  );
+}
+
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+})(App);
+```
+
+## Return Value
+
+Returns a `boolean`:
+- `true` if the app is running the original/fallback bundle from build time
+- `false` if the app is running an OTA-installed update
+
+## When to Use
+
+- **Debug UI**: Display which bundle version is running in your app's developer menu or info screen
+- **Conditional logic**: Apply different behavior depending on whether you're running the original app
+- **Update status**: Show users whether they have OTA updates installed
+- **Testing**: Verify that OTA updates were successfully applied
+
+## Example: Debug Info Screen
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function DebugScreen() {
+  const bundleId = HotUpdater.getBundleId();
+  const isOriginal = HotUpdater.isOriginalBundle();
+  const channel = HotUpdater.getChannel();
+
+  return (
+    <View>
+      <Text>Bundle ID: {bundleId}</Text>
+      <Text>Is Original: {isOriginal ? "Yes" : "No"}</Text>
+      <Text>Channel: {channel}</Text>
+    </View>
+  );
+}
+
+export default DebugScreen;
+```
+
+## Implementation
+
+This is a pure JavaScript function that compares the current bundle ID with the minimum bundle ID (the build-time bundle ID). It returns `true` only if they match.
+
+## Related APIs
+
+- [`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) - Get the current bundle ID
+- [`HotUpdater.resetToOriginalBundle()`](/docs/react-native-api/resetToOriginalBundle) - Reset to the original bundle
+- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel) - Get the current update channel

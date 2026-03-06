@@ -101,12 +101,18 @@ export async function updateBundle(
       ? undefined
       : paramsOrBundleId.fileHash;
 
+  const targetChannel =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.channel;
+
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        channel: targetChannel,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;
@@ -274,4 +280,42 @@ export const getBaseURL = (): string | null => {
     return result;
   }
   return null;
+};
+
+/**
+ * Resets the app to use the original/fallback bundle included at build time.
+ * This clears all OTA-installed bundles and removes the entire bundle cache.
+ * The app will use the original bundle on the next restart.
+ *
+ * @returns {Promise<boolean>} Resolves with true if reset was successful
+ * @throws {Error} Rejects with error if reset fails
+ *
+ * @example
+ * ```ts
+ * // Clear all OTA updates and return to original bundle
+ * await HotUpdater.resetToOriginalBundle();
+ * HotUpdater.reload();
+ * ```
+ */
+export const resetToOriginalBundle = async (): Promise<boolean> => {
+  return HotUpdaterNative.resetToOriginalBundle();
+};
+
+/**
+ * Checks if the current bundle is the original/fallback bundle included at build time.
+ * Returns true if the current bundle ID matches the minimum bundle ID (build-time bundle).
+ *
+ * @returns {boolean} true if running the original bundle, false if running an OTA update
+ *
+ * @example
+ * ```ts
+ * if (HotUpdater.isOriginalBundle()) {
+ *   console.log('Running original bundle');
+ * } else {
+ *   console.log('Running OTA update');
+ * }
+ * ```
+ */
+export const isOriginalBundle = (): boolean => {
+  return getMinBundleId() === getBundleId();
 };

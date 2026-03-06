@@ -1,0 +1,74 @@
+---
+title: "resetToOriginalBundle"
+description: "The `HotUpdater.resetToOriginalBundle()` function resets the app to use the original/fallback bundle that was included at build time, clearing all OTA-installed bundles and restoring the original channel."
+icon: RotateCcw
+---
+
+## Usage
+
+Use `resetToOriginalBundle()` to completely reset your app to its original state, clearing all downloaded bundles and restoring the app to use the built-in bundle.
+
+### Example
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { TouchableOpacity, Text, View } from "react-native";
+
+function SettingsScreen() {
+  const handleReset = async () => {
+    try {
+      const success = await HotUpdater.resetToOriginalBundle();
+      if (success) {
+        // Reload the app to use the original bundle
+        await HotUpdater.reload();
+      }
+    } catch (error) {
+      console.error("Failed to reset:", error);
+    }
+  };
+
+  return (
+    <View>
+      <TouchableOpacity onPress={handleReset}>
+        <Text>Reset to Original Bundle</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+export default App;
+```
+
+## Behavior
+
+- **Clears all downloaded bundles**: Removes all OTA-installed bundles from device storage
+- **Removes crash history**: Clears the record of previously crashed bundles
+- **Restores original channel**: Reverts the channel to the default channel specified at build time
+- **App reload required**: After resetting, call `HotUpdater.reload()` to restart the app with the original bundle
+
+## When to Use
+
+- **Debugging**: When you need to verify the original app behavior without any OTA updates
+- **Troubleshooting**: If the app is experiencing issues with a downloaded bundle, reset to the original to confirm the issue is update-related
+- **User action**: Allow users to opt-out of OTA updates through a settings screen
+- **Clean state**: When testing or resetting to a known good state
+
+## Return Value
+
+Returns a `Promise<boolean>`:
+- `true` if the reset was successful
+- `false` otherwise
+
+## Error Handling
+
+The function will throw an error if:
+- The reset operation fails (e.g., file system issues)
+- The app doesn't have necessary permissions
+
+Always wrap the call in a try-catch block for proper error handling.
+
+## Related APIs
+
+- [`HotUpdater.isOriginalBundle()`](/docs/react-native-api/isOriginalBundle) - Check if currently running the original bundle
+- [`HotUpdater.getBundleChannel()`](/docs/react-native-api/getBundleChannel) - Switch to a different channel and download updates
+- [`HotUpdater.reload()`](/docs/react-native-api/reload) - Restart the app with current bundle

@@ -5,12 +5,16 @@
   "pages": [
     "wrap",
     "checkForUpdate",
+    "updateBundle",
+    "getBundleChannel",
     "reload",
     "getChannel",
+    "resetToOriginalBundle",
+    "isOriginalBundle",
+    "isUpdateDownloaded",
     "getAppVersion",
     "useHotUpdaterStore",
     "addListener",
-    "isUpdateDownloaded",
     "getCrashHistory",
     "clearCrashHistory"
   ]

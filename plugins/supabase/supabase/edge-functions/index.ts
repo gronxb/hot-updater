@@ -329,4 +329,32 @@ app.get(
   },
 );
 
+app.get("/api/bundles/channels", async (c) => {
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      {
+        auth: { autoRefreshToken: false, persistSession: false },
+      },
+    );
+
+    const { data, error } = await supabase.rpc("get_channels");
+    if (error) {
+      throw error;
+    }
+
+    const channels = data.map((item: { channel: string }) => item.channel);
+    return c.json({ channels }, 200);
+  } catch (err: unknown) {
+    console.error("Error fetching channels:", err);
+    return c.json(
+      {
+        error: err instanceof Error ? err.message : "Failed to fetch channels",
+      },
+      500,
+    );
+  }
+});
+
 Deno.serve(app.fetch);

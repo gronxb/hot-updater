@@ -4,6 +4,12 @@ import {
   type InternalCheckForUpdateOptions,
 } from "./checkForUpdate";
 import { createDefaultResolver } from "./DefaultResolver";
+import { getBundleChannel as getBundleChannelByName } from "./getBundleChannel";
+import {
+  type GetChannelsOptions,
+  getChannels,
+  type InternalGetChannelsOptions,
+} from "./getChannels";
 import {
   addListener,
   clearCrashHistory,
@@ -15,8 +21,10 @@ import {
   getFingerprintHash,
   getMinBundleId,
   reload,
+  resetToOriginalBundle,
   type UpdateParams,
   updateBundle,
+  isOriginalBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
@@ -67,6 +75,7 @@ function createHotUpdaterClient() {
   // Global configuration stored from wrap
   const globalConfig: {
     resolver: HotUpdaterResolver | null;
+    baseURL?: string;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
   } = {
@@ -153,6 +162,8 @@ function createHotUpdaterClient() {
       }
 
       globalConfig.resolver = normalizedOptions.resolver;
+      globalConfig.baseURL =
+        "baseURL" in options && options.baseURL ? options.baseURL : undefined;
       globalConfig.requestHeaders = options.requestHeaders;
       globalConfig.requestTimeout = options.requestTimeout;
 
@@ -355,6 +366,106 @@ function createHotUpdaterClient() {
      * ```
      */
     clearCrashHistory,
+
+    /**
+     * Fetches the list of available channels from the update server.
+     *
+     * @param {Object} options - Configuration options for the request
+     * @param {Record<string, string>} [options.requestHeaders] - Optional request headers
+     * @param {number} [options.requestTimeout] - Request timeout in milliseconds (default: 5000)
+     * @param {(error: Error) => void} [options.onError] - Error callback
+     *
+     * @returns {Promise<string[] | null>} Array of channel names or null on error
+     *
+     * @example
+     * ```ts
+     * const channels = await HotUpdater.getChannels();
+     * ```
+     */
+    getChannels: (options: GetChannelsOptions = {}) => {
+      if (!globalConfig.baseURL) {
+        const error = new Error(
+          "[HotUpdater] getChannels requires baseURL to be configured. " +
+            "Please use HotUpdater.wrap() with baseURL option.",
+        );
+        options.onError?.(error);
+        return Promise.resolve(null);
+      }
+
+      const mergedOptions: InternalGetChannelsOptions = {
+        ...options,
+        baseURL: globalConfig.baseURL,
+        requestHeaders: {
+          ...globalConfig.requestHeaders,
+          ...options.requestHeaders,
+        },
+        requestTimeout: options.requestTimeout ?? globalConfig.requestTimeout,
+      };
+
+      return getChannels(mergedOptions);
+    },
+
+    /**
+     * Checks for updates using a specific channel.
+     * This is a wrapper around checkForUpdate and returns the same result shape.
+     *
+     * @param {string} channelName - The target channel (e.g., "production", "staging")
+     * @param {CheckForUpdateOptions} config - Update check configuration
+     *
+     * @returns {Promise<CheckForUpdateResult | null>} Update information or null if up to date
+     */
+    getBundleChannel: (
+      channelName: string,
+      config: CheckForUpdateOptions,
+    ) => {
+      const resolver = ensureGlobalResolver("getBundleChannel");
+
+      const mergedConfig: InternalCheckForUpdateOptions = {
+        ...config,
+        resolver,
+        requestHeaders: {
+          ...globalConfig.requestHeaders,
+          ...config.requestHeaders,
+        },
+        requestTimeout: config.requestTimeout ?? globalConfig.requestTimeout,
+      };
+
+      return getBundleChannelByName(channelName, mergedConfig);
+    },
+
+    /**
+     * Resets the app to use the original/fallback bundle included at build time.
+     * This clears all OTA-installed bundles and removes the entire bundle cache.
+     * The app will use the original bundle on the next restart.
+     *
+     * @returns {Promise<boolean>} Resolves with true if reset was successful
+     * @throws {Error} Rejects with error if reset fails
+     *
+     * @example
+     * ```ts
+     * // Clear all OTA updates and return to original bundle
+     * await HotUpdater.resetToOriginalBundle();
+     * HotUpdater.reload();
+     * ```
+     */
+    resetToOriginalBundle,
+
+    /**
+     * Checks if the current bundle is the original/fallback bundle included at build time.
+     * Returns true if the current bundle ID matches the minimum bundle ID (build-time bundle).
+     *
+     * @returns {boolean} true if running the original bundle, false if running an OTA update
+     *
+     * @example
+     * ```ts
+     * if (HotUpdater.isOriginalBundle()) {
+     *   console.log('Running original bundle');
+     * } else {
+     *   console.log('Running OTA update');
+     * }
+     * ```
+     */
+    isOriginalBundle,
   };
 }
 

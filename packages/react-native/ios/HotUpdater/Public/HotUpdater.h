@@ -36,7 +36,7 @@
 - (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 
 /**
- * 다운로드 진행 상황 업데이트 시간을 추적하는 속성
+ * A property that tracks the download progress update time.
  */
 @property (nonatomic, assign) NSTimeInterval lastUpdateTime;
 

@@ -286,6 +286,9 @@ RCT_EXPORT_MODULE();
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
+    if (params.channel()) {
+        paramDict[@"channel"] = params.channel();
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
@@ -320,6 +323,13 @@ RCT_EXPORT_MODULE();
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+- (void)resetToOriginalBundle:(RCTPromiseResolveBlock)resolve
+                       reject:(RCTPromiseRejectBlock)reject {
+    NSLog(@"[HotUpdater.mm] resetToOriginalBundle called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetToOriginalBundle:resolve rejecter:reject];
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -396,6 +406,13 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_METHOD(resetToOriginalBundle:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    NSLog(@"[HotUpdater.mm] resetToOriginalBundle called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetToOriginalBundle:resolve rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {
