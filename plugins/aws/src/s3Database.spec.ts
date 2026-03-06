@@ -3,6 +3,7 @@
 import { CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import {
   GetObjectCommand,
+  InvalidObjectState,
   ListObjectsV2Command,
   NoSuchKey,
   S3Client,
@@ -57,6 +58,8 @@ const createBundleJsonFingerprint = (
 
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
+// archivedKeys simulates objects transitioned to Glacier/Deep Archive.
+let archivedKeys = new Set<string>();
 // 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
 
@@ -104,6 +107,7 @@ vi.mock("@aws-sdk/client-cloudfront", async () => {
 
 beforeEach(() => {
   fakeStore = {};
+  archivedKeys = new Set();
   cloudfrontInvalidations = [];
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
@@ -120,6 +124,16 @@ beforeEach(() => {
       }
       if (command instanceof GetObjectCommand) {
         const key = command.input.Key;
+        if (key && archivedKeys.has(key)) {
+          const error = new Error("InvalidObjectState");
+          Object.assign(error, {
+            name: "InvalidObjectState",
+            Code: "InvalidObjectState",
+            StorageClass: "GLACIER",
+          });
+          Object.setPrototypeOf(error, InvalidObjectState.prototype);
+          throw error;
+        }
         if (key && fakeStore[key] !== undefined) {
           await delay(7);
           return { Body: Readable.from([Buffer.from(fakeStore[key])]) };
@@ -874,6 +888,38 @@ describe("s3Database plugin", () => {
     fakeStore = {}; // Initialize S3 store
     const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
     expect(bundles.data).toEqual([]);
+  });
+
+  it("should skip Glacier objects when reading update.json files", async () => {
+    const activeBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "00000000-0000-0000-0000-000000000100",
+    );
+    const archivedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.1",
+      "00000000-0000-0000-0000-000000000101",
+    );
+
+    const activeKey = "production/ios/1.0.0/update.json";
+    const archivedKey = "production/ios/1.0.1/update.json";
+    fakeStore[activeKey] = JSON.stringify([activeBundle]);
+    fakeStore[archivedKey] = JSON.stringify([archivedBundle]);
+    archivedKeys.add(archivedKey);
+
+    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+
+    expect(bundles.data).toEqual([activeBundle]);
+    expect(bundles.pagination).toEqual({
+      total: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 1,
+    });
   });
 
   it("should append multiple bundles and commit them to the correct update.json files", async () => {

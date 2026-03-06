@@ -59,15 +59,22 @@ export function DataTable(props: DataTableProps) {
   const [local] = splitProps(props, ["columns", "onRowClick"]);
   const { channelFilter, platformFilter, setPlatformFilter, setChannelFilter } =
     useFilter();
+  const channels = useChannelsQuery();
+  const selectedChannel = createMemo(
+    () => channelFilter() ?? channels.data?.[0] ?? null,
+  );
+  const shouldFetchBundles = createMemo(
+    () => channelFilter() !== null || channels.isFetched,
+  );
 
   const query = createMemo(() => ({
-    channel: channelFilter() ?? undefined,
+    channel: selectedChannel() ?? undefined,
     platform: platformFilter() ?? undefined,
     limit: pagination().pageSize.toString(),
     offset: (pagination().pageIndex * pagination().pageSize).toString(),
   }));
 
-  const bundlesQuery = useBundlesQuery(query);
+  const bundlesQuery = useBundlesQuery(query, shouldFetchBundles);
 
   const bundlesResponse = createMemo(
     () => bundlesQuery.data ?? { data: [], pagination: null },
@@ -102,8 +109,6 @@ export function DataTable(props: DataTableProps) {
   const handleRowClick = (row: Row<Bundle>) => () => {
     local.onRowClick(row.original);
   };
-
-  const channels = useChannelsQuery();
 
   createEffect(() => {
     if (channels.isFetched && channels.data && channelFilter() === null) {

@@ -5,6 +5,7 @@ import {
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  InvalidObjectState,
   ListObjectsV2Command,
   NoSuchKey,
   S3Client,
@@ -30,8 +31,24 @@ export interface S3DatabaseConfig extends S3ClientConfig {
 
 /**
  * Loads JSON data from S3.
- * Returns null if NoSuchKey error occurs.
+ * Returns null if NoSuchKey or InvalidObjectState error occurs.
  */
+function isInvalidObjectStateError(error: unknown): boolean {
+  if (error instanceof InvalidObjectState) return true;
+  if (!error || typeof error !== "object") return false;
+
+  const maybe = error as {
+    name?: string;
+    Code?: string;
+    code?: string;
+  };
+  return (
+    maybe.name === "InvalidObjectState" ||
+    maybe.Code === "InvalidObjectState" ||
+    maybe.code === "InvalidObjectState"
+  );
+}
+
 async function loadJsonFromS3<T>(
   client: S3Client,
   bucket: string,
@@ -45,7 +62,7 @@ async function loadJsonFromS3<T>(
     const bodyContents = await streamToString(Body);
     return JSON.parse(bodyContents) as T;
   } catch (e) {
-    if (e instanceof NoSuchKey) return null;
+    if (e instanceof NoSuchKey || isInvalidObjectStateError(e)) return null;
     throw e;
   }
 }

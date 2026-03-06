@@ -10,6 +10,7 @@ const DEFAULT_CHANNEL = "production";
 
 export const useBundlesQuery = (
   query: Accessor<Parameters<typeof api.bundles.$get>[0]["query"]>,
+  enabled: Accessor<boolean> = () => true,
 ) =>
   useQuery(() => ({
     queryKey: ["bundles", query()],
@@ -17,6 +18,7 @@ export const useBundlesQuery = (
       const res = await api.bundles.$get({ query: query() });
       return res.json();
     },
+    enabled: enabled(),
     placeholderData: (prev) => prev,
     staleTime: Number.POSITIVE_INFINITY,
   }));
