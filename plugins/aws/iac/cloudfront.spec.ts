@@ -6,7 +6,7 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
   HOT_UPDATER_MANAGED_CACHE_POLICY_IDS,
-} from "./cloudfront";
+} from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
   bucketName: "hot-updater-bucket",
@@ -34,6 +34,12 @@ describe("buildDistributionConfigOverrides", () => {
     expect(overrides.Origins.Items?.[0]?.CustomHeaders).toEqual({
       Quantity: 0,
     });
+    expect(overrides.DefaultCacheBehavior.LambdaFunctionAssociations).toEqual({
+      Quantity: 0,
+    });
+    expect(overrides.DefaultCacheBehavior.FunctionAssociations).toEqual({
+      Quantity: 0,
+    });
     expect("ForwardedValues" in defaultBehavior).toBe(false);
     expect("MinTTL" in defaultBehavior).toBe(false);
     expect("DefaultTTL" in defaultBehavior).toBe(false);
@@ -46,6 +52,9 @@ describe("buildDistributionConfigOverrides", () => {
     expect(legacyEndpointBehavior.OriginRequestPolicyId).toBe(
       baseOptions.originRequestPolicyId,
     );
+    expect(legacyEndpointBehavior.FunctionAssociations).toEqual({
+      Quantity: 0,
+    });
     expect("ForwardedValues" in legacyEndpointBehavior).toBe(false);
     expect("MinTTL" in legacyEndpointBehavior).toBe(false);
     expect("DefaultTTL" in legacyEndpointBehavior).toBe(false);
@@ -55,6 +64,9 @@ describe("buildDistributionConfigOverrides", () => {
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
       HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
     );
+    expect(cachedEndpointBehavior.FunctionAssociations).toEqual({
+      Quantity: 0,
+    });
     expect("ForwardedValues" in cachedEndpointBehavior).toBe(false);
     expect("MinTTL" in cachedEndpointBehavior).toBe(false);
     expect("DefaultTTL" in cachedEndpointBehavior).toBe(false);
@@ -80,6 +92,16 @@ describe("buildDistributionConfigOverrides", () => {
           Cookies: { Forward: "none" },
         },
         MinTTL: 0,
+        LambdaFunctionAssociations: {
+          Quantity: 1,
+          Items: [
+            {
+              EventType: "viewer-request",
+              LambdaFunctionARN:
+                "arn:aws:lambda:us-east-1:123456789012:function:default-behavior:1",
+            },
+          ],
+        },
       },
       CacheBehaviors: {
         Quantity: 2,
@@ -138,6 +160,12 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(updatedConfig.Comment).toBe("Hot Updater CloudFront distribution");
     expect(updatedDefaultBehavior).toEqual(defaultBehavior);
+    expect(updatedDefaultBehavior.LambdaFunctionAssociations).toEqual({
+      Quantity: 0,
+    });
+    expect(updatedDefaultBehavior.FunctionAssociations).toEqual({
+      Quantity: 0,
+    });
     expect(updatedConfig.Origins?.Items?.[0]?.CustomHeaders).toEqual({
       Quantity: 1,
       Items: [
