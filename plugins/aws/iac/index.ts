@@ -225,6 +225,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     publicKeyId: publicKeyId,
     ssmParameterName: ssmParameterName,
     ssmRegion: bucketRegion,
+    s3Region: bucketRegion,
   });
 
   // Create or update CloudFront distribution

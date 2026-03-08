@@ -1,4 +1,3 @@
-import { SSM } from "@aws-sdk/client-ssm";
 import {
   type GetBundlesArgs,
   NIL_UUID,
@@ -19,70 +18,13 @@ import { withSignedUrl } from "./withSignedUrl";
 
 declare global {
   var HotUpdater: {
-    CLOUDFRONT_KEY_PAIR_ID: string;
-    SSM_PARAMETER_NAME: string;
-    SSM_REGION: string;
     S3_BUCKET_NAME: string;
+    S3_REGION?: string;
   };
 }
 
-const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
-const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
-const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
-
-// Global cache for private key (persists across warm Lambda invocations)
-let cachedPrivateKey: string | null = null;
-
-/**
- * Retrieves CloudFront private key from SSM Parameter Store
- * Uses global cache to avoid repeated SSM calls on warm Lambda invocations
- */
-async function getPrivateKey(): Promise<string> {
-  if (cachedPrivateKey !== null) {
-    return cachedPrivateKey;
-  }
-
-  // Validate SSM region format
-  if (!SSM_REGION) {
-    throw new Error(
-      `Invalid AWS region format: ${SSM_REGION}. Expected format like 'us-east-1' or 'ap-southeast-1'`,
-    );
-  }
-
-  const ssmClient = new SSM({ region: SSM_REGION });
-  const response = await ssmClient.getParameter({
-    Name: SSM_PARAMETER_NAME,
-    WithDecryption: true,
-  });
-
-  if (!response.Parameter?.Value) {
-    throw new Error(
-      `Failed to retrieve private key from SSM parameter: ${SSM_PARAMETER_NAME}`,
-    );
-  }
-
-  // Parse the stored key pair JSON with error handling
-  let keyPair: { privateKey?: unknown };
-  try {
-    keyPair = JSON.parse(response.Parameter.Value);
-  } catch (error) {
-    throw new Error(
-      `Invalid JSON format in SSM parameter: ${SSM_PARAMETER_NAME}. ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-
-  const privateKey = keyPair.privateKey;
-
-  if (!privateKey || typeof privateKey !== "string") {
-    throw new Error(
-      `Invalid private key format in SSM parameter: ${SSM_PARAMETER_NAME}`,
-    );
-  }
-
-  cachedPrivateKey = privateKey;
-  return privateKey;
-}
+const S3_REGION = HotUpdater.S3_REGION ?? "ap-northeast-2";
 
 type Bindings = {
   callback: Callback;
@@ -133,9 +75,6 @@ const handleUpdateRequest = async (
       return c.json({ error: "Missing host header." }, 500);
     }
 
-    // Retrieve private key from SSM (or cache)
-    const privateKey = await getPrivateKey();
-
     const updateConfig: GetBundlesArgs = {
       platform: params.platform,
       bundleId: params.bundleId,
@@ -152,7 +91,7 @@ const handleUpdateRequest = async (
     const updateInfo = await getUpdateInfo(
       {
         bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
+        region: S3_REGION,
       },
       updateConfig,
     );
@@ -167,9 +106,7 @@ const handleUpdateRequest = async (
 
     const appUpdateInfo = await withSignedUrl({
       data: updateInfo,
-      reqUrl: c.req.url,
-      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-      privateKey: privateKey,
+      region: S3_REGION,
       expiresSeconds,
     });
 

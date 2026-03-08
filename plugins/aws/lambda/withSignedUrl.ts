@@ -1,29 +1,37 @@
-import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+import { GetObjectCommand, S3 } from "@aws-sdk/client-s3";
 import { NIL_UUID } from "@hot-updater/core";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+const s3Clients = new Map<string, S3>();
+
+const getS3Client = (region: string) => {
+  const existingClient = s3Clients.get(region);
+  if (existingClient) {
+    return existingClient;
+  }
+
+  const client = new S3({ region });
+  s3Clients.set(region, client);
+  return client;
+};
 
 /**
- * Creates a CloudFront signed URL based on the provided update information.
+ * Creates a signed download URL based on the provided update information.
  *
  * @param {Object} options - Function options
  * @param {T|null} options.data - Update information (null if none)
- * @param {string} options.reqUrl - Request URL (base URL for URL generation)
- * @param {string} options.keyPairId - CloudFront key pair ID
- * @param {string} options.privateKey - CloudFront private key
+ * @param {string} options.region - S3 bucket region
  * @returns {Promise<T|null>} - Update response object with fileUrl or null
  */
 export const withSignedUrl = async <
   T extends { id: string; storageUri: string | null },
 >({
   data,
-  reqUrl,
-  keyPairId,
-  privateKey,
+  region,
   expiresSeconds = 60,
 }: {
   data: T | null;
-  reqUrl: string;
-  keyPairId: string;
-  privateKey: string;
+  region: string;
   expiresSeconds?: number;
 }): Promise<(Omit<T, "storageUri"> & { fileUrl: string | null }) | null> => {
   if (!data) {
@@ -36,18 +44,19 @@ export const withSignedUrl = async <
   }
 
   const storageUrl = new URL(data.storageUri);
-  const key = storageUrl.pathname;
+  const bucket = storageUrl.host;
+  const key = storageUrl.pathname.slice(1);
 
-  const url = new URL(reqUrl);
-  url.pathname = key;
-
-  // Create CloudFront signed URL
-  const signedUrl = getSignedUrl({
-    url: url.toString(),
-    keyPairId: keyPairId,
-    privateKey: privateKey,
-    dateLessThan: new Date(Date.now() + expiresSeconds * 1000).toISOString(), // Valid for expiresSeconds seconds
-  });
+  const signedUrl = await getSignedUrl(
+    getS3Client(region),
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+    {
+      expiresIn: expiresSeconds,
+    },
+  );
 
   return { ...rest, fileUrl: signedUrl };
 };
