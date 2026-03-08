@@ -1,4 +1,4 @@
-import { type AppUpdateInfo, NIL_UUID } from "@hot-updater/core";
+import type { AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
@@ -13,6 +13,8 @@ import {
   updateBundle,
 } from "./native";
 import type { HotUpdaterResolver } from "./types";
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 export interface CheckForUpdateOptions {
   /**
