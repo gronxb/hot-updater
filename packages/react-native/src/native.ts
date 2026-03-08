@@ -92,6 +92,7 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
 
 export type UpdateParams = UpdateBundleParams & {
   status: UpdateStatus;
+  shouldSkipCurrentBundleIdCheck?: boolean;
 };
 
 /**
@@ -126,15 +127,18 @@ export async function updateBundle(
     return true;
   }
 
-  const currentBundleId = getBundleId();
+  const shouldSkipCurrentBundleIdCheck =
+    typeof paramsOrBundleId === "string"
+      ? false
+      : paramsOrBundleId.shouldSkipCurrentBundleIdCheck === true;
 
-  // updateBundleId <= currentBundleId
   if (
+    !shouldSkipCurrentBundleIdCheck &&
     status === "UPDATE" &&
-    updateBundleId.localeCompare(currentBundleId) <= 0
+    updateBundleId.localeCompare(getBundleId()) <= 0
   ) {
     throw new Error(
-      "Update bundle id is the same as the current bundle id. Preventing infinite update loop.",
+      "Update bundle id is not newer than the current bundle id. Preventing infinite update loop.",
     );
   }
 

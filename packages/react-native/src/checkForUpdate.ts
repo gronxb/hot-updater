@@ -166,6 +166,7 @@ export async function checkForUpdate(
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
         status: updateInfo.status,
+        shouldSkipCurrentBundleIdCheck: isFirstRuntimeChannelSwitchAttempt,
       });
     },
   };
