@@ -311,8 +311,4 @@ app.get(
   },
 );
 
-app.get("*", async (c) => {
-  return c.env.callback(null, c.env.request);
-});
-
 export const handler = handle(app) as CloudFrontRequestHandler;
