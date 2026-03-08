@@ -23,6 +23,9 @@ declare global {
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
+const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
+const IMMUTABLE_CACHE_CONTROL = `public, max-age=${ONE_YEAR_IN_SECONDS}, immutable`;
+const NO_STORE_CACHE_CONTROL = "no-store";
 
 // Global cache for private key (persists across warm Lambda invocations)
 let cachedPrivateKey: string | null = null;
@@ -118,6 +121,7 @@ const handleUpdateRequest = async (
   params: UpdateRequestParams,
   strategy: UpdateStrategy,
   expiresSeconds: number,
+  cacheControl?: string,
 ) => {
   try {
     const cdnHost = c.req.header("host");
@@ -149,6 +153,10 @@ const handleUpdateRequest = async (
       },
       updateConfig,
     );
+
+    if (cacheControl) {
+      c.header("Cache-Control", cacheControl);
+    }
 
     if (!updateInfo) {
       return c.json(null);
@@ -220,6 +228,7 @@ app.get("/api/check-update", async (c) => {
       params,
       fingerprintHash ? "fingerprint" : "appVersion",
       expiresSeconds,
+      NO_STORE_CACHE_CONTROL,
     );
   } catch (error) {
     console.error("Legacy endpoint error:", error);
@@ -263,8 +272,13 @@ app.get(
 
     // Since the signedUrl is also cached due to caching,
     // we set a sufficiently long expiration time for the signedUrl in this endpoint.
-    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
-    return handleUpdateRequest(c, params, "appVersion", expiresSeconds);
+    return handleUpdateRequest(
+      c,
+      params,
+      "appVersion",
+      ONE_YEAR_IN_SECONDS,
+      IMMUTABLE_CACHE_CONTROL,
+    );
   },
 );
 
@@ -305,8 +319,13 @@ app.get(
 
     // Since the signedUrl is also cached due to caching,
     // we set a sufficiently long expiration time for the signedUrl in this endpoint.
-    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
-    return handleUpdateRequest(c, params, "fingerprint", expiresSeconds);
+    return handleUpdateRequest(
+      c,
+      params,
+      "fingerprint",
+      ONE_YEAR_IN_SECONDS,
+      IMMUTABLE_CACHE_CONTROL,
+    );
   },
 );
 

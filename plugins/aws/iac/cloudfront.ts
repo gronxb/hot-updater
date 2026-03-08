@@ -1,11 +1,156 @@
 import {
+  type AllowedMethods,
   CloudFront,
   type DistributionConfig,
 } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
 import crypto from "crypto";
-import { delay, merge } from "es-toolkit";
+import { delay } from "es-toolkit";
 import type { AwsRegion } from "./regionLocationMap";
+
+export const HOT_UPDATER_MANAGED_CACHE_POLICY_IDS = {
+  cachingDisabled: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+  useOriginCacheControlHeaders: "83da9c7e-98b4-4e11-a168-04f0df8e2c65",
+} as const;
+
+export const HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS = [
+  "x-bundle-id",
+  "x-app-version",
+  "x-app-platform",
+  "x-min-bundle-id",
+  "x-channel",
+  "x-fingerprint-hash",
+] as const;
+
+const HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME =
+  "HotUpdaterCheckUpdateOriginRequestPolicy";
+
+type DistributionConfigOverrides = {
+  Origins: NonNullable<DistributionConfig["Origins"]>;
+  DefaultCacheBehavior: NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
+  CacheBehaviors: NonNullable<DistributionConfig["CacheBehaviors"]>;
+};
+
+const getReadOnlyMethods = (): AllowedMethods => ({
+  Quantity: 2,
+  Items: ["HEAD", "GET"],
+  CachedMethods: {
+    Quantity: 2,
+    Items: ["HEAD", "GET"],
+  },
+});
+
+export const buildDistributionConfigOverrides = (options: {
+  bucketName: string;
+  bucketDomain: string;
+  functionArn: string;
+  keyGroupId: string;
+  oacId: string;
+  originRequestPolicyId: string;
+}): DistributionConfigOverrides => ({
+  Origins: {
+    Quantity: 1,
+    Items: [
+      {
+        Id: options.bucketName,
+        DomainName: options.bucketDomain,
+        OriginAccessControlId: options.oacId,
+        S3OriginConfig: { OriginAccessIdentity: "" },
+      },
+    ],
+  },
+  DefaultCacheBehavior: {
+    TargetOriginId: options.bucketName,
+    ViewerProtocolPolicy: "redirect-to-https",
+    TrustedKeyGroups: {
+      Enabled: true,
+      Quantity: 1,
+      Items: [options.keyGroupId],
+    },
+    CachePolicyId:
+      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
+    SmoothStreaming: false,
+    Compress: true,
+    FieldLevelEncryptionId: "",
+    AllowedMethods: getReadOnlyMethods(),
+  },
+  CacheBehaviors: {
+    Quantity: 2,
+    Items: [
+      {
+        PathPattern: "/api/check-update",
+        TargetOriginId: options.bucketName,
+        ViewerProtocolPolicy: "redirect-to-https",
+        LambdaFunctionAssociations: {
+          Quantity: 1,
+          Items: [
+            {
+              EventType: "origin-request",
+              LambdaFunctionARN: options.functionArn,
+            },
+          ],
+        },
+        CachePolicyId: HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.cachingDisabled,
+        OriginRequestPolicyId: options.originRequestPolicyId,
+        SmoothStreaming: false,
+        Compress: true,
+        FieldLevelEncryptionId: "",
+        AllowedMethods: getReadOnlyMethods(),
+      },
+      {
+        PathPattern: "/api/check-update/*",
+        TargetOriginId: options.bucketName,
+        ViewerProtocolPolicy: "redirect-to-https",
+        LambdaFunctionAssociations: {
+          Quantity: 1,
+          Items: [
+            {
+              EventType: "origin-request",
+              LambdaFunctionARN: options.functionArn,
+            },
+          ],
+        },
+        CachePolicyId:
+          HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
+        SmoothStreaming: false,
+        Compress: true,
+        FieldLevelEncryptionId: "",
+        AllowedMethods: getReadOnlyMethods(),
+      },
+    ],
+  },
+});
+
+export const applyDistributionConfigOverrides = (
+  distributionConfig: DistributionConfig,
+  overrides: DistributionConfigOverrides,
+): DistributionConfig => ({
+  ...distributionConfig,
+  Origins: overrides.Origins,
+  DefaultCacheBehavior: overrides.DefaultCacheBehavior,
+  CacheBehaviors: overrides.CacheBehaviors,
+});
+
+export const buildDistributionConfig = (options: {
+  bucketName: string;
+  bucketDomain: string;
+  functionArn: string;
+  keyGroupId: string;
+  oacId: string;
+  originRequestPolicyId: string;
+}): DistributionConfig => ({
+  CallerReference: new Date().toISOString(),
+  Comment: "Hot Updater CloudFront distribution",
+  Enabled: true,
+  ...buildDistributionConfigOverrides(options),
+  DefaultRootObject: "index.html",
+  ViewerCertificate: { CloudFrontDefaultCertificate: true },
+  Restrictions: {
+    GeoRestriction: { RestrictionType: "none", Quantity: 0 },
+  },
+  PriceClass: "PriceClass_All",
+  Aliases: { Quantity: 0, Items: [] },
+});
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -25,6 +170,51 @@ export class CloudFrontManager {
   ) {
     this.region = region;
     this.credentials = credentials;
+  }
+
+  private async getOrCreateOriginRequestPolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const listPoliciesResponse =
+      await cloudfrontClient.listOriginRequestPolicies({
+        Type: "custom",
+      });
+    const existingPolicyId =
+      listPoliciesResponse.OriginRequestPolicyList?.Items?.find(
+        (policy) =>
+          policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
+          HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
+      )?.OriginRequestPolicy?.Id;
+
+    if (existingPolicyId) {
+      return existingPolicyId;
+    }
+
+    const createPolicyResponse =
+      await cloudfrontClient.createOriginRequestPolicy({
+        OriginRequestPolicyConfig: {
+          Name: HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
+          Comment: "HotUpdater headers for /api/check-update requests",
+          CookiesConfig: {
+            CookieBehavior: "none",
+          },
+          HeadersConfig: {
+            HeaderBehavior: "whitelist",
+            Headers: {
+              Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
+              Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
+            },
+          },
+          QueryStringsConfig: {
+            QueryStringBehavior: "none",
+          },
+        },
+      });
+    const originRequestPolicyId = createPolicyResponse.OriginRequestPolicy?.Id;
+    if (!originRequestPolicyId) {
+      throw new Error("Failed to create Origin Request Policy");
+    }
+    return originRequestPolicyId;
   }
 
   async getOrCreateKeyGroup(publicKey: string): Promise<{
@@ -131,6 +321,14 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
+    let originRequestPolicyId: string;
+    try {
+      originRequestPolicyId =
+        await this.getOrCreateOriginRequestPolicy(cloudfrontClient);
+    } catch {
+      throw new Error("Failed to get or create Origin Request Policy");
+    }
+
     const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
     try {
       const listResp = await cloudfrontClient.listDistributions({});
@@ -162,143 +360,14 @@ export class CloudFrontManager {
       if (p.isCancel(selectedDistributionStr)) process.exit(0);
       selectedDistribution = JSON.parse(selectedDistributionStr);
     }
-    const newOverrides: Partial<DistributionConfig> = {
-      Origins: {
-        Quantity: 1,
-        Items: [
-          {
-            Id: options.bucketName,
-            DomainName: bucketDomain,
-            OriginAccessControlId: oacId,
-            S3OriginConfig: { OriginAccessIdentity: "" },
-          },
-        ],
-      },
-      DefaultCacheBehavior: {
-        TargetOriginId: options.bucketName,
-        ViewerProtocolPolicy: "redirect-to-https",
-        TrustedKeyGroups: {
-          Enabled: true,
-          Quantity: 1,
-          Items: [options.keyGroupId],
-        },
-        ForwardedValues: {
-          QueryString: true,
-          Cookies: { Forward: "none" },
-          QueryStringCacheKeys: {
-            Quantity: 0,
-            Items: [],
-          },
-        },
-        MinTTL: 0,
-        SmoothStreaming: false,
-        Compress: true,
-        FieldLevelEncryptionId: "",
-        AllowedMethods: {
-          Quantity: 2,
-          Items: ["HEAD", "GET"],
-          CachedMethods: {
-            Quantity: 2,
-            Items: ["HEAD", "GET"],
-          },
-        },
-      },
-      CacheBehaviors: {
-        Quantity: 2,
-        Items: [
-          // no cache
-          {
-            PathPattern: "/api/check-update",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 0,
-            MaxTTL: 0,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 6,
-                Items: [
-                  "x-bundle-id",
-                  "x-app-version",
-                  "x-app-platform",
-                  "x-min-bundle-id",
-                  "x-channel",
-                  "x-fingerprint-hash",
-                ],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-          {
-            PathPattern: "/api/check-update/*",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 31536000,
-            MaxTTL: 31536000,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 0,
-                Items: [],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-        ],
-      },
-    };
+    const newOverrides = buildDistributionConfigOverrides({
+      bucketName: options.bucketName,
+      bucketDomain,
+      functionArn: options.functionArn,
+      keyGroupId: options.keyGroupId,
+      oacId,
+      originRequestPolicyId,
+    });
 
     if (selectedDistribution) {
       p.log.success(
@@ -309,10 +378,13 @@ export class CloudFrontManager {
           await cloudfrontClient.getDistributionConfig({
             Id: selectedDistribution.Id,
           });
-        const finalConfig: DistributionConfig = merge(
-          DistributionConfig ?? {},
+        if (!DistributionConfig) {
+          throw new Error("CloudFront distribution config was not returned");
+        }
+        const finalConfig = applyDistributionConfigOverrides(
+          DistributionConfig,
           newOverrides,
-        ) as DistributionConfig;
+        );
         await cloudfrontClient.updateDistribution({
           Id: selectedDistribution.Id,
           IfMatch: ETag,
@@ -342,153 +414,14 @@ export class CloudFrontManager {
     }
 
     // Create a new distribution if none exists
-    const finalDistributionConfig: DistributionConfig = {
-      CallerReference: new Date().toISOString(),
-      Comment: "Hot Updater CloudFront distribution",
-      Enabled: true,
-      Origins: {
-        Quantity: 1,
-        Items: [
-          {
-            Id: options.bucketName,
-            DomainName: bucketDomain,
-            OriginAccessControlId: oacId,
-            S3OriginConfig: { OriginAccessIdentity: "" },
-          },
-        ],
-      },
-      DefaultCacheBehavior: {
-        TargetOriginId: options.bucketName,
-        ViewerProtocolPolicy: "redirect-to-https",
-        TrustedKeyGroups: {
-          Enabled: true,
-          Quantity: 1,
-          Items: [options.keyGroupId],
-        },
-        ForwardedValues: {
-          QueryString: true,
-          Cookies: { Forward: "none" },
-          QueryStringCacheKeys: {
-            Quantity: 0,
-            Items: [],
-          },
-        },
-        MinTTL: 0,
-        SmoothStreaming: false,
-        Compress: true,
-        FieldLevelEncryptionId: "",
-        AllowedMethods: {
-          Quantity: 2,
-          Items: ["HEAD", "GET"],
-          CachedMethods: {
-            Quantity: 2,
-            Items: ["HEAD", "GET"],
-          },
-        },
-      },
-      CacheBehaviors: {
-        Quantity: 2,
-        Items: [
-          // no cache
-          {
-            PathPattern: "/api/check-update",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 0,
-            MaxTTL: 0,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 6,
-                Items: [
-                  "x-bundle-id",
-                  "x-app-version",
-                  "x-app-platform",
-                  "x-min-bundle-id",
-                  "x-channel",
-                  "x-fingerprint-hash",
-                ],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-          {
-            PathPattern: "/api/check-update/*",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 31536000,
-            MaxTTL: 31536000,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 0,
-                Items: [],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-        ],
-      },
-      DefaultRootObject: "index.html",
-      ViewerCertificate: { CloudFrontDefaultCertificate: true },
-      Restrictions: {
-        GeoRestriction: { RestrictionType: "none", Quantity: 0 },
-      },
-      PriceClass: "PriceClass_All",
-      Aliases: { Quantity: 0, Items: [] },
-    };
+    const finalDistributionConfig = buildDistributionConfig({
+      bucketName: options.bucketName,
+      bucketDomain,
+      functionArn: options.functionArn,
+      keyGroupId: options.keyGroupId,
+      oacId,
+      originRequestPolicyId,
+    });
 
     try {
       const distResp = await cloudfrontClient.createDistribution({

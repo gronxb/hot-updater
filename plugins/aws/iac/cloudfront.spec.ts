@@ -1,0 +1,136 @@
+import type { DistributionConfig } from "@aws-sdk/client-cloudfront";
+import { describe, expect, it } from "vitest";
+import {
+  applyDistributionConfigOverrides,
+  buildDistributionConfig,
+  buildDistributionConfigOverrides,
+  HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
+  HOT_UPDATER_MANAGED_CACHE_POLICY_IDS,
+} from "./cloudfront";
+
+const baseOptions = {
+  bucketName: "hot-updater-bucket",
+  bucketDomain: "hot-updater-bucket.s3.ap-northeast-2.amazonaws.com",
+  functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
+  keyGroupId: "key-group-id",
+  oacId: "origin-access-control-id",
+  originRequestPolicyId: "origin-request-policy-id",
+};
+
+describe("buildDistributionConfigOverrides", () => {
+  it("uses cache and origin request policies instead of legacy settings", () => {
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const defaultBehavior = overrides.DefaultCacheBehavior;
+    const behaviorItems = overrides.CacheBehaviors.Items ?? [];
+    const [legacyEndpointBehavior, cachedEndpointBehavior] = behaviorItems;
+
+    if (!legacyEndpointBehavior || !cachedEndpointBehavior) {
+      throw new Error("Expected cache behaviors to be generated");
+    }
+
+    expect(defaultBehavior.CachePolicyId).toBe(
+      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
+    );
+    expect("ForwardedValues" in defaultBehavior).toBe(false);
+    expect("MinTTL" in defaultBehavior).toBe(false);
+    expect("DefaultTTL" in defaultBehavior).toBe(false);
+    expect("MaxTTL" in defaultBehavior).toBe(false);
+
+    expect(legacyEndpointBehavior.PathPattern).toBe("/api/check-update");
+    expect(legacyEndpointBehavior.CachePolicyId).toBe(
+      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.cachingDisabled,
+    );
+    expect(legacyEndpointBehavior.OriginRequestPolicyId).toBe(
+      baseOptions.originRequestPolicyId,
+    );
+    expect("ForwardedValues" in legacyEndpointBehavior).toBe(false);
+    expect("MinTTL" in legacyEndpointBehavior).toBe(false);
+    expect("DefaultTTL" in legacyEndpointBehavior).toBe(false);
+    expect("MaxTTL" in legacyEndpointBehavior).toBe(false);
+
+    expect(cachedEndpointBehavior.PathPattern).toBe("/api/check-update/*");
+    expect(cachedEndpointBehavior.CachePolicyId).toBe(
+      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
+    );
+    expect("ForwardedValues" in cachedEndpointBehavior).toBe(false);
+    expect("MinTTL" in cachedEndpointBehavior).toBe(false);
+    expect("DefaultTTL" in cachedEndpointBehavior).toBe(false);
+    expect("MaxTTL" in cachedEndpointBehavior).toBe(false);
+  });
+
+  it("replaces legacy fields when applying overrides to an existing distribution", () => {
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const defaultBehavior = overrides.DefaultCacheBehavior;
+    const behaviorItems = overrides.CacheBehaviors.Items ?? [];
+    const [legacyEndpointBehavior, cachedEndpointBehavior] = behaviorItems;
+
+    if (!legacyEndpointBehavior || !cachedEndpointBehavior) {
+      throw new Error("Expected cache behaviors to be generated");
+    }
+
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      DefaultCacheBehavior: {
+        ...defaultBehavior,
+        ForwardedValues: {
+          QueryString: true,
+          Cookies: { Forward: "none" },
+        },
+        MinTTL: 0,
+      },
+      CacheBehaviors: {
+        Quantity: 2,
+        Items: [
+          {
+            ...legacyEndpointBehavior,
+            ForwardedValues: {
+              QueryString: false,
+              Cookies: { Forward: "none" },
+              Headers: {
+                Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
+                Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
+              },
+            },
+            MinTTL: 0,
+            DefaultTTL: 0,
+            MaxTTL: 0,
+          },
+          {
+            ...cachedEndpointBehavior,
+            ForwardedValues: {
+              QueryString: false,
+              Cookies: { Forward: "none" },
+            },
+            MinTTL: 0,
+            DefaultTTL: 31536000,
+            MaxTTL: 31536000,
+          },
+        ],
+      },
+    };
+
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+    const updatedDefaultBehavior = updatedConfig.DefaultCacheBehavior!;
+    const updatedBehaviorItems = updatedConfig.CacheBehaviors!.Items ?? [];
+
+    expect(updatedConfig.Comment).toBe("Hot Updater CloudFront distribution");
+    expect(updatedDefaultBehavior).toEqual(defaultBehavior);
+    expect("ForwardedValues" in updatedDefaultBehavior).toBe(false);
+    expect("MinTTL" in updatedDefaultBehavior).toBe(false);
+
+    expect(updatedBehaviorItems[0]).toEqual(legacyEndpointBehavior);
+    expect(updatedBehaviorItems[1]).toEqual(cachedEndpointBehavior);
+    expect("ForwardedValues" in (updatedBehaviorItems[0] as object)).toBe(
+      false,
+    );
+    expect("ForwardedValues" in (updatedBehaviorItems[1] as object)).toBe(
+      false,
+    );
+    expect("MinTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
+    expect("DefaultTTL" in (updatedBehaviorItems[1] as object)).toBe(false);
+    expect("MaxTTL" in (updatedBehaviorItems[1] as object)).toBe(false);
+  });
+});
