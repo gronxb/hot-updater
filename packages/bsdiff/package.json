@@ -60,6 +60,7 @@
     "bspatch",
     "react-native"
   ],
+  "repository": "https://github.com/gronxb/hot-updater",
   "devDependencies": {
     "@types/node": "^25.3.2",
     "tsdown": "0.21.0-beta.2",
