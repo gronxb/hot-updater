@@ -251,13 +251,10 @@ const buildCacheBehavior = (
 ): CacheBehavior => ({
   ...buildSharedBehavior(options.bucketName),
   PathPattern: template.pathPattern,
-  CachePolicyId: resolveCachePolicyId(
-    template.cachePolicy,
-    {
-      legacyCachePolicyId: options.legacyCachePolicyId,
-      sharedCachePolicyId: options.sharedCachePolicyId,
-    },
-  ),
+  CachePolicyId: resolveCachePolicyId(template.cachePolicy, {
+    legacyCachePolicyId: options.legacyCachePolicyId,
+    sharedCachePolicyId: options.sharedCachePolicyId,
+  }),
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
     options.functionArn,
   ),
