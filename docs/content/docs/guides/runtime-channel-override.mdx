@@ -30,15 +30,15 @@ channel without rebuilding the native app:
 2. Check another channel with `HotUpdater.checkForUpdate({ channel: "beta" })`.
 3. Call `updateInfo.updateBundle()` only when an update is returned.
 4. Reload the app to start using the installed bundle.
-5. Use `HotUpdater.getChannel()` and `HotUpdater.isChannelSwitched()` to show
-   the current state in your UI.
+5. Use `HotUpdater.getChannel()`, `HotUpdater.getDefaultChannel()`, and
+   `HotUpdater.isChannelSwitched()` to show the current state in your UI.
 6. When you want to leave the runtime override, call
    `HotUpdater.resetChannel()` and reload again.
 
 This keeps the full lifecycle explicit:
 
 - Opt in with `checkForUpdate({ channel })` + `updateBundle()` + `reload()`
-- Observe state with `getChannel()` + `isChannelSwitched()`
+- Observe state with `getChannel()` + `getDefaultChannel()` + `isChannelSwitched()`
 - Opt out with `resetChannel()` + `reload()`
 
 ## Opt Into Another Channel
@@ -76,11 +76,13 @@ import { Text, View } from "react-native";
 
 function ChannelStatus() {
   const currentChannel = HotUpdater.getChannel();
+  const defaultChannel = HotUpdater.getDefaultChannel();
   const switched = HotUpdater.isChannelSwitched();
 
   return (
     <View>
       <Text>Current channel: {currentChannel}</Text>
+      <Text>Default channel: {defaultChannel}</Text>
       <Text>Runtime override active: {switched ? "yes" : "no"}</Text>
     </View>
   );
@@ -105,6 +107,7 @@ async function restoreDefaultChannel() {
 - If no update is returned, the app stays on the current channel.
 - After `updateInfo.updateBundle()` succeeds and the app reloads,
   `HotUpdater.getChannel()` returns the effective runtime channel.
+- `HotUpdater.getDefaultChannel()` still returns the embedded default channel.
 - If no runtime override is active, `HotUpdater.resetChannel()` is a no-op.
 
 <Callout type="warn">
@@ -118,5 +121,6 @@ async function restoreDefaultChannel() {
 
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel)
+- [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel)
 - [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
 - [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)

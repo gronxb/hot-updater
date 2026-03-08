@@ -11,6 +11,7 @@ import {
   getBaseURL,
   getBundleId,
   getChannel,
+  getDefaultChannel,
   getCrashHistory,
   getFingerprintHash,
   getMinBundleId,
@@ -214,6 +215,20 @@ function createHotUpdaterClient() {
      * ```
      */
     getChannel,
+
+    /**
+     * Fetches the build-time default channel of the app.
+     *
+     * This value does not change when a runtime channel override is active.
+     *
+     * @returns {string} The default release channel embedded in the app
+     * @example
+     * ```ts
+     * const defaultChannel = HotUpdater.getDefaultChannel();
+     * console.log(`Default channel: ${defaultChannel}`);
+     * ```
+     */
+    getDefaultChannel,
 
     /**
      * Returns whether the app is currently using a runtime channel override.

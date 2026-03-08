@@ -181,6 +181,13 @@ export const getChannel = (): string => {
 };
 
 /**
+ * Fetches the build-time default channel for the app.
+ */
+export const getDefaultChannel = (): string => {
+  return defaultChannel;
+};
+
+/**
  * Returns whether the app is currently using a runtime channel override.
  */
 export const isChannelSwitched = (): boolean => {

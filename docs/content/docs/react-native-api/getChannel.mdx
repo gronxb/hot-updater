@@ -46,6 +46,7 @@ export default HotUpdater.wrap({
 - If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that overridden channel.
 - If no channel is configured, the default is `production`.
 - The build-time default channel is injected into the native app during the build process based on `releaseChannel` in `hot-updater.config.ts`.
+- Use [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime override state.
 - You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
 
 ## Configuration Example (`hot-updater.config.ts`)
@@ -85,5 +86,6 @@ console.log(HotUpdater.getChannel()); // "beta"
 ## Related APIs
 
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel)
 - [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
 - [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)
