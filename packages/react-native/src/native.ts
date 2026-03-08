@@ -298,6 +298,10 @@ export const getBaseURL = (): string | null => {
  * Clears the runtime channel override and restores the original bundle.
  */
 export const resetChannel = async (): Promise<boolean> => {
+  if (!isChannelSwitched()) {
+    return true;
+  }
+
   const ok = await HotUpdaterNative.resetChannel();
   if (ok) {
     currentChannel = defaultChannel;

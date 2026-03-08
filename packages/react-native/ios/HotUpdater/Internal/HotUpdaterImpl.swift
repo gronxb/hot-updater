@@ -307,7 +307,7 @@ import React
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
-        let result = bundleStorage.resetToOriginalBundle()
+        let result = bundleStorage.resetChannel()
 
         switch result {
         case .success(let success):

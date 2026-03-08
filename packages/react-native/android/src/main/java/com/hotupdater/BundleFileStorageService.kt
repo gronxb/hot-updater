@@ -81,7 +81,7 @@ interface BundleStorageService {
      * Restores the original bundle and clears downloaded bundle state.
      * @return true if the reset was successful
      */
-    suspend fun resetToOriginalBundle(): Boolean
+    suspend fun resetChannel(): Boolean
 }
 
 /**
@@ -836,7 +836,7 @@ class BundleFileStorageService(
         }
     }
 
-    override suspend fun resetToOriginalBundle(): Boolean =
+    override suspend fun resetChannel(): Boolean =
         withContext(Dispatchers.IO) {
             if (!setBundleURL(null)) {
                 return@withContext false

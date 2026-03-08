@@ -122,7 +122,7 @@ public protocol BundleStorageService {
     /**
      * Restores the original bundle and clears downloaded bundle state.
      */
-    func resetToOriginalBundle() -> Result<Bool, Error>
+    func resetChannel() -> Result<Bool, Error>
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -1231,7 +1231,7 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
-    func resetToOriginalBundle() -> Result<Bool, Error> {
+    func resetChannel() -> Result<Bool, Error> {
         guard case .success = setBundleURL(localPath: nil) else {
             return .failure(BundleStorageError.unknown(nil))
         }
