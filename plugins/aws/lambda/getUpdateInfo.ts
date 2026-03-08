@@ -151,11 +151,6 @@ const fingerprintStrategy = async (
     keyPairId,
     privateKey,
   });
-  console.log(
-    "result",
-    `${channel}/${platform}/${fingerprintHash}/update.json`,
-    result,
-  );
 
   return getUpdateInfoJS(result ?? [], {
     platform,

@@ -70,7 +70,6 @@ const createGetUpdateInfo =
         } else {
           responses[updateUrl.toString()] = [bundle];
         }
-        console.log("responses", responses);
       }
     } else {
       responses["*"] = null;

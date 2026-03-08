@@ -9,6 +9,11 @@ import type { CloudFrontRequestHandler } from "aws-lambda";
 import { type Context, Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
+import {
+  NO_STORE_CACHE_CONTROL,
+  ONE_YEAR_IN_SECONDS,
+  SHARED_EDGE_CACHE_CONTROL,
+} from "./cacheControl";
 import { getUpdateInfo } from "./getUpdateInfo";
 import { withSignedUrl } from "./withSignedUrl";
 
@@ -23,9 +28,6 @@ declare global {
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
-const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
-const IMMUTABLE_CACHE_CONTROL = `public, max-age=${ONE_YEAR_IN_SECONDS}, immutable`;
-const NO_STORE_CACHE_CONTROL = "no-store";
 
 // Global cache for private key (persists across warm Lambda invocations)
 let cachedPrivateKey: string | null = null;
@@ -277,7 +279,7 @@ app.get(
       params,
       "appVersion",
       ONE_YEAR_IN_SECONDS,
-      IMMUTABLE_CACHE_CONTROL,
+      SHARED_EDGE_CACHE_CONTROL,
     );
   },
 );
@@ -324,7 +326,7 @@ app.get(
       params,
       "fingerprint",
       ONE_YEAR_IN_SECONDS,
-      IMMUTABLE_CACHE_CONTROL,
+      SHARED_EDGE_CACHE_CONTROL,
     );
   },
 );
