@@ -14,6 +14,32 @@ export class IAMManager {
     this.credentials = credentials;
   }
 
+  private async ensureManagedPolicies(iamClient: IAM, roleName: string) {
+    const attachedPolicies = await iamClient.listAttachedRolePolicies({
+      RoleName: roleName,
+    });
+
+    const attachedPolicyArns = new Set(
+      (attachedPolicies.AttachedPolicies ?? []).map(
+        (policy) => policy.PolicyArn,
+      ),
+    );
+
+    const requiredPolicyArns = [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
+    ];
+
+    for (const policyArn of requiredPolicyArns) {
+      if (!attachedPolicyArns.has(policyArn)) {
+        await iamClient.attachRolePolicy({
+          RoleName: roleName,
+          PolicyArn: policyArn,
+        });
+      }
+    }
+  }
+
   async createOrSelectRole(): Promise<string> {
     const iamClient = new IAM({
       region: this.region,
@@ -62,6 +88,7 @@ export class IAMManager {
         RoleName: roleName,
       });
       if (existingRole?.Arn) {
+        await this.ensureManagedPolicies(iamClient, roleName);
         // Update inline policy for existing role
         try {
           await iamClient.putRolePolicy({
@@ -93,15 +120,7 @@ export class IAMManager {
         p.log.info(`Created IAM role: ${roleName} (${lambdaRoleArn})`);
 
         // Attach required managed policies
-        await iamClient.attachRolePolicy({
-          RoleName: roleName,
-          PolicyArn:
-            "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-        });
-        await iamClient.attachRolePolicy({
-          RoleName: roleName,
-          PolicyArn: "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
-        });
+        await this.ensureManagedPolicies(iamClient, roleName);
         p.log.info(`Attached managed policies to ${roleName}`);
 
         // Add inline policy for SSM access

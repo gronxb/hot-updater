@@ -19,6 +19,7 @@ export class LambdaEdgeDeployer {
   async deploy(
     lambdaRoleArn: string,
     config: {
+      bucketName: string;
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
@@ -42,6 +43,7 @@ export class LambdaEdgeDeployer {
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
+      S3_BUCKET_NAME: config.bucketName,
     });
     await fs.writeFile(indexPath, code);
 

@@ -168,7 +168,7 @@ export const createBlobDatabasePlugin = <TConfig>({
      */
     async function updateTargetVersionsForPlatform(
       platform: string,
-    ): Promise<Set<string>> {
+    ): Promise<void> {
       // Retrieve all update.json files for the platform across channels.
       const updateJsonPattern = new RegExp(
         `^[^/]+/${platform}/[^/]+/update\\.json$`,
@@ -206,8 +206,6 @@ export const createBlobDatabasePlugin = <TConfig>({
         }
       }
 
-      const updatedTargetFiles = new Set<string>();
-
       for (const channel of Object.keys(keysByChannel)) {
         const updateKeys = keysByChannel[channel];
         const targetKey = `${channel}/${platform}/target-app-versions.json`;
@@ -226,11 +224,8 @@ export const createBlobDatabasePlugin = <TConfig>({
           JSON.stringify(newTargetVersions)
         ) {
           await uploadObject(targetKey, newTargetVersions);
-          updatedTargetFiles.add(`/${targetKey}`);
         }
       }
-
-      return updatedTargetFiles;
     }
 
     /**
@@ -261,6 +256,61 @@ export const createBlobDatabasePlugin = <TConfig>({
         keys.filter((key) => pattern.test(key)),
       );
     }
+
+    const addAppVersionInvalidationPaths = (
+      pathsToInvalidate: Set<string>,
+      {
+        platform,
+        channel,
+        targetAppVersion,
+      }: {
+        platform: string;
+        channel: string;
+        targetAppVersion: string;
+      },
+    ) => {
+      if (!isExactVersion(targetAppVersion)) {
+        pathsToInvalidate.add(`${apiBasePath}/app-version/${platform}/*`);
+        return;
+      }
+
+      const normalizedVersions = getSemverNormalizedVersions(targetAppVersion);
+      for (const version of normalizedVersions) {
+        pathsToInvalidate.add(
+          `${apiBasePath}/app-version/${platform}/${version}/${channel}/*`,
+        );
+      }
+    };
+
+    const addLookupInvalidationPaths = (
+      pathsToInvalidate: Set<string>,
+      {
+        platform,
+        channel,
+        targetAppVersion,
+        fingerprintHash,
+      }: {
+        platform: string;
+        channel: string;
+        targetAppVersion?: string | null;
+        fingerprintHash?: string | null;
+      },
+    ) => {
+      if (fingerprintHash) {
+        pathsToInvalidate.add(
+          `${apiBasePath}/fingerprint/${platform}/${fingerprintHash}/${channel}/*`,
+        );
+        return;
+      }
+
+      if (targetAppVersion) {
+        addAppVersionInvalidationPaths(pathsToInvalidate, {
+          platform,
+          channel,
+          targetAppVersion,
+        });
+      }
+    };
 
     return createDatabasePlugin({
       name,
@@ -366,28 +416,7 @@ export const createBlobDatabasePlugin = <TConfig>({
                 removeBundleInternalKeys(bundleWithKey),
               );
 
-              pathsToInvalidate.add(`/${key}`);
-              if (data.fingerprintHash) {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/fingerprint/${data.platform}/${data.fingerprintHash}/${data.channel}/*`,
-                );
-              } else if (data.targetAppVersion) {
-                if (!isExactVersion(data.targetAppVersion)) {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${data.platform}/*`,
-                  );
-                } else {
-                  // Invalidate all normalized semver paths
-                  const normalizedVersions = getSemverNormalizedVersions(
-                    data.targetAppVersion,
-                  );
-                  for (const version of normalizedVersions) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${data.platform}/${version}/${data.channel}/*`,
-                    );
-                  }
-                }
-              }
+              addLookupInvalidationPaths(pathsToInvalidate, data);
               continue;
             }
 
@@ -410,29 +439,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               removalsByKey[key] = removalsByKey[key] || [];
               removalsByKey[key].push(bundle.id);
 
-              // Add paths for CloudFront invalidation
-              pathsToInvalidate.add(`/${key}`);
-              if (bundle.fingerprintHash) {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${bundle.channel}/*`,
-                );
-              } else if (bundle.targetAppVersion) {
-                if (!isExactVersion(bundle.targetAppVersion)) {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${bundle.platform}/*`,
-                  );
-                } else {
-                  // Invalidate all normalized semver paths
-                  const normalizedVersions = getSemverNormalizedVersions(
-                    bundle.targetAppVersion,
-                  );
-                  for (const version of normalizedVersions) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
-                    );
-                  }
-                }
-              }
+              addLookupInvalidationPaths(pathsToInvalidate, bundle);
               continue;
             }
 
@@ -481,97 +488,24 @@ export const createBlobDatabasePlugin = <TConfig>({
                   removeBundleInternalKeys(updatedBundle),
                 );
 
-                // Add paths for CloudFront invalidation
-                pathsToInvalidate.add(`/${oldKey}`);
-                pathsToInvalidate.add(`/${newKey}`);
-
-                // Add paths for old and new channel target-app-versions.json
                 const oldChannel = bundle.channel;
-                const newChannel = data.channel;
-                if (oldChannel !== newChannel) {
-                  pathsToInvalidate.add(
-                    `/${oldChannel}/${bundle.platform}/target-app-versions.json`,
-                  );
-                  pathsToInvalidate.add(
-                    `/${newChannel}/${bundle.platform}/target-app-versions.json`,
-                  );
-
-                  // Invalidate fingerprint paths for both old and new channels
-                  if (bundle.fingerprintHash) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${oldChannel}/*`,
-                    );
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprintHash}/${newChannel}/*`,
-                    );
-                  }
-
-                  // Invalidate app-version paths for both old and new channels
-                  if (bundle.targetAppVersion) {
-                    if (!isExactVersion(bundle.targetAppVersion)) {
-                      pathsToInvalidate.add(
-                        `${apiBasePath}/app-version/${bundle.platform}/*`,
-                      );
-                    } else {
-                      // Invalidate all normalized semver paths for both channels
-                      const normalizedVersions = getSemverNormalizedVersions(
-                        bundle.targetAppVersion,
-                      );
-                      for (const version of normalizedVersions) {
-                        pathsToInvalidate.add(
-                          `${apiBasePath}/app-version/${bundle.platform}/${version}/${oldChannel}/*`,
-                        );
-                        pathsToInvalidate.add(
-                          `${apiBasePath}/app-version/${bundle.platform}/${version}/${newChannel}/*`,
-                        );
-                      }
-                    }
+                const nextChannel = updatedBundle.channel;
+                if (oldChannel !== nextChannel) {
+                  addLookupInvalidationPaths(pathsToInvalidate, bundle);
+                  if (bundle.targetAppVersion && !bundle.fingerprintHash) {
+                    addLookupInvalidationPaths(pathsToInvalidate, {
+                      ...bundle,
+                      channel: nextChannel,
+                    });
                   }
                 }
 
-                if (updatedBundle.fingerprintHash) {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/fingerprint/${bundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
-                  );
-                } else if (updatedBundle.targetAppVersion) {
-                  // Invalidate based on new targetAppVersion
-                  if (!isExactVersion(updatedBundle.targetAppVersion)) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
-                    );
-                  } else {
-                    // Invalidate all normalized semver paths for new version
-                    const normalizedVersions = getSemverNormalizedVersions(
-                      updatedBundle.targetAppVersion,
-                    );
-                    for (const version of normalizedVersions) {
-                      pathsToInvalidate.add(
-                        `${apiBasePath}/app-version/${updatedBundle.platform}/${version}/${updatedBundle.channel}/*`,
-                      );
-                    }
-                  }
-
-                  // Also invalidate old targetAppVersion path if it changed
-                  if (
-                    bundle.targetAppVersion &&
-                    bundle.targetAppVersion !== updatedBundle.targetAppVersion
-                  ) {
-                    if (!isExactVersion(bundle.targetAppVersion)) {
-                      pathsToInvalidate.add(
-                        `${apiBasePath}/app-version/${bundle.platform}/*`,
-                      );
-                    } else {
-                      // Invalidate all normalized semver paths for old version
-                      const oldNormalizedVersions = getSemverNormalizedVersions(
-                        bundle.targetAppVersion,
-                      );
-                      for (const version of oldNormalizedVersions) {
-                        pathsToInvalidate.add(
-                          `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
-                        );
-                      }
-                    }
-                  }
+                addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
+                if (
+                  bundle.targetAppVersion &&
+                  bundle.targetAppVersion !== updatedBundle.targetAppVersion
+                ) {
+                  addLookupInvalidationPaths(pathsToInvalidate, bundle);
                 }
                 continue;
               }
@@ -587,50 +521,12 @@ export const createBlobDatabasePlugin = <TConfig>({
                 removeBundleInternalKeys(updatedBundle),
               );
 
-              pathsToInvalidate.add(`/${currentKey}`);
-              if (updatedBundle.fingerprintHash) {
-                pathsToInvalidate.add(
-                  `${apiBasePath}/fingerprint/${updatedBundle.platform}/${updatedBundle.fingerprintHash}/${updatedBundle.channel}/*`,
-                );
-              } else if (updatedBundle.targetAppVersion) {
-                // Invalidate based on new targetAppVersion
-                if (!isExactVersion(updatedBundle.targetAppVersion)) {
-                  pathsToInvalidate.add(
-                    `${apiBasePath}/app-version/${updatedBundle.platform}/*`,
-                  );
-                } else {
-                  // Invalidate all normalized semver paths for new version
-                  const normalizedVersions = getSemverNormalizedVersions(
-                    updatedBundle.targetAppVersion,
-                  );
-                  for (const version of normalizedVersions) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${updatedBundle.platform}/${version}/${updatedBundle.channel}/*`,
-                    );
-                  }
-                }
-
-                // Also invalidate old targetAppVersion path if it changed
-                if (
-                  bundle.targetAppVersion &&
-                  bundle.targetAppVersion !== updatedBundle.targetAppVersion
-                ) {
-                  if (!isExactVersion(bundle.targetAppVersion)) {
-                    pathsToInvalidate.add(
-                      `${apiBasePath}/app-version/${bundle.platform}/*`,
-                    );
-                  } else {
-                    // Invalidate all normalized semver paths for old version
-                    const oldNormalizedVersions = getSemverNormalizedVersions(
-                      bundle.targetAppVersion,
-                    );
-                    for (const version of oldNormalizedVersions) {
-                      pathsToInvalidate.add(
-                        `${apiBasePath}/app-version/${bundle.platform}/${version}/${bundle.channel}/*`,
-                      );
-                    }
-                  }
-                }
+              addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
+              if (
+                bundle.targetAppVersion &&
+                bundle.targetAppVersion !== updatedBundle.targetAppVersion
+              ) {
+                addLookupInvalidationPaths(pathsToInvalidate, bundle);
               }
             }
           }
@@ -673,21 +569,10 @@ export const createBlobDatabasePlugin = <TConfig>({
             })();
           }
 
-          // Update target-app-versions.json for each platform and collect paths that were actually updated
-          const updatedTargetFilePaths = new Set<string>();
           if (isTargetAppVersionChanged || isChannelChanged) {
             for (const platform of PLATFORMS) {
-              const updatedPaths =
-                await updateTargetVersionsForPlatform(platform);
-              for (const path of updatedPaths) {
-                updatedTargetFilePaths.add(path);
-              }
+              await updateTargetVersionsForPlatform(platform);
             }
-          }
-
-          // Add updated target-app-versions.json paths to invalidation list
-          for (const path of updatedTargetFilePaths) {
-            pathsToInvalidate.add(path);
           }
 
           // Enconded paths for invalidation (in case of special characters)
