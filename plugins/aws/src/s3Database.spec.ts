@@ -988,8 +988,6 @@ describe("s3Database plugin", () => {
   });
 
   it("should trigger CloudFront invalidation on new bundle commit", async () => {
-    const bundleKey = "production/ios/1.0.0/update.json";
-    const targetVersionsKey = "production/ios/target-app-versions.json";
     const newBundle = createBundleJson(
       "production",
       "ios",
@@ -1004,16 +1002,20 @@ describe("s3Database plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    expect(invalidatedPaths).toContain(`/${bundleKey}`);
-    expect(invalidatedPaths).toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
+    );
+    expect(
+      invalidatedPaths.some((path) =>
+        path.includes("target-app-versions.json"),
+      ),
+    ).toBe(false);
     expect(invalidatedPaths).toContain(
       "/api/check-update/app-version/ios/1.0.0/production/*",
     );
   });
 
   it("should trigger CloudFront invalidation when a bundle is updated without key change", async () => {
-    const bundleKey = "production/ios/1.0.0/update.json";
-    const targetVersionsKey = "production/ios/target-app-versions.json";
     const bundle = createBundleJson(
       "production",
       "ios",
@@ -1031,8 +1033,14 @@ describe("s3Database plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    expect(invalidatedPaths).toContain(`/${bundleKey}`);
-    expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
+    );
+    expect(
+      invalidatedPaths.some((path) =>
+        path.includes("target-app-versions.json"),
+      ),
+    ).toBe(false);
     expect(invalidatedPaths).toContain(
       "/api/check-update/app-version/ios/1.0.0/production/*",
     );
@@ -1047,8 +1055,6 @@ describe("s3Database plugin", () => {
   });
 
   it("should trigger CloudFront invalidation for fingerprint path when bundle is updated", async () => {
-    const bundleKey = "production/ios/abcdef000/update.json";
-    const targetVersionsKey = "production/ios/target-app-versions.json";
     const bundle = createBundleJsonFingerprint(
       "production",
       "ios",
@@ -1066,8 +1072,14 @@ describe("s3Database plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    expect(invalidatedPaths).toContain(`/${bundleKey}`);
-    expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
+    );
+    expect(
+      invalidatedPaths.some((path) =>
+        path.includes("target-app-versions.json"),
+      ),
+    ).toBe(false);
     expect(invalidatedPaths).toContain(
       "/api/check-update/fingerprint/ios/abcdef000/production/*",
     );

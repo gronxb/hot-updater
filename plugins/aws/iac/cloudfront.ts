@@ -9,6 +9,7 @@ import {
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
+import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
 
 const HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME =
@@ -37,16 +38,24 @@ export class CloudFrontManager {
   private async getOrCreateOriginRequestPolicy(
     cloudfrontClient: CloudFront,
   ): Promise<string> {
-    const listPoliciesResponse =
-      await cloudfrontClient.listOriginRequestPolicies({
-        Type: "custom",
-      });
-    const existingPolicyId =
-      listPoliciesResponse.OriginRequestPolicyList?.Items?.find(
-        (policy) =>
-          policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
-          HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
-      )?.OriginRequestPolicy?.Id;
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const listPoliciesResponse =
+          await cloudfrontClient.listOriginRequestPolicies({
+            Type: "custom",
+            ...(marker ? { Marker: marker } : {}),
+          });
+
+        return {
+          items: listPoliciesResponse.OriginRequestPolicyList?.Items ?? [],
+          nextMarker: listPoliciesResponse.OriginRequestPolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
+        policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
+        HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
+    });
+    const existingPolicyId = existingPolicy?.OriginRequestPolicy?.Id;
 
     if (existingPolicyId) {
       return existingPolicyId;
@@ -82,14 +91,23 @@ export class CloudFrontManager {
   private async getOrCreateSharedCachePolicy(
     cloudfrontClient: CloudFront,
   ): Promise<string> {
-    const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
-      Type: "custom",
-    });
-    const existingPolicyId = listPoliciesResponse.CachePolicyList?.Items?.find(
-      (policy) =>
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
+          Type: "custom",
+          ...(marker ? { Marker: marker } : {}),
+        });
+
+        return {
+          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
+          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
         policy.CachePolicy?.CachePolicyConfig?.Name ===
         HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG.Name,
-    )?.CachePolicy?.Id;
+    });
+    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
     if (existingPolicyId) {
       return existingPolicyId;
