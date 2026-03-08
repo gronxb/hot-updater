@@ -6,7 +6,6 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
-  HOT_UPDATER_MANAGED_CACHE_POLICY_IDS,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
@@ -46,7 +45,7 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG).toMatchObject({
       DefaultTTL: 0,
-      MaxTTL: 0,
+      MaxTTL: 1,
       MinTTL: 0,
       ParametersInCacheKeyAndForwardedToOrigin: {
         HeadersConfig: {

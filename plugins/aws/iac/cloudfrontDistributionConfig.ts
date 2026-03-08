@@ -7,10 +7,6 @@ import type {
 
 // AWS-managed CloudFront cache policy IDs. These are global IDs, not account-specific.
 // Docs: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
-export const HOT_UPDATER_MANAGED_CACHE_POLICY_IDS = {
-  cachingDisabled: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
-} as const;
-
 export const HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS = [
   "x-bundle-id",
   "x-app-version",
@@ -24,9 +20,9 @@ export const HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG: CachePolicyCon
   {
     Name: "HotUpdaterLegacyCheckUpdateNoCache",
     Comment:
-      "Forward legacy check-update headers to origin-request Lambda without caching",
+      "Forward legacy check-update headers to origin-request Lambda with effectively no cache",
     DefaultTTL: 0,
-    MaxTTL: 0,
+    MaxTTL: 1,
     MinTTL: 0,
     ParametersInCacheKeyAndForwardedToOrigin: {
       EnableAcceptEncodingBrotli: false,

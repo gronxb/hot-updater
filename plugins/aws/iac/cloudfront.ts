@@ -211,14 +211,22 @@ export class CloudFrontManager {
     try {
       legacyCachePolicyId =
         await this.getOrCreateLegacyCheckUpdateCachePolicy(cloudfrontClient);
-    } catch {
-      throw new Error("Failed to get or create legacy check-update cache policy");
+    } catch (error) {
+      throw new Error(
+        `Failed to get or create legacy check-update cache policy: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
     try {
       sharedCachePolicyId =
         await this.getOrCreateSharedCachePolicy(cloudfrontClient);
-    } catch {
-      throw new Error("Failed to get or create shared cache policy");
+    } catch (error) {
+      throw new Error(
+        `Failed to get or create shared cache policy: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
 
     const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
