@@ -23,7 +23,6 @@ export class LambdaEdgeDeployer {
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
-      s3Region: string;
     },
   ): Promise<{ lambdaName: string; functionArn: string }> {
     const cwd = getCwd();
@@ -45,7 +44,6 @@ export class LambdaEdgeDeployer {
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
       S3_BUCKET_NAME: config.bucketName,
-      S3_REGION: config.s3Region,
     });
     await fs.writeFile(indexPath, code);
 

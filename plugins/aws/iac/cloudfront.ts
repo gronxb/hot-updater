@@ -7,6 +7,7 @@ import {
   buildDistributionConfig,
   buildDistributionConfigOverrides,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
+  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import type { AwsRegion } from "./regionLocationMap";
 
@@ -76,6 +77,32 @@ export class CloudFrontManager {
       throw new Error("Failed to create Origin Request Policy");
     }
     return originRequestPolicyId;
+  }
+
+  private async getOrCreateSharedCachePolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
+      Type: "custom",
+    });
+    const existingPolicyId = listPoliciesResponse.CachePolicyList?.Items?.find(
+      (policy) =>
+        policy.CachePolicy?.CachePolicyConfig?.Name ===
+        HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG.Name,
+    )?.CachePolicy?.Id;
+
+    if (existingPolicyId) {
+      return existingPolicyId;
+    }
+
+    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
+      CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+    });
+    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
+    if (!cachePolicyId) {
+      throw new Error("Failed to create shared cache policy");
+    }
+    return cachePolicyId;
   }
 
   async getOrCreateKeyGroup(publicKey: string): Promise<{
@@ -183,11 +210,18 @@ export class CloudFrontManager {
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
     let originRequestPolicyId: string;
+    let sharedCachePolicyId: string;
     try {
       originRequestPolicyId =
         await this.getOrCreateOriginRequestPolicy(cloudfrontClient);
     } catch {
       throw new Error("Failed to get or create Origin Request Policy");
+    }
+    try {
+      sharedCachePolicyId =
+        await this.getOrCreateSharedCachePolicy(cloudfrontClient);
+    } catch {
+      throw new Error("Failed to get or create shared cache policy");
     }
 
     const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
@@ -228,6 +262,7 @@ export class CloudFrontManager {
       keyGroupId: options.keyGroupId,
       oacId,
       originRequestPolicyId,
+      sharedCachePolicyId,
     });
 
     if (selectedDistribution) {
@@ -282,6 +317,7 @@ export class CloudFrontManager {
       keyGroupId: options.keyGroupId,
       oacId,
       originRequestPolicyId,
+      sharedCachePolicyId,
     });
 
     try {

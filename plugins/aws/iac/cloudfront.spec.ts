@@ -6,6 +6,7 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
   HOT_UPDATER_MANAGED_CACHE_POLICY_IDS,
+  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -15,9 +16,23 @@ const baseOptions = {
   keyGroupId: "key-group-id",
   oacId: "origin-access-control-id",
   originRequestPolicyId: "origin-request-policy-id",
+  sharedCachePolicyId: "shared-cache-policy-id",
 };
 
 describe("buildDistributionConfigOverrides", () => {
+  it("defines a shared cache policy that does not forward viewer headers", () => {
+    expect(HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG).toMatchObject({
+      DefaultTTL: 0,
+      MaxTTL: 31_536_000,
+      MinTTL: 0,
+      ParametersInCacheKeyAndForwardedToOrigin: {
+        HeadersConfig: { HeaderBehavior: "none" },
+        CookiesConfig: { CookieBehavior: "none" },
+        QueryStringsConfig: { QueryStringBehavior: "none" },
+      },
+    });
+  });
+
   it("uses cache and origin request policies instead of legacy settings", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
@@ -28,9 +43,7 @@ describe("buildDistributionConfigOverrides", () => {
       throw new Error("Expected cache behaviors to be generated");
     }
 
-    expect(defaultBehavior.CachePolicyId).toBe(
-      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
-    );
+    expect(defaultBehavior.CachePolicyId).toBe(baseOptions.sharedCachePolicyId);
     expect(overrides.Origins.Items?.[0]?.CustomHeaders).toEqual({
       Quantity: 0,
     });
@@ -62,7 +75,7 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(cachedEndpointBehavior.PathPattern).toBe("/api/check-update/*");
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
-      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
+      baseOptions.sharedCachePolicyId,
     );
     expect(cachedEndpointBehavior.FunctionAssociations).toEqual({
       Quantity: 0,

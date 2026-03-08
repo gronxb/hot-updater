@@ -1,3 +1,4 @@
+import { SSM } from "@aws-sdk/client-ssm";
 import {
   type GetBundlesArgs,
   NIL_UUID,
@@ -18,13 +19,63 @@ import { withSignedUrl } from "./withSignedUrl";
 
 declare global {
   var HotUpdater: {
+    CLOUDFRONT_KEY_PAIR_ID: string;
+    SSM_PARAMETER_NAME: string;
+    SSM_REGION: string;
     S3_BUCKET_NAME: string;
-    S3_REGION?: string;
   };
 }
 
+const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
+const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
+const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
-const S3_REGION = HotUpdater.S3_REGION ?? "ap-northeast-2";
+
+let cachedPrivateKey: string | null = null;
+
+async function getPrivateKey(): Promise<string> {
+  if (cachedPrivateKey !== null) {
+    return cachedPrivateKey;
+  }
+
+  if (!SSM_REGION) {
+    throw new Error(
+      `Invalid AWS region format: ${SSM_REGION}. Expected format like 'us-east-1' or 'ap-southeast-1'`,
+    );
+  }
+
+  const ssmClient = new SSM({ region: SSM_REGION });
+  const response = await ssmClient.getParameter({
+    Name: SSM_PARAMETER_NAME,
+    WithDecryption: true,
+  });
+
+  if (!response.Parameter?.Value) {
+    throw new Error(
+      `Failed to retrieve private key from SSM parameter: ${SSM_PARAMETER_NAME}`,
+    );
+  }
+
+  let keyPair: { privateKey?: unknown };
+  try {
+    keyPair = JSON.parse(response.Parameter.Value);
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON format in SSM parameter: ${SSM_PARAMETER_NAME}. ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const privateKey = keyPair.privateKey;
+
+  if (!privateKey || typeof privateKey !== "string") {
+    throw new Error(
+      `Invalid private key format in SSM parameter: ${SSM_PARAMETER_NAME}`,
+    );
+  }
+
+  cachedPrivateKey = privateKey;
+  return privateKey;
+}
 
 type Bindings = {
   callback: Callback;
@@ -70,11 +121,6 @@ const handleUpdateRequest = async (
   cacheControl?: string,
 ) => {
   try {
-    const cdnHost = c.req.header("host");
-    if (!cdnHost) {
-      return c.json({ error: "Missing host header." }, 500);
-    }
-
     const updateConfig: GetBundlesArgs = {
       platform: params.platform,
       bundleId: params.bundleId,
@@ -91,7 +137,7 @@ const handleUpdateRequest = async (
     const updateInfo = await getUpdateInfo(
       {
         bucketName: S3_BUCKET_NAME,
-        region: S3_REGION,
+        region: SSM_REGION,
       },
       updateConfig,
     );
@@ -104,9 +150,12 @@ const handleUpdateRequest = async (
       return c.json(null);
     }
 
+    const privateKey = await getPrivateKey();
     const appUpdateInfo = await withSignedUrl({
       data: updateInfo,
-      region: S3_REGION,
+      reqUrl: c.req.url,
+      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+      privateKey,
       expiresSeconds,
     });
 
@@ -128,7 +177,6 @@ app.get("/api/check-update", async (c) => {
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
     const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
-    // Validation
     const requiredError = validateRequiredParams({ bundleId, platform }, [
       "bundleId",
       "platform",
@@ -162,12 +210,11 @@ app.get("/api/check-update", async (c) => {
       ...(fingerprintHash ? { fingerprintHash } : { appVersion }),
     };
 
-    const expiresSeconds = 60;
     return handleUpdateRequest(
       c,
       params,
       fingerprintHash ? "fingerprint" : "appVersion",
-      expiresSeconds,
+      60,
       NO_STORE_CACHE_CONTROL,
     );
   } catch (error) {
@@ -210,8 +257,6 @@ app.get(
       appVersion,
     };
 
-    // Since the signedUrl is also cached due to caching,
-    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
     return handleUpdateRequest(
       c,
       params,
@@ -228,7 +273,6 @@ app.get(
     const { platform, fingerprintHash, channel, minBundleId, bundleId } =
       c.req.param();
 
-    // Validation
     const requiredError = validateRequiredParams(
       { platform, fingerprintHash, bundleId },
       ["platform", "fingerprintHash", "bundleId"],
@@ -257,8 +301,6 @@ app.get(
       fingerprintHash,
     };
 
-    // Since the signedUrl is also cached due to caching,
-    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
     return handleUpdateRequest(
       c,
       params,
