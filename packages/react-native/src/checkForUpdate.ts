@@ -1,4 +1,4 @@
-import { NIL_UUID, type AppUpdateInfo } from "@hot-updater/core";
+import { type AppUpdateInfo, NIL_UUID } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
