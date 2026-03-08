@@ -1,4 +1,4 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import { NIL_UUID, type AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 import { HotUpdaterError } from "./error";
 import {
@@ -7,6 +7,8 @@ import {
   getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
+  isChannelSwitched,
+  resetChannel,
   updateBundle,
 } from "./native";
 import type { HotUpdaterResolver } from "./types";
@@ -48,6 +50,14 @@ export interface InternalCheckForUpdateOptions extends CheckForUpdateOptions {
   resolver: HotUpdaterResolver;
 }
 
+const isResetToBuiltInResponse = (updateInfo: AppUpdateInfo): boolean => {
+  return (
+    updateInfo.status === "ROLLBACK" &&
+    updateInfo.id === NIL_UUID &&
+    updateInfo.fileUrl === null
+  );
+};
+
 export async function checkForUpdate(
   options: InternalCheckForUpdateOptions,
 ): Promise<CheckForUpdateResult | null> {
@@ -66,7 +76,10 @@ export async function checkForUpdate(
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
-  const channel = options.channel ?? getDefaultChannel();
+  const defaultChannel = getDefaultChannel();
+  const explicitChannel = options.channel || undefined;
+  const targetChannel = explicitChannel ?? defaultChannel;
+  const isSwitched = isChannelSwitched();
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
@@ -90,7 +103,7 @@ export async function checkForUpdate(
       appVersion: currentAppVersion,
       bundleId: currentBundleId,
       minBundleId,
-      channel,
+      channel: targetChannel,
       updateStrategy: options.updateStrategy,
       fingerprintHash,
       requestHeaders: options.requestHeaders,
@@ -105,12 +118,32 @@ export async function checkForUpdate(
     return null;
   }
 
+  if (
+    explicitChannel &&
+    explicitChannel !== defaultChannel &&
+    !isSwitched &&
+    updateInfo.status === "ROLLBACK"
+  ) {
+    return null;
+  }
+
   return {
     ...updateInfo,
     updateBundle: async () => {
+      if (
+        explicitChannel &&
+        isSwitched &&
+        isResetToBuiltInResponse(updateInfo)
+      ) {
+        return resetChannel();
+      }
+
+      const runtimeChannel =
+        updateInfo.fileUrl !== null ? targetChannel : undefined;
+
       return updateBundle({
         bundleId: updateInfo.id,
-        channel,
+        channel: runtimeChannel,
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
         status: updateInfo.status,
