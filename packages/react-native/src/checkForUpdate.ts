@@ -81,13 +81,21 @@ export async function checkForUpdate(
   const minBundleId = getMinBundleId();
   const defaultChannel = getDefaultChannel();
   const isSwitched = isChannelSwitched();
+  const currentChannel = isSwitched ? getChannel() : defaultChannel;
   const explicitChannel = options.channel || undefined;
-  const targetChannel =
-    explicitChannel || (isSwitched ? getChannel() : defaultChannel);
+  const targetChannel = explicitChannel || currentChannel;
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
     return null;
+  }
+
+  if (isSwitched && explicitChannel && explicitChannel !== currentChannel) {
+    const error = new HotUpdaterError(
+      `Runtime channel is already switched to "${currentChannel}". Call HotUpdater.resetChannel() before checking "${explicitChannel}".`,
+    );
+    options.onError?.(error);
+    throw error;
   }
 
   const fingerprintHash = getFingerprintHash();
