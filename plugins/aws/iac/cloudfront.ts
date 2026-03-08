@@ -2,6 +2,7 @@ import {
   type AllowedMethods,
   CloudFront,
   type DistributionConfig,
+  type Origin,
 } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
 import crypto from "crypto";
@@ -42,6 +43,20 @@ const getReadOnlyMethods = (): AllowedMethods => ({
   },
 });
 
+const buildS3Origin = (options: {
+  bucketName: string;
+  bucketDomain: string;
+  oacId: string;
+}): Origin => ({
+  Id: options.bucketName,
+  DomainName: options.bucketDomain,
+  OriginAccessControlId: options.oacId,
+  S3OriginConfig: { OriginAccessIdentity: "" },
+  CustomHeaders: {
+    Quantity: 0,
+  },
+});
+
 export const buildDistributionConfigOverrides = (options: {
   bucketName: string;
   bucketDomain: string;
@@ -53,12 +68,11 @@ export const buildDistributionConfigOverrides = (options: {
   Origins: {
     Quantity: 1,
     Items: [
-      {
-        Id: options.bucketName,
-        DomainName: options.bucketDomain,
-        OriginAccessControlId: options.oacId,
-        S3OriginConfig: { OriginAccessIdentity: "" },
-      },
+      buildS3Origin({
+        bucketName: options.bucketName,
+        bucketDomain: options.bucketDomain,
+        oacId: options.oacId,
+      }),
     ],
   },
   DefaultCacheBehavior: {
@@ -128,7 +142,24 @@ export const applyDistributionConfigOverrides = (
   overrides: DistributionConfigOverrides,
 ): DistributionConfig => ({
   ...distributionConfig,
-  Origins: overrides.Origins,
+  Origins: {
+    Quantity: overrides.Origins.Quantity,
+    Items: (overrides.Origins.Items ?? []).map((overrideOrigin) => {
+      const existingOrigin = (distributionConfig.Origins?.Items ?? []).find(
+        (origin) =>
+          origin.Id === overrideOrigin.Id ||
+          origin.DomainName === overrideOrigin.DomainName,
+      );
+
+      return {
+        ...existingOrigin,
+        ...overrideOrigin,
+        CustomHeaders: existingOrigin?.CustomHeaders ?? {
+          Quantity: 0,
+        },
+      };
+    }),
+  },
   DefaultCacheBehavior: overrides.DefaultCacheBehavior,
   CacheBehaviors: overrides.CacheBehaviors,
 });

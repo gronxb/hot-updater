@@ -31,6 +31,9 @@ describe("buildDistributionConfigOverrides", () => {
     expect(defaultBehavior.CachePolicyId).toBe(
       HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.useOriginCacheControlHeaders,
     );
+    expect(overrides.Origins.Items?.[0]?.CustomHeaders).toEqual({
+      Quantity: 0,
+    });
     expect("ForwardedValues" in defaultBehavior).toBe(false);
     expect("MinTTL" in defaultBehavior).toBe(false);
     expect("DefaultTTL" in defaultBehavior).toBe(false);
@@ -107,6 +110,23 @@ describe("buildDistributionConfigOverrides", () => {
           },
         ],
       },
+      Origins: {
+        Quantity: 1,
+        Items: [
+          {
+            ...buildDistributionConfig(baseOptions).Origins!.Items![0]!,
+            CustomHeaders: {
+              Quantity: 1,
+              Items: [
+                {
+                  HeaderName: "x-test-origin-header",
+                  HeaderValue: "hot-updater",
+                },
+              ],
+            },
+          },
+        ],
+      },
     };
 
     const updatedConfig = applyDistributionConfigOverrides(
@@ -118,6 +138,15 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(updatedConfig.Comment).toBe("Hot Updater CloudFront distribution");
     expect(updatedDefaultBehavior).toEqual(defaultBehavior);
+    expect(updatedConfig.Origins?.Items?.[0]?.CustomHeaders).toEqual({
+      Quantity: 1,
+      Items: [
+        {
+          HeaderName: "x-test-origin-header",
+          HeaderValue: "hot-updater",
+        },
+      ],
+    });
     expect("ForwardedValues" in updatedDefaultBehavior).toBe(false);
     expect("MinTTL" in updatedDefaultBehavior).toBe(false);
 
