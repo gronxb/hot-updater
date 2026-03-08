@@ -856,10 +856,6 @@ class BundleFileStorageService(
                 return@withContext false
             }
 
-            if (!saveCrashedHistory(CrashedHistory())) {
-                return@withContext false
-            }
-
             getBundleStoreDir().listFiles()?.forEach { file ->
                 if (
                     file.name == BundleMetadata.METADATA_FILENAME ||

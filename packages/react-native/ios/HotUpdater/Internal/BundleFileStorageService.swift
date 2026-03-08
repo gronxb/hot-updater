@@ -1249,10 +1249,6 @@ class BundleFileStorageService: BundleStorageService {
             return .failure(BundleStorageError.unknown(nil))
         }
 
-        guard saveCrashedHistory(CrashedHistory()) else {
-            return .failure(BundleStorageError.unknown(nil))
-        }
-
         guard case .success(let storeDir) = bundleStoreDir() else {
             return .failure(BundleStorageError.unknown(nil))
         }
