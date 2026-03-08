@@ -4,6 +4,7 @@ import { HotUpdaterError } from "./error";
 import {
   getAppVersion,
   getBundleId,
+  getChannel,
   getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
@@ -77,9 +78,10 @@ export async function checkForUpdate(
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
   const defaultChannel = getDefaultChannel();
-  const explicitChannel = options.channel || undefined;
-  const targetChannel = explicitChannel ?? defaultChannel;
   const isSwitched = isChannelSwitched();
+  const explicitChannel = options.channel || undefined;
+  const targetChannel =
+    explicitChannel || (isSwitched ? getChannel() : defaultChannel);
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
