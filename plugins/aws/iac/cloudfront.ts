@@ -6,14 +6,11 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
+  HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
-
-const HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME =
-  "HotUpdaterCheckUpdateOriginRequestPolicy";
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -33,59 +30,6 @@ export class CloudFrontManager {
   ) {
     this.region = region;
     this.credentials = credentials;
-  }
-
-  private async getOrCreateOriginRequestPolicy(
-    cloudfrontClient: CloudFront,
-  ): Promise<string> {
-    const existingPolicy = await findInPaginatedCloudFrontList({
-      listPage: async (marker) => {
-        const listPoliciesResponse =
-          await cloudfrontClient.listOriginRequestPolicies({
-            Type: "custom",
-            ...(marker ? { Marker: marker } : {}),
-          });
-
-        return {
-          items: listPoliciesResponse.OriginRequestPolicyList?.Items ?? [],
-          nextMarker: listPoliciesResponse.OriginRequestPolicyList?.NextMarker,
-        };
-      },
-      matches: (policy) =>
-        policy.OriginRequestPolicy?.OriginRequestPolicyConfig?.Name ===
-        HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
-    });
-    const existingPolicyId = existingPolicy?.OriginRequestPolicy?.Id;
-
-    if (existingPolicyId) {
-      return existingPolicyId;
-    }
-
-    const createPolicyResponse =
-      await cloudfrontClient.createOriginRequestPolicy({
-        OriginRequestPolicyConfig: {
-          Name: HOT_UPDATER_ORIGIN_REQUEST_POLICY_NAME,
-          Comment: "HotUpdater headers for /api/check-update requests",
-          CookiesConfig: {
-            CookieBehavior: "none",
-          },
-          HeadersConfig: {
-            HeaderBehavior: "whitelist",
-            Headers: {
-              Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
-              Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
-            },
-          },
-          QueryStringsConfig: {
-            QueryStringBehavior: "none",
-          },
-        },
-      });
-    const originRequestPolicyId = createPolicyResponse.OriginRequestPolicy?.Id;
-    if (!originRequestPolicyId) {
-      throw new Error("Failed to create Origin Request Policy");
-    }
-    return originRequestPolicyId;
   }
 
   private async getOrCreateSharedCachePolicy(
@@ -119,6 +63,41 @@ export class CloudFrontManager {
     const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
     if (!cachePolicyId) {
       throw new Error("Failed to create shared cache policy");
+    }
+    return cachePolicyId;
+  }
+
+  private async getOrCreateLegacyCheckUpdateCachePolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
+          Type: "custom",
+          ...(marker ? { Marker: marker } : {}),
+        });
+
+        return {
+          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
+          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
+        policy.CachePolicy?.CachePolicyConfig?.Name ===
+        HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG.Name,
+    });
+    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
+
+    if (existingPolicyId) {
+      return existingPolicyId;
+    }
+
+    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
+      CachePolicyConfig: HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
+    });
+    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
+    if (!cachePolicyId) {
+      throw new Error("Failed to create legacy check-update cache policy");
     }
     return cachePolicyId;
   }
@@ -227,13 +206,13 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
-    let originRequestPolicyId: string;
+    let legacyCachePolicyId: string;
     let sharedCachePolicyId: string;
     try {
-      originRequestPolicyId =
-        await this.getOrCreateOriginRequestPolicy(cloudfrontClient);
+      legacyCachePolicyId =
+        await this.getOrCreateLegacyCheckUpdateCachePolicy(cloudfrontClient);
     } catch {
-      throw new Error("Failed to get or create Origin Request Policy");
+      throw new Error("Failed to get or create legacy check-update cache policy");
     }
     try {
       sharedCachePolicyId =
@@ -279,7 +258,7 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      originRequestPolicyId,
+      legacyCachePolicyId,
       sharedCachePolicyId,
     });
 
@@ -334,7 +313,7 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      originRequestPolicyId,
+      legacyCachePolicyId,
       sharedCachePolicyId,
     });
 

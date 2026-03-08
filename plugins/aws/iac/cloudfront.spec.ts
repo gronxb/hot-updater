@@ -4,6 +4,7 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
+  HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
   HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
   HOT_UPDATER_MANAGED_CACHE_POLICY_IDS,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
@@ -15,7 +16,7 @@ const baseOptions = {
   functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
   keyGroupId: "key-group-id",
   oacId: "origin-access-control-id",
-  originRequestPolicyId: "origin-request-policy-id",
+  legacyCachePolicyId: "legacy-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
 };
 
@@ -33,7 +34,7 @@ describe("buildDistributionConfigOverrides", () => {
     });
   });
 
-  it("uses cache and origin request policies instead of legacy settings", () => {
+  it("uses cache policies instead of legacy settings", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
     const behaviorItems = overrides.CacheBehaviors.Items ?? [];
@@ -42,6 +43,23 @@ describe("buildDistributionConfigOverrides", () => {
     if (!legacyEndpointBehavior || !cachedEndpointBehavior) {
       throw new Error("Expected cache behaviors to be generated");
     }
+
+    expect(HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG).toMatchObject({
+      DefaultTTL: 0,
+      MaxTTL: 0,
+      MinTTL: 0,
+      ParametersInCacheKeyAndForwardedToOrigin: {
+        HeadersConfig: {
+          HeaderBehavior: "whitelist",
+          Headers: {
+            Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
+            Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
+          },
+        },
+        CookiesConfig: { CookieBehavior: "none" },
+        QueryStringsConfig: { QueryStringBehavior: "none" },
+      },
+    });
 
     expect(defaultBehavior.CachePolicyId).toBe(baseOptions.sharedCachePolicyId);
     expect(overrides.Origins.Items?.[0]?.CustomHeaders).toEqual({
@@ -60,14 +78,14 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(legacyEndpointBehavior.PathPattern).toBe("/api/check-update");
     expect(legacyEndpointBehavior.CachePolicyId).toBe(
-      HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.cachingDisabled,
-    );
-    expect(legacyEndpointBehavior.OriginRequestPolicyId).toBe(
-      baseOptions.originRequestPolicyId,
+      baseOptions.legacyCachePolicyId,
     );
     expect(legacyEndpointBehavior.FunctionAssociations).toEqual({
       Quantity: 0,
     });
+    expect(
+      legacyEndpointBehavior.LambdaFunctionAssociations?.Items?.[0]?.EventType,
+    ).toBe("origin-request");
     expect("ForwardedValues" in legacyEndpointBehavior).toBe(false);
     expect("MinTTL" in legacyEndpointBehavior).toBe(false);
     expect("DefaultTTL" in legacyEndpointBehavior).toBe(false);
@@ -80,6 +98,9 @@ describe("buildDistributionConfigOverrides", () => {
     expect(cachedEndpointBehavior.FunctionAssociations).toEqual({
       Quantity: 0,
     });
+    expect(
+      cachedEndpointBehavior.LambdaFunctionAssociations?.Items?.[0]?.EventType,
+    ).toBe("origin-request");
     expect("ForwardedValues" in cachedEndpointBehavior).toBe(false);
     expect("MinTTL" in cachedEndpointBehavior).toBe(false);
     expect("DefaultTTL" in cachedEndpointBehavior).toBe(false);
@@ -124,10 +145,6 @@ describe("buildDistributionConfigOverrides", () => {
             ForwardedValues: {
               QueryString: false,
               Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
-                Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
-              },
             },
             MinTTL: 0,
             DefaultTTL: 0,

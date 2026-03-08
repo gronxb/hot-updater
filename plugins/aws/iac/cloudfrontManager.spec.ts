@@ -4,8 +4,6 @@ import { buildDistributionConfig } from "./cloudfrontDistributionConfig";
 const mockCloudFront = vi.hoisted(() => ({
   listOriginAccessControls: vi.fn(),
   createOriginAccessControl: vi.fn(),
-  listOriginRequestPolicies: vi.fn(),
-  createOriginRequestPolicy: vi.fn(),
   listCachePolicies: vi.fn(),
   createCachePolicy: vi.fn(),
   listDistributions: vi.fn(),
@@ -42,7 +40,7 @@ describe("CloudFrontManager", () => {
     functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
     keyGroupId: "existing-key-group-id",
     oacId: "existing-oac-id",
-    originRequestPolicyId: "existing-origin-request-policy-id",
+    legacyCachePolicyId: "existing-legacy-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
 
@@ -80,22 +78,22 @@ describe("CloudFrontManager", () => {
     mockCloudFront.createInvalidation.mockResolvedValue({});
   });
 
-  it("paginates origin request and cache policy lookups before attempting creation", async () => {
-    mockCloudFront.listOriginRequestPolicies
+  it("paginates cache policy lookups before attempting creation", async () => {
+    mockCloudFront.listCachePolicies
       .mockResolvedValueOnce({
-        OriginRequestPolicyList: {
+        CachePolicyList: {
           Items: [],
-          NextMarker: "origin-page-2",
+          NextMarker: "legacy-cache-page-2",
         },
       })
       .mockResolvedValueOnce({
-        OriginRequestPolicyList: {
+        CachePolicyList: {
           Items: [
             {
-              OriginRequestPolicy: {
-                Id: "origin-policy-id",
-                OriginRequestPolicyConfig: {
-                  Name: "HotUpdaterCheckUpdateOriginRequestPolicy",
+              CachePolicy: {
+                Id: "legacy-cache-policy-id",
+                CachePolicyConfig: {
+                  Name: "HotUpdaterLegacyCheckUpdateNoCache",
                 },
               },
             },
@@ -107,7 +105,7 @@ describe("CloudFrontManager", () => {
       .mockResolvedValueOnce({
         CachePolicyList: {
           Items: [],
-          NextMarker: "cache-page-2",
+          NextMarker: "shared-cache-page-2",
         },
       })
       .mockResolvedValueOnce({
@@ -137,27 +135,19 @@ describe("CloudFrontManager", () => {
         "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
     });
 
-    expect(mockCloudFront.listOriginRequestPolicies).toHaveBeenNthCalledWith(
-      1,
-      {
-        Type: "custom",
-      },
-    );
-    expect(mockCloudFront.listOriginRequestPolicies).toHaveBeenNthCalledWith(
-      2,
-      {
-        Type: "custom",
-        Marker: "origin-page-2",
-      },
-    );
-    expect(mockCloudFront.createOriginRequestPolicy).not.toHaveBeenCalled();
-
     expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(1, {
       Type: "custom",
     });
     expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(2, {
       Type: "custom",
-      Marker: "cache-page-2",
+      Marker: "legacy-cache-page-2",
+    });
+    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(3, {
+      Type: "custom",
+    });
+    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(4, {
+      Type: "custom",
+      Marker: "shared-cache-page-2",
     });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
 
@@ -173,11 +163,25 @@ describe("CloudFrontManager", () => {
             Items: expect.arrayContaining([
               expect.objectContaining({
                 PathPattern: "/api/check-update",
-                OriginRequestPolicyId: "origin-policy-id",
+                CachePolicyId: "legacy-cache-policy-id",
+                LambdaFunctionAssociations: expect.objectContaining({
+                  Items: expect.arrayContaining([
+                    expect.objectContaining({
+                      EventType: "origin-request",
+                    }),
+                  ]),
+                }),
               }),
               expect.objectContaining({
                 PathPattern: "/api/check-update/*",
                 CachePolicyId: "shared-cache-policy-id",
+                LambdaFunctionAssociations: expect.objectContaining({
+                  Items: expect.arrayContaining([
+                    expect.objectContaining({
+                      EventType: "origin-request",
+                    }),
+                  ]),
+                }),
               }),
             ]),
           }),

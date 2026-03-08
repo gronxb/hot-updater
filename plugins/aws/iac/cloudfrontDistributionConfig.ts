@@ -11,6 +11,42 @@ export const HOT_UPDATER_MANAGED_CACHE_POLICY_IDS = {
   cachingDisabled: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
 } as const;
 
+export const HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS = [
+  "x-bundle-id",
+  "x-app-version",
+  "x-app-platform",
+  "x-min-bundle-id",
+  "x-channel",
+  "x-fingerprint-hash",
+] as const;
+
+export const HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG: CachePolicyConfig =
+  {
+    Name: "HotUpdaterLegacyCheckUpdateNoCache",
+    Comment:
+      "Forward legacy check-update headers to origin-request Lambda without caching",
+    DefaultTTL: 0,
+    MaxTTL: 0,
+    MinTTL: 0,
+    ParametersInCacheKeyAndForwardedToOrigin: {
+      EnableAcceptEncodingBrotli: false,
+      EnableAcceptEncodingGzip: false,
+      HeadersConfig: {
+        HeaderBehavior: "whitelist",
+        Headers: {
+          Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
+          Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
+        },
+      },
+      CookiesConfig: {
+        CookieBehavior: "none",
+      },
+      QueryStringsConfig: {
+        QueryStringBehavior: "none",
+      },
+    },
+  };
+
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
 // which breaks S3 origins for bundle downloads and bloats the cache key unnecessarily.
@@ -36,15 +72,6 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   },
 };
 
-export const HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS = [
-  "x-bundle-id",
-  "x-app-version",
-  "x-app-platform",
-  "x-min-bundle-id",
-  "x-channel",
-  "x-fingerprint-hash",
-] as const;
-
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
   DefaultCacheBehavior: NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
@@ -57,8 +84,7 @@ type CacheBehavior = NonNullable<
 >[number];
 type CacheBehaviorTemplate = {
   pathPattern: string;
-  cachePolicy: "cachingDisabled" | "shared";
-  needsOriginRequestPolicy?: boolean;
+  cachePolicy: "legacy" | "shared";
 };
 
 const READ_ONLY_METHODS: AllowedMethods = {
@@ -90,8 +116,7 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
 const HOT_UPDATER_CACHE_BEHAVIOR_TEMPLATES: readonly CacheBehaviorTemplate[] = [
   {
     pathPattern: "/api/check-update",
-    cachePolicy: "cachingDisabled",
-    needsOriginRequestPolicy: true,
+    cachePolicy: "legacy",
   },
   {
     pathPattern: "/api/check-update/*",
@@ -105,6 +130,7 @@ const omitLegacyCacheFields = <
     MinTTL?: unknown;
     DefaultTTL?: unknown;
     MaxTTL?: unknown;
+    OriginRequestPolicyId?: unknown;
   },
 >(
   value: T,
@@ -114,6 +140,7 @@ const omitLegacyCacheFields = <
     MinTTL: _minTTL,
     DefaultTTL: _defaultTTL,
     MaxTTL: _maxTTL,
+    OriginRequestPolicyId: _originRequestPolicyId,
     ...rest
   } = value;
   return rest;
@@ -200,13 +227,21 @@ const buildDefaultCacheBehavior = (options: {
 
 const resolveCachePolicyId = (
   cachePolicy: CacheBehaviorTemplate["cachePolicy"],
-  sharedCachePolicyId: string,
+  {
+    legacyCachePolicyId,
+    sharedCachePolicyId,
+  }: {
+    legacyCachePolicyId: string;
+    sharedCachePolicyId: string;
+  },
 ) => {
+  if (cachePolicy === "legacy") {
+    return legacyCachePolicyId;
+  }
+
   if (cachePolicy === "shared") {
     return sharedCachePolicyId;
   }
-
-  return HOT_UPDATER_MANAGED_CACHE_POLICY_IDS.cachingDisabled;
 };
 
 const buildCacheBehavior = (
@@ -214,7 +249,7 @@ const buildCacheBehavior = (
   options: {
     bucketName: string;
     functionArn: string;
-    originRequestPolicyId: string;
+    legacyCachePolicyId: string;
     sharedCachePolicyId: string;
   },
 ): CacheBehavior => ({
@@ -222,14 +257,14 @@ const buildCacheBehavior = (
   PathPattern: template.pathPattern,
   CachePolicyId: resolveCachePolicyId(
     template.cachePolicy,
-    options.sharedCachePolicyId,
+    {
+      legacyCachePolicyId: options.legacyCachePolicyId,
+      sharedCachePolicyId: options.sharedCachePolicyId,
+    },
   ),
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
     options.functionArn,
   ),
-  ...(template.needsOriginRequestPolicy
-    ? { OriginRequestPolicyId: options.originRequestPolicyId }
-    : {}),
 });
 
 const mergeOriginWithExisting = (
@@ -265,7 +300,7 @@ export const buildDistributionConfigOverrides = (options: {
   functionArn: string;
   keyGroupId: string;
   oacId: string;
-  originRequestPolicyId: string;
+  legacyCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfigOverrides => ({
   Origins: {
@@ -289,7 +324,7 @@ export const buildDistributionConfigOverrides = (options: {
       buildCacheBehavior(template, {
         bucketName: options.bucketName,
         functionArn: options.functionArn,
-        originRequestPolicyId: options.originRequestPolicyId,
+        legacyCachePolicyId: options.legacyCachePolicyId,
         sharedCachePolicyId: options.sharedCachePolicyId,
       }),
     ),
@@ -339,7 +374,7 @@ export const buildDistributionConfig = (options: {
   functionArn: string;
   keyGroupId: string;
   oacId: string;
-  originRequestPolicyId: string;
+  legacyCachePolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfig =>
   sanitizeDistributionConfig({
