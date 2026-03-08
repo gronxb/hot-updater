@@ -11,6 +11,7 @@ import { Callout } from "fumadocs-ui/components/callout";
 Runtime channel override lets a built app temporarily use a bundle from another
 channel without changing the default channel embedded in the binary.
 
+- The existing deployment process does not change.
 - `HotUpdater.checkForUpdate({ channel })` checks another channel.
 - The override is persisted only after `updateInfo.updateBundle()` succeeds.
 - `HotUpdater.resetChannel()` removes the override and restores the original
@@ -18,7 +19,11 @@ channel without changing the default channel embedded in the binary.
 
 <Callout type="info">
   Set your app's default channel first. See
-  [Default Channel Setup](/docs/guides/channel-management).
+  [Default Channel Setup](/docs/guides/channel-management). Runtime channel
+  switching is explicit. It only starts when you pass a
+  specific `channel` to `HotUpdater.checkForUpdate({ channel: "..." })`.
+  Calling `HotUpdater.checkForUpdate()` without `channel` keeps the existing
+  update flow for the app's current channel.
 </Callout>
 
 ## Recommended Runtime Flow
@@ -102,7 +107,10 @@ async function restoreDefaultChannel() {
 
 ## Important Behavior
 
+- The existing deployment process is unchanged.
 - `checkForUpdate({ channel: "beta" })` only checks the `beta` channel.
+- `HotUpdater.checkForUpdate()` without a `channel` does not trigger runtime
+  switching.
 - The app does not switch channels just by checking.
 - If no update is returned, the app stays on the current channel.
 - After `updateInfo.updateBundle()` succeeds and the app reloads,
