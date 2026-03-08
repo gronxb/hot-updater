@@ -1,5 +1,17 @@
 # hot-updater
 
+## 0.25.14
+
+### Patch Changes
+
+- @hot-updater/server@0.25.14
+- @hot-updater/android-helper@0.25.14
+- @hot-updater/apple-helper@0.25.14
+- @hot-updater/cli-tools@0.25.14
+- @hot-updater/console@0.25.14
+- @hot-updater/core@0.25.14
+- @hot-updater/plugin-core@0.25.14
+
 ## 0.25.13
 
 ### Patch Changes

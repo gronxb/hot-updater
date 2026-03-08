@@ -1,4 +1,4 @@
-import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+import { GetObjectCommand, S3 } from "@aws-sdk/client-s3";
 import {
   type AppVersionGetBundlesArgs,
   type Bundle,
@@ -12,59 +12,86 @@ import {
   getUpdateInfo as getUpdateInfoJS,
 } from "@hot-updater/js";
 
-const getCdnJson = async <T>({
-  baseUrl,
+const s3Clients = new Map<string, S3>();
+
+type ManifestJsonReader = <T>(key: string) => Promise<T | null>;
+
+const getS3Client = (region: string) => {
+  const existingClient = s3Clients.get(region);
+  if (existingClient) {
+    return existingClient;
+  }
+
+  const client = new S3({ region });
+  s3Clients.set(region, client);
+  return client;
+};
+
+const getS3Json = async <T>({
+  bucketName,
   key,
-  keyPairId,
-  privateKey,
+  region,
 }: {
-  baseUrl: string;
+  bucketName: string;
   key: string;
-  keyPairId: string;
-  privateKey: string;
+  region: string;
 }): Promise<T | null> => {
   try {
-    const url = new URL(baseUrl);
-    url.pathname = `/${key}`;
+    const response = await getS3Client(region).send(
+      new GetObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      }),
+    );
 
-    const signedUrl = getSignedUrl({
-      url: url.toString(),
-      keyPairId: keyPairId,
-      privateKey: privateKey,
-      dateLessThan: new Date(Date.now() + 60 * 1000).toISOString(),
-    });
-
-    const res = await fetch(signedUrl, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-    if (!res.ok) {
+    const body = await response.Body?.transformToString();
+    if (!body) {
       return null;
     }
-    return res.json() as T;
-  } catch {
+
+    return JSON.parse(body) as T;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.name === "NoSuchKey" || error.name === "NotFound")
+    ) {
+      return null;
+    }
+
+    console.error("Failed to read Hot Updater manifest from S3:", {
+      key,
+      error,
+    });
     return null;
   }
 };
 
 export const getUpdateInfo = async (
   {
-    baseUrl,
-    keyPairId,
-    privateKey,
+    bucketName,
+    region,
+    readManifestJson,
   }: {
-    baseUrl: string;
-    keyPairId: string;
-    privateKey: string;
+    bucketName: string;
+    region: string;
+    readManifestJson?: ManifestJsonReader;
   },
   args: GetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
+  const manifestReader =
+    readManifestJson ??
+    (<T>(key: string) =>
+      getS3Json<T>({
+        bucketName,
+        key,
+        region,
+      }));
+
   switch (args._updateStrategy) {
     case "appVersion":
-      return appVersionStrategy({ baseUrl, keyPairId, privateKey }, args);
+      return appVersionStrategy({ readManifestJson: manifestReader }, args);
     case "fingerprint":
-      return fingerprintStrategy({ baseUrl, keyPairId, privateKey }, args);
+      return fingerprintStrategy({ readManifestJson: manifestReader }, args);
     default:
       return null;
   }
@@ -72,13 +99,9 @@ export const getUpdateInfo = async (
 
 const appVersionStrategy = async (
   {
-    baseUrl,
-    keyPairId,
-    privateKey,
+    readManifestJson,
   }: {
-    baseUrl: string;
-    keyPairId: string;
-    privateKey: string;
+    readManifestJson: ManifestJsonReader;
   },
   {
     platform,
@@ -88,12 +111,9 @@ const appVersionStrategy = async (
     channel = "production",
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const targetAppVersions = await getCdnJson<string[]>({
-    baseUrl,
-    key: `${channel}/${platform}/target-app-versions.json`,
-    keyPairId,
-    privateKey,
-  });
+  const targetAppVersions = await readManifestJson<string[]>(
+    `${channel}/${platform}/target-app-versions.json`,
+  );
 
   const matchingVersions = filterCompatibleAppVersions(
     targetAppVersions ?? [],
@@ -102,12 +122,9 @@ const appVersionStrategy = async (
 
   const results = await Promise.allSettled(
     matchingVersions.map((targetAppVersion) =>
-      getCdnJson({
-        baseUrl,
-        key: `${channel}/${platform}/${targetAppVersion}/update.json`,
-        keyPairId,
-        privateKey,
-      }),
+      readManifestJson<Bundle[]>(
+        `${channel}/${platform}/${targetAppVersion}/update.json`,
+      ),
     ),
   );
 
@@ -129,13 +146,9 @@ const appVersionStrategy = async (
 
 const fingerprintStrategy = async (
   {
-    baseUrl,
-    keyPairId,
-    privateKey,
+    readManifestJson,
   }: {
-    baseUrl: string;
-    keyPairId: string;
-    privateKey: string;
+    readManifestJson: ManifestJsonReader;
   },
   {
     platform,
@@ -145,16 +158,8 @@ const fingerprintStrategy = async (
     channel = "production",
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const result = await getCdnJson<Bundle[]>({
-    baseUrl,
-    key: `${channel}/${platform}/${fingerprintHash}/update.json`,
-    keyPairId,
-    privateKey,
-  });
-  console.log(
-    "result",
+  const result = await readManifestJson<Bundle[]>(
     `${channel}/${platform}/${fingerprintHash}/update.json`,
-    result,
   );
 
   return getUpdateInfoJS(result ?? [], {

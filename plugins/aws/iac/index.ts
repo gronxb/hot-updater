@@ -221,6 +221,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
   const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const { functionArn } = await lambdaEdgeDeployer.deploy(lambdaRoleArn, {
+    bucketName,
     publicKeyId: publicKeyId,
     ssmParameterName: ssmParameterName,
     ssmRegion: bucketRegion,

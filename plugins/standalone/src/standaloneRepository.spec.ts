@@ -611,7 +611,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       );
 
       server.use(
-        http.get("http://localhost/api/custom/bundles", ({ request }) => {
+        http.get("http://localhost/api/custom/bundles", () => {
           return HttpResponse.json(bundlesWithChannelAfter50);
         }),
       );
