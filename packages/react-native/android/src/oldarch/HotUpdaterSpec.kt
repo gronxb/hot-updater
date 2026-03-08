@@ -22,4 +22,6 @@ abstract class HotUpdaterSpec internal constructor(
     abstract fun clearCrashHistory(): Boolean
 
     abstract fun getBaseURL(): String
+
+    abstract fun resetChannel(promise: Promise)
 }

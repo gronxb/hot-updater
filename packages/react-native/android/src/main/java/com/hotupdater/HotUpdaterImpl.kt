@@ -61,6 +61,7 @@ class HotUpdaterImpl {
     companion object {
         private const val TAG = "HotUpdaterImpl"
         private const val DEFAULT_CHANNEL = "production"
+        private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
         /**
          * Create BundleStorageService with all dependencies
@@ -242,6 +243,11 @@ class HotUpdaterImpl {
      * @return The channel name or null if not set
      */
     fun getChannel(): String {
+        val overriddenChannel = preferences.getItem(CHANNEL_STORAGE_KEY)
+        if (!overriddenChannel.isNullOrEmpty()) {
+            return overriddenChannel
+        }
+
         val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
@@ -249,6 +255,8 @@ class HotUpdaterImpl {
             DEFAULT_CHANNEL
         }
     }
+
+    fun getDefaultChannel(): String = getChannel(context)
 
     /**
      * Gets the path to the bundle file
@@ -268,9 +276,18 @@ class HotUpdaterImpl {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        channel: String?,
         progressCallback: (Double) -> Unit,
     ) {
         bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+
+        if (!channel.isNullOrEmpty()) {
+            if (channel == getDefaultChannel()) {
+                preferences.setItem(CHANNEL_STORAGE_KEY, null)
+            } else {
+                preferences.setItem(CHANNEL_STORAGE_KEY, channel)
+            }
+        }
     }
 
     /**
@@ -318,4 +335,12 @@ class HotUpdaterImpl {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
+
+    suspend fun resetChannel(): Boolean {
+        val success = bundleStorage.resetToOriginalBundle()
+        if (success) {
+            preferences.setItem(CHANNEL_STORAGE_KEY, null)
+        }
+        return success
+    }
 }

@@ -15,6 +15,11 @@ export const HotUpdaterConstants = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
 };
 
+const initialConstants = HotUpdaterNative.getConstants();
+const defaultChannel =
+  initialConstants.DEFAULT_CHANNEL ?? initialConstants.CHANNEL;
+let currentChannel = initialConstants.CHANNEL;
+
 export type HotUpdaterEvent = {
   onProgress: {
     progress: number;
@@ -101,15 +106,22 @@ export async function updateBundle(
       ? undefined
       : paramsOrBundleId.fileHash;
 
+  const targetChannel =
+    typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
+
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
+        channel: targetChannel,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
       });
       if (ok) {
         lastInstalledBundleId = updateBundleId;
+        if (targetChannel) {
+          currentChannel = targetChannel;
+        }
       }
       return ok;
     } finally {
@@ -165,8 +177,14 @@ export const getBundleId = (): string => {
  * @returns {string} Resolves with the channel or null if not available.
  */
 export const getChannel = (): string => {
-  const constants = HotUpdaterNative.getConstants();
-  return constants.CHANNEL;
+  return currentChannel;
+};
+
+/**
+ * Returns whether the app is currently using a runtime channel override.
+ */
+export const isChannelSwitched = (): boolean => {
+  return currentChannel !== defaultChannel;
 };
 
 /**
@@ -274,4 +292,17 @@ export const getBaseURL = (): string | null => {
     return result;
   }
   return null;
+};
+
+/**
+ * Clears the runtime channel override and restores the original bundle.
+ */
+export const resetChannel = async (): Promise<boolean> => {
+  const ok = await HotUpdaterNative.resetChannel();
+  if (ok) {
+    currentChannel = defaultChannel;
+    lastInstalledBundleId = null;
+    inflightUpdates.clear();
+  }
+  return ok;
 };

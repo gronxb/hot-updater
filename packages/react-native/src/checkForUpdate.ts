@@ -20,6 +20,12 @@ export interface CheckForUpdateOptions {
    */
   updateStrategy: "appVersion" | "fingerprint";
 
+  /**
+   * Override the current channel when checking for updates.
+   * The channel switch is only persisted after the returned update is applied.
+   */
+  channel?: string;
+
   requestHeaders?: Record<string, string>;
   onError?: (error: Error) => void;
   /**
@@ -60,7 +66,7 @@ export async function checkForUpdate(
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
-  const channel = getChannel();
+  const channel = options.channel ?? getChannel();
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
@@ -104,6 +110,7 @@ export async function checkForUpdate(
     updateBundle: async () => {
       return updateBundle({
         bundleId: updateInfo.id,
+        channel,
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
         status: updateInfo.status,

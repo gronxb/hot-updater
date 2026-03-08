@@ -172,6 +172,7 @@ RCT_EXPORT_MODULE();
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
         @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null],
         @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
+        @"DEFAULT_CHANNEL": [[HotUpdater sharedImpl] getDefaultChannel] ?: [NSNull null],
         @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
     };
 }
@@ -286,6 +287,9 @@ RCT_EXPORT_MODULE();
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
+    if (params.channel()) {
+        paramDict[@"channel"] = params.channel();
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
@@ -322,6 +326,12 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
+- (void)resetChannel:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetChannel:resolve rejecter:reject];
+}
+
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
     return [self getConstants];
 }
@@ -332,6 +342,7 @@ RCT_EXPORT_MODULE();
         .MIN_BUNDLE_ID = [self getMinBundleId],
         .APP_VERSION = [HotUpdaterImpl appVersion],
         .CHANNEL = [impl getChannel],
+        .DEFAULT_CHANNEL = [impl getDefaultChannel],
         .FINGERPRINT_HASH = [impl getFingerprintHash],
     });
 }
@@ -396,6 +407,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetChannel:resolve rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {

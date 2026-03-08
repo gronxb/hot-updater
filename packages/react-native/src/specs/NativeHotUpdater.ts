@@ -3,6 +3,7 @@ import { TurboModuleRegistry } from "react-native";
 
 export interface UpdateBundleParams {
   bundleId: string;
+  channel?: string;
   fileUrl: string | null;
   /**
    * File hash for integrity/signature verification.
@@ -85,6 +86,13 @@ export interface Spec extends TurboModule {
   clearCrashHistory(): boolean;
 
   /**
+   * Clears the runtime channel override and restores the original bundle.
+   *
+   * @returns Promise that resolves to true if successful
+   */
+  resetChannel(): Promise<boolean>;
+
+  /**
    * Gets the base URL for the current active bundle directory.
    * Returns the file:// URL to the bundle directory without trailing slash.
    * This is used for Expo DOM components to construct full asset paths.
@@ -100,6 +108,7 @@ export interface Spec extends TurboModule {
     MIN_BUNDLE_ID: string;
     APP_VERSION: string | null;
     CHANNEL: string;
+    DEFAULT_CHANNEL: string;
     FINGERPRINT_HASH: string | null;
   };
 }
