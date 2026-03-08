@@ -84,6 +84,13 @@ export async function checkForUpdate(
   const currentChannel = isSwitched ? getChannel() : defaultChannel;
   const explicitChannel = options.channel || undefined;
   const targetChannel = explicitChannel || currentChannel;
+  const isFirstRuntimeChannelSwitchAttempt =
+    !isSwitched &&
+    explicitChannel !== undefined &&
+    explicitChannel !== defaultChannel;
+  const requestBundleId = isFirstRuntimeChannelSwitchAttempt
+    ? minBundleId
+    : currentBundleId;
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
@@ -113,7 +120,7 @@ export async function checkForUpdate(
     updateInfo = await options.resolver.checkUpdate({
       platform,
       appVersion: currentAppVersion,
-      bundleId: currentBundleId,
+      bundleId: requestBundleId,
       minBundleId,
       channel: targetChannel,
       updateStrategy: options.updateStrategy,
