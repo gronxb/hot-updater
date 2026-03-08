@@ -4,7 +4,7 @@ import { HotUpdaterError } from "./error";
 import {
   getAppVersion,
   getBundleId,
-  getChannel,
+  getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
   updateBundle,
@@ -66,7 +66,7 @@ export async function checkForUpdate(
   const platform = Platform.OS as "ios" | "android";
   const currentBundleId = getBundleId();
   const minBundleId = getMinBundleId();
-  const channel = options.channel ?? getChannel();
+  const channel = options.channel ?? getDefaultChannel();
 
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
