@@ -1,0 +1,122 @@
+---
+title: "Runtime Channel Override"
+description: "Temporarily move a device to another channel at runtime, then return to the default channel when needed."
+icon: GitBranch
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+Runtime channel override lets a built app temporarily use a bundle from another
+channel without changing the default channel embedded in the binary.
+
+- `HotUpdater.checkForUpdate({ channel })` checks another channel.
+- The override is persisted only after `updateInfo.updateBundle()` succeeds.
+- `HotUpdater.resetChannel()` removes the override and restores the original
+  bundle.
+
+<Callout type="info">
+  Set your app's default channel first. See
+  [Default Channel Setup](/docs/guides/channel-management).
+</Callout>
+
+## Recommended Runtime Flow
+
+Use this runtime override flow when you want to opt a device into another
+channel without rebuilding the native app:
+
+1. Keep a build-time default channel such as `production`.
+2. Check another channel with `HotUpdater.checkForUpdate({ channel: "beta" })`.
+3. Call `updateInfo.updateBundle()` only when an update is returned.
+4. Reload the app to start using the installed bundle.
+5. Use `HotUpdater.getChannel()` and `HotUpdater.isChannelSwitched()` to show
+   the current state in your UI.
+6. When you want to leave the runtime override, call
+   `HotUpdater.resetChannel()` and reload again.
+
+This keeps the full lifecycle explicit:
+
+- Opt in with `checkForUpdate({ channel })` + `updateBundle()` + `reload()`
+- Observe state with `getChannel()` + `isChannelSwitched()`
+- Opt out with `resetChannel()` + `reload()`
+
+## Opt Into Another Channel
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function enableBetaChannel() {
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+    channel: "beta",
+  });
+
+  if (!updateInfo) {
+    console.log("No beta bundle available");
+    return false;
+  }
+
+  const installed = await updateInfo.updateBundle();
+
+  if (!installed) {
+    return false;
+  }
+
+  await HotUpdater.reload();
+  return true;
+}
+```
+
+## Show Current State
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function ChannelStatus() {
+  const currentChannel = HotUpdater.getChannel();
+  const switched = HotUpdater.isChannelSwitched();
+
+  return (
+    <View>
+      <Text>Current channel: {currentChannel}</Text>
+      <Text>Runtime override active: {switched ? "yes" : "no"}</Text>
+    </View>
+  );
+}
+```
+
+## Reset to the Default Channel
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function restoreDefaultChannel() {
+  await HotUpdater.resetChannel();
+  await HotUpdater.reload();
+}
+```
+
+## Important Behavior
+
+- `checkForUpdate({ channel: "beta" })` only checks the `beta` channel.
+- The app does not switch channels just by checking.
+- If no update is returned, the app stays on the current channel.
+- After `updateInfo.updateBundle()` succeeds and the app reloads,
+  `HotUpdater.getChannel()` returns the effective runtime channel.
+- If no runtime override is active, `HotUpdater.resetChannel()` is a no-op.
+
+<Callout type="warn">
+  Do not rely on `checkForUpdate({ channel: "<default-channel>" })` to return to
+  the default channel. That call only checks for an update. If there is nothing
+  new to install, the override remains active. Use `HotUpdater.resetChannel()`
+  when you want to fully leave the runtime override.
+</Callout>
+
+## Related APIs
+
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel)
+- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)

@@ -1,16 +1,18 @@
 ---
 title: "getChannel"
-description: "The `HotUpdater.getChannel()` function retrieves the current release channel of the app. This is useful when you want to determine which channel updates are being applied from."
+description: "The `HotUpdater.getChannel()` function returns the app's current effective channel."
 icon: Radio
 ---
 
 By default, if no channel is specified, the app is assigned to the `production` channel.
 
-For more details about channels, refer to the [Channel Guide](/docs/guides/channel-management).
+For build-time setup, refer to
+[Default Channel Setup](/docs/guides/channel-management). For runtime switching,
+see [Runtime Channel Override](/docs/guides/runtime-channel-override).
 
 ## Usage
 
-You can use `HotUpdater.getChannel()` to dynamically check the release channel in your application logic.
+You can use `HotUpdater.getChannel()` to dynamically check which channel the app is currently using.
 
 ### Example
 
@@ -40,13 +42,11 @@ export default HotUpdater.wrap({
 
 ## Behavior
 
-- If `releaseChannel` is set in `hot-updater.config.ts`, `HotUpdater.getChannel()` returns that value.
-- If no channel is set, the default is `production`.
-- Channels help separate environments such as `dev`, `staging`, and `production`, ensuring that updates are applied correctly.
-- The initial channel is injected into the native app during the build process based on the `releaseChannel` specified in `hot-updater.config.ts`.
-- After the app is built, updates can be deployed to the correct channel using `hot-updater deploy -c <channel>`, such as `hot-updater deploy -c production` or `hot-updater deploy -c dev`.
-- **Important**: Channel changes require rebuilding the native app to take effect. Simply changing the channel in the configuration file or through deployment commands will not update the channel of an already built app.
-- **It is crucial to set the correct channel during the initial build**, as the app will continue to receive updates only from that specified channel.
+- If no runtime override is active, `HotUpdater.getChannel()` returns the build-time channel.
+- If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that overridden channel.
+- If no channel is configured, the default is `production`.
+- The build-time default channel is injected into the native app during the build process based on `releaseChannel` in `hot-updater.config.ts`.
+- You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
 
 ## Configuration Example (`hot-updater.config.ts`)
 
@@ -64,4 +64,26 @@ export default defineConfig({
 });
 ```
 
-With this configuration, `HotUpdater.getChannel()` will return `"dev"`. This ensures that all future updates are correctly applied to the `dev` channel.
+With this configuration, `HotUpdater.getChannel()` will initially return `"dev"`.
+
+## Runtime Example
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+  channel: "beta",
+});
+
+if (updateInfo) {
+  await updateInfo.updateBundle();
+  await HotUpdater.reload();
+}
+
+console.log(HotUpdater.getChannel()); // "beta"
+```
+
+## Related APIs
+
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)
