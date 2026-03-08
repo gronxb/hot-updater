@@ -8,6 +8,8 @@ import crypto from "crypto";
 import { delay } from "es-toolkit";
 import type { AwsRegion } from "./regionLocationMap";
 
+// AWS-managed CloudFront cache policy IDs. These are global IDs, not account-specific.
+// Docs: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
 export const HOT_UPDATER_MANAGED_CACHE_POLICY_IDS = {
   cachingDisabled: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
   useOriginCacheControlHeaders: "83da9c7e-98b4-4e11-a168-04f0df8e2c65",
