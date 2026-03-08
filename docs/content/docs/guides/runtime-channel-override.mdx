@@ -14,6 +14,8 @@ channel without changing the default channel embedded in the binary.
 - The existing deployment process does not change.
 - `HotUpdater.checkForUpdate({ channel })` checks another channel.
 - The override is persisted only after `updateInfo.updateBundle()` succeeds.
+- You cannot jump directly from one runtime override channel to another. Reset
+  back to the default channel first.
 - `HotUpdater.resetChannel()` removes the override and restores the original
   bundle.
 
@@ -105,6 +107,13 @@ async function restoreDefaultChannel() {
 }
 ```
 
+<Callout type="warn">
+  If the app is already using a runtime override such as `beta`, do not try to
+  jump directly to another runtime override such as `alpha`.
+  Call `HotUpdater.resetChannel()` and reload first, then start a new
+  `checkForUpdate({ channel: "..." })` flow from the default channel.
+</Callout>
+
 ## Important Behavior
 
 - The existing deployment process is unchanged.
@@ -116,6 +125,9 @@ async function restoreDefaultChannel() {
 - After `updateInfo.updateBundle()` succeeds and the app reloads,
   `HotUpdater.getChannel()` returns the effective runtime channel.
 - `HotUpdater.getDefaultChannel()` still returns the embedded default channel.
+- If a runtime override is already active, `checkForUpdate({ channel: "..." })`
+  cannot move directly to a different runtime channel. Call
+  `HotUpdater.resetChannel()` before starting another override.
 - If no runtime override is active, `HotUpdater.resetChannel()` is a no-op.
 
 <Callout type="warn">
