@@ -22,12 +22,14 @@ declare global {
     CLOUDFRONT_KEY_PAIR_ID: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
+    S3_BUCKET_NAME: string;
   };
 }
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
+const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
 
 // Global cache for private key (persists across warm Lambda invocations)
 let cachedPrivateKey: string | null = null;
@@ -149,9 +151,8 @@ const handleUpdateRequest = async (
 
     const updateInfo = await getUpdateInfo(
       {
-        baseUrl: c.req.url,
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        privateKey: privateKey,
+        bucketName: S3_BUCKET_NAME,
+        region: SSM_REGION,
       },
       updateConfig,
     );
