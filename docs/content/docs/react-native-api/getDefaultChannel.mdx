@@ -1,0 +1,45 @@
+---
+title: "getDefaultChannel"
+description: "The `HotUpdater.getDefaultChannel()` function returns the build-time default channel embedded in the app."
+icon: Radio
+---
+
+## Usage
+
+Use `HotUpdater.getDefaultChannel()` when you need the channel embedded in the
+native app, even if the app is currently using a runtime channel override.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const defaultChannel = HotUpdater.getDefaultChannel();
+console.log(defaultChannel);
+```
+
+## Behavior
+
+- Returns the build-time default channel configured in the native app
+- Does not change when `HotUpdater.checkForUpdate({ channel })` applies a runtime override
+- Defaults to `production` when no channel is configured
+
+## Example
+
+```tsx
+const currentChannel = HotUpdater.getChannel();
+const defaultChannel = HotUpdater.getDefaultChannel();
+const switched = HotUpdater.isChannelSwitched();
+
+console.log({ currentChannel, defaultChannel, switched });
+```
+
+If the app was built with `production` and later switched to `beta` at runtime:
+
+- `HotUpdater.getChannel()` returns `"beta"`
+- `HotUpdater.getDefaultChannel()` returns `"production"`
+- `HotUpdater.isChannelSwitched()` returns `true`
+
+## Related APIs
+
+- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel)
+- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)

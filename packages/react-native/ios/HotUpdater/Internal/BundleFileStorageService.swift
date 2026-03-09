@@ -118,6 +118,11 @@ public protocol BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     func getBaseURL() -> String
+
+    /**
+     * Restores the original bundle and clears downloaded bundle state.
+     */
+    func resetChannel() -> Result<Bool, Error>
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -1223,6 +1228,45 @@ class BundleFileStorageService: BundleStorageService {
         } catch {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
+        }
+    }
+
+    func resetChannel() -> Result<Bool, Error> {
+        guard case .success = setBundleURL(localPath: nil) else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        let clearedMetadata = BundleMetadata(
+            isolationKey: isolationKey,
+            stableBundleId: nil,
+            stagingBundleId: nil,
+            verificationPending: false,
+            verificationAttemptedAt: nil,
+            stagingExecutionCount: nil
+        )
+
+        guard saveMetadata(clearedMetadata) else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        do {
+            for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
+                if item == BundleMetadata.metadataFilename || item == CrashedHistory.crashedHistoryFilename {
+                    continue
+                }
+
+                let bundlePath = (storeDir as NSString).appendingPathComponent(item)
+                if fileSystem.fileExists(atPath: bundlePath) {
+                    try fileSystem.removeItem(atPath: bundlePath)
+                }
+            }
+            return .success(true)
+        } catch {
+            return .failure(BundleStorageError.moveOperationFailed(error))
         }
     }
 }

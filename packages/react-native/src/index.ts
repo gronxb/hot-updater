@@ -12,9 +12,12 @@ import {
   getBundleId,
   getChannel,
   getCrashHistory,
+  getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
+  isChannelSwitched,
   reload,
+  resetChannel,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -214,6 +217,27 @@ function createHotUpdaterClient() {
     getChannel,
 
     /**
+     * Fetches the build-time default channel of the app.
+     *
+     * This value does not change when a runtime channel override is active.
+     *
+     * @returns {string} The default release channel embedded in the app
+     * @example
+     * ```ts
+     * const defaultChannel = HotUpdater.getDefaultChannel();
+     * console.log(`Default channel: ${defaultChannel}`);
+     * ```
+     */
+    getDefaultChannel,
+
+    /**
+     * Returns whether the app is currently using a runtime channel override.
+     *
+     * @returns {boolean} true when a non-default channel has been applied
+     */
+    isChannelSwitched,
+
+    /**
      * Adds a listener to HotUpdater events.
      *
      * @param {keyof HotUpdaterEvent} eventName - The name of the event to listen for
@@ -237,6 +261,7 @@ function createHotUpdaterClient() {
      *
      * @param {Object} config - Update check configuration
      * @param {string} config.source - Update server URL
+     * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
      * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
@@ -313,6 +338,22 @@ function createHotUpdaterClient() {
     updateBundle: (params: UpdateParams) => {
       ensureGlobalResolver("updateBundle");
       return updateBundle(params);
+    },
+
+    /**
+     * Clears the runtime channel override and restores the original bundle.
+     *
+     * @returns {Promise<boolean>} Resolves with true if reset was successful
+     */
+    resetChannel: async () => {
+      const ok = await resetChannel();
+      if (ok) {
+        hotUpdaterStore.setState({
+          isUpdateDownloaded: false,
+          progress: 0,
+        });
+      }
+      return ok;
     },
 
     /**

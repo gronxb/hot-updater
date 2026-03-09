@@ -15,6 +15,62 @@ export const HotUpdaterConstants = {
   HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
 };
 
+class HotUpdaterSessionState {
+  private readonly defaultChannel: string;
+  private currentChannel: string;
+  private readonly inflightUpdates = new Map<string, Promise<boolean>>();
+  private lastInstalledBundleId: string | null = null;
+
+  constructor() {
+    const constants = HotUpdaterNative.getConstants();
+    this.defaultChannel = constants.DEFAULT_CHANNEL ?? constants.CHANNEL;
+    this.currentChannel = constants.CHANNEL;
+  }
+
+  getChannel(): string {
+    return this.currentChannel;
+  }
+
+  getDefaultChannel(): string {
+    return this.defaultChannel;
+  }
+
+  isChannelSwitched(): boolean {
+    return this.currentChannel !== this.defaultChannel;
+  }
+
+  hasInstalledBundle(bundleId: string): boolean {
+    return this.lastInstalledBundleId === bundleId;
+  }
+
+  getInflightUpdate(bundleId: string): Promise<boolean> | undefined {
+    return this.inflightUpdates.get(bundleId);
+  }
+
+  trackInflightUpdate(bundleId: string, promise: Promise<boolean>) {
+    this.inflightUpdates.set(bundleId, promise);
+  }
+
+  clearInflightUpdate(bundleId: string) {
+    this.inflightUpdates.delete(bundleId);
+  }
+
+  markBundleInstalled(bundleId: string, channel?: string) {
+    this.lastInstalledBundleId = bundleId;
+    if (channel) {
+      this.currentChannel = channel;
+    }
+  }
+
+  resetChannelState() {
+    this.currentChannel = this.defaultChannel;
+    this.lastInstalledBundleId = null;
+    this.inflightUpdates.clear();
+  }
+}
+
+const sessionState = new HotUpdaterSessionState();
+
 export type HotUpdaterEvent = {
   onProgress: {
     progress: number;
@@ -36,12 +92,8 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
 
 export type UpdateParams = UpdateBundleParams & {
   status: UpdateStatus;
+  shouldSkipCurrentBundleIdCheck?: boolean;
 };
-
-// In-flight update deduplication by bundleId (session-scoped).
-const inflightUpdates = new Map<string, Promise<boolean>>();
-// Tracks the last successfully installed bundleId for this session.
-let lastInstalledBundleId: string | null = null;
 
 /**
  * Downloads files and applies them to the app.
@@ -71,24 +123,27 @@ export async function updateBundle(
     typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
 
   // If we have already installed this bundle in this session, skip re-download.
-  if (status === "UPDATE" && lastInstalledBundleId === updateBundleId) {
+  if (status === "UPDATE" && sessionState.hasInstalledBundle(updateBundleId)) {
     return true;
   }
 
-  const currentBundleId = getBundleId();
+  const shouldSkipCurrentBundleIdCheck =
+    typeof paramsOrBundleId === "string"
+      ? false
+      : paramsOrBundleId.shouldSkipCurrentBundleIdCheck === true;
 
-  // updateBundleId <= currentBundleId
   if (
+    !shouldSkipCurrentBundleIdCheck &&
     status === "UPDATE" &&
-    updateBundleId.localeCompare(currentBundleId) <= 0
+    updateBundleId.localeCompare(getBundleId()) <= 0
   ) {
     throw new Error(
-      "Update bundle id is the same as the current bundle id. Preventing infinite update loop.",
+      "Update bundle id is not newer than the current bundle id. Preventing infinite update loop.",
     );
   }
 
   // In-flight guard: return the same promise if the same bundle is already updating.
-  const existing = inflightUpdates.get(updateBundleId);
+  const existing = sessionState.getInflightUpdate(updateBundleId);
   if (existing) return existing;
 
   const targetFileUrl =
@@ -101,23 +156,27 @@ export async function updateBundle(
       ? undefined
       : paramsOrBundleId.fileHash;
 
+  const targetChannel =
+    typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
+
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
+        channel: targetChannel,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
       });
       if (ok) {
-        lastInstalledBundleId = updateBundleId;
+        sessionState.markBundleInstalled(updateBundleId, targetChannel);
       }
       return ok;
     } finally {
-      inflightUpdates.delete(updateBundleId);
+      sessionState.clearInflightUpdate(updateBundleId);
     }
   })();
 
-  inflightUpdates.set(updateBundleId, promise);
+  sessionState.trackInflightUpdate(updateBundleId, promise);
   return promise;
 }
 
@@ -165,8 +224,21 @@ export const getBundleId = (): string => {
  * @returns {string} Resolves with the channel or null if not available.
  */
 export const getChannel = (): string => {
-  const constants = HotUpdaterNative.getConstants();
-  return constants.CHANNEL;
+  return sessionState.getChannel();
+};
+
+/**
+ * Fetches the build-time default channel for the app.
+ */
+export const getDefaultChannel = (): string => {
+  return sessionState.getDefaultChannel();
+};
+
+/**
+ * Returns whether the app is currently using a runtime channel override.
+ */
+export const isChannelSwitched = (): boolean => {
+  return sessionState.isChannelSwitched();
 };
 
 /**
@@ -274,4 +346,19 @@ export const getBaseURL = (): string | null => {
     return result;
   }
   return null;
+};
+
+/**
+ * Clears the runtime channel override and restores the original bundle.
+ */
+export const resetChannel = async (): Promise<boolean> => {
+  if (!sessionState.isChannelSwitched()) {
+    return true;
+  }
+
+  const ok = await HotUpdaterNative.resetChannel();
+  if (ok) {
+    sessionState.resetChannelState();
+  }
+  return ok;
 };

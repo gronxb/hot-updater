@@ -45,9 +45,10 @@ class HotUpdater {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
+            channel: String?,
             progressCallback: (Double) -> Unit,
         ) {
-            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, channel, progressCallback)
         }
 
         /**
@@ -100,5 +101,7 @@ class HotUpdater {
         fun clearReactHost() {
             // No-op for old architecture
         }
+
+        suspend fun resetChannel(context: Context): Boolean = getInstance(context).resetChannel()
     }
 }

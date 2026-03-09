@@ -6,6 +6,7 @@ import React
     private let preferences: PreferencesService
 
     private static let DEFAULT_CHANNEL = "production"
+    private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
     // MARK: - Initialization
 
@@ -91,7 +92,16 @@ import React
      * @return The channel name or nil if not set
      */
     public func getChannel() -> String {
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+        if let savedChannel = try? preferences.getItem(forKey: Self.CHANNEL_STORAGE_KEY),
+           !savedChannel.isEmpty {
+            return savedChannel
+        }
+
+        return Self.appChannel
+    }
+
+    public func getDefaultChannel() -> String {
+        return Self.appChannel
     }
 
     /**
@@ -157,6 +167,7 @@ import React
 
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
+            let channel = data["channel"] as? String
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
@@ -172,7 +183,7 @@ import React
                     }
                 }
             }) { [weak self] result in
-                guard self != nil else {
+                guard let self = self else {
                     let error = NSError(domain: "HotUpdater", code: 0,
                                        userInfo: [NSLocalizedDescriptionKey: "Internal error: self deallocated during update"])
                     DispatchQueue.main.async {
@@ -185,6 +196,17 @@ import React
                     switch result {
                     case .success:
                         NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                        if let channel, !channel.isEmpty {
+                            do {
+                                if channel == self.getDefaultChannel() {
+                                    try self.preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
+                                } else {
+                                    try self.preferences.setItem(channel, forKey: Self.CHANNEL_STORAGE_KEY)
+                                }
+                            } catch {
+                                NSLog("[HotUpdaterImpl] Failed to persist channel override: \(error)")
+                            }
+                        }
                         resolve(true)
                     case .failure(let error):
                         NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
@@ -280,5 +302,25 @@ import React
      */
     public func getBaseURL() -> String {
         return bundleStorage.getBaseURL()
+    }
+
+    @objc
+    public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
+                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let result = bundleStorage.resetChannel()
+
+        switch result {
+        case .success(let success):
+            do {
+                try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
+            } catch {
+                NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
+            }
+            resolver(success)
+        case .failure(let error):
+            let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
+            let nsError = error as NSError
+            reject(normalizedCode, nsError.localizedDescription, nsError)
+        }
     }
 }
