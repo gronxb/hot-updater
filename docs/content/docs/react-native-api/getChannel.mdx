@@ -8,7 +8,7 @@ By default, if no channel is specified, the app is assigned to the `production` 
 
 For build-time setup, refer to
 [Default Channel Setup](/docs/guides/channel-management). For runtime switching,
-see [Runtime Channel Override](/docs/guides/runtime-channel-override).
+see [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
 
 ## Usage
 
@@ -42,11 +42,11 @@ export default HotUpdater.wrap({
 
 ## Behavior
 
-- If no runtime override is active, `HotUpdater.getChannel()` returns the build-time channel.
-- If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that overridden channel.
+- If no runtime channel switch is active, `HotUpdater.getChannel()` returns the build-time channel.
+- If a bundle from another channel has been applied at runtime, `HotUpdater.getChannel()` returns that switched channel.
 - If no channel is configured, the default is `production`.
 - The build-time default channel is injected into the native app during the build process based on `releaseChannel` in `hot-updater.config.ts`.
-- Use [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime override state.
+- Use [`HotUpdater.getDefaultChannel()`](/docs/react-native-api/getDefaultChannel) when you need the embedded default channel regardless of runtime channel switch state.
 - You can restore the original channel with [`HotUpdater.resetChannel()`](/docs/react-native-api/resetChannel).
 
 ## Configuration Example (`hot-updater.config.ts`)

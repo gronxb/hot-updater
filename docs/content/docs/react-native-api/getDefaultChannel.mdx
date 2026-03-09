@@ -7,7 +7,7 @@ icon: Radio
 ## Usage
 
 Use `HotUpdater.getDefaultChannel()` when you need the channel embedded in the
-native app, even if the app is currently using a runtime channel override.
+native app, even if the app is currently using a runtime channel switch.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -19,7 +19,7 @@ console.log(defaultChannel);
 ## Behavior
 
 - Returns the build-time default channel configured in the native app
-- Does not change when `HotUpdater.checkForUpdate({ channel })` applies a runtime override
+- Does not change when `HotUpdater.checkForUpdate({ channel })` applies a runtime channel switch
 - Defaults to `production` when no channel is configured
 
 ## Example

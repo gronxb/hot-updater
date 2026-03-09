@@ -1,5 +1,5 @@
 ---
-title: "Runtime Channel Override"
+title: "Runtime Channel Switch"
 description: "Temporarily move a device to another channel at runtime, then return to the default channel when needed."
 icon: GitBranch
 ---
@@ -8,15 +8,15 @@ import { Callout } from "fumadocs-ui/components/callout";
 
 ## Overview
 
-Runtime channel override lets a built app temporarily use a bundle from another
+Runtime channel switch lets a built app temporarily use a bundle from another
 channel without changing the default channel embedded in the binary.
 
 - The existing deployment process does not change.
 - `HotUpdater.checkForUpdate({ channel })` checks another channel.
-- The override is persisted only after `updateInfo.updateBundle()` succeeds.
-- You cannot jump directly from one runtime override channel to another. Reset
+- The switch is persisted only after `updateInfo.updateBundle()` succeeds.
+- You cannot jump directly from one switched runtime channel to another. Reset
   back to the default channel first.
-- `HotUpdater.resetChannel()` removes the override and restores the original
+- `HotUpdater.resetChannel()` removes the switch and restores the original
   bundle.
 
 <Callout type="info">
@@ -30,7 +30,7 @@ channel without changing the default channel embedded in the binary.
 
 ## Recommended Runtime Flow
 
-Use this runtime override flow when you want to opt a device into another
+Use this runtime channel switch flow when you want to opt a device into another
 channel without rebuilding the native app:
 
 1. Keep a build-time default channel such as `production`.
@@ -39,7 +39,7 @@ channel without rebuilding the native app:
 4. Reload the app to start using the installed bundle.
 5. Use `HotUpdater.getChannel()`, `HotUpdater.getDefaultChannel()`, and
    `HotUpdater.isChannelSwitched()` to show the current state in your UI.
-6. When you want to leave the runtime override, call
+6. When you want to leave the runtime channel switch, call
    `HotUpdater.resetChannel()` and reload again.
 
 This keeps the full lifecycle explicit:
@@ -90,7 +90,7 @@ function ChannelStatus() {
     <View>
       <Text>Current channel: {currentChannel}</Text>
       <Text>Default channel: {defaultChannel}</Text>
-      <Text>Runtime override active: {switched ? "yes" : "no"}</Text>
+      <Text>Runtime switch active: {switched ? "yes" : "no"}</Text>
     </View>
   );
 }
@@ -108,8 +108,8 @@ async function restoreDefaultChannel() {
 ```
 
 <Callout type="warn">
-  If the app is already using a runtime override such as `beta`, do not try to
-  jump directly to another runtime override such as `alpha`.
+  If the app is already switched to a runtime channel such as `beta`, do not
+  try to jump directly to another runtime channel such as `alpha`.
   Call `HotUpdater.resetChannel()` and reload first, then start a new
   `checkForUpdate({ channel: "..." })` flow from the default channel.
 </Callout>
@@ -125,16 +125,17 @@ async function restoreDefaultChannel() {
 - After `updateInfo.updateBundle()` succeeds and the app reloads,
   `HotUpdater.getChannel()` returns the effective runtime channel.
 - `HotUpdater.getDefaultChannel()` still returns the embedded default channel.
-- If a runtime override is already active, `checkForUpdate({ channel: "..." })`
+- If a runtime channel switch is already active, `checkForUpdate({ channel: "..." })`
   cannot move directly to a different runtime channel. Call
-  `HotUpdater.resetChannel()` before starting another override.
-- If no runtime override is active, `HotUpdater.resetChannel()` is a no-op.
+  `HotUpdater.resetChannel()` before starting another switch.
+- If no runtime channel switch is active, `HotUpdater.resetChannel()` is a no-op.
 
 <Callout type="warn">
   Do not rely on `checkForUpdate({ channel: "<default-channel>" })` to return to
   the default channel. That call only checks for an update. If there is nothing
-  new to install, the override remains active. Use `HotUpdater.resetChannel()`
-  when you want to fully leave the runtime override.
+  new to install, the runtime channel switch remains active. Use
+  `HotUpdater.resetChannel()` when you want to fully leave the runtime channel
+  switch.
 </Callout>
 
 ## Related APIs

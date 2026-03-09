@@ -17,7 +17,7 @@ The default channel is the release channel embedded in your native app at build 
 
 <Callout type="info">
   Need to temporarily move a device to another channel without rebuilding? See
-  [Runtime Channel Override](/docs/guides/runtime-channel-override).
+  [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
 </Callout>
 
 ## Set the Default Channel
@@ -211,6 +211,6 @@ export default HotUpdater.wrap({
 - `hot-updater deploy -c <channel>` should match the channel you want the app to
   receive updates from.
 - `HotUpdater.getChannel()` returns the effective channel, which may differ at
-  runtime if a channel override is active.
+  runtime if a runtime channel switch is active.
 - If you need temporary runtime switching, use
-  [Runtime Channel Override](/docs/guides/runtime-channel-override).
+  [Runtime Channel Switch](/docs/guides/runtime-channel-switch).
