@@ -119,6 +119,11 @@ export const standaloneRepository =
               (b) => b.platform === where.platform,
             );
           }
+          if (where?.storageUri) {
+            filteredBundles = filteredBundles.filter(
+              (b) => b.storageUri === where.storageUri,
+            );
+          }
 
           const total = filteredBundles.length;
           const data = limit

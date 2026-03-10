@@ -169,13 +169,29 @@ export const rpc = new Hono()
       try {
         const { bundleId } = c.req.valid("param");
 
-        const { databasePlugin } = await prepareConfig();
+        const { databasePlugin, storagePlugin } = await prepareConfig();
         const deleteBundle = await databasePlugin.getBundleById(bundleId);
         if (!deleteBundle) {
           return c.json({ error: "Bundle not found" }, 404);
         }
         await databasePlugin.deleteBundle(deleteBundle);
         await databasePlugin.commitBundle();
+
+        try {
+          if (storagePlugin && deleteBundle.storageUri) {
+            const { data: remaining } = await databasePlugin.getBundles({
+              where: { storageUri: deleteBundle.storageUri },
+              limit: 1,
+              offset: 0,
+            });
+            if (remaining.length === 0) {
+              await storagePlugin.delete(deleteBundle.storageUri);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to delete storage object:", e);
+        }
+
         return c.json({ success: true });
       } catch (error) {
         console.error("Error during bundle deletion:", error);

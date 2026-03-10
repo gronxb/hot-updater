@@ -17,3 +17,4 @@ CREATE TABLE bundles (
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
+CREATE INDEX bundles_storage_uri_idx ON bundles(storage_uri);

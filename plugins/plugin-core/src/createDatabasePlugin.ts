@@ -9,7 +9,7 @@ import type {
 export interface AbstractDatabasePlugin {
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
   getBundles: (options: {
-    where?: { channel?: string; platform?: string };
+    where?: { channel?: string; platform?: string; storageUri?: string };
     limit: number;
     offset: number;
   }) => Promise<{

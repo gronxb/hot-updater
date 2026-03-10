@@ -17,6 +17,7 @@ export interface D1DatabaseConfig {
 interface QueryConditions {
   channel?: string;
   platform?: string;
+  storageUri?: string;
 }
 
 interface BuildQueryResult {
@@ -46,6 +47,11 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   if (conditions.platform) {
     clauses.push("platform = ?");
     params.push(conditions.platform);
+  }
+
+  if (conditions.storageUri) {
+    clauses.push("storage_uri = ?");
+    params.push(conditions.storageUri);
   }
 
   const whereClause =

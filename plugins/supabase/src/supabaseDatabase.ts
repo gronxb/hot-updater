@@ -61,6 +61,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         if (where?.platform) {
           countQuery = countQuery.eq("platform", where.platform as Platform);
         }
+        if (where?.storageUri) {
+          countQuery = countQuery.eq("storage_uri", where.storageUri);
+        }
 
         const { count: total = 0 } = await countQuery;
 
@@ -77,6 +80,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
         if (where?.platform) {
           query = query.eq("platform", where.platform as Platform);
+        }
+        if (where?.storageUri) {
+          query = query.eq("storage_uri", where.storageUri);
         }
 
         if (limit) {

@@ -67,6 +67,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         if (where?.platform) {
           query = query.where("platform", "==", where.platform);
         }
+        if (where?.storageUri) {
+          query = query.where("storage_uri", "==", where.storageUri);
+        }
 
         query = query.orderBy("id", "desc");
 

@@ -60,6 +60,9 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             where.platform as Platform,
           );
         }
+        if (where?.storageUri) {
+          countQuery = countQuery.where("storage_uri", "=", where.storageUri);
+        }
 
         const countResult = await countQuery
           .select(db.fn.count<number>("id").as("total"))
@@ -73,6 +76,9 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
 
         if (where?.platform) {
           query = query.where("platform", "=", where.platform as Platform);
+        }
+        if (where?.storageUri) {
+          query = query.where("storage_uri", "=", where.storageUri);
         }
 
         if (limit) {
