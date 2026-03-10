@@ -127,6 +127,20 @@ const fingerprintStrategy = async (
       return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
+      // Propagate shouldForceUpdate if any intermediate bundle requires it
+      if (!updateCandidate.shouldForceUpdate) {
+        const forcedSnap = await baseQuery
+          .where("id", ">", bundleId)
+          .where("should_force_update", "==", true)
+          .limit(1)
+          .get();
+        if (!forcedSnap.empty) {
+          return makeResponse(
+            { ...updateCandidate, shouldForceUpdate: true },
+            "UPDATE",
+          );
+        }
+      }
       return makeResponse(updateCandidate, "UPDATE");
     }
 
@@ -246,6 +260,20 @@ const appVersionStrategy = async (
       return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
+      // Propagate shouldForceUpdate if any intermediate bundle requires it
+      if (!updateCandidate.shouldForceUpdate) {
+        const forcedSnap = await baseQuery
+          .where("id", ">", bundleId)
+          .where("should_force_update", "==", true)
+          .limit(1)
+          .get();
+        if (!forcedSnap.empty) {
+          return makeResponse(
+            { ...updateCandidate, shouldForceUpdate: true },
+            "UPDATE",
+          );
+        }
+      }
       return makeResponse(updateCandidate, "UPDATE");
     }
 

@@ -65,6 +65,21 @@ const appVersionStrategy = async (
     ORDER BY b.id DESC
     LIMIT 1
   ),
+  intermediate_forced AS (
+    SELECT 1 AS has_forced
+    FROM bundles b, input
+    WHERE input.bundle_id <> input.nil_uuid
+      AND b.enabled = 1
+      AND b.platform = input.app_platform
+      AND b.id > input.bundle_id
+      AND b.id >= input.min_bundle_id
+      AND b.channel = input.channel
+      AND b.should_force_update = 1
+      AND b.target_app_version IN (${targetAppVersionList
+        .map((version) => `'${version}'`)
+        .join(",")})
+    LIMIT 1
+  ),
   rollback_candidate AS (
     SELECT
       b.id,
@@ -87,7 +102,12 @@ const appVersionStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
+  SELECT id,
+    CASE
+      WHEN status = 'UPDATE' AND EXISTS (SELECT 1 FROM intermediate_forced) THEN 1
+      ELSE should_force_update
+    END AS should_force_update,
+    message, status, storage_uri, file_hash
   FROM final_result, input
   WHERE id <> bundle_id
 
@@ -168,6 +188,19 @@ export const fingerprintStrategy = async (
     ORDER BY b.id DESC
     LIMIT 1
   ),
+  intermediate_forced AS (
+    SELECT 1 AS has_forced
+    FROM bundles b, input
+    WHERE input.bundle_id <> input.nil_uuid
+      AND b.enabled = 1
+      AND b.platform = input.app_platform
+      AND b.id > input.bundle_id
+      AND b.id >= input.min_bundle_id
+      AND b.channel = input.channel
+      AND b.fingerprint_hash = input.fingerprint_hash
+      AND b.should_force_update = 1
+    LIMIT 1
+  ),
   rollback_candidate AS (
     SELECT
       b.id,
@@ -192,7 +225,12 @@ export const fingerprintStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
+  SELECT id,
+    CASE
+      WHEN status = 'UPDATE' AND EXISTS (SELECT 1 FROM intermediate_forced) THEN 1
+      ELSE should_force_update
+    END AS should_force_update,
+    message, status, storage_uri, file_hash
   FROM final_result, input
   WHERE id <> bundle_id
 

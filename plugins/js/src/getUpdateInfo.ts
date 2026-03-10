@@ -125,6 +125,18 @@ const appVersionStrategy = async (
       latestCandidate &&
       latestCandidate.id.localeCompare(currentBundle.id) > 0
     ) {
+      // Propagate shouldForceUpdate if any intermediate bundle requires it
+      if (!latestCandidate.shouldForceUpdate) {
+        const hasIntermediateForced = candidateBundles.some(
+          (b) => b.id.localeCompare(bundleId) > 0 && b.shouldForceUpdate,
+        );
+        if (hasIntermediateForced) {
+          return makeResponse(
+            { ...latestCandidate, shouldForceUpdate: true },
+            "UPDATE",
+          );
+        }
+      }
       return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
@@ -132,6 +144,21 @@ const appVersionStrategy = async (
 
   // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
+    // Propagate shouldForceUpdate if any intermediate bundle requires it
+    if (!updateCandidate.shouldForceUpdate) {
+      const hasIntermediateForced = candidateBundles.some(
+        (b) =>
+          b.id.localeCompare(bundleId) > 0 &&
+          b.id.localeCompare(updateCandidate.id) <= 0 &&
+          b.shouldForceUpdate,
+      );
+      if (hasIntermediateForced) {
+        return makeResponse(
+          { ...updateCandidate, shouldForceUpdate: true },
+          "UPDATE",
+        );
+      }
+    }
     return makeResponse(updateCandidate, "UPDATE");
   }
   if (rollbackCandidate) {
@@ -227,6 +254,18 @@ const fingerprintStrategy = async (
       latestCandidate &&
       latestCandidate.id.localeCompare(currentBundle.id) > 0
     ) {
+      // Propagate shouldForceUpdate if any intermediate bundle requires it
+      if (!latestCandidate.shouldForceUpdate) {
+        const hasIntermediateForced = candidateBundles.some(
+          (b) => b.id.localeCompare(bundleId) > 0 && b.shouldForceUpdate,
+        );
+        if (hasIntermediateForced) {
+          return makeResponse(
+            { ...latestCandidate, shouldForceUpdate: true },
+            "UPDATE",
+          );
+        }
+      }
       return makeResponse(latestCandidate, "UPDATE");
     }
     return null;
@@ -234,6 +273,21 @@ const fingerprintStrategy = async (
 
   // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
+    // Propagate shouldForceUpdate if any intermediate bundle requires it
+    if (!updateCandidate.shouldForceUpdate) {
+      const hasIntermediateForced = candidateBundles.some(
+        (b) =>
+          b.id.localeCompare(bundleId) > 0 &&
+          b.id.localeCompare(updateCandidate.id) <= 0 &&
+          b.shouldForceUpdate,
+      );
+      if (hasIntermediateForced) {
+        return makeResponse(
+          { ...updateCandidate, shouldForceUpdate: true },
+          "UPDATE",
+        );
+      }
+    }
     return makeResponse(updateCandidate, "UPDATE");
   }
   if (rollbackCandidate) {
