@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.26.1
+
+### Patch Changes
+
+- 041236c: fix(android): use \_jsBundleLoader backing field for Expo SDK 55+ compatibility
+  - @hot-updater/cli-tools@0.26.1
+  - @hot-updater/core@0.26.1
+  - @hot-updater/js@0.26.1
+  - @hot-updater/plugin-core@0.26.1
+
 ## 0.26.0
 
 ### Minor Changes
