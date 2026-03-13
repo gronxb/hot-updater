@@ -9,8 +9,8 @@
 ### Patch Changes
 
 - Updated dependencies [81f9437]
-  - @hot-updater/core@1.0.0
-  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/core@0.27.0
+  - @hot-updater/plugin-core@0.27.0
 
 ## 0.26.2
 
