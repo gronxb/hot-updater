@@ -12,8 +12,7 @@ enum class ReloadMethod(
     ;
 
     companion object {
-        fun fromValue(value: String): ReloadMethod? =
-            entries.firstOrNull { it.value.equals(value, ignoreCase = true) }
+        fun fromValue(value: String): ReloadMethod? = entries.firstOrNull { it.value.equals(value, ignoreCase = true) }
     }
 }
 
