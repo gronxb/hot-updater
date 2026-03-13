@@ -1897,4 +1897,374 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
   });
+
+  describe("intermediate force update propagation", () => {
+    describe("app version strategy", () => {
+      it("propagates shouldForceUpdate when an intermediate bundle is forced (currentBundle path)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          appVersion: "1.0",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+
+      it("does not propagate shouldForceUpdate when all intermediate bundles are non-forced", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          appVersion: "1.0",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("keeps shouldForceUpdate when the latest bundle is already forced", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          appVersion: "1.0",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+
+      it("does not check intermediate bundles for NIL_UUID (first install)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          appVersion: "1.0",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000002",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("propagates shouldForceUpdate when current bundle is not in candidates (updateCandidate path)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+            targetAppVersion: "1.0",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        // bundleId 001 is not in the candidates (e.g. it was disabled)
+        const update = await getUpdateInfo(bundles, {
+          appVersion: "1.0",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+    });
+
+    describe("fingerprint strategy", () => {
+      it("propagates shouldForceUpdate when an intermediate bundle is forced (currentBundle path)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+
+      it("does not propagate shouldForceUpdate when all intermediate bundles are non-forced", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("keeps shouldForceUpdate when the latest bundle is already forced", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+
+      it("does not check intermediate bundles for NIL_UUID (first install)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000001",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+        ];
+
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000002",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("propagates shouldForceUpdate when current bundle is not in candidates (updateCandidate path)", async () => {
+        const bundles: Bundle[] = [
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: true,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000002",
+          },
+          {
+            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+            fingerprintHash: "hash1",
+            shouldForceUpdate: false,
+            enabled: true,
+            id: "00000000-0000-0000-0000-000000000003",
+          },
+        ];
+
+        // bundleId 001 is not in the candidates (e.g. it was disabled)
+        const update = await getUpdateInfo(bundles, {
+          fingerprintHash: "hash1",
+          bundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          _updateStrategy: "fingerprint",
+        });
+
+        expect(update).toMatchObject({
+          id: "00000000-0000-0000-0000-000000000003",
+          shouldForceUpdate: true,
+          status: "UPDATE",
+        });
+      });
+    });
+  });
 };
