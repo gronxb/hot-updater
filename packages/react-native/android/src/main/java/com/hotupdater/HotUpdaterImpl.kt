@@ -298,13 +298,9 @@ class HotUpdaterImpl {
      * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
     suspend fun reload(reactContext: Context) {
-        val reactIntegrationManager = ReactIntegrationManager(reactContext)
-
         try {
             withContext(Dispatchers.Main) {
-                val bundleURL = getJSBundleFile()
-                reactIntegrationManager.setJSBundle(bundleURL)
-                reactIntegrationManager.reload()
+                performReactReload(reactContext)
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
@@ -315,13 +311,21 @@ class HotUpdaterImpl {
         try {
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
-                    throw IllegalStateException("Failed to start process restart")
+                    Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
+                    performReactReload(reactContext)
                 }
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to restart application process", e)
             throw e
         }
+    }
+
+    private suspend fun performReactReload(reactContext: Context) {
+        val reactIntegrationManager = ReactIntegrationManager(reactContext)
+        val bundleURL = getJSBundleFile()
+        reactIntegrationManager.setJSBundle(bundleURL)
+        reactIntegrationManager.reload()
     }
 
     // Use a cold restart in release builds so bundle application does not depend on RN reload timing.

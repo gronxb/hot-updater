@@ -98,6 +98,16 @@ const sessionState = new HotUpdaterSessionState();
 let reloadBehavior: ReloadBehaviorSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
 
+const getReloadProcess = (): (() => Promise<void>) | null => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    reloadProcess?: () => Promise<void>;
+  };
+
+  return typeof nativeModule.reloadProcess === "function"
+    ? nativeModule.reloadProcess.bind(nativeModule)
+    : null;
+};
+
 export type HotUpdaterEvent = {
   onProgress: {
     progress: number;
@@ -224,6 +234,7 @@ export const getAppVersion = (): string | null => {
  * When `setReloadBehavior("processRestart")` is used:
  * - Android performs a cold process restart
  * - iOS keeps the same behavior as the normal React reload path
+ * - older Android native binaries fall back to `reload()` if `reloadProcess()` is unavailable
  *
  * When `setReloadBehavior("custom", handler)` is used:
  * - both Android and iOS execute the provided handler
@@ -241,8 +252,11 @@ export const reload = async () => {
   }
 
   if (Platform.OS === "android" && reloadBehavior === "processRestart") {
-    await HotUpdaterNative.reloadProcess();
-    return;
+    const reloadProcess = getReloadProcess();
+    if (reloadProcess) {
+      await reloadProcess();
+      return;
+    }
   }
 
   await HotUpdaterNative.reload();
