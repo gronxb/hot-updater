@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 0.27.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
 ## 0.26.2
 
 ## 0.26.1

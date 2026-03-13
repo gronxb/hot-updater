@@ -1,5 +1,18 @@
 # @hot-updater/sentry-plugin
 
+## 0.27.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
+### Patch Changes
+
+- Updated dependencies [81f9437]
+  - @hot-updater/cli-tools@0.27.0
+  - @hot-updater/core@0.27.0
+  - @hot-updater/plugin-core@0.27.0
+
 ## 0.26.2
 
 ### Patch Changes
