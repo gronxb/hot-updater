@@ -49,6 +49,19 @@ class HotUpdaterModule internal constructor(
         }
     }
 
+    override fun reloadProcess(promise: Promise) {
+        moduleScope.launch {
+            try {
+                val impl = getInstance()
+                impl.reloadProcess(mReactApplicationContext)
+                promise.resolve(null)
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to restart process", e)
+                promise.reject("reloadProcess", e)
+            }
+        }
+    }
+
     override fun updateBundle(
         params: ReadableMap,
         promise: Promise,

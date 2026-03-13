@@ -1,5 +1,5 @@
 import type { UpdateStatus } from "@hot-updater/core";
-import { NativeEventEmitter } from "react-native";
+import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
   type UpdateBundleParams,
@@ -8,6 +8,31 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Built-in reload implementations used by `HotUpdater.reload()`.
+ *
+ * - `reload`: In-process React Native reload.
+ * - `processRestart`: Android-only cold restart. On iOS the same call behaves like `reload`.
+ */
+export type ReloadMethod = "reload" | "processRestart";
+
+/**
+ * Custom reload hook used when `setReloadMethod("custom", handler)` is configured.
+ *
+ * This is useful for brownfield apps that need to delegate reload behavior to
+ * a host-native container instead of using HotUpdater's built-in reload flow.
+ */
+export type CustomReloadHandler = () => void | Promise<void>;
+
+/**
+ * Full reload policy accepted by `setReloadMethod()`.
+ *
+ * - `reload`: Built-in React reload on both platforms
+ * - `processRestart`: Android process restart, iOS behaves like `reload`
+ * - `custom`: Run a user-provided JS handler on both platforms
+ */
+export type ReloadSetting = ReloadMethod | "custom";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 
@@ -70,6 +95,8 @@ class HotUpdaterSessionState {
 }
 
 const sessionState = new HotUpdaterSessionState();
+let reloadMethod: ReloadSetting = "reload";
+let customReloadHandler: CustomReloadHandler | null = null;
 
 export type HotUpdaterEvent = {
   onProgress: {
@@ -189,11 +216,80 @@ export const getAppVersion = (): string | null => {
 };
 
 /**
- * Reloads the app.
+ * Reloads the app using the currently configured reload method.
+ *
+ * Default behavior is `reload`.
+ *
+ * When `setReloadMethod("processRestart")` is used:
+ * - Android performs a cold process restart
+ * - iOS keeps the same behavior as the normal React reload path
+ *
+ * When `setReloadMethod("custom", handler)` is used:
+ * - both Android and iOS execute the provided handler
  */
 export const reload = async () => {
+  if (reloadMethod === "custom") {
+    if (!customReloadHandler) {
+      throw new Error(
+        "[HotUpdater] setReloadMethod('custom') requires a reload handler.",
+      );
+    }
+
+    await customReloadHandler();
+    return;
+  }
+
+  if (Platform.OS === "android" && reloadMethod === "processRestart") {
+    await HotUpdaterNative.reloadProcess();
+    return;
+  }
+
   await HotUpdaterNative.reload();
 };
+
+/**
+ * Configures how `HotUpdater.reload()` should behave.
+ *
+ * This API is available on both Android and iOS so app code can stay symmetric.
+ * You can call `setReloadMethod("processRestart")` unconditionally at startup.
+ *
+ * Behavior by method:
+ * - `reload`: Uses React Native's normal in-process reload flow
+ * - `processRestart`: Uses Android process restart when available; iOS keeps the same behavior as `reload`
+ * - `custom`: Executes a JS callback on both platforms
+ *
+ * `custom` is intended for brownfield apps that need host-native coordination.
+ */
+export function setReloadMethod(method: ReloadMethod): void;
+export function setReloadMethod(
+  method: "custom",
+  handler: CustomReloadHandler,
+): void;
+export function setReloadMethod(
+  method: ReloadSetting,
+  handler?: CustomReloadHandler,
+): void {
+  if (method === "custom") {
+    if (typeof handler !== "function") {
+      throw new Error(
+        "[HotUpdater] setReloadMethod('custom') requires a reload handler.",
+      );
+    }
+
+    reloadMethod = method;
+    customReloadHandler = handler;
+    return;
+  }
+
+  if (handler) {
+    throw new Error(
+      `[HotUpdater] setReloadMethod('${method}') does not accept a custom reload handler.`,
+    );
+  }
+
+  reloadMethod = method;
+  customReloadHandler = null;
+}
 
 /**
  * Fetches the minimum bundle id, which represents the initial bundle of the app

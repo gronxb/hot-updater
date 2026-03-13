@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import android.content.Context
+import android.content.Intent
+import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -296,10 +298,10 @@ class HotUpdaterImpl {
      */
     suspend fun reload(reactContext: Context) {
         val reactIntegrationManager = ReactIntegrationManager(reactContext)
-        val bundleURL = getJSBundleFile()
 
         try {
             withContext(Dispatchers.Main) {
+                val bundleURL = getJSBundleFile()
                 reactIntegrationManager.setJSBundle(bundleURL)
                 reactIntegrationManager.reload()
             }
@@ -307,6 +309,61 @@ class HotUpdaterImpl {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
         }
     }
+
+    suspend fun reloadProcess(reactContext: Context) {
+        try {
+            withContext(Dispatchers.Main) {
+                if (!restartApplication(reactContext)) {
+                    throw IllegalStateException("Failed to start process restart")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("HotUpdaterImpl", "Failed to restart application process", e)
+            throw e
+        }
+    }
+
+    // Use a cold restart in release builds so bundle application does not depend on RN reload timing.
+    private fun restartApplication(reactContext: Context): Boolean {
+        val currentActivity =
+            (reactContext as? com.facebook.react.bridge.ReactApplicationContext)?.currentActivity
+        if (currentActivity == null) {
+            Log.w(TAG, "Cannot restart app: current activity unavailable")
+            return false
+        }
+
+        return try {
+            val restartTargetIntent = getRestartTargetIntent(reactContext.applicationContext, currentActivity)
+            val restartIntent =
+                Intent(currentActivity, HotUpdaterRestartActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
+                    restartTargetIntent?.let {
+                        putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_INTENT, it)
+                    }
+                }
+            currentActivity.startActivity(restartIntent)
+            currentActivity.overridePendingTransition(0, 0)
+
+            Log.i(TAG, "Started restart trampoline to apply update bundle")
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start restart trampoline", e)
+            false
+        }
+    }
+
+    private fun getRestartTargetIntent(
+        context: Context,
+        currentActivity: android.app.Activity,
+    ): Intent? =
+        try {
+            ReloadMethodHolder.getRestartIntentProvider()?.createIntent(context, currentActivity)
+        } catch (e: Exception) {
+            Log.w(TAG, "RestartIntentProvider failed. Falling back to default launch intent.", e)
+            null
+        }
 
     /**
      * Notifies the system that the app has successfully started with the given bundle.

@@ -199,6 +199,8 @@ export default HotUpdater.wrap({ // [!code hl:25]
 
 When a force update bundle is downloaded, the app will automatically reload. If `false`, `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted` but the app won't reload. Default is `true`.
 
+The actual reload behavior follows [`HotUpdater.setReloadMethod()`](/docs/react-native-api/setReloadMethod).
+
 **Example with auto-reload:**
 
 ```tsx

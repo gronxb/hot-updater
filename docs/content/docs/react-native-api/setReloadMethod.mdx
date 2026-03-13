@@ -1,0 +1,100 @@
+---
+title: "setReloadMethod"
+description: "Control how HotUpdater.reload() is executed."
+icon: Settings2
+---
+
+## Usage
+
+Use `HotUpdater.setReloadMethod()` to control how [`HotUpdater.reload()`](./reload) is executed.
+
+This API is available on both Android and iOS so app code can stay symmetric.
+You can call `HotUpdater.setReloadMethod("processRestart")` without wrapping it in a platform check.
+On iOS, the same call simply behaves like the default reload flow.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setReloadMethod("processRestart");
+```
+
+## Why this exists
+
+On Android, the default React Native reload path is an in-process reload.
+That means React tears down the current instance and creates a new one inside the same process.
+
+In release apps with native modules, this can be unsafe:
+
+- the old React instance is being destroyed
+- a native module or background callback still tries to talk to JS
+- the new React instance is not fully ready yet
+- the app can soft-crash, blank, or fully crash depending on timing
+
+`processRestart` avoids that class of problem by applying the update through a cold app restart instead of an in-process React reload.
+
+## Supported methods
+
+### `reload`
+
+Uses the normal React Native reload behavior.
+
+- Android: in-process React reload
+- iOS: in-process React reload
+
+```tsx
+HotUpdater.setReloadMethod("reload");
+```
+
+### `processRestart`
+
+Uses Android process restart when available.
+
+- Android: cold process restart
+- iOS: behaves like normal `reload`
+
+```tsx
+HotUpdater.setReloadMethod("processRestart");
+```
+
+This is the recommended setting when Android release reloads are unstable due to native module timing issues.
+
+### `custom`
+
+Runs a custom JS handler on both Android and iOS.
+
+```tsx
+HotUpdater.setReloadMethod("custom", async () => {
+  await BrownfieldModule.reload();
+});
+```
+
+This is the recommended choice for brownfield apps where the host app needs to decide how to restore the correct native container or screen.
+
+## API
+
+```ts
+HotUpdater.setReloadMethod("reload");
+HotUpdater.setReloadMethod("processRestart");
+HotUpdater.setReloadMethod("custom", () => void | Promise<void>);
+```
+
+## When to use which
+
+- Use `reload` for the default React Native behavior
+- Use `processRestart` when Android reload causes release-only crashes or gray screens
+- Use `custom` when a brownfield host app must coordinate the reload itself
+
+## Interaction with `reloadOnForceUpdate`
+
+When `reloadOnForceUpdate` triggers `HotUpdater.reload()` automatically, it uses the method you configured here.
+
+That means:
+
+- `reload` keeps the old behavior
+- `processRestart` turns automatic force updates into Android cold restarts
+- `custom` delegates automatic force updates to your handler
+
+## Related APIs
+
+- [`HotUpdater.reload()`](/docs/react-native-api/reload)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)

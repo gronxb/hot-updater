@@ -273,6 +273,11 @@ RCT_EXPORT_MODULE();
     });
 }
 
+- (void)reloadProcess:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject {
+    [self reload:resolve reject:reject];
+}
+
 - (void)updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
@@ -371,6 +376,11 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
             reject(@"RELOAD_ERROR", error.description, error);
         }
     });
+}
+
+RCT_EXPORT_METHOD(reloadProcess:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [self reload:resolve reject:reject];
 }
 
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params

@@ -98,6 +98,26 @@ class HotUpdater {
         }
 
         /**
+         * Sets how HotUpdater.reload() should be performed on Android.
+         * Supported values: "reactReload", "processRestart"
+         */
+        fun setReloadMethod(method: String) {
+            ReloadMethodHolder.setReloadMethod(method)
+        }
+
+        /**
+         * Sets how HotUpdater.reload() should be performed on Android.
+         * When using "processRestart", you can optionally provide a custom target Intent
+         * for brownfield apps instead of falling back to the package launch intent.
+         */
+        fun setReloadMethod(
+            method: String,
+            restartIntentProvider: RestartIntentProvider,
+        ) {
+            ReloadMethodHolder.setReloadMethod(method, restartIntentProvider)
+        }
+
+        /**
          * Clears the ReactHost instance (New Architecture).
          */
         fun clearReactHost() {

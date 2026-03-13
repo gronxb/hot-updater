@@ -1,6 +1,7 @@
 package com.hotupdaterexample
 
 import android.app.Application
+import android.content.Intent
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -17,8 +18,7 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
+              add(ReloadCrashProbePackage())
             }
 
 
@@ -41,6 +41,11 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // HotUpdater.setReloadMethod("processRestart") { context, _ ->
+    //   Intent(context, MainActivity::class.java).apply {
+    //     putExtra(MainActivity.EXTRA_FROM_HOT_UPDATER, true)
+    //   }
+    // }
     loadReactNative(this)
   }
 }

@@ -15,6 +15,8 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun reload(promise: Promise)
 
+    abstract fun reloadProcess(promise: Promise)
+
     abstract fun notifyAppReady(params: ReadableMap): String
 
     abstract fun getCrashHistory(): String

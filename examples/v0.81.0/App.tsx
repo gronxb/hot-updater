@@ -8,6 +8,7 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
+import BootSplash from "react-native-bootsplash";
 import {
   Alert,
   Button,
@@ -46,6 +47,14 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const bundleId = HotUpdater.getBundleId();
     setBundleId(bundleId);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void BootSplash.hide({ fade: false });
+    }, 3000);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
