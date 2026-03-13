@@ -8,7 +8,6 @@
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 // biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
-import BootSplash from "react-native-bootsplash";
 import {
   Alert,
   Button,
@@ -18,6 +17,7 @@ import {
   Text,
   View,
 } from "react-native";
+import BootSplash from "react-native-bootsplash";
 import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
@@ -52,7 +52,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const timeout = setTimeout(() => {
       void BootSplash.hide({ fade: false });
-    }, 3000);
+    }, 1000);
 
     return () => clearTimeout(timeout);
   }, []);
