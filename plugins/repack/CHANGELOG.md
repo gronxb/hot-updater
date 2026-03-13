@@ -1,6 +1,6 @@
 # @hot-updater/repack
 
-## 1.0.0
+## 0.27.0
 
 ### Minor Changes
 
