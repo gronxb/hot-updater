@@ -1,5 +1,13 @@
 # @hot-updater/datadog-plugin
 
+## 0.26.2
+
+### Patch Changes
+
+- 648cd1b: chore(aws): bump packages
+  - @hot-updater/core@0.26.2
+  - @hot-updater/plugin-core@0.26.2
+
 ## 0.26.1
 
 ### Patch Changes
