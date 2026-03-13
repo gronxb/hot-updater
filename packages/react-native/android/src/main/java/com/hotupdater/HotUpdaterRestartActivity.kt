@@ -2,7 +2,6 @@ package com.hotupdater
 
 import android.app.Activity
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -42,17 +41,6 @@ class HotUpdaterRestartActivity : Activity() {
     }
 
     private fun getRestartIntent(packageName: String): Intent? {
-        val customIntent = getCustomTargetIntent()
-        if (customIntent != null) {
-            return Intent(customIntent).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION,
-                )
-            }
-        }
-
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return null
         val component = launchIntent.component ?: return null
 
@@ -61,14 +49,6 @@ class HotUpdaterRestartActivity : Activity() {
             addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         }
     }
-
-    private fun getCustomTargetIntent(): Intent? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_TARGET_INTENT, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_TARGET_INTENT)
-        }
 
     private fun killCurrentProcess() {
         Process.killProcess(Process.myPid())
@@ -79,6 +59,5 @@ class HotUpdaterRestartActivity : Activity() {
         private const val PROCESS_KILL_DELAY_MS = 100L
         const val EXTRA_PACKAGE_NAME = "hot_updater.package_name"
         const val EXTRA_TARGET_PID = "hot_updater.target_pid"
-        const val EXTRA_TARGET_INTENT = "hot_updater.target_intent"
     }
 }

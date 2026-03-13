@@ -333,15 +333,11 @@ class HotUpdaterImpl {
         }
 
         return try {
-            val restartTargetIntent = getRestartTargetIntent(reactContext.applicationContext, currentActivity)
             val restartIntent =
                 Intent(currentActivity, HotUpdaterRestartActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
                     putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
                     putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
-                    restartTargetIntent?.let {
-                        putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_INTENT, it)
-                    }
                 }
             currentActivity.startActivity(restartIntent)
             currentActivity.overridePendingTransition(0, 0)
@@ -353,17 +349,6 @@ class HotUpdaterImpl {
             false
         }
     }
-
-    private fun getRestartTargetIntent(
-        context: Context,
-        currentActivity: android.app.Activity,
-    ): Intent? =
-        try {
-            ReloadMethodHolder.getRestartIntentProvider()?.createIntent(context, currentActivity)
-        } catch (e: Exception) {
-            Log.w(TAG, "RestartIntentProvider failed. Falling back to default launch intent.", e)
-            null
-        }
 
     /**
      * Notifies the system that the app has successfully started with the given bundle.
