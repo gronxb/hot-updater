@@ -9,8 +9,9 @@ icon: Settings2
 Use `HotUpdater.setReloadMethod()` to control how [`HotUpdater.reload()`](./reload) is executed.
 
 This API is available on both Android and iOS so app code can stay symmetric.
-You can call `HotUpdater.setReloadMethod("processRestart")` without wrapping it in a platform check.
-On iOS, the same call simply behaves like the default reload flow.
+The default is `processRestart`.
+On Android that means a cold app restart.
+On iOS the same default behaves like the normal reload flow.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -45,7 +46,7 @@ Uses the normal React Native reload behavior.
 HotUpdater.setReloadMethod("reload");
 ```
 
-### `processRestart`
+### `processRestart` (default)
 
 Uses Android process restart when available.
 
@@ -56,7 +57,7 @@ Uses Android process restart when available.
 HotUpdater.setReloadMethod("processRestart");
 ```
 
-This is the recommended setting when Android release reloads are unstable due to native module timing issues.
+This is the default because Android release reloads can crash when native modules touch React while the instance is being recreated.
 
 ### `custom`
 
@@ -80,8 +81,8 @@ HotUpdater.setReloadMethod("custom", () => void | Promise<void>);
 
 ## When to use which
 
-- Use `reload` for the default React Native behavior
-- Use `processRestart` when Android reload causes release-only crashes or gray screens
+- Use `reload` only if you explicitly want the old in-process React Native reload behavior
+- Use `processRestart` for the default, safer Android behavior
 - Use `custom` when a brownfield host app must coordinate the reload itself
 
 ## Interaction with `reloadOnForceUpdate`
@@ -90,8 +91,8 @@ When `reloadOnForceUpdate` triggers `HotUpdater.reload()` automatically, it uses
 
 That means:
 
-- `reload` keeps the old behavior
-- `processRestart` turns automatic force updates into Android cold restarts
+- `reload` opts force updates back into the old in-process behavior
+- `processRestart` keeps automatic force updates on Android cold restarts by default
 - `custom` delegates automatic force updates to your handler
 
 ## Related APIs

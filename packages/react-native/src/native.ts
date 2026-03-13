@@ -95,7 +95,7 @@ class HotUpdaterSessionState {
 }
 
 const sessionState = new HotUpdaterSessionState();
-let reloadMethod: ReloadSetting = "reload";
+let reloadMethod: ReloadSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
 
 export type HotUpdaterEvent = {
@@ -218,7 +218,8 @@ export const getAppVersion = (): string | null => {
 /**
  * Reloads the app using the currently configured reload method.
  *
- * Default behavior is `reload`.
+ * Default behavior is `processRestart`.
+ * On iOS, `processRestart` behaves like the normal React reload path.
  *
  * When `setReloadMethod("processRestart")` is used:
  * - Android performs a cold process restart
@@ -251,7 +252,7 @@ export const reload = async () => {
  * Configures how `HotUpdater.reload()` should behave.
  *
  * This API is available on both Android and iOS so app code can stay symmetric.
- * You can call `setReloadMethod("processRestart")` unconditionally at startup.
+ * By default, HotUpdater uses `processRestart`.
  *
  * Behavior by method:
  * - `reload`: Uses React Native's normal in-process reload flow

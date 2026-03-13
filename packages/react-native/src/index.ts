@@ -178,6 +178,7 @@ function createHotUpdaterClient() {
      * Configures how `HotUpdater.reload()` behaves.
      *
      * This can be called unconditionally on both platforms.
+     * The default is `processRestart`.
      *
      * - `reload`: built-in React Native reload on both platforms
      * - `processRestart`: Android process restart, iOS behaves like normal reload

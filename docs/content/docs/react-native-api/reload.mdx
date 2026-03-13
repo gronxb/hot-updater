@@ -34,9 +34,12 @@ This is the most common manual usage pattern:
 
 ## Reload method
 
-By default, `HotUpdater.reload()` uses the normal React Native reload path.
+By default, `HotUpdater.reload()` uses `processRestart`.
 
-If Android release builds crash during reload because native modules touch the React instance while it is being recreated, prefer [`HotUpdater.setReloadMethod("processRestart")`](./setReloadMethod).
+- Android: cold process restart
+- iOS: behaves like normal React Native reload
+
+Use [`HotUpdater.setReloadMethod("reload")`](./setReloadMethod) only if you explicitly want the old in-process React Native reload path.
 
 ## Related APIs
 
