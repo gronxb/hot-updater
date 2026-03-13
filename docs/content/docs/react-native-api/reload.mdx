@@ -10,7 +10,7 @@ icon: RefreshCw
 
 - If no new bundle is ready, it reloads the current app code
 - If a bundle was downloaded, that bundle becomes active immediately
-- The exact behavior depends on [`HotUpdater.setReloadMethod()`](./setReloadMethod)
+- The exact behavior depends on [`HotUpdater.setReloadBehavior()`](./setReloadBehavior)
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -32,18 +32,18 @@ async function syncUpdate() {
 
 This is the most common manual usage pattern: 
 
-## Reload method
+## Reload behavior
 
 By default, `HotUpdater.reload()` uses `processRestart`.
 
 - Android: cold process restart
 - iOS: behaves like normal React Native reload
 
-Use [`HotUpdater.setReloadMethod("reload")`](./setReloadMethod) only if you explicitly want the old in-process React Native reload path.
+Use [`HotUpdater.setReloadBehavior("reload")`](./setReloadBehavior) only if you explicitly want the old in-process React Native reload path.
 
 ## Related APIs
 
-- [`HotUpdater.setReloadMethod()`](/docs/react-native-api/setReloadMethod)
+- [`HotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior)
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [`HotUpdater.isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded)
 - [`HotUpdater.wrap()`](/docs/react-native-api/wrap)

@@ -10,15 +10,15 @@ export { HotUpdaterErrorCode, isHotUpdaterError };
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
- * Built-in reload implementations used by `HotUpdater.reload()`.
+ * Built-in reload behaviors used by `HotUpdater.reload()`.
  *
  * - `reload`: In-process React Native reload.
  * - `processRestart`: Android-only cold restart. On iOS the same call behaves like `reload`.
  */
-export type ReloadMethod = "reload" | "processRestart";
+export type ReloadBehavior = "reload" | "processRestart";
 
 /**
- * Custom reload hook used when `setReloadMethod("custom", handler)` is configured.
+ * Custom reload hook used when `setReloadBehavior("custom", handler)` is configured.
  *
  * This is useful for brownfield apps that need to delegate reload behavior to
  * a host-native container instead of using HotUpdater's built-in reload flow.
@@ -26,13 +26,13 @@ export type ReloadMethod = "reload" | "processRestart";
 export type CustomReloadHandler = () => void | Promise<void>;
 
 /**
- * Full reload policy accepted by `setReloadMethod()`.
+ * Full reload policy accepted by `setReloadBehavior()`.
  *
  * - `reload`: Built-in React reload on both platforms
  * - `processRestart`: Android process restart, iOS behaves like `reload`
  * - `custom`: Run a user-provided JS handler on both platforms
  */
-export type ReloadSetting = ReloadMethod | "custom";
+export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 
 declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
 
@@ -95,7 +95,7 @@ class HotUpdaterSessionState {
 }
 
 const sessionState = new HotUpdaterSessionState();
-let reloadMethod: ReloadSetting = "processRestart";
+let reloadBehavior: ReloadBehaviorSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
 
 export type HotUpdaterEvent = {
@@ -216,23 +216,23 @@ export const getAppVersion = (): string | null => {
 };
 
 /**
- * Reloads the app using the currently configured reload method.
+ * Reloads the app using the currently configured reload behavior.
  *
  * Default behavior is `processRestart`.
  * On iOS, `processRestart` behaves like the normal React reload path.
  *
- * When `setReloadMethod("processRestart")` is used:
+ * When `setReloadBehavior("processRestart")` is used:
  * - Android performs a cold process restart
  * - iOS keeps the same behavior as the normal React reload path
  *
- * When `setReloadMethod("custom", handler)` is used:
+ * When `setReloadBehavior("custom", handler)` is used:
  * - both Android and iOS execute the provided handler
  */
 export const reload = async () => {
-  if (reloadMethod === "custom") {
+  if (reloadBehavior === "custom") {
     if (!customReloadHandler) {
       throw new Error(
-        "[HotUpdater] setReloadMethod('custom') requires a reload handler.",
+        "[HotUpdater] setReloadBehavior('custom') requires a reload handler.",
       );
     }
 
@@ -240,7 +240,7 @@ export const reload = async () => {
     return;
   }
 
-  if (Platform.OS === "android" && reloadMethod === "processRestart") {
+  if (Platform.OS === "android" && reloadBehavior === "processRestart") {
     await HotUpdaterNative.reloadProcess();
     return;
   }
@@ -254,41 +254,39 @@ export const reload = async () => {
  * This API is available on both Android and iOS so app code can stay symmetric.
  * By default, HotUpdater uses `processRestart`.
  *
- * Behavior by method:
+ * Supported behaviors:
  * - `reload`: Uses React Native's normal in-process reload flow
  * - `processRestart`: Uses Android process restart when available; iOS keeps the same behavior as `reload`
  * - `custom`: Executes a JS callback on both platforms
  *
  * `custom` is intended for brownfield apps that need host-native coordination.
  */
-export function setReloadMethod(method: ReloadMethod): void;
-export function setReloadMethod(
-  method: "custom",
-  handler: CustomReloadHandler,
-): void;
-export function setReloadMethod(
-  method: ReloadSetting,
-  handler?: CustomReloadHandler,
+export function setReloadBehavior(
+  ...args:
+    | [behavior: ReloadBehavior]
+    | [behavior: "custom", handler: CustomReloadHandler]
 ): void {
-  if (method === "custom") {
+  const [behavior, handler] = args;
+
+  if (behavior === "custom") {
     if (typeof handler !== "function") {
       throw new Error(
-        "[HotUpdater] setReloadMethod('custom') requires a reload handler.",
+        "[HotUpdater] setReloadBehavior('custom') requires a reload handler.",
       );
     }
 
-    reloadMethod = method;
+    reloadBehavior = behavior;
     customReloadHandler = handler;
     return;
   }
 
   if (handler) {
     throw new Error(
-      `[HotUpdater] setReloadMethod('${method}') does not accept a custom reload handler.`,
+      `[HotUpdater] setReloadBehavior('${behavior}') does not accept a custom reload handler.`,
     );
   }
 
-  reloadMethod = method;
+  reloadBehavior = behavior;
   customReloadHandler = null;
 }
 

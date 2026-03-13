@@ -20,6 +20,7 @@ import {
 import BootSplash from "react-native-bootsplash";
 import { proxy, useSnapshot } from "valtio";
 
+
 const notify = proxy<{
   status?: string;
   crashedBundleId?: string;

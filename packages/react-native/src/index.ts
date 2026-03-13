@@ -18,7 +18,7 @@ import {
   isChannelSwitched,
   reload,
   resetChannel,
-  setReloadMethod,
+  setReloadBehavior,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -30,8 +30,8 @@ export type {
   CustomReloadHandler,
   HotUpdaterEvent,
   NotifyAppReadyResult,
-  ReloadMethod,
-  ReloadSetting,
+  ReloadBehavior,
+  ReloadBehaviorSetting,
 } from "./native";
 export * from "./store";
 export {
@@ -184,7 +184,7 @@ function createHotUpdaterClient() {
      * - `processRestart`: Android process restart, iOS behaves like normal reload
      * - `custom`: run a custom JS handler on both platforms
      */
-    setReloadMethod,
+    setReloadBehavior,
 
     /**
      * Returns whether an update has finished downloading in this app session.
