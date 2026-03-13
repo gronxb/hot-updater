@@ -1,5 +1,17 @@
 # @hot-updater/aws
 
+## 1.0.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
+### Patch Changes
+
+- Updated dependencies [81f9437]
+  - @hot-updater/cli-tools@1.0.0
+  - @hot-updater/plugin-core@1.0.0
+
 ## 0.26.2
 
 ### Patch Changes
