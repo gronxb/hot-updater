@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.ActivityOptions
 import android.content.Context
 import android.content.Intent
 import android.os.Process
@@ -339,8 +340,8 @@ class HotUpdaterImpl {
                     putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
                     putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
                 }
-            currentActivity.startActivity(restartIntent)
-            currentActivity.overridePendingTransition(0, 0)
+            val options = ActivityOptions.makeCustomAnimation(currentActivity, 0, 0)
+            currentActivity.startActivity(restartIntent, options.toBundle())
 
             Log.i(TAG, "Started restart trampoline to apply update bundle")
             return true

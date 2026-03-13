@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.app.Activity
+import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -27,7 +28,8 @@ class HotUpdaterRestartActivity : Activity() {
             Process.killProcess(targetPid)
         }
 
-        startActivity(launchIntent)
+        val options = ActivityOptions.makeCustomAnimation(this, 0, 0)
+        startActivity(launchIntent, options.toBundle())
         finishWithoutAnimation()
 
         // Keep the trampoline alive just long enough to let Android settle the relaunch,
@@ -37,7 +39,6 @@ class HotUpdaterRestartActivity : Activity() {
 
     private fun finishWithoutAnimation() {
         finish()
-        overridePendingTransition(0, 0)
     }
 
     private fun getRestartIntent(packageName: String): Intent? {
