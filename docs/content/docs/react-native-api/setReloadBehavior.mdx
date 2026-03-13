@@ -1,0 +1,79 @@
+---
+title: "setReloadBehavior"
+description: "Control how HotUpdater.reload() is executed."
+icon: Settings2
+version: "0.27.0"
+---
+
+## Usage
+
+Use `HotUpdater.setReloadBehavior()` to control how [`HotUpdater.reload()`](./reload) is applied.
+
+The default is `processRestart`.
+This is a global setting, so calling it once during app startup is enough.
+
+- `reload` and `processRestart` are Android-focused built-in behaviors
+- On iOS, both built-in behaviors behave like the normal React Native reload flow
+- `custom` works on both Android and iOS
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setReloadBehavior("processRestart");
+```
+
+## Why this exists
+
+Android's normal React Native reload is an in-process reload.
+The current React instance goes down, a new one comes up, and native modules can still touch JS in the middle of that handoff.
+
+We reproduced a real Android release failure pattern where a third-party native module or background callback kept emitting to JS while React was being recreated.
+That can show up as errors like `ReactNoCrashSoftException`, `reactInstance is null`, or `Tried to access a JS module before the React instance was fully set up.`
+Depending on timing, the result can be a soft exception, blank screen, or full app crash.
+
+`processRestart` avoids that class of problem by restarting the app cold instead of recreating only the current React Native runtime.
+
+## Supported behaviors
+
+### `processRestart` (default)
+
+- Android only
+- Restarts the app cold and starts again from the splash screen
+- Best default for standalone Android apps
+
+```tsx
+HotUpdater.setReloadBehavior("processRestart");
+```
+
+### `reload`
+
+- Android only
+- Uses the normal in-process React Native reload
+- Reloads the current React Native screen/runtime instead of restarting the whole app
+
+```tsx
+HotUpdater.setReloadBehavior("reload");
+```
+
+### `custom`
+
+- Android and iOS
+- Runs your own reload logic
+- Best when a brownfield host app must reopen a specific native container or screen itself
+
+```tsx
+HotUpdater.setReloadBehavior("custom", async () => {
+  await BrownfieldModule.reload();
+});
+```
+
+## When to use which
+
+- Use `processRestart` if you want the safest Android default
+- Use `reload` in brownfield apps when only the current React Native area should refresh
+- Use `custom` in brownfield apps when the host app must coordinate navigation or container restore itself
+
+## Related APIs
+
+- [`HotUpdater.reload()`](/docs/react-native-api/reload)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)

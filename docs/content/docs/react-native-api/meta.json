@@ -6,6 +6,7 @@
     "wrap",
     "checkForUpdate",
     "reload",
+    "setReloadBehavior",
     "getChannel",
     "getDefaultChannel",
     "isChannelSwitched",
