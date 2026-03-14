@@ -1,4 +1,4 @@
-import { type Bundle, NIL_UUID } from "@hot-updater/core";
+import { type Bundle, maskUuidV7Rand, NIL_UUID } from "@hot-updater/core";
 import { isNullable } from "./utils";
 
 export const checkForRollback = (
@@ -13,9 +13,14 @@ export const checkForRollback = (
     return true;
   }
 
-  const enabled = bundles.find((item) => item.id === currentBundleId)?.enabled;
+  const maskedCurrentId = maskUuidV7Rand(currentBundleId);
+  const enabled = bundles.find(
+    (item) => maskUuidV7Rand(item.id) === maskedCurrentId,
+  )?.enabled;
   const availableOldVersion = bundles.find(
-    (item) => item.id.localeCompare(currentBundleId) < 0 && item.enabled,
+    (item) =>
+      maskUuidV7Rand(item.id).localeCompare(maskedCurrentId) < 0 &&
+      item.enabled,
   )?.enabled;
 
   if (isNullable(enabled)) {

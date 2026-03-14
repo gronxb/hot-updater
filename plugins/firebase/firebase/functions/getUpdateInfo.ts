@@ -6,6 +6,7 @@ import type {
   UpdateInfo,
   UpdateStatus,
 } from "@hot-updater/core";
+import { maskUuidV7Rand } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
 
@@ -68,6 +69,8 @@ const fingerprintStrategy = async (
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
+    const maskedBundleId = maskUuidV7Rand(bundleId);
+
     let currentBundle: Bundle | null = null;
     if (bundleId !== NIL_UUID) {
       const doc = await db.collection("bundles").doc(bundleId).get();
@@ -80,7 +83,7 @@ const fingerprintStrategy = async (
       }
     }
 
-    if (bundleId.localeCompare(minBundleId) < 0) {
+    if (maskedBundleId.localeCompare(minBundleId) < 0) {
       return null;
     }
 
@@ -103,7 +106,7 @@ const fingerprintStrategy = async (
       }
     } else {
       const updateSnap = await baseQuery
-        .where("id", ">=", bundleId)
+        .where("id", ">=", maskedBundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
@@ -113,7 +116,7 @@ const fingerprintStrategy = async (
       }
 
       const rollbackSnap = await baseQuery
-        .where("id", "<", bundleId)
+        .where("id", "<", maskedBundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
@@ -126,11 +129,17 @@ const fingerprintStrategy = async (
     if (bundleId === NIL_UUID) {
       return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
     }
-    if (updateCandidate && updateCandidate.id !== bundleId) {
+    if (
+      updateCandidate &&
+      maskUuidV7Rand(updateCandidate.id) !== maskedBundleId
+    ) {
       return makeResponse(updateCandidate, "UPDATE");
     }
 
-    if (updateCandidate && updateCandidate.id === bundleId) {
+    if (
+      updateCandidate &&
+      maskUuidV7Rand(updateCandidate.id) === maskedBundleId
+    ) {
       if (currentBundle?.enabled) {
         return null;
       }
@@ -163,6 +172,8 @@ const appVersionStrategy = async (
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
+    const maskedBundleId = maskUuidV7Rand(bundleId);
+
     let currentBundle: Bundle | null = null;
     if (bundleId !== NIL_UUID) {
       const doc = await db.collection("bundles").doc(bundleId).get();
@@ -175,7 +186,7 @@ const appVersionStrategy = async (
       }
     }
 
-    if (bundleId.localeCompare(minBundleId) < 0) {
+    if (maskedBundleId.localeCompare(minBundleId) < 0) {
       return null;
     }
 
@@ -222,7 +233,7 @@ const appVersionStrategy = async (
       }
     } else {
       const updateSnap = await baseQuery
-        .where("id", ">=", bundleId)
+        .where("id", ">=", maskedBundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
@@ -232,7 +243,7 @@ const appVersionStrategy = async (
       }
 
       const rollbackSnap = await baseQuery
-        .where("id", "<", bundleId)
+        .where("id", "<", maskedBundleId)
         .orderBy("id", "desc")
         .limit(1)
         .get();
@@ -245,11 +256,17 @@ const appVersionStrategy = async (
     if (bundleId === NIL_UUID) {
       return updateCandidate ? makeResponse(updateCandidate, "UPDATE") : null;
     }
-    if (updateCandidate && updateCandidate.id !== bundleId) {
+    if (
+      updateCandidate &&
+      maskUuidV7Rand(updateCandidate.id) !== maskedBundleId
+    ) {
       return makeResponse(updateCandidate, "UPDATE");
     }
 
-    if (updateCandidate && updateCandidate.id === bundleId) {
+    if (
+      updateCandidate &&
+      maskUuidV7Rand(updateCandidate.id) === maskedBundleId
+    ) {
       if (currentBundle?.enabled) {
         return null;
       }

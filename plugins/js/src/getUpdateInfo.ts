@@ -3,6 +3,7 @@ import {
   type Bundle,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
+  maskUuidV7Rand,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
@@ -51,6 +52,8 @@ const appVersionStrategy = async (
     bundleId,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
+  const maskedBundleId = maskUuidV7Rand(bundleId);
+
   // Initial filtering: apply platform, channel, semver conditions, enabled status, and minBundleId condition
   const candidateBundles: Bundle[] = [];
 
@@ -71,7 +74,7 @@ const appVersionStrategy = async (
   if (candidateBundles.length === 0) {
     if (
       bundleId === NIL_UUID ||
-      (minBundleId && bundleId.localeCompare(minBundleId) <= 0)
+      (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0)
     ) {
       return null;
     }
@@ -85,22 +88,23 @@ const appVersionStrategy = async (
   let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
+    const maskedId = maskUuidV7Rand(b.id);
     // Latest bundle (bundle with the largest ID)
     if (!latestCandidate || b.id.localeCompare(latestCandidate.id) > 0) {
       latestCandidate = b;
     }
-    // Check if current bundle exists
-    if (b.id === bundleId) {
+    // Check if current bundle exists (same UUIDv7 timestamp = same version)
+    if (maskedId === maskedBundleId) {
       currentBundle = b;
     } else if (bundleId !== NIL_UUID) {
-      // Update candidate: largest ID among those greater than the current bundle
-      if (b.id.localeCompare(bundleId) > 0) {
+      // Update candidate: largest ID among those with a later timestamp
+      if (maskedId.localeCompare(maskedBundleId) > 0) {
         if (!updateCandidate || b.id.localeCompare(updateCandidate.id) > 0) {
           updateCandidate = b;
         }
       }
-      // Rollback candidate: largest ID among those smaller than the current bundle
-      else if (b.id.localeCompare(bundleId) < 0) {
+      // Rollback candidate: largest ID among those with an earlier timestamp
+      else if (maskedId.localeCompare(maskedBundleId) < 0) {
         if (
           !rollbackCandidate ||
           b.id.localeCompare(rollbackCandidate.id) > 0
@@ -123,7 +127,7 @@ const appVersionStrategy = async (
     // If current bundle exists, compare with latest candidate to determine update
     if (
       latestCandidate &&
-      latestCandidate.id.localeCompare(currentBundle.id) > 0
+      maskUuidV7Rand(latestCandidate.id).localeCompare(maskedBundleId) > 0
     ) {
       return makeResponse(latestCandidate, "UPDATE");
     }
@@ -138,7 +142,7 @@ const appVersionStrategy = async (
     return makeResponse(rollbackCandidate, "ROLLBACK");
   }
 
-  if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
+  if (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0) {
     return null;
   }
   return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
@@ -154,6 +158,7 @@ const fingerprintStrategy = async (
     bundleId,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
+  const maskedBundleId = maskUuidV7Rand(bundleId);
   const candidateBundles: Bundle[] = [];
 
   for (const b of bundles) {
@@ -173,7 +178,7 @@ const fingerprintStrategy = async (
   if (candidateBundles.length === 0) {
     if (
       bundleId === NIL_UUID ||
-      (minBundleId && bundleId.localeCompare(minBundleId) <= 0)
+      (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0)
     ) {
       return null;
     }
@@ -187,22 +192,23 @@ const fingerprintStrategy = async (
   let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
+    const maskedId = maskUuidV7Rand(b.id);
     // Latest bundle (bundle with the largest ID)
     if (!latestCandidate || b.id.localeCompare(latestCandidate.id) > 0) {
       latestCandidate = b;
     }
-    // Check if current bundle exists
-    if (b.id === bundleId) {
+    // Check if current bundle exists (same UUIDv7 timestamp = same version)
+    if (maskedId === maskedBundleId) {
       currentBundle = b;
     } else if (bundleId !== NIL_UUID) {
-      // Update candidate: largest ID among those greater than the current bundle
-      if (b.id.localeCompare(bundleId) > 0) {
+      // Update candidate: largest ID among those with a later timestamp
+      if (maskedId.localeCompare(maskedBundleId) > 0) {
         if (!updateCandidate || b.id.localeCompare(updateCandidate.id) > 0) {
           updateCandidate = b;
         }
       }
-      // Rollback candidate: largest ID among those smaller than the current bundle
-      else if (b.id.localeCompare(bundleId) < 0) {
+      // Rollback candidate: largest ID among those with an earlier timestamp
+      else if (maskedId.localeCompare(maskedBundleId) < 0) {
         if (
           !rollbackCandidate ||
           b.id.localeCompare(rollbackCandidate.id) > 0
@@ -225,7 +231,7 @@ const fingerprintStrategy = async (
     // If current bundle exists, compare with latest candidate to determine update
     if (
       latestCandidate &&
-      latestCandidate.id.localeCompare(currentBundle.id) > 0
+      maskUuidV7Rand(latestCandidate.id).localeCompare(maskedBundleId) > 0
     ) {
       return makeResponse(latestCandidate, "UPDATE");
     }
@@ -240,7 +246,7 @@ const fingerprintStrategy = async (
     return makeResponse(rollbackCandidate, "ROLLBACK");
   }
 
-  if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
+  if (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0) {
     return null;
   }
   return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;

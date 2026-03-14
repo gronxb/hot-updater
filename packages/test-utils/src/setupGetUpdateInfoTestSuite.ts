@@ -50,7 +50,7 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "*",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -62,7 +62,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
@@ -87,7 +87,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.1",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -134,14 +134,14 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.x.x",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -153,7 +153,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000002",
+        id: "00000000-0002-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
@@ -166,7 +166,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: true,
         },
       ];
@@ -178,7 +178,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true,
         status: "UPDATE",
         message: "hello",
@@ -191,7 +191,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -203,7 +203,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
@@ -217,7 +217,7 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000005",
+          id: "00000000-0005-0000-0000-000000000000",
         },
       ];
 
@@ -228,7 +228,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000005",
+        id: "00000000-0005-0000-0000-000000000000",
         shouldForceUpdate: false,
         message: "hello",
         status: "UPDATE",
@@ -242,14 +242,14 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -261,7 +261,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -274,14 +274,14 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -301,14 +301,14 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -330,7 +330,7 @@ export const setupGetUpdateInfoTestSuite = ({
             "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
           message: "hi",
           targetAppVersion: "1.0",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           enabled: true,
         },
       ];
@@ -342,7 +342,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hi",
@@ -354,7 +354,7 @@ export const setupGetUpdateInfoTestSuite = ({
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
@@ -368,24 +368,98 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
       expect(update).toBeNull();
+    });
+
+    it("returns null for a copy-promoted bundle with the same timestamp", async () => {
+      // Copy-promoted bundles share the same UUIDv7 timestamp (first 12 hex chars)
+      // but have different random bits. They should be treated as the same version.
+      const bundles: Bundle[] = [
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-aaaaaaaaaaaa", // original
+        },
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-bbbbbbbbbbbb", // copy-promoted (same timestamp)
+        },
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0001-0000-0000-000000000000", // older version
+        },
+      ];
+
+      // Client has the original bundle; copy-promoted bundle exists but should NOT trigger update
+      const update = await getUpdateInfo(bundles, {
+        appVersion: "1.0",
+        bundleId: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      });
+      expect(update).toBeNull();
+    });
+
+    it("updates a copy-promoted bundle when a newer version exists", async () => {
+      const bundles: Bundle[] = [
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0003-0000-0000-000000000000", // newer version
+        },
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-aaaaaaaaaaaa", // original
+        },
+        {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-bbbbbbbbbbbb", // copy-promoted (same timestamp)
+        },
+      ];
+
+      const update = await getUpdateInfo(bundles, {
+        appVersion: "1.0",
+        bundleId: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      });
+      expect(update).toMatchObject({
+        id: "00000000-0003-0000-0000-000000000000",
+        status: "UPDATE",
+      });
     });
 
     it("triggers a rollback if the previously used bundle no longer exists", async () => {
@@ -395,19 +469,19 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true,
         status: "ROLLBACK",
       });
@@ -420,33 +494,33 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000003",
+        id: "00000000-0003-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -459,14 +533,14 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
+          id: "00000000-0005-0000-0000-000000000000", // Higher than the current version
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000004",
+          id: "00000000-0004-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
@@ -474,33 +548,33 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000005",
+        id: "00000000-0005-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -513,27 +587,27 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
@@ -547,27 +621,27 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
 
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true, // Cause the app to reload
         status: "ROLLBACK",
       });
@@ -580,20 +654,20 @@ export const setupGetUpdateInfoTestSuite = ({
           targetAppVersion: "1.0",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: "1.0",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
@@ -849,7 +923,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           enabled: true,
           channel: "beta",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -872,7 +946,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           enabled: true,
           channel: "beta",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -885,7 +959,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
@@ -965,7 +1039,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: ">= 5.7.0 <= 5.7.4",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -978,7 +1052,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
@@ -991,7 +1065,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
           targetAppVersion: ">= 5.7.0 <= 5.7.4",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -1026,7 +1100,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash2",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -1073,14 +1147,14 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash2",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -1092,7 +1166,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
@@ -1105,7 +1179,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: true,
         },
       ];
@@ -1117,7 +1191,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true,
         status: "UPDATE",
         message: "hello",
@@ -1130,7 +1204,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           shouldForceUpdate: false,
         },
       ];
@@ -1142,7 +1216,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hello",
@@ -1156,7 +1230,7 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000005",
+          id: "00000000-0005-0000-0000-000000000000",
         },
       ];
 
@@ -1167,7 +1241,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000005",
+        id: "00000000-0005-0000-0000-000000000000",
         shouldForceUpdate: false,
         message: "hello",
         status: "UPDATE",
@@ -1181,14 +1255,14 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -1200,7 +1274,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -1213,14 +1287,14 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -1240,14 +1314,14 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -1269,7 +1343,7 @@ export const setupGetUpdateInfoTestSuite = ({
             "a5cbf59a627759a88d472c502423ff55a4f6cd1aafeed3536f6a5f6e870c2290",
           message: "hi",
           fingerprintHash: "hash1",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
           enabled: true,
         },
       ];
@@ -1281,7 +1355,7 @@ export const setupGetUpdateInfoTestSuite = ({
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
         message: "hi",
@@ -1293,7 +1367,7 @@ export const setupGetUpdateInfoTestSuite = ({
 
       const update = await getUpdateInfo(bundles, {
         appVersion: "1.0",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "appVersion",
       });
@@ -1307,24 +1381,95 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
       expect(update).toBeNull();
+    });
+
+    it("returns null for a copy-promoted bundle with the same timestamp", async () => {
+      const bundles: Bundle[] = [
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        },
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-bbbbbbbbbbbb",
+        },
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0001-0000-0000-000000000000",
+        },
+      ];
+
+      const update = await getUpdateInfo(bundles, {
+        fingerprintHash: "hash1",
+        bundleId: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        platform: "ios",
+        _updateStrategy: "fingerprint",
+      });
+      expect(update).toBeNull();
+    });
+
+    it("updates a copy-promoted bundle when a newer version exists", async () => {
+      const bundles: Bundle[] = [
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0003-0000-0000-000000000000",
+        },
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        },
+        {
+          ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+          fingerprintHash: "hash1",
+          shouldForceUpdate: false,
+          enabled: true,
+          id: "00000000-0002-0000-0000-bbbbbbbbbbbb",
+        },
+      ];
+
+      const update = await getUpdateInfo(bundles, {
+        fingerprintHash: "hash1",
+        bundleId: "00000000-0002-0000-0000-aaaaaaaaaaaa",
+        platform: "ios",
+        _updateStrategy: "fingerprint",
+      });
+      expect(update).toMatchObject({
+        id: "00000000-0003-0000-0000-000000000000",
+        status: "UPDATE",
+      });
     });
 
     it("triggers a rollback if the previously used bundle no longer exists", async () => {
@@ -1334,19 +1479,19 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true,
         status: "ROLLBACK",
       });
@@ -1359,33 +1504,33 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000003",
+        id: "00000000-0003-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -1398,47 +1543,47 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000005", // Higher than the current version
+          id: "00000000-0005-0000-0000-000000000000", // Higher than the current version
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000004",
+          id: "00000000-0004-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000005",
+        id: "00000000-0005-0000-0000-000000000000",
         shouldForceUpdate: false,
         status: "UPDATE",
       });
@@ -1451,27 +1596,27 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000003",
+          id: "00000000-0003-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
@@ -1485,27 +1630,27 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: true,
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
 
       expect(update).toMatchObject({
         message: "hello",
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         shouldForceUpdate: true, // Cause the app to reload
         status: "ROLLBACK",
       });
@@ -1518,20 +1663,20 @@ export const setupGetUpdateInfoTestSuite = ({
           fingerprintHash: "hash1",
           shouldForceUpdate: true,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000002",
+          id: "00000000-0002-0000-0000-000000000000",
         },
         {
           ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
           fingerprintHash: "hash1",
           shouldForceUpdate: false,
           enabled: false, // Disabled
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
       const update = await getUpdateInfo(bundles, {
         fingerprintHash: "hash1",
-        bundleId: "00000000-0000-0000-0000-000000000002",
+        bundleId: "00000000-0002-0000-0000-000000000000",
         platform: "ios",
         _updateStrategy: "fingerprint",
       });
@@ -1787,7 +1932,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           enabled: true,
           channel: "beta",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -1810,7 +1955,7 @@ export const setupGetUpdateInfoTestSuite = ({
           shouldForceUpdate: false,
           enabled: true,
           channel: "beta",
-          id: "00000000-0000-0000-0000-000000000001",
+          id: "00000000-0001-0000-0000-000000000000",
         },
       ];
 
@@ -1823,7 +1968,7 @@ export const setupGetUpdateInfoTestSuite = ({
       });
 
       expect(update).toMatchObject({
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         message: "hello",
         shouldForceUpdate: false,
         status: "UPDATE",
