@@ -331,6 +331,16 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
+- (void)setUserId:(NSString *)customId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl setUserId:customId];
+}
+
+- (NSString *)getUserId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUserId];
+}
+
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -417,6 +427,16 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_METHOD(setUserId:(NSString *)customId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl setUserId:customId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUserId];
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve

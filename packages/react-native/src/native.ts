@@ -471,3 +471,19 @@ export const resetChannel = async (): Promise<boolean> => {
   }
   return ok;
 };
+
+/**
+ * Sets a custom user ID used for rollout calculations.
+ * If unset/empty, native device ID will be used.
+ */
+export const setUserId = (customId: string): void => {
+  HotUpdaterNative.setUserId(customId);
+};
+
+/**
+ * Gets the user ID used for rollout calculations.
+ * Returns custom ID if set, otherwise returns native device ID.
+ */
+export const getUserId = (): string => {
+  return HotUpdaterNative.getUserId();
+};

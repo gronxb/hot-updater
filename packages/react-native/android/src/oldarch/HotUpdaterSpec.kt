@@ -25,5 +25,9 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getBaseURL(): String
 
+    abstract fun setUserId(customId: String)
+
+    abstract fun getUserId(): String
+
     abstract fun resetChannel(promise: Promise)
 }

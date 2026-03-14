@@ -15,10 +15,12 @@ import {
   getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
+  getUserId,
   isChannelSwitched,
   reload,
   resetChannel,
   setReloadBehavior,
+  setUserId,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -40,6 +42,7 @@ export {
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
   type ResolverNotifyAppReadyParams,
+  type ResolverTrackDeviceEventParams,
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
@@ -255,6 +258,17 @@ function createHotUpdaterClient() {
      * @returns {boolean} true when a non-default channel has been applied
      */
     isChannelSwitched,
+
+    /**
+     * Sets a custom user ID for rollout calculations.
+     * If unset/empty, native device ID will be used.
+     */
+    setUserId,
+
+    /**
+     * Gets the user ID used for rollout calculations.
+     */
+    getUserId,
 
     /**
      * Adds a listener to HotUpdater events.

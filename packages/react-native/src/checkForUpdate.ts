@@ -8,6 +8,7 @@ import {
   getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
+  getUserId,
   isChannelSwitched,
   resetChannel,
   updateBundle,
@@ -92,6 +93,16 @@ export async function checkForUpdate(
     ? minBundleId
     : currentBundleId;
 
+  let deviceId: string | undefined;
+  try {
+    const id = getUserId();
+    if (id) {
+      deviceId = id;
+    }
+  } catch {
+    // Backward compatibility: proceed without deviceId
+  }
+
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
     return null;
@@ -122,6 +133,7 @@ export async function checkForUpdate(
       appVersion: currentAppVersion,
       bundleId: requestBundleId,
       minBundleId,
+      deviceId,
       channel: targetChannel,
       updateStrategy: options.updateStrategy,
       fingerprintHash,

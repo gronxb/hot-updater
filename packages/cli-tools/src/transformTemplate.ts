@@ -24,7 +24,8 @@ export function transformTemplate<T extends string>(
   let result: string = templateString;
   for (const key in values) {
     const placeholder = `%%${key}%%`;
-    result = result.replace(new RegExp(placeholder, "g"), (values as any)[key]);
+    const value = values[key as keyof typeof values];
+    result = result.replace(new RegExp(placeholder, "g"), value);
   }
   return result;
 }

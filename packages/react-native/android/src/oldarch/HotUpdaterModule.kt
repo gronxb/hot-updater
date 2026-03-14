@@ -21,6 +21,7 @@ class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
 ) : HotUpdaterSpec(context) {
     private val mReactApplicationContext: ReactApplicationContext = context
+    private val deviceIdService = DeviceIdService(context)
 
     // Managed coroutine scope for the module lifecycle
     private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -193,6 +194,13 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod
+    override fun setUserId(customId: String) {
+        deviceIdService.setUserId(customId)
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getUserId(): String = deviceIdService.getUserId()
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {
