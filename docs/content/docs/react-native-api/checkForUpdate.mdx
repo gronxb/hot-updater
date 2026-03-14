@@ -22,6 +22,7 @@ async function checkForAppUpdate() {
   try {
     // Option 1: Use wrap's updateStrategy
     const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",
       },
@@ -75,6 +76,7 @@ import { useEffect } from "react";
 function App() {
   useEffect(() => {
     HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
       requestHeaders: {
         Authorization: "Bearer <your-access-token>",
       },

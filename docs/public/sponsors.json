@@ -1,17 +1,41 @@
 {
   "sponsors": [
     {
-      "login": "valeriobelli",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
-      "name": "Valerio Belli",
-      "url": "https://github.com/valeriobelli"
-    },
-    {
       "login": "Davescat",
       "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
       "name": "Davide Catalano",
       "url": "https://github.com/Davescat"
+    },
+    {
+      "login": "claudesortwell",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
+      "name": "Claude",
+      "url": "https://github.com/claudesortwell"
+    },
+    {
+      "login": "diepquynh",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/13411810?u=9ccec54ec26d43f895665e0d39f584f07d8bb310&v=4",
+      "name": "Diệp Quỳnh",
+      "url": "https://github.com/diepquynh"
+    },
+    {
+      "login": "kr-yeon",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
+      "name": "kr-yeon",
+      "url": "https://github.com/kr-yeon"
+    },
+    {
+      "login": "sfshine",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/3046831?v=4",
+      "name": "SHUAI GAO",
+      "url": "https://github.com/sfshine"
+    },
+    {
+      "login": "valeriobelli",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
+      "name": "Valerio Belli",
+      "url": "https://github.com/valeriobelli"
     }
   ],
-  "updatedAt": "2026-01-01T01:53:03Z"
+  "updatedAt": "2026-03-13T00:29:43Z"
 }

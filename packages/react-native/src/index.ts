@@ -12,10 +12,14 @@ import {
   getBundleId,
   getChannel,
   getCrashHistory,
+  getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
   getUserId,
+  isChannelSwitched,
   reload,
+  resetChannel,
+  setReloadBehavior,
   setUserId,
   type UpdateParams,
   updateBundle,
@@ -24,7 +28,13 @@ import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
 import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
 
-export type { HotUpdaterEvent, NotifyAppReadyResult } from "./native";
+export type {
+  CustomReloadHandler,
+  HotUpdaterEvent,
+  NotifyAppReadyResult,
+  ReloadBehavior,
+  ReloadBehaviorSetting,
+} from "./native";
 export * from "./store";
 export {
   extractSignatureFailure,
@@ -36,12 +46,6 @@ export {
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
-
-addListener("onProgress", ({ progress }) => {
-  hotUpdaterStore.setState({
-    progress,
-  });
-});
 
 /**
  * Register getBaseURL to global objects for use without imports.
@@ -174,6 +178,18 @@ function createHotUpdaterClient() {
     reload,
 
     /**
+     * Configures how `HotUpdater.reload()` behaves.
+     *
+     * This can be called unconditionally on both platforms.
+     * The default is `processRestart`.
+     *
+     * - `reload`: built-in React Native reload on both platforms
+     * - `processRestart`: Android process restart, iOS behaves like normal reload
+     * - `custom`: run a custom JS handler on both platforms
+     */
+    setReloadBehavior,
+
+    /**
      * Returns whether an update has finished downloading in this app session.
      *
      * When it returns true, calling `HotUpdater.reload()` (or restarting the app)
@@ -223,6 +239,27 @@ function createHotUpdaterClient() {
     getChannel,
 
     /**
+     * Fetches the build-time default channel of the app.
+     *
+     * This value does not change when a runtime channel override is active.
+     *
+     * @returns {string} The default release channel embedded in the app
+     * @example
+     * ```ts
+     * const defaultChannel = HotUpdater.getDefaultChannel();
+     * console.log(`Default channel: ${defaultChannel}`);
+     * ```
+     */
+    getDefaultChannel,
+
+    /**
+     * Returns whether the app is currently using a runtime channel override.
+     *
+     * @returns {boolean} true when a non-default channel has been applied
+     */
+    isChannelSwitched,
+
+    /**
      * Sets a custom user ID for rollout calculations.
      * If unset/empty, native device ID will be used.
      */
@@ -257,6 +294,7 @@ function createHotUpdaterClient() {
      *
      * @param {Object} config - Update check configuration
      * @param {string} config.source - Update server URL
+     * @param {string} [config.channel] - Optional channel override for this update check
      * @param {Record<string, string>} [config.requestHeaders] - Request headers
      *
      * @returns {Promise<UpdateInfo | null>} Update information or null if up to date
@@ -333,6 +371,22 @@ function createHotUpdaterClient() {
     updateBundle: (params: UpdateParams) => {
       ensureGlobalResolver("updateBundle");
       return updateBundle(params);
+    },
+
+    /**
+     * Clears the runtime channel override and restores the original bundle.
+     *
+     * @returns {Promise<boolean>} Resolves with true if reset was successful
+     */
+    resetChannel: async () => {
+      const ok = await resetChannel();
+      if (ok) {
+        hotUpdaterStore.setState({
+          isUpdateDownloaded: false,
+          progress: 0,
+        });
+      }
+      return ok;
     },
 
     /**

@@ -6,6 +6,7 @@ import { createGradleLogger } from "../utils/createGradleLogger";
 
 type RunGradleArgs = {
   tasks: string[];
+  logPrefix: string;
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
   androidProjectPath: string;
@@ -52,6 +53,7 @@ const getGradleWrapper = () =>
  */
 export async function runGradle({
   tasks,
+  logPrefix,
   args,
   androidProjectPath,
   appModuleName,
@@ -78,22 +80,23 @@ Args       ${gradleArgs.join(" ")}
     gradleArgs.push(`-PreactNativeDevServerPort=${args.port}`);
   }
 
-  const logger = createGradleLogger();
-  logger.start(`${appModuleName}`);
+  const logger = createGradleLogger({ logPrefix });
+  await logger.start();
 
   try {
     const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
+      all: true,
     });
-
-    for await (const line of process) {
-      if (line) {
-        logger.processLine(line);
-      }
+    const outputStream = process.all ?? process.stdout;
+    if (outputStream) {
+      await logger.processStream(outputStream);
     }
+    await process;
 
     logger.stop();
   } catch (e) {
+    logger.writeError(e);
     logger.stop("Build failed", false);
 
     if (e instanceof ExecaError) {
@@ -105,6 +108,8 @@ Args       ${gradleArgs.join(" ")}
     throw new Error(
       "Failed to build the app. See the error above for details from Gradle.",
     );
+  } finally {
+    await logger.close();
   }
 
   return findBuildDirectory({

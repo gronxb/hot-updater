@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import plist from "plist";
 import type { ConfigParser } from "./configParser";
+import { parsePlist } from "./plistUtils";
 
 // iOS Info.plist parser
 export class IosConfigParser implements ConfigParser {
@@ -40,8 +41,8 @@ export class IosConfigParser implements ConfigParser {
       const relativePath = path.relative(getCwd(), plistFile);
       searchedPaths.push(relativePath);
 
-      const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-      const plistObject = plist.parse(plistXml) as Record<string, any>;
+      const plistBuffer = await fs.promises.readFile(plistFile);
+      const plistObject = parsePlist(plistBuffer);
 
       // Check if the key exists in the plist
       if (key in plistObject) {
@@ -80,8 +81,8 @@ export class IosConfigParser implements ConfigParser {
     for (const plistFile of plistPaths) {
       const relativePath = path.relative(getCwd(), plistFile);
       try {
-        const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-        const plistObject = plist.parse(plistXml) as Record<string, any>;
+        const plistBuffer = await fs.promises.readFile(plistFile);
+        const plistObject = parsePlist(plistBuffer);
 
         if (!(key in plistObject)) {
           continue;
@@ -122,22 +123,8 @@ export class IosConfigParser implements ConfigParser {
     for (const plistFile of plistPaths) {
       const relativePath = path.relative(getCwd(), plistFile);
       try {
-        const plistXml = await fs.promises.readFile(plistFile, "utf-8");
-
-        // Basic XML validation
-        if (!plistXml.trim().startsWith("<?xml")) {
-          throw new Error(
-            "File does not appear to be valid XML: missing XML declaration",
-          );
-        }
-
-        if (!plistXml.includes("<plist") || !plistXml.includes("</plist>")) {
-          throw new Error(
-            "File does not appear to be a valid plist: missing plist tags",
-          );
-        }
-
-        const plistObject = plist.parse(plistXml) as Record<string, any>;
+        const plistBuffer = await fs.promises.readFile(plistFile);
+        const plistObject = parsePlist(plistBuffer);
 
         if (plistObject[key] === value) {
           continue;

@@ -76,6 +76,12 @@ interface BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     fun getBaseURL(): String
+
+    /**
+     * Restores the original bundle and clears downloaded bundle state.
+     * @return true if the reset was successful
+     */
+    suspend fun resetChannel(): Boolean
 }
 
 /**
@@ -158,7 +164,7 @@ class BundleFileStorageService(
             // Read metadata without validation to get stored isolationKey
             val jsonString = metadataFile.readText()
             val json = org.json.JSONObject(jsonString)
-            val storedIsolationKey = json.optString("isolationKey", null)
+            val storedIsolationKey = if (json.has("isolationKey")) json.getString("isolationKey") else null
 
             if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
                 // isolationKey changed - migration needed
@@ -829,4 +835,40 @@ class BundleFileStorageService(
             ""
         }
     }
+
+    override suspend fun resetChannel(): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!setBundleURL(null)) {
+                return@withContext false
+            }
+
+            val clearedMetadata =
+                BundleMetadata(
+                    isolationKey = isolationKey,
+                    stableBundleId = null,
+                    stagingBundleId = null,
+                    verificationPending = false,
+                    verificationAttemptedAt = null,
+                    stagingExecutionCount = null,
+                )
+
+            if (!saveMetadata(clearedMetadata)) {
+                return@withContext false
+            }
+
+            getBundleStoreDir().listFiles()?.forEach { file ->
+                if (
+                    file.name == BundleMetadata.METADATA_FILENAME ||
+                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME
+                ) {
+                    return@forEach
+                }
+
+                if (file.isDirectory) {
+                    file.deleteRecursively()
+                }
+            }
+
+            true
+        }
 }

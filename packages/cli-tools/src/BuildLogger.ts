@@ -1,98 +1,296 @@
-import { p } from "./prompts";
+import path from "path";
+import { createInterface } from "readline";
+import { PassThrough, type Readable } from "stream";
+import { colors } from "./colors";
+import { getCwd } from "./cwd";
+import { createLogWriter, type HotUpdaterLogWriter } from "./LogWriter";
+import { type PromptProgress, p } from "./prompts";
+
+type LinePattern = string | RegExp;
+
+type BuildLoggerState = {
+  completedStages: number;
+  latestMessage: string;
+  started: boolean;
+  stopped: boolean;
+};
+
+const createInitialState = (): BuildLoggerState => ({
+  completedStages: 0,
+  latestMessage: "",
+  started: false,
+  stopped: false,
+});
+
+const normalizeLine = (line: string) => {
+  const truncated = line.length > 50 ? `${line.slice(0, 50)}...` : line;
+  return truncated.replace(/[\r\n]/g, " ").trim();
+};
+
+const matchesAnyPattern = ({
+  line,
+  patterns,
+}: {
+  line: string;
+  patterns: LinePattern[];
+}) => {
+  const trimmedLine = line.trim();
+  const normalizedLine = trimmedLine.toLowerCase();
+
+  return patterns.some((pattern) => {
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      return pattern.test(trimmedLine);
+    }
+
+    return normalizedLine.includes(pattern.toLowerCase());
+  });
+};
+
+// Is it worth doing?
+const getPatternMatchScore = ({
+  line,
+  patterns,
+}: {
+  line: string;
+  patterns: LinePattern[];
+}) => {
+  const trimmedLine = line.trim();
+  const normalizedLine = trimmedLine.toLowerCase();
+
+  // Score reflects how specific a match is: longer patterns win ties over generic ones.
+  return patterns.reduce((bestScore, pattern) => {
+    if (pattern instanceof RegExp) {
+      pattern.lastIndex = 0;
+      if (!pattern.test(trimmedLine)) {
+        return bestScore;
+      }
+
+      return Math.max(bestScore, pattern.source.length);
+    }
+
+    const normalizedPattern = pattern.toLowerCase();
+    if (!normalizedLine.includes(normalizedPattern)) {
+      return bestScore;
+    }
+
+    return Math.max(bestScore, normalizedPattern.length);
+  }, 0);
+};
+
+const resolveNextCompletedStage = ({
+  line,
+  progressStages,
+  completedStages,
+}: {
+  line: string;
+  progressStages: LinePattern[][];
+  completedStages: number;
+}) => {
+  let nextCompletedStages = completedStages;
+  let bestMatchScore = 0;
+
+  // Search all remaining stages in one line and jump to the strongest/latest match.
+  // This avoids missing progress when output emits multiple stage markers together.
+  for (
+    let stageIndex = completedStages;
+    stageIndex < progressStages.length;
+    stageIndex += 1
+  ) {
+    const matchScore = getPatternMatchScore({
+      line,
+      patterns: progressStages[stageIndex],
+    });
+
+    if (matchScore <= 0) {
+      continue;
+    }
+
+    const candidateStage = stageIndex + 1;
+    if (
+      matchScore > bestMatchScore ||
+      (matchScore === bestMatchScore && candidateStage > nextCompletedStages)
+    ) {
+      nextCompletedStages = candidateStage;
+      bestMatchScore = matchScore;
+    }
+  }
+
+  return nextCompletedStages;
+};
 
 export interface BuildLoggerConfig {
-  /** Patterns that indicate build failure (string or regex) */
-  failurePatterns: Array<string | RegExp>;
-  /** Patterns for important messages that should be logged (string or regex) */
-  importantLogPatterns: Array<string | RegExp>;
-  /** Progress mapping: [patterns, progress percentage] (string or regex) */
-  progressMapping: Array<[Array<string | RegExp>, number]>;
+  logPrefix: string;
+  /** Lines that should be surfaced in prompt output as important events. */
+  importantLogPatterns: LinePattern[];
+  /** Progress stages: stage index advances when corresponding output patterns are observed. */
+  progressStages: LinePattern[][];
 }
 
 export class BuildLogger {
-  private currentProgress = 0;
-  private spinner?: ReturnType<typeof p.spinner>;
-  private config: BuildLoggerConfig;
+  private state = createInitialState();
+  private logWriter?: HotUpdaterLogWriter;
+  private readonly promptProgress: PromptProgress;
+  private readonly stageCount: number;
 
-  constructor(config: BuildLoggerConfig) {
-    this.config = config;
+  constructor(private readonly config: BuildLoggerConfig) {
+    this.stageCount = config.progressStages.length;
+
+    this.promptProgress = p.progress({
+      indicator: "timer",
+      max: config.progressStages.length,
+      delay: 500,
+    });
   }
 
-  start(projectName: string) {
-    this.spinner = p.spinner();
-    this.spinner.start(`Building ${projectName}`);
-    this.updateSpinner();
+  async start() {
+    this.state = { ...createInitialState(), started: true };
+    this.logWriter = await createLogWriter({
+      prefix: this.config.logPrefix,
+    });
+    this.promptProgress.start();
   }
 
-  processLine(line: string) {
-    // Check for build failure
-    if (this.matchesAnyPattern(line, this.config.failurePatterns)) {
-      this.stop("Build failed", false);
+  async processStream(input: Readable) {
+    if (!this.logWriter) {
+      throw new Error("BuildLogger has not been started. Call start() first.");
+    }
+
+    const progressInput = new PassThrough();
+    const logInput = new PassThrough();
+    // Fan out one process stream to both consumers: prompt progress parsing and log file writer.
+    input.pipe(progressInput);
+    input.pipe(logInput);
+
+    await Promise.all([
+      this.consumeProgressStream(progressInput),
+      this.logWriter.writeStream(logInput),
+    ]);
+  }
+
+  private async consumeProgressStream(input: Readable) {
+    const lineReader = createInterface({
+      input,
+      crlfDelay: Infinity,
+      terminal: false,
+    });
+
+    for await (const line of lineReader) {
+      this.processProgressLine(line);
+    }
+  }
+
+  private processProgressLine(line: string) {
+    const normalizedLine = normalizeLine(line);
+
+    if (!normalizedLine) {
       return;
     }
 
-    // Update progress based on mapping
-    for (const [patterns, progress] of this.config.progressMapping) {
-      if (this.matchesAnyPattern(line, patterns)) {
-        if (progress < this.currentProgress) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn(
-              `[BuildLogger] Progress regression detected: ${progress}% < current ${this.currentProgress}% for patterns: ${patterns.join(", ")}`,
-            );
-          }
-          // Don't update if progress would go backwards
-          break;
-        }
-        this.currentProgress = progress;
-        this.updateSpinner();
-        break;
-      }
-    }
+    const nextCompletedStages = resolveNextCompletedStage({
+      line: normalizedLine,
+      progressStages: this.config.progressStages,
+      completedStages: this.state.completedStages,
+    });
 
-    // Log important messages
-    if (this.shouldLogLine(line)) {
-      p.log.info(line.trim());
-    }
+    this.updateProgress({
+      nextCompletedStages,
+      latestMessage: normalizedLine,
+    });
   }
 
   stop(message?: string, success = true) {
-    if (this.spinner) {
-      if (success) {
-        this.spinner.stop(message || "Build completed successfully");
-      } else {
-        this.spinner.stop(message || "Build failed");
-      }
+    if (!this.state.started || this.state.stopped) {
+      return;
     }
+
+    if (success) {
+      this.finishRemainingProgress();
+    }
+
+    const finalMessage =
+      message || (success ? "Build completed successfully" : "Build failed");
+
+    if (success) {
+      this.promptProgress.stop(finalMessage);
+    } else {
+      this.promptProgress.error(finalMessage);
+    }
+
+    this.showLogFileLocation();
+    this.state = { ...this.state, stopped: true };
   }
 
-  private updateSpinner() {
-    if (!this.spinner) return;
-
-    const progressBar = this.generateProgressBar(this.currentProgress);
-    this.spinner.message(`${progressBar} ${this.currentProgress}%`);
+  writeError(error: unknown) {
+    this.logWriter?.writeError(error);
   }
 
-  private generateProgressBar(progress: number) {
-    const width = 20;
-    const filled = Math.round((progress / 100) * width);
-    const empty = width - filled;
-    return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
+  async close() {
+    if (!this.logWriter) {
+      return;
+    }
+
+    await this.logWriter.close();
+    this.logWriter = undefined;
+  }
+
+  private updateProgress({
+    nextCompletedStages,
+    latestMessage,
+  }: {
+    nextCompletedStages: number;
+    latestMessage: string;
+  }) {
+    if (this.state.stopped) {
+      return;
+    }
+
+    const progressDelta = nextCompletedStages - this.state.completedStages;
+
+    if (progressDelta > 0) {
+      this.promptProgress.advance(progressDelta, latestMessage);
+    } else if (
+      latestMessage &&
+      latestMessage !== this.state.latestMessage &&
+      this.shouldLogLine(latestMessage)
+    ) {
+      this.promptProgress.message(latestMessage);
+    }
+
+    this.state = {
+      ...this.state,
+      completedStages: Math.max(
+        this.state.completedStages,
+        nextCompletedStages,
+      ),
+      latestMessage,
+    };
+  }
+
+  private finishRemainingProgress() {
+    if (!this.promptProgress || this.state.completedStages >= this.stageCount) {
+      return;
+    }
+
+    const remainingStages = this.stageCount - this.state.completedStages;
+    this.promptProgress.advance(remainingStages, this.state.latestMessage);
+    this.state = { ...this.state, completedStages: this.stageCount };
   }
 
   private shouldLogLine(line: string) {
-    return this.matchesAnyPattern(line, this.config.importantLogPatterns);
+    return matchesAnyPattern({
+      line,
+      patterns: this.config.importantLogPatterns,
+    });
   }
 
-  private matchesAnyPattern(
-    line: string,
-    patterns: Array<string | RegExp>,
-  ): boolean {
-    const trimmed = line.trim();
-    return patterns.some((pattern) => {
-      if (pattern instanceof RegExp) {
-        return pattern.test(trimmed);
-      }
-      return trimmed.toLowerCase().trim().includes(pattern.toLowerCase());
-    });
+  private showLogFileLocation() {
+    if (!this.logWriter?.logFilePath) {
+      return;
+    }
+
+    const relativePath = path.relative(getCwd(), this.logWriter.logFilePath);
+    const highlightedPath = colors.blueBright(relativePath);
+    p.log.info(`Build log stored at ${highlightedPath}`);
   }
 }

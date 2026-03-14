@@ -1,0 +1,11 @@
+{
+  "tools": {
+    "cargo": "cargo",
+    "rustup": "rustup"
+  },
+  "wasm": {
+    "crateDir": "rust/hdiff-wasm",
+    "rustTarget": "wasm32-unknown-unknown",
+    "outputWasm": "assets/hdiff.wasm"
+  }
+}

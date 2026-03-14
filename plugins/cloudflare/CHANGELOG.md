@@ -1,5 +1,139 @@
 # @hot-updater/cloudflare
 
+## 0.27.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
+### Patch Changes
+
+- Updated dependencies [81f9437]
+  - @hot-updater/cli-tools@0.27.0
+  - @hot-updater/core@0.27.0
+  - @hot-updater/js@0.27.0
+  - @hot-updater/plugin-core@0.27.0
+
+## 0.26.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.26.2
+- @hot-updater/core@0.26.2
+- @hot-updater/js@0.26.2
+- @hot-updater/plugin-core@0.26.2
+
+## 0.26.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.26.1
+- @hot-updater/core@0.26.1
+- @hot-updater/js@0.26.1
+- @hot-updater/plugin-core@0.26.1
+
+## 0.26.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.26.0
+- @hot-updater/core@0.26.0
+- @hot-updater/js@0.26.0
+- @hot-updater/plugin-core@0.26.0
+
+## 0.25.14
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.14
+- @hot-updater/core@0.25.14
+- @hot-updater/js@0.25.14
+- @hot-updater/plugin-core@0.25.14
+
+## 0.25.13
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.13
+- @hot-updater/core@0.25.13
+- @hot-updater/js@0.25.13
+- @hot-updater/plugin-core@0.25.13
+
+## 0.25.12
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.12
+- @hot-updater/core@0.25.12
+- @hot-updater/js@0.25.12
+- @hot-updater/plugin-core@0.25.12
+
+## 0.25.11
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.11
+- @hot-updater/core@0.25.11
+- @hot-updater/js@0.25.11
+- @hot-updater/plugin-core@0.25.11
+
+## 0.25.10
+
+### Patch Changes
+
+- Updated dependencies [90f9610]
+- Updated dependencies [03c5adc]
+  - @hot-updater/cli-tools@0.25.10
+  - @hot-updater/plugin-core@0.25.10
+  - @hot-updater/core@0.25.10
+  - @hot-updater/js@0.25.10
+
+## 0.25.9
+
+### Patch Changes
+
+- Updated dependencies [6b22072]
+  - @hot-updater/plugin-core@0.25.9
+  - @hot-updater/cli-tools@0.25.9
+  - @hot-updater/core@0.25.9
+  - @hot-updater/js@0.25.9
+
+## 0.25.8
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.8
+- @hot-updater/core@0.25.8
+- @hot-updater/js@0.25.8
+- @hot-updater/plugin-core@0.25.8
+
+## 0.25.7
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.7
+- @hot-updater/core@0.25.7
+- @hot-updater/js@0.25.7
+- @hot-updater/plugin-core@0.25.7
+
+## 0.25.6
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.6
+- @hot-updater/core@0.25.6
+- @hot-updater/js@0.25.6
+- @hot-updater/plugin-core@0.25.6
+
+## 0.25.5
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.25.5
+- @hot-updater/core@0.25.5
+- @hot-updater/js@0.25.5
+- @hot-updater/plugin-core@0.25.5
+
 ## 0.25.4
 
 ### Patch Changes

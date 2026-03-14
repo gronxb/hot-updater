@@ -45,6 +45,7 @@ export const setupBundleMethodsTestSuite = ({
         storageUri: "mock://test-bucket/test.zip",
         targetAppVersion: "1.0.0",
         fingerprintHash: null,
+        metadata: {},
       };
 
       await insertBundle(bundle);

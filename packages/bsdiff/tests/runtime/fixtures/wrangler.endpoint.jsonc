@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "hermes-bundle-diff-runtime-endpoint-test",
+  "main": "./cloudflare-endpoint.mjs",
+  "compatibility_date": "2025-09-27",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "../../../fixture"
+  },
+  "compatibility_flags": ["nodejs_compat"]
+}

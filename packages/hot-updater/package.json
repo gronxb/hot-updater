@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.25.4",
+  "version": "0.27.0",
   "bin": {
     "hot-updater": "./dist/index.js"
   },
@@ -63,13 +63,13 @@
     "@hot-updater/server": "workspace:*",
     "cosmiconfig": "9.0.0",
     "jiti": "2.6.1",
-    "kysely": "0.28.8",
+    "kysely": "0.28.9",
     "sql-formatter": "15.6.10",
     "cosmiconfig-typescript-loader": "5.0.0"
   },
   "devDependencies": {
     "semver": "^7.6.3",
-    "fast-xml-parser": "^5.2.3",
+    "fast-xml-parser": "5.4.1",
     "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",
     "@commander-js/extra-typings": "^14.0.0",

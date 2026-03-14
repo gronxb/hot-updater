@@ -144,12 +144,21 @@ async function generateWithMigrator(
     return;
   }
 
-  // Format SQL for better readability
-  const formattedSql = format(sql, {
-    language: "postgresql",
-    tabWidth: 2,
-    keywordCase: "upper",
-  });
+  let formattedSql = sql;
+  const formatLanguages = ["postgresql", "mysql"] as const;
+
+  for (const language of formatLanguages) {
+    try {
+      formattedSql = format(sql, {
+        language,
+        tabWidth: 2,
+        keywordCase: "upper",
+      });
+      break;
+    } catch {
+      // Continue to next language
+    }
+  }
 
   // Create output directory
   await mkdir(absoluteOutputDir, { recursive: true });

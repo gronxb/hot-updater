@@ -1,18 +1,19 @@
-import { p } from "@hot-updater/cli-tools";
-import { execa } from "execa";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
+import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
 export const exportXcodeArchive = async ({
   archivePath,
   sourceDir,
   exportExtraParams,
   exportOptionsPlist,
+  logPrefix,
 }: {
-  sourceDir: string;
   archivePath: string;
-  exportOptionsPlist: string;
   exportExtraParams?: string[];
+  exportOptionsPlist: string;
+  logPrefix: string;
+  sourceDir: string;
 }): Promise<{ exportPath: string }> => {
   const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
@@ -22,18 +23,17 @@ export const exportXcodeArchive = async ({
     exportExtraParams,
   });
 
-  const spinner = p.spinner();
-  spinner.start("Exporting archive to IPA");
-
   try {
-    await execa("xcodebuild", exportArgs, {
-      cwd: sourceDir,
+    await runXcodebuildWithLogging({
+      args: exportArgs,
+      sourceDir,
+      successMessage: "Archive exported successfully",
+      failureMessage: "Export failed",
+      logPrefix,
     });
 
-    spinner.stop("Archive exported successfully");
     return { exportPath };
   } catch (error) {
-    spinner.stop("Export failed");
     throw prettifyXcodebuildError(error);
   }
 };

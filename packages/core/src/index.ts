@@ -1,3 +1,3 @@
-export * from "./rollout";
+export * from "./hotUpdateDirUtil";
 export * from "./types";
 export * from "./uuid";

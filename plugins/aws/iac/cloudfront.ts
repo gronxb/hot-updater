@@ -1,10 +1,15 @@
-import {
-  CloudFront,
-  type DistributionConfig,
-} from "@aws-sdk/client-cloudfront";
+import { CloudFront } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
 import crypto from "crypto";
-import { delay, merge } from "es-toolkit";
+import { delay } from "es-toolkit";
+import {
+  applyDistributionConfigOverrides,
+  buildDistributionConfig,
+  buildDistributionConfigOverrides,
+  HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
+  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+} from "./cloudfrontDistributionConfig";
+import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
 
 export class CloudFrontManager {
@@ -25,6 +30,76 @@ export class CloudFrontManager {
   ) {
     this.region = region;
     this.credentials = credentials;
+  }
+
+  private async getOrCreateSharedCachePolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
+          Type: "custom",
+          ...(marker ? { Marker: marker } : {}),
+        });
+
+        return {
+          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
+          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
+        policy.CachePolicy?.CachePolicyConfig?.Name ===
+        HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG.Name,
+    });
+    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
+
+    if (existingPolicyId) {
+      return existingPolicyId;
+    }
+
+    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
+      CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+    });
+    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
+    if (!cachePolicyId) {
+      throw new Error("Failed to create shared cache policy");
+    }
+    return cachePolicyId;
+  }
+
+  private async getOrCreateLegacyCheckUpdateCachePolicy(
+    cloudfrontClient: CloudFront,
+  ): Promise<string> {
+    const existingPolicy = await findInPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
+          Type: "custom",
+          ...(marker ? { Marker: marker } : {}),
+        });
+
+        return {
+          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
+          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
+        };
+      },
+      matches: (policy) =>
+        policy.CachePolicy?.CachePolicyConfig?.Name ===
+        HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG.Name,
+    });
+    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
+
+    if (existingPolicyId) {
+      return existingPolicyId;
+    }
+
+    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
+      CachePolicyConfig: HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
+    });
+    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
+    if (!cachePolicyId) {
+      throw new Error("Failed to create legacy check-update cache policy");
+    }
+    return cachePolicyId;
   }
 
   async getOrCreateKeyGroup(publicKey: string): Promise<{
@@ -131,6 +206,29 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
+    let legacyCachePolicyId: string;
+    let sharedCachePolicyId: string;
+    try {
+      legacyCachePolicyId =
+        await this.getOrCreateLegacyCheckUpdateCachePolicy(cloudfrontClient);
+    } catch (error) {
+      throw new Error(
+        `Failed to get or create legacy check-update cache policy: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    try {
+      sharedCachePolicyId =
+        await this.getOrCreateSharedCachePolicy(cloudfrontClient);
+    } catch (error) {
+      throw new Error(
+        `Failed to get or create shared cache policy: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
     try {
       const listResp = await cloudfrontClient.listDistributions({});
@@ -162,143 +260,15 @@ export class CloudFrontManager {
       if (p.isCancel(selectedDistributionStr)) process.exit(0);
       selectedDistribution = JSON.parse(selectedDistributionStr);
     }
-    const newOverrides: Partial<DistributionConfig> = {
-      Origins: {
-        Quantity: 1,
-        Items: [
-          {
-            Id: options.bucketName,
-            DomainName: bucketDomain,
-            OriginAccessControlId: oacId,
-            S3OriginConfig: { OriginAccessIdentity: "" },
-          },
-        ],
-      },
-      DefaultCacheBehavior: {
-        TargetOriginId: options.bucketName,
-        ViewerProtocolPolicy: "redirect-to-https",
-        TrustedKeyGroups: {
-          Enabled: true,
-          Quantity: 1,
-          Items: [options.keyGroupId],
-        },
-        ForwardedValues: {
-          QueryString: true,
-          Cookies: { Forward: "none" },
-          QueryStringCacheKeys: {
-            Quantity: 0,
-            Items: [],
-          },
-        },
-        MinTTL: 0,
-        SmoothStreaming: false,
-        Compress: true,
-        FieldLevelEncryptionId: "",
-        AllowedMethods: {
-          Quantity: 2,
-          Items: ["HEAD", "GET"],
-          CachedMethods: {
-            Quantity: 2,
-            Items: ["HEAD", "GET"],
-          },
-        },
-      },
-      CacheBehaviors: {
-        Quantity: 2,
-        Items: [
-          // no cache
-          {
-            PathPattern: "/api/check-update",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 0,
-            MaxTTL: 0,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 6,
-                Items: [
-                  "x-bundle-id",
-                  "x-app-version",
-                  "x-app-platform",
-                  "x-min-bundle-id",
-                  "x-channel",
-                  "x-fingerprint-hash",
-                ],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-          {
-            PathPattern: "/api/check-update/*",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 31536000,
-            MaxTTL: 31536000,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 0,
-                Items: [],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-        ],
-      },
-    };
+    const newOverrides = buildDistributionConfigOverrides({
+      bucketName: options.bucketName,
+      bucketDomain,
+      functionArn: options.functionArn,
+      keyGroupId: options.keyGroupId,
+      oacId,
+      legacyCachePolicyId,
+      sharedCachePolicyId,
+    });
 
     if (selectedDistribution) {
       p.log.success(
@@ -309,10 +279,13 @@ export class CloudFrontManager {
           await cloudfrontClient.getDistributionConfig({
             Id: selectedDistribution.Id,
           });
-        const finalConfig: DistributionConfig = merge(
-          DistributionConfig ?? {},
+        if (!DistributionConfig) {
+          throw new Error("CloudFront distribution config was not returned");
+        }
+        const finalConfig = applyDistributionConfigOverrides(
+          DistributionConfig,
           newOverrides,
-        ) as DistributionConfig;
+        );
         await cloudfrontClient.updateDistribution({
           Id: selectedDistribution.Id,
           IfMatch: ETag,
@@ -342,153 +315,15 @@ export class CloudFrontManager {
     }
 
     // Create a new distribution if none exists
-    const finalDistributionConfig: DistributionConfig = {
-      CallerReference: new Date().toISOString(),
-      Comment: "Hot Updater CloudFront distribution",
-      Enabled: true,
-      Origins: {
-        Quantity: 1,
-        Items: [
-          {
-            Id: options.bucketName,
-            DomainName: bucketDomain,
-            OriginAccessControlId: oacId,
-            S3OriginConfig: { OriginAccessIdentity: "" },
-          },
-        ],
-      },
-      DefaultCacheBehavior: {
-        TargetOriginId: options.bucketName,
-        ViewerProtocolPolicy: "redirect-to-https",
-        TrustedKeyGroups: {
-          Enabled: true,
-          Quantity: 1,
-          Items: [options.keyGroupId],
-        },
-        ForwardedValues: {
-          QueryString: true,
-          Cookies: { Forward: "none" },
-          QueryStringCacheKeys: {
-            Quantity: 0,
-            Items: [],
-          },
-        },
-        MinTTL: 0,
-        SmoothStreaming: false,
-        Compress: true,
-        FieldLevelEncryptionId: "",
-        AllowedMethods: {
-          Quantity: 2,
-          Items: ["HEAD", "GET"],
-          CachedMethods: {
-            Quantity: 2,
-            Items: ["HEAD", "GET"],
-          },
-        },
-      },
-      CacheBehaviors: {
-        Quantity: 2,
-        Items: [
-          // no cache
-          {
-            PathPattern: "/api/check-update",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 0,
-            MaxTTL: 0,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 6,
-                Items: [
-                  "x-bundle-id",
-                  "x-app-version",
-                  "x-app-platform",
-                  "x-min-bundle-id",
-                  "x-channel",
-                  "x-fingerprint-hash",
-                ],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-          // /api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId
-          // /api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId
-          {
-            PathPattern: "/api/check-update/*",
-            TargetOriginId: options.bucketName,
-            ViewerProtocolPolicy: "redirect-to-https",
-            LambdaFunctionAssociations: {
-              Quantity: 1,
-              Items: [
-                {
-                  EventType: "origin-request",
-                  LambdaFunctionARN: options.functionArn,
-                },
-              ],
-            },
-            MinTTL: 0,
-            DefaultTTL: 31536000,
-            MaxTTL: 31536000,
-            SmoothStreaming: false,
-            Compress: true,
-            FieldLevelEncryptionId: "",
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ["HEAD", "GET"],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ["HEAD", "GET"],
-              },
-            },
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-              Headers: {
-                Quantity: 0,
-                Items: [],
-              },
-              QueryStringCacheKeys: {
-                Quantity: 0,
-                Items: [],
-              },
-            },
-          },
-        ],
-      },
-      DefaultRootObject: "index.html",
-      ViewerCertificate: { CloudFrontDefaultCertificate: true },
-      Restrictions: {
-        GeoRestriction: { RestrictionType: "none", Quantity: 0 },
-      },
-      PriceClass: "PriceClass_All",
-      Aliases: { Quantity: 0, Items: [] },
-    };
+    const finalDistributionConfig = buildDistributionConfig({
+      bucketName: options.bucketName,
+      bucketDomain,
+      functionArn: options.functionArn,
+      keyGroupId: options.keyGroupId,
+      oacId,
+      legacyCachePolicyId,
+      sharedCachePolicyId,
+    });
 
     try {
       const distResp = await cloudfrontClient.createDistribution({

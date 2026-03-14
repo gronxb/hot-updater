@@ -491,6 +491,10 @@ For Objective-C projects, modify your `AppDelegate.mm`:
   </Tab>
 </Tabs>
 
+<Callout type="info">
+For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+</Callout>
+
 ## Next Steps
 
 Now that you've completed the setup, you can start deploying updates:
@@ -528,6 +532,7 @@ npx hot-updater console
 Learn more about advanced capabilities:
 
 - [Update Strategies](/docs/guides/update-strategies) - Choose between app version and fingerprint strategies
-- [Channel Management](/docs/guides/channel-management) - Manage multiple environments and user groups
+- [Default Channel Setup](/docs/guides/channel-management) - Configure the app's default release channel
+- [Runtime Channel Switch](/docs/guides/runtime-channel-switch) - Temporarily move a device to another channel without rebuilding
 - [Simulator Testing](/docs/guides/simulator-test) - Test updates in release mode before production
 - [Security Best Practices](/docs/policy/security) - Secure your update infrastructure

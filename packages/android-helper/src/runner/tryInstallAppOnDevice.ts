@@ -24,13 +24,13 @@ export const tryInstallAppOnDevice = async ({
   adbArgs.push(apkPath);
 
   const adbPath = Device.getAdbPath();
-  const loader = p.spinner();
-  loader.start(
+  const spinner = p.spinner();
+  spinner.start(
     `Installing the app on ${device.readableName} (id: ${deviceId})`,
   );
   try {
     await execa(adbPath, adbArgs);
-    loader.stop(
+    spinner.stop(
       `Installed the app on ${device.readableName} (id: ${deviceId}).`,
     );
   } catch (error) {
@@ -42,11 +42,10 @@ export const tryInstallAppOnDevice = async ({
       typeof errorMessage === "string" &&
       errorMessage.includes("INSTALL_FAILED_INSUFFICIENT_STORAGE")
     ) {
-      loader.message("Installation failed due to insufficient storage");
+      spinner.message("Installation failed due to insufficient storage");
     }
-    loader.stop(
+    spinner.error(
       `Failed: Installing the app on ${device.readableName} (id: ${deviceId})`,
-      1,
     );
     throw new Error(
       typeof errorMessage === "string" ? errorMessage : "Installation failed",

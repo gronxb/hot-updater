@@ -3,12 +3,21 @@ import {
   type Bundle,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
-  isDeviceEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
 import { semverSatisfies } from "./semverSatisfies";
+
+function hashUserId(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash % 100);
+}
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   message: null,
@@ -34,14 +43,31 @@ const makeResponseWithRollout = (
   deviceId: string | undefined,
 ): UpdateInfo | null => {
   if (status === "UPDATE" && deviceId) {
-    const isEligible = isDeviceEligibleForUpdate(
-      deviceId,
-      bundle.rolloutPercentage,
-      bundle.targetDeviceIds,
-    );
+    // Inline eligibility check
+    const targetDeviceIds = bundle.targetDeviceIds;
+    const rolloutPercentage = bundle.rolloutPercentage;
 
-    if (!isEligible) {
-      return null;
+    // Priority 1: targetDeviceIds
+    if (targetDeviceIds && targetDeviceIds.length > 0) {
+      if (!targetDeviceIds.includes(deviceId)) {
+        return null;
+      }
+    } else {
+      // Priority 2: rolloutPercentage
+      if (
+        rolloutPercentage !== null &&
+        rolloutPercentage !== undefined &&
+        rolloutPercentage < 100
+      ) {
+        if (rolloutPercentage <= 0) {
+          return null;
+        }
+
+        const userHash = hashUserId(deviceId);
+        if (userHash >= rolloutPercentage) {
+          return null;
+        }
+      }
     }
   }
 

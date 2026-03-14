@@ -7,7 +7,7 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { isDeviceEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
@@ -17,6 +17,41 @@ import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_26_0 } from "../schema/v0_26_0";
 import type { PaginationInfo } from "../types";
 import type { DatabaseAPI } from "./types";
+
+function hashUserId(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return Math.abs(hash % 100);
+}
+
+function isDeviceEligibleForUpdate(
+  userId: string,
+  rolloutPercentage: number | null | undefined,
+  targetDeviceIds: string[] | null | undefined,
+): boolean {
+  if (targetDeviceIds && targetDeviceIds.length > 0) {
+    return targetDeviceIds.includes(userId);
+  }
+
+  if (
+    rolloutPercentage === null ||
+    rolloutPercentage === undefined ||
+    rolloutPercentage >= 100
+  ) {
+    return true;
+  }
+
+  if (rolloutPercentage <= 0) {
+    return false;
+  }
+
+  const userHash = hashUserId(userId);
+  return userHash < rolloutPercentage;
+}
 
 const parseTargetDeviceIds = (value: unknown): string[] | null => {
   if (!value) return null;

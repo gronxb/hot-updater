@@ -7,6 +7,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";
@@ -14,6 +15,7 @@ import open from "open";
 import path from "path";
 import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
+import { createSignedFileHash } from "@/signedHashUtils";
 import {
   isFingerprintEquals,
   nativeFingerprint,
@@ -25,15 +27,12 @@ import {
 } from "@/utils/fingerprint/diff";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
-import { getLatestGitCommit } from "@/utils/git";
-import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
-import { getDefaultOutputPath } from "@/utils/output/getDefaultOutputPath";
+import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { createSignedFileHash } from "../signedHashUtils";
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
@@ -143,9 +142,8 @@ export const deploy = async (options: DeployOptions) => {
     const s = p.spinner();
     s.start(`Fingerprinting (${platform})`);
     if (!fs.existsSync(path.join(cwd, "fingerprint.json"))) {
-      s.stop(
+      s.error(
         "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
-        1,
       );
       process.exit(1);
     }
@@ -155,9 +153,8 @@ export const deploy = async (options: DeployOptions) => {
     });
     const projectFingerprint = await readLocalFingerprint();
     if (!isFingerprintEquals(newFingerprint, projectFingerprint?.[platform])) {
-      s.stop(
+      s.error(
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
-        1,
       );
 
       // Show what changed
@@ -226,11 +223,16 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   }
 
-  if (appendOutputDirectoryIntoGitignore()) {
+  if (
+    appendToProjectRootGitignore({
+      globLines: [HotUpdateDirUtil.outputGitignorePath],
+    })
+  ) {
     p.log.info(".gitignore has been modified");
   }
 
-  const outputPath = options.bundleOutputPath ?? getDefaultOutputPath();
+  const outputPath =
+    options.bundleOutputPath ?? HotUpdateDirUtil.getDefaultOutputPath({ cwd });
 
   let bundleId: string | null = null;
   let fileHash: string;
@@ -347,7 +349,7 @@ export const deploy = async (options: DeployOptions) => {
               fileHash = createSignedFileHash(signature);
               s.stop("Bundle signed successfully");
             } catch (error) {
-              s.stop("Failed to sign bundle", 1);
+              s.error("Failed to sign bundle");
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
                 "Ensure private key path is correct and file has proper permissions",

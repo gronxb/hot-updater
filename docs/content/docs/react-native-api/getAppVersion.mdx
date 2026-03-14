@@ -1,0 +1,47 @@
+---
+title: "getAppVersion"
+description: "The `HotUpdater.getAppVersion()` function returns the current native app version embedded at build time."
+icon: Tag
+---
+
+## Usage
+
+Use `HotUpdater.getAppVersion()` to read the app version from the native build.
+This is useful for diagnostics, showing version info in settings screens, and
+custom update logic.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function App() {
+	const appVersion = HotUpdater.getAppVersion();
+
+	return (
+		<View>
+			<Text>App Version: {appVersion ?? "unknown"}</Text>
+		</View>
+	);
+}
+
+export default App;
+```
+
+## Return Value
+
+```ts
+getAppVersion(): string | null
+```
+
+- Returns a version string when available (for example: `"1.2.3"`).
+- Returns `null` when the native constant is unavailable.
+
+## Behavior
+
+- `getAppVersion()` is synchronous.
+- The value is sourced from native app metadata:
+	- iOS: `CFBundleShortVersionString` in `Info.plist`
+	- Android: `PackageInfo.versionName`
+- The native module then exposes this as `APP_VERSION`, and
+	`HotUpdater.getAppVersion()` returns that bridged value.
+- It does **not** make a network request.

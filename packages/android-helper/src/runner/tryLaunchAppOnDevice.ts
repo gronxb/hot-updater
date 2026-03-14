@@ -52,15 +52,17 @@ export async function tryLaunchAppOnDevice({
 
   const adbPath = Device.getAdbPath();
   console.debug(`Running ${adbPath} ${adbArgs.join(" ")}.`);
-  const loader = p.spinner();
-  loader.start(`Launching the app on ${device.readableName} (id: ${deviceId})`);
+  const spinner = p.spinner();
+  spinner.start(
+    `Launching the app on ${device.readableName} (id: ${deviceId})`,
+  );
   try {
     await execa(adbPath, adbArgs);
-    loader.stop(
+    spinner.stop(
       `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${port}.`,
     );
   } catch (_error) {
-    loader.stop("Failed to launch the app.", 1);
+    spinner.error("Failed to launch the app.");
     throw new Error(`Failed to launch the app on ${device.readableName}`);
     // Original cause: (error as ExecaError).stderr
   }

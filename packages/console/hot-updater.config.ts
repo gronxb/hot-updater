@@ -310,4 +310,7 @@ export default {
     initialBundles: bundles,
     initialDeviceEvents: deviceEvents,
   }),
+  console: {
+    gitUrl: "https://github.com/gronxb/hot-updater",
+  },
 };

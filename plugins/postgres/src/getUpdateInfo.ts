@@ -17,6 +17,7 @@ export const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    deviceId,
   }: AppVersionGetBundlesArgs,
 ) => {
   const sqlGetTargetAppVersionList = minify(`
@@ -35,13 +36,14 @@ export const appVersionStrategy = async (
 
   const sqlGetUpdateInfo = minify(`
     SELECT *
-    FROM get_update_info(
+    FROM get_update_info_by_app_version(
       $1, -- platform
       $2, -- appVersion
       $3, -- bundleId
       $4, -- minBundleId (nullable)
       $5, -- channel
-      $6 -- targetAppVersionList (text array)
+      $6, -- targetAppVersionList (text array)
+      $7  -- deviceId (nullable)
     );
   `);
 
@@ -59,6 +61,7 @@ export const appVersionStrategy = async (
     minBundleId ?? NIL_UUID,
     channel,
     targetAppVersionList,
+    deviceId ?? null,
   ]);
 
   return result.rows[0] ? (camelcaseKeys(result.rows[0]) as UpdateInfo) : null;

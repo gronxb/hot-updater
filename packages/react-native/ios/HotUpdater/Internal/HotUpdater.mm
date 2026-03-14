@@ -29,7 +29,6 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     if (self) {
         observedTasks = [NSMutableSet set];
 
-        // Start observing notifications needed for cleanup/events
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
                                                      name:HotUpdaterDownloadProgressUpdateNotification
@@ -173,21 +172,31 @@ RCT_EXPORT_MODULE();
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
         @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null],
         @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
+        @"DEFAULT_CHANNEL": [[HotUpdater sharedImpl] getDefaultChannel] ?: [NSNull null],
         @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
     };
 }
 
 
-// Get bundleURL using singleton
+// Get bundleURL with default bundle using singleton
 + (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURL];
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
-// Get bundleURL using instance impl
+// Get bundleURL with specific bundle using singleton
++ (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+}
+
+// Get bundleURL with default bundle using instance impl
 - (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURL];
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
+// Get bundleURL with specific bundle using instance impl
+- (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+}
 
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
@@ -200,11 +209,9 @@ RCT_EXPORT_MODULE();
      if (progressNum) {
          double progress = [progressNum doubleValue];
          NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
-         // Throttle events
          if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
              self.lastUpdateTime = currentTime;
-             // RCTLogInfo(@"[HotUpdater.mm] Sending progress event: %.2f", progress); // Reduce log noise
-             [self sendEventWithName:@"onProgress" body:@{@"progress": @(progress)}];
+             [self sendEvent:@"onProgress" body:@{@"progress": @(progress)}];
          }
      }
  }
@@ -225,19 +232,15 @@ RCT_EXPORT_MODULE();
 
 - (void)startObserving {
     hasListeners = YES;
-    RCTLogInfo(@"[HotUpdater.mm] Start observing JS events.");
-    // Observers are added in init now
 }
 
 - (void)stopObserving {
     hasListeners = NO;
-    RCTLogInfo(@"[HotUpdater.mm] Stop observing JS events.");
-    // Observers are removed in invalidate/dealloc
 }
 
-- (void)sendEventWithName:(NSString * _Nonnull)name body:(id)body { // Changed body type to id
+- (void)sendEvent:(NSString *)name body:(id)body {
     if (hasListeners) {
-        [super sendEventWithName:name body:body];
+        [self sendEventWithName:name body:body];
     }
 }
 
@@ -254,7 +257,7 @@ RCT_EXPORT_MODULE();
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-            NSURL *bundleURL = [impl bundleURL];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
@@ -270,6 +273,11 @@ RCT_EXPORT_MODULE();
     });
 }
 
+- (void)reloadProcess:(RCTPromiseResolveBlock)resolve
+               reject:(RCTPromiseRejectBlock)reject {
+    [self reload:resolve reject:reject];
+}
+
 - (void)updateBundle:(JS::NativeHotUpdater::UpdateBundleParams &)params
              resolve:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
@@ -283,6 +291,9 @@ RCT_EXPORT_MODULE();
     }
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
+    }
+    if (params.channel()) {
+        paramDict[@"channel"] = params.channel();
     }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -330,12 +341,10 @@ RCT_EXPORT_MODULE();
     return [impl getUserId];
 }
 
-- (void)addListener:(NSString *)eventName {
-    // No-op for New Architecture - handled by event emitter
-}
-
-- (void)removeListeners:(double)count {
-    // No-op for New Architecture - handled by event emitter
+- (void)resetChannel:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetChannel:resolve rejecter:reject];
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -348,6 +357,7 @@ RCT_EXPORT_MODULE();
         .MIN_BUNDLE_ID = [self getMinBundleId],
         .APP_VERSION = [HotUpdaterImpl appVersion],
         .CHANNEL = [impl getChannel],
+        .DEFAULT_CHANNEL = [impl getDefaultChannel],
         .FINGERPRINT_HASH = [impl getFingerprintHash],
     });
 }
@@ -362,7 +372,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-            NSURL *bundleURL = [impl bundleURL];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
@@ -376,6 +386,11 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
             reject(@"RELOAD_ERROR", error.description, error);
         }
     });
+}
+
+RCT_EXPORT_METHOD(reloadProcess:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    [self reload:resolve reject:reject];
 }
 
 RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
@@ -422,6 +437,12 @@ RCT_EXPORT_METHOD(setUserId:(NSString *)customId) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl getUserId];
+}
+
+RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetChannel:resolve rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {

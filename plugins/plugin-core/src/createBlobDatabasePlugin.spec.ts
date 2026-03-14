@@ -852,8 +852,6 @@ describe("blobDatabase plugin", () => {
   });
 
   it("should trigger CloudFront invalidation on new bundle commit", async () => {
-    const bundleKey = "production/ios/1.0.0/update.json";
-    const targetVersionsKey = "production/ios/target-app-versions.json";
     const newBundle = createBundleJson(
       "production",
       "ios",
@@ -868,13 +866,20 @@ describe("blobDatabase plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    expect(invalidatedPaths).toContain(`/${bundleKey}`);
-    expect(invalidatedPaths).toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
+    );
+    expect(
+      invalidatedPaths.some((path) =>
+        path.includes("target-app-versions.json"),
+      ),
+    ).toBe(false);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
   });
 
   it("should trigger CloudFront invalidation when a bundle is updated without key change", async () => {
-    const bundleKey = "production/ios/1.0.0/update.json";
-    const targetVersionsKey = "production/ios/target-app-versions.json";
     const bundle = createBundleJson(
       "production",
       "ios",
@@ -892,8 +897,17 @@ describe("blobDatabase plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    expect(invalidatedPaths).toContain(`/${bundleKey}`);
-    expect(invalidatedPaths).not.toContain(`/${targetVersionsKey}`);
+    expect(invalidatedPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
+    );
+    expect(
+      invalidatedPaths.some((path) =>
+        path.includes("target-app-versions.json"),
+      ),
+    ).toBe(false);
+    expect(invalidatedPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
+    );
   });
 
   it("should not trigger CloudFront invalidation when commitBundle is called with no pending changes", async () => {
@@ -1063,11 +1077,9 @@ describe("blobDatabase plugin", () => {
       (inv) => inv.paths,
     );
 
-    // Should have update.json path
-    const updateJsonPath = invalidationPaths.find((path) =>
-      path.includes("update.json"),
+    expect(invalidationPaths.some((path) => path.includes("update.json"))).toBe(
+      false,
     );
-    expect(updateJsonPath).toBeDefined();
 
     // Should have app-version path
     const appVersionPath = invalidationPaths.find(
@@ -1162,8 +1174,7 @@ describe("blobDatabase plugin", () => {
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
     const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
 
-    // Should invalidate update.json
-    expect(allPaths.some((path) => path.includes("update.json"))).toBe(true);
+    expect(allPaths.some((path) => path.includes("update.json"))).toBe(false);
 
     // Should invalidate app-version or fingerprint path
     const hasAppVersionOrFingerprint = allPaths.some(
@@ -1196,30 +1207,16 @@ describe("blobDatabase plugin", () => {
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
     const allPaths = cloudfrontInvalidations.flatMap((inv) => inv.paths);
 
-    // Should invalidate both old and new channel paths
-    const oldChannelPath = allPaths.find(
-      (path) => path.includes("beta") && path.includes("update.json"),
+    expect(allPaths.some((path) => path.includes("update.json"))).toBe(false);
+    expect(
+      allPaths.some((path) => path.includes("target-app-versions.json")),
+    ).toBe(false);
+    expect(allPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/beta/*",
     );
-    const newChannelPath = allPaths.find(
-      (path) => path.includes("production") && path.includes("update.json"),
+    expect(allPaths).toContain(
+      "/api/check-update/app-version/ios/1.0.0/production/*",
     );
-
-    expect(oldChannelPath).toBeDefined();
-    expect(newChannelPath).toBeDefined();
-
-    // Should invalidate both old and new channel target-app-versions paths
-    const oldChannelVersionsPath = allPaths.find(
-      (path) =>
-        path.includes("beta") && path.includes("target-app-versions.json"),
-    );
-    const newChannelVersionsPath = allPaths.find(
-      (path) =>
-        path.includes("production") &&
-        path.includes("target-app-versions.json"),
-    );
-
-    expect(oldChannelVersionsPath).toBeDefined();
-    expect(newChannelVersionsPath).toBeDefined();
   });
 
   it("should invalidate both old and new channel fingerprint paths when channel is updated", async () => {
@@ -1764,13 +1761,10 @@ describe("blobDatabase plugin", () => {
         (inv) => inv.paths,
       );
 
-      // Should invalidate the normalized key (URI encoded: >= becomes %3E=)
-      expect(invalidatedPaths).toContain(
-        "/production/ios/%3E=10.7.0/update.json",
-      );
-
-      // Should invalidate app-version path (since it's not an exact version)
       expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+      expect(
+        invalidatedPaths.some((path) => path.includes("update.json")),
+      ).toBe(false);
     });
 
     it("should handle update operation with space-containing targetAppVersion", async () => {
@@ -1828,16 +1822,15 @@ describe("blobDatabase plugin", () => {
       // Assert: Bundle should be deleted
       expect(fakeStore[bundleKey]).toBeUndefined();
 
-      // Should invalidate correct paths (URI encoded: <= becomes %3C=)
       const invalidatedPaths = cloudfrontInvalidations.flatMap(
         (inv) => inv.paths,
       );
       expect(invalidatedPaths).toContain(
-        "/production/android/%3C=5.0.0/update.json",
-      );
-      expect(invalidatedPaths).toContain(
         "/api/check-update/app-version/android/*",
       );
+      expect(
+        invalidatedPaths.some((path) => path.includes("update.json")),
+      ).toBe(false);
     });
 
     it("should handle various semver range formats with spaces", async () => {
@@ -1968,14 +1961,13 @@ describe("blobDatabase plugin", () => {
       const oldBundles = JSON.parse(fakeStore[oldKey] || "[]");
       expect(oldBundles).toHaveLength(0);
 
-      // Should invalidate both old and new paths (URI encoded: >= becomes %3E=)
       const invalidatedPaths = cloudfrontInvalidations.flatMap(
         (inv) => inv.paths,
       );
-      expect(invalidatedPaths).toContain("/beta/ios/%3E=5.0.0/update.json");
-      expect(invalidatedPaths).toContain(
-        "/production/ios/%3E=5.0.0/update.json",
-      );
+      expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+      expect(
+        invalidatedPaths.some((path) => path.includes("update.json")),
+      ).toBe(false);
     });
 
     it("should handle mixed bundles (with and without spaces) in same channel", async () => {
@@ -2013,8 +2005,7 @@ describe("blobDatabase plugin", () => {
       expect(ids).toContain("mixed-range");
     });
 
-    it("should encode normalized paths for CloudFront invalidation", async () => {
-      // Test that special characters in normalized versions are properly encoded
+    it("should only invalidate API paths for CloudFront invalidation", async () => {
       const bundle = createBundleJson(
         "production",
         "ios",
@@ -2031,16 +2022,74 @@ describe("blobDatabase plugin", () => {
         (inv) => inv.paths,
       );
 
-      // Paths should be URI encoded
-      // After normalization: ">=1.0.0 <2.0.0" (space between comparators preserved)
-      // After encoding: "%3E=1.0.0%20%3C2.0.0" (space becomes %20)
-      const encodedUpdateJsonPath = invalidatedPaths.find((path) =>
-        path.includes("update.json"),
+      expect(
+        invalidatedPaths.some((path) => path.includes("update.json")),
+      ).toBe(false);
+      expect(
+        invalidatedPaths.some((path) =>
+          path.includes("target-app-versions.json"),
+        ),
+      ).toBe(false);
+      expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+    });
+  });
+
+  describe("issue #745 promotion scenario", () => {
+    it("should update target-app-versions.json while invalidating expected paths when promoting from test to prod", async () => {
+      // Regression scenario from:
+      // https://github.com/gronxb/hot-updater/issues/745
+      // 1) deploy disabled bundle to test
+      // 2) promote bundle from test to prod (no copy)
+      const bundle = createBundleJson(
+        "test",
+        "android",
+        "8.1.3",
+        "issue-745-promote-bundle",
       );
-      expect(encodedUpdateJsonPath).toBeTruthy();
-      // encodeURI encodes < and > but not =
-      expect(encodedUpdateJsonPath).toContain("%3E");
-      expect(encodedUpdateJsonPath).toContain("%3C");
+      bundle.enabled = false;
+
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+
+      // Clear initial deployment invalidations; we only want promotion invalidation.
+      cloudfrontInvalidations.length = 0;
+
+      await plugin.updateBundle("issue-745-promote-bundle", {
+        channel: "prod",
+      });
+      await plugin.commitBundle();
+
+      const invalidatedPaths = cloudfrontInvalidations.flatMap(
+        (inv) => inv.paths,
+      );
+
+      expect(invalidatedPaths).toEqual(
+        expect.arrayContaining([
+          "/api/check-update/app-version/android/8.1.3/test/*",
+          "/api/check-update/app-version/android/8.1.3/prod/*",
+        ]),
+      );
+      expect(
+        invalidatedPaths.some((path) => path.includes("update.json")),
+      ).toBe(false);
+      expect(
+        invalidatedPaths.some((path) =>
+          path.includes("target-app-versions.json"),
+        ),
+      ).toBe(false);
+
+      // Expected S3 state after promotion:
+      // - prod target-app-versions should include 8.1.3
+      // - test target-app-versions should no longer include 8.1.3
+      const prodTargetVersions = JSON.parse(
+        fakeStore["prod/android/target-app-versions.json"] || "[]",
+      );
+      const testTargetVersions = JSON.parse(
+        fakeStore["test/android/target-app-versions.json"] || "[]",
+      );
+
+      expect(prodTargetVersions).toContain("8.1.3");
+      expect(testTargetVersions).not.toContain("8.1.3");
     });
   });
 });

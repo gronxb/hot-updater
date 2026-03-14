@@ -228,6 +228,7 @@ dbCommand
         skipConfirm: options.yes,
         sql: options.sql === true ? true : options.sql || false,
       });
+      process.exit(0);
     },
   );
 
