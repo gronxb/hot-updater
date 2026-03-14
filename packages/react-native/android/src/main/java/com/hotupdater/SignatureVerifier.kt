@@ -97,12 +97,7 @@ object SignatureVerifier {
      * @return Public key PEM string or null if not configured
      */
     private fun getPublicKeyFromConfig(context: Context): String? {
-        val resourceId =
-            context.resources.getIdentifier(
-                "hot_updater_public_key",
-                "string",
-                context.packageName,
-            )
+        val resourceId = StringResourceUtils.getIdentifier(context, "hot_updater_public_key")
 
         if (resourceId == 0) {
             Log.d(TAG, "hot_updater_public_key not found in strings.xml")

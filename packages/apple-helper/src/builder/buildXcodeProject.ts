@@ -2,94 +2,109 @@ import { p } from "@hot-updater/cli-tools";
 import {
   type ApplePlatform,
   generateMinBundleId,
+  type IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import path from "path";
 import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";
-import { createXcodebuildLogger } from "../utils/createXcodebuildLogger";
+import {
+  getDefaultDestination,
+  resolveDestinations,
+} from "../utils/destination";
 import {
   parseXcodeProjectInfo,
   type XcodeProjectInfo,
 } from "../utils/parseXcodeProjectInfo";
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
+import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
 
 export const buildXcodeProject = async ({
   sourceDir,
   platform,
-  scheme,
+  xcodeScheme,
   configuration,
   deviceType,
-  udid,
+  logPrefix,
+  destination = [],
+  useGenericDestination = false,
   installPods,
   extraParams,
 }: {
   sourceDir: string;
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
+  logPrefix: string;
   configuration: string;
   deviceType: AppleDeviceType;
-  udid?: string;
+  destination?: IosBuildDestination[];
+  useGenericDestination?: boolean;
   installPods?: boolean;
   extraParams?: string[];
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
-  if (installPods ?? true) {
+  if (installPods) {
     await installPodsIfNeeded(sourceDir);
   }
 
   const derivedDataPath = await createRandomTmpDir();
 
+  const resolvedDestinations = resolveDestinations({
+    destinations: destination,
+    useGeneric: useGenericDestination,
+  });
+  if (resolvedDestinations.length === 0) {
+    resolvedDestinations.push(
+      getDefaultDestination({
+        deviceType,
+        platform,
+        useGeneric: useGenericDestination,
+      }),
+    );
+  }
+
   const buildArgs = prepareBuildArgs({
     configuration,
     derivedDataPath,
     deviceType,
+    resolvedDestinations,
     extraParams,
     platform,
-    scheme,
+    xcodeScheme,
     sourceDir,
-    udid,
     xcodeProject,
   });
 
   p.log.info(`Xcode Build Settings:
 Project        ${xcodeProject.name}
-Scheme         ${scheme}
+Scheme         ${xcodeScheme}
 Configuration  ${configuration}
 Platform       ${platform}
 Device Type    ${deviceType}
 Command        xcodebuild ${buildArgs.join(" ")}
 `);
 
-  const logger = createXcodebuildLogger();
-  logger.start(`${xcodeProject.name} (Build)`);
-
   try {
-    const process = execa("xcodebuild", buildArgs, {
-      cwd: sourceDir,
+    await runXcodebuildWithLogging({
+      args: buildArgs,
+      sourceDir,
+      logPrefix,
+      successMessage: "Build completed successfully",
+      failureMessage: "Build failed",
     });
-
-    for await (const line of process) {
-      logger.processLine(line);
-    }
-
-    logger.stop("Build completed successfully");
 
     return await getBuildSettings({
       configuration,
       derivedDataPath,
-      deviceType,
-      platform,
-      scheme,
+      resolvedDestinations,
+      xcodeScheme,
       sourceDir,
-      udid,
       xcodeProject,
     });
   } catch (error) {
-    logger.stop("Build failed", false);
     throw prettifyXcodebuildError(error);
   }
 };
@@ -98,21 +113,21 @@ const prepareBuildArgs = ({
   xcodeProject,
   sourceDir,
   platform,
-  scheme,
+  xcodeScheme,
   configuration,
   deviceType,
-  udid,
+  resolvedDestinations,
   derivedDataPath,
   extraParams,
 }: {
   configuration: string;
   derivedDataPath: string;
-  deviceType: "device" | "simulator";
+  deviceType: AppleDeviceType;
+  resolvedDestinations: string[];
   extraParams?: string[];
   platform: ApplePlatform;
-  scheme: string;
+  xcodeScheme: string;
   sourceDir: string;
-  udid?: string;
   xcodeProject: XcodeProjectInfo;
 }): string[] => {
   const sdk =
@@ -120,23 +135,15 @@ const prepareBuildArgs = ({
       ? platformConfigs[platform].simulatorSdk
       : platformConfigs[platform].deviceSdk;
 
-  const destination = udid
-    ? `id=${udid}`
-    : deviceType === "simulator"
-      ? platformConfigs[platform].simulatorDestination
-      : platformConfigs[platform].deviceDestination;
-
   const args = [
     xcodeProject.isWorkspace ? "-workspace" : "-project",
     path.join(sourceDir, xcodeProject.name),
     "-scheme",
-    scheme,
+    xcodeScheme,
     "-configuration",
     configuration,
     "-sdk",
     sdk,
-    "-destination",
-    destination,
     "-derivedDataPath",
     derivedDataPath,
     `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
@@ -147,38 +154,32 @@ const prepareBuildArgs = ({
     args.push(...extraParams);
   }
 
+  for (const dest of resolvedDestinations) {
+    args.push("-destination", dest);
+  }
+
   return args;
 };
 
 const getBuildSettings = async ({
   xcodeProject,
   sourceDir,
-  platform,
-  scheme,
+  xcodeScheme,
   configuration,
-  deviceType,
-  udid,
+  resolvedDestinations,
   derivedDataPath,
 }: {
   configuration: string;
   derivedDataPath: string;
-  deviceType: AppleDeviceType;
-  platform: ApplePlatform;
-  scheme: string;
+  resolvedDestinations: string[];
+  xcodeScheme: string;
   sourceDir: string;
-  udid?: string;
   xcodeProject: XcodeProjectInfo;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
-  const sdk =
-    deviceType === "simulator"
-      ? platformConfigs[platform].simulatorSdk
-      : platformConfigs[platform].deviceSdk;
-
-  const destination = udid
-    ? `id=${udid}`
-    : deviceType === "simulator"
-      ? platformConfigs[platform].simulatorDestination
-      : platformConfigs[platform].deviceDestination;
+  const destinationArgs = resolvedDestinations.flatMap((dest) => [
+    "-destination",
+    dest,
+  ]);
 
   const { stdout: buildSettings } = await execa(
     "xcodebuild",
@@ -186,13 +187,10 @@ const getBuildSettings = async ({
       xcodeProject.isWorkspace ? "-workspace" : "-project",
       xcodeProject.name,
       "-scheme",
-      scheme,
+      xcodeScheme,
       "-configuration",
       configuration,
-      "-sdk",
-      sdk,
-      "-destination",
-      destination,
+      ...destinationArgs,
       "-derivedDataPath",
       derivedDataPath,
       "-showBuildSettings",

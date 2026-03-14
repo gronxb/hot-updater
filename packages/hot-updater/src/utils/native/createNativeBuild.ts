@@ -33,7 +33,6 @@ export const createNativeBuild = async ({
     recursive: true,
   });
 
-  p.log.info(
-    `Artifact stored at ${colors.blueBright(path.relative(getCwd(), outputPath))}.`,
-  );
+  const relativePath = path.relative(getCwd(), outputPath);
+  p.log.info(`Artifact stored at ${colors.blueBright(relativePath)}`);
 };

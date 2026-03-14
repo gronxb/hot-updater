@@ -1,3 +1,4 @@
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";
@@ -33,7 +34,11 @@ export const mockReactNativeProjectRoot = async ({
 }: {
   example: Example;
 }): Promise<MockedReactNativeProjectRoot> => {
-  const rootDir = path.resolve(os.tmpdir(), ".hot-updater", randomUUID());
+  const rootDir = path.resolve(
+    os.tmpdir(),
+    HotUpdateDirUtil.dirName,
+    randomUUID(),
+  );
   const workspace = resolveWorkspaceInfoFromExample(example);
 
   if (fs.existsSync(rootDir)) {

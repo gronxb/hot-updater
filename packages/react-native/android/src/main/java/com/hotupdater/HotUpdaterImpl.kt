@@ -1,6 +1,9 @@
 package com.hotupdater
 
+import android.app.ActivityOptions
 import android.content.Context
+import android.content.Intent
+import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -61,6 +64,7 @@ class HotUpdaterImpl {
     companion object {
         private const val TAG = "HotUpdaterImpl"
         private const val DEFAULT_CHANNEL = "production"
+        private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
         /**
          * Create BundleStorageService with all dependencies
@@ -99,7 +103,7 @@ class HotUpdaterImpl {
          */
         private fun getIsolationKey(context: Context): String {
             // Get fingerprint hash directly from resources
-            val fingerprintId = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val fingerprintId = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
             val fingerprintHash =
                 if (fingerprintId != 0) {
                     context.getString(fingerprintId).takeIf { it.isNotEmpty() }
@@ -141,7 +145,7 @@ class HotUpdaterImpl {
             }
 
         fun getChannel(context: Context): String {
-            val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+            val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
             return if (id != 0) {
                 context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
             } else {
@@ -215,7 +219,7 @@ class HotUpdaterImpl {
          * @return The fingerprint hash or null if not set
          */
         fun getFingerprintHash(context: Context): String? {
-            val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+            val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
             return if (id != 0) {
                 context.getString(id).takeIf { it.isNotEmpty() }
             } else {
@@ -229,7 +233,7 @@ class HotUpdaterImpl {
      * @return The fingerprint hash or null if not set
      */
     fun getFingerprintHash(): String? {
-        val id = context.resources.getIdentifier("hot_updater_fingerprint_hash", "string", context.packageName)
+        val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() }
         } else {
@@ -242,13 +246,20 @@ class HotUpdaterImpl {
      * @return The channel name or null if not set
      */
     fun getChannel(): String {
-        val id = context.resources.getIdentifier("hot_updater_channel", "string", context.packageName)
+        val overriddenChannel = preferences.getItem(CHANNEL_STORAGE_KEY)
+        if (!overriddenChannel.isNullOrEmpty()) {
+            return overriddenChannel
+        }
+
+        val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
         return if (id != 0) {
             context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
         } else {
             DEFAULT_CHANNEL
         }
     }
+
+    fun getDefaultChannel(): String = getChannel(context)
 
     /**
      * Gets the path to the bundle file
@@ -268,9 +279,18 @@ class HotUpdaterImpl {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        channel: String?,
         progressCallback: (Double) -> Unit,
     ) {
         bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+
+        if (!channel.isNullOrEmpty()) {
+            if (channel == getDefaultChannel()) {
+                preferences.setItem(CHANNEL_STORAGE_KEY, null)
+            } else {
+                preferences.setItem(CHANNEL_STORAGE_KEY, channel)
+            }
+        }
     }
 
     /**
@@ -278,16 +298,60 @@ class HotUpdaterImpl {
      * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
     suspend fun reload(reactContext: Context) {
-        val reactIntegrationManager = ReactIntegrationManager(reactContext)
-        val bundleURL = getJSBundleFile()
-
         try {
             withContext(Dispatchers.Main) {
-                reactIntegrationManager.setJSBundle(bundleURL)
-                reactIntegrationManager.reload()
+                performReactReload(reactContext)
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
+        }
+    }
+
+    suspend fun reloadProcess(reactContext: Context) {
+        try {
+            withContext(Dispatchers.Main) {
+                if (!restartApplication(reactContext)) {
+                    Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
+                    performReactReload(reactContext)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("HotUpdaterImpl", "Failed to restart application process", e)
+            throw e
+        }
+    }
+
+    private suspend fun performReactReload(reactContext: Context) {
+        val reactIntegrationManager = ReactIntegrationManager(reactContext)
+        val bundleURL = getJSBundleFile()
+        reactIntegrationManager.setJSBundle(bundleURL)
+        reactIntegrationManager.reload()
+    }
+
+    // Use a cold restart in release builds so bundle application does not depend on RN reload timing.
+    private fun restartApplication(reactContext: Context): Boolean {
+        val currentActivity =
+            (reactContext as? com.facebook.react.bridge.ReactApplicationContext)?.currentActivity
+        if (currentActivity == null) {
+            Log.w(TAG, "Cannot restart app: current activity unavailable")
+            return false
+        }
+
+        return try {
+            val restartIntent =
+                Intent(currentActivity, HotUpdaterRestartActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
+                }
+            val options = ActivityOptions.makeCustomAnimation(currentActivity, 0, 0)
+            currentActivity.startActivity(restartIntent, options.toBundle())
+
+            Log.i(TAG, "Started restart trampoline to apply update bundle")
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start restart trampoline", e)
+            false
         }
     }
 
@@ -318,4 +382,12 @@ class HotUpdaterImpl {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
+
+    suspend fun resetChannel(): Boolean {
+        val success = bundleStorage.resetChannel()
+        if (success) {
+            preferences.setItem(CHANNEL_STORAGE_KEY, null)
+        }
+        return success
+    }
 }

@@ -16,11 +16,24 @@
  */
 + (NSURL *)bundleURL;
 
+ /**
+ * Returns the currently active bundle URL with specific bundle from the default (static) instance.
+ * Callable from Objective-C (e.g., AppDelegate).
+ * This is implemented in HotUpdater.mm and calls the Swift static method.
+ */
++ (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
+
 /**
  * Returns the bundle URL for this specific instance.
  * @return The bundle URL for this instance
  */
 - (NSURL *)bundleURL;
+
+/**
+ * Returns the bundle URL with specific bundle for this specific instance.
+ * @return The bundle URL for this instance
+ */
+- (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 
 /**
  * 다운로드 진행 상황 업데이트 시간을 추적하는 속성

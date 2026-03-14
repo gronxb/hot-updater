@@ -257,8 +257,8 @@ const getAvailableDevicePort = async (
  */
 const tryLaunchEmulator = async (name?: string) => {
   const port = await getAvailableDevicePort();
-  const loader = p.spinner();
-  loader.start("Looking for available emulators");
+  const spinner = p.spinner();
+  spinner.start("Looking for available emulators");
 
   const emulators = await getEmulatorNames();
   const emulatorName = name ?? emulators[0];
@@ -266,19 +266,17 @@ const tryLaunchEmulator = async (name?: string) => {
   let deviceId: string | undefined;
   if (emulators.length > 0) {
     try {
-      loader.message(`Launching emulator "${emulatorName}"`);
-      deviceId = await launchEmulator(emulatorName, port, loader);
-      loader.stop(`Launched ${emulatorName} emulator.`);
+      spinner.message(`Launching emulator "${emulatorName}"`);
+      deviceId = await launchEmulator(emulatorName, port, spinner);
+      spinner.stop(`Launched ${emulatorName} emulator.`);
     } catch (error) {
-      loader.stop(
+      spinner.error(
         `Failed to launch ${emulatorName} emulator. ${(error as Error).message}`,
-        1,
       );
     }
   } else {
-    loader.stop(
+    spinner.error(
       "No emulators found as an output of `emulator -list-avds`. Please launch an emulator manually or connect a device",
-      1,
     );
   }
   return deviceId;

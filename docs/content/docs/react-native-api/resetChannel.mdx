@@ -1,0 +1,47 @@
+---
+title: "resetChannel"
+description: "The `HotUpdater.resetChannel()` function clears the runtime channel switch and restores the original bundle."
+icon: RotateCcw
+---
+
+## Usage
+
+Use `HotUpdater.resetChannel()` when you want to leave a runtime channel switch and go back to the app's original build-time channel.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+async function handleResetChannel() {
+  await HotUpdater.resetChannel();
+  await HotUpdater.reload();
+}
+```
+
+## Behavior
+
+- Clears the runtime channel switch
+- Restores the original bundle selection
+- Makes the build-time default channel active again after reload
+- Returns `true` even when no runtime channel switch is active
+- Performs no work when `HotUpdater.isChannelSwitched()` is already `false`
+
+## Example
+
+```tsx
+if (HotUpdater.isChannelSwitched()) {
+  await HotUpdater.resetChannel();
+  await HotUpdater.reload();
+}
+```
+
+## When to Use
+
+- Leave a beta or staging runtime channel switch
+- Add a "Return to default channel" action in a debug or settings screen
+- Recover to the original shipped bundle after testing another channel
+
+## Related APIs
+
+- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel)
+- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)

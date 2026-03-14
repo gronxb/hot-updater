@@ -1,5 +1,31 @@
 # @hot-updater/core
 
+## 0.27.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
+## 0.26.2
+
+## 0.26.1
+
+## 0.26.0
+
+## 0.25.14
+
+## 0.25.13
+
+## 0.25.12
+
+## 0.25.11
+
+## 0.25.10
+
+## 0.25.9
+
+## 0.25.8
+
 ## 0.25.7
 
 ## 0.25.6

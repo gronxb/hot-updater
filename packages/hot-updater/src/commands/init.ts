@@ -1,9 +1,9 @@
 import type { BuildType } from "@hot-updater/cli-tools";
 import { p } from "@hot-updater/cli-tools";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import { ExecaError } from "execa";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";
-import { appendOutputDirectoryIntoGitignore } from "@/utils/output/appendOutputDirectoryIntoGitignore";
 import { printBanner } from "@/utils/printBanner";
 
 const REQUIRED_PACKAGES = {
@@ -139,12 +139,15 @@ export const init = async () => {
       throw new Error("Invalid provider");
   }
 
-  // Add .env.hotupdater to .gitignore
-  if (appendToProjectRootGitignore({ globLines: [".env.hotupdater"] })) {
-    p.log.info(".gitignore has been modified to include .env.hotupdater");
-  }
-
-  if (appendOutputDirectoryIntoGitignore()) {
-    p.log.info(".gitignore has been modified");
+  if (
+    appendToProjectRootGitignore({
+      globLines: [
+        ".env.hotupdater",
+        HotUpdateDirUtil.outputGitignorePath,
+        HotUpdateDirUtil.logGitignorePath,
+      ],
+    })
+  ) {
+    p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 };

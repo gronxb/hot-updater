@@ -1,51 +1,49 @@
 ---
 title: "reload"
-description: "By default, the `shouldForceUpdate` flag is `false`, the bundle is downloaded but not applied until the user restarts the app."
+description: "Apply a downloaded bundle immediately."
 icon: RefreshCw
 ---
 
-
-
 ## Usage
 
-Calling `HotUpdater.reload()` reloads the app. If there is a completed update bundle ready to be applied, it will be applied immediately.
+`HotUpdater.reload()` applies the currently downloaded bundle immediately.
 
-
-<Callout>
-The `shouldForceUpdate` flag simply downloads the bundle and calls reload immediately.
-</Callout>
-
-You can use it as shown below, but it is recommended to use it together with the `useHotUpdaterStore().progress value.
-
-Refer to [useHotUpdaterStore()](./useHotUpdaterStore) for more information.
-
+- If no new bundle is ready, it reloads the current app code
+- If a bundle was downloaded, that bundle becomes active immediately
+- The exact behavior depends on [`HotUpdater.setReloadBehavior()`](./setReloadBehavior)
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { Button, Text, View } from "react-native";
 
-function App() {
-  const handleReload = () => {
-    // Immediately reapply if there is a downloaded bundle
-    await HotUpdater.reload(); // [!code hl]
+async function syncUpdate() {
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+  });
+
+  if (!updateInfo) return;
+
+  await updateInfo.updateBundle();
+
+  if (updateInfo.shouldForceUpdate) {
+    await HotUpdater.reload();  // [!code hl]
   }
-
-  return (
-    <View>
-      <Text>Hello World</Text>
-
-      <Button title="Reload" onPress={handleReload} />
-    </View>
-  );
 }
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "Authorization": "Bearer <your-access-token>",
-  },
-})(App);
 ```
+
+This is the most common manual usage pattern: 
+
+## Reload behavior
+
+By default, `HotUpdater.reload()` uses `processRestart`.
+
+- Android: cold process restart
+- iOS: behaves like normal React Native reload
+
+Use [`HotUpdater.setReloadBehavior("reload")`](./setReloadBehavior) only if you explicitly want the old in-process React Native reload path.
+
+## Related APIs
+
+- [`HotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.isUpdateDownloaded()`](/docs/react-native-api/isUpdateDownloaded)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)

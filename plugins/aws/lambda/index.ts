@@ -9,6 +9,11 @@ import type { CloudFrontRequestHandler } from "aws-lambda";
 import { type Context, Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
+import {
+  NO_STORE_CACHE_CONTROL,
+  ONE_YEAR_IN_SECONDS,
+  SHARED_EDGE_CACHE_CONTROL,
+} from "./cacheControl";
 import { getUpdateInfo } from "./getUpdateInfo";
 import { withSignedUrl } from "./withSignedUrl";
 
@@ -17,26 +22,22 @@ declare global {
     CLOUDFRONT_KEY_PAIR_ID: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
+    S3_BUCKET_NAME: string;
   };
 }
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
+const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
 
-// Global cache for private key (persists across warm Lambda invocations)
 let cachedPrivateKey: string | null = null;
 
-/**
- * Retrieves CloudFront private key from SSM Parameter Store
- * Uses global cache to avoid repeated SSM calls on warm Lambda invocations
- */
 async function getPrivateKey(): Promise<string> {
   if (cachedPrivateKey !== null) {
     return cachedPrivateKey;
   }
 
-  // Validate SSM region format
   if (!SSM_REGION) {
     throw new Error(
       `Invalid AWS region format: ${SSM_REGION}. Expected format like 'us-east-1' or 'ap-southeast-1'`,
@@ -55,7 +56,6 @@ async function getPrivateKey(): Promise<string> {
     );
   }
 
-  // Parse the stored key pair JSON with error handling
   let keyPair: { privateKey?: unknown };
   try {
     keyPair = JSON.parse(response.Parameter.Value);
@@ -118,16 +118,9 @@ const handleUpdateRequest = async (
   params: UpdateRequestParams,
   strategy: UpdateStrategy,
   expiresSeconds: number,
+  cacheControl?: string,
 ) => {
   try {
-    const cdnHost = c.req.header("host");
-    if (!cdnHost) {
-      return c.json({ error: "Missing host header." }, 500);
-    }
-
-    // Retrieve private key from SSM (or cache)
-    const privateKey = await getPrivateKey();
-
     const updateConfig: GetBundlesArgs = {
       platform: params.platform,
       bundleId: params.bundleId,
@@ -143,22 +136,26 @@ const handleUpdateRequest = async (
 
     const updateInfo = await getUpdateInfo(
       {
-        baseUrl: c.req.url,
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        privateKey: privateKey,
+        bucketName: S3_BUCKET_NAME,
+        region: SSM_REGION,
       },
       updateConfig,
     );
+
+    if (cacheControl) {
+      c.header("Cache-Control", cacheControl);
+    }
 
     if (!updateInfo) {
       return c.json(null);
     }
 
+    const privateKey = await getPrivateKey();
     const appUpdateInfo = await withSignedUrl({
       data: updateInfo,
       reqUrl: c.req.url,
       keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-      privateKey: privateKey,
+      privateKey,
       expiresSeconds,
     });
 
@@ -180,7 +177,6 @@ app.get("/api/check-update", async (c) => {
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
     const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
-    // Validation
     const requiredError = validateRequiredParams({ bundleId, platform }, [
       "bundleId",
       "platform",
@@ -214,12 +210,12 @@ app.get("/api/check-update", async (c) => {
       ...(fingerprintHash ? { fingerprintHash } : { appVersion }),
     };
 
-    const expiresSeconds = 60;
     return handleUpdateRequest(
       c,
       params,
       fingerprintHash ? "fingerprint" : "appVersion",
-      expiresSeconds,
+      60,
+      NO_STORE_CACHE_CONTROL,
     );
   } catch (error) {
     console.error("Legacy endpoint error:", error);
@@ -261,10 +257,13 @@ app.get(
       appVersion,
     };
 
-    // Since the signedUrl is also cached due to caching,
-    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
-    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
-    return handleUpdateRequest(c, params, "appVersion", expiresSeconds);
+    return handleUpdateRequest(
+      c,
+      params,
+      "appVersion",
+      ONE_YEAR_IN_SECONDS,
+      SHARED_EDGE_CACHE_CONTROL,
+    );
   },
 );
 
@@ -274,7 +273,6 @@ app.get(
     const { platform, fingerprintHash, channel, minBundleId, bundleId } =
       c.req.param();
 
-    // Validation
     const requiredError = validateRequiredParams(
       { platform, fingerprintHash, bundleId },
       ["platform", "fingerprintHash", "bundleId"],
@@ -303,15 +301,14 @@ app.get(
       fingerprintHash,
     };
 
-    // Since the signedUrl is also cached due to caching,
-    // we set a sufficiently long expiration time for the signedUrl in this endpoint.
-    const expiresSeconds = 60 * 60 * 24 * 365; // 1 year
-    return handleUpdateRequest(c, params, "fingerprint", expiresSeconds);
+    return handleUpdateRequest(
+      c,
+      params,
+      "fingerprint",
+      ONE_YEAR_IN_SECONDS,
+      SHARED_EDGE_CACHE_CONTROL,
+    );
   },
 );
-
-app.get("*", async (c) => {
-  return c.env.callback(null, c.env.request);
-});
 
 export const handler = handle(app) as CloudFrontRequestHandler;

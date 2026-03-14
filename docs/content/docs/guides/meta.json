@@ -7,6 +7,7 @@
     "console",
     "simulator-test",
     "channel-management",
+    "runtime-channel-switch",
     "update-strategies",
     "compression",
     "bundle-signing"

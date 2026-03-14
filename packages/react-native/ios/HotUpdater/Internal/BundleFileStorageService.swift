@@ -102,8 +102,8 @@ public protocol BundleStorageService {
     // Bundle URL operations
     func setBundleURL(localPath: String?) -> Result<Void, Error>
     func getCachedBundleURL() -> URL?
-    func getFallbackBundleURL() -> URL? // Synchronous as it's lightweight
-    func getBundleURL() -> URL?
+    func getFallbackBundleURL(bundle: Bundle) -> URL? // Synchronous as it's lightweight
+    func getBundleURL(bundle: Bundle) -> URL?
 
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
@@ -118,6 +118,11 @@ public protocol BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     func getBaseURL() -> String
+
+    /**
+     * Restores the original bundle and clears downloaded bundle state.
+     */
+    func resetChannel() -> Result<Bool, Error>
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -588,20 +593,21 @@ class BundleFileStorageService: BundleStorageService {
     
     /**
      * Gets the URL to the fallback bundle included in the app.
+     * @param bundle instance to lookup the JavaScript bundle resource.
      * @return URL to the fallback bundle or nil if not found
      */
-    func getFallbackBundleURL() -> URL? {
-        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+    func getFallbackBundleURL(bundle: Bundle) -> URL? {
+        return bundle.url(forResource: "main", withExtension: "jsbundle")
     }
     
-    public func getBundleURL() -> URL? {
+    public func getBundleURL(bundle: Bundle) -> URL? {
         // Try to load metadata
         let metadata = loadMetadataOrNull()
 
         // If no metadata exists, use legacy behavior (backwards compatible)
         guard let metadata = metadata else {
             let cached = getCachedBundleURL()
-            return cached ?? getFallbackBundleURL()
+            return cached ?? getFallbackBundleURL(bundle: bundle)
         }
 
         // Check if we need to handle crash recovery
@@ -626,7 +632,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Reload metadata after potential rollback
         guard let currentMetadata = loadMetadataOrNull() else {
-            return getCachedBundleURL() ?? getFallbackBundleURL()
+            return getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle)
         }
 
         // If verification is pending, return staging bundle URL
@@ -652,7 +658,7 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         // Fallback to app bundle
-        return getFallbackBundleURL()
+        return getFallbackBundleURL(bundle: bundle)
     }
     
     // MARK: - Bundle Update
@@ -1222,6 +1228,45 @@ class BundleFileStorageService: BundleStorageService {
         } catch {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
+        }
+    }
+
+    func resetChannel() -> Result<Bool, Error> {
+        guard case .success = setBundleURL(localPath: nil) else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        let clearedMetadata = BundleMetadata(
+            isolationKey: isolationKey,
+            stableBundleId: nil,
+            stagingBundleId: nil,
+            verificationPending: false,
+            verificationAttemptedAt: nil,
+            stagingExecutionCount: nil
+        )
+
+        guard saveMetadata(clearedMetadata) else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return .failure(BundleStorageError.unknown(nil))
+        }
+
+        do {
+            for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
+                if item == BundleMetadata.metadataFilename || item == CrashedHistory.crashedHistoryFilename {
+                    continue
+                }
+
+                let bundlePath = (storeDir as NSString).appendingPathComponent(item)
+                if fileSystem.fileExists(atPath: bundlePath) {
+                    try fileSystem.removeItem(atPath: bundlePath)
+                }
+            }
+            return .success(true)
+        } catch {
+            return .failure(BundleStorageError.moveOperationFailed(error))
         }
     }
 }

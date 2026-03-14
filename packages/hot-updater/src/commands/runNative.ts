@@ -27,7 +27,6 @@ const runNativeInternal = async <
     p.log.error("preparing native build failed");
     return;
   }
-  const { config, scheme } = preparedConfig;
 
   const platformName = platform === "android" ? "Android" : "iOS";
 
@@ -36,12 +35,12 @@ const runNativeInternal = async <
 
     if (platform === "android") {
       await runAndroid({
-        schemeConfig: config.nativeBuild.android[scheme]!,
+        schemeConfig: preparedConfig.androidSchemeConfig!,
         runOption: options as AndroidNativeRunOptions,
       });
     } else {
       await runIos({
-        schemeConfig: config.nativeBuild.ios[scheme]!,
+        schemeConfig: preparedConfig.iosSchemeConfig!,
         runOption: options as IosNativeRunOptions,
       });
     }

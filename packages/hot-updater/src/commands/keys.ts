@@ -71,7 +71,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     p.log.info("3. Embed public key in iOS Info.plist and Android strings.xml");
     p.log.info("4. Rebuild native app");
   } catch (error) {
-    spinner.stop("Failed to generate keys", 1);
+    spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
     process.exit(1);
   }

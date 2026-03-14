@@ -41,12 +41,11 @@ export const withSignedUrl = async <
   const url = new URL(reqUrl);
   url.pathname = key;
 
-  // Create CloudFront signed URL
   const signedUrl = getSignedUrl({
     url: url.toString(),
-    keyPairId: keyPairId,
-    privateKey: privateKey,
-    dateLessThan: new Date(Date.now() + expiresSeconds * 1000).toISOString(), // Valid for expiresSeconds seconds
+    keyPairId,
+    privateKey,
+    dateLessThan: new Date(Date.now() + expiresSeconds * 1000).toISOString(),
   });
 
   return { ...rest, fileUrl: signedUrl };

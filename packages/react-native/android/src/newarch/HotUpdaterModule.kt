@@ -50,6 +50,19 @@ class HotUpdaterModule internal constructor(
         }
     }
 
+    override fun reloadProcess(promise: Promise) {
+        moduleScope.launch {
+            try {
+                val impl = getInstance()
+                impl.reloadProcess(mReactApplicationContext)
+                promise.resolve(null)
+            } catch (e: Exception) {
+                Log.d("HotUpdater", "Failed to restart process", e)
+                promise.reject("reloadProcess", e)
+            }
+        }
+    }
+
     override fun updateBundle(
         params: ReadableMap,
         promise: Promise,
@@ -75,6 +88,7 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val channel = params.getString("channel")
 
                 val impl = getInstance()
 
@@ -82,6 +96,7 @@ class HotUpdaterModule internal constructor(
                     bundleId,
                     fileUrl,
                     fileHash,
+                    channel,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {
@@ -113,7 +128,8 @@ class HotUpdaterModule internal constructor(
         val constants: MutableMap<String, Any?> = HashMap()
         constants["MIN_BUNDLE_ID"] = HotUpdater.getMinBundleId()
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
-        constants["CHANNEL"] = HotUpdater.getChannel(mReactApplicationContext)
+        constants["CHANNEL"] = getInstance().getChannel()
+        constants["DEFAULT_CHANNEL"] = getInstance().getDefaultChannel()
         constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
         return constants
     }
@@ -172,6 +188,20 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun getUserId(): String = deviceIdService.getUserId()
+
+    override fun resetChannel(promise: Promise) {
+        moduleScope.launch {
+            try {
+                val impl = getInstance()
+                val success = impl.resetChannel()
+                promise.resolve(success)
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
+            } catch (e: Exception) {
+                promise.reject("UNKNOWN_ERROR", e.message ?: "Failed to reset channel")
+            }
+        }
+    }
 
     companion object {
         const val NAME = "HotUpdater"

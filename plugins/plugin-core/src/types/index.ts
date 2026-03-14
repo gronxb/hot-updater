@@ -205,7 +205,7 @@ export interface NativeBuildIosScheme {
   /**
    * Automatically install CocoaPods dependencies before building.
    *
-   * @default true
+   * @default false
    */
   installPods?: boolean;
 
@@ -222,6 +222,16 @@ export interface NativeBuildIosScheme {
    * @example ["-allowProvisioningUpdates"]
    */
   exportExtraParams?: string[];
+
+  /**
+   * Convenience shortcut option for simulator builds.
+   * When true, this option should not be used together with the destination option.
+   *
+   * This option only affects build:ios, not run:ios.
+   *
+   * @default false
+   */
+  simulator?: boolean;
 }
 
 export interface PlatformConfig {

@@ -1,5 +1,76 @@
 # @hot-updater/test-utils
 
+## 0.27.0
+
+### Minor Changes
+
+- 81f9437: feat(android): for safe reloading, Android reloads the process (#869)
+
+### Patch Changes
+
+- Updated dependencies [81f9437]
+  - @hot-updater/core@0.27.0
+
+## 0.26.2
+
+### Patch Changes
+
+- @hot-updater/core@0.26.2
+
+## 0.26.1
+
+### Patch Changes
+
+- @hot-updater/core@0.26.1
+
+## 0.26.0
+
+### Patch Changes
+
+- @hot-updater/core@0.26.0
+
+## 0.25.14
+
+### Patch Changes
+
+- @hot-updater/core@0.25.14
+
+## 0.25.13
+
+### Patch Changes
+
+- @hot-updater/core@0.25.13
+
+## 0.25.12
+
+### Patch Changes
+
+- @hot-updater/core@0.25.12
+
+## 0.25.11
+
+### Patch Changes
+
+- @hot-updater/core@0.25.11
+
+## 0.25.10
+
+### Patch Changes
+
+- @hot-updater/core@0.25.10
+
+## 0.25.9
+
+### Patch Changes
+
+- @hot-updater/core@0.25.9
+
+## 0.25.8
+
+### Patch Changes
+
+- @hot-updater/core@0.25.8
+
 ## 0.25.7
 
 ### Patch Changes
