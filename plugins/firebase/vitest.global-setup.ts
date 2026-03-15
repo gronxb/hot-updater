@@ -6,10 +6,11 @@ import { execa } from "execa";
 import admin from "firebase-admin";
 import fkill from "fkill";
 
-const PROJECT_ID = "hot-updater-test";
+const PROJECT_ID_PREFIX = "hot-updater-test";
 
 let emulatorProcess: ReturnType<typeof execa> | undefined;
 let tempConfigDir: string | undefined;
+let projectId: string | undefined;
 
 async function getAvailablePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -84,13 +85,14 @@ export async function setup() {
 
   const firestorePort = await getAvailablePort();
   const emulatorHost = `127.0.0.1:${firestorePort}`;
+  projectId = `${PROJECT_ID_PREFIX}-${process.pid}-${Date.now()}`;
 
   process.env.FIRESTORE_EMULATOR_HOST = emulatorHost;
-  process.env.GCLOUD_PROJECT = PROJECT_ID;
+  process.env.GCLOUD_PROJECT = projectId;
 
   if (!admin.apps.length) {
     admin.initializeApp({
-      projectId: PROJECT_ID,
+      projectId,
     });
   }
 
@@ -109,7 +111,7 @@ export async function setup() {
       "firebase",
       "emulators:start",
       "--project",
-      PROJECT_ID,
+      projectId,
       "--only",
       "firestore",
       "--config",
@@ -145,4 +147,6 @@ export async function teardown() {
     await rm(tempConfigDir, { recursive: true, force: true });
     tempConfigDir = undefined;
   }
+
+  projectId = undefined;
 }
