@@ -5,7 +5,6 @@ import { beforeAll, beforeEach, describe, inject } from "vitest";
 import { getUpdateInfo as getUpdateInfoFromWorker } from "./getUpdateInfo";
 
 declare module "vitest" {
-  // biome-ignore lint/suspicious/noExportsInTest: extending test context
   export interface ProvidedContext {
     prepareSql: string;
   }

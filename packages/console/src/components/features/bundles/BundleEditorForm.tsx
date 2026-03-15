@@ -159,7 +159,11 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (form.state.isDefaultValue || isSaving || hasTargetAppVersionError) {
+          if (
+            form.state.isDefaultValue ||
+            isSaving ||
+            hasTargetAppVersionError
+          ) {
             return;
           }
           form.handleSubmit();

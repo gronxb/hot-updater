@@ -8,11 +8,11 @@
     "package.json"
   ],
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
@@ -66,7 +66,6 @@
     "@hono/node-server": "^1.19.11",
     "@hono/typia-validator": "^0.1.2",
     "@hot-updater/mock": "workspace:*",
-    "@ryoppippi/unplugin-typia": "^2.6.5",
     "@tanstack/devtools-vite": "^0.6.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
@@ -74,6 +73,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.0",
     "@types/semver": "^7.7.1",
+    "@typia/unplugin": "^12.0.1",
     "@vitejs/plugin-react": "^6.0.1",
     "jsdom": "^29.0.0",
     "react-grab": "^0.1.28",
@@ -90,5 +90,9 @@
   "bugs": {
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
-  "homepage": "https://github.com/gronxb/hot-updater#readme"
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "inlinedDependencies": {
+    "@hono/node-server": "1.19.11",
+    "@hono/typia-validator": "0.1.2"
+  }
 }

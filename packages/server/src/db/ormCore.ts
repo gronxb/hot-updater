@@ -7,7 +7,7 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { NIL_UUID, isDeviceEligibleForUpdate } from "@hot-updater/core";
+import { isDeviceEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";

@@ -1,5 +1,5 @@
-import type { Bundle } from "@hot-updater/plugin-core";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
+import type { Bundle } from "@hot-updater/plugin-core";
 
 const bundles: Bundle[] = [
   {

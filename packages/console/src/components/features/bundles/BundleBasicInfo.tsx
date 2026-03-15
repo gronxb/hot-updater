@@ -18,10 +18,10 @@ export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
         <span className="font-medium text-muted-foreground">Bundle ID</span>
         <span className="text-xs text-foreground">{bundle.id}</span>
       </div>
-    <div className="flex items-center gap-2">
-      <span className="font-medium text-muted-foreground">Channel</span>
-      <span className="text-xs text-foreground">{bundle.channel}</span>
-    </div>
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-muted-foreground">Channel</span>
+        <span className="text-xs text-foreground">{bundle.channel}</span>
+      </div>
     </div>
   );
 }
