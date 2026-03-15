@@ -87,11 +87,40 @@ export function PromoteChannelDialog({
         <DialogHeader>
           <DialogTitle>Promote to Channel</DialogTitle>
           <DialogDescription>
-            {isMove ? "Move" : "Copy"} bundle to a different channel
+            Select a target channel for this bundle. You can either copy it and
+            keep the original in the current channel, or move it and remove it
+            from the current channel.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="is-move" className="text-sm font-medium">
+                  {isMove ? "Move bundle" : "Copy bundle"}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {isMove
+                    ? "Move to the target channel and remove it from the current one."
+                    : "Keep the original and create a copy in the target channel."}
+                </p>
+              </div>
+              <Switch
+                id="is-move"
+                checked={isMove}
+                onCheckedChange={setIsMove}
+              />
+            </div>
+          </div>
+
+          {!isMove && (
+            <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+              The copied bundle will receive a new database ID, which can differ
+              from the bundle ID embedded inside the JavaScript bundle.
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="target-channel">Target Channel</Label>
             <Select value={targetChannel} onValueChange={setTargetChannel}>
@@ -106,11 +135,6 @@ export function PromoteChannelDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="is-move">Move (delete from source)</Label>
-            <Switch id="is-move" checked={isMove} onCheckedChange={setIsMove} />
           </div>
         </div>
 
