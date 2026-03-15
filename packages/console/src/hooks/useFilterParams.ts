@@ -17,22 +17,26 @@ export function useFilterParams() {
   };
 
   const setFilters = (newFilters: Partial<BundleFilters>) => {
+    const hasChannel = Object.prototype.hasOwnProperty.call(
+      newFilters,
+      "channel",
+    );
+    const hasPlatform = Object.prototype.hasOwnProperty.call(
+      newFilters,
+      "platform",
+    );
+    const hasOffset = Object.prototype.hasOwnProperty.call(newFilters, "offset");
+
     void navigate({
       to: "/",
       search: {
-        channel:
-          newFilters.channel !== undefined
-            ? newFilters.channel
-            : filters.channel,
-        platform:
-          newFilters.platform !== undefined
-            ? newFilters.platform
-            : filters.platform,
+        channel: hasChannel ? newFilters.channel : filters.channel,
+        platform: hasPlatform ? newFilters.platform : filters.platform,
         // Reset offset when changing filters
         offset:
-          newFilters.channel !== undefined || newFilters.platform !== undefined
+          hasChannel || hasPlatform
             ? "0"
-            : newFilters.offset !== undefined
+            : hasOffset
               ? newFilters.offset
               : filters.offset,
         bundleId: undefined,
