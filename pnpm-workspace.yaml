@@ -8,7 +8,7 @@ packages:
 catalog:
   '@types/node': ^20
   execa: 9.5.2
-  vitest: ^3.2.4
+  vitest: 4.1.0
 
 onlyBuiltDependencies:
   - '@biomejs/biome'

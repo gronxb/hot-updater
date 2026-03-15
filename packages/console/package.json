@@ -80,7 +80,7 @@
     "tsdown": "^0.21.2",
     "typescript": "^5.7.2",
     "vite": "^8.0.0",
-    "vitest": "^4.1.0",
+    "vitest": "catalog:",
     "web-vitals": "^5.1.0"
   },
   "description": "React Native OTA solution for self-hosted",
