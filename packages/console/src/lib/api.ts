@@ -4,6 +4,7 @@ import {
   createBundle as createBundleApi,
   deleteBundle as deleteBundleApi,
   getBundle,
+  getBundleDownloadUrl,
   getBundles,
   getChannels,
   getConfig,
@@ -94,6 +95,13 @@ export function useBundleQuery(bundleId: string) {
 }
 
 // Mutation Hooks
+export function useBundleDownloadUrlMutation() {
+  return useMutation({
+    mutationFn: (params: { bundleId: string }) =>
+      getBundleDownloadUrl({ data: params }),
+  });
+}
+
 export function useUpdateBundleMutation() {
   const queryClient = useQueryClient();
 

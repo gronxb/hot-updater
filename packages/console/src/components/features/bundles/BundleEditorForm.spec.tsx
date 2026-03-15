@@ -1,5 +1,11 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BundleEditorForm } from "./BundleEditorForm";
 
@@ -7,8 +13,13 @@ const mockUpdateBundleMutation = {
   isPending: false,
   mutateAsync: vi.fn(),
 };
+const mockBundleDownloadUrlMutation = {
+  isPending: false,
+  mutateAsync: vi.fn(),
+};
 
 vi.mock("@/lib/api", () => ({
+  useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
   useUpdateBundleMutation: () => mockUpdateBundleMutation,
 }));
 
@@ -18,6 +29,13 @@ vi.mock("./DeleteBundleDialog", () => ({
 
 vi.mock("./PromoteChannelDialog", () => ({
   PromoteChannelDialog: () => null,
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 const bundle: Bundle = {
@@ -37,6 +55,13 @@ const bundle: Bundle = {
 };
 
 describe("BundleEditorForm", () => {
+  const originalWindowOpen = window.open;
+  let mockDownloadWindow: {
+    close: ReturnType<typeof vi.fn>;
+    location: { href: string };
+    opener: Record<string, never> | null;
+  };
+
   afterEach(() => {
     cleanup();
   });
@@ -47,8 +72,20 @@ describe("BundleEditorForm", () => {
       unobserve() {}
       disconnect() {}
     };
+    mockDownloadWindow = {
+      close: vi.fn(),
+      location: { href: "" },
+      opener: {},
+    };
+    window.open = vi.fn(() => mockDownloadWindow as unknown as Window);
+    mockBundleDownloadUrlMutation.isPending = false;
+    mockBundleDownloadUrlMutation.mutateAsync.mockReset();
     mockUpdateBundleMutation.isPending = false;
     mockUpdateBundleMutation.mutateAsync.mockReset();
+  });
+
+  afterEach(() => {
+    window.open = originalWindowOpen;
   });
 
   it("disables save until the form becomes dirty", () => {
@@ -131,5 +168,82 @@ describe("BundleEditorForm", () => {
 
     expect(screen.queryByRole("alert")).toBeNull();
     expect(saveButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("submits the remaining target device IDs after one is removed", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetDeviceIds: ["device-1", "device-2"],
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove device ID device-1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetDeviceIds: ["device-2"],
+        }),
+      });
+    });
+  });
+
+  it("submits null when the last target device ID is removed", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetDeviceIds: ["device-1"],
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove device ID device-1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetDeviceIds: null,
+        }),
+      });
+    });
+  });
+
+  it("opens the download URL when Download Bundle is clicked", async () => {
+    mockBundleDownloadUrlMutation.mutateAsync.mockResolvedValue({
+      fileUrl: "https://example.invalid/bundle.zip",
+    });
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Download Bundle" }));
+
+    await waitFor(() => {
+      expect(mockBundleDownloadUrlMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+      });
+    });
+
+    expect(window.open).toHaveBeenCalledWith("", "_blank");
+    expect(mockDownloadWindow.location.href).toBe(
+      "https://example.invalid/bundle.zip",
+    );
   });
 });

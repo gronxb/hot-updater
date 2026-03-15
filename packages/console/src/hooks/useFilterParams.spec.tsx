@@ -65,4 +65,29 @@ describe("useFilterParams", () => {
       },
     });
   });
+
+  it("sets bundleId in the URL and resets offset when the channel changes", () => {
+    mockUseSearch.mockReturnValue({
+      channel: "stable",
+      platform: "ios",
+      offset: "40",
+      bundleId: undefined,
+    });
+
+    const { result } = renderHook(() => useFilterParams());
+
+    act(() => {
+      result.current.setBundleId("bundle-123", { channel: "beta" });
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/",
+      search: {
+        channel: "beta",
+        platform: "ios",
+        offset: "0",
+        bundleId: "bundle-123",
+      },
+    });
+  });
 });

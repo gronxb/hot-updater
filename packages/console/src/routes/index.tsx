@@ -1,6 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
 import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";
@@ -21,26 +20,8 @@ export const Route = createFileRoute("/")({
 });
 
 function BundlesPage() {
-  const { filters } = useFilterParams();
-  const { bundleId } = Route.useSearch();
-  const navigate = useNavigate();
-  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
-  const activeBundleId = selectedBundleId ?? bundleId ?? "";
-
-  const handleSheetClose = () => {
-    setSelectedBundleId(null);
-    if (bundleId) {
-      void navigate({
-        to: "/",
-        search: {
-          channel: filters.channel,
-          platform: filters.platform,
-          offset: filters.offset,
-          bundleId: undefined,
-        },
-      });
-    }
-  };
+  const { filters, bundleId, setBundleId } = useFilterParams();
+  const activeBundleId = bundleId ?? "";
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
     channel: filters.channel,
@@ -53,9 +34,12 @@ function BundlesPage() {
   const selectedBundleFromList = activeBundleId
     ? (bundles.find((bundle) => bundle.id === activeBundleId) ?? null)
     : null;
-  const { data: selectedBundleFromQuery } = useBundleQuery(activeBundleId);
+  const { data: selectedBundleFromQuery, isPending: isSelectedBundlePending } =
+    useBundleQuery(activeBundleId);
   const selectedBundle: Bundle | null =
     selectedBundleFromQuery ?? selectedBundleFromList;
+  const isSelectedBundleLoading =
+    Boolean(activeBundleId) && !selectedBundle && isSelectedBundlePending;
 
   if (isLoading) {
     return (
@@ -77,14 +61,17 @@ function BundlesPage() {
       <div className="flex-1 p-6 space-y-6 bg-muted/5">
         <BundlesTable
           bundles={bundles}
-          onRowClick={(bundle) => setSelectedBundleId(bundle.id)}
+          selectedBundleId={bundleId}
+          onRowClick={(bundle) => setBundleId(bundle.id)}
         />
       </div>
 
       <BundleEditorSheet
+        bundleId={bundleId}
         bundle={selectedBundle}
-        open={!!activeBundleId}
-        onOpenChange={(open) => !open && handleSheetClose()}
+        loading={isSelectedBundleLoading}
+        open={Boolean(bundleId)}
+        onOpenChange={(open) => !open && setBundleId(undefined)}
       />
     </div>
   );

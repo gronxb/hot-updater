@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -20,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useFilterParams } from "@/hooks/useFilterParams";
 import {
   useChannelsQuery,
   useCreateBundleMutation,
@@ -43,12 +45,15 @@ export function PromoteChannelDialog({
   const [targetChannel, setTargetChannel] = useState<string>("");
   const [action, setAction] = useState<PromoteAction>("move");
 
+  const { setBundleId } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
   const createBundleMutation = useCreateBundleMutation();
   const updateBundleMutation = useUpdateBundleMutation();
 
   const availableChannels = channels.filter((c) => c !== bundle.channel);
   const isCopy = action === "copy";
+  const normalizedTargetChannel = targetChannel.trim();
+  const isSameChannel = normalizedTargetChannel === bundle.channel;
 
   const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
@@ -59,37 +64,57 @@ export function PromoteChannelDialog({
     }
   };
 
+  const openBundleDetail = (nextBundleId: string, nextChannel: string) => {
+    setBundleId(nextBundleId, {
+      channel: nextChannel,
+      offset: "0",
+    });
+  };
+
   const handlePromote = async () => {
-    if (!targetChannel) {
+    if (!normalizedTargetChannel) {
       toast.error("Please select a target channel");
       return;
     }
 
+    if (isSameChannel) {
+      toast.error("Target channel must be different from the current channel");
+      return;
+    }
+
     try {
+      let nextBundleId = bundle.id;
+
       if (isCopy) {
-        const newBundleId = createUUIDv7WithSameTimestamp(bundle.id);
+        nextBundleId = createUUIDv7WithSameTimestamp(bundle.id);
 
         await createBundleMutation.mutateAsync({
           ...bundle,
-          id: newBundleId,
-          channel: targetChannel,
+          id: nextBundleId,
+          channel: normalizedTargetChannel,
         });
-
-        toast.success(
-          `Bundle copied from ${bundle.channel} to ${targetChannel}`,
-        );
       } else {
         await updateBundleMutation.mutateAsync({
           bundleId: bundle.id,
-          bundle: { channel: targetChannel },
+          bundle: { channel: normalizedTargetChannel },
         });
-
-        toast.success(
-          `Bundle moved from ${bundle.channel} to ${targetChannel}`,
-        );
       }
 
       handleOpenChange(false);
+      openBundleDetail(nextBundleId, normalizedTargetChannel);
+      toast.success(
+        isCopy
+          ? `Bundle copied to ${normalizedTargetChannel}`
+          : `Bundle moved to ${normalizedTargetChannel}`,
+        {
+          description: `bundleId: ${nextBundleId}`,
+          action: {
+            label: "Show Detail",
+            onClick: () =>
+              openBundleDetail(nextBundleId, normalizedTargetChannel),
+          },
+        },
+      );
     } catch (error) {
       toast.error("Failed to promote bundle");
       console.error(error);
@@ -141,18 +166,42 @@ export function PromoteChannelDialog({
 
           <div className="space-y-2">
             <Label htmlFor="target-channel">Target Channel</Label>
-            <Select value={targetChannel} onValueChange={setTargetChannel}>
-              <SelectTrigger id="target-channel">
-                <SelectValue placeholder="Select a channel" />
-              </SelectTrigger>
-              <SelectContent>
+            <Input
+              id="target-channel"
+              value={targetChannel}
+              onChange={(event) => setTargetChannel(event.target.value)}
+              placeholder="Enter a channel name"
+              list="available-channels"
+              aria-invalid={isSameChannel}
+            />
+            <datalist id="available-channels">
+              {availableChannels.map((channel) => (
+                <option key={channel} value={channel} />
+              ))}
+            </datalist>
+            {availableChannels.length > 0 && (
+              <div className="flex flex-wrap gap-2">
                 {availableChannels.map((channel) => (
-                  <SelectItem key={channel} value={channel}>
+                  <Button
+                    key={channel}
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => setTargetChannel(channel)}
+                  >
                     {channel}
-                  </SelectItem>
+                  </Button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Choose an existing channel or enter a new one.
+            </p>
+            {isSameChannel && (
+              <p className="text-xs text-destructive" role="alert">
+                Target channel must be different from the current channel.
+              </p>
+            )}
           </div>
         </div>
 
@@ -163,7 +212,8 @@ export function PromoteChannelDialog({
           <Button
             onClick={handlePromote}
             disabled={
-              !targetChannel ||
+              !normalizedTargetChannel ||
+              isSameChannel ||
               createBundleMutation.isPending ||
               updateBundleMutation.isPending
             }

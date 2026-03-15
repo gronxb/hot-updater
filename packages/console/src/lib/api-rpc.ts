@@ -13,6 +13,10 @@ type GetBundleInput = {
   bundleId: string;
 };
 
+type GetBundleDownloadUrlInput = {
+  bundleId: string;
+};
+
 type UpdateBundleInput = {
   bundleId: string;
   bundle: Partial<Bundle>;
@@ -105,6 +109,51 @@ export const getBundle = createServerFn({ method: "GET" })
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleDownloadUrl = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleDownloadUrlInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { databasePlugin, storagePlugin } = await prepareConfig();
+      const bundle = await databasePlugin.getBundleById(data.bundleId);
+
+      if (!bundle) {
+        throw new Error("Bundle not found");
+      }
+
+      const { storageUri } = bundle;
+      if (!storageUri) {
+        throw new Error("Bundle has no storage URI");
+      }
+
+      const url = new URL(storageUri);
+      const protocol = url.protocol.replace(":", "");
+
+      if (protocol === "http" || protocol === "https") {
+        return { fileUrl: storageUri };
+      }
+
+      if (!storagePlugin) {
+        throw new Error("Storage plugin is not configured");
+      }
+
+      if (storagePlugin.supportedProtocol !== protocol) {
+        throw new Error(`No storage plugin for protocol: ${protocol}`);
+      }
+
+      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
+
+      if (!fileUrl) {
+        throw new Error("Storage plugin returned empty fileUrl");
+      }
+
+      return { fileUrl };
+    } catch (error) {
+      console.error("Error during bundle download URL retrieval:", error);
       throw error;
     }
   });

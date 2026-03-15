@@ -1,7 +1,9 @@
-import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
+import { execa } from "execa";
+
+const READY_LOG_TOKEN = "Listening on";
 
 export const getConsolePort = async (config?: ConfigResponse) => {
   if (config?.console.port) {
@@ -26,26 +28,44 @@ export const openConsole = async (
     "index.mjs",
   );
 
-  const child = spawn("node", [nitroServerPath], {
+  const child = execa("node", [nitroServerPath], {
     env: {
       ...process.env,
       PORT: port.toString(),
       NITRO_PORT: port.toString(),
     },
-    stdio: ["inherit", "pipe", "inherit"],
+    stdin: "inherit",
+    stdout: "pipe",
+    stderr: "inherit",
   });
+
+  let startupOutputBuffer = "";
+  let hasReportedReady = false;
 
   child.stdout?.on("data", (data: Buffer) => {
     const output = data.toString();
     process.stdout.write(output);
 
-    if (output.includes("Listening on")) {
+    if (hasReportedReady) {
+      return;
+    }
+
+    startupOutputBuffer = `${startupOutputBuffer}${output}`.slice(
+      -READY_LOG_TOKEN.length * 2,
+    );
+
+    if (startupOutputBuffer.includes(READY_LOG_TOKEN)) {
+      hasReportedReady = true;
       listeningListener?.({ port });
     }
   });
 
   child.on("error", (err) => {
     console.error("Failed to start console server:", err);
+  });
+
+  void child.catch((err) => {
+    console.error("Console server exited unexpectedly:", err);
   });
 
   process.on("SIGINT", () => {

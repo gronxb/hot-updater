@@ -20,10 +20,15 @@ import { bundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {
   bundles: Bundle[];
+  selectedBundleId?: string;
   onRowClick: (bundle: Bundle) => void;
 }
 
-export function BundlesTable({ bundles, onRowClick }: BundlesTableProps) {
+export function BundlesTable({
+  bundles,
+  selectedBundleId,
+  onRowClick,
+}: BundlesTableProps) {
   const { filters, setFilters } = useFilterParams();
   const currentOffset = Number(filters.offset || 0);
 
@@ -77,6 +82,11 @@ export function BundlesTable({ bundles, onRowClick }: BundlesTableProps) {
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
+                  data-state={
+                    row.original.id === selectedBundleId
+                      ? "selected"
+                      : undefined
+                  }
                   onClick={() => onRowClick(row.original)}
                   className="cursor-pointer hover:bg-muted/30 transition-colors data-[state=selected]:bg-muted"
                 >

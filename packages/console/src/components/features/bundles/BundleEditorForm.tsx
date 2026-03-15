@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { useForm, useStore } from "@tanstack/react-form";
-import { Plus, X } from "lucide-react";
+import { Download, Plus, X } from "lucide-react";
 import { useState } from "react";
 import semver from "semver";
 import { toast } from "sonner";
@@ -12,7 +12,10 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateBundleMutation } from "@/lib/api";
+import {
+  useBundleDownloadUrlMutation,
+  useUpdateBundleMutation,
+} from "@/lib/api";
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
 import { PromoteChannelDialog } from "./PromoteChannelDialog";
 
@@ -67,6 +70,7 @@ function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
 }
 
 export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
+  const bundleDownloadUrlMutation = useBundleDownloadUrlMutation();
   const updateBundleMutation = useUpdateBundleMutation();
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -96,9 +100,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
             shouldForceUpdate: value.shouldForceUpdate,
             rolloutPercentage: value.rolloutPercentage,
             targetDeviceIds:
-              value.targetDeviceIds.length > 0
-                ? value.targetDeviceIds
-                : undefined,
+              value.targetDeviceIds.length > 0 ? value.targetDeviceIds : null,
           },
         });
         toast.success("Bundle updated successfully");
@@ -123,6 +125,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         normalizedRange: null,
       };
   const hasTargetAppVersionError = Boolean(targetAppVersionValidation.error);
+  const isDownloading = bundleDownloadUrlMutation.isPending;
 
   const handleAddDeviceId = () => {
     const trimmed = newDeviceId.trim();
@@ -150,6 +153,34 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddDeviceId();
+    }
+  };
+
+  const handleDownloadBundle = async () => {
+    const downloadWindow = window.open("", "_blank");
+
+    try {
+      const { fileUrl } = await bundleDownloadUrlMutation.mutateAsync({
+        bundleId: bundle.id,
+      });
+
+      if (!fileUrl) {
+        throw new Error("Bundle download URL is empty");
+      }
+
+      if (downloadWindow) {
+        downloadWindow.opener = null;
+        downloadWindow.location.href = fileUrl;
+      } else {
+        window.open(fileUrl, "_blank", "noopener,noreferrer");
+      }
+      toast.success("Bundle download started");
+    } catch (error) {
+      downloadWindow?.close();
+      const message =
+        error instanceof Error ? error.message : "Failed to download bundle";
+      toast.error(message);
+      console.error(error);
     }
   };
 
@@ -308,6 +339,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                       <button
                         type="button"
                         onClick={() => handleRemoveDeviceId(deviceId)}
+                        aria-label={`Remove device ID ${deviceId}`}
                         className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
                       >
                         <X className="h-3 w-3" />
@@ -350,6 +382,17 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           onClick={() => setShowPromoteDialog(true)}
         >
           Promote to Channel
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={handleDownloadBundle}
+          disabled={isDownloading}
+        >
+          <Download className="h-4 w-4" />
+          {isDownloading ? "Preparing Download..." : "Download Bundle"}
         </Button>
 
         <Button
