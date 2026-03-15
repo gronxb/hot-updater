@@ -17,6 +17,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "dotenv": "^16.6.1",
     "hono": "^4.9.12"
   },
