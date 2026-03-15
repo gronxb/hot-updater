@@ -1,5 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +20,26 @@ interface BundleEditorFormProps {
   onClose: () => void;
 }
 
+type BundleEditorFormValues = {
+  message: string;
+  targetAppVersion: string;
+  enabled: boolean;
+  shouldForceUpdate: boolean;
+  rolloutPercentage: number;
+  targetDeviceIds: string[];
+};
+
+function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
+  return {
+    message: bundle.message || "",
+    targetAppVersion: bundle.targetAppVersion || "",
+    enabled: bundle.enabled,
+    shouldForceUpdate: bundle.shouldForceUpdate,
+    rolloutPercentage: bundle.rolloutPercentage ?? 100,
+    targetDeviceIds: bundle.targetDeviceIds ?? [],
+  };
+}
+
 export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   const updateBundleMutation = useUpdateBundleMutation();
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
@@ -27,14 +47,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   const [newDeviceId, setNewDeviceId] = useState("");
 
   const form = useForm({
-    defaultValues: {
-      message: bundle.message || "",
-      targetAppVersion: bundle.targetAppVersion || "",
-      enabled: bundle.enabled,
-      shouldForceUpdate: bundle.shouldForceUpdate,
-      rolloutPercentage: bundle.rolloutPercentage ?? 100,
-      targetDeviceIds: bundle.targetDeviceIds ?? [],
-    },
+    defaultValues: getDefaultValues(bundle),
     onSubmit: async ({ value }) => {
       try {
         await updateBundleMutation.mutateAsync({
@@ -59,6 +72,9 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
       }
     },
   });
+  const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
+  const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const isSaving = isSubmitting || updateBundleMutation.isPending;
 
   const handleAddDeviceId = () => {
     const trimmed = newDeviceId.trim();
@@ -95,6 +111,9 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (form.state.isDefaultValue || isSaving) {
+            return;
+          }
           form.handleSubmit();
         }}
         className="space-y-4"
@@ -243,9 +262,9 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         <Button
           type="submit"
           className="w-full"
-          disabled={updateBundleMutation.isPending}
+          disabled={!hasChanges || isSaving}
         >
-          {updateBundleMutation.isPending ? "Saving..." : "Save Changes"}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </form>
 

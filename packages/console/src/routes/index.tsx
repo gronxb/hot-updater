@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
 import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";
@@ -24,18 +24,11 @@ function BundlesPage() {
   const { filters } = useFilterParams();
   const { bundleId } = Route.useSearch();
   const navigate = useNavigate();
-  const [selectedBundle, setSelectedBundle] = useState<Bundle | null>(null);
-
-  const { data: bundleFromUrl } = useBundleQuery(bundleId ?? "");
-
-  useEffect(() => {
-    if (bundleFromUrl && bundleId) {
-      setSelectedBundle(bundleFromUrl);
-    }
-  }, [bundleFromUrl, bundleId]);
+  const [selectedBundleId, setSelectedBundleId] = useState<string | null>(null);
+  const activeBundleId = selectedBundleId ?? bundleId ?? "";
 
   const handleSheetClose = () => {
-    setSelectedBundle(null);
+    setSelectedBundleId(null);
     if (bundleId) {
       void navigate({
         to: "/",
@@ -57,6 +50,12 @@ function BundlesPage() {
   });
 
   const bundles = bundlesData?.data ?? [];
+  const selectedBundleFromList = activeBundleId
+    ? (bundles.find((bundle) => bundle.id === activeBundleId) ?? null)
+    : null;
+  const { data: selectedBundleFromQuery } = useBundleQuery(activeBundleId);
+  const selectedBundle: Bundle | null =
+    selectedBundleFromQuery ?? selectedBundleFromList;
 
   if (isLoading) {
     return (
@@ -78,13 +77,13 @@ function BundlesPage() {
       <div className="flex-1 p-6 space-y-6 bg-muted/5">
         <BundlesTable
           bundles={bundles}
-          onRowClick={(bundle) => setSelectedBundle(bundle)}
+          onRowClick={(bundle) => setSelectedBundleId(bundle.id)}
         />
       </div>
 
       <BundleEditorSheet
         bundle={selectedBundle}
-        open={!!selectedBundle}
+        open={!!activeBundleId}
         onOpenChange={(open) => !open && handleSheetClose()}
       />
     </div>

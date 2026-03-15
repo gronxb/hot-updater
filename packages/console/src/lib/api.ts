@@ -11,18 +11,44 @@ import {
   updateBundle as updateBundleApi,
 } from "./server/api.server";
 
+type BundleFilters = {
+  channel?: string;
+  platform?: "ios" | "android";
+  limit?: string;
+  offset?: string;
+};
+
+type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
+
+const bundleListQueryKey = ["bundles"] as const;
+
 export const queryKeys = {
   config: ["config"] as const,
   channels: ["channels"] as const,
   configLoaded: ["config-loaded"] as const,
-  bundles: (filters?: {
-    channel?: string;
-    platform?: "ios" | "android";
-    limit?: string;
-    offset?: string;
-  }) => ["bundles", filters] as const,
+  bundles: {
+    all: bundleListQueryKey,
+    list: (filters?: BundleFilters) =>
+      [...bundleListQueryKey, filters ?? {}] as const,
+  },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
 };
+
+function replaceBundleInQueryData(
+  data: BundlesQueryData | undefined,
+  updatedBundle: Bundle,
+) {
+  if (!data) {
+    return data;
+  }
+
+  return {
+    ...data,
+    data: data.data.map((bundle) =>
+      bundle.id === updatedBundle.id ? updatedBundle : bundle,
+    ),
+  };
+}
 
 // Query Hooks
 export function useConfigQuery() {
@@ -49,14 +75,9 @@ export function useConfigLoadedQuery() {
   });
 }
 
-export function useBundlesQuery(filters?: {
-  channel?: string;
-  platform?: "ios" | "android";
-  limit?: string;
-  offset?: string;
-}) {
+export function useBundlesQuery(filters?: BundleFilters) {
   return useQuery({
-    queryKey: queryKeys.bundles(filters),
+    queryKey: queryKeys.bundles.list(filters),
     queryFn: () => getBundles({ data: filters }),
     staleTime: Infinity,
     placeholderData: (previousData) => previousData,
@@ -79,13 +100,21 @@ export function useUpdateBundleMutation() {
   return useMutation({
     mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
       updateBundleApi({ data: params }),
-    onSuccess: (_, vars) => {
-      // Invalidate queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.bundle(vars.bundleId),
-      });
-      queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    onSuccess: async ({ bundle: updatedBundle }, vars) => {
+      queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.bundles.all },
+        (data: BundlesQueryData | undefined) =>
+          replaceBundleInQueryData(data, updatedBundle),
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundle(vars.bundleId),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
   });
 }
@@ -95,10 +124,11 @@ export function useCreateBundleMutation() {
 
   return useMutation({
     mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
-    onSuccess: () => {
-      // Invalidate all bundle queries
-      queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
   });
 }
@@ -109,9 +139,13 @@ export function useDeleteBundleMutation() {
   return useMutation({
     mutationFn: (params: { bundleId: string }) =>
       deleteBundleApi({ data: params }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+    onSuccess: async (_, vars) => {
+      queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
   });
 }

@@ -113,7 +113,13 @@ export const updateBundle = createServerFn({ method: "POST" })
       const { databasePlugin } = await prepareConfig();
       await databasePlugin.updateBundle(data.bundleId, data.bundle);
       await databasePlugin.commitBundle();
-      return { success: true };
+      const updatedBundle = await databasePlugin.getBundleById(data.bundleId);
+
+      if (!updatedBundle) {
+        throw new Error("Updated bundle not found");
+      }
+
+      return { success: true, bundle: updatedBundle };
     } catch (error) {
       console.error("Error during bundle update:", error);
       throw error;

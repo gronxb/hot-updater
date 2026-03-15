@@ -35,6 +35,7 @@ export function BundleEditorSheet({
 
         <div className="px-6 pb-6 space-y-6">
           <BundleEditorForm
+            key={bundle.id}
             bundle={bundle}
             onClose={() => onOpenChange(false)}
           />
