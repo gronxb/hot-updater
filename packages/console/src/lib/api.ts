@@ -57,7 +57,7 @@ export function useBundlesQuery(filters?: {
 }) {
   return useQuery({
     queryKey: queryKeys.bundles(filters),
-    queryFn: () => (getBundles as any)({ data: filters }),
+    queryFn: () => getBundles({ data: filters }),
     staleTime: Infinity,
     placeholderData: (previousData) => previousData,
   });
@@ -66,7 +66,7 @@ export function useBundlesQuery(filters?: {
 export function useBundleQuery(bundleId: string) {
   return useQuery({
     queryKey: queryKeys.bundle(bundleId),
-    queryFn: () => (getBundle as any)({ data: { bundleId } }),
+    queryFn: () => getBundle({ data: { bundleId } }),
     staleTime: Infinity,
     enabled: !!bundleId,
   });
@@ -77,14 +77,15 @@ export function useUpdateBundleMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (_params: { bundleId: string; bundle: Partial<Bundle> }) =>
-      updateBundleApi(),
+    mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
+      updateBundleApi({ data: params }),
     onSuccess: (_, vars) => {
       // Invalidate queries
       queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
       queryClient.invalidateQueries({
         queryKey: queryKeys.bundle(vars.bundleId),
       });
+      queryClient.invalidateQueries({ queryKey: queryKeys.channels });
     },
   });
 }
@@ -93,7 +94,7 @@ export function useCreateBundleMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (_bundle: Bundle) => createBundleApi(),
+    mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
     onSuccess: () => {
       // Invalidate all bundle queries
       queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
@@ -106,9 +107,11 @@ export function useDeleteBundleMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (_params: { bundleId: string }) => deleteBundleApi(),
+    mutationFn: (params: { bundleId: string }) =>
+      deleteBundleApi({ data: params }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.channels });
     },
   });
 }

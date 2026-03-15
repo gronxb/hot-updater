@@ -18,11 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import {
   useChannelsQuery,
   useCreateBundleMutation,
-  useDeleteBundleMutation,
+  useUpdateBundleMutation,
 } from "@/lib/api";
 import { createUUIDv7WithSameTimestamp } from "@/lib/extract-timestamp-from-uuidv7";
 
@@ -32,19 +31,31 @@ interface PromoteChannelDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type PromoteAction = "copy" | "move";
+
 export function PromoteChannelDialog({
   bundle,
   open,
   onOpenChange,
 }: PromoteChannelDialogProps) {
   const [targetChannel, setTargetChannel] = useState<string>("");
-  const [isMove, setIsMove] = useState(false);
+  const [action, setAction] = useState<PromoteAction>("move");
 
   const { data: channels = [] } = useChannelsQuery();
   const createBundleMutation = useCreateBundleMutation();
-  const deleteBundleMutation = useDeleteBundleMutation();
+  const updateBundleMutation = useUpdateBundleMutation();
 
   const availableChannels = channels.filter((c) => c !== bundle.channel);
+  const isCopy = action === "copy";
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+
+    if (!nextOpen) {
+      setTargetChannel("");
+      setAction("move");
+    }
+  };
 
   const handlePromote = async () => {
     if (!targetChannel) {
@@ -53,28 +64,30 @@ export function PromoteChannelDialog({
     }
 
     try {
-      const newBundleId = createUUIDv7WithSameTimestamp(bundle.id);
+      if (isCopy) {
+        const newBundleId = createUUIDv7WithSameTimestamp(bundle.id);
 
-      await createBundleMutation.mutateAsync({
-        ...bundle,
-        id: newBundleId,
-        channel: targetChannel,
-      });
+        await createBundleMutation.mutateAsync({
+          ...bundle,
+          id: newBundleId,
+          channel: targetChannel,
+        });
 
-      if (isMove) {
-        await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
-        toast.success(
-          `Bundle moved from ${bundle.channel} to ${targetChannel}`,
-        );
-      } else {
         toast.success(
           `Bundle copied from ${bundle.channel} to ${targetChannel}`,
         );
+      } else {
+        await updateBundleMutation.mutateAsync({
+          bundleId: bundle.id,
+          bundle: { channel: targetChannel },
+        });
+
+        toast.success(
+          `Bundle moved from ${bundle.channel} to ${targetChannel}`,
+        );
       }
 
-      onOpenChange(false);
-      setTargetChannel("");
-      setIsMove(false);
+      handleOpenChange(false);
     } catch (error) {
       toast.error("Failed to promote bundle");
       console.error(error);
@@ -82,39 +95,38 @@ export function PromoteChannelDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Promote to Channel</DialogTitle>
           <DialogDescription>
-            Select a target channel for this bundle. You can either copy it and
-            keep the original in the current channel, or move it and remove it
-            from the current channel.
+            Choose how to promote this bundle, then select the target channel.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          <div className="rounded-lg border bg-muted/20 p-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="is-move" className="text-sm font-medium">
-                  {isMove ? "Move bundle" : "Copy bundle"}
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {isMove
-                    ? "Move to the target channel and remove it from the current one."
-                    : "Keep the original and create a copy in the target channel."}
-                </p>
-              </div>
-              <Switch
-                id="is-move"
-                checked={isMove}
-                onCheckedChange={setIsMove}
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="promote-action">Action</Label>
+            <Select
+              value={action}
+              onValueChange={(value) => setAction(value as PromoteAction)}
+            >
+              <SelectTrigger id="promote-action">
+                <SelectValue placeholder="Select an action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="move">Move bundle</SelectItem>
+                <SelectItem value="copy">Copy bundle</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {isCopy
+                ? "Create a new bundle in the target channel and keep the original in the current channel."
+                : "Move the current bundle to the target channel without creating a new bundle ID."}
+            </p>
           </div>
 
-          {!isMove && (
+          {isCopy && (
             <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
               The copied bundle will receive a new database ID, which can differ
               from the bundle ID embedded inside the JavaScript bundle.
@@ -139,7 +151,7 @@ export function PromoteChannelDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button
@@ -147,10 +159,10 @@ export function PromoteChannelDialog({
             disabled={
               !targetChannel ||
               createBundleMutation.isPending ||
-              deleteBundleMutation.isPending
+              updateBundleMutation.isPending
             }
           >
-            {isMove ? "Move" : "Copy"}
+            {isCopy ? "Copy" : "Move"}
           </Button>
         </DialogFooter>
       </DialogContent>

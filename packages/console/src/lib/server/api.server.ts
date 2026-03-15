@@ -3,6 +3,26 @@ import { createServerFn } from "@tanstack/react-start";
 import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "../constants";
 import { isConfigLoaded, prepareConfig } from "./config.server";
 
+type GetBundlesInput = {
+  channel?: string;
+  platform?: "ios" | "android";
+  limit?: string;
+  offset?: string;
+};
+
+type GetBundleInput = {
+  bundleId: string;
+};
+
+type UpdateBundleInput = {
+  bundleId: string;
+  bundle: Partial<Bundle>;
+};
+
+type DeleteBundleInput = {
+  bundleId: string;
+};
+
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
   try {
@@ -38,17 +58,9 @@ export const getConfigLoaded = createServerFn().handler(async () => {
 });
 
 // GET /api/bundles
-export const getBundles = createServerFn({ method: "GET" }).handler(
-  async ({
-    data,
-  }: {
-    data?: {
-      channel?: string;
-      platform?: "ios" | "android";
-      limit?: string;
-      offset?: string;
-    };
-  }) => {
+export const getBundles = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundlesInput | undefined) => input)
+  .handler(async ({ data }) => {
     try {
       const query = {
         channel: data?.channel ?? undefined,
@@ -77,53 +89,43 @@ export const getBundles = createServerFn({ method: "GET" }).handler(
       console.error("Error during bundle retrieval:", error);
       throw error;
     }
-  },
-);
+  });
 
 // GET /api/bundles/:bundleId
-export const getBundle = createServerFn({ method: "GET" }).handler(
-  async ({ data }: { data?: { bundleId: string } }) => {
+export const getBundle = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleInput) => input)
+  .handler(async ({ data }) => {
     try {
       const { databasePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data?.bundleId ?? "");
+      const bundle = await databasePlugin.getBundleById(data.bundleId);
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
       throw error;
     }
-  },
-);
+  });
 
 // PATCH /api/bundles/:bundleId
-export const updateBundle = createServerFn({ method: "POST" }).handler(
-  async ({
-    data,
-  }: {
-    data?: { bundleId: string; bundle: Partial<Bundle> };
-  }) => {
+export const updateBundle = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdateBundleInput) => input)
+  .handler(async ({ data }) => {
     try {
       const { databasePlugin } = await prepareConfig();
-      await databasePlugin.updateBundle(
-        data?.bundleId ?? "",
-        data?.bundle ?? {},
-      );
+      await databasePlugin.updateBundle(data.bundleId, data.bundle);
       await databasePlugin.commitBundle();
       return { success: true };
     } catch (error) {
       console.error("Error during bundle update:", error);
       throw error;
     }
-  },
-);
+  });
 
 // POST /api/bundles
-export const createBundle = createServerFn({ method: "POST" }).handler(
-  async ({ data }: { data?: Bundle }) => {
+export const createBundle = createServerFn({ method: "POST" })
+  .inputValidator((input: Bundle) => input)
+  .handler(async ({ data }) => {
     try {
       const { databasePlugin } = await prepareConfig();
-      if (!data) {
-        throw new Error("Bundle data is required");
-      }
       await databasePlugin.appendBundle(data);
       await databasePlugin.commitBundle();
       return { success: true, bundleId: data.id };
@@ -131,15 +133,15 @@ export const createBundle = createServerFn({ method: "POST" }).handler(
       console.error("Error during bundle creation:", error);
       throw error;
     }
-  },
-);
+  });
 
 // DELETE /api/bundles/:bundleId
-export const deleteBundle = createServerFn({ method: "POST" }).handler(
-  async ({ data }: { data?: { bundleId: string } }) => {
+export const deleteBundle = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteBundleInput) => input)
+  .handler(async ({ data }) => {
     try {
       const { databasePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data?.bundleId ?? "");
+      const bundle = await databasePlugin.getBundleById(data.bundleId);
       if (!bundle) {
         throw new Error("Bundle not found");
       }
@@ -150,5 +152,4 @@ export const deleteBundle = createServerFn({ method: "POST" }).handler(
       console.error("Error during bundle deletion:", error);
       throw error;
     }
-  },
-);
+  });
