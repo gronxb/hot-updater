@@ -21,6 +21,10 @@ export interface HandlerAPI {
     offset: number;
   }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   insertBundle: (bundle: Bundle) => Promise<void>;
+  updateBundleById: (
+    bundleId: string,
+    bundle: Partial<Bundle>,
+  ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
   getChannels: () => Promise<string[]>;
 }
@@ -182,6 +186,37 @@ const handleCreateBundles: RouteHandler = async (_params, request, api) => {
   });
 };
 
+const handleUpdateBundle: RouteHandler = async (params, request, api) => {
+  const body = await request.json();
+  const payload = Array.isArray(body) ? body[0] : body;
+
+  if (!payload || typeof payload !== "object") {
+    return new Response(JSON.stringify({ error: "Invalid bundle payload" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (
+    "id" in payload &&
+    typeof payload.id === "string" &&
+    payload.id !== params.id
+  ) {
+    return new Response(JSON.stringify({ error: "Bundle id mismatch" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { id: _ignoredId, ...bundlePatch } = payload as Partial<Bundle>;
+  await api.updateBundleById(params.id, bundlePatch);
+
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 const handleDeleteBundle: RouteHandler = async (params, _request, api) => {
   await api.deleteBundleById(params.id);
 
@@ -210,6 +245,7 @@ const routes: Record<string, RouteHandler> = {
   getBundle: handleGetBundle,
   getBundles: handleGetBundles,
   createBundles: handleCreateBundles,
+  updateBundle: handleUpdateBundle,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
 };
@@ -258,6 +294,7 @@ export function createHandler(
   addRoute(router, "GET", "/api/bundles/:id", "getBundle");
   addRoute(router, "GET", "/api/bundles", "getBundles");
   addRoute(router, "POST", "/api/bundles", "createBundles");
+  addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
   addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
 
   return async (request: Request): Promise<Response> => {

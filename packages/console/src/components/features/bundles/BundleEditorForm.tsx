@@ -409,6 +409,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         bundle={bundle}
         open={showPromoteDialog}
         onOpenChange={setShowPromoteDialog}
+        onSuccess={onClose}
       />
 
       <DeleteBundleDialog

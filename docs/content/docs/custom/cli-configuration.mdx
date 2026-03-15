@@ -83,8 +83,12 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: "https://api.example.com",
   routes: {
-    upsert: () => ({
+    create: () => ({
       path: "/v1/hot-updater/api/bundles",
+      headers: { "X-Custom-Header": "value" }
+    }),
+    update: (bundleId) => ({
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
       headers: { "X-Custom-Header": "value" }
     }),
     list: () => ({
@@ -106,7 +110,8 @@ Your server must implement these endpoints (when using default routes):
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |

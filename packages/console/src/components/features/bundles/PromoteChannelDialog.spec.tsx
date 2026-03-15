@@ -160,6 +160,8 @@ const bundle: Bundle = {
 };
 
 describe("PromoteChannelDialog", () => {
+  const mockOnSuccess = vi.fn();
+
   beforeEach(() => {
     mockSetBundleId.mockReset();
     mockCreateBundleMutation.isPending = false;
@@ -169,6 +171,7 @@ describe("PromoteChannelDialog", () => {
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
     mockCreateUUIDv7WithSameTimestamp.mockReset();
+    mockOnSuccess.mockReset();
   });
 
   afterEach(() => {
@@ -180,7 +183,12 @@ describe("PromoteChannelDialog", () => {
     mockCreateBundleMutation.mutateAsync.mockResolvedValue(undefined);
 
     render(
-      <PromoteChannelDialog bundle={bundle} open onOpenChange={() => {}} />,
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={() => {}}
+        onSuccess={mockOnSuccess}
+      />,
     );
 
     const [actionSelect] = screen.getAllByRole("combobox");
@@ -198,10 +206,8 @@ describe("PromoteChannelDialog", () => {
       });
     });
 
-    expect(mockSetBundleId).toHaveBeenCalledWith("bundle-copy-id", {
-      channel: "beta",
-      offset: "0",
-    });
+    expect(mockSetBundleId).not.toHaveBeenCalled();
+    expect(mockOnSuccess).toHaveBeenCalledTimes(1);
     expect(mockToastSuccess).toHaveBeenCalledWith("Bundle copied to beta", {
       description: "bundleId: bundle-copy-id",
       action: expect.objectContaining({
@@ -213,14 +219,23 @@ describe("PromoteChannelDialog", () => {
     const toastAction = mockToastSuccess.mock.calls[0]?.[1]?.action;
     toastAction.onClick();
 
-    expect(mockSetBundleId).toHaveBeenCalledTimes(2);
+    expect(mockSetBundleId).toHaveBeenCalledTimes(1);
+    expect(mockSetBundleId).toHaveBeenCalledWith("bundle-copy-id", {
+      channel: "beta",
+      offset: "0",
+    });
   });
 
   it("opens the moved bundle detail with the same bundleId", async () => {
     mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
 
     render(
-      <PromoteChannelDialog bundle={bundle} open onOpenChange={() => {}} />,
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={() => {}}
+        onSuccess={mockOnSuccess}
+      />,
     );
 
     fireEvent.change(screen.getByLabelText("Target Channel"), {
@@ -235,10 +250,8 @@ describe("PromoteChannelDialog", () => {
       });
     });
 
-    expect(mockSetBundleId).toHaveBeenCalledWith(bundle.id, {
-      channel: "beta",
-      offset: "0",
-    });
+    expect(mockSetBundleId).not.toHaveBeenCalled();
+    expect(mockOnSuccess).toHaveBeenCalledTimes(1);
     expect(mockToastSuccess).toHaveBeenCalledWith("Bundle moved to beta", {
       description: `bundleId: ${bundle.id}`,
       action: expect.objectContaining({
@@ -252,7 +265,12 @@ describe("PromoteChannelDialog", () => {
     mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
 
     render(
-      <PromoteChannelDialog bundle={bundle} open onOpenChange={() => {}} />,
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={() => {}}
+        onSuccess={mockOnSuccess}
+      />,
     );
 
     fireEvent.change(screen.getByLabelText("Target Channel"), {
@@ -267,9 +285,7 @@ describe("PromoteChannelDialog", () => {
       });
     });
 
-    expect(mockSetBundleId).toHaveBeenCalledWith(bundle.id, {
-      channel: "nightly",
-      offset: "0",
-    });
+    expect(mockSetBundleId).not.toHaveBeenCalled();
+    expect(mockOnSuccess).toHaveBeenCalledTimes(1);
   });
 });

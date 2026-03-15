@@ -33,6 +33,7 @@ interface PromoteChannelDialogProps {
   bundle: Bundle;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
 }
 
 type PromoteAction = "copy" | "move";
@@ -41,6 +42,7 @@ export function PromoteChannelDialog({
   bundle,
   open,
   onOpenChange,
+  onSuccess,
 }: PromoteChannelDialogProps) {
   const [targetChannel, setTargetChannel] = useState<string>("");
   const [action, setAction] = useState<PromoteAction>("move");
@@ -101,7 +103,7 @@ export function PromoteChannelDialog({
       }
 
       handleOpenChange(false);
-      openBundleDetail(nextBundleId, normalizedTargetChannel);
+      onSuccess?.();
       toast.success(
         isCopy
           ? `Bundle copied to ${normalizedTargetChannel}`

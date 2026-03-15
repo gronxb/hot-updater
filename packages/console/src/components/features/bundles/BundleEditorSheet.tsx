@@ -26,8 +26,6 @@ export function BundleEditorSheet({
   open,
   onOpenChange,
 }: BundleEditorSheetProps) {
-  if (!open) return null;
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
