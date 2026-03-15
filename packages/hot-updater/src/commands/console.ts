@@ -1,7 +1,7 @@
-import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 
 export const getConsolePort = async (config?: ConfigResponse) => {
   if (config?.console.port) {

@@ -1,8 +1,5 @@
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
-import type {
-  DatabasePlugin,
-  StoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
 
 let configPromise: Promise<{
   config: ConfigResponse;

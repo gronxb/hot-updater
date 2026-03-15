@@ -1,7 +1,7 @@
-import { serveStatic } from "@hono/node-server/serve-static";
-import { Hono } from "hono";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { Hono } from "hono";
 import { api } from "./api";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
