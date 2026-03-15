@@ -12,7 +12,7 @@ import { S3Migration, S3Migrator } from "./migrator"; // Adjust the import path 
 // Mock the Upload class from "@aws-sdk/lib-storage"
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
-    Upload: vi.fn().mockImplementation(() => {
+    Upload: vi.fn().mockImplementation(function Upload() {
       return {
         done: async () => Promise.resolve(),
       };

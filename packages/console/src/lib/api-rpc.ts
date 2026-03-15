@@ -1,7 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
-import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "../constants";
-import { isConfigLoaded, prepareConfig } from "./config.server";
+import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "./constants";
 
 type GetBundlesInput = {
   channel?: string;
@@ -26,6 +25,7 @@ type DeleteBundleInput = {
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
   try {
+    const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
     return { console: config.console };
   } catch (error) {
@@ -37,6 +37,7 @@ export const getConfig = createServerFn().handler(async () => {
 // GET /api/channels
 export const getChannels = createServerFn().handler(async () => {
   try {
+    const { prepareConfig } = await import("./server/config.server");
     const { databasePlugin } = await prepareConfig();
     const channels = await databasePlugin.getChannels();
     return channels ?? [];
@@ -49,6 +50,7 @@ export const getChannels = createServerFn().handler(async () => {
 // GET /api/config-loaded
 export const getConfigLoaded = createServerFn().handler(async () => {
   try {
+    const { isConfigLoaded } = await import("./server/config.server");
     const configLoaded = isConfigLoaded();
     return { configLoaded };
   } catch (error) {
@@ -62,6 +64,7 @@ export const getBundles = createServerFn({ method: "GET" })
   .inputValidator((input: GetBundlesInput | undefined) => input)
   .handler(async ({ data }) => {
     try {
+      const { prepareConfig } = await import("./server/config.server");
       const query = {
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
@@ -96,6 +99,7 @@ export const getBundle = createServerFn({ method: "GET" })
   .inputValidator((input: GetBundleInput) => input)
   .handler(async ({ data }) => {
     try {
+      const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
       const bundle = await databasePlugin.getBundleById(data.bundleId);
       return bundle ?? null;
@@ -110,6 +114,7 @@ export const updateBundle = createServerFn({ method: "POST" })
   .inputValidator((input: UpdateBundleInput) => input)
   .handler(async ({ data }) => {
     try {
+      const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
       await databasePlugin.updateBundle(data.bundleId, data.bundle);
       await databasePlugin.commitBundle();
@@ -131,6 +136,7 @@ export const createBundle = createServerFn({ method: "POST" })
   .inputValidator((input: Bundle) => input)
   .handler(async ({ data }) => {
     try {
+      const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
       await databasePlugin.appendBundle(data);
       await databasePlugin.commitBundle();
@@ -146,6 +152,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
   .inputValidator((input: DeleteBundleInput) => input)
   .handler(async ({ data }) => {
     try {
+      const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
       const bundle = await databasePlugin.getBundleById(data.bundleId);
       if (!bundle) {

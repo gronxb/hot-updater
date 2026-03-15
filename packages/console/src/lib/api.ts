@@ -9,7 +9,7 @@ import {
   getConfig,
   getConfigLoaded,
   updateBundle as updateBundleApi,
-} from "./server/api.server";
+} from "./api-rpc";
 
 type BundleFilters = {
   channel?: string;

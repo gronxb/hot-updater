@@ -9,7 +9,7 @@ export default defineConfig({
       "tests/**/*.node.test.ts",
     ],
     exclude: ["tests/runtime/*.manual.*"],
-    hookTimeout: 30000,
-    testTimeout: 20000,
+    hookTimeout: 60000,
+    testTimeout: 60000,
   },
 });

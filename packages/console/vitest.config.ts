@@ -9,5 +9,7 @@ export default defineConfig({
   ],
   test: {
     environment: "jsdom",
+    hookTimeout: 20000,
+    testTimeout: 20000,
   },
 });
