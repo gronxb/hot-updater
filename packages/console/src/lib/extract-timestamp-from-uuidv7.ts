@@ -7,53 +7,46 @@ export const extractTimestampFromUUIDv7 = (uuid: string) => {
 };
 
 export const createUUIDv7WithSameTimestamp = (originalUuid: string) => {
-  const cleanUuid = originalUuid.split("-").join("").toLowerCase();
+  // Extract timestamp (first 48 bits / 12 hex chars) from original UUID
+  const cleanUuid = originalUuid.split("-").join("");
+  const timestampHex = cleanUuid.slice(0, 12);
 
-  if (cleanUuid.length !== 32 || cleanUuid[12] !== "7") {
-    throw new Error(`Invalid UUIDv7: ${originalUuid}`);
-  }
+  // Generate new random data for rand_a (12 bits) and rand_b (62 bits)
+  const randomBytes = new Uint8Array(10); // Need 74 bits total (12 + 62), use 10 bytes
+  crypto.getRandomValues(randomBytes);
 
-  const maxTimestamp = (1n << 48n) - 1n;
-  const maxSuffix = (1n << 74n) - 1n;
-  const randBMask = (1n << 62n) - 1n;
-  const randBRemainingMask = (1n << 60n) - 1n;
+  // Convert to hex
+  const randomHex = Array.from(randomBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 
-  let timestamp = BigInt(`0x${cleanUuid.slice(0, 12)}`);
-  const randA = BigInt(`0x${cleanUuid.slice(13, 16)}`);
-  const variantNibble = BigInt(`0x${cleanUuid.slice(16, 17)}`);
-  const randB =
-    ((variantNibble & 0x3n) << 60n) | BigInt(`0x${cleanUuid.slice(17)}`);
+  // UUIDv7 structure according to IETF draft:
+  // unix_ts_ms (48 bits) + ver (4 bits) + rand_a (12 bits) + var (2 bits) + rand_b (62 bits)
 
-  // Keep the same timestamp when possible, but make the suffix monotonic
-  // so the copied bundle always sorts after the original bundle ID.
-  let suffix = (randA << 62n) | randB;
-  if (suffix === maxSuffix) {
-    if (timestamp === maxTimestamp) {
-      throw new Error("Cannot create a newer UUIDv7: timestamp overflow");
-    }
-    timestamp += 1n;
-    suffix = 0n;
-  } else {
-    suffix += 1n;
-  }
+  // rand_a: 12 bits (3 hex chars)
+  const randA = randomHex.slice(0, 3);
 
-  const nextRandA = suffix >> 62n;
-  const nextRandB = suffix & randBMask;
-  const variantHex = (0x8n | (nextRandB >> 60n)).toString(16);
+  // rand_b: 62 bits (15.5 hex chars, but we'll use 16 and mask properly)
+  const randBHex = randomHex.slice(3, 19);
 
-  const nextUuidHex = [
-    timestamp.toString(16).padStart(12, "0"),
-    `7${nextRandA.toString(16).padStart(3, "0")}`,
-    `${variantHex}${(nextRandB & randBRemainingMask)
-      .toString(16)
-      .padStart(15, "0")}`,
-  ].join("");
+  // Version field (4 bits): 7
+  const versionAndRandA = `7${randA}`; // 7xxx
 
-  return [
-    nextUuidHex.slice(0, 8),
-    nextUuidHex.slice(8, 12),
-    nextUuidHex.slice(12, 16),
-    nextUuidHex.slice(16, 20),
-    nextUuidHex.slice(20, 32),
+  // Variant field (2 bits): "10" + rand_b (62 bits)
+  // First byte of rand_b needs variant bits: 10xxxxxx
+  const firstRandBByte = parseInt(randBHex.slice(0, 2), 16);
+  const variantAndFirstRandB = (0x80 | (firstRandBByte & 0x3f))
+    .toString(16)
+    .padStart(2, "0");
+
+  // Construct new UUID: xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
+  const newUuid = [
+    timestampHex.slice(0, 8), // First 32 bits of timestamp
+    timestampHex.slice(8, 12), // Last 16 bits of timestamp
+    versionAndRandA, // Version (4 bits) + rand_a (12 bits)
+    variantAndFirstRandB + randBHex.slice(2, 4), // Variant (2 bits) + first 14 bits of rand_b
+    randBHex.slice(4, 16), // Last 48 bits of rand_b
   ].join("-");
+
+  return newUuid;
 };
