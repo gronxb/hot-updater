@@ -1,11 +1,17 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
+import { Fingerprint, Package } from "lucide-react";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const columnHelper = createColumnHelper<Bundle>();
 
@@ -32,18 +38,35 @@ export const bundleColumns = [
     header: "Target",
     cell: (info) => {
       const row = info.row.original;
-      return (
-        <div className="flex flex-col gap-1">
-          {row.targetAppVersion && (
+
+      if (row.fingerprintHash) {
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-2 cursor-help">
+                <Fingerprint className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="font-mono text-xs">
+                  {row.fingerprintHash.slice(0, 8)}
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-mono text-xs">{row.fingerprintHash}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      }
+
+      if (row.targetAppVersion) {
+        return (
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="text-sm">{row.targetAppVersion}</span>
-          )}
-          {row.fingerprintHash && (
-            <span className="text-xs text-muted-foreground font-mono">
-              {row.fingerprintHash.slice(0, 8)}...
-            </span>
-          )}
-        </div>
-      );
+          </div>
+        );
+      }
+
+      return <span className="text-sm text-muted-foreground">-</span>;
     },
   }),
   columnHelper.accessor("enabled", {
@@ -52,7 +75,9 @@ export const bundleColumns = [
   }),
   columnHelper.accessor("shouldForceUpdate", {
     header: "Force Update",
-    cell: (info) => <EnabledStatusIcon enabled={info.getValue()} />,
+    cell: (info) => (
+      <EnabledStatusIcon enabled={info.getValue()} falseIcon="minus" />
+    ),
   }),
   columnHelper.accessor("rolloutPercentage", {
     header: "Rollout",
