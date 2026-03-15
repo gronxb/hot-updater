@@ -9,6 +9,7 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
+import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
@@ -40,6 +41,7 @@ export const Route = createRootRoute({
   }),
 
   component: RootLayout,
+  notFoundComponent: NotFoundPage,
   shellComponent: RootDocument,
 });
 

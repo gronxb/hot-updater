@@ -141,3 +141,116 @@ code {
     @apply font-sans;
   }
 }
+
+@keyframes console-signal-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(1.5rem, -1rem, 0) scale(1.08);
+  }
+}
+
+@keyframes console-signal-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    box-shadow: 0 0 0 rgba(255, 152, 92, 0.2);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 24px rgba(255, 152, 92, 0.65);
+  }
+}
+
+@keyframes console-noise-shift {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(120px);
+  }
+}
+
+@layer components {
+  .console-not-found {
+    background:
+      radial-gradient(circle at top left, rgba(255, 138, 67, 0.14), transparent 34%),
+      radial-gradient(circle at 80% 20%, rgba(255, 210, 168, 0.08), transparent 24%),
+      linear-gradient(180deg, #17110d 0%, #0d0907 100%);
+  }
+
+  .console-not-found::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.03) 48%,
+        rgba(255, 255, 255, 0.08) 50%,
+        rgba(255, 255, 255, 0.03) 52%,
+        transparent 100%
+      );
+    opacity: 0.16;
+    transform: translateX(-32%);
+    animation: console-signal-drift 16s ease-in-out infinite;
+  }
+
+  .console-not-found-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-position: center;
+    background-size: 60px 60px;
+    mask-image: radial-gradient(circle at center, black, transparent 88%);
+    opacity: 0.18;
+  }
+
+  .console-not-found-noise {
+    background-image:
+      repeating-linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.025) 0,
+        rgba(255, 255, 255, 0.025) 1px,
+        transparent 1px,
+        transparent 5px
+      );
+    mix-blend-mode: soft-light;
+    opacity: 0.35;
+    animation: console-noise-shift 10s linear infinite;
+  }
+
+  .console-not-found-kicker {
+    font-family:
+      "SFMono-Regular", "SF Mono", ui-monospace, "Roboto Mono", Consolas,
+      monospace;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+  }
+
+  .console-not-found-title,
+  .console-not-found-number {
+    font-family:
+      "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino,
+      "Times New Roman", serif;
+    font-weight: 600;
+    letter-spacing: -0.05em;
+  }
+
+  .console-not-found-number {
+    text-wrap: balance;
+    text-shadow:
+      0 2px 0 rgba(255, 255, 255, 0.06),
+      0 14px 40px rgba(255, 111, 43, 0.14);
+  }
+
+  .console-not-found-path {
+    font-family:
+      "SFMono-Regular", "SF Mono", ui-monospace, "Roboto Mono", Consolas,
+      monospace;
+    line-height: 1.75;
+  }
+}
