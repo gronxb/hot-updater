@@ -21,16 +21,6 @@ export const v0_26_0 = schema({
       ),
       target_device_ids: column("target_device_ids", "json").nullable(),
     }),
-    device_events: table("device_events", {
-      id: idColumn("id", "uuid"),
-      device_id: column("device_id", "string"),
-      bundle_id: column("bundle_id", "uuid"),
-      event_type: column("event_type", "string"),
-      platform: column("platform", "string"),
-      app_version: column("app_version", "string").nullable(),
-      channel: column("channel", "string"),
-      metadata: column("metadata", "json"),
-    }),
   },
   relations: {},
 });

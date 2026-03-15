@@ -1,13 +1,9 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
-import { Platform } from "react-native";
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
-  getAppVersion,
   getBundleId,
-  getChannel,
-  getUserId,
   type NotifyAppReadyResult,
   notifyAppReady as nativeNotifyAppReady,
   reload,
@@ -59,11 +55,7 @@ interface CommonHotUpdaterOptions {
    *   baseURL: "https://api.example.com",
    *   updateMode: "manual",
    *   onNotifyAppReady: ({ status, crashedBundleId }) => {
-   *     if (status === "RECOVERED") {
-   *       analytics.track('bundle_rollback', { crashedBundleId });
-   *     } else if (status === "PROMOTED") {
-   *       analytics.track('bundle_promoted');
-   *     }
+   *     console.log(status, crashedBundleId);
    *   }
    * })(App);
    * ```
@@ -226,42 +218,6 @@ const handleNotifyAppReady = async (options: {
   try {
     // Always call native notifyAppReady for bundle promotion
     const nativeResult = nativeNotifyAppReady();
-
-    // Optional: track rollout events (PROMOTED / RECOVERED)
-    if (
-      options.resolver?.trackDeviceEvent &&
-      (nativeResult.status === "PROMOTED" ||
-        nativeResult.status === "RECOVERED")
-    ) {
-      try {
-        const deviceId = getUserId();
-        const currentBundleId = getBundleId();
-
-        const bundleIdToReport =
-          nativeResult.status === "RECOVERED"
-            ? nativeResult.crashedBundleId
-            : currentBundleId;
-
-        if (bundleIdToReport) {
-          await options.resolver.trackDeviceEvent({
-            deviceId,
-            bundleId: bundleIdToReport,
-            eventType: nativeResult.status,
-            platform: Platform.OS as "ios" | "android",
-            appVersion: getAppVersion() ?? undefined,
-            channel: getChannel(),
-            metadata:
-              nativeResult.status === "RECOVERED"
-                ? { recoveredToBundleId: currentBundleId }
-                : undefined,
-            requestHeaders: options.requestHeaders,
-            requestTimeout: options.requestTimeout,
-          });
-        }
-      } catch (e: unknown) {
-        console.warn("[HotUpdater] Resolver trackDeviceEvent failed:", e);
-      }
-    }
 
     // If resolver.notifyAppReady exists, call it with simplified params
     if (options.resolver?.notifyAppReady) {

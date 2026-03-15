@@ -8,19 +8,8 @@ import {
   getChannels,
   getConfig,
   getConfigLoaded,
-  getDeviceEvents,
-  getRolloutStats,
   updateBundle as updateBundleApi,
 } from "./server/api.server";
-
-export interface DeviceEventFilters {
-  bundleId?: string;
-  platform?: "ios" | "android";
-  channel?: string;
-  eventType?: "PROMOTED" | "RECOVERED";
-  limit?: number;
-  offset?: number;
-}
 
 export const queryKeys = {
   config: ["config"] as const,
@@ -33,9 +22,6 @@ export const queryKeys = {
     offset?: string;
   }) => ["bundles", filters] as const,
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
-  rolloutStats: (bundleId: string) => ["rollout-stats", bundleId] as const,
-  deviceEvents: (filters?: DeviceEventFilters) =>
-    ["device-events", filters] as const,
 };
 
 // Query Hooks
@@ -86,15 +72,6 @@ export function useBundleQuery(bundleId: string) {
   });
 }
 
-export function useRolloutStatsQuery(bundleId: string) {
-  return useQuery({
-    queryKey: queryKeys.rolloutStats(bundleId),
-    queryFn: () => (getRolloutStats as any)({ data: { bundleId } }),
-    staleTime: Infinity,
-    enabled: !!bundleId,
-  });
-}
-
 // Mutation Hooks
 export function useUpdateBundleMutation() {
   const queryClient = useQueryClient();
@@ -107,9 +84,6 @@ export function useUpdateBundleMutation() {
       queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
       queryClient.invalidateQueries({
         queryKey: queryKeys.bundle(vars.bundleId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.rolloutStats(vars.bundleId),
       });
     },
   });
@@ -136,14 +110,5 @@ export function useDeleteBundleMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.bundles() });
     },
-  });
-}
-
-export function useDeviceEventsQuery(filters?: DeviceEventFilters) {
-  return useQuery({
-    queryKey: queryKeys.deviceEvents(filters),
-    queryFn: () => (getDeviceEvents as any)({ data: filters }),
-    staleTime: 30000,
-    placeholderData: (previousData) => previousData,
   });
 }

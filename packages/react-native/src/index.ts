@@ -42,7 +42,6 @@ export {
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
   type ResolverNotifyAppReadyParams,
-  type ResolverTrackDeviceEventParams,
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";

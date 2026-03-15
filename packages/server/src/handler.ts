@@ -4,7 +4,6 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
-import type { DeviceEvent, RolloutStats } from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "rou3";
 import type { PaginationInfo } from "./types";
 
@@ -24,9 +23,6 @@ export interface HandlerAPI {
   insertBundle: (bundle: Bundle) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
   getChannels: () => Promise<string[]>;
-
-  trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
-  getRolloutStats?: (bundleId: string) => Promise<RolloutStats>;
 }
 
 export interface HandlerOptions {
@@ -204,102 +200,6 @@ const handleGetChannels: RouteHandler = async (_params, _request, api) => {
   });
 };
 
-const handleTrackEvent: RouteHandler = async (_params, request, api) => {
-  if (!api.trackDeviceEvent) {
-    return new Response(JSON.stringify({ error: "Tracking not supported" }), {
-      status: 501,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  try {
-    const body = (await request.json()) as Partial<DeviceEvent>;
-    const {
-      deviceId,
-      bundleId,
-      eventType,
-      platform,
-      appVersion,
-      channel,
-      metadata,
-    } = body;
-
-    if (!deviceId || !bundleId || !eventType || !platform || !channel) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-
-    if (eventType !== "PROMOTED" && eventType !== "RECOVERED") {
-      return new Response(JSON.stringify({ error: "Invalid eventType" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (platform !== "ios" && platform !== "android") {
-      return new Response(JSON.stringify({ error: "Invalid platform" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    await api.trackDeviceEvent({
-      deviceId,
-      bundleId,
-      eventType,
-      platform,
-      appVersion,
-      channel,
-      metadata,
-    });
-
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    console.error("Track event error:", error);
-    return new Response(JSON.stringify({ error: "Failed to track event" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-};
-
-const handleGetRolloutStats: RouteHandler = async (params, _request, api) => {
-  if (!api.getRolloutStats) {
-    return new Response(
-      JSON.stringify({ error: "Rollout stats not supported" }),
-      {
-        status: 501,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
-
-  try {
-    const stats = await api.getRolloutStats(params.bundleId);
-    return new Response(JSON.stringify(stats), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (error) {
-    console.error("Get rollout stats error:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to get rollout stats" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
-};
-
 // Route handlers map
 const routes: Record<string, RouteHandler> = {
   version: handleVersion,
@@ -312,8 +212,6 @@ const routes: Record<string, RouteHandler> = {
   createBundles: handleCreateBundles,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
-  trackEvent: handleTrackEvent,
-  getRolloutStats: handleGetRolloutStats,
 };
 
 /**
@@ -361,13 +259,6 @@ export function createHandler(
   addRoute(router, "GET", "/api/bundles", "getBundles");
   addRoute(router, "POST", "/api/bundles", "createBundles");
   addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
-  addRoute(router, "POST", "/api/track", "trackEvent");
-  addRoute(
-    router,
-    "GET",
-    "/api/bundles/:bundleId/rollout-stats",
-    "getRolloutStats",
-  );
 
   return async (request: Request): Promise<Response> => {
     try {

@@ -94,30 +94,6 @@ export const getBundle = createServerFn({ method: "GET" }).handler(
   },
 );
 
-// GET /api/bundles/:bundleId/rollout-stats
-export const getRolloutStats = createServerFn({ method: "GET" }).handler(
-  async ({ data }: { data?: { bundleId: string } }) => {
-    try {
-      const { databasePlugin } = await prepareConfig();
-
-      if (!databasePlugin.getRolloutStats) {
-        return {
-          totalDevices: 0,
-          promotedCount: 0,
-          recoveredCount: 0,
-          successRate: 0,
-        };
-      }
-
-      const stats = await databasePlugin.getRolloutStats(data?.bundleId ?? "");
-      return stats;
-    } catch (error) {
-      console.error("Error during rollout stats retrieval:", error);
-      throw error;
-    }
-  },
-);
-
 // PATCH /api/bundles/:bundleId
 export const updateBundle = createServerFn({ method: "POST" }).handler(
   async ({
@@ -172,70 +148,6 @@ export const deleteBundle = createServerFn({ method: "POST" }).handler(
       return { success: true };
     } catch (error) {
       console.error("Error during bundle deletion:", error);
-      throw error;
-    }
-  },
-);
-
-export const getDeviceEvents = createServerFn({ method: "GET" }).handler(
-  async ({
-    data,
-  }: {
-    data?: {
-      bundleId?: string;
-      platform?: "ios" | "android";
-      channel?: string;
-      eventType?: "PROMOTED" | "RECOVERED";
-      limit?: number;
-      offset?: number;
-    };
-  }) => {
-    try {
-      const { databasePlugin } = await prepareConfig();
-
-      const emptyResult = {
-        data: [] as Array<{
-          id?: string;
-          deviceId: string;
-          bundleId: string;
-          eventType: "PROMOTED" | "RECOVERED";
-          platform: "ios" | "android";
-          appVersion?: string;
-          channel: string;
-          metadata?: Record<string, object>;
-          createdAt?: string;
-        }>,
-        pagination: {
-          total: 0,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 0,
-        },
-      };
-
-      if (!databasePlugin.getDeviceEvents) {
-        return emptyResult;
-      }
-
-      const result = await databasePlugin.getDeviceEvents(data);
-
-      return {
-        data: result.data.map((event) => ({
-          id: event.id,
-          deviceId: event.deviceId,
-          bundleId: event.bundleId,
-          eventType: event.eventType,
-          platform: event.platform,
-          appVersion: event.appVersion,
-          channel: event.channel,
-          metadata: event.metadata as Record<string, object> | undefined,
-          createdAt: event.createdAt,
-        })),
-        pagination: result.pagination,
-      };
-    } catch (error) {
-      console.error("Error during device events retrieval:", error);
       throw error;
     }
   },

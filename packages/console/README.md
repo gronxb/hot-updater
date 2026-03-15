@@ -103,7 +103,6 @@ src/
 - **BundleMetadata** - Read-only bundle information display
 
 ### Dialogs
-- **RolloutStatsDialog** - Deployment statistics with icon cards
 - **PromoteChannelDialog** - Channel promotion with copy/move toggle
 - **DeleteBundleDialog** - Confirmation dialog with bundle details
 - **EmergencyRollbackButton** - One-click disable + 0% rollout
@@ -116,7 +115,6 @@ The console integrates with Hot Updater's plugin system through TanStack Start s
 - `getChannels()` - List available channels
 - `getBundles(filters)` - List bundles with pagination
 - `getBundle(bundleId)` - Get single bundle details
-- `getRolloutStats(bundleId)` - Get deployment statistics
 - `updateBundle(bundleId, data)` - Update bundle configuration
 - `createBundle(bundle)` - Create new bundle
 - `deleteBundle(bundleId)` - Delete bundle

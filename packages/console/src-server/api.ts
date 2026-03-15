@@ -1,8 +1,8 @@
-import { Hono } from "hono";
-import type { Bundle } from "@hot-updater/plugin-core";
-import { prepareConfig, isConfigLoaded } from "./config";
 import { typiaValidator } from "@hono/typia-validator";
+import type { Bundle } from "@hot-updater/plugin-core";
+import { Hono } from "hono";
 import typia from "typia";
+import { isConfigLoaded, prepareConfig } from "./config";
 
 const DEFAULT_PAGE_LIMIT = 20;
 const DEFAULT_PAGE_OFFSET = 0;
@@ -92,29 +92,6 @@ const api = new Hono()
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
       return c.json({ error: "Failed to retrieve bundle" }, 500);
-    }
-  })
-
-  // GET /api/bundles/:bundleId/rollout-stats
-  .get("/bundles/:bundleId/rollout-stats", async (c) => {
-    try {
-      const bundleId = c.req.param("bundleId");
-      const { databasePlugin } = await prepareConfig();
-
-      if (!databasePlugin.getRolloutStats) {
-        return c.json({
-          totalDevices: 0,
-          promotedCount: 0,
-          recoveredCount: 0,
-          successRate: 0,
-        });
-      }
-
-      const stats = await databasePlugin.getRolloutStats(bundleId);
-      return c.json(stats);
-    } catch (error) {
-      console.error("Error during rollout stats retrieval:", error);
-      return c.json({ error: "Failed to retrieve rollout stats" }, 500);
     }
   })
 

@@ -1,17 +1,9 @@
-import type {
-  Bundle,
-  DeviceEvent,
-  DeviceEventFilter,
-  DeviceEventListResult,
-  Platform,
-  RolloutStats,
-} from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
-import { uuidv7 } from "uuidv7";
 import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {
@@ -179,121 +171,6 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
             }
           }
         }
-      },
-
-      async trackDeviceEvent(event: DeviceEvent): Promise<void> {
-        const { error } = await supabase.from("device_events").insert({
-          id: uuidv7(),
-          device_id: event.deviceId,
-          bundle_id: event.bundleId,
-          event_type: event.eventType,
-          platform: event.platform,
-          app_version: event.appVersion ?? null,
-          channel: event.channel,
-          metadata: event.metadata ?? {},
-        });
-
-        if (error) {
-          throw new Error(`Failed to track event: ${error.message}`);
-        }
-      },
-
-      async getRolloutStats(bundleId: string): Promise<RolloutStats> {
-        const { data, error } = await supabase
-          .rpc("get_rollout_stats", { target_bundle_id: bundleId })
-          .single();
-
-        if (error) {
-          throw new Error(`Failed to get rollout stats: ${error.message}`);
-        }
-
-        type RolloutStatsRow = {
-          total_devices: number | null;
-          promoted_count: number | null;
-          recovered_count: number | null;
-          success_rate: number | null;
-        };
-
-        const row = data as RolloutStatsRow | null;
-
-        return {
-          totalDevices: Number(row?.total_devices ?? 0),
-          promotedCount: Number(row?.promoted_count ?? 0),
-          recoveredCount: Number(row?.recovered_count ?? 0),
-          successRate: Number(row?.success_rate ?? 0),
-        };
-      },
-
-      async getDeviceEvents(
-        filter?: DeviceEventFilter,
-      ): Promise<DeviceEventListResult> {
-        const limit = filter?.limit ?? 50;
-        const offset = filter?.offset ?? 0;
-
-        let countQuery = supabase
-          .from("device_events")
-          .select("*", { count: "exact", head: true });
-
-        if (filter?.bundleId) {
-          countQuery = countQuery.eq("bundle_id", filter.bundleId);
-        }
-        if (filter?.platform) {
-          countQuery = countQuery.eq("platform", filter.platform);
-        }
-        if (filter?.channel) {
-          countQuery = countQuery.eq("channel", filter.channel);
-        }
-        if (filter?.eventType) {
-          countQuery = countQuery.eq("event_type", filter.eventType);
-        }
-
-        const { count: total = 0 } = await countQuery;
-
-        let query = supabase
-          .from("device_events")
-          .select(
-            "id, device_id, bundle_id, event_type, platform, app_version, channel, metadata",
-          )
-          .order("id", { ascending: false });
-
-        if (filter?.bundleId) {
-          query = query.eq("bundle_id", filter.bundleId);
-        }
-        if (filter?.platform) {
-          query = query.eq("platform", filter.platform);
-        }
-        if (filter?.channel) {
-          query = query.eq("channel", filter.channel);
-        }
-        if (filter?.eventType) {
-          query = query.eq("event_type", filter.eventType);
-        }
-
-        query = query.range(offset, offset + limit - 1);
-
-        const { data, error } = await query;
-
-        if (error) {
-          throw new Error(`Failed to get device events: ${error.message}`);
-        }
-
-        const events: DeviceEvent[] = (data ?? []).map((row) => ({
-          id: row.id,
-          deviceId: row.device_id,
-          bundleId: row.bundle_id,
-          eventType: row.event_type as "PROMOTED" | "RECOVERED",
-          platform: row.platform as Platform,
-          appVersion: row.app_version ?? undefined,
-          channel: row.channel,
-          metadata: (row.metadata as Record<string, unknown>) ?? undefined,
-        }));
-
-        const pagination = calculatePagination(total ?? 0, { limit, offset });
-
-        return {
-          data: events,
-          pagination,
-        };
       },
     };
   },

@@ -3,11 +3,7 @@ import { merge } from "es-toolkit";
 import type {
   DatabasePlugin,
   DatabasePluginHooks,
-  DeviceEvent,
-  DeviceEventFilter,
-  DeviceEventListResult,
   PaginationInfo,
-  RolloutStats,
 } from "./types";
 
 export interface AbstractDatabasePlugin {
@@ -28,12 +24,6 @@ export interface AbstractDatabasePlugin {
       data: Bundle;
     }[];
   }) => Promise<void>;
-
-  trackDeviceEvent?: (event: DeviceEvent) => Promise<void>;
-  getRolloutStats?: (bundleId: string) => Promise<RolloutStats | undefined>;
-  getDeviceEvents?: (
-    filter?: DeviceEventFilter,
-  ) => Promise<DeviceEventListResult | undefined>;
 }
 
 /**
@@ -178,28 +168,6 @@ export function createDatabasePlugin<TConfig>(
 
         async deleteBundle(deleteBundle: Bundle): Promise<void> {
           markChanged("delete", deleteBundle);
-        },
-
-        // Optional methods with lazy evaluation
-        async trackDeviceEvent(event: any) {
-          const methods = getMethods();
-          if (methods.trackDeviceEvent) {
-            return methods.trackDeviceEvent(event);
-          }
-        },
-
-        async getRolloutStats(bundleId: string) {
-          const methods = getMethods();
-          if (methods.getRolloutStats) {
-            return methods.getRolloutStats(bundleId);
-          }
-        },
-
-        async getDeviceEvents(filter?: any) {
-          const methods = getMethods();
-          if (methods.getDeviceEvents) {
-            return methods.getDeviceEvents(filter);
-          }
         },
       };
     };
