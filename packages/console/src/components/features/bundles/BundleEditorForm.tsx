@@ -116,7 +116,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           }
           form.handleSubmit();
         }}
-        className="space-y-4"
+        className="space-y-6"
       >
         <form.Field name="message">
           {(field) => (
@@ -200,6 +200,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                 min={0}
                 max={100}
                 step={1}
+                className="mt-2"
               />
             </div>
           )}
@@ -228,7 +229,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                 </Button>
               </div>
               {field.state.value.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
+                <div className="flex flex-wrap gap-2 mt-2">
                   {field.state.value.map((deviceId: string) => (
                     <Badge
                       key={deviceId}
@@ -250,7 +251,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                 </div>
               )}
               {field.state.value.length > 0 && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground mt-2">
                   {field.state.value.length} device
                   {field.state.value.length !== 1 ? "s" : ""} targeted
                 </p>
@@ -259,18 +260,21 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           )}
         </form.Field>
 
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={!hasChanges || isSaving}
-        >
-          {isSaving ? "Saving..." : "Save Changes"}
-        </Button>
+        <div className="pt-2">
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            disabled={!hasChanges || isSaving}
+          >
+            {isSaving ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
       </form>
 
-      <Separator />
+      <Separator className="my-8" />
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h3 className="text-sm font-medium">Actions</h3>
 
         <Button

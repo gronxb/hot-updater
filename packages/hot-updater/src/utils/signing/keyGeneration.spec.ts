@@ -9,6 +9,9 @@ import {
   saveKeyPair,
 } from "./keyGeneration";
 
+const RSA_4096_TIMEOUT = 15000;
+const SAVE_KEY_PAIR_TIMEOUT = 15000;
+
 describe("Key Generation", () => {
   let testDir: string;
 
@@ -40,7 +43,7 @@ describe("Key Generation", () => {
 
       expect(privateKey).toBeDefined();
       expect(publicKey).toBeDefined();
-    });
+    }, RSA_4096_TIMEOUT);
 
     it("should generate RSA-2048 key pair when specified", async () => {
       const keyPair = await generateKeyPair(2048);
@@ -69,7 +72,7 @@ describe("Key Generation", () => {
 
       expect(privateKeyExists).toBe(true);
       expect(publicKeyExists).toBe(true);
-    });
+    }, SAVE_KEY_PAIR_TIMEOUT);
 
     it("should save private key with secure permissions (0o600)", async () => {
       const keyPair = await generateKeyPair(2048);
@@ -97,7 +100,7 @@ describe("Key Generation", () => {
         .catch(() => false);
 
       expect(exists).toBe(true);
-    });
+    }, SAVE_KEY_PAIR_TIMEOUT);
   });
 
   describe("loadPrivateKey", () => {

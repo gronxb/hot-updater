@@ -23,44 +23,69 @@ DECLARE
     NIL_UUID CONSTANT uuid := '00000000-0000-0000-0000-000000000000';
 BEGIN
     RETURN QUERY
-    WITH update_candidate AS (
+    WITH candidate_bundles AS (
         SELECT
             b.id,
             b.should_force_update,
             b.message,
-            'UPDATE' AS status,
             b.storage_uri,
-            b.file_hash
+            b.file_hash,
+            b.rollout_percentage,
+            b.target_device_ids
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id >= bundle_id
-          AND b.id > min_bundle_id
+          AND b.id >= min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
+    ),
+    current_candidate AS (
+        SELECT cb.id
+        FROM candidate_bundles cb
+        WHERE cb.id = bundle_id
+        LIMIT 1
+    ),
+    any_update_candidate AS (
+        SELECT cb.id
+        FROM candidate_bundles cb
+        WHERE cb.id > bundle_id
+        ORDER BY cb.id DESC
+        LIMIT 1
+    ),
+    update_candidate AS (
+        SELECT
+            cb.id,
+            cb.should_force_update,
+            cb.message,
+            'UPDATE' AS status,
+            cb.storage_uri,
+            cb.file_hash
+        FROM candidate_bundles cb
+        WHERE cb.id > bundle_id
           AND (
             device_id IS NULL
-            OR is_device_eligible(device_id, b.rollout_percentage, b.target_device_ids)
+            OR is_device_eligible(
+              device_id,
+              cb.rollout_percentage,
+              cb.target_device_ids
+            )
           )
-        ORDER BY b.id DESC
+        ORDER BY cb.id DESC
         LIMIT 1
     ),
     rollback_candidate AS (
         SELECT
-            b.id,
+            cb.id,
             TRUE AS should_force_update,
-            b.message,
+            cb.message,
             'ROLLBACK' AS status,
-            b.storage_uri,
-            b.file_hash
-        FROM bundles b
-        WHERE b.enabled = TRUE
-          AND b.platform = app_platform
-          AND b.id < bundle_id
-          AND b.id > min_bundle_id
-          AND b.channel = target_channel
-          AND b.fingerprint_hash = target_fingerprint_hash
-        ORDER BY b.id DESC
+            cb.storage_uri,
+            cb.file_hash
+        FROM candidate_bundles cb
+        WHERE cb.id < bundle_id
+          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+        ORDER BY cb.id DESC
         LIMIT 1
     ),
     final_result AS (
@@ -85,12 +110,8 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (
-          SELECT 1
-          FROM bundles b
-          WHERE b.id = bundle_id
-            AND b.enabled = TRUE
-            AND b.platform = app_platform
-      );
+      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+      AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
 $$;

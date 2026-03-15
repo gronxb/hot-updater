@@ -25,6 +25,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
+  let closeDatabase: (() => Promise<void>) | null = null;
   const port = 13579;
 
   beforeAll(async () => {
@@ -47,22 +48,16 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     console.log("Waiting for MySQL to stabilize...");
     await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    // Run database migrations before starting server
-    const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
-    const hotUpdaterCli = path.join(
-      path.dirname(hotUpdaterPkgPath),
-      "dist/index.js",
-    );
+    const db = await import("./db.js");
+    const migrator = db.hotUpdater.createMigrator();
+    const result = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await result.execute();
 
-    // Apply migrations to database
-    await execa(
-      "node",
-      [hotUpdaterCli, "db", "migrate", "src/db.ts", "--yes"],
-      {
-        cwd: projectRoot,
-        stdio: "inherit",
-      },
-    );
+    hotUpdater = db.hotUpdater;
+    closeDatabase = db.closeDatabase;
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
@@ -72,13 +67,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     });
 
     await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
-
-    const db = await import("./db.js");
-    hotUpdater = db.hotUpdater;
   }, 120000); // Increased timeout for Docker startup
 
   afterAll(async () => {
     await cleanupServer(baseUrl, serverProcess, "");
+    await closeDatabase?.();
 
     // Clean up database after tests
     console.log("Cleaning up test database...");

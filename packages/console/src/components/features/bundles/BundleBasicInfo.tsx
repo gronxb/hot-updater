@@ -7,15 +7,21 @@ interface BundleBasicInfoProps {
 
 export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
   return (
-    <div className="flex items-center gap-3 text-sm">
+    <div className="flex flex-col gap-3 text-sm mt-1">
       <div className="flex items-center gap-2">
         <PlatformIcon platform={bundle.platform} className="h-4 w-4" />
         <span className="font-medium">
           {bundle.platform === "ios" ? "iOS" : "Android"}
         </span>
       </div>
-      <span className="text-muted-foreground">•</span>
-      <span className="font-mono text-xs">{bundle.id}</span>
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-muted-foreground">Bundle ID</span>
+        <span className="text-xs text-foreground">{bundle.id}</span>
+      </div>
+    <div className="flex items-center gap-2">
+      <span className="font-medium text-muted-foreground">Channel</span>
+      <span className="text-xs text-foreground">{bundle.channel}</span>
+    </div>
     </div>
   );
 }
