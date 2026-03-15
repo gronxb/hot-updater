@@ -1,6 +1,8 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -127,10 +129,14 @@ export function PromoteChannelDialog({
           </div>
 
           {isCopy && (
-            <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-              The copied bundle will receive a new database ID, which can differ
-              from the bundle ID embedded inside the JavaScript bundle.
-            </div>
+            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+              <TriangleAlert className="text-amber-600 dark:text-amber-400" />
+              <AlertTitle>Copying creates a new bundle ID</AlertTitle>
+              <AlertDescription className="text-amber-800/90 dark:text-amber-200/90">
+                The copied bundle will receive a new database ID, which can
+                differ from the bundle ID embedded inside the JavaScript bundle.
+              </AlertDescription>
+            </Alert>
           )}
 
           <div className="space-y-2">

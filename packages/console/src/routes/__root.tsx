@@ -90,8 +90,6 @@ function RootLayout() {
       void import("react-grab");
     }
   }, []);
-
-  
   return (
     <SidebarProvider>
       <AppSidebar />
