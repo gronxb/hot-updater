@@ -16,10 +16,11 @@ import {
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -133,5 +134,37 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("updates targetAppVersion through standaloneRepository", async () => {
+    const repo = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater`,
+    });
+
+    const bundleId = "hono-s3-update-target-app-version";
+
+    await repo.appendBundle({
+      id: bundleId,
+      createdAt: new Date().toISOString(),
+      runtimeVersion: "1.0.0",
+      enabled: true,
+      rollout: 100,
+      uploadTime: 0,
+      channel: "production",
+      platform: "ios",
+      targetAppVersion: "1.x.x",
+      storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
+    });
+    await repo.commitBundle();
+
+    await repo.updateBundle(bundleId, {
+      targetAppVersion: "1.0.2",
+    });
+    await repo.commitBundle();
+
+    expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
+      id: bundleId,
+      targetAppVersion: "1.0.2",
+    });
   });
 });
