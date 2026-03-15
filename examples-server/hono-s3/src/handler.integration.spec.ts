@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { standaloneRepository } from "@hot-updater/standalone";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -16,7 +17,6 @@ import {
   spawnServerProcess,
   waitForServer,
 } from "@hot-updater/test-utils/node";
-import { standaloneRepository } from "@hot-updater/standalone";
 import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -139,21 +139,23 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   it("updates targetAppVersion through standaloneRepository", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    });
+    })();
 
     const bundleId = "hono-s3-update-target-app-version";
 
     await repo.appendBundle({
       id: bundleId,
-      createdAt: new Date().toISOString(),
-      runtimeVersion: "1.0.0",
-      enabled: true,
-      rollout: 100,
-      uploadTime: 0,
-      channel: "production",
       platform: "ios",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hono-s3-update-target-app-version-hash",
+      gitCommitHash: null,
+      message: null,
+      channel: "production",
       targetAppVersion: "1.x.x",
       storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
+      fingerprintHash: null,
+      rolloutPercentage: 100,
     });
     await repo.commitBundle();
 
