@@ -84,4 +84,52 @@ describe("BundleEditorForm", () => {
 
     expect(saveButton.hasAttribute("disabled")).toBe(true);
   });
+
+  it("shows normalized semver ranges and blocks invalid target app versions", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const targetAppVersionInput = screen.getByLabelText("Target App Version");
+
+    fireEvent.change(targetAppVersionInput, { target: { value: "invalid" } });
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Invalid target app version",
+    );
+    expect(targetAppVersionInput.getAttribute("aria-invalid")).toBe("true");
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(targetAppVersionInput, {
+      target: { value: ">= 1.0.0 < 2.0.0" },
+    });
+
+    expect(screen.getByText(">=1.0.0 <2.0.0")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("hides target app version for fingerprint bundles", () => {
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetAppVersion: null,
+          fingerprintHash: "fingerprint-hash",
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const messageInput = screen.getByLabelText("Message");
+
+    expect(screen.queryByLabelText("Target App Version")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(messageInput, { target: { value: "Updated message" } });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+  });
 });

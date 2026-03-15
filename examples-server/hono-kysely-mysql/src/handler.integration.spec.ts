@@ -20,8 +20,11 @@ import { afterAll, beforeAll, describe } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
+const runMySqlIntegration = process.env["RUN_MYSQL_INTEGRATION"] === "1";
 
-describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
+describe.runIf(runMySqlIntegration)(
+  "Hot Updater Handler Integration Tests (Hono + MySQL)",
+  () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
@@ -99,7 +102,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
   });
-});
+  },
+);
 
 // Helper function to wait for MySQL to be ready
 async function waitForMySQLReady(

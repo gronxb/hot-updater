@@ -1,6 +1,7 @@
+import type { Bundle } from "@hot-updater/plugin-core";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 
-const bundles = [
+const bundles: Bundle[] = [
   {
     id: "0195c7c0-8bbe-7885-ae58-09bcab7f7a87",
     enabled: true,
@@ -12,7 +13,7 @@ const bundles = [
     message: "Fix: Crash on startup for iPhone 12",
     channel: "production",
     storageUri: "s3://hot-updater/0195c7c0-8bbe-7885-ae58-09bcab7f7a87.zip",
-    fingerprintHash: "fp-abc123",
+    fingerprintHash: null,
     rolloutPercentage: 100,
   },
   {
@@ -26,7 +27,7 @@ const bundles = [
     message: "Feature: New onboarding flow",
     channel: "production",
     storageUri: "s3://hot-updater/0195c7bf-e8f2-7546-8aba-8bad8243afeb.zip",
-    fingerprintHash: "fp-def456",
+    fingerprintHash: null,
     rolloutPercentage: 50,
   },
   {
@@ -40,7 +41,7 @@ const bundles = [
     message: "Security: Patch CVE-2024-1234",
     channel: "production",
     storageUri: "s3://hot-updater/0195c7bf-d48d-7785-9295-15b154d271a3.zip",
-    fingerprintHash: "fp-ghi789",
+    fingerprintHash: null,
     rolloutPercentage: 100,
   },
   {
@@ -50,8 +51,8 @@ const bundles = [
     fileHash: "jkl012hash",
     gitCommitHash: "m0n1o2p",
     platform: "android" as const,
-    targetAppVersion: "1.2.x",
-    message: "Perf: Optimize image loading",
+    targetAppVersion: null,
+    message: "Perf: Optimize image loading for fingerprint rollout",
     channel: "staging",
     storageUri: "s3://hot-updater/0195c7be-a123-7785-9295-15b154d271a4.zip",
     fingerprintHash: "fp-jkl012",
@@ -64,8 +65,8 @@ const bundles = [
     fileHash: "mno345hash",
     gitCommitHash: "q3r4s5t",
     platform: "ios" as const,
-    targetAppVersion: "1.3.x",
-    message: "WIP: Dark mode support",
+    targetAppVersion: null,
+    message: "WIP: Dark mode support for fingerprint cohort",
     channel: "dev",
     storageUri: "s3://hot-updater/0195c7bd-b234-7785-9295-15b154d271a5.zip",
     fingerprintHash: "fp-mno345",
@@ -78,12 +79,40 @@ const bundles = [
     fileHash: "pqr678hash",
     gitCommitHash: "u6v7w8x",
     platform: "android" as const,
-    targetAppVersion: "1.2.x",
-    message: "Fix: Memory leak in list view",
+    targetAppVersion: null,
+    message: "Fix: Memory leak in list view for fingerprint devices",
     channel: "dev",
     storageUri: "s3://hot-updater/0195c7bc-c345-7785-9295-15b154d271a6.zip",
     fingerprintHash: "fp-pqr678",
     rolloutPercentage: 100,
+  },
+  {
+    id: "0195c7bb-d456-7785-9295-15b154d271a7",
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: "stu901hash",
+    gitCommitHash: "y9z0a1b",
+    platform: "ios" as const,
+    targetAppVersion: ">=1.4.0 <2.0.0",
+    message: "Compatibility: iOS release for 1.4.x and newer",
+    channel: "staging",
+    storageUri: "s3://hot-updater/0195c7bb-d456-7785-9295-15b154d271a7.zip",
+    fingerprintHash: null,
+    rolloutPercentage: 75,
+  },
+  {
+    id: "0195c7ba-e567-7785-9295-15b154d271a8",
+    enabled: true,
+    shouldForceUpdate: false,
+    fileHash: "vwx234hash",
+    gitCommitHash: "c2d3e4f",
+    platform: "android" as const,
+    targetAppVersion: null,
+    message: "Experiment: fingerprint-only Android canary",
+    channel: "production",
+    storageUri: "s3://hot-updater/0195c7ba-e567-7785-9295-15b154d271a8.zip",
+    fingerprintHash: "fp-stu901",
+    rolloutPercentage: 20,
   },
 ];
 

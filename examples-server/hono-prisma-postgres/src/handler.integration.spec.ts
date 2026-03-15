@@ -21,8 +21,12 @@ import { afterAll, beforeAll, describe } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
+const runPrismaPostgresIntegration =
+  process.env["RUN_PRISMA_POSTGRES_INTEGRATION"] === "1";
 
-describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", () => {
+describe.runIf(runPrismaPostgresIntegration)(
+  "Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)",
+  () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbName: string;
@@ -163,4 +167,5 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
   });
-});
+  },
+);

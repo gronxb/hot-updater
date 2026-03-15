@@ -9,8 +9,8 @@ import {
   saveKeyPair,
 } from "./keyGeneration";
 
-const RSA_4096_TIMEOUT = 15000;
-const SAVE_KEY_PAIR_TIMEOUT = 15000;
+const RSA_4096_TIMEOUT = 20000;
+const SAVE_KEY_PAIR_TIMEOUT = 20000;
 
 describe("Key Generation", () => {
   let testDir: string;

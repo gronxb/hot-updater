@@ -2,6 +2,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { useForm, useStore } from "@tanstack/react-form";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import semver from "semver";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,31 @@ type BundleEditorFormValues = {
   targetDeviceIds: string[];
 };
 
+function getTargetAppVersionValidation(value: string) {
+  const normalizedValue = value.trim();
+
+  if (normalizedValue.length === 0) {
+    return {
+      error: "Invalid target app version",
+      normalizedRange: null,
+    };
+  }
+
+  const normalizedRange = semver.validRange(normalizedValue);
+
+  if (!normalizedRange) {
+    return {
+      error: "Invalid target app version",
+      normalizedRange: null,
+    };
+  }
+
+  return {
+    error: undefined,
+    normalizedRange,
+  };
+}
+
 function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
   return {
     message: bundle.message || "",
@@ -45,16 +71,27 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newDeviceId, setNewDeviceId] = useState("");
+  const shouldEditTargetAppVersion = Boolean(bundle.targetAppVersion);
 
   const form = useForm({
     defaultValues: getDefaultValues(bundle),
     onSubmit: async ({ value }) => {
+      const targetAppVersion = value.targetAppVersion.trim();
+      const { error } = shouldEditTargetAppVersion
+        ? getTargetAppVersionValidation(targetAppVersion)
+        : { error: undefined };
+
+      if (error) {
+        toast.error(error);
+        return;
+      }
+
       try {
         await updateBundleMutation.mutateAsync({
           bundleId: bundle.id,
           bundle: {
             message: value.message,
-            targetAppVersion: value.targetAppVersion,
+            targetAppVersion: targetAppVersion || undefined,
             enabled: value.enabled,
             shouldForceUpdate: value.shouldForceUpdate,
             rolloutPercentage: value.rolloutPercentage,
@@ -74,7 +111,18 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   });
   const hasChanges = useStore(form.store, (state) => !state.isDefaultValue);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
+  const targetAppVersion = useStore(
+    form.store,
+    (state) => state.values.targetAppVersion,
+  );
   const isSaving = isSubmitting || updateBundleMutation.isPending;
+  const targetAppVersionValidation = shouldEditTargetAppVersion
+    ? getTargetAppVersionValidation(targetAppVersion)
+    : {
+        error: undefined,
+        normalizedRange: null,
+      };
+  const hasTargetAppVersionError = Boolean(targetAppVersionValidation.error);
 
   const handleAddDeviceId = () => {
     const trimmed = newDeviceId.trim();
@@ -111,7 +159,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         onSubmit={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (form.state.isDefaultValue || isSaving) {
+          if (form.state.isDefaultValue || isSaving || hasTargetAppVersionError) {
             return;
           }
           form.handleSubmit();
@@ -133,19 +181,33 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           )}
         </form.Field>
 
-        <form.Field name="targetAppVersion">
-          {(field) => (
-            <div className="space-y-2">
-              <Label htmlFor="targetAppVersion">Target App Version</Label>
-              <Input
-                id="targetAppVersion"
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="1.0.0"
-              />
-            </div>
-          )}
-        </form.Field>
+        {shouldEditTargetAppVersion && (
+          <form.Field name="targetAppVersion">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor="targetAppVersion">Target App Version</Label>
+                <Input
+                  id="targetAppVersion"
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder="1.0.0"
+                  aria-invalid={hasTargetAppVersionError}
+                />
+                {hasTargetAppVersionError ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    {targetAppVersionValidation.error}
+                  </p>
+                ) : (
+                  targetAppVersionValidation.normalizedRange && (
+                    <p className="text-xs text-muted-foreground">
+                      {targetAppVersionValidation.normalizedRange}
+                    </p>
+                  )
+                )}
+              </div>
+            )}
+          </form.Field>
+        )}
 
         {bundle.fingerprintHash && (
           <div className="space-y-2">
@@ -265,7 +327,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
             type="submit"
             size="lg"
             className="w-full"
-            disabled={!hasChanges || isSaving}
+            disabled={!hasChanges || isSaving || hasTargetAppVersionError}
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
