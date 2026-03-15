@@ -1322,7 +1322,6 @@ describe("blobDatabase plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    console.log(invalidatedPaths);
     expect(invalidatedPaths).toContain(
       "/api/check-update/app-version/ios/3.0.1/production/*",
     );
@@ -1427,7 +1426,6 @@ describe("blobDatabase plugin", () => {
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
     );
-    console.log(invalidatedPaths);
     expect(invalidatedPaths).toContain(
       "/api/check-update/app-version/android/3.0.1/production/*",
     );

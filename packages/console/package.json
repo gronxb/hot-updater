@@ -90,9 +90,5 @@
   "bugs": {
     "url": "https://github.com/gronxb/hot-updater/issues"
   },
-  "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "inlinedDependencies": {
-    "@hono/node-server": "1.19.11",
-    "@hono/typia-validator": "0.1.2"
-  }
+  "homepage": "https://github.com/gronxb/hot-updater#readme"
 }

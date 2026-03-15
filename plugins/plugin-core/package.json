@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "typescript": "5.8.2"
   }
