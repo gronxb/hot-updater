@@ -86,21 +86,6 @@ export interface ResolverNotifyAppReadyParams {
 }
 
 /**
- * Parameters passed to resolver.trackDeviceEvent method
- */
-export interface ResolverTrackDeviceEventParams {
-  deviceId: string;
-  bundleId: string;
-  eventType: "PROMOTED" | "RECOVERED";
-  platform: "ios" | "android";
-  appVersion?: string;
-  channel: string;
-  metadata?: Record<string, unknown>;
-  requestHeaders?: Record<string, string>;
-  requestTimeout?: number;
-}
-
-/**
  * Resolver interface for custom network operations
  */
 export interface HotUpdaterResolver {
@@ -152,11 +137,6 @@ export interface HotUpdaterResolver {
   notifyAppReady?: (
     params: ResolverNotifyAppReadyParams,
   ) => Promise<NotifyAppReadyResult | undefined>;
-
-  /**
-   * Track device-level events (PROMOTED/RECOVERED) for rollout analytics.
-   */
-  trackDeviceEvent?: (params: ResolverTrackDeviceEventParams) => Promise<void>;
 }
 
 /**

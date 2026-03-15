@@ -1,10 +1,6 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 import { fetchUpdateInfo } from "./fetchUpdateInfo";
-import type {
-  HotUpdaterResolver,
-  ResolverCheckUpdateParams,
-  ResolverTrackDeviceEventParams,
-} from "./types";
+import type { HotUpdaterResolver, ResolverCheckUpdateParams } from "./types";
 
 /**
  * Creates a default resolver that uses baseURL for network operations.
@@ -38,39 +34,6 @@ export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
         requestHeaders: params.requestHeaders,
         requestTimeout: params.requestTimeout,
       });
-    },
-
-    trackDeviceEvent: async (
-      params: ResolverTrackDeviceEventParams,
-    ): Promise<void> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, params.requestTimeout ?? 5000);
-
-      const response = await fetch(`${baseURL}/api/track`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...params.requestHeaders,
-        },
-        body: JSON.stringify({
-          deviceId: params.deviceId,
-          bundleId: params.bundleId,
-          eventType: params.eventType,
-          platform: params.platform,
-          appVersion: params.appVersion,
-          channel: params.channel,
-          metadata: params.metadata,
-        }),
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Failed to track event: ${response.status}`);
-      }
     },
   };
 }

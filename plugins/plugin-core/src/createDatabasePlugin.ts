@@ -1,5 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
-import { merge } from "es-toolkit";
+import { mergeWith } from "es-toolkit";
 import type {
   DatabasePlugin,
   DatabasePluginHooks,
@@ -37,6 +37,22 @@ type DatabasePluginMethods = Omit<AbstractDatabasePlugin, never>;
 type DatabasePluginFactory<TConfig> = (
   config: TConfig,
 ) => DatabasePluginMethods;
+
+const REPLACE_ON_UPDATE_KEYS = ["targetDeviceIds"] as const;
+
+function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
+  return mergeWith(baseBundle, patch, (_targetValue, sourceValue, key) => {
+    if (
+      REPLACE_ON_UPDATE_KEYS.includes(
+        key as (typeof REPLACE_ON_UPDATE_KEYS)[number],
+      )
+    ) {
+      return sourceValue;
+    }
+
+    return undefined;
+  });
+}
 
 /**
  * Configuration options for creating a database plugin
@@ -144,7 +160,10 @@ export function createDatabasePlugin<TConfig>(
         async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
           const pendingChange = changedMap.get(targetBundleId);
           if (pendingChange) {
-            const updatedData = merge(pendingChange.data, newBundle);
+            const updatedData = mergeBundleUpdate(
+              pendingChange.data,
+              newBundle,
+            );
             changedMap.set(targetBundleId, {
               operation: pendingChange.operation,
               data: updatedData,
@@ -158,7 +177,7 @@ export function createDatabasePlugin<TConfig>(
             throw new Error("targetBundleId not found");
           }
 
-          const updatedBundle = merge(currentBundle, newBundle);
+          const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
           markChanged("update", updatedBundle);
         },
 

@@ -17,17 +17,6 @@ export const bundles = pgTable("bundles", {
   target_device_ids: json("target_device_ids")
 })
 
-export const device_events = pgTable("device_events", {
-  id: uuid("id").primaryKey().notNull(),
-  device_id: text("device_id").notNull(),
-  bundle_id: uuid("bundle_id").notNull(),
-  event_type: text("event_type").notNull(),
-  platform: text("platform").notNull(),
-  app_version: text("app_version"),
-  channel: text("channel").notNull(),
-  metadata: json("metadata").notNull()
-})
-
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
   version: varchar("version", { length: 255 }).notNull().default("0.26.0")

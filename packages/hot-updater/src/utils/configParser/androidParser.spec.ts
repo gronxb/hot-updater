@@ -50,8 +50,12 @@ describe("AndroidConfigParser", () => {
       build: vi.fn(),
     };
 
-    vi.mocked(XMLParser).mockImplementation(() => mockParser);
-    vi.mocked(XMLBuilder).mockImplementation(() => mockBuilder);
+    vi.mocked(XMLParser).mockImplementation(function XMLParser() {
+      return mockParser;
+    });
+    vi.mocked(XMLBuilder).mockImplementation(function XMLBuilder() {
+      return mockBuilder;
+    });
 
     // Basic mock setup
     vi.mocked(getCwd).mockReturnValue("/mock/project");

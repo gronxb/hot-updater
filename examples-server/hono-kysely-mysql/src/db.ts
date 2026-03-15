@@ -4,7 +4,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely, MysqlDialect } from "kysely";
-import { createPool } from "mysql2";
+import { createPool } from "mysql2/promise";
 import path from "path";
 import { fileURLToPath } from "url";
 

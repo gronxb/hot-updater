@@ -375,8 +375,8 @@ export type NotifyAppReadyResult = {
  * This function is called automatically when the module loads.
  *
  * @returns {NotifyAppReadyResult} Bundle state information
- * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
- * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
+ * - `status: "PROMOTED"` - Staging bundle was promoted to stable
+ * - `status: "RECOVERED"` - App recovered from crash, rollback occurred
  * - `status: "STABLE"` - No changes, already stable
  * - `crashedBundleId` - Present only when status is "RECOVERED"
  *
@@ -386,12 +386,10 @@ export type NotifyAppReadyResult = {
  *
  * switch (result.status) {
  *   case "PROMOTED":
- *     // Send ACTIVE analytics event
- *     analytics.track('bundle_active', { bundleId: HotUpdater.getBundleId() });
+ *     console.log("Bundle promoted to stable");
  *     break;
  *   case "RECOVERED":
- *     // Send ROLLBACK analytics event
- *     analytics.track('bundle_rollback', { crashedBundleId: result.crashedBundleId });
+ *     console.log("Recovered from crash", result.crashedBundleId);
  *     break;
  *   case "STABLE":
  *     // No special action needed

@@ -10,15 +10,19 @@ export interface RouteConfig {
 }
 
 export interface Routes {
-  upsert: () => RouteConfig;
-  list: () => RouteConfig;
-  retrieve: (bundleId: string) => RouteConfig;
-  delete: (bundleId: string) => RouteConfig;
+  create?: () => RouteConfig;
+  update?: (bundleId: string) => RouteConfig;
+  list?: () => RouteConfig;
+  retrieve?: (bundleId: string) => RouteConfig;
+  delete?: (bundleId: string) => RouteConfig;
 }
 
-const defaultRoutes: Routes = {
-  upsert: () => ({
+const defaultRoutes = {
+  create: () => ({
     path: "/api/bundles",
+  }),
+  update: (bundleId: string) => ({
+    path: `/api/bundles/${bundleId}`,
   }),
   list: () => ({
     path: "/api/bundles",
@@ -54,16 +58,21 @@ export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
     factory: (config) => {
-      const routes: Routes = {
-        upsert: () =>
-          createRoute(defaultRoutes.upsert(), config.routes?.upsert?.()),
+      const routes = {
+        create: () =>
+          createRoute(defaultRoutes.create(), config.routes?.create?.()),
+        update: (bundleId: string) =>
+          createRoute(
+            defaultRoutes.update(bundleId),
+            config.routes?.update?.(bundleId),
+          ),
         list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
-        retrieve: (bundleId) =>
+        retrieve: (bundleId: string) =>
           createRoute(
             defaultRoutes.retrieve(bundleId),
             config.routes?.retrieve?.(bundleId),
           ),
-        delete: (bundleId) =>
+        delete: (bundleId: string) =>
           createRoute(
             defaultRoutes.delete(bundleId),
             config.routes?.delete?.(bundleId),
@@ -182,13 +191,28 @@ export const standaloneRepository =
                   }
                 }
               }
-            } else if (op.operation === "insert" || op.operation === "update") {
-              // Handle insert and update operations
-              const { path, headers: routeHeaders } = routes.upsert();
+            } else if (op.operation === "insert") {
+              const { path, headers: routeHeaders } = routes.create();
               const response = await fetch(buildUrl(path), {
                 method: "POST",
                 headers: getHeaders(routeHeaders),
                 body: JSON.stringify([op.data]),
+              });
+
+              if (!response.ok) {
+                throw new Error(`API Error: ${response.statusText}`);
+              }
+
+              const result = (await response.json()) as { success: boolean };
+              if (!result.success) {
+                throw new Error("Failed to commit bundle");
+              }
+            } else if (op.operation === "update") {
+              const { path, headers: routeHeaders } = routes.update(op.data.id);
+              const response = await fetch(buildUrl(path), {
+                method: "PATCH",
+                headers: getHeaders(routeHeaders),
+                body: JSON.stringify(op.data),
               });
 
               if (!response.ok) {

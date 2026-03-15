@@ -35,7 +35,7 @@
     "@types/node": "catalog:",
     "execa": "catalog:",
     "uuidv7": "^1.0.2",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

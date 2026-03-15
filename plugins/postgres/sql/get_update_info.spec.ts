@@ -2,7 +2,6 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   type Bundle,
   type GetBundlesArgs,
-  isDeviceEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
@@ -71,6 +70,7 @@ const createGetUpdateInfo =
     if (_updateStrategy === "fingerprint") {
       const fingerprintHash = args.fingerprintHash;
       const deviceId = args.deviceId;
+      const deviceIdSql = deviceId ? `'${deviceId}'` : "NULL";
       const result = await db.query<{
         id: string;
         should_force_update: boolean;
@@ -78,8 +78,6 @@ const createGetUpdateInfo =
         status: string;
         storage_uri: string | null;
         file_hash: string | null;
-        rollout_percentage: number | null;
-        target_device_ids: string[] | null;
       }>(
         `
       SELECT * FROM get_update_info_by_fingerprint_hash(
@@ -87,7 +85,8 @@ const createGetUpdateInfo =
         '${bundleId}',
         '${minBundleId}',
         '${channel}',
-        '${fingerprintHash}'
+        '${fingerprintHash}',
+        ${deviceIdSql}
       );
       `,
       );
@@ -97,19 +96,6 @@ const createGetUpdateInfo =
       }
 
       const row = result.rows[0];
-
-      if (deviceId && row.status === "UPDATE") {
-        const eligible = isDeviceEligibleForUpdate(
-          deviceId,
-          row.rollout_percentage,
-          row.target_device_ids,
-        );
-
-        if (!eligible) {
-          return null;
-        }
-      }
-
       return camelcaseKeys(row) as UpdateInfo;
     }
 
@@ -128,6 +114,7 @@ const createGetUpdateInfo =
     );
 
     const deviceId = args.deviceId;
+    const deviceIdSql = deviceId ? `'${deviceId}'` : "NULL";
     const result = await db.query<{
       id: string;
       should_force_update: boolean;
@@ -135,8 +122,6 @@ const createGetUpdateInfo =
       status: string;
       storage_uri: string | null;
       file_hash: string | null;
-      rollout_percentage: number | null;
-      target_device_ids: string[] | null;
     }>(
       `
       SELECT * FROM get_update_info_by_app_version(
@@ -145,7 +130,8 @@ const createGetUpdateInfo =
         '${bundleId}',
         '${minBundleId ?? NIL_UUID}',
         '${channel}',
-        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]
+        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[],
+        ${deviceIdSql}
       );
       `,
     );
@@ -155,19 +141,6 @@ const createGetUpdateInfo =
     }
 
     const row = result.rows[0];
-
-    if (deviceId && row.status === "UPDATE") {
-      const eligible = isDeviceEligibleForUpdate(
-        deviceId,
-        row.rollout_percentage,
-        row.target_device_ids,
-      );
-
-      if (!eligible) {
-        return null;
-      }
-    }
-
     return camelcaseKeys(row) as UpdateInfo;
   };
 

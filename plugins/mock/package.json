@@ -36,6 +36,7 @@
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
   }
 }

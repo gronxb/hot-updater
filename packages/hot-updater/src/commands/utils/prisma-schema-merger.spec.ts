@@ -88,16 +88,6 @@ describe("prisma-schema-merger", () => {
   rollout_percentage Int @default(100)
   target_device_ids Json?
 }
-model device_events {
-  id String @id
-  device_id String
-  bundle_id String
-  event_type String
-  platform String
-  app_version String?
-  channel String
-  metadata Json
-}
 model private_hot_updater_settings {
   key String @id
   value String @default("0.26.0")
@@ -110,7 +100,6 @@ model private_hot_updater_settings {
       expect(result.content).toContain("model User");
       // Updated models should be present
       expect(result.content).toContain("rollout_percentage");
-      expect(result.content).toContain("model device_events");
       expect(result.content).toContain('"0.26.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
