@@ -49,7 +49,10 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (import.meta.env.DEV) {
       void import("react-grab/core").then(({ init }) => {
-        init({ activationKey: { key: "c", metaKey: true } });
+        init({
+          activationKey: (event) =>
+            event.key.toLowerCase() === "c" && event.metaKey,
+        });
       });
     }
   }, []);
