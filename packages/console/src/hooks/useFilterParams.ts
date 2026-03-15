@@ -17,15 +17,9 @@ export function useFilterParams() {
   };
 
   const setFilters = (newFilters: Partial<BundleFilters>) => {
-    const hasChannel = Object.prototype.hasOwnProperty.call(
-      newFilters,
-      "channel",
-    );
-    const hasPlatform = Object.prototype.hasOwnProperty.call(
-      newFilters,
-      "platform",
-    );
-    const hasOffset = Object.prototype.hasOwnProperty.call(newFilters, "offset");
+    const hasChannel = Object.hasOwn(newFilters, "channel");
+    const hasPlatform = Object.hasOwn(newFilters, "platform");
+    const hasOffset = Object.hasOwn(newFilters, "offset");
 
     void navigate({
       to: "/",
