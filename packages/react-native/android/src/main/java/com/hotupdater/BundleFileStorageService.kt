@@ -343,7 +343,9 @@ class BundleFileStorageService(
         // Check for promotion (use masked comparison for copy-promoted bundles)
         if (isVerificationPending(metadata)) {
             val stagingBundleId = metadata.stagingBundleId
-            if (stagingBundleId != null && currentBundleId != null &&
+            if (
+                stagingBundleId != null &&
+                currentBundleId != null &&
                 UuidUtils.maskUuidV7Rand(stagingBundleId) == UuidUtils.maskUuidV7Rand(currentBundleId)
             ) {
                 Log.d(TAG, "App started successfully with staging bundle $currentBundleId, promoting to stable")

@@ -25,11 +25,11 @@ object UuidUtils {
         // byte[7]      = rand_a (8 bits)
         // byte[8]      = variant (high 2 bits) | rand_b (low 6 bits)
         // bytes[9..15] = rand_b (56 bits)
-        bytes[6] = (bytes[6].toInt() and 0xf0).toByte() // keep version, clear rand_a high bits
-        bytes[7] = 0x00                                  // clear rand_a low bits
-        bytes[8] = (bytes[8].toInt() and 0xc0).toByte()  // keep variant, clear rand_b high bits
+        bytes[6] = (bytes[6].toInt() and 0xf0).toByte()
+        bytes[7] = 0x00
+        bytes[8] = (bytes[8].toInt() and 0xc0).toByte()
         for (i in 9 until 16) {
-            bytes[i] = 0x00                              // clear rand_b remaining bits
+            bytes[i] = 0x00
         }
 
         val out = bytes.joinToString("") { "%02x".format(it) }
