@@ -92,6 +92,13 @@ export interface Spec extends TurboModule {
   clearCrashHistory(): boolean;
 
   /**
+   * Gets the currently running bundle ID from native bundle manifest.
+   *
+   * @returns Bundle ID if manifest exists, otherwise null
+   */
+  getBundleId(): string | null;
+
+  /**
    * Clears the runtime channel override and restores the original bundle.
    *
    * @returns Promise that resolves to true if successful

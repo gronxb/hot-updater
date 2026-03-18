@@ -304,6 +304,10 @@ import React
         return bundleStorage.getBaseURL()
     }
 
+    public func getBundleId() -> String? {
+        return bundleStorage.getBundleId(bundle: Self.bundle)
+    }
+
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {

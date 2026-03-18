@@ -322,9 +322,14 @@ export const getMinBundleId = (): string => {
  * @returns {string} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
-    ? getMinBundleId()
-    : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
+  const nativeBundleId = HotUpdaterNative.getBundleId?.();
+  if (nativeBundleId) {
+    return nativeBundleId;
+  }
+
+  // Fallback for old native binaries.
+  const babelBundleId = HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
+  return babelBundleId === NIL_UUID ? getMinBundleId() : babelBundleId;
 };
 
 /**

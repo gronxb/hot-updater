@@ -383,6 +383,8 @@ class HotUpdaterImpl {
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
 
+    fun getBundleId(): String? = bundleStorage.getBundleId()
+
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()
         if (success) {

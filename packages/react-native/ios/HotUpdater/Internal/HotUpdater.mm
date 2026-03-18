@@ -331,6 +331,12 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
+- (NSString *)getBundleId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *bundleId = [impl getBundleId];
+    return bundleId ?: nil;
+}
+
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -417,6 +423,12 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *bundleId = [impl getBundleId];
+    return bundleId ?: nil;
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve

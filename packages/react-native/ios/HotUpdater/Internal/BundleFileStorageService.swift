@@ -120,6 +120,11 @@ public protocol BundleStorageService {
     func getBaseURL() -> String
 
     /**
+     * Gets bundle ID from current bundle's manifest.json.
+     */
+    func getBundleId(bundle: Bundle) -> String?
+
+    /**
      * Restores the original bundle and clears downloaded bundle state.
      */
     func resetChannel() -> Result<Bool, Error>
@@ -1228,6 +1233,32 @@ class BundleFileStorageService: BundleStorageService {
         } catch {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
+        }
+    }
+
+    func getBundleId(bundle: Bundle) -> String? {
+        guard let bundleURL = getBundleURL(bundle: bundle), bundleURL.isFileURL else {
+            return nil
+        }
+
+        let manifestURL = bundleURL.deletingLastPathComponent().appendingPathComponent("manifest.json")
+        guard fileSystem.fileExists(atPath: manifestURL.path) else {
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            guard
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let bundleId = json["bundleId"] as? String,
+                !bundleId.isEmpty
+            else {
+                return nil
+            }
+            return bundleId
+        } catch {
+            NSLog("[BundleStorage] getBundleId: failed to parse manifest.json: \(error)")
+            return nil
         }
     }
 

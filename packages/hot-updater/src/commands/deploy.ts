@@ -46,6 +46,49 @@ export interface DeployOptions {
   targetAppVersion?: string;
 }
 
+interface BundleManifest {
+  bundleId: string;
+  files: Record<string, string>;
+}
+
+const createBundleManifest = async ({
+  buildPath,
+  bundleId,
+}: {
+  buildPath: string;
+  bundleId: string;
+}) => {
+  const manifestFilePath = path.join(buildPath, "manifest.json");
+  const files = await fs.promises.readdir(buildPath, { recursive: true });
+  const manifestFiles: Record<string, string> = {};
+
+  for (const file of files) {
+    const filePath = path.join(buildPath, file);
+    const fileStat = await fs.promises.stat(filePath);
+    if (fileStat.isDirectory()) {
+      continue;
+    }
+
+    const normalizedPath = file.split(path.sep).join("/");
+    if (normalizedPath === "manifest.json") {
+      continue;
+    }
+
+    manifestFiles[normalizedPath] = await getFileHashFromFile(filePath);
+  }
+
+  const manifest: BundleManifest = {
+    bundleId,
+    files: manifestFiles,
+  };
+
+  await fs.promises.writeFile(
+    manifestFilePath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
+};
+
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
@@ -284,6 +327,12 @@ export const deploy = async (options: DeployOptions) => {
           if (!buildPath) {
             throw new Error("Build result not found");
           }
+
+          await createBundleManifest({
+            buildPath,
+            bundleId: taskRef.buildResult.bundleId,
+          });
+
           const files = await fs.promises.readdir(buildPath, {
             recursive: true,
           });

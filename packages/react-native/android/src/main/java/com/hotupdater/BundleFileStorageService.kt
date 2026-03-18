@@ -78,6 +78,12 @@ interface BundleStorageService {
     fun getBaseURL(): String
 
     /**
+     * Gets bundle ID from current bundle's manifest.json.
+     * @return bundle ID if available, otherwise null
+     */
+    fun getBundleId(): String?
+
+    /**
      * Restores the original bundle and clears downloaded bundle state.
      * @return true if the reset was successful
      */
@@ -833,6 +839,28 @@ class BundleFileStorageService(
         } catch (e: Exception) {
             Log.e(TAG, "Error getting base URL: ${e.message}")
             ""
+        }
+    }
+
+    override fun getBundleId(): String? {
+        val bundleUrl = getBundleURL()
+        if (!bundleUrl.startsWith("/")) {
+            return null
+        }
+
+        val bundleFile = File(bundleUrl)
+        val bundleDir = bundleFile.parentFile ?: return null
+        val manifestFile = File(bundleDir, "manifest.json")
+        if (!manifestFile.exists()) {
+            return null
+        }
+
+        return try {
+            val json = org.json.JSONObject(manifestFile.readText())
+            json.optString("bundleId").ifEmpty { null }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reading manifest bundle id: ${e.message}")
+            null
         }
     }
 
