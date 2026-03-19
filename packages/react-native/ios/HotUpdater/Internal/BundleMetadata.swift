@@ -12,6 +12,8 @@ public struct BundleMetadata: Codable {
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
+    // Legacy fields are retained only for decoding metadata written by older
+    // SDK versions. New crash detection no longer depends on them.
     var verificationAttemptedAt: Double?
     var stagingExecutionCount: Int?
     var updatedAt: Double

@@ -27,6 +27,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
+        HotUpdaterCrashHandler.initialize(this.context)
     }
 
     /**

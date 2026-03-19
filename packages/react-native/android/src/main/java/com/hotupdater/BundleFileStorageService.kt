@@ -4,6 +4,7 @@ import android.os.StatFs
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
@@ -109,6 +110,7 @@ class BundleFileStorageService(
 
     // Session-only rollback tracking (in-memory)
     private var sessionRollbackBundleId: String? = null
+    private var crashMarkerProcessed = false
 
     // MARK: - Bundle Store Directory
 
@@ -138,6 +140,7 @@ class BundleFileStorageService(
             stagingBundleId = null,
             verificationPending = false,
             verificationAttemptedAt = null,
+            stagingExecutionCount = null,
         )
     }
 
@@ -213,17 +216,36 @@ class BundleFileStorageService(
 
     private fun isVerificationPending(metadata: BundleMetadata): Boolean = metadata.verificationPending && metadata.stagingBundleId != null
 
-    private fun wasVerificationAttempted(metadata: BundleMetadata): Boolean = metadata.verificationAttemptedAt != null
+    private fun processCrashMarkerIfPresent() {
+        if (crashMarkerProcessed) {
+            return
+        }
+        crashMarkerProcessed = true
 
-    private fun markVerificationAttempted() {
-        val metadata = loadMetadataOrNull() ?: return
-        val updatedMetadata =
-            metadata.copy(
-                verificationAttemptedAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-            )
-        saveMetadata(updatedMetadata)
-        Log.d(TAG, "Marked verification attempted at ${updatedMetadata.verificationAttemptedAt}")
+        val crashMarker = HotUpdaterCrashHandler.readCrashMarker(context) ?: return
+        val crashLog =
+            try {
+                JSONObject(crashMarker).optString("crashLog", "")
+            } catch (_: Exception) {
+                crashMarker
+            }
+
+        val metadata = loadMetadataOrNull()
+        if (metadata == null) {
+            Log.d(TAG, "Crash marker found but metadata is missing, ignoring")
+            return
+        }
+
+        if (!isVerificationPending(metadata)) {
+            Log.d(TAG, "Crash marker found but no bundle verification is pending, ignoring")
+            return
+        }
+
+        if (crashLog.isNotBlank()) {
+            Log.w(TAG, "Crash marker detected during bundle verification: $crashLog")
+        }
+        Log.w(TAG, "Rolling back staging bundle after confirmed process crash")
+        rollbackToStable()
     }
 
     private fun promoteStagingToStable() {
@@ -238,6 +260,7 @@ class BundleFileStorageService(
                 stagingBundleId = null,
                 verificationPending = false,
                 verificationAttemptedAt = null,
+                stagingExecutionCount = null,
                 updatedAt = System.currentTimeMillis(),
             )
         saveMetadata(updatedMetadata)
@@ -387,10 +410,8 @@ class BundleFileStorageService(
 
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
-    // Track if crash detection has already run in this process
-    private var crashDetectionCompleted = false
-
     override fun getBundleURL(): String {
+        processCrashMarkerIfPresent()
         val metadata = loadMetadataOrNull()
 
         if (metadata == null) {
@@ -401,22 +422,6 @@ class BundleFileStorageService(
             return result
         }
 
-        // New rollback-aware mode - only run crash detection ONCE per process
-        if (isVerificationPending(metadata) && !crashDetectionCompleted) {
-            crashDetectionCompleted = true
-
-            if (wasVerificationAttempted(metadata)) {
-                // Already executed once but didn't call notifyAppReady → crash!
-                Log.w(TAG, "Crash detected: staging bundle executed but didn't call notifyAppReady")
-                rollbackToStable()
-            } else {
-                // First execution - mark verification attempted and give it a chance
-                Log.d(TAG, "First execution of staging bundle, marking verification attempted")
-                markVerificationAttempted()
-            }
-        }
-
-        // Reload metadata after potential rollback
         val currentMetadata = loadMetadataOrNull()
 
         // Return staging bundle if verification pending
@@ -530,6 +535,7 @@ class BundleFileStorageService(
                         stagingBundleId = bundleId,
                         verificationPending = true,
                         verificationAttemptedAt = null,
+                        stagingExecutionCount = null,
                         updatedAt = System.currentTimeMillis(),
                     )
                 saveMetadata(updatedMetadata)
@@ -726,6 +732,7 @@ class BundleFileStorageService(
                             stagingBundleId = bundleId,
                             verificationPending = true,
                             verificationAttemptedAt = null,
+                            stagingExecutionCount = null,
                             updatedAt = System.currentTimeMillis(),
                         )
                     saveMetadata(updatedMetadata)

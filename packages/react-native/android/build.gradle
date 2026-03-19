@@ -69,6 +69,12 @@ android {
     consumerProguardFiles 'proguard-rules.pro'
     buildConfigField "long", "BUILD_TIMESTAMP", "${System.currentTimeMillis()}L"
 
+    externalNativeBuild {
+      cmake {
+        arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+      }
+    }
+
     def minBundleId = project.hasProperty("MIN_BUNDLE_ID") ? project.properties["MIN_BUNDLE_ID"] : null
     buildConfigField "String", "MIN_BUNDLE_ID", minBundleId == null ? "\"null\"" : "\"${minBundleId}\""
   }
@@ -90,6 +96,12 @@ android {
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_1_8
     targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  externalNativeBuild {
+    cmake {
+      path file("src/main/cpp/CMakeLists.txt")
+    }
   }
 
   sourceSets {

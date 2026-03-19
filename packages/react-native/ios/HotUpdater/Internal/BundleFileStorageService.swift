@@ -141,6 +141,7 @@ class BundleFileStorageService: BundleStorageService {
 
     // Session-only rollback tracking (in-memory)
     private var sessionRollbackBundleId: String?
+    private var crashMarkerProcessed = false
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
@@ -180,6 +181,11 @@ class BundleFileStorageService: BundleStorageService {
             return nil
         }
         return URL(fileURLWithPath: storeDir).appendingPathComponent(CrashedHistory.crashedHistoryFilename)
+    }
+
+    private func crashMarkerFileURL() -> URL {
+        return URL(fileURLWithPath: fileSystem.documentsPath())
+            .appendingPathComponent("hotupdater_crash.marker")
     }
 
     // MARK: - Metadata Operations
@@ -289,27 +295,44 @@ class BundleFileStorageService: BundleStorageService {
         return metadata.verificationPending && metadata.stagingBundleId != nil
     }
 
-    private func wasVerificationAttempted(_ metadata: BundleMetadata) -> Bool {
-        return metadata.verificationAttemptedAt != nil
-    }
-
-    private func markVerificationAttempted() {
-        guard var metadata = loadMetadataOrNull() else {
+    private func processCrashMarkerIfPresent() {
+        if crashMarkerProcessed {
             return
         }
-        metadata.verificationAttemptedAt = Date().timeIntervalSince1970 * 1000
-        let _ = saveMetadata(metadata)
-        NSLog("[BundleStorage] Marked verification attempted for staging bundle: \(metadata.stagingBundleId ?? "nil")")
-    }
+        crashMarkerProcessed = true
 
-    private func incrementStagingExecutionCount() {
-        guard var metadata = loadMetadataOrNull() else {
+        let markerURL = crashMarkerFileURL()
+        guard fileSystem.fileExists(atPath: markerURL.path) else {
             return
         }
-        metadata.stagingExecutionCount = (metadata.stagingExecutionCount ?? 0) + 1
-        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-        let _ = saveMetadata(metadata)
-        NSLog("[BundleStorage] Incremented staging execution count to: \(metadata.stagingExecutionCount ?? 0)")
+
+        let markerContents = (try? String(contentsOf: markerURL, encoding: .utf8)) ?? ""
+        try? fileSystem.removeItem(atPath: markerURL.path)
+
+        let crashLog: String
+        if let jsonData = markerContents.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+           let jsonCrashLog = json["crashLog"] as? String {
+            crashLog = jsonCrashLog
+        } else {
+            crashLog = markerContents
+        }
+
+        guard let metadata = loadMetadataOrNull() else {
+            NSLog("[BundleStorage] Crash marker found but metadata is missing, ignoring")
+            return
+        }
+
+        guard isVerificationPending(metadata) else {
+            NSLog("[BundleStorage] Crash marker found but no bundle verification is pending, ignoring")
+            return
+        }
+
+        if !crashLog.isEmpty {
+            NSLog("[BundleStorage] Crash marker detected during bundle verification: \(crashLog)")
+        }
+        NSLog("[BundleStorage] Rolling back staging bundle after confirmed process crash")
+        rollbackToStable()
     }
 
     private func promoteStagingToStable() {
@@ -601,36 +624,14 @@ class BundleFileStorageService: BundleStorageService {
     }
     
     public func getBundleURL(bundle: Bundle) -> URL? {
-        // Try to load metadata
-        let metadata = loadMetadataOrNull()
+        processCrashMarkerIfPresent()
 
         // If no metadata exists, use legacy behavior (backwards compatible)
-        guard let metadata = metadata else {
+        guard loadMetadataOrNull() != nil else {
             let cached = getCachedBundleURL()
             return cached ?? getFallbackBundleURL(bundle: bundle)
         }
 
-        // Check if we need to handle crash recovery
-        if isVerificationPending(metadata) {
-            let executionCount = metadata.stagingExecutionCount ?? 0
-
-            if executionCount == 0 {
-                // First execution - give staging bundle a chance
-                NSLog("[BundleStorage] First execution of staging bundle, incrementing counter")
-                incrementStagingExecutionCount()
-                // Don't mark verificationAttempted yet!
-            } else if wasVerificationAttempted(metadata) {
-                // Already executed once and verificationAttempted is set → crash!
-                NSLog("[BundleStorage] Crash detected: staging bundle executed but didn't call notifyAppReady")
-                rollbackToStable()
-            } else {
-                // Second execution - now mark verification attempted
-                NSLog("[BundleStorage] Second execution of staging bundle, marking verification attempted")
-                markVerificationAttempted()
-            }
-        }
-
-        // Reload metadata after potential rollback
         guard let currentMetadata = loadMetadataOrNull() else {
             return getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle)
         }
@@ -732,7 +733,7 @@ class BundleFileStorageService: BundleStorageService {
                             metadata.stagingBundleId = bundleId
                             metadata.verificationPending = true
                             metadata.verificationAttemptedAt = nil
-                            metadata.stagingExecutionCount = 0
+                            metadata.stagingExecutionCount = nil
                             metadata.updatedAt = Date().timeIntervalSince1970 * 1000
                             let _ = self.saveMetadata(metadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
@@ -1049,7 +1050,7 @@ class BundleFileStorageService: BundleStorageService {
                         metadata.stagingBundleId = bundleId
                         metadata.verificationPending = true
                         metadata.verificationAttemptedAt = nil
-                        metadata.stagingExecutionCount = 0
+                        metadata.stagingExecutionCount = nil
                         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
                         let _ = self.saveMetadata(metadata)
                         NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
@@ -1149,6 +1150,7 @@ class BundleFileStorageService: BundleStorageService {
             if metadata.verificationPending {
                 metadata.verificationPending = false
                 metadata.verificationAttemptedAt = nil
+                metadata.stagingExecutionCount = nil
                 metadata.updatedAt = Date().timeIntervalSince1970 * 1000
                 let _ = saveMetadata(metadata)
                 NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is stable, cleared pending verification")

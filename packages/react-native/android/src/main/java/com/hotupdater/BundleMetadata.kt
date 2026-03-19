@@ -14,6 +14,8 @@ data class BundleMetadata(
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
     val verificationPending: Boolean = false,
+    // Legacy fields are kept only so newer SDKs can read metadata written by
+    // previous releases without forcing users to clear local state manually.
     val verificationAttemptedAt: Long? = null,
     val stagingExecutionCount: Int? = null,
     val updatedAt: Long = System.currentTimeMillis(),

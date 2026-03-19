@@ -1,4 +1,5 @@
 #import "HotUpdater.h"
+#import "HotUpdaterCrashHandler.h"
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
 
@@ -66,6 +67,7 @@ RCT_EXPORT_MODULE();
     static HotUpdaterImpl *_sharedImpl = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
+        [HotUpdaterCrashHandler install];
         _sharedImpl = [[HotUpdaterImpl alloc] init];
     });
     return _sharedImpl;
