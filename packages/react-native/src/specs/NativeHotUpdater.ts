@@ -60,17 +60,9 @@ export interface Spec extends TurboModule {
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   /**
-   * Notifies the native side that the app has successfully started with the given bundle.
-   * If the bundle matches the staging bundle, it promotes to stable.
-   *
-   * @param params - Parameters containing the bundle ID
-   * @returns Object with status and optional crashedBundleId
-   * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
-   * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
-   * - `status: "STABLE"` - No changes, already stable
-   * - `crashedBundleId` - Present only when status is "RECOVERED"
+   * Confirms that the current bundle launch reached mounted JS state.
    */
-  notifyAppReady(params: { bundleId: string }): {
+  notifyAppReady(): {
     status: "PROMOTED" | "RECOVERED" | "STABLE";
     crashedBundleId?: string;
   };

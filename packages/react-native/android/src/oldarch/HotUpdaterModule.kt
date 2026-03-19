@@ -153,17 +153,11 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun notifyAppReady(params: ReadableMap): String {
-        val bundleId = params.getString("bundleId")
+    override fun notifyAppReady(): String {
         val result = JSONObject()
 
-        if (bundleId == null) {
-            result.put("status", "STABLE")
-            return result.toString()
-        }
-
         val impl = getInstance()
-        val statusMap = impl.notifyAppReady(bundleId)
+        val statusMap = impl.notifyAppReady()
 
         result.put("status", statusMap["status"] as? String ?: "STABLE")
         statusMap["crashedBundleId"]?.let {

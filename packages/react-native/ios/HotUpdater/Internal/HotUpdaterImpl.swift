@@ -268,14 +268,8 @@ import React
 
     // MARK: - Rollback Support
 
-    /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     * @param bundleId The ID of the currently running bundle
-     * @return true if promotion was successful or no action was needed
-     */
-    public func notifyAppReady(bundleId: String) -> [String: Any] {
-        return bundleStorage.notifyAppReady(bundleId: bundleId)
+    public func notifyAppReady() -> [String: Any] {
+        return bundleStorage.notifyAppReady()
     }
 
     /**

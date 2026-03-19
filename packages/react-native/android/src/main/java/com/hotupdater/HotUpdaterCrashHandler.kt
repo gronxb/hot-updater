@@ -11,6 +11,7 @@ import kotlin.system.exitProcess
 internal object HotUpdaterCrashHandler {
     private const val TAG = "HotUpdaterCrash"
     private const val CRASH_MARKER_FILENAME = "hotupdater_crash.marker"
+    private const val LAUNCH_MARKER_FILENAME = "hotupdater_launch.marker"
 
     private val initialized = AtomicBoolean(false)
     private val crashMarkerWritten = AtomicBoolean(false)
@@ -22,10 +23,16 @@ internal object HotUpdaterCrashHandler {
             return
         }
 
+        resetLaunchCompletion(context)
+
         previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                writeCrashMarker(context, Log.getStackTraceString(throwable))
+                writeCrashMarker(
+                    context,
+                    Log.getStackTraceString(throwable),
+                    shouldRollback(context),
+                )
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to persist crash marker", e)
             } finally {
@@ -40,9 +47,28 @@ internal object HotUpdaterCrashHandler {
 
         try {
             System.loadLibrary("hotupdater-crash")
-            initNativeSignalHandler(getCrashMarkerFile(context).absolutePath)
+            initNativeSignalHandler(
+                getCrashMarkerFile(context).absolutePath,
+                getLaunchMarkerFile(context).absolutePath,
+            )
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to initialize native signal handler", t)
+        }
+    }
+
+    fun markLaunchCompleted(context: Context) {
+        try {
+            getLaunchMarkerFile(context).writeText("completed")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to persist launch marker", e)
+        }
+    }
+
+    fun resetLaunchCompletion(context: Context) {
+        try {
+            getLaunchMarkerFile(context).delete()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clear launch marker", e)
         }
     }
 
@@ -66,6 +92,7 @@ internal object HotUpdaterCrashHandler {
     private fun writeCrashMarker(
         context: Context,
         crashLog: String,
+        shouldRollback: Boolean,
     ) {
         if (!crashMarkerWritten.compareAndSet(false, true)) {
             return
@@ -74,6 +101,7 @@ internal object HotUpdaterCrashHandler {
         val payload =
             JSONObject().apply {
                 put("crashLog", crashLog.take(900))
+                put("shouldRollback", shouldRollback)
                 put("timestamp", System.currentTimeMillis())
             }
 
@@ -85,6 +113,16 @@ internal object HotUpdaterCrashHandler {
         return File(baseDir, CRASH_MARKER_FILENAME)
     }
 
+    private fun getLaunchMarkerFile(context: Context): File {
+        val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(baseDir, LAUNCH_MARKER_FILENAME)
+    }
+
+    private fun shouldRollback(context: Context): Boolean = !getLaunchMarkerFile(context).exists()
+
     @JvmStatic
-    private external fun initNativeSignalHandler(markerPath: String)
+    private external fun initNativeSignalHandler(
+        markerPath: String,
+        launchMarkerPath: String,
+    )
 }

@@ -54,11 +54,10 @@ interface BundleStorageService {
     )
 
     /**
-     * Notifies that the app has started successfully with the current bundle
-     * @param currentBundleId The bundle ID that JS reports as currently loaded
+     * Confirms that the current bundle launch reached mounted JS state.
      * @return Map containing status and optional crashedBundleId
      */
-    fun notifyAppReady(currentBundleId: String?): Map<String, Any?>
+    fun notifyAppReady(): Map<String, Any?>
 
     /**
      * Gets the crashed bundle history
@@ -216,6 +215,14 @@ class BundleFileStorageService(
 
     private fun isVerificationPending(metadata: BundleMetadata): Boolean = metadata.verificationPending && metadata.stagingBundleId != null
 
+    private fun clearVerificationState(metadata: BundleMetadata): BundleMetadata =
+        metadata.copy(
+            verificationPending = false,
+            verificationAttemptedAt = null,
+            stagingExecutionCount = null,
+            updatedAt = System.currentTimeMillis(),
+        )
+
     private fun processCrashMarkerIfPresent() {
         if (crashMarkerProcessed) {
             return
@@ -223,16 +230,23 @@ class BundleFileStorageService(
         crashMarkerProcessed = true
 
         val crashMarker = HotUpdaterCrashHandler.readCrashMarker(context) ?: return
-        val crashLog =
+        val crashMarkerJson =
             try {
-                JSONObject(crashMarker).optString("crashLog", "")
+                JSONObject(crashMarker)
             } catch (_: Exception) {
-                crashMarker
+                null
             }
+        val crashLog = crashMarkerJson?.optString("crashLog", "") ?: crashMarker
+        val shouldRollback = crashMarkerJson?.optBoolean("shouldRollback", true) ?: true
 
         val metadata = loadMetadataOrNull()
         if (metadata == null) {
             Log.d(TAG, "Crash marker found but metadata is missing, ignoring")
+            return
+        }
+
+        if (!shouldRollback) {
+            Log.d(TAG, "Crash marker found after launch completion, skipping rollback")
             return
         }
 
@@ -292,14 +306,7 @@ class BundleFileStorageService(
         sessionRollbackBundleId = stagingBundleId
 
         // Clear staging pointer
-        val updatedMetadata =
-            metadata.copy(
-                stagingBundleId = null,
-                verificationPending = false,
-                verificationAttemptedAt = null,
-                stagingExecutionCount = null,
-                updatedAt = System.currentTimeMillis(),
-            )
+        val updatedMetadata = clearVerificationState(metadata).copy(stagingBundleId = null)
         saveMetadata(updatedMetadata)
 
         // Update bundle URL to point to stable bundle
@@ -344,16 +351,16 @@ class BundleFileStorageService(
         return true
     }
 
-    // MARK: - notifyAppReady
+    // MARK: - Launch State
 
-    override fun notifyAppReady(currentBundleId: String?): Map<String, Any?> {
+    override fun notifyAppReady(): Map<String, Any?> {
+        HotUpdaterCrashHandler.markLaunchCompleted(context)
         val metadata =
             loadMetadataOrNull()
                 ?: return mapOf("status" to "STABLE")
 
         // Check if there was a recent rollback (session variable)
         sessionRollbackBundleId?.let { crashedBundleId ->
-            // Clear rollback info (one-time read)
             sessionRollbackBundleId = null
 
             Log.d(TAG, "notifyAppReady: recovered from rollback (crashed bundle: $crashedBundleId)")
@@ -363,21 +370,21 @@ class BundleFileStorageService(
             )
         }
 
-        // Check for promotion
         if (isVerificationPending(metadata)) {
+            val activeBundleId = extractBundleIdFromCurrentURL()
             val stagingBundleId = metadata.stagingBundleId
-            if (stagingBundleId != null && stagingBundleId == currentBundleId) {
-                Log.d(TAG, "App started successfully with staging bundle $currentBundleId, promoting to stable")
+            if (stagingBundleId != null && stagingBundleId == activeBundleId) {
+                Log.d(TAG, "Launch confirmed for staging bundle $activeBundleId, promoting to stable")
                 promoteStagingToStable()
                 return mapOf("status" to "PROMOTED")
-            } else {
-                Log.d(TAG, "notifyAppReady: bundleId mismatch (staging=$stagingBundleId, current=$currentBundleId)")
             }
-        } else {
-            Log.d(TAG, "notifyAppReady: no verification pending")
+
+            if (metadata.stableBundleId != null && metadata.stableBundleId == activeBundleId) {
+                Log.d(TAG, "Launch confirmed for stable bundle $activeBundleId, clearing stale verification state")
+                saveMetadata(clearVerificationState(metadata))
+            }
         }
 
-        // No changes
         return mapOf("status" to "STABLE")
     }
 
@@ -547,7 +554,7 @@ class BundleFileStorageService(
                 val stableBundleId = currentMetadata.stableBundleId
                 cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
 
-                Log.d(TAG, "Existing bundle set as staging, will be promoted after notifyAppReady")
+                Log.d(TAG, "Existing bundle set as staging, will be promoted after launch confirmation")
                 return
             } else {
                 // If index.android.bundle is missing, delete and re-download
@@ -748,7 +755,7 @@ class BundleFileStorageService(
                     val stableBundleId = currentMetadata.stableBundleId
                     cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
 
-                    Log.d(TAG, "Downloaded and set bundle as staging successfully. Will be promoted after notifyAppReady.")
+                    Log.d(TAG, "Downloaded and set bundle as staging successfully. Will be promoted after launch confirmation.")
                     // Progress already at 1.0 from unzip completion
                 }
             }

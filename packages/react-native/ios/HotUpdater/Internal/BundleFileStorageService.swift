@@ -108,8 +108,8 @@ public protocol BundleStorageService {
     // Bundle update
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
-    // Rollback support
-    func notifyAppReady(bundleId: String) -> [String: Any]
+    // Launch state support
+    func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
     
@@ -186,6 +186,34 @@ class BundleFileStorageService: BundleStorageService {
     private func crashMarkerFileURL() -> URL {
         return URL(fileURLWithPath: fileSystem.documentsPath())
             .appendingPathComponent("hotupdater_crash.marker")
+    }
+
+    private func launchMarkerFileURL() -> URL {
+        return URL(fileURLWithPath: fileSystem.documentsPath())
+            .appendingPathComponent("hotupdater_launch.marker")
+    }
+
+    private func markLaunchCompleted() {
+        FileManager.default.createFile(
+            atPath: launchMarkerFileURL().path,
+            contents: nil,
+            attributes: nil
+        )
+    }
+
+    private func activeBundleId() -> String? {
+        guard let bundleURL = getCachedBundleURL()?.path else {
+            return nil
+        }
+
+        let regex = try? NSRegularExpression(pattern: "bundle-store/([^/]+)/")
+        let range = NSRange(location: 0, length: bundleURL.utf16.count)
+        guard let match = regex?.firstMatch(in: bundleURL, options: [], range: range),
+              let idRange = Range(match.range(at: 1), in: bundleURL) else {
+            return nil
+        }
+
+        return String(bundleURL[idRange])
     }
 
     // MARK: - Metadata Operations
@@ -309,17 +337,18 @@ class BundleFileStorageService: BundleStorageService {
         let markerContents = (try? String(contentsOf: markerURL, encoding: .utf8)) ?? ""
         try? fileSystem.removeItem(atPath: markerURL.path)
 
-        let crashLog: String
-        if let jsonData = markerContents.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-           let jsonCrashLog = json["crashLog"] as? String {
-            crashLog = jsonCrashLog
-        } else {
-            crashLog = markerContents
-        }
+        let jsonMarker = markerContents.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let crashLog = (jsonMarker?["crashLog"] as? String) ?? markerContents
+        let shouldRollback = (jsonMarker?["shouldRollback"] as? Bool) ?? true
 
         guard let metadata = loadMetadataOrNull() else {
             NSLog("[BundleStorage] Crash marker found but metadata is missing, ignoring")
+            return
+        }
+
+        guard shouldRollback else {
+            NSLog("[BundleStorage] Crash marker found after launch completion, skipping rollback")
             return
         }
 
@@ -1110,25 +1139,14 @@ class BundleFileStorageService: BundleStorageService {
 
     // MARK: - Rollback Support
 
-    /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, promotes it to stable.
-     * @param bundleId The ID of the currently running bundle
-     * @return true if promotion was successful or no action was needed
-     */
-    func notifyAppReady(bundleId: String) -> [String: Any] {
-        NSLog("[BundleStorage('\(id)'] notifyAppReady: Called with bundleId '\(bundleId)'")
+    func notifyAppReady() -> [String: Any] {
+        markLaunchCompleted()
+
         guard var metadata = loadMetadataOrNull() else {
-            // No metadata exists - legacy mode, nothing to do
-            NSLog("[BundleStorage] notifyAppReady: No metadata exists (legacy mode)")
             return ["status": "STABLE"]
         }
 
-        // Check if there was a recent rollback (session variable)
         if let crashedBundleId = self.sessionRollbackBundleId {
-            NSLog("[BundleStorage] notifyAppReady: Detected rollback recovery from '\(crashedBundleId)'")
-
-            // Clear rollback info (one-time read)
             self.sessionRollbackBundleId = nil
 
             return [
@@ -1137,31 +1155,24 @@ class BundleFileStorageService: BundleStorageService {
             ]
         }
 
-        // Check if the bundle matches the staging bundle (promotion case)
-        if let stagingId = metadata.stagingBundleId, stagingId == bundleId, metadata.verificationPending {
-            NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' matches staging, promoting to stable")
+        if let stagingId = metadata.stagingBundleId,
+           metadata.verificationPending,
+           stagingId == activeBundleId() {
+            NSLog("[BundleStorage] notifyAppReady: Active staging bundle completed launch, promoting to stable")
             promoteStagingToStable()
             return ["status": "PROMOTED"]
         }
 
-        // Check if the bundle matches the stable bundle
-        if let stableId = metadata.stableBundleId, stableId == bundleId {
-            // Already stable, clear any pending verification state
-            if metadata.verificationPending {
-                metadata.verificationPending = false
-                metadata.verificationAttemptedAt = nil
-                metadata.stagingExecutionCount = nil
-                metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-                let _ = saveMetadata(metadata)
-                NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is stable, cleared pending verification")
-            } else {
-                NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' is already stable")
-            }
-            return ["status": "STABLE"]
+        if let stableId = metadata.stableBundleId,
+           metadata.verificationPending,
+           stableId == activeBundleId() {
+            metadata.verificationPending = false
+            metadata.verificationAttemptedAt = nil
+            metadata.stagingExecutionCount = nil
+            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+            let _ = saveMetadata(metadata)
         }
 
-        // Bundle doesn't match staging or stable - might be fallback or unknown
-        NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' doesn't match staging or stable")
         return ["status": "STABLE"]
     }
 

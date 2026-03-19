@@ -302,14 +302,10 @@ RCT_EXPORT_MODULE();
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 
-- (NSDictionary *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
-    NSString *bundleId = nil;
-    if (params.bundleId()) {
-        bundleId = params.bundleId();
-    }
-    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+- (NSDictionary *)notifyAppReady {
+    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReadyWithBundleId:bundleId];
+    return [impl notifyAppReady];
 }
 
 - (NSArray<NSString *> *)getCrashHistory {
@@ -363,6 +359,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
+            [HotUpdaterCrashHandler resetLaunchCompletion];
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
@@ -393,11 +390,10 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
     [impl updateBundle:params resolver:resolve rejecter:reject];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {
-    NSString *bundleId = params[@"bundleId"];
-    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {
+    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReadyWithBundleId:bundleId];
+    return [impl notifyAppReady];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {

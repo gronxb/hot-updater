@@ -6,17 +6,28 @@
 #include <unistd.h>
 
 static char g_marker_path[512];
+static char g_launch_marker_path[512];
 static struct sigaction g_previous_handlers[32];
 
-static void write_crash_marker_json(int signal_value) {
+static int is_launch_completed() {
+  int fd = open(g_launch_marker_path, O_RDONLY);
+  if (fd >= 0) {
+    close(fd);
+    return 1;
+  }
+  return 0;
+}
+
+static void write_crash_marker_json(int signal_value, int launch_completed) {
   int fd = open(g_marker_path, O_CREAT | O_WRONLY | O_TRUNC, 0600);
   if (fd >= 0) {
     char json[512];
     int len = snprintf(
       json,
       sizeof(json),
-      "{\"signal\":%d,\"crashLog\":\"signal=%d\\n\"}",
+      "{\"signal\":%d,\"shouldRollback\":%s,\"crashLog\":\"signal=%d\\n\"}",
       signal_value,
+      launch_completed ? "false" : "true",
       signal_value
     );
     if (len > 0 && len < (int)sizeof(json)) {
@@ -27,7 +38,7 @@ static void write_crash_marker_json(int signal_value) {
 }
 
 static void hotupdater_signal_handler(int sig, siginfo_t *info, void *context) {
-  write_crash_marker_json(sig);
+  write_crash_marker_json(sig, is_launch_completed());
 
   if (sig >= 0 && sig < 32) {
     struct sigaction *prev = &g_previous_handlers[sig];
@@ -51,11 +62,15 @@ JNIEXPORT void JNICALL
 Java_com_hotupdater_HotUpdaterCrashHandler_initNativeSignalHandler(
   JNIEnv *env,
   jclass,
-  jstring markerPath
+  jstring markerPath,
+  jstring launchMarkerPath
 ) {
   const char *path = env->GetStringUTFChars(markerPath, nullptr);
   snprintf(g_marker_path, sizeof(g_marker_path), "%s", path);
   env->ReleaseStringUTFChars(markerPath, path);
+  const char *launch_path = env->GetStringUTFChars(launchMarkerPath, nullptr);
+  snprintf(g_launch_marker_path, sizeof(g_launch_marker_path), "%s", launch_path);
+  env->ReleaseStringUTFChars(launchMarkerPath, launch_path);
 
   struct sigaction action;
   sigemptyset(&action.sa_mask);

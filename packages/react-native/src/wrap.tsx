@@ -211,7 +211,7 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 /**
- * Helper function to handle notifyAppReady flow
+ * Helper function to handle native notifyAppReady flow
  */
 const handleNotifyAppReady = async (options: {
   resolver?: HotUpdaterResolver;
@@ -220,7 +220,6 @@ const handleNotifyAppReady = async (options: {
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
 }): Promise<void> => {
   try {
-    // Always call native notifyAppReady for bundle promotion
     const nativeResult = nativeNotifyAppReady();
 
     // If resolver.notifyAppReady exists, call it with simplified params

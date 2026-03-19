@@ -368,15 +368,8 @@ export type NotifyAppReadyResult = {
   crashedBundleId?: string;
 };
 
-/**
- * Internal lifecycle helper used by `HotUpdater.wrap()` to notify the native
- * side that the current bundle reached the mounted JS state.
- *
- * @returns {NotifyAppReadyResult} Bundle state information
- */
-export const notifyAppReady = (): NotifyAppReadyResult => {
-  const bundleId = getBundleId();
-  const result = HotUpdaterNative.notifyAppReady({ bundleId });
+const notifyAppReady = (): NotifyAppReadyResult => {
+  const result = HotUpdaterNative.notifyAppReady();
   // Oldarch returns JSON string, newarch returns array
   if (typeof result === "string") {
     try {
@@ -387,6 +380,8 @@ export const notifyAppReady = (): NotifyAppReadyResult => {
   }
   return result;
 };
+
+export { notifyAppReady };
 
 /**
  * Gets the list of bundle IDs that have been marked as crashed.

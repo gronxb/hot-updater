@@ -109,9 +109,8 @@ export interface HotUpdaterResolver {
   ) => Promise<AppUpdateInfo | null>;
 
   /**
-   * Custom implementation for notifying app ready.
-   * When provided, this completely replaces the default notifyAppReady network flow.
-   * Note: The native notifyAppReady for bundle promotion still happens automatically.
+   * Custom implementation for handling the app-ready callback.
+   * Note: Native notifyAppReady for bundle promotion still happens automatically.
    *
    * @param params - All parameters about the current app state
    * @returns Notification result

@@ -300,6 +300,7 @@ class HotUpdaterImpl {
      */
     suspend fun reload(reactContext: Context) {
         try {
+            HotUpdaterCrashHandler.resetLaunchCompletion(context)
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
             }
@@ -310,6 +311,7 @@ class HotUpdaterImpl {
 
     suspend fun reloadProcess(reactContext: Context) {
         try {
+            HotUpdaterCrashHandler.resetLaunchCompletion(context)
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
                     Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
@@ -356,13 +358,7 @@ class HotUpdaterImpl {
         }
     }
 
-    /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     * @param bundleId The ID of the currently running bundle
-     * @return Map containing status and optional crashedBundleId
-     */
-    fun notifyAppReady(bundleId: String): Map<String, Any?> = bundleStorage.notifyAppReady(bundleId)
+    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     /**
      * Gets the crashed bundle history.
