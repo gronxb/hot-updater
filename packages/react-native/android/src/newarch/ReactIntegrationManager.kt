@@ -40,7 +40,15 @@ class ReactIntegrationManager(
 
             reactHostDelegateField.isAccessible = true
             val reactHostDelegate = reactHostDelegateField.get(reactHost)
-            val jsBundleLoaderField = reactHostDelegate::class.java.getDeclaredField("jsBundleLoader")
+            // Try _jsBundleLoader first (Expo SDK 55+ ExpoReactHostDelegate uses a computed
+            // property with a private backing field), then fall back to jsBundleLoader
+            // (DefaultReactHostDelegate and older Expo versions).
+            val jsBundleLoaderField =
+                try {
+                    reactHostDelegate::class.java.getDeclaredField("_jsBundleLoader")
+                } catch (e: NoSuchFieldException) {
+                    reactHostDelegate::class.java.getDeclaredField("jsBundleLoader")
+                }
             jsBundleLoaderField.isAccessible = true
             jsBundleLoaderField.set(reactHostDelegate, getJSBundlerLoader(bundleURL))
         } catch (e: Exception) {

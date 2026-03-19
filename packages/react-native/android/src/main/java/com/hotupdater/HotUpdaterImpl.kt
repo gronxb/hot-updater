@@ -1,6 +1,9 @@
 package com.hotupdater
 
+import android.app.ActivityOptions
 import android.content.Context
+import android.content.Intent
+import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -295,16 +298,60 @@ class HotUpdaterImpl {
      * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
     suspend fun reload(reactContext: Context) {
-        val reactIntegrationManager = ReactIntegrationManager(reactContext)
-        val bundleURL = getJSBundleFile()
-
         try {
             withContext(Dispatchers.Main) {
-                reactIntegrationManager.setJSBundle(bundleURL)
-                reactIntegrationManager.reload()
+                performReactReload(reactContext)
             }
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to reload application", e)
+        }
+    }
+
+    suspend fun reloadProcess(reactContext: Context) {
+        try {
+            withContext(Dispatchers.Main) {
+                if (!restartApplication(reactContext)) {
+                    Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
+                    performReactReload(reactContext)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("HotUpdaterImpl", "Failed to restart application process", e)
+            throw e
+        }
+    }
+
+    private suspend fun performReactReload(reactContext: Context) {
+        val reactIntegrationManager = ReactIntegrationManager(reactContext)
+        val bundleURL = getJSBundleFile()
+        reactIntegrationManager.setJSBundle(bundleURL)
+        reactIntegrationManager.reload()
+    }
+
+    // Use a cold restart in release builds so bundle application does not depend on RN reload timing.
+    private fun restartApplication(reactContext: Context): Boolean {
+        val currentActivity =
+            (reactContext as? com.facebook.react.bridge.ReactApplicationContext)?.currentActivity
+        if (currentActivity == null) {
+            Log.w(TAG, "Cannot restart app: current activity unavailable")
+            return false
+        }
+
+        return try {
+            val restartIntent =
+                Intent(currentActivity, HotUpdaterRestartActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
+                }
+            val options = ActivityOptions.makeCustomAnimation(currentActivity, 0, 0)
+            currentActivity.startActivity(restartIntent, options.toBundle())
+
+            Log.i(TAG, "Started restart trampoline to apply update bundle")
+            return true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start restart trampoline", e)
+            false
         }
     }
 

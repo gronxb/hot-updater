@@ -17,7 +17,9 @@ import {
   Text,
   View,
 } from "react-native";
+import BootSplash from "react-native-bootsplash";
 import { proxy, useSnapshot } from "valtio";
+
 
 const notify = proxy<{
   status?: string;
@@ -46,6 +48,14 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const bundleId = HotUpdater.getBundleId();
     setBundleId(bundleId);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      void BootSplash.hide({ fade: false });
+    }, 1000);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);

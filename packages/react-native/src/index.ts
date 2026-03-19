@@ -18,6 +18,7 @@ import {
   isChannelSwitched,
   reload,
   resetChannel,
+  setReloadBehavior,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -25,7 +26,13 @@ import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
 import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
 
-export type { HotUpdaterEvent, NotifyAppReadyResult } from "./native";
+export type {
+  CustomReloadHandler,
+  HotUpdaterEvent,
+  NotifyAppReadyResult,
+  ReloadBehavior,
+  ReloadBehaviorSetting,
+} from "./native";
 export * from "./store";
 export {
   extractSignatureFailure,
@@ -166,6 +173,18 @@ function createHotUpdaterClient() {
      * Reloads the app.
      */
     reload,
+
+    /**
+     * Configures how `HotUpdater.reload()` behaves.
+     *
+     * This can be called unconditionally on both platforms.
+     * The default is `processRestart`.
+     *
+     * - `reload`: built-in React Native reload on both platforms
+     * - `processRestart`: Android process restart, iOS behaves like normal reload
+     * - `custom`: run a custom JS handler on both platforms
+     */
+    setReloadBehavior,
 
     /**
      * Returns whether an update has finished downloading in this app session.
