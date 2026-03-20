@@ -18,12 +18,19 @@ jobs:
       - uses: actions/checkout@v3
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+      - name: Install Ruby dependencies
+        working-directory: examples/v0.76.1-new-arch
+        run: bundle install
 
       - name: Library Build
         run: pnpm build
@@ -31,9 +38,10 @@ jobs:
       - name: Build iOS
         run: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
-          cd examples/v0.76.1-new-arch/ios
-          pnpx pod-install
-          xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
+          cd examples/v0.76.1-new-arch
+          rm -f ios/Podfile.lock
+          bundle exec pod install --project-directory=ios
+          xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
@@ -45,12 +53,19 @@ jobs:
       - uses: actions/checkout@v3
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
+      - name: Install Ruby dependencies
+        working-directory: examples/v0.74.1
+        run: bundle install
 
       - name: Library Build
         run: pnpm build
@@ -58,9 +73,10 @@ jobs:
       - name: Build iOS
         run: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
-          cd examples/v0.74.1/ios
-          pnpx pod-install
-          xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
+          cd examples/v0.74.1
+          rm -f ios/Podfile.lock
+          bundle exec pod install --project-directory=ios
+          xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev

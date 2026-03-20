@@ -14,8 +14,6 @@ data class BundleMetadata(
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
     val verificationPending: Boolean = false,
-    val verificationAttemptedAt: Long? = null,
-    val stagingExecutionCount: Int? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
     companion object {
@@ -45,18 +43,6 @@ data class BundleMetadata(
                         null
                     },
                 verificationPending = json.optBoolean("verificationPending", false),
-                verificationAttemptedAt =
-                    if (json.has("verificationAttemptedAt") && !json.isNull("verificationAttemptedAt")) {
-                        json.getLong("verificationAttemptedAt")
-                    } else {
-                        null
-                    },
-                stagingExecutionCount =
-                    if (json.has("stagingExecutionCount") && !json.isNull("stagingExecutionCount")) {
-                        json.getInt("stagingExecutionCount")
-                    } else {
-                        null
-                    },
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             )
 
@@ -100,8 +86,6 @@ data class BundleMetadata(
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
-            put("verificationAttemptedAt", verificationAttemptedAt ?: JSONObject.NULL)
-            put("stagingExecutionCount", stagingExecutionCount ?: JSONObject.NULL)
             put("updatedAt", updatedAt)
         }
 
@@ -236,4 +220,77 @@ data class CrashedHistory(
     fun clear() {
         bundles.clear()
     }
+}
+
+data class PendingCrashRecovery(
+    val launchedBundleId: String?,
+    val shouldRollback: Boolean,
+) {
+    companion object {
+        fun fromJson(json: JSONObject): PendingCrashRecovery =
+            PendingCrashRecovery(
+                launchedBundleId =
+                    if (json.has("bundleId") && !json.isNull("bundleId")) {
+                        json.getString("bundleId").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
+                shouldRollback = json.optBoolean("shouldRollback", false),
+            )
+    }
+}
+
+data class LaunchSelection(
+    val bundleUrl: String,
+    val launchedBundleId: String?,
+    val shouldRollbackOnCrash: Boolean,
+)
+
+data class LaunchReport(
+    val status: String = "STABLE",
+    val crashedBundleId: String? = null,
+) {
+    companion object {
+        private const val TAG = "LaunchReport"
+        const val LAUNCH_REPORT_FILENAME = "launch-report.json"
+
+        fun fromJson(json: JSONObject): LaunchReport =
+            LaunchReport(
+                status = json.optString("status", "STABLE"),
+                crashedBundleId =
+                    if (json.has("crashedBundleId") && !json.isNull("crashedBundleId")) {
+                        json.getString("crashedBundleId").takeIf { it.isNotEmpty() }
+                    } else {
+                        null
+                    },
+            )
+
+        fun loadFromFile(file: File): LaunchReport? =
+            try {
+                if (!file.exists()) {
+                    null
+                } else {
+                    fromJson(JSONObject(file.readText()))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load launch report", e)
+                null
+            }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject().apply {
+            put("status", status)
+            put("crashedBundleId", crashedBundleId ?: JSONObject.NULL)
+        }
+
+    fun saveToFile(file: File): Boolean =
+        try {
+            file.parentFile?.mkdirs()
+            file.writeText(toJson().toString(2))
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save launch report", e)
+            false
+        }
 }
