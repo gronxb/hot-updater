@@ -565,16 +565,24 @@ final class HotUpdaterRecoveryManager: NSObject {
         recoveryRequested = true
         objc_sync_exit(self)
 
-        let started = hotUpdaterPerformRecoveryReload()
-        if !started {
-            objc_sync_enter(self)
-            recoveryRequested = false
-            objc_sync_exit(self)
-            NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
-        } else {
-            NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(currentBundleId ?? "nil")")
+        let bundleId = currentBundleId
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+
+            let started = hotUpdaterPerformRecoveryReload()
+            if !started {
+                objc_sync_enter(self)
+                self.recoveryRequested = false
+                objc_sync_exit(self)
+                NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
+            } else {
+                NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(bundleId ?? "nil")")
+            }
         }
-        return started
+
+        return true
     }
 
     private func writeCrashMarker() {
