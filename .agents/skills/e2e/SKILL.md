@@ -31,7 +31,7 @@ Read [references/runtime-targets.md](references/runtime-targets.md) before runni
 Before running any caller-provided scenario:
 
 1. Run `pnpm -w build`.
-2. Confirm the standalone update server is running on `http://localhost:3007/hot-updater`.
+2. Confirm the standalone update server is running by checking `http://localhost:3007/hot-updater/version`.
 3. Use the exact example workspace: `examples/v0.81.0`.
 4. Use release artifacts only.
 5. Choose one platform first. Finish that platform end-to-end before starting the other one.
@@ -46,6 +46,10 @@ Run these templates for one platform at a time. Do not keep iOS and Android sess
 
 ```bash
 agent-device ensure-simulator --platform ios --device "iPhone 16" --boot
+
+cd <repo-root>/examples/v0.81.0/ios
+
+pnpx pod-install
 
 xcodebuild -workspace HotUpdaterExample.xcworkspace \
   -scheme HotUpdaterExample \
