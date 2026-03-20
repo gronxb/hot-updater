@@ -1,5 +1,14 @@
 # @hot-updater/firebase
 
+## 0.27.1
+
+### Patch Changes
+
+- b1f3fb1: Add immutable cache-control metadata to Firebase Storage uploads and support CDN URL delivery via HOT_UPDATER_CDN_URL environment variable
+  - @hot-updater/cli-tools@0.27.1
+  - @hot-updater/core@0.27.1
+  - @hot-updater/plugin-core@0.27.1
+
 ## 0.27.0
 
 ### Minor Changes
