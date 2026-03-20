@@ -10,17 +10,21 @@ catalog:
   execa: 9.5.2
 
 onlyBuiltDependencies:
+  - '@prisma/client'
+  - '@prisma/engines'
   - '@biomejs/biome'
   - '@firebase/util'
   - '@sentry/cli'
   - '@swc/core'
   - aws-sdk
+  - better-sqlite3
   - core-js
   - core-js-pure
   - cpu-features
   - esbuild
   - msw
   - nx
+  - prisma
   - protobufjs
   - re2
   - sharp
