@@ -2,7 +2,8 @@
 
 CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
     app_platform   platforms,
-    bundle_id  uuid,
+    masked_bundle_id_lower uuid,
+    masked_bundle_id_upper uuid,
     min_bundle_id uuid,
     target_channel text,
     target_fingerprint_hash text
@@ -33,7 +34,7 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id >= bundle_id
+          AND b.id >= masked_bundle_id_lower
           AND b.id > min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
@@ -51,7 +52,7 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id < bundle_id
+          AND b.id < masked_bundle_id_lower
           AND b.id > min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
@@ -66,7 +67,7 @@ BEGIN
     )
     SELECT *
     FROM final_result
-    WHERE final_result.id != bundle_id
+    WHERE NOT (final_result.id BETWEEN masked_bundle_id_lower AND masked_bundle_id_upper)
 
     UNION ALL
 
@@ -78,12 +79,12 @@ BEGIN
         NULL          AS storage_uri,
         NULL          AS file_hash
     WHERE (SELECT COUNT(*) FROM final_result) = 0
-      AND bundle_id != NIL_UUID
-      AND bundle_id > min_bundle_id
+      AND masked_bundle_id_lower != NIL_UUID
+      AND masked_bundle_id_lower > min_bundle_id
       AND NOT EXISTS (
           SELECT 1
           FROM bundles b
-          WHERE b.id = bundle_id
+          WHERE b.id BETWEEN masked_bundle_id_lower AND masked_bundle_id_upper
             AND b.enabled = TRUE
             AND b.platform = app_platform
       );

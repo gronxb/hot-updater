@@ -1,4 +1,4 @@
-import type { UpdateStatus } from "@hot-updater/core";
+import { maskUuidV7Rand, type UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
@@ -172,7 +172,9 @@ export async function updateBundle(
   if (
     !shouldSkipCurrentBundleIdCheck &&
     status === "UPDATE" &&
-    updateBundleId.localeCompare(getBundleId()) <= 0
+    maskUuidV7Rand(updateBundleId).localeCompare(
+      maskUuidV7Rand(getBundleId()),
+    ) <= 0
   ) {
     throw new Error(
       "Update bundle id is not newer than the current bundle id. Preventing infinite update loop.",

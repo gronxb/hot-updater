@@ -2,6 +2,8 @@ import { PGlite } from "@electric-sql/pglite";
 import {
   type Bundle,
   type GetBundlesArgs,
+  maskUuidV7Rand,
+  maskUuidV7RandUpper,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
@@ -47,6 +49,9 @@ const createGetUpdateInfo =
     } = args;
     await db.exec(createInsertBundleQuerys(bundles));
 
+    const maskedBundleIdLower = maskUuidV7Rand(bundleId);
+    const maskedBundleIdUpper = maskUuidV7RandUpper(bundleId);
+
     if (_updateStrategy === "fingerprint") {
       const fingerprintHash = args.fingerprintHash;
       const result = await db.query<{
@@ -58,7 +63,8 @@ const createGetUpdateInfo =
         `
       SELECT * FROM get_update_info_by_fingerprint_hash(
         '${platform}',
-        '${bundleId}',
+        '${maskedBundleIdLower}',
+        '${maskedBundleIdUpper}',
         '${minBundleId}',
         '${channel}',
         '${fingerprintHash}'
@@ -95,7 +101,8 @@ const createGetUpdateInfo =
       SELECT * FROM get_update_info_by_app_version(
         '${platform}',
         '${appVersion}',
-        '${bundleId}',
+        '${maskedBundleIdLower}',
+        '${maskedBundleIdUpper}',
         '${minBundleId ?? NIL_UUID}',
         '${channel}',
         ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]

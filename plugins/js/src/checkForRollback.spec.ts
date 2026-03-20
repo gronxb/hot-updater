@@ -19,24 +19,24 @@ describe("checkForRollback", () => {
   it("should return availableOldVersion if enabled is null or undefined", () => {
     const bundles: Bundle[] = [
       {
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         enabled: true,
         ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
       {
-        id: "00000000-0000-0000-0000-000000000002",
+        id: "00000000-0002-0000-0000-000000000000",
         enabled: false,
         ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
         storageUri:
           "storage://my-app/00000000-0000-0000-0000-000000000000/bundle.zip",
       },
       {
-        id: "00000000-0000-0000-0000-000000000003",
+        id: "00000000-0003-0000-0000-000000000000",
         enabled: true,
         ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
     ];
-    const currentBundleId = "00000000-0000-0000-0000-000000000004";
+    const currentBundleId = "00000000-0004-0000-0000-000000000000";
     const result = checkForRollback(bundles, currentBundleId);
     expect(result).toBe(true);
   });
@@ -44,23 +44,23 @@ describe("checkForRollback", () => {
   it("should return undefined if no matching bundle is found", () => {
     const bundles: Bundle[] = [
       {
-        id: "00000000-0000-0000-0000-000000000001",
+        id: "00000000-0001-0000-0000-000000000000",
         enabled: true,
         ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
       {
-        id: "00000000-0000-0000-0000-000000000002",
+        id: "00000000-0002-0000-0000-000000000000",
         enabled: false,
         ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
       },
     ];
-    const currentBundleId = "00000000-0000-0000-0000-000000000003";
+    const currentBundleId = "00000000-0003-0000-0000-000000000000";
     const result = checkForRollback(bundles, currentBundleId);
     expect(result).toBe(true);
   });
 
   it("should return true if bundles are empty and update has already been done", () => {
-    const result = checkForRollback([], "00000000-0000-0000-0000-000000000001");
+    const result = checkForRollback([], "00000000-0001-0000-0000-000000000000");
     expect(result).toBe(true);
   });
 });

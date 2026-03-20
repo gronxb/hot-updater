@@ -7,7 +7,7 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
+import { maskUuidV7Rand, NIL_UUID } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
@@ -119,6 +119,8 @@ export function createOrmDatabaseCore({
         minBundleId = NIL_UUID,
         channel = "production",
       }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
+        const maskedBundleId = maskUuidV7Rand(bundleId);
+
         const versionRows = await orm.findMany("bundles", {
           select: ["target_app_version"],
           where: (b) => b.and(b("platform", "=", platform)),
@@ -170,11 +172,17 @@ export function createOrmDatabaseCore({
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
         const latestCandidate = sorted[0] ?? null;
-        const currentBundle = sorted.find((b) => b.id === bundleId);
+        const currentBundle = sorted.find(
+          (b) => maskUuidV7Rand(b.id) === maskedBundleId,
+        );
         const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+          sorted.find(
+            (b) => maskUuidV7Rand(b.id).localeCompare(maskedBundleId) > 0,
+          ) ?? null;
         const rollbackCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
+          sorted.find(
+            (b) => maskUuidV7Rand(b.id).localeCompare(maskedBundleId) < 0,
+          ) ?? null;
 
         if (bundleId === NIL_UUID) {
           if (latestCandidate && latestCandidate.id !== bundleId) {
@@ -186,7 +194,7 @@ export function createOrmDatabaseCore({
         if (currentBundle) {
           if (
             latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
+            maskUuidV7Rand(latestCandidate.id).localeCompare(maskedBundleId) > 0
           ) {
             return toUpdateInfo(latestCandidate, "UPDATE");
           }
@@ -200,7 +208,7 @@ export function createOrmDatabaseCore({
           return toUpdateInfo(rollbackCandidate, "ROLLBACK");
         }
 
-        if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
+        if (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0) {
           return null;
         }
         return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
@@ -213,6 +221,8 @@ export function createOrmDatabaseCore({
         minBundleId = NIL_UUID,
         channel = "production",
       }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
+        const maskedBundleId = maskUuidV7Rand(bundleId);
+
         const candidates = await orm.findMany("bundles", {
           select: [
             "id",
@@ -239,11 +249,17 @@ export function createOrmDatabaseCore({
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
         const latestCandidate = sorted[0] ?? null;
-        const currentBundle = sorted.find((b) => b.id === bundleId);
+        const currentBundle = sorted.find(
+          (b) => maskUuidV7Rand(b.id) === maskedBundleId,
+        );
         const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+          sorted.find(
+            (b) => maskUuidV7Rand(b.id).localeCompare(maskedBundleId) > 0,
+          ) ?? null;
         const rollbackCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
+          sorted.find(
+            (b) => maskUuidV7Rand(b.id).localeCompare(maskedBundleId) < 0,
+          ) ?? null;
 
         if (bundleId === NIL_UUID) {
           if (latestCandidate && latestCandidate.id !== bundleId) {
@@ -255,7 +271,7 @@ export function createOrmDatabaseCore({
         if (currentBundle) {
           if (
             latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
+            maskUuidV7Rand(latestCandidate.id).localeCompare(maskedBundleId) > 0
           ) {
             return toUpdateInfo(latestCandidate, "UPDATE");
           }
@@ -269,7 +285,7 @@ export function createOrmDatabaseCore({
           return toUpdateInfo(rollbackCandidate, "ROLLBACK");
         }
 
-        if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
+        if (minBundleId && maskedBundleId.localeCompare(minBundleId) <= 0) {
           return null;
         }
         return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;

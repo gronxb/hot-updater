@@ -2,6 +2,7 @@ import {
   type AppVersionGetBundlesArgs,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
+  maskUuidV7Rand,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
@@ -18,9 +19,11 @@ const appVersionStrategy = async (
     channel = "production",
   }: AppVersionGetBundlesArgs,
 ) => {
+  const maskedBundleId = maskUuidV7Rand(bundleId);
+
   const appVersionList = await DB.prepare(
     /* sql */ `
-    SELECT 
+    SELECT
       target_app_version
     FROM bundles
     WHERE platform = ?
@@ -40,7 +43,7 @@ const appVersionStrategy = async (
     SELECT
       ? AS app_platform,
       ? AS app_version,
-      ? AS bundle_id,
+      ? AS masked_bundle_id,
       ? AS min_bundle_id,
       ? AS channel,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
@@ -56,7 +59,7 @@ const appVersionStrategy = async (
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
-      AND b.id >= input.bundle_id
+      AND b.id >= input.masked_bundle_id
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.target_app_version IN (${targetAppVersionList
@@ -76,7 +79,7 @@ const appVersionStrategy = async (
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
-      AND b.id < input.bundle_id
+      AND b.id < input.masked_bundle_id
       AND b.id >= input.min_bundle_id
     ORDER BY b.id DESC
     LIMIT 1
@@ -89,7 +92,7 @@ const appVersionStrategy = async (
   )
   SELECT id, should_force_update, message, status, storage_uri, file_hash
   FROM final_result, input
-  WHERE id <> bundle_id
+  WHERE substr(id, 1, 13) <> substr(input.masked_bundle_id, 1, 13)
 
   UNION ALL
 
@@ -102,11 +105,11 @@ const appVersionStrategy = async (
     NULL AS file_hash
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id > min_bundle_id;
+    AND masked_bundle_id > min_bundle_id;
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId, minBundleId, channel)
+    .bind(platform, appVersion, maskedBundleId, minBundleId, channel)
     .first<{
       id: string;
       should_force_update: number;
@@ -140,11 +143,13 @@ export const fingerprintStrategy = async (
     channel = "production",
   }: FingerprintGetBundlesArgs,
 ) => {
+  const maskedBundleId = maskUuidV7Rand(bundleId);
+
   const sql = /* sql */ `
   WITH input AS (
     SELECT
       ? AS app_platform,
-      ? AS bundle_id,
+      ? AS masked_bundle_id,
       ? AS min_bundle_id,
       ? AS channel,
       ? AS fingerprint_hash,
@@ -161,7 +166,7 @@ export const fingerprintStrategy = async (
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
-      AND b.id >= input.bundle_id
+      AND b.id >= input.masked_bundle_id
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.fingerprint_hash = input.fingerprint_hash
@@ -179,7 +184,7 @@ export const fingerprintStrategy = async (
     FROM bundles b, input
     WHERE b.enabled = 1
       AND b.platform = input.app_platform
-      AND b.id < input.bundle_id
+      AND b.id < input.masked_bundle_id
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.fingerprint_hash = input.fingerprint_hash
@@ -194,7 +199,7 @@ export const fingerprintStrategy = async (
   )
   SELECT id, should_force_update, message, status, storage_uri, file_hash
   FROM final_result, input
-  WHERE id <> bundle_id
+  WHERE substr(id, 1, 13) <> substr(input.masked_bundle_id, 1, 13)
 
   UNION ALL
 
@@ -207,11 +212,11 @@ export const fingerprintStrategy = async (
     NULL AS file_hash
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id > min_bundle_id;
+    AND masked_bundle_id > min_bundle_id;
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, bundleId, minBundleId, channel, fingerprintHash)
+    .bind(platform, maskedBundleId, minBundleId, channel, fingerprintHash)
     .first<{
       id: string;
       should_force_update: number;

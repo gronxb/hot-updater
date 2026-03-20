@@ -3,7 +3,8 @@
 CREATE OR REPLACE FUNCTION get_update_info_by_app_version (
     app_platform   platforms,
     app_version text,
-    bundle_id  uuid,
+    masked_bundle_id_lower uuid,
+    masked_bundle_id_upper uuid,
     min_bundle_id uuid,
     target_channel text,
     target_app_version_list text[]
@@ -34,7 +35,7 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id >= bundle_id
+          AND b.id >= masked_bundle_id_lower
           AND b.id > min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
           AND b.channel = target_channel
@@ -52,7 +53,7 @@ BEGIN
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id < bundle_id
+          AND b.id < masked_bundle_id_lower
           AND b.id > min_bundle_id
         ORDER BY b.id DESC
         LIMIT 1
@@ -65,7 +66,7 @@ BEGIN
     )
     SELECT *
     FROM final_result
-    WHERE final_result.id != bundle_id
+    WHERE NOT (final_result.id BETWEEN masked_bundle_id_lower AND masked_bundle_id_upper)
 
     UNION ALL
 
@@ -77,12 +78,12 @@ BEGIN
         NULL          AS storage_uri,
         NULL          AS file_hash
     WHERE (SELECT COUNT(*) FROM final_result) = 0
-      AND bundle_id != NIL_UUID
-      AND bundle_id > min_bundle_id
+      AND masked_bundle_id_lower != NIL_UUID
+      AND masked_bundle_id_lower > min_bundle_id
       AND NOT EXISTS (
           SELECT 1
           FROM bundles b
-          WHERE b.id = bundle_id
+          WHERE b.id BETWEEN masked_bundle_id_lower AND masked_bundle_id_upper
             AND b.enabled = TRUE
             AND b.platform = app_platform
       );

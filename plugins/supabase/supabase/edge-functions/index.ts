@@ -9,6 +9,44 @@ import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+const parseUuidBytes = (uuid: string): number[] => {
+  const hex = uuid.replace(/-/g, "");
+  const bytes: number[] = [];
+  for (let i = 0; i < 32; i += 2) {
+    bytes.push(parseInt(hex.slice(i, i + 2), 16));
+  }
+  return bytes;
+};
+
+const formatUuid = (bytes: number[]): string => {
+  const out = bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return [
+    out.slice(0, 8),
+    out.slice(8, 12),
+    out.slice(12, 16),
+    out.slice(16, 20),
+    out.slice(20),
+  ].join("-");
+};
+
+const maskUuidV7Rand = (uuid: string): string => {
+  const bytes = parseUuidBytes(uuid);
+  bytes[6] &= 0xf0;
+  bytes[7] = 0x00;
+  bytes[8] &= 0xc0;
+  for (let i = 9; i < 16; i++) bytes[i] = 0x00;
+  return formatUuid(bytes);
+};
+
+const maskUuidV7RandUpper = (uuid: string): string => {
+  const bytes = parseUuidBytes(uuid);
+  bytes[6] |= 0x0f;
+  bytes[7] = 0xff;
+  bytes[8] |= 0x3f;
+  for (let i = 9; i < 16; i++) bytes[i] = 0xff;
+  return formatUuid(bytes);
+};
+
 const semverSatisfies = (targetAppVersion: string, currentVersion: string) => {
   const currentCoerce = semver.coerce(currentVersion);
   if (!currentCoerce) {
@@ -68,7 +106,8 @@ const appVersionStrategy = async (
   return supabase.rpc("get_update_info_by_app_version", {
     app_platform: appPlatform,
     app_version: appVersion,
-    bundle_id: bundleId,
+    masked_bundle_id_lower: maskUuidV7Rand(bundleId),
+    masked_bundle_id_upper: maskUuidV7RandUpper(bundleId),
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_app_version_list: compatibleAppVersionList,
@@ -93,7 +132,8 @@ const fingerprintHashStrategy = async (
 ) => {
   return supabase.rpc("get_update_info_by_fingerprint_hash", {
     app_platform: appPlatform,
-    bundle_id: bundleId,
+    masked_bundle_id_lower: maskUuidV7Rand(bundleId),
+    masked_bundle_id_upper: maskUuidV7RandUpper(bundleId),
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_fingerprint_hash: fingerprintHash,

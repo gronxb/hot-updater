@@ -1136,15 +1136,15 @@ class BundleFileStorageService: BundleStorageService {
             ]
         }
 
-        // Check if the bundle matches the staging bundle (promotion case)
-        if let stagingId = metadata.stagingBundleId, stagingId == bundleId, metadata.verificationPending {
+        // Check if the bundle matches the staging bundle (promotion case, use masked comparison for copy-promoted bundles)
+        if let stagingId = metadata.stagingBundleId, UuidUtils.maskUuidV7Rand(stagingId) == UuidUtils.maskUuidV7Rand(bundleId), metadata.verificationPending {
             NSLog("[BundleStorage] notifyAppReady: Bundle '\(bundleId)' matches staging, promoting to stable")
             promoteStagingToStable()
             return ["status": "PROMOTED"]
         }
 
-        // Check if the bundle matches the stable bundle
-        if let stableId = metadata.stableBundleId, stableId == bundleId {
+        // Check if the bundle matches the stable bundle (use masked comparison for copy-promoted bundles)
+        if let stableId = metadata.stableBundleId, UuidUtils.maskUuidV7Rand(stableId) == UuidUtils.maskUuidV7Rand(bundleId) {
             // Already stable, clear any pending verification state
             if metadata.verificationPending {
                 metadata.verificationPending = false

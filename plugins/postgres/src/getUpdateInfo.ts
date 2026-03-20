@@ -1,6 +1,8 @@
 import {
   type AppVersionGetBundlesArgs,
   type GetBundlesArgs,
+  maskUuidV7Rand,
+  maskUuidV7RandUpper,
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
@@ -19,6 +21,9 @@ export const appVersionStrategy = async (
     channel = "production",
   }: AppVersionGetBundlesArgs,
 ) => {
+  const maskedBundleIdLower = maskUuidV7Rand(bundleId);
+  const maskedBundleIdUpper = maskUuidV7RandUpper(bundleId);
+
   const sqlGetTargetAppVersionList = minify(`
     SELECT target_app_version
     FROM get_target_app_version_list($1, $2);
@@ -35,13 +40,14 @@ export const appVersionStrategy = async (
 
   const sqlGetUpdateInfo = minify(`
     SELECT *
-    FROM get_update_info(
+    FROM get_update_info_by_app_version(
       $1, -- platform
       $2, -- appVersion
-      $3, -- bundleId
-      $4, -- minBundleId (nullable)
-      $5, -- channel
-      $6 -- targetAppVersionList (text array)
+      $3, -- maskedBundleIdLower
+      $4, -- maskedBundleIdUpper
+      $5, -- minBundleId
+      $6, -- channel
+      $7  -- targetAppVersionList (text array)
     );
   `);
 
@@ -55,7 +61,8 @@ export const appVersionStrategy = async (
   }>(sqlGetUpdateInfo, [
     platform,
     appVersion,
-    bundleId,
+    maskedBundleIdLower,
+    maskedBundleIdUpper,
     minBundleId ?? NIL_UUID,
     channel,
     targetAppVersionList,
