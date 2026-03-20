@@ -6,7 +6,8 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Bundle metadata for managing stable/staging bundles and verification state
+ * Bundle metadata for managing the current OTA bundle, the previous-good
+ * fallback bundle, and the verification window for the current launch.
  */
 data class BundleMetadata(
     val schema: String = SCHEMA_VERSION,

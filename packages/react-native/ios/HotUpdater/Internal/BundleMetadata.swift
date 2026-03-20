@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: - BundleMetadata
 
-/// Bundle metadata for managing stable/staging bundles and verification state
+/// Bundle metadata for managing the current OTA bundle, the previous-good
+/// fallback bundle, and the verification window for the current launch.
 public struct BundleMetadata: Codable {
     static let schemaVersion = "metadata-v1"
     static let metadataFilename = "metadata.json"

@@ -1,8 +1,8 @@
 #import "HotUpdater.h"
 #import "HotUpdaterCrashHandler.h"
+#import <React/RCTExceptionsManager.h>
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
-#import <React/RCTRootView.h>
 
 
 #if __has_include("HotUpdater/HotUpdater-Swift.h")
@@ -15,6 +15,23 @@
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
+
+static void HotUpdaterConfigureExceptionsManager(RCTBridge *bridge) {
+    if (!bridge) {
+        return;
+    }
+
+    id module = [bridge moduleForClass:[RCTExceptionsManager class]];
+    if (![module isKindOfClass:[RCTExceptionsManager class]]) {
+        return;
+    }
+
+    RCTExceptionsManager *exceptionsManager = (RCTExceptionsManager *)module;
+    if (exceptionsManager.maxReloadAttempts != 0) {
+        exceptionsManager.maxReloadAttempts = 0;
+        RCTLogInfo(@"[HotUpdater.mm] Disabled React Native fatal JS auto-reload to preserve OTA rollback semantics.");
+    }
+}
 
 @implementation HotUpdater {
     bool hasListeners;
@@ -45,6 +62,11 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     return self;
 }
 
+- (void)setBridge:(RCTBridge *)bridge {
+    [super setBridge:bridge];
+    HotUpdaterConfigureExceptionsManager(bridge);
+}
+
 // Clean up observers when module is invalidated or deallocated
 - (void)invalidate {
     RCTLogInfo(@"[HotUpdater.mm] invalidate called, removing observers.");
@@ -66,18 +88,10 @@ RCT_EXPORT_MODULE();
 // Static singleton HotUpdaterImpl getter
 + (HotUpdaterImpl *)sharedImpl {
     static HotUpdaterImpl *_sharedImpl = nil;
-    static id contentDidAppearObserver = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         [HotUpdaterCrashHandler install];
         _sharedImpl = [[HotUpdaterImpl alloc] init];
-        contentDidAppearObserver =
-            [[NSNotificationCenter defaultCenter] addObserverForName:RCTContentDidAppearNotification
-                                                              object:nil
-                                                               queue:[NSOperationQueue mainQueue]
-                                                          usingBlock:^(__unused NSNotification *note) {
-            [_sharedImpl handleContentAppeared];
-        }];
     });
     return _sharedImpl;
 }
@@ -267,6 +281,7 @@ RCT_EXPORT_MODULE();
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
+            [HotUpdaterCrashHandler startMonitoring];
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
@@ -313,7 +328,10 @@ RCT_EXPORT_MODULE();
 
 - (NSDictionary *)notifyAppReady {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReady];
+    NSDictionary *report = [impl notifyAppReady];
+    [HotUpdaterCrashHandler markLaunchCompleted];
+    [HotUpdaterCrashHandler stopMonitoring];
+    return report;
 }
 
 - (NSArray<NSString *> *)getCrashHistory {
@@ -367,7 +385,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
-            [HotUpdaterCrashHandler resetLaunchCompletion];
+            [HotUpdaterCrashHandler startMonitoring];
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
@@ -400,7 +418,10 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReady];
+    NSDictionary *report = [impl notifyAppReady];
+    [HotUpdaterCrashHandler markLaunchCompleted];
+    [HotUpdaterCrashHandler stopMonitoring];
+    return report;
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {

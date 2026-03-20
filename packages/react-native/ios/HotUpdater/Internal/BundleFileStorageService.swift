@@ -110,8 +110,8 @@ public protocol BundleStorageService {
 
     // Launch state support
     /**
-     * Returns the current launch report for the active bundle, if one exists.
-     * This is a pure read and does not affect rollback or promotion.
+     * Acknowledges the current launch and returns any recovery report for the active bundle.
+     * This closes the rollback window for the current staging bundle.
      */
     func notifyAppReady() -> [String: Any]
     func handleContentAppeared()
@@ -348,6 +348,43 @@ class BundleFileStorageService: BundleStorageService {
         return activeBundleId()
     }
 
+    private func createInitialMetadata() -> BundleMetadata {
+        return createInitialMetadata(from: currentLaunchBundleId())
+    }
+
+    private func createInitialMetadata(from currentBundleId: String?) -> BundleMetadata {
+        let initialStableBundleId = currentBundleId
+        NSLog("[BundleStorage] Creating initial metadata with stableBundleId: \(initialStableBundleId ?? "nil")")
+        return BundleMetadata(
+            isolationKey: isolationKey,
+            stableBundleId: initialStableBundleId,
+            stagingBundleId: nil,
+            verificationPending: false
+        )
+    }
+
+    private func clearVerificationState(_ metadata: BundleMetadata) -> BundleMetadata {
+        var updatedMetadata = metadata
+        updatedMetadata.verificationPending = false
+        updatedMetadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        return updatedMetadata
+    }
+
+    private func prepareMetadataForNewStagingBundle(bundleId: String, metadata: BundleMetadata) -> BundleMetadata {
+        var updatedMetadata = metadata
+
+        if let currentStagingId = metadata.stagingBundleId,
+           currentStagingId != bundleId,
+           !metadata.verificationPending {
+            updatedMetadata.stableBundleId = currentStagingId
+        }
+
+        updatedMetadata.stagingBundleId = bundleId
+        updatedMetadata.verificationPending = true
+        updatedMetadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        return updatedMetadata
+    }
+
     // MARK: - Metadata Operations
 
     private func loadMetadataOrNull() -> BundleMetadata? {
@@ -494,31 +531,6 @@ class BundleFileStorageService: BundleStorageService {
         }
         NSLog("[BundleStorage] Rolling back staging bundle after confirmed process crash")
         rollbackToStable()
-    }
-
-    private func promoteStagingToStable() {
-        guard var metadata = loadMetadataOrNull() else {
-            return
-        }
-        guard let stagingId = metadata.stagingBundleId else {
-            NSLog("[BundleStorage] No staging bundle to promote")
-            return
-        }
-
-        let oldStableId = metadata.stableBundleId
-        metadata.stableBundleId = stagingId
-        metadata.stagingBundleId = nil
-        metadata.verificationPending = false
-        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-
-        if saveMetadata(metadata) {
-            NSLog("[BundleStorage] Promoted staging '\(stagingId)' to stable (old stable: \(oldStableId ?? "nil"))")
-
-            // Clean up old stable bundle
-            if let oldId = oldStableId, oldId != stagingId {
-                let _ = cleanupOldBundles(currentBundleId: stagingId, bundleId: nil)
-            }
-        }
     }
 
     private func rollbackToStable() {
@@ -789,22 +801,22 @@ class BundleFileStorageService: BundleStorageService {
         processCrashMarkerIfPresent()
 
         // If no metadata exists, use legacy behavior (backwards compatible)
-        guard loadMetadataOrNull() != nil else {
+        guard let currentMetadata = loadMetadataOrNull() else {
             let cached = getCachedBundleURL()
             return cached ?? getFallbackBundleURL(bundle: bundle)
         }
 
-        guard let currentMetadata = loadMetadataOrNull() else {
-            return getCachedBundleURL() ?? getFallbackBundleURL(bundle: bundle)
-        }
-
-        // If verification is pending, return staging bundle URL
-        if isVerificationPending(currentMetadata), let stagingId = currentMetadata.stagingBundleId {
+        if let stagingId = currentMetadata.stagingBundleId {
             if case .success(let storeDir) = bundleStoreDir() {
                 let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingId)
                 if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir), let path = bundlePath {
-                    NSLog("[BundleStorage] Returning staging bundle URL: \(path)")
+                    NSLog("[BundleStorage] Returning current staging bundle URL: \(path)")
                     return URL(fileURLWithPath: path)
+                }
+
+                NSLog("[BundleStorage] Staging bundle file missing for \(stagingId)")
+                if isVerificationPending(currentMetadata) {
+                    rollbackToStable()
                 }
             }
         }
@@ -890,16 +902,17 @@ class BundleFileStorageService: BundleStorageService {
                         let setResult = self.setBundleURL(localPath: bundlePath)
                         switch setResult {
                         case .success:
-                            // Set staging metadata for rollback support
-                            var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
-                            metadata.stagingBundleId = bundleId
-                            metadata.verificationPending = true
-                            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-                            let _ = self.saveMetadata(metadata)
+                            let currentMetadata = self.loadMetadataOrNull()
+                                ?? self.createInitialMetadata(from: currentBundleId)
+                            let updatedMetadata = self.prepareMetadataForNewStagingBundle(
+                                bundleId: bundleId,
+                                metadata: currentMetadata
+                            )
+                            let _ = self.saveMetadata(updatedMetadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
-                            // Clean up old bundles, preserving stable and new staging
-                            let stableId = metadata.stableBundleId
+                            // Clean up old bundles, preserving fallback stable and new staging
+                            let stableId = updatedMetadata.stableBundleId
                             let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
                             if bundleIdsToKeep.count > 0 {
                                 let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
@@ -1206,18 +1219,20 @@ class BundleFileStorageService: BundleStorageService {
                         NSLog("[BundleStorage] Successfully set bundle URL: \(finalBundlePath)")
 
                         // 13) Set staging metadata for rollback support
-                        var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
-                        metadata.stagingBundleId = bundleId
-                        metadata.verificationPending = true
-                        metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-                        let _ = self.saveMetadata(metadata)
+                        let currentMetadata = self.loadMetadataOrNull()
+                            ?? self.createInitialMetadata(from: currentBundleId)
+                        let updatedMetadata = self.prepareMetadataForNewStagingBundle(
+                            bundleId: bundleId,
+                            metadata: currentMetadata
+                        )
+                        let _ = self.saveMetadata(updatedMetadata)
                         NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
 
                         // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        // 15) Clean up old bundles, preserving current, stable, and new staging
-                        let stableId = metadata.stableBundleId
+                        // 15) Clean up old bundles, preserving fallback stable and new staging
+                        let stableId = updatedMetadata.stableBundleId
                         let bundleIdsToKeep = [stableId, bundleId].compactMap { $0 }
                         if bundleIdsToKeep.count > 0 {
                             let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
@@ -1268,42 +1283,44 @@ class BundleFileStorageService: BundleStorageService {
 
     // MARK: - Rollback Support
 
-    func handleContentAppeared() {
-        let activeBundleId = currentLaunchBundleId()
+    private func finalizeLaunchIfNeeded(activeBundleId: String?) {
         recordLaunchCompletion()
 
-        if let report = self.sessionLaunchReport {
-            if self.sessionLaunchBundleId == activeBundleId {
-                return
-            }
-
-            self.sessionLaunchReport = nil
-            self.sessionLaunchBundleId = nil
+        if self.sessionLaunchReport != nil,
+           self.sessionLaunchBundleId == activeBundleId {
+            return
         }
 
-        guard var metadata = loadMetadataOrNull() else {
+        self.sessionLaunchReport = nil
+        self.sessionLaunchBundleId = nil
+
+        guard var metadata = loadMetadataOrNull(),
+              metadata.verificationPending else {
             return
         }
 
         if let stagingId = metadata.stagingBundleId,
-           metadata.verificationPending,
            stagingId == activeBundleId {
-            NSLog("[BundleStorage] React content appeared for staging bundle, promoting to stable")
-            promoteStagingToStable()
-            return
+            metadata = clearVerificationState(metadata)
+            if saveMetadata(metadata) {
+                NSLog("[BundleStorage] notifyAppReady acknowledged current staging bundle, closing verification window")
+            }
+        } else if let stableId = metadata.stableBundleId,
+                  stableId == activeBundleId {
+            metadata = clearVerificationState(metadata)
+            if saveMetadata(metadata) {
+                NSLog("[BundleStorage] notifyAppReady acknowledged fallback stable bundle, clearing stale verification state")
+            }
         }
+    }
 
-        if let stableId = metadata.stableBundleId,
-           metadata.verificationPending,
-           stableId == activeBundleId {
-            metadata.verificationPending = false
-            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-            let _ = saveMetadata(metadata)
-        }
+    func handleContentAppeared() {
+        // Launch verification is finalized by notifyAppReady, not first paint.
     }
 
     func notifyAppReady() -> [String: Any] {
         let activeBundleId = currentLaunchBundleId()
+        finalizeLaunchIfNeeded(activeBundleId: activeBundleId)
 
         if let report = self.sessionLaunchReport {
             if self.sessionLaunchBundleId == activeBundleId {
@@ -1348,8 +1365,7 @@ class BundleFileStorageService: BundleStorageService {
             let metadata = loadMetadataOrNull()
             let activeBundleId: String?
 
-            // Prefer staging bundle if verification is pending
-            if let meta = metadata, meta.verificationPending, let staging = meta.stagingBundleId {
+            if let meta = metadata, let staging = meta.stagingBundleId {
                 activeBundleId = staging
             } else if let stable = metadata?.stableBundleId {
                 activeBundleId = stable

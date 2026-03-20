@@ -361,7 +361,7 @@ export const getFingerprintHash = (): string | null => {
 };
 
 /**
- * Result returned by HotUpdater's native launch-state evaluation.
+ * Result returned after HotUpdater acknowledges the current native launch state.
  */
 export type NotifyAppReadyResult = {
   status: "RECOVERED" | "STABLE";
@@ -397,9 +397,9 @@ const normalizeNotifyAppReadyResult = (
 };
 
 /**
- * Reads the native launch report for the current bundle.
- * This is a pure read. Native rollback and promotion have already been
- * decided before this runs.
+ * Acknowledges the current launch and returns any recovery report for the
+ * active bundle. This closes the rollback window for the active staging
+ * bundle; it does not imply immediate stable promotion.
  */
 const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();

@@ -56,7 +56,7 @@ export interface ResolverCheckUpdateParams {
  */
 export interface ResolverNotifyAppReadyParams {
   /**
-   * The bundle state reported by native launch verification
+   * The bundle state reported after native launch acknowledgement
    * - "RECOVERED": App recovered from crash, rollback occurred
    * - "STABLE": No changes, bundle is stable
    */
@@ -109,9 +109,9 @@ export interface HotUpdaterResolver {
 
   /**
    * Custom implementation for handling the app-ready callback.
-   * Native launch state is determined independently before this callback runs.
-   * This hook is informational, pure-read, and does not control crash
-   * recovery, rollback, or staging promotion.
+   * Native launch acknowledgement already happened before this callback runs.
+   * This hook is informational and does not control crash recovery, rollback,
+   * or stable promotion.
    *
    * @param params - All parameters about the current app state
    * @returns Notification result

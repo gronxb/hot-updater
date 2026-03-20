@@ -208,8 +208,9 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 /**
- * Reads the native launch report and forwards it to optional JS callbacks.
- * This does not acknowledge or mutate native rollback/promotion state.
+ * Acknowledges the current native launch and forwards any recovery report
+ * to optional JS callbacks. Native stable promotion, if any, happens later
+ * when a newer bundle is installed.
  */
 const forwardLaunchReport = async (options: {
   resolver?: HotUpdaterResolver;
