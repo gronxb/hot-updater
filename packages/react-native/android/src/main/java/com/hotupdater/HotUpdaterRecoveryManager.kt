@@ -380,9 +380,12 @@ internal class HotUpdaterRecoveryManager(
         name: String,
     ): Field? {
         var current: Class<*>? = clazz
-        while (current != null) {
-            runCatching { current.getDeclaredField(name) }.getOrNull()?.let { return it }
-            current = current.superclass
+        while (true) {
+            val currentClass = current ?: break
+            runCatching { currentClass.getDeclaredField(name) }
+                .getOrNull()
+                ?.let { return it }
+            current = currentClass.superclass
         }
         return null
     }
