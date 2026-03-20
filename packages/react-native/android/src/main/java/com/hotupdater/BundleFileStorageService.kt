@@ -54,7 +54,7 @@ interface BundleStorageService {
     )
 
     /**
-     * Confirms that the current bundle launch reached mounted JS state.
+     * Records that the active bundle reached mounted JS state and returns the session launch report.
      * @return Map containing status and optional crashedBundleId
      */
     fun notifyAppReady(): Map<String, Any?>
@@ -107,8 +107,8 @@ class BundleFileStorageService(
         checkAndCleanupIfIsolationKeyChanged()
     }
 
-    // Session-only rollback tracking (in-memory)
-    private var sessionRollbackBundleId: String? = null
+    private var sessionLaunchReport: Map<String, Any?>? = null
+    private var sessionLaunchBundleId: String? = null
     private var crashMarkerProcessed = false
 
     // MARK: - Bundle Store Directory
@@ -122,6 +122,8 @@ class BundleFileStorageService(
 
     private fun getCrashedHistoryFile(): File = File(getBundleStoreDir(), CrashedHistory.CRASHED_HISTORY_FILENAME)
 
+    private fun getPendingLaunchReportFile(): File = File(getBundleStoreDir(), "launch-report.json")
+
     // MARK: - Metadata Operations
 
     private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile(), isolationKey)
@@ -129,6 +131,55 @@ class BundleFileStorageService(
     private fun saveMetadata(metadata: BundleMetadata): Boolean {
         val updatedMetadata = metadata.copy(isolationKey = isolationKey)
         return updatedMetadata.saveToFile(getMetadataFile())
+    }
+
+    private fun clearPendingLaunchReport() {
+        val reportFile = getPendingLaunchReportFile()
+        if (reportFile.exists()) {
+            reportFile.delete()
+        }
+    }
+
+    private fun savePendingLaunchReport(report: Map<String, Any?>) {
+        val reportFile = getPendingLaunchReportFile()
+        val json =
+            JSONObject().apply {
+                report.forEach { (key, value) -> put(key, value) }
+            }
+
+        try {
+            reportFile.writeText(json.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to persist launch report: ${e.message}")
+        }
+    }
+
+    private fun consumePendingLaunchReport(): Map<String, Any?>? {
+        val reportFile = getPendingLaunchReportFile()
+        if (!reportFile.exists()) {
+            return null
+        }
+
+        return try {
+            val json = JSONObject(reportFile.readText())
+            reportFile.delete()
+
+            val status = json.optString("status", "")
+            if (status.isBlank()) {
+                null
+            } else {
+                buildMap {
+                    put("status", status)
+                    if (json.has("crashedBundleId") && !json.isNull("crashedBundleId")) {
+                        put("crashedBundleId", json.getString("crashedBundleId"))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            reportFile.delete()
+            Log.w(TAG, "Failed to read persisted launch report: ${e.message}")
+            null
+        }
     }
 
     private fun createInitialMetadata(): BundleMetadata {
@@ -149,6 +200,8 @@ class BundleFileStorageService(
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
     }
+
+    private fun currentLaunchBundleId(): String? = extractBundleIdFromCurrentURL()
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -302,12 +355,18 @@ class BundleFileStorageService(
         crashedHistory.addEntry(stagingBundleId)
         saveCrashedHistory(crashedHistory)
 
-        // Save rollback info to session variable (memory only)
-        sessionRollbackBundleId = stagingBundleId
+        val report =
+            mapOf(
+                "status" to "RECOVERED",
+                "crashedBundleId" to stagingBundleId,
+            )
+        sessionLaunchReport = report
+        savePendingLaunchReport(report)
 
         // Clear staging pointer
         val updatedMetadata = clearVerificationState(metadata).copy(stagingBundleId = null)
         saveMetadata(updatedMetadata)
+        sessionLaunchBundleId = updatedMetadata.stableBundleId
 
         // Update bundle URL to point to stable bundle
         val stableBundleId = updatedMetadata.stableBundleId
@@ -354,38 +413,56 @@ class BundleFileStorageService(
     // MARK: - Launch State
 
     override fun notifyAppReady(): Map<String, Any?> {
-        HotUpdaterCrashHandler.markLaunchCompleted(context)
-        val metadata =
-            loadMetadataOrNull()
-                ?: return mapOf("status" to "STABLE")
+        val activeBundleId = currentLaunchBundleId()
 
-        // Check if there was a recent rollback (session variable)
-        sessionRollbackBundleId?.let { crashedBundleId ->
-            sessionRollbackBundleId = null
+        sessionLaunchReport?.let {
+            if (sessionLaunchBundleId == activeBundleId) {
+                clearPendingLaunchReport()
+                return it
+            }
 
-            Log.d(TAG, "notifyAppReady: recovered from rollback (crashed bundle: $crashedBundleId)")
-            return mapOf(
-                "status" to "RECOVERED",
-                "crashedBundleId" to crashedBundleId,
-            )
+            sessionLaunchReport = null
+            sessionLaunchBundleId = null
         }
 
+        HotUpdaterCrashHandler.markLaunchCompleted(context)
+
+        consumePendingLaunchReport()?.let {
+            sessionLaunchReport = it
+            sessionLaunchBundleId = activeBundleId
+            return it
+        }
+
+        val metadata =
+            loadMetadataOrNull()
+                ?: run {
+                    val report = mapOf("status" to "STABLE")
+                    sessionLaunchReport = report
+                    sessionLaunchBundleId = activeBundleId
+                    return report
+                }
+
         if (isVerificationPending(metadata)) {
-            val activeBundleId = extractBundleIdFromCurrentURL()
             val stagingBundleId = metadata.stagingBundleId
             if (stagingBundleId != null && stagingBundleId == activeBundleId) {
-                Log.d(TAG, "Launch confirmed for staging bundle $activeBundleId, promoting to stable")
+                Log.d(TAG, "Mounted staging bundle $activeBundleId, promoting to stable")
                 promoteStagingToStable()
-                return mapOf("status" to "PROMOTED")
+                val report = mapOf("status" to "PROMOTED")
+                sessionLaunchReport = report
+                sessionLaunchBundleId = activeBundleId
+                return report
             }
 
             if (metadata.stableBundleId != null && metadata.stableBundleId == activeBundleId) {
-                Log.d(TAG, "Launch confirmed for stable bundle $activeBundleId, clearing stale verification state")
+                Log.d(TAG, "Mounted stable bundle $activeBundleId, clearing stale verification state")
                 saveMetadata(clearVerificationState(metadata))
             }
         }
 
-        return mapOf("status" to "STABLE")
+        val report = mapOf("status" to "STABLE")
+        sessionLaunchReport = report
+        sessionLaunchBundleId = activeBundleId
+        return report
     }
 
     // MARK: - Bundle URL Operations

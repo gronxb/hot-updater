@@ -56,7 +56,7 @@ export interface ResolverCheckUpdateParams {
  */
 export interface ResolverNotifyAppReadyParams {
   /**
-   * The bundle state from native notifyAppReady
+   * The bundle state reported by native launch verification
    * - "PROMOTED": Staging bundle was promoted to stable
    * - "RECOVERED": App recovered from crash, rollback occurred
    * - "STABLE": No changes, bundle is stable
@@ -110,7 +110,8 @@ export interface HotUpdaterResolver {
 
   /**
    * Custom implementation for handling the app-ready callback.
-   * Note: Native notifyAppReady for bundle promotion still happens automatically.
+   * Native launch state is determined before this callback runs.
+   * This hook is informational and does not control crash recovery or rollback.
    *
    * @param params - All parameters about the current app state
    * @returns Notification result

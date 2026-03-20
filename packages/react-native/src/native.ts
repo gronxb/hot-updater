@@ -361,7 +361,7 @@ export const getFingerprintHash = (): string | null => {
 };
 
 /**
- * Result returned by HotUpdater's internal app-ready lifecycle sync.
+ * Result returned by HotUpdater's native launch-state evaluation.
  */
 export type NotifyAppReadyResult = {
   status: "PROMOTED" | "RECOVERED" | "STABLE";
@@ -370,7 +370,7 @@ export type NotifyAppReadyResult = {
 
 const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();
-  // Oldarch returns JSON string, newarch returns array
+  // Oldarch returns JSON string, newarch returns object
   if (typeof result === "string") {
     try {
       return JSON.parse(result);

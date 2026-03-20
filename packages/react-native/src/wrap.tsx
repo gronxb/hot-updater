@@ -211,9 +211,9 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 /**
- * Helper function to handle native notifyAppReady flow
+ * Records a successful mount in native code, then forwards the launch report to callbacks.
  */
-const handleNotifyAppReady = async (options: {
+const reportBundleLaunch = async (options: {
   resolver?: HotUpdaterResolver;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
@@ -238,8 +238,26 @@ const handleNotifyAppReady = async (options: {
 
     options.onNotifyAppReady?.(nativeResult);
   } catch (e) {
-    console.warn("[HotUpdater] Failed to notify app ready:", e);
+    console.warn("[HotUpdater] Failed to report bundle launch:", e);
   }
+};
+
+const BundleLaunchReporter: React.FC<{
+  resolver?: HotUpdaterResolver;
+  requestHeaders?: Record<string, string>;
+  requestTimeout?: number;
+  onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+}> = ({ resolver, requestHeaders, requestTimeout, onNotifyAppReady }) => {
+  useLayoutEffect(() => {
+    void reportBundleLaunch({
+      resolver,
+      requestHeaders,
+      requestTimeout,
+      onNotifyAppReady,
+    });
+  }, [onNotifyAppReady, requestHeaders, requestTimeout, resolver]);
+
+  return null;
 };
 
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
@@ -248,11 +266,17 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   if (options.updateMode === "manual") {
     return (WrappedComponent: React.ComponentType<P>) => {
       const ManualHOC: React.FC<P> = (props: P) => {
-        useLayoutEffect(() => {
-          void handleNotifyAppReady(options);
-        }, []);
-
-        return <WrappedComponent {...props} />;
+        return (
+          <>
+            <WrappedComponent {...props} />
+            <BundleLaunchReporter
+              resolver={options.resolver}
+              requestHeaders={options.requestHeaders}
+              requestTimeout={options.requestTimeout}
+              onNotifyAppReady={options.onNotifyAppReady}
+            />
+          </>
+        );
       };
 
       return ManualHOC as React.ComponentType<P>;
@@ -341,11 +365,6 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         restOptions.onProgress?.(progress);
       }, [progress]);
 
-      // Notify native side that app is ready (JS bundle fully loaded)
-      useLayoutEffect(() => {
-        void handleNotifyAppReady(restOptions);
-      }, []);
-
       // Start update check
       useLayoutEffect(() => {
         initHotUpdater();
@@ -365,7 +384,17 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         );
       }
 
-      return <WrappedComponent {...props} />;
+      return (
+        <>
+          <WrappedComponent {...props} />
+          <BundleLaunchReporter
+            resolver={restOptions.resolver}
+            requestHeaders={restOptions.requestHeaders}
+            requestTimeout={restOptions.requestTimeout}
+            onNotifyAppReady={restOptions.onNotifyAppReady}
+          />
+        </>
+      );
     };
 
     return HotUpdaterHOC as React.ComponentType<P>;

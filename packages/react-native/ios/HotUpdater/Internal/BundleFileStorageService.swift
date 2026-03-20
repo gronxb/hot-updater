@@ -138,9 +138,9 @@ class BundleFileStorageService: BundleStorageService {
     private let fileOperationQueue: DispatchQueue
 
     private var activeTasks: [URLSessionTask] = []
+    private var sessionLaunchReport: [String: Any]?
+    private var sessionLaunchBundleId: String?
 
-    // Session-only rollback tracking (in-memory)
-    private var sessionRollbackBundleId: String?
     private var crashMarkerProcessed = false
 
     public init(fileSystem: FileSystemService,
@@ -183,6 +183,13 @@ class BundleFileStorageService: BundleStorageService {
         return URL(fileURLWithPath: storeDir).appendingPathComponent(CrashedHistory.crashedHistoryFilename)
     }
 
+    private func pendingLaunchReportFileURL() -> URL? {
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+        return URL(fileURLWithPath: storeDir).appendingPathComponent("launch-report.json")
+    }
+
     private func crashMarkerFileURL() -> URL {
         return URL(fileURLWithPath: fileSystem.documentsPath())
             .appendingPathComponent("hotupdater_crash.marker")
@@ -193,12 +200,64 @@ class BundleFileStorageService: BundleStorageService {
             .appendingPathComponent("hotupdater_launch.marker")
     }
 
-    private func markLaunchCompleted() {
+    private func recordLaunchCompletion() {
         FileManager.default.createFile(
             atPath: launchMarkerFileURL().path,
             contents: nil,
             attributes: nil
         )
+    }
+
+    private func clearPendingLaunchReport() {
+        guard let reportURL = pendingLaunchReportFileURL(),
+              fileSystem.fileExists(atPath: reportURL.path) else {
+            return
+        }
+
+        try? fileSystem.removeItem(atPath: reportURL.path)
+    }
+
+    private func savePendingLaunchReport(_ report: [String: Any]) {
+        guard let reportURL = pendingLaunchReportFileURL() else {
+            return
+        }
+
+        do {
+            let data = try JSONSerialization.data(withJSONObject: report, options: [])
+            try data.write(to: reportURL, options: .atomic)
+        } catch {
+            NSLog("[BundleStorage] Failed to persist launch report: \(error)")
+        }
+    }
+
+    private func consumePendingLaunchReport() -> [String: Any]? {
+        guard let reportURL = pendingLaunchReportFileURL(),
+              fileSystem.fileExists(atPath: reportURL.path) else {
+            return nil
+        }
+
+        defer {
+            try? fileSystem.removeItem(atPath: reportURL.path)
+        }
+
+        do {
+            let data = try Data(contentsOf: reportURL)
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = json["status"] as? String,
+                  !status.isEmpty else {
+                return nil
+            }
+
+            var report: [String: Any] = ["status": status]
+            if let crashedBundleId = json["crashedBundleId"] as? String,
+               !crashedBundleId.isEmpty {
+                report["crashedBundleId"] = crashedBundleId
+            }
+            return report
+        } catch {
+            NSLog("[BundleStorage] Failed to read persisted launch report: \(error)")
+            return nil
+        }
     }
 
     private func activeBundleId() -> String? {
@@ -214,6 +273,10 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         return String(bundleURL[idRange])
+    }
+
+    private func currentLaunchBundleId() -> String? {
+        return activeBundleId()
     }
 
     // MARK: - Metadata Operations
@@ -406,8 +469,12 @@ class BundleFileStorageService: BundleStorageService {
         let _ = saveCrashedHistory(crashedHistory)
         NSLog("[BundleStorage('\(id)')] Added bundle '\(stagingId)' to crashed history")
 
-        // Save rollback info to session variable (memory only)
-        self.sessionRollbackBundleId = stagingId
+        let report: [String: Any] = [
+            "status": "RECOVERED",
+            "crashedBundleId": stagingId
+        ]
+        self.sessionLaunchReport = report
+        savePendingLaunchReport(report)
 
         // Clear staging
         metadata.stagingBundleId = nil
@@ -417,6 +484,7 @@ class BundleFileStorageService: BundleStorageService {
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         if saveMetadata(metadata) {
+            self.sessionLaunchBundleId = metadata.stableBundleId
             NSLog("[BundleStorage] Rolled back to stable bundle: \(metadata.stableBundleId ?? "fallback")")
 
             // Update HotUpdaterBundleURL to point to stable bundle
@@ -1140,40 +1208,57 @@ class BundleFileStorageService: BundleStorageService {
     // MARK: - Rollback Support
 
     func notifyAppReady() -> [String: Any] {
-        markLaunchCompleted()
+        let activeBundleId = currentLaunchBundleId()
 
-        guard var metadata = loadMetadataOrNull() else {
-            return ["status": "STABLE"]
+        if let report = self.sessionLaunchReport {
+            if self.sessionLaunchBundleId == activeBundleId {
+                clearPendingLaunchReport()
+                return report
+            }
+
+            self.sessionLaunchReport = nil
+            self.sessionLaunchBundleId = nil
         }
 
-        if let crashedBundleId = self.sessionRollbackBundleId {
-            self.sessionRollbackBundleId = nil
+        recordLaunchCompletion()
 
-            return [
-                "status": "RECOVERED",
-                "crashedBundleId": crashedBundleId
-            ]
+        if let report = consumePendingLaunchReport() {
+            self.sessionLaunchReport = report
+            self.sessionLaunchBundleId = activeBundleId
+            return report
+        }
+
+        guard var metadata = loadMetadataOrNull() else {
+            let report: [String: Any] = ["status": "STABLE"]
+            self.sessionLaunchReport = report
+            self.sessionLaunchBundleId = activeBundleId
+            return report
         }
 
         if let stagingId = metadata.stagingBundleId,
            metadata.verificationPending,
-           stagingId == activeBundleId() {
-            NSLog("[BundleStorage] notifyAppReady: Active staging bundle completed launch, promoting to stable")
+           stagingId == activeBundleId {
+            NSLog("[BundleStorage] Mounted staging bundle, promoting to stable")
             promoteStagingToStable()
-            return ["status": "PROMOTED"]
+            let report: [String: Any] = ["status": "PROMOTED"]
+            self.sessionLaunchReport = report
+            self.sessionLaunchBundleId = activeBundleId
+            return report
         }
 
         if let stableId = metadata.stableBundleId,
            metadata.verificationPending,
-           stableId == activeBundleId() {
+           stableId == activeBundleId {
             metadata.verificationPending = false
             metadata.verificationAttemptedAt = nil
             metadata.stagingExecutionCount = nil
             metadata.updatedAt = Date().timeIntervalSince1970 * 1000
             let _ = saveMetadata(metadata)
         }
-
-        return ["status": "STABLE"]
+        let report: [String: Any] = ["status": "STABLE"]
+        self.sessionLaunchReport = report
+        self.sessionLaunchBundleId = activeBundleId
+        return report
     }
 
     /**

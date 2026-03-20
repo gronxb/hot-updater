@@ -60,7 +60,7 @@ export interface Spec extends TurboModule {
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   /**
-   * Confirms that the current bundle launch reached mounted JS state.
+   * Records that the active bundle rendered successfully and returns the launch report.
    */
   notifyAppReady(): {
     status: "PROMOTED" | "RECOVERED" | "STABLE";

@@ -303,7 +303,6 @@ RCT_EXPORT_MODULE();
 }
 
 - (NSDictionary *)notifyAppReady {
-    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl notifyAppReady];
 }
@@ -391,7 +390,6 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {
-    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl notifyAppReady];
 }

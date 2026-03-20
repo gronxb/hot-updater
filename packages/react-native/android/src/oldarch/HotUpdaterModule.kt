@@ -155,7 +155,6 @@ class HotUpdaterModule internal constructor(
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun notifyAppReady(): String {
         val result = JSONObject()
-
         val impl = getInstance()
         val statusMap = impl.notifyAppReady()
 
