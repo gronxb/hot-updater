@@ -265,8 +265,8 @@ data class LaunchReport(
                     },
             )
 
-        fun loadFromFile(file: File): LaunchReport? {
-            return try {
+        fun loadFromFile(file: File): LaunchReport? =
+            try {
                 if (!file.exists()) {
                     null
                 } else {
@@ -276,7 +276,6 @@ data class LaunchReport(
                 Log.e(TAG, "Failed to load launch report", e)
                 null
             }
-        }
     }
 
     fun toJson(): JSONObject =

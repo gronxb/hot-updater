@@ -14,12 +14,19 @@ private func hotUpdaterUpdateSignalLaunchStateSymbol(
     _ shouldRollback: ObjCBool
 )
 
+@_silgen_name("HotUpdaterPerformRecoveryReload")
+private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
+
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
 
 private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollback: Bool) {
     hotUpdaterUpdateSignalLaunchStateSymbol(bundleId as NSString?, ObjCBool(shouldRollback))
+}
+
+private func hotUpdaterPerformRecoveryReload() -> Bool {
+    return hotUpdaterPerformRecoveryReloadSymbol().boolValue
 }
 
 @objcMembers public class HotUpdaterImpl: NSObject {
@@ -379,6 +386,7 @@ final class HotUpdaterRecoveryManager: NSObject {
     private var signalHandlersInstalled = false
     private var handlersInstalled = false
     private var isMonitoring = false
+    private var recoveryRequested = false
     private var currentBundleId: String?
     private var shouldRollbackOnCrash = false
     private var contentAppearedCallback: ((String?) -> Void)?
@@ -418,6 +426,7 @@ final class HotUpdaterRecoveryManager: NSObject {
     ) {
         currentBundleId = bundleId
         shouldRollbackOnCrash = shouldRollback
+        recoveryRequested = false
         contentAppearedCallback = onContentAppeared
         isMonitoring = true
 
@@ -432,6 +441,9 @@ final class HotUpdaterRecoveryManager: NSObject {
 
     func handleUncaughtException(_ exception: NSException) {
         writeCrashMarker()
+        if requestRecoveryReloadIfNeeded() {
+            return
+        }
         previousUncaughtExceptionHandler?(exception)
     }
 
@@ -446,12 +458,16 @@ final class HotUpdaterRecoveryManager: NSObject {
 
         RCTSetFatalHandler { [weak self] error in
             self?.writeCrashMarker()
-            self?.previousFatalHandler?(error)
+            if self?.requestRecoveryReloadIfNeeded() != true {
+                self?.previousFatalHandler?(error)
+            }
         }
 
         RCTSetFatalExceptionHandler { [weak self] exception in
             self?.writeCrashMarker()
-            self?.previousFatalExceptionHandler?(exception)
+            if self?.requestRecoveryReloadIfNeeded() != true {
+                self?.previousFatalExceptionHandler?(exception)
+            }
         }
 
         NSSetUncaughtExceptionHandler(hotUpdaterUncaughtExceptionHandler)
@@ -502,6 +518,9 @@ final class HotUpdaterRecoveryManager: NSObject {
     }
 
     @objc private func handleJavaScriptDidFailToLoad() {
+        if requestRecoveryReloadIfNeeded() {
+            return
+        }
         unregisterObservers()
     }
 
@@ -511,23 +530,55 @@ final class HotUpdaterRecoveryManager: NSObject {
         }
 
         unregisterObservers()
-        contentAppearedCallback?(currentBundleId)
-        shouldRollbackOnCrash = false
-        hotUpdaterUpdateSignalLaunchState(currentBundleId, shouldRollback: false)
 
         let workItem = DispatchWorkItem { [weak self] in
-            self?.finishMonitoring()
+            self?.completeSuccessfulLaunchAndFinishMonitoring()
         }
         stopMonitoringWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
     }
 
+    private func completeSuccessfulLaunchAndFinishMonitoring() {
+        guard isMonitoring else {
+            return
+        }
+
+        contentAppearedCallback?(currentBundleId)
+        finishMonitoring()
+    }
+
     private func finishMonitoring() {
         isMonitoring = false
+        recoveryRequested = false
         currentBundleId = nil
         shouldRollbackOnCrash = false
         contentAppearedCallback = nil
         hotUpdaterUpdateSignalLaunchState(nil, shouldRollback: false)
+    }
+
+    private func requestRecoveryReloadIfNeeded() -> Bool {
+        guard isMonitoring, shouldRollbackOnCrash else {
+            return false
+        }
+
+        objc_sync_enter(self)
+        if recoveryRequested {
+            objc_sync_exit(self)
+            return true
+        }
+        recoveryRequested = true
+        objc_sync_exit(self)
+
+        let started = hotUpdaterPerformRecoveryReload()
+        if !started {
+            objc_sync_enter(self)
+            recoveryRequested = false
+            objc_sync_exit(self)
+            NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
+        } else {
+            NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(currentBundleId ?? "nil")")
+        }
+        return started
     }
 
     private func writeCrashMarker() {

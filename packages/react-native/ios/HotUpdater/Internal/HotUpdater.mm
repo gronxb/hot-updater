@@ -15,6 +15,10 @@
 #import "HotUpdater-Swift.h"
 #endif
 
+@interface HotUpdater (InternalSharedImpl)
++ (HotUpdaterImpl *)sharedImpl;
+@end
+
 namespace {
 constexpr size_t kHotUpdaterMaxBundleIdLength = 128;
 const int kHotUpdaterSignals[] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP};
@@ -23,6 +27,7 @@ char gHotUpdaterCrashMarkerPath[PATH_MAX] = {0};
 char gHotUpdaterBundleId[kHotUpdaterMaxBundleIdLength] = {0};
 volatile sig_atomic_t gHotUpdaterShouldRollback = 0;
 struct sigaction gHotUpdaterPreviousActions[NSIG];
+__weak RCTBridge *gHotUpdaterBridge = nil;
 
 size_t HotUpdaterSafeStringLength(const char *value, size_t maxLength)
 {
@@ -134,6 +139,38 @@ extern "C" void HotUpdaterUpdateSignalLaunchState(NSString * _Nullable bundleId,
   gHotUpdaterShouldRollback = shouldRollback ? 1 : 0;
 }
 
+extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
+{
+  __block BOOL didTriggerReload = NO;
+
+  void (^reloadBlock)(void) = ^{
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetLaunchPreparation];
+
+    NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+    if (!bundleURL) {
+      RCTLogWarn(@"[HotUpdater.mm] Failed to resolve bundle URL for recovery reload");
+      return;
+    }
+
+    RCTReloadCommandSetBundleURL(bundleURL);
+    RCTBridge *bridge = gHotUpdaterBridge;
+    if (bridge) {
+      [bridge setValue:bundleURL forKey:@"bundleURL"];
+    }
+    RCTTriggerReloadCommandListeners(@"HotUpdater recovery reload");
+    didTriggerReload = YES;
+  };
+
+  if ([NSThread isMainThread]) {
+    reloadBlock();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), reloadBlock);
+  }
+
+  return didTriggerReload;
+}
+
 
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
@@ -199,6 +236,7 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 - (void)setBridge:(RCTBridge *)bridge
 {
     [super setBridge:bridge];
+    gHotUpdaterBridge = bridge;
     [self configureExceptionsManagerWithBridge:bridge];
 }
 
@@ -206,6 +244,9 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 - (void)invalidate {
     RCTLogInfo(@"[HotUpdater.mm] invalidate called, removing observers.");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (gHotUpdaterBridge == self.bridge) {
+        gHotUpdaterBridge = nil;
+    }
     // Swift side should handle KVO observer removal for its tasks
     [super invalidate];
 }
@@ -213,6 +254,9 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 - (void)dealloc {
     RCTLogInfo(@"[HotUpdater.mm] dealloc called, removing observers.");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (gHotUpdaterBridge == self.bridge) {
+        gHotUpdaterBridge = nil;
+    }
 }
 
 - (void)configureExceptionsManagerWithBridge:(RCTBridge *)bridge
@@ -467,6 +511,9 @@ RCT_EXPORT_MODULE();
             [impl resetLaunchPreparation];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL) {
+                RCTReloadCommandSetBundleURL(bundleURL);
+            }
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
@@ -569,6 +616,9 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
             [impl resetLaunchPreparation];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL) {
+                RCTReloadCommandSetBundleURL(bundleURL);
+            }
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
