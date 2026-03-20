@@ -363,9 +363,8 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     * @param bundleId The ID of the currently running bundle
+     * Returns the launch report for the current process.
+     * Startup success and rollback are finalized before JS reads it.
      * @return Map containing status and optional crashedBundleId
      */
     fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()

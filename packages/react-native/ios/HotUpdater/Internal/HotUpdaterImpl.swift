@@ -530,26 +530,22 @@ final class HotUpdaterRecoveryManager: NSObject {
         }
 
         unregisterObservers()
+        contentAppearedCallback?(currentBundleId)
+        shouldRollbackOnCrash = false
+        hotUpdaterUpdateSignalLaunchState(currentBundleId, shouldRollback: false)
 
+        stopMonitoringWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
-            self?.completeSuccessfulLaunchAndFinishMonitoring()
+            self?.finishMonitoring()
         }
         stopMonitoringWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
     }
 
-    private func completeSuccessfulLaunchAndFinishMonitoring() {
-        guard isMonitoring else {
-            return
-        }
-
-        contentAppearedCallback?(currentBundleId)
-        finishMonitoring()
-    }
-
     private func finishMonitoring() {
         isMonitoring = false
         recoveryRequested = false
+        stopMonitoringWorkItem = nil
         currentBundleId = nil
         shouldRollbackOnCrash = false
         contentAppearedCallback = nil

@@ -37,11 +37,6 @@ internal class HotUpdaterRecoveryManager(
 
     private val stopMonitoringRunnable =
         Runnable {
-            if (isMonitoring) {
-                contentAppearedCallback?.invoke(currentBundleId)
-                shouldRollbackOnCrash = false
-                updateNativeLaunchState(currentBundleId, false)
-            }
             cancelRecoveryWatchdog()
             Log.d(TAG, "Stopping crash monitoring for current launch")
             isMonitoring = false
@@ -135,6 +130,10 @@ internal class HotUpdaterRecoveryManager(
         ReactMarker.removeListener(contentAppearedListener)
         mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
         mainHandler.removeCallbacks(stopMonitoringRunnable)
+        contentAppearedCallback?.invoke(currentBundleId)
+        shouldRollbackOnCrash = false
+        updateNativeLaunchState(currentBundleId, false)
+        cancelRecoveryWatchdog()
         mainHandler.postDelayed(stopMonitoringRunnable, MONITORING_GRACE_PERIOD_MS)
     }
 
