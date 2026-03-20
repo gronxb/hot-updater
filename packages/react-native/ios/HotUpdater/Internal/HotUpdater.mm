@@ -582,6 +582,20 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
+- (NSString *)getBundleId {
+    NSLog(@"[HotUpdater.mm] getBundleId called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *bundleId = [impl getBundleId];
+    return bundleId ?: @"";
+}
+
+- (NSDictionary<NSString *, NSString *> *)getManifestAssets {
+    NSLog(@"[HotUpdater.mm] getManifestAssets called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSDictionary<NSString *, NSString *> *assets = [impl getManifestAssets];
+    return assets ?: @{};
+}
+
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -671,6 +685,20 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     NSString *baseURL = [impl getBaseURL];
     return baseURL ?: @"";
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
+    NSLog(@"[HotUpdater.mm] getBundleId called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSString *bundleId = [impl getBundleId];
+    return bundleId ?: @"";
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifestAssets) {
+    NSLog(@"[HotUpdater.mm] getManifestAssets called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSDictionary<NSString *, NSString *> *assets = [impl getManifestAssets];
+    return assets ?: @{};
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve

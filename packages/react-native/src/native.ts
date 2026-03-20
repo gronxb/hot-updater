@@ -8,6 +8,7 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+export type ManifestAssets = Record<string, string>;
 
 /**
  * Built-in reload behaviors used by `HotUpdater.reload()`.
@@ -33,12 +34,6 @@ export type CustomReloadHandler = () => void | Promise<void>;
  * - `custom`: Run a user-provided JS handler on both platforms
  */
 export type ReloadBehaviorSetting = ReloadBehavior | "custom";
-
-declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
-
-export const HotUpdaterConstants = {
-  HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
-};
 
 class HotUpdaterSessionState {
   private readonly defaultChannel: string;
@@ -322,9 +317,42 @@ export const getMinBundleId = (): string => {
  * @returns {string} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
-    ? getMinBundleId()
-    : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getBundleId?: () => string;
+  };
+  const bundleId = nativeModule.getBundleId?.();
+
+  if (!bundleId || bundleId === NIL_UUID) {
+    return getMinBundleId();
+  }
+
+  return bundleId;
+};
+
+/**
+ * Fetches the current manifest assets map for the active bundle.
+ *
+ * Returns an empty object when manifest.json is missing or invalid.
+ */
+export const getManifestAssets = (): ManifestAssets => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getManifestAssets?: () => ManifestAssets | string;
+  };
+  const assets = nativeModule.getManifestAssets?.();
+
+  if (!assets) {
+    return {};
+  }
+
+  if (typeof assets === "string") {
+    try {
+      return normalizeManifestAssets(JSON.parse(assets));
+    } catch {
+      return {};
+    }
+  }
+
+  return normalizeManifestAssets(assets);
 };
 
 /**
@@ -412,6 +440,18 @@ const normalizeNotifyAppReadyResult = (
   }
 
   return { status: "STABLE" };
+};
+
+const normalizeManifestAssets = (value: unknown): ManifestAssets => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
 };
 
 /**

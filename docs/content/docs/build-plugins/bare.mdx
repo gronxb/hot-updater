@@ -7,7 +7,7 @@ icon: react
 ## Installation
 
 ```package-install
-npm install @hot-updater/bare --save-dev
+npm install @hot-updater/bare @hot-updater/expo --save-dev
 ```
 
 ## Configuration
@@ -39,12 +39,13 @@ export default defineConfig({
 
 ## Babel Configuration
 
-Add the Hot Updater Babel plugin to your `babel.config.js`:
+Add the Hot Updater Babel plugin to your `babel.config.js`.
+The `@hot-updater/expo/babel-plugin` export is shared across bare and Rock builds:
 
 ```javascript
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
-  plugins: ['hot-updater/babel-plugin'],
+  plugins: ['@hot-updater/expo/babel-plugin'],
 };
 ```
 

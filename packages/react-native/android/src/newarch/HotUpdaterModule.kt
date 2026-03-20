@@ -176,6 +176,22 @@ class HotUpdaterModule internal constructor(
         return impl.getBaseURL()
     }
 
+    override fun getBundleId(): String {
+        val impl = getInstance()
+        return impl.getBundleId()
+    }
+
+    override fun getManifestAssets(): WritableNativeMap {
+        val impl = getInstance()
+        val result = WritableNativeMap()
+
+        impl.getManifestAssets().forEach { (key, value) ->
+            result.putString(key, value)
+        }
+
+        return result
+    }
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {

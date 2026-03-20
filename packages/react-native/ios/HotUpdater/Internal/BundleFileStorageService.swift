@@ -121,6 +121,18 @@ public protocol BundleStorageService {
     func getBaseURL() -> String
 
     /**
+     * Gets the current active bundle ID from bundle storage.
+     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     */
+    func getBundleId() -> String?
+
+    /**
+     * Gets the current manifest assets map from bundle storage.
+     * Returns an empty object when manifest.json is missing or invalid.
+     */
+    func getManifestAssets() -> [String: String]
+
+    /**
      * Restores the original bundle and clears downloaded bundle state.
      */
     func resetChannel() -> Result<Bool, Error>
@@ -250,6 +262,87 @@ class BundleFileStorageService: BundleStorageService {
             return stagingBundleId
         }
         return metadata.stableBundleId
+    }
+
+    private func getActiveBundleId() -> String? {
+        let metadata = loadMetadataOrNull()
+
+        if let stagingBundleId = metadata?.stagingBundleId {
+            return stagingBundleId
+        }
+
+        if let stableBundleId = metadata?.stableBundleId {
+            return stableBundleId
+        }
+
+        return getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+    }
+
+    private func readBundleId(in bundleDirectory: String) -> String? {
+        if let manifestJson = readManifest(in: bundleDirectory) {
+            let manifestBundleId =
+                (manifestJson["bundleId"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if let manifestBundleId, !manifestBundleId.isEmpty {
+                return manifestBundleId
+            }
+        }
+
+        let legacyBundleIdPath = (bundleDirectory as NSString).appendingPathComponent("BUNDLE_ID")
+        if fileSystem.fileExists(atPath: legacyBundleIdPath) {
+            do {
+                let legacyBundleId = try String(contentsOfFile: legacyBundleIdPath, encoding: .utf8)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                if !legacyBundleId.isEmpty {
+                    return legacyBundleId
+                }
+            } catch {
+                NSLog("[BundleStorage] Failed to read legacy bundleId at \(legacyBundleIdPath): \(error.localizedDescription)")
+            }
+        }
+
+        return nil
+    }
+
+    private func readManifest(in bundleDirectory: String) -> [String: Any]? {
+        let manifestPath = (bundleDirectory as NSString).appendingPathComponent("manifest.json")
+        guard fileSystem.fileExists(atPath: manifestPath) else {
+            return nil
+        }
+
+        do {
+            let manifestData = try Data(contentsOf: URL(fileURLWithPath: manifestPath))
+            return try JSONSerialization.jsonObject(with: manifestData) as? [String: Any]
+        } catch {
+            NSLog("[BundleStorage] Failed to read manifest at \(manifestPath): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func readManifestAssets(in bundleDirectory: String) -> [String: String] {
+        guard let manifestJson = readManifest(in: bundleDirectory),
+              let assets = manifestJson["assets"] as? [String: Any] else {
+            return [:]
+        }
+
+        return Dictionary(
+            uniqueKeysWithValues: assets.compactMap { key, value in
+                guard let value = value as? String else {
+                    return nil
+                }
+
+                let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard !trimmedKey.isEmpty, !trimmedValue.isEmpty else {
+                    return nil
+                }
+
+                return (trimmedKey, trimmedValue)
+            }
+        )
     }
 
     /**
@@ -1171,35 +1264,7 @@ class BundleFileStorageService: BundleStorageService {
      */
     func getBaseURL() -> String {
         do {
-            let metadata = loadMetadataOrNull()
-            let activeBundleId: String?
-
-            // Prefer the current staging bundle regardless of verification state.
-            if let staging = metadata?.stagingBundleId {
-                activeBundleId = staging
-            } else if let stable = metadata?.stableBundleId {
-                activeBundleId = stable
-            } else {
-                // Fall back to current bundle ID from preferences
-                if let savedURL = try preferences.getItem(forKey: "HotUpdaterBundleURL") {
-                    // Extract bundle ID from path like "bundle-store/abc123/index.ios.bundle"
-                    if let range = savedURL.range(of: "bundle-store/([^/]+)/", options: .regularExpression) {
-                        let match = savedURL[range]
-                        let components = match.split(separator: "/")
-                        if components.count >= 2 {
-                            activeBundleId = String(components[1])
-                        } else {
-                            activeBundleId = nil
-                        }
-                    } else {
-                        activeBundleId = nil
-                    }
-                } else {
-                    activeBundleId = nil
-                }
-            }
-
-            if let bundleId = activeBundleId {
+            if let bundleId = getActiveBundleId() {
                 if case .success(let storeDir) = bundleStoreDir() {
                     let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
                     if fileSystem.fileExists(atPath: bundleDir) {
@@ -1213,6 +1278,34 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Error getting base URL: \(error)")
             return ""
         }
+    }
+
+    func getBundleId() -> String? {
+        guard let activeBundleId = getActiveBundleId(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            return nil
+        }
+
+        return readBundleId(in: bundleDir)
+    }
+
+    func getManifestAssets() -> [String: String] {
+        guard let activeBundleId = getActiveBundleId(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            return [:]
+        }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            return [:]
+        }
+
+        return readManifestAssets(in: bundleDir)
     }
 
     func resetChannel() -> Result<Bool, Error> {

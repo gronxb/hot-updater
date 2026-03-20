@@ -67,7 +67,7 @@ To ensure safe handling of environment variables, you can whitelist only the nec
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
   plugins: [
-    'hot-updater/babel-plugin',
+    '@hot-updater/expo/babel-plugin',
     [
       'module:react-native-dotenv',
       {

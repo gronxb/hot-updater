@@ -186,6 +186,18 @@ class HotUpdaterModule internal constructor(
         return impl.getBaseURL()
     }
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getBundleId(): String {
+        val impl = getInstance()
+        return impl.getBundleId()
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getManifestAssets(): String {
+        val impl = getInstance()
+        return JSONObject(impl.getManifestAssets()).toString()
+    }
+
     @ReactMethod
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

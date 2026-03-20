@@ -106,6 +106,6 @@ pnpm test
 This package is used by:
 - Storage plugins (AWS, Cloudflare, Supabase, Firebase, Standalone)
 - Database plugins (PostgreSQL, Cloudflare D1, Supabase)
-- Build plugins (Expo, Bare, Re.Pack, Rock)
+- Build plugins (Expo, Bare, Rock)
 
 Changes here may affect multiple plugins across the ecosystem.

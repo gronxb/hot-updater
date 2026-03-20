@@ -389,6 +389,16 @@ class HotUpdaterImpl {
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
 
+    /**
+     * Gets the current active bundle ID from bundle storage.
+     */
+    fun getBundleId(): String = bundleStorage.getBundleId() ?: getMinBundleId()
+
+    /**
+     * Gets the current manifest assets map from bundle storage.
+     */
+    fun getManifestAssets(): Map<String, String> = bundleStorage.getManifestAssets()
+
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()
         if (success) {

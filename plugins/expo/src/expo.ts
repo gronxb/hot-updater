@@ -89,11 +89,11 @@ const runBundle = async ({
     .catch(() => null);
 
   if (!bundleId) {
-    throw new Error(`If you are using Babel, please check if 'hot-updater/babel-plugin' is configured in babel.config.js
+    throw new Error(`If you are using Babel, please check if '@hot-updater/expo/babel-plugin' is configured in babel.config.js
 Example:
 module.exports = {
   plugins: [
-    ["hot-updater/babel-plugin"]
+    ["@hot-updater/expo/babel-plugin"]
   ]
 }
 `);

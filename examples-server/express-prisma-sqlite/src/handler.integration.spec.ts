@@ -34,8 +34,9 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     // Kill any process using the port before starting
     await killPort(port);
 
-    testDbPath = createTestDbPath(projectRoot);
+    testDbPath = `${createTestDbPath(projectRoot)}.db`;
     await fs.mkdir(path.join(projectRoot, "data"), { recursive: true });
+    await fs.writeFile(testDbPath, "");
 
     process.env.TEST_DB_PATH = testDbPath;
 

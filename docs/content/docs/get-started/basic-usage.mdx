@@ -28,7 +28,7 @@ npx hot-updater init
 
 This interactive CLI will guide you through:
 
-1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Re.Pack, or Expo)
+1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Rock, or Expo)
 2. **Provider Selection**: Select from available providers:
    - [Supabase](/docs/managed/supabase)
    - [Firebase](/docs/managed/firebase)
@@ -136,8 +136,8 @@ The update server URL will be provided after running `npx hot-updater init`. Che
 
 Configure the build plugin to set the bundle ID at build time. This is necessary for integrating the `hot-updater` plugin into your project.
 
-<Tabs items={['Bare (Babel)', 'Re.Pack', 'Expo']}>
-  <Tab value="Bare (Babel)">
+<Tabs items={['Bare / Rock (Babel)', 'Expo']}>
+  <Tab value="Bare / Rock (Babel)">
 
 Add the following to your `babel.config.js` file:
 
@@ -145,30 +145,7 @@ Add the following to your `babel.config.js` file:
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
   plugins: [
-    'hot-updater/babel-plugin', // [!code ++]
-  ],
-};
-```
-
-  </Tab>
-  <Tab value="Re.Pack">
-
-First, install the Re.Pack plugin:
-
-```package-install
-npm install @hot-updater/repack --save-dev
-```
-
-Then add the following to your `rspack.config.mjs` file:
-
-```js title="rspack.config.mjs"
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-
-export default {
-  // ...
-  plugins: [
-    new Repack.RepackPlugin(),
-    new HotUpdaterPlugin() // [!code ++]
+    '@hot-updater/expo/babel-plugin', // [!code ++]
   ],
 };
 ```
@@ -211,7 +188,7 @@ Add the following to your `babel.config.js` file:
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
   plugins: [
-    'hot-updater/babel-plugin', // [!code ++]
+    '@hot-updater/expo/babel-plugin', // [!code ++]
   ],
 };
 ```

@@ -105,6 +105,21 @@ export interface Spec extends TurboModule {
    */
   getBaseURL: () => string;
 
+  /**
+   * Gets the current active bundle ID from native bundle storage.
+   * Native reads the extracted bundle manifest first and falls back to the
+   * legacy BUNDLE_ID file when needed.
+   *
+   * @returns Active bundle ID or an empty string when no downloaded bundle is active
+   */
+  getBundleId: () => string;
+
+  /**
+   * Gets the current manifest assets map from native bundle storage.
+   * Returns an empty object when manifest.json is missing or invalid.
+   */
+  getManifestAssets: () => Record<string, string>;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

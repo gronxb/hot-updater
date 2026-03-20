@@ -75,21 +75,16 @@ const runBundle = async ({
     .catch(() => null);
 
   if (!bundleId) {
-    throw new Error(`If you are using Babel, please check if 'hot-updater/babel-plugin' is configured in babel.config.js
+    throw new Error(`Could not find BUNDLE_ID in the build output.
+
+Please check if '@hot-updater/expo/babel-plugin' is configured in babel.config.js.
+This plugin is required for bare and Rock builds, including Re.Pack-based Babel pipelines.
+
 Example:
 module.exports = {
   plugins: [
-    ["hot-updater/babel-plugin"]
+    ["@hot-updater/expo/babel-plugin"]
   ]
-}
-  
-
-If you are using Repack, please check if '@hot-updater/repack' plugin is configured in rspack.config.mjs
-Example:
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-
-{
-  plugins: [new Repack.RepackPlugin(), new HotUpdaterPlugin()],
 }
 `);
   }

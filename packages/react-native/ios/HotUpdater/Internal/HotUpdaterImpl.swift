@@ -334,6 +334,21 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         return bundleStorage.getBaseURL()
     }
 
+    /**
+     * Gets the current active bundle ID from bundle storage.
+     * Returns an empty string when the app is using the built-in bundle.
+     */
+    public func getBundleId() -> String {
+        return bundleStorage.getBundleId() ?? ""
+    }
+
+    /**
+     * Gets the current manifest assets map from bundle storage.
+     */
+    public func getManifestAssets() -> [String: String] {
+        return bundleStorage.getManifestAssets()
+    }
+
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
     }

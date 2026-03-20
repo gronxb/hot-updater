@@ -7,6 +7,7 @@ import {
 import {
   cleanupServer,
   createGetUpdateInfo,
+  hasDockerDaemon,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -20,8 +21,9 @@ import { afterAll, beforeAll, describe } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
+const describeWithDocker = hasDockerDaemon() ? describe : describe.skip;
 
-describe("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
+describeWithDocker("Hot Updater Handler Integration Tests (Hono + MongoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbName: string;
