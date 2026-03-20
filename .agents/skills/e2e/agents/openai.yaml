@@ -1,4 +1,4 @@
 interface:
-  display_name: "Hot Updater 0.81 E2E"
+  display_name: "E2E"
   short_description: "Run OTA E2E on the v0.81.0 example app"
-  default_prompt: "Use $hot-updater-v081-e2e to execute a caller-provided OTA E2E scenario on examples/v0.81.0."
+  default_prompt: "Use $e2e to execute a caller-provided OTA E2E scenario on examples/v0.81.0."

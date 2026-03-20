@@ -4,8 +4,8 @@ Use these fixed values for `examples/v0.81.0`.
 
 ## Workspace
 
-- Repo root: `/Users/gronxb/Desktop/hot-updater3`
-- Example root: `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0`
+- Repo root: `<repo-root>`
+- Example root: `<repo-root>/examples/v0.81.0`
 - E2E policy: use release binaries only. Do not validate OTA with debug builds or Metro-attached sessions.
 
 ## OTA Server
@@ -19,7 +19,7 @@ Use these fixed values for `examples/v0.81.0`.
 
 - Preferred simulator: `iPhone 16`
 - Built app identifier used by `agent-device` and `simctl`: `org.reactjs.native.example.HotUpdaterExample`
-- Xcode workspace: `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0/ios/HotUpdaterExample.xcworkspace`
+- Xcode workspace: `<repo-root>/examples/v0.81.0/ios/HotUpdaterExample.xcworkspace`
 - Scheme: `HotUpdaterExample`
 - Release derived data default for E2E: `/tmp/hotupdater-v081-ios-e2e`
 
@@ -32,8 +32,8 @@ Important:
 ## Android
 
 - Package name: `com.hotupdaterexample`
-- App module dir: `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0/android`
-- Release APK path: `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk`
+- App module dir: `<repo-root>/examples/v0.81.0/android`
+- Release APK path: `<repo-root>/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk`
 
 ## UI Assertions
 

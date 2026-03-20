@@ -1,13 +1,13 @@
 ---
-name: hot-updater-v081-e2e
-description: Run end-to-end OTA verification for `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0` with `agent-device`. Use when validating iOS or Android release builds, deploying OTA bundles with `pnpm hot-updater deploy`, checking stable update application, reproducing rollback after a crash bundle, or reading bundle-store metadata and crash history for the v0.81.0 example app.
+name: e2e
+description: Run end-to-end OTA verification for `examples/v0.81.0` with `agent-device`. Use when validating iOS or Android release builds, deploying OTA bundles with `pnpm hot-updater deploy`, checking stable update application, reproducing rollback after a crash bundle, or reading bundle-store metadata and crash history for the v0.81.0 example app.
 ---
 
 # Hot Updater V0.81 E2E
 
 Use this skill for `examples/v0.81.0` OTA verification only.
 
-Always load and follow [$agent-device](/Users/gronxb/Desktop/hot-updater3/.agents/skills/agent-device/SKILL.md) for device interaction.
+Always load and follow [$agent-device](../agent-device/SKILL.md) for device interaction.
 
 Do not encode a fixed test scenario in this skill. The caller provides the scenario. This skill only supplies fixed targets, guardrails, command templates, and inspection helpers for `examples/v0.81.0`.
 
@@ -30,9 +30,9 @@ Read [references/runtime-targets.md](references/runtime-targets.md) before runni
 
 Before running any caller-provided scenario:
 
-1. Run `pnpm -w build` from `/Users/gronxb/Desktop/hot-updater3`.
+1. Run `pnpm -w build`.
 2. Confirm the standalone update server is running on `http://localhost:3007/hot-updater`.
-3. Use the exact example workspace: `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0`.
+3. Use the exact example workspace: `examples/v0.81.0`.
 4. Use release artifacts only.
 5. Choose one platform first. Finish that platform end-to-end before starting the other one.
 
@@ -69,10 +69,12 @@ agent-device open org.reactjs.native.example.HotUpdaterExample \
 ### Android Build And Install
 
 ```bash
+cd <repo-root>/examples/v0.81.0/android
+
 ./gradlew :app:assembleRelease --rerun-tasks
 
 agent-device reinstall com.hotupdaterexample \
-  /Users/gronxb/Desktop/hot-updater3/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk \
+  <repo-root>/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk \
   --platform android \
   --serial <serial>
 
@@ -85,7 +87,7 @@ agent-device open com.hotupdaterexample \
 
 ### OTA Deploy
 
-Run deploy from `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0`.
+Run deploy from `<repo-root>/examples/v0.81.0`.
 
 ```bash
 pnpm hot-updater deploy -p ios -t 1.0.x
@@ -97,8 +99,8 @@ pnpm hot-updater deploy -p android -t 1.0.x
 ```bash
 agent-device snapshot -i
 agent-device diff snapshot -i
-/Users/gronxb/Desktop/hot-updater3/.agents/skills/hot-updater-v081-e2e/scripts/inspect_ios_state.sh
-/Users/gronxb/Desktop/hot-updater3/.agents/skills/hot-updater-v081-e2e/scripts/inspect_android_state.sh
+<repo-root>/.agents/skills/e2e/scripts/inspect_ios_state.sh
+<repo-root>/.agents/skills/e2e/scripts/inspect_android_state.sh
 ```
 
 ## Assertions
@@ -145,5 +147,6 @@ If the caller asks for a report, include:
 
 ## Notes
 
-- The example app already renders launch status and crash history in `/Users/gronxb/Desktop/hot-updater3/examples/v0.81.0/App.tsx`.
+- In this skill, `<repo-root>` means the checked-out repository root.
+- The example app already renders launch status and crash history in `examples/v0.81.0/App.tsx`.
 - The iOS installed bundle id is `org.reactjs.native.example.HotUpdaterExample`, even though `hot-updater.config.ts` uses `com.hotupdaterexample` for build config.
