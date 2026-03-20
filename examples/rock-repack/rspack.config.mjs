@@ -1,7 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as Repack from '@callstack/repack';
-import { HotUpdaterPlugin } from '@hot-updater/repack';
 import rspack from '@rspack/core';
 import { config } from 'dotenv';
 import { SentryDebugIdPlugin } from 'repack-plugin-sentry';
@@ -34,7 +33,6 @@ export default {
   },
   plugins: [
     new Repack.RepackPlugin(),
-    new HotUpdaterPlugin(),
     new rspack.EnvironmentPlugin({
       HOT_UPDATER_SUPABASE_URL: JSON.stringify(
         process.env.HOT_UPDATER_SUPABASE_URL,

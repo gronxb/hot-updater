@@ -4,7 +4,6 @@
 "@hot-updater/bare": patch
 "@hot-updater/expo": patch
 "@hot-updater/rock": patch
-"@hot-updater/repack": patch
 ---
 
 Read deployed bundle IDs from native bundle manifests instead of injecting them

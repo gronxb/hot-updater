@@ -132,26 +132,9 @@ export default HotUpdater.wrap({
 The update server URL will be provided after running `npx hot-updater init`. Check your terminal output or provider console for the correct URL.
 </Callout>
 
-## Plugin Configuration
+## Expo Configuration
 
-Most projects do not need an extra Hot Updater bundler plugin. The only
-exception is Expo projects that use DOM components with `use dom`.
-
-<Tabs items={['Bare', 'Re.Pack', 'Expo']}>
-  <Tab value="Bare">
-
-No additional Hot Updater Babel plugin is required for React Native CLI
-projects.
-
-  </Tab>
-  <Tab value="Re.Pack">
-
-No additional Hot Updater Re.Pack plugin is required.
-
-  </Tab>
-  <Tab value="Expo">
-
-Add the plugin to your `app.json` file as shown below:
+If you're using Expo, add the plugin to your `app.json` file as shown below:
 
 ```json title="app.json"
 {
@@ -174,11 +157,12 @@ Run prebuild to apply the changes:
 npx expo prebuild
 ```
 
-Add `hot-updater/babel-plugin` only if your Expo app uses DOM components with
-`use dom` (typically Expo SDK < 55).
+## Expo DOM Components (`use dom`)
 
-Run the following command to customize your Babel configuration when that
-applies:
+Complete this step only if your Expo app uses DOM components with `use dom`
+(typically Expo SDK < 55).
+
+Run the following command to customize your Babel configuration:
 
 ```package-install
 npx expo customize babel.config.js
@@ -197,13 +181,6 @@ module.exports = function (api) {
   };
 };
 ```
-
-<Callout>
-For Expo projects without `use dom`, you can skip the Babel plugin entirely.
-</Callout>
-
-  </Tab>
-</Tabs>
 
 ## Native Code Setup
 
