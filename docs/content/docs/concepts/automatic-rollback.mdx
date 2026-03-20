@@ -18,11 +18,11 @@ When you deploy a new bundle, Hot Updater follows this process:
 1. **Download**: The new bundle downloads and is marked as "staging"
 2. **First Launch**: App restarts and loads the new bundle
 3. **Verification**:
-   - If the bundle loads successfully, `HotUpdater.wrap()` automatically verifies it
+   - If React content appears successfully, native code automatically verifies the launch
    - The bundle is promoted to "stable" status
 4. **Rollback**: If the app crashes before verification, the next launch detects the crash and rolls back to the last stable bundle
 
-`HotUpdater.wrap()` handles verification automatically by calling `notifyAppReady()` when your app initializes. You don't need to call this function manually.
+`notifyAppReady()` is now informational only. It reads the current launch result for optional JS callbacks, but rollback and promotion are decided entirely on the native side.
 
 ## Crash Detection
 

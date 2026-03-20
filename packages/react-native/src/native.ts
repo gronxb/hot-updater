@@ -364,25 +364,54 @@ export const getFingerprintHash = (): string | null => {
  * Result returned by HotUpdater's native launch-state evaluation.
  */
 export type NotifyAppReadyResult = {
-  status: "PROMOTED" | "RECOVERED" | "STABLE";
+  status: "RECOVERED" | "STABLE";
   crashedBundleId?: string;
+};
+
+const normalizeNotifyAppReadyResult = (
+  result: unknown,
+): NotifyAppReadyResult => {
+  if (!result || typeof result !== "object") {
+    return { status: "STABLE" };
+  }
+
+  const candidate = result as {
+    status?: unknown;
+    crashedBundleId?: unknown;
+  };
+
+  if (candidate.status === "RECOVERED") {
+    return {
+      status: "RECOVERED",
+      crashedBundleId:
+        typeof candidate.crashedBundleId === "string" &&
+        candidate.crashedBundleId.length > 0
+          ? candidate.crashedBundleId
+          : undefined,
+    };
+  }
+
+  // Older native binaries may still return "PROMOTED". Keep the public
+  // surface stable by treating it as the default steady state.
+  return { status: "STABLE" };
 };
 
 /**
  * Reads the native launch report for the current bundle.
- * Native rollback and promotion have already been decided before this runs.
+ * This is a pure read. Native rollback and promotion have already been
+ * decided before this runs.
  */
 const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();
   // Oldarch returns JSON string, newarch returns object
   if (typeof result === "string") {
     try {
-      return JSON.parse(result);
+      return normalizeNotifyAppReadyResult(JSON.parse(result));
     } catch {
       return { status: "STABLE" };
     }
   }
-  return result;
+  return normalizeNotifyAppReadyResult(result);
 };
 
 export { notifyAppReady };

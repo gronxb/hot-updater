@@ -109,6 +109,10 @@ public protocol BundleStorageService {
     func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Launch state support
+    /**
+     * Returns the current launch report for the active bundle, if one exists.
+     * This is a pure read and does not affect rollback or promotion.
+     */
     func notifyAppReady() -> [String: Any]
     func handleContentAppeared()
     func getCrashHistory() -> CrashedHistory
@@ -128,6 +132,8 @@ public protocol BundleStorageService {
 
 class BundleFileStorageService: BundleStorageService {
     private static let launchBundleIdKey = "launchBundleId"
+    private static let launchIdKey = "launchId"
+    private static let processLaunchId = UUID().uuidString
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
@@ -167,6 +173,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Clean up old bundles if isolationKey format changed
         checkAndCleanupIfIsolationKeyChanged()
+        clearStalePendingLaunchReport()
     }
 
     // MARK: - Metadata File Paths
@@ -219,6 +226,15 @@ class BundleFileStorageService: BundleStorageService {
         try? fileSystem.removeItem(atPath: reportURL.path)
     }
 
+    private func clearStalePendingLaunchReport() {
+        guard let report = loadPendingLaunchReport(),
+              !isReportForCurrentLaunch(report) else {
+            return
+        }
+
+        clearPendingLaunchReport()
+    }
+
     private func savePendingLaunchReport(_ report: [String: Any]) {
         guard let reportURL = pendingLaunchReportFileURL() else {
             return
@@ -247,6 +263,10 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             var report: [String: Any] = ["status": status]
+            if let launchId = json[Self.launchIdKey] as? String,
+               !launchId.isEmpty {
+                report[Self.launchIdKey] = launchId
+            }
             if let launchBundleId = json[Self.launchBundleIdKey] as? String,
                !launchBundleId.isEmpty {
                 report[Self.launchBundleIdKey] = launchBundleId
@@ -270,6 +290,14 @@ class BundleFileStorageService: BundleStorageService {
         return reportBundleId == activeBundleId
     }
 
+    private func isReportForCurrentLaunch(_ report: [String: Any]) -> Bool {
+        guard let launchId = report[Self.launchIdKey] as? String else {
+            return false
+        }
+
+        return launchId == Self.processLaunchId
+    }
+
     private func toPublicLaunchReport(_ report: [String: Any]) -> [String: Any] {
         var publicReport: [String: Any] = [:]
         publicReport["status"] = report["status"]
@@ -285,7 +313,10 @@ class BundleFileStorageService: BundleStorageService {
     private func buildLaunchReport(status: String,
                                    launchBundleId: String?,
                                    crashedBundleId: String? = nil) -> [String: Any] {
-        var report: [String: Any] = ["status": status]
+        var report: [String: Any] = [
+            "status": status,
+            Self.launchIdKey: Self.processLaunchId,
+        ]
 
         if let launchBundleId, !launchBundleId.isEmpty {
             report[Self.launchBundleIdKey] = launchBundleId
@@ -1259,9 +1290,6 @@ class BundleFileStorageService: BundleStorageService {
            stagingId == activeBundleId {
             NSLog("[BundleStorage] React content appeared for staging bundle, promoting to stable")
             promoteStagingToStable()
-            let report: [String: Any] = ["status": "PROMOTED"]
-            self.sessionLaunchReport = report
-            self.sessionLaunchBundleId = activeBundleId
             return
         }
 
@@ -1279,24 +1307,15 @@ class BundleFileStorageService: BundleStorageService {
 
         if let report = self.sessionLaunchReport {
             if self.sessionLaunchBundleId == activeBundleId {
-                clearPendingLaunchReport()
                 return report
             }
-
-            self.sessionLaunchReport = nil
-            self.sessionLaunchBundleId = nil
         }
 
         if let report = loadPendingLaunchReport() {
-            if launchReportMatchesActiveBundle(report, activeBundleId: activeBundleId) {
-                let publicReport = toPublicLaunchReport(report)
-                self.sessionLaunchReport = publicReport
-                self.sessionLaunchBundleId = activeBundleId
-                clearPendingLaunchReport()
-                return publicReport
+            if isReportForCurrentLaunch(report),
+               launchReportMatchesActiveBundle(report, activeBundleId: activeBundleId) {
+                return toPublicLaunchReport(report)
             }
-
-            clearPendingLaunchReport()
         }
 
         return ["status": "STABLE"]

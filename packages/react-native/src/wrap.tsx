@@ -40,11 +40,10 @@ interface CommonHotUpdaterOptions {
 
   /**
    * Callback invoked after native launch state has been finalized.
-   * Provides information about bundle promotion, recovery from crashes, or stable state.
+   * Provides information about crash recovery or stable state.
    *
    * @param result - Bundle state information
    * @param result.status - Current bundle state:
-   *   - "PROMOTED": Staging bundle was promoted to stable (new update applied)
    *   - "RECOVERED": App recovered from a crash, rollback occurred
    *   - "STABLE": No changes, bundle is stable
    * @param result.crashedBundleId - Present only when status is "RECOVERED"
@@ -57,8 +56,6 @@ interface CommonHotUpdaterOptions {
    *   onNotifyAppReady: ({ status, crashedBundleId }) => {
    *     if (status === "RECOVERED") {
    *       analytics.track('bundle_rollback', { crashedBundleId });
-   *     } else if (status === "PROMOTED") {
-   *       analytics.track('bundle_promoted');
    *     }
    *   }
    * })(App);
@@ -212,6 +209,7 @@ export type InternalWrapOptions =
 
 /**
  * Reads the native launch report and forwards it to optional JS callbacks.
+ * This does not acknowledge or mutate native rollback/promotion state.
  */
 const forwardLaunchReport = async (options: {
   resolver?: HotUpdaterResolver;

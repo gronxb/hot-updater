@@ -60,10 +60,11 @@ export interface Spec extends TurboModule {
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   /**
-   * Records that the active bundle rendered successfully and returns the launch report.
+   * Reads the native launch report for the active bundle.
+   * This is a pure read and does not affect rollback or promotion.
    */
   notifyAppReady(): {
-    status: "PROMOTED" | "RECOVERED" | "STABLE";
+    status: "RECOVERED" | "STABLE";
     crashedBundleId?: string;
   };
 

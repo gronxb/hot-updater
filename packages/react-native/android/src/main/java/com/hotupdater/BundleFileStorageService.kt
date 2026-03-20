@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.net.URL
+import java.util.UUID
 
 /**
  * Interface for bundle storage operations
@@ -55,7 +56,7 @@ interface BundleStorageService {
 
     /**
      * Returns the current launch report for the active bundle, if one exists.
-     * This is informational only and does not affect rollback or promotion.
+     * This is a pure read and does not affect rollback or promotion.
      */
     fun notifyAppReady(): Map<String, Any?>
 
@@ -104,6 +105,8 @@ class BundleFileStorageService(
     companion object {
         private const val TAG = "BundleStorage"
         private const val LAUNCH_BUNDLE_ID_KEY = "launchBundleId"
+        private const val LAUNCH_ID_KEY = "launchId"
+        private val PROCESS_LAUNCH_ID = UUID.randomUUID().toString()
     }
 
     init {
@@ -112,6 +115,7 @@ class BundleFileStorageService(
 
         // Clean up old bundles if isolationKey format changed
         checkAndCleanupIfIsolationKeyChanged()
+        clearStalePendingLaunchReport()
     }
 
     private var sessionLaunchReport: Map<String, Any?>? = null
@@ -147,6 +151,13 @@ class BundleFileStorageService(
         }
     }
 
+    private fun clearStalePendingLaunchReport() {
+        val report = loadPendingLaunchReport() ?: return
+        if (!isReportForCurrentLaunch(report)) {
+            clearPendingLaunchReport()
+        }
+    }
+
     private fun savePendingLaunchReport(report: Map<String, Any?>) {
         val reportFile = getPendingLaunchReportFile()
         val json =
@@ -175,6 +186,9 @@ class BundleFileStorageService(
             } else {
                 buildMap {
                     put("status", status)
+                    if (json.has(LAUNCH_ID_KEY) && !json.isNull(LAUNCH_ID_KEY)) {
+                        put(LAUNCH_ID_KEY, json.getString(LAUNCH_ID_KEY))
+                    }
                     if (json.has(LAUNCH_BUNDLE_ID_KEY) && !json.isNull(LAUNCH_BUNDLE_ID_KEY)) {
                         put(LAUNCH_BUNDLE_ID_KEY, json.getString(LAUNCH_BUNDLE_ID_KEY))
                     }
@@ -197,6 +211,9 @@ class BundleFileStorageService(
         return reportBundleId == null || reportBundleId == activeBundleId
     }
 
+    private fun isReportForCurrentLaunch(report: Map<String, Any?>): Boolean =
+        report[LAUNCH_ID_KEY] == PROCESS_LAUNCH_ID
+
     private fun toPublicLaunchReport(report: Map<String, Any?>): Map<String, Any?> =
         buildMap {
             put("status", report["status"])
@@ -213,6 +230,7 @@ class BundleFileStorageService(
     ): Map<String, Any?> =
         buildMap {
             put("status", status)
+            put(LAUNCH_ID_KEY, PROCESS_LAUNCH_ID)
             if (!launchBundleId.isNullOrEmpty()) {
                 put(LAUNCH_BUNDLE_ID_KEY, launchBundleId)
             }
@@ -468,9 +486,6 @@ class BundleFileStorageService(
             if (stagingBundleId != null && stagingBundleId == activeBundleId) {
                 Log.d(TAG, "React content appeared for staging bundle $activeBundleId, promoting to stable")
                 promoteStagingToStable()
-                val report = mapOf("status" to "PROMOTED")
-                sessionLaunchReport = report
-                sessionLaunchBundleId = activeBundleId
                 return
             }
 
@@ -487,25 +502,18 @@ class BundleFileStorageService(
 
         sessionLaunchReport?.let {
             if (sessionLaunchBundleId == activeBundleId) {
-                clearPendingLaunchReport()
                 return it
             }
-
-            sessionLaunchReport = null
-            sessionLaunchBundleId = null
         }
 
         val pendingReport = loadPendingLaunchReport()
         if (pendingReport != null) {
-            if (launchReportMatchesActiveBundle(pendingReport, activeBundleId)) {
-                val report = toPublicLaunchReport(pendingReport)
-                sessionLaunchReport = report
-                sessionLaunchBundleId = activeBundleId
-                clearPendingLaunchReport()
-                return report
+            if (
+                isReportForCurrentLaunch(pendingReport) &&
+                launchReportMatchesActiveBundle(pendingReport, activeBundleId)
+            ) {
+                return toPublicLaunchReport(pendingReport)
             }
-
-            clearPendingLaunchReport()
         }
 
         return mapOf("status" to "STABLE")
