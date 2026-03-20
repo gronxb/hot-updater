@@ -147,25 +147,7 @@ export default HotUpdater.wrap({
 
 ```
 
-## Step 5: Add Optional Build Plugin Configuration
-
-Most projects do not need any additional Hot Updater bundler plugin. The only
-exception is Expo projects that use DOM components with `use dom`.
-
-<Tabs items={['Bare', 'Re.Pack', 'Expo']}>
-  <Tab value="Bare">
-
-No additional Hot Updater Babel plugin is required for React Native CLI
-projects.
-
-</Tab>
-<Tab value="Re.Pack">
-
-No additional Hot Updater Re.Pack plugin is required.
-
-</Tab>
-
-<Tab value="Expo">
+## Step 5: Expo DOM Babel Configuration (Optional)
 
 Add the plugin to your `app.json` file as shown below:
 
@@ -188,8 +170,9 @@ Add the plugin to your `app.json` file as shown below:
 npx expo prebuild
 ```
 
-If your Expo app uses DOM components with `use dom`, customize your Babel
-configuration and add `hot-updater/babel-plugin`:
+Complete this step only if your Expo app uses DOM components with `use dom`.
+
+Customize your Babel configuration and add `hot-updater/babel-plugin`:
 
 ```package-install
 npx expo customize babel.config.js
@@ -208,14 +191,6 @@ module.exports = function (api) {
   };
 };
 ```
-
-<Callout>
-If you do not use Expo DOM components, you can skip the Babel plugin.
-</Callout>
-
-</Tab>
-</Tabs>
-
 
 ## Step 6: Add Native Code
 
