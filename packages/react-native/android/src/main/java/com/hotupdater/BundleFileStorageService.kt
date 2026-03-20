@@ -211,8 +211,7 @@ class BundleFileStorageService(
         return reportBundleId == null || reportBundleId == activeBundleId
     }
 
-    private fun isReportForCurrentLaunch(report: Map<String, Any?>): Boolean =
-        report[LAUNCH_ID_KEY] == PROCESS_LAUNCH_ID
+    private fun isReportForCurrentLaunch(report: Map<String, Any?>): Boolean = report[LAUNCH_ID_KEY] == PROCESS_LAUNCH_ID
 
     private fun toPublicLaunchReport(report: Map<String, Any?>): Map<String, Any?> =
         buildMap {
