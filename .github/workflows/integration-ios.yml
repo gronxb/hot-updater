@@ -27,7 +27,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
       - name: Install Ruby dependencies
         working-directory: examples/v0.76.1-new-arch
         run: bundle install
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - run: pnpm install
+      - run: pnpm install --frozen-lockfile --config.node-linker=hoisted
       - name: Install Ruby dependencies
         working-directory: examples/v0.74.1
         run: bundle install
