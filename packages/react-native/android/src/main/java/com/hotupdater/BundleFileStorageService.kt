@@ -31,11 +31,11 @@ interface BundleStorageService {
     fun getFallbackBundleURL(): String
 
     /**
-     * Gets the URL to the bundle file (cached or fallback)
-     * With rollback support: checks for crashed staging bundles
-     * @return The path to the bundle file
+     * Prepares the bundle launch for the current process.
+     * Applies any pending rollback decision from the previous launch and returns
+     * the bundle that should be loaded now.
      */
-    fun getBundleURL(): String
+    fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection
 
     /**
      * Updates the bundle from the specified URL
@@ -53,11 +53,14 @@ interface BundleStorageService {
     )
 
     /**
-     * Notifies that the app has started successfully with the current bundle
-     * @param currentBundleId The bundle ID that JS reports as currently loaded
-     * @return Map containing status and optional crashedBundleId
+     * Marks the current launch as successful after the first content appeared.
      */
-    fun notifyAppReady(currentBundleId: String?): Map<String, Any?>
+    fun markLaunchCompleted(currentBundleId: String?)
+
+    /**
+     * Returns the launch report for the current process.
+     */
+    fun notifyAppReady(): Map<String, Any?>
 
     /**
      * Gets the crashed bundle history
@@ -107,8 +110,7 @@ class BundleFileStorageService(
         checkAndCleanupIfIsolationKeyChanged()
     }
 
-    // Session-only rollback tracking (in-memory)
-    private var sessionRollbackBundleId: String? = null
+    private var currentLaunchReport: LaunchReport? = null
 
     // MARK: - Bundle Store Directory
 
@@ -121,6 +123,8 @@ class BundleFileStorageService(
 
     private fun getCrashedHistoryFile(): File = File(getBundleStoreDir(), CrashedHistory.CRASHED_HISTORY_FILENAME)
 
+    private fun getLaunchReportFile(): File = File(getBundleStoreDir(), LaunchReport.LAUNCH_REPORT_FILENAME)
+
     // MARK: - Metadata Operations
 
     private fun loadMetadataOrNull(): BundleMetadata? = BundleMetadata.loadFromFile(getMetadataFile(), isolationKey)
@@ -130,14 +134,30 @@ class BundleFileStorageService(
         return updatedMetadata.saveToFile(getMetadataFile())
     }
 
+    private fun loadLaunchReport(): LaunchReport? =
+        currentLaunchReport ?: LaunchReport.loadFromFile(getLaunchReportFile())?.also {
+            currentLaunchReport = it
+        }
+
+    private fun saveLaunchReport(report: LaunchReport?) {
+        currentLaunchReport = report
+        val file = getLaunchReportFile()
+        if (report == null) {
+            if (file.exists()) {
+                file.delete()
+            }
+            return
+        }
+        report.saveToFile(file)
+    }
+
     private fun createInitialMetadata(): BundleMetadata {
         val currentBundleId = extractBundleIdFromCurrentURL()
-        Log.d(TAG, "Creating initial metadata with stableBundleId: $currentBundleId")
+        Log.d(TAG, "Creating initial metadata with stagingBundleId: $currentBundleId")
         return BundleMetadata(
-            stableBundleId = currentBundleId,
-            stagingBundleId = null,
+            stableBundleId = null,
+            stagingBundleId = currentBundleId,
             verificationPending = false,
-            verificationAttemptedAt = null,
         )
     }
 
@@ -147,6 +167,20 @@ class BundleFileStorageService(
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
     }
+
+    private fun findBundleFile(bundleId: String): File? {
+        val bundleDir = File(getBundleStoreDir(), bundleId)
+        return bundleDir.walk().find { it.name == "index.android.bundle" && it.exists() }
+    }
+
+    private fun getBundleUrlForId(bundleId: String): String? = findBundleFile(bundleId)?.absolutePath
+
+    private fun getCurrentVerifiedBundleId(metadata: BundleMetadata): String? =
+        when {
+            metadata.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingBundleId
+            metadata.stableBundleId != null -> metadata.stableBundleId
+            else -> null
+        }
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -213,95 +247,110 @@ class BundleFileStorageService(
 
     private fun isVerificationPending(metadata: BundleMetadata): Boolean = metadata.verificationPending && metadata.stagingBundleId != null
 
-    private fun wasVerificationAttempted(metadata: BundleMetadata): Boolean = metadata.verificationAttemptedAt != null
+    private fun prepareMetadataForNewStagingBundle(
+        metadata: BundleMetadata,
+        bundleId: String,
+    ): BundleMetadata {
+        val currentVerifiedBundleId =
+            getCurrentVerifiedBundleId(metadata)?.takeIf { it != bundleId }
 
-    private fun markVerificationAttempted() {
-        val metadata = loadMetadataOrNull() ?: return
-        val updatedMetadata =
-            metadata.copy(
-                verificationAttemptedAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis(),
-            )
-        saveMetadata(updatedMetadata)
-        Log.d(TAG, "Marked verification attempted at ${updatedMetadata.verificationAttemptedAt}")
+        return metadata.copy(
+            stableBundleId = currentVerifiedBundleId,
+            stagingBundleId = bundleId,
+            verificationPending = true,
+            updatedAt = System.currentTimeMillis(),
+        )
     }
 
-    private fun promoteStagingToStable() {
-        val metadata = loadMetadataOrNull() ?: return
-        val stagingBundleId = metadata.stagingBundleId ?: return
-
-        Log.d(TAG, "Promoting staging bundle $stagingBundleId to stable")
-
-        val updatedMetadata =
-            metadata.copy(
-                stableBundleId = stagingBundleId,
-                stagingBundleId = null,
-                verificationPending = false,
-                verificationAttemptedAt = null,
-                updatedAt = System.currentTimeMillis(),
-            )
-        saveMetadata(updatedMetadata)
-
-        // Update HotUpdaterBundleURL preference to point to stable bundle
-        val bundleStoreDir = getBundleStoreDir()
-        val stableBundleDir = File(bundleStoreDir, stagingBundleId)
-        val bundleFile = stableBundleDir.walk().find { it.name == "index.android.bundle" }
-        if (bundleFile != null) {
-            preferences.setItem("HotUpdaterBundleURL", bundleFile.absolutePath)
+    private fun rollbackPendingBundle(stagingBundleId: String): Boolean {
+        val metadata = loadMetadataOrNull() ?: return false
+        if (metadata.stagingBundleId != stagingBundleId) {
+            return false
         }
 
-        // Cleanup old bundles (keep only the new stable)
-        cleanupOldBundles(bundleStoreDir, null, stagingBundleId)
-    }
+        Log.w(TAG, "Rolling back crashed staging bundle: $stagingBundleId")
 
-    private fun rollbackToStable() {
-        val metadata = loadMetadataOrNull() ?: return
-        val stagingBundleId = metadata.stagingBundleId ?: return
-
-        Log.w(TAG, "Rolling back: adding $stagingBundleId to crashed history")
-
-        // Add to crashed history
         val crashedHistory = loadCrashedHistory()
         crashedHistory.addEntry(stagingBundleId)
         saveCrashedHistory(crashedHistory)
 
-        // Save rollback info to session variable (memory only)
-        sessionRollbackBundleId = stagingBundleId
+        val fallbackBundleId =
+            metadata.stableBundleId?.takeIf { candidate ->
+                getBundleUrlForId(candidate) != null
+            }
 
-        // Clear staging pointer
         val updatedMetadata =
             metadata.copy(
-                stagingBundleId = null,
+                stableBundleId = null,
+                stagingBundleId = fallbackBundleId,
                 verificationPending = false,
-                verificationAttemptedAt = null,
-                stagingExecutionCount = null,
                 updatedAt = System.currentTimeMillis(),
             )
         saveMetadata(updatedMetadata)
 
-        // Update bundle URL to point to stable bundle
-        val stableBundleId = updatedMetadata.stableBundleId
-        if (stableBundleId != null) {
-            val bundleStoreDir = getBundleStoreDir()
-            val stableBundleDir = File(bundleStoreDir, stableBundleId)
-            val bundleFile = stableBundleDir.walk().find { it.name == "index.android.bundle" }
-            if (bundleFile != null && bundleFile.exists()) {
-                setBundleURL(bundleFile.absolutePath)
-                Log.d(TAG, "Updated bundle URL to stable: $stableBundleId")
-            }
-        } else {
-            // No stable bundle available, clear bundle URL (fallback to assets)
-            setBundleURL(null)
-            Log.d(TAG, "Cleared bundle URL (no stable bundle)")
+        val fallbackBundleUrl = fallbackBundleId?.let { getBundleUrlForId(it) }
+        setBundleURL(fallbackBundleUrl)
+
+        File(getBundleStoreDir(), stagingBundleId).deleteRecursively()
+        saveLaunchReport(LaunchReport(status = "RECOVERED", crashedBundleId = stagingBundleId))
+        return true
+    }
+
+    private fun applyPendingRecoveryIfNeeded(pendingRecovery: PendingCrashRecovery?) {
+        val metadata = loadMetadataOrNull() ?: return
+        val stagingBundleId = metadata.stagingBundleId ?: return
+
+        if (pendingRecovery?.shouldRollback == true &&
+            pendingRecovery.launchedBundleId == stagingBundleId &&
+            isVerificationPending(metadata)
+        ) {
+            rollbackPendingBundle(stagingBundleId)
+        }
+    }
+
+    private fun selectLaunch(): LaunchSelection {
+        val metadata = loadMetadataOrNull()
+        if (metadata == null) {
+            val cached = getCachedBundleURL()
+            return LaunchSelection(
+                bundleUrl = cached ?: getFallbackBundleURL(),
+                launchedBundleId = extractBundleIdFromCurrentURL(),
+                shouldRollbackOnCrash = false,
+            )
         }
 
-        // Remove staging bundle directory
-        val bundleStoreDir = getBundleStoreDir()
-        val stagingBundleDir = File(bundleStoreDir, stagingBundleId)
-        if (stagingBundleDir.exists()) {
-            stagingBundleDir.deleteRecursively()
-            Log.d(TAG, "Deleted crashed staging bundle directory: $stagingBundleId")
+        metadata.stagingBundleId?.let { stagingBundleId ->
+            val stagingBundleUrl = getBundleUrlForId(stagingBundleId)
+            if (stagingBundleUrl != null) {
+                return LaunchSelection(
+                    bundleUrl = stagingBundleUrl,
+                    launchedBundleId = stagingBundleId,
+                    shouldRollbackOnCrash = metadata.verificationPending,
+                )
+            }
+
+            if (metadata.verificationPending && rollbackPendingBundle(stagingBundleId)) {
+                return selectLaunch()
+            }
         }
+
+        metadata.stableBundleId?.let { stableBundleId ->
+            val stableBundleUrl = getBundleUrlForId(stableBundleId)
+            if (stableBundleUrl != null) {
+                return LaunchSelection(
+                    bundleUrl = stableBundleUrl,
+                    launchedBundleId = stableBundleId,
+                    shouldRollbackOnCrash = false,
+                )
+            }
+        }
+
+        val cached = getCachedBundleURL()
+        return LaunchSelection(
+            bundleUrl = cached ?: getFallbackBundleURL(),
+            launchedBundleId = extractBundleIdFromCurrentURL(),
+            shouldRollbackOnCrash = false,
+        )
     }
 
     // MARK: - Crashed History
@@ -321,41 +370,29 @@ class BundleFileStorageService(
         return true
     }
 
+    override fun markLaunchCompleted(currentBundleId: String?) {
+        val metadata = loadMetadataOrNull() ?: return
+        val stagingBundleId = metadata.stagingBundleId ?: return
+        if (!metadata.verificationPending || stagingBundleId != currentBundleId) {
+            return
+        }
+
+        saveMetadata(
+            metadata.copy(
+                verificationPending = false,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     // MARK: - notifyAppReady
 
-    override fun notifyAppReady(currentBundleId: String?): Map<String, Any?> {
-        val metadata =
-            loadMetadataOrNull()
-                ?: return mapOf("status" to "STABLE")
-
-        // Check if there was a recent rollback (session variable)
-        sessionRollbackBundleId?.let { crashedBundleId ->
-            // Clear rollback info (one-time read)
-            sessionRollbackBundleId = null
-
-            Log.d(TAG, "notifyAppReady: recovered from rollback (crashed bundle: $crashedBundleId)")
-            return mapOf(
-                "status" to "RECOVERED",
-                "crashedBundleId" to crashedBundleId,
-            )
+    override fun notifyAppReady(): Map<String, Any?> {
+        val report = loadLaunchReport() ?: return mapOf("status" to "STABLE")
+        return buildMap {
+            put("status", report.status)
+            report.crashedBundleId?.let { put("crashedBundleId", it) }
         }
-
-        // Check for promotion
-        if (isVerificationPending(metadata)) {
-            val stagingBundleId = metadata.stagingBundleId
-            if (stagingBundleId != null && stagingBundleId == currentBundleId) {
-                Log.d(TAG, "App started successfully with staging bundle $currentBundleId, promoting to stable")
-                promoteStagingToStable()
-                return mapOf("status" to "PROMOTED")
-            } else {
-                Log.d(TAG, "notifyAppReady: bundleId mismatch (staging=$stagingBundleId, current=$currentBundleId)")
-            }
-        } else {
-            Log.d(TAG, "notifyAppReady: no verification pending")
-        }
-
-        // No changes
-        return mapOf("status" to "STABLE")
     }
 
     // MARK: - Bundle URL Operations
@@ -387,73 +424,16 @@ class BundleFileStorageService(
 
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
-    // Track if crash detection has already run in this process
-    private var crashDetectionCompleted = false
+    override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
+        saveLaunchReport(null)
+        applyPendingRecoveryIfNeeded(pendingRecovery)
 
-    override fun getBundleURL(): String {
-        val metadata = loadMetadataOrNull()
-
-        if (metadata == null) {
-            // Legacy mode: no metadata.json exists, use existing behavior
-            val cached = getCachedBundleURL()
-            val result = cached ?: getFallbackBundleURL()
-            Log.d(TAG, "getBundleURL (legacy): returning $result")
-            return result
-        }
-
-        // New rollback-aware mode - only run crash detection ONCE per process
-        if (isVerificationPending(metadata) && !crashDetectionCompleted) {
-            crashDetectionCompleted = true
-
-            if (wasVerificationAttempted(metadata)) {
-                // Already executed once but didn't call notifyAppReady → crash!
-                Log.w(TAG, "Crash detected: staging bundle executed but didn't call notifyAppReady")
-                rollbackToStable()
-            } else {
-                // First execution - mark verification attempted and give it a chance
-                Log.d(TAG, "First execution of staging bundle, marking verification attempted")
-                markVerificationAttempted()
-            }
-        }
-
-        // Reload metadata after potential rollback
-        val currentMetadata = loadMetadataOrNull()
-
-        // Return staging bundle if verification pending
-        if (currentMetadata != null && isVerificationPending(currentMetadata)) {
-            val stagingId = currentMetadata.stagingBundleId
-            if (stagingId != null) {
-                val bundleStoreDir = getBundleStoreDir()
-                val stagingBundleDir = File(bundleStoreDir, stagingId)
-                val bundleFile = stagingBundleDir.walk().find { it.name == "index.android.bundle" }
-                if (bundleFile != null && bundleFile.exists()) {
-                    Log.d(TAG, "getBundleURL: returning STAGING bundle $stagingId")
-                    return bundleFile.absolutePath
-                } else {
-                    Log.w(TAG, "getBundleURL: staging bundle file not found for $stagingId")
-                    // Staging bundle file missing, rollback to stable
-                    rollbackToStable()
-                }
-            }
-        }
-
-        // Return stable bundle URL
-        val stableBundleId = currentMetadata?.stableBundleId
-        if (stableBundleId != null) {
-            val bundleStoreDir = getBundleStoreDir()
-            val stableBundleDir = File(bundleStoreDir, stableBundleId)
-            val bundleFile = stableBundleDir.walk().find { it.name == "index.android.bundle" }
-            if (bundleFile != null && bundleFile.exists()) {
-                Log.d(TAG, "getBundleURL: returning stable bundle $stableBundleId")
-                return bundleFile.absolutePath
-            }
-        }
-
-        // Fallback
-        val cached = getCachedBundleURL()
-        val result = cached ?: getFallbackBundleURL()
-        Log.d(TAG, "getBundleURL: returning $result (cached=$cached)")
-        return result
+        val selection = selectLaunch()
+        Log.d(
+            TAG,
+            "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
+        )
+        return selection
     }
 
     override suspend fun updateBundle(
@@ -525,23 +505,16 @@ class BundleFileStorageService(
 
                 // Update metadata: set as staging
                 val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                val updatedMetadata =
-                    currentMetadata.copy(
-                        stagingBundleId = bundleId,
-                        verificationPending = true,
-                        verificationAttemptedAt = null,
-                        updatedAt = System.currentTimeMillis(),
-                    )
+                val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
                 saveMetadata(updatedMetadata)
 
                 // Set bundle URL for backwards compatibility
                 setBundleURL(existingIndexFile.absolutePath)
 
-                // Keep both stable and staging bundles
-                val stableBundleId = currentMetadata.stableBundleId
-                cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
+                // Keep the current verified bundle as a fallback if one exists.
+                cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
 
-                Log.d(TAG, "Existing bundle set as staging, will be promoted after notifyAppReady")
+                Log.d(TAG, "Existing bundle set as staging bundle for next launch")
                 return
             } else {
                 // If index.android.bundle is missing, delete and re-download
@@ -721,13 +694,7 @@ class BundleFileStorageService(
 
                     // Update metadata: set new bundle as staging
                     val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                    val updatedMetadata =
-                        currentMetadata.copy(
-                            stagingBundleId = bundleId,
-                            verificationPending = true,
-                            verificationAttemptedAt = null,
-                            updatedAt = System.currentTimeMillis(),
-                        )
+                    val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
                     saveMetadata(updatedMetadata)
 
                     // Also update HotUpdaterBundleURL for backwards compatibility
@@ -737,11 +704,10 @@ class BundleFileStorageService(
                     // 11) Clean up temporary and download folders
                     tempDir.deleteRecursively()
 
-                    // 12) Keep both stable and staging bundles
-                    val stableBundleId = currentMetadata.stableBundleId
-                    cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
+                    // 12) Keep the fallback bundle and the new staging bundle.
+                    cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
 
-                    Log.d(TAG, "Downloaded and set bundle as staging successfully. Will be promoted after notifyAppReady.")
+                    Log.d(TAG, "Downloaded and set bundle as staging successfully for the next launch.")
                     // Progress already at 1.0 from unzip completion
                 }
             }
@@ -816,8 +782,7 @@ class BundleFileStorageService(
             val metadata = loadMetadataOrNull()
             val activeBundleId =
                 when {
-                    metadata?.verificationPending == true && metadata.stagingBundleId != null ->
-                        metadata.stagingBundleId
+                    metadata?.stagingBundleId != null -> metadata.stagingBundleId
                     metadata?.stableBundleId != null -> metadata.stableBundleId
                     else -> extractBundleIdFromCurrentURL()
                 }
@@ -848,18 +813,19 @@ class BundleFileStorageService(
                     stableBundleId = null,
                     stagingBundleId = null,
                     verificationPending = false,
-                    verificationAttemptedAt = null,
-                    stagingExecutionCount = null,
                 )
 
             if (!saveMetadata(clearedMetadata)) {
                 return@withContext false
             }
 
+            saveLaunchReport(null)
+
             getBundleStoreDir().listFiles()?.forEach { file ->
                 if (
                     file.name == BundleMetadata.METADATA_FILENAME ||
-                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME
+                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
+                    file.name == LaunchReport.LAUNCH_REPORT_FILENAME
                 ) {
                     return@forEach
                 }

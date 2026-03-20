@@ -15,6 +15,8 @@ class HotUpdaterImpl {
     private val context: Context
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
+    private val recoveryManager: HotUpdaterRecoveryManager
+    private var currentLaunchSelection: LaunchSelection? = null
 
     /**
      * Primary constructor with dependency injection (for testing)
@@ -27,6 +29,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
+        this.recoveryManager = HotUpdaterRecoveryManager(this.context)
     }
 
     /**
@@ -265,7 +268,7 @@ class HotUpdaterImpl {
      * Gets the path to the bundle file
      * @return The path to the bundle file
      */
-    fun getJSBundleFile(): String = bundleStorage.getBundleURL()
+    fun getJSBundleFile(): String = prepareLaunchIfNeeded().bundleUrl
 
     /**
      * Updates the bundle from the specified URL
@@ -299,6 +302,7 @@ class HotUpdaterImpl {
      */
     suspend fun reload(reactContext: Context) {
         try {
+            currentLaunchSelection = null
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
             }
@@ -309,6 +313,7 @@ class HotUpdaterImpl {
 
     suspend fun reloadProcess(reactContext: Context) {
         try {
+            currentLaunchSelection = null
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
                     Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
@@ -361,7 +366,7 @@ class HotUpdaterImpl {
      * @param bundleId The ID of the currently running bundle
      * @return Map containing status and optional crashedBundleId
      */
-    fun notifyAppReady(bundleId: String): Map<String, Any?> = bundleStorage.notifyAppReady(bundleId)
+    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     /**
      * Gets the crashed bundle history.
@@ -387,7 +392,23 @@ class HotUpdaterImpl {
         val success = bundleStorage.resetChannel()
         if (success) {
             preferences.setItem(CHANNEL_STORAGE_KEY, null)
+            currentLaunchSelection = null
         }
         return success
+    }
+
+    private fun prepareLaunchIfNeeded(): LaunchSelection {
+        currentLaunchSelection?.let { return it }
+
+        val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+        val selection = bundleStorage.prepareLaunch(pendingRecovery)
+        recoveryManager.startMonitoring(
+            selection.launchedBundleId,
+            selection.shouldRollbackOnCrash,
+        ) { launchedBundleId ->
+            bundleStorage.markLaunchCompleted(launchedBundleId)
+        }
+        currentLaunchSelection = selection
+        return selection
     }
 }

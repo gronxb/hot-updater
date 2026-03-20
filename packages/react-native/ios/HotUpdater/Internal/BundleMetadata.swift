@@ -12,8 +12,6 @@ public struct BundleMetadata: Codable {
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
-    var verificationAttemptedAt: Double?
-    var stagingExecutionCount: Int?
     var updatedAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -22,8 +20,6 @@ public struct BundleMetadata: Codable {
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
         case verificationPending = "verification_pending"
-        case verificationAttemptedAt = "verification_attempted_at"
-        case stagingExecutionCount = "staging_execution_count"
         case updatedAt = "updated_at"
     }
 
@@ -33,8 +29,6 @@ public struct BundleMetadata: Codable {
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
         verificationPending: Bool = false,
-        verificationAttemptedAt: Double? = nil,
-        stagingExecutionCount: Int? = nil,
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
@@ -42,8 +36,6 @@ public struct BundleMetadata: Codable {
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
         self.verificationPending = verificationPending
-        self.verificationAttemptedAt = verificationAttemptedAt
-        self.stagingExecutionCount = stagingExecutionCount
         self.updatedAt = updatedAt
     }
 
@@ -189,5 +181,66 @@ public struct CrashedHistory: Codable {
 
     mutating func clear() {
         bundles.removeAll()
+    }
+}
+
+public struct PendingCrashRecovery {
+    let launchedBundleId: String?
+    let shouldRollback: Bool
+
+    static func from(json: [String: Any]) -> PendingCrashRecovery {
+        PendingCrashRecovery(
+            launchedBundleId: (json["bundleId"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            shouldRollback: json["shouldRollback"] as? Bool ?? false
+        )
+    }
+}
+
+public struct LaunchSelection {
+    let bundleURL: URL?
+    let launchedBundleId: String?
+    let shouldRollbackOnCrash: Bool
+}
+
+public struct LaunchReport: Codable {
+    static let launchReportFilename = "launch-report.json"
+
+    let status: String
+    let crashedBundleId: String?
+
+    init(status: String = "STABLE", crashedBundleId: String? = nil) {
+        self.status = status
+        self.crashedBundleId = crashedBundleId
+    }
+
+    static func load(from file: URL) -> LaunchReport? {
+        guard FileManager.default.fileExists(atPath: file.path) else {
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: file)
+            return try JSONDecoder().decode(LaunchReport.self, from: data)
+        } catch {
+            print("[LaunchReport] Failed to load launch report: \(error)")
+            return nil
+        }
+    }
+
+    func save(to file: URL) -> Bool {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .prettyPrinted
+            let data = try encoder.encode(self)
+            let directory = file.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            try data.write(to: file)
+            return true
+        } catch {
+            print("[LaunchReport] Failed to save launch report: \(error)")
+            return false
+        }
     }
 }

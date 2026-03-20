@@ -1,9 +1,32 @@
 import Foundation
 import React
 
+private func hotUpdaterUncaughtExceptionHandler(_ exception: NSException) {
+    HotUpdaterRecoveryManager.shared.handleUncaughtException(exception)
+}
+
+@_silgen_name("HotUpdaterInstallSignalHandlers")
+private func hotUpdaterInstallSignalHandlersSymbol(_ crashMarkerPath: NSString)
+
+@_silgen_name("HotUpdaterUpdateSignalLaunchState")
+private func hotUpdaterUpdateSignalLaunchStateSymbol(
+    _ bundleId: NSString?,
+    _ shouldRollback: ObjCBool
+)
+
+private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
+    hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
+}
+
+private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollback: Bool) {
+    hotUpdaterUpdateSignalLaunchStateSymbol(bundleId as NSString?, ObjCBool(shouldRollback))
+}
+
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
+    private let recoveryManager: HotUpdaterRecoveryManager
+    private var currentLaunchSelection: LaunchSelection?
 
     private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
@@ -27,8 +50,9 @@ import React
             preferences: preferences,
             isolationKey: isolationKey
         )
+        let recoveryManager = HotUpdaterRecoveryManager.shared
 
-        self.init(bundleStorage: bundleStorage, preferences: preferences)
+        self.init(bundleStorage: bundleStorage, preferences: preferences, recoveryManager: recoveryManager)
     }
 
     /**
@@ -36,9 +60,10 @@ import React
      * @param bundleStorage Service for bundle storage operations
      * @param preferences Service for preference storage
      */
-    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService) {
+    internal init(bundleStorage: BundleStorageService, preferences: PreferencesService, recoveryManager: HotUpdaterRecoveryManager) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
+        self.recoveryManager = recoveryManager
         super.init()
 
         // Configure preferences with isolation key
@@ -120,7 +145,7 @@ import React
      * @return URL to the bundle or nil
      */
     public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
-        return bundleStorage.getBundleURL(bundle: bundle)
+        return prepareLaunchIfNeeded(bundle: bundle).bundleURL
     }
     
     // MARK: - Bundle Update
@@ -269,13 +294,11 @@ import React
     // MARK: - Rollback Support
 
     /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     * @param bundleId The ID of the currently running bundle
-     * @return true if promotion was successful or no action was needed
+     * Returns the native launch report for the current process.
+     * This is read-only; startup success and rollback are finalized before JS reads it.
      */
-    public func notifyAppReady(bundleId: String) -> [String: Any] {
-        return bundleStorage.notifyAppReady(bundleId: bundleId)
+    public func notifyAppReady() -> [String: Any] {
+        return bundleStorage.notifyAppReady()
     }
 
     /**
@@ -304,6 +327,10 @@ import React
         return bundleStorage.getBaseURL()
     }
 
+    public func resetLaunchPreparation() {
+        currentLaunchSelection = nil
+    }
+
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
@@ -316,11 +343,213 @@ import React
             } catch {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
+            self.currentLaunchSelection = nil
             resolver(success)
         case .failure(let error):
             let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
             let nsError = error as NSError
             reject(normalizedCode, nsError.localizedDescription, nsError)
+        }
+    }
+
+    private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
+        if let currentLaunchSelection {
+            return currentLaunchSelection
+        }
+
+        let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+        let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
+        recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
+            self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
+        }
+        currentLaunchSelection = selection
+        return selection
+    }
+}
+
+@objcMembers
+final class HotUpdaterRecoveryManager: NSObject {
+    static let shared = HotUpdaterRecoveryManager()
+
+    private let crashMarkerURL: URL
+    private var previousFatalHandler: RCTFatalHandler?
+    private var previousFatalExceptionHandler: RCTFatalExceptionHandler?
+    private var previousUncaughtExceptionHandler: (@convention(c) (NSException) -> Void)?
+
+    private var signalHandlersInstalled = false
+    private var handlersInstalled = false
+    private var isMonitoring = false
+    private var currentBundleId: String?
+    private var shouldRollbackOnCrash = false
+    private var contentAppearedCallback: ((String?) -> Void)?
+    private var stopMonitoringWorkItem: DispatchWorkItem?
+
+    private override init() {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        self.crashMarkerURL = documentsPath
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent("recovery-crash-marker.json")
+        super.init()
+    }
+
+    func consumePendingCrashRecovery() -> PendingCrashRecovery? {
+        guard FileManager.default.fileExists(atPath: crashMarkerURL.path) else {
+            return nil
+        }
+
+        defer {
+            try? FileManager.default.removeItem(at: crashMarkerURL)
+        }
+
+        do {
+            let data = try Data(contentsOf: crashMarkerURL)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+            return PendingCrashRecovery.from(json: json)
+        } catch {
+            NSLog("[HotUpdaterRecovery] Failed to read crash marker: \(error)")
+            return nil
+        }
+    }
+
+    func startMonitoring(
+        bundleId: String?,
+        shouldRollback: Bool,
+        onContentAppeared: @escaping (String?) -> Void
+    ) {
+        currentBundleId = bundleId
+        shouldRollbackOnCrash = shouldRollback
+        contentAppearedCallback = onContentAppeared
+        isMonitoring = true
+
+        stopMonitoringWorkItem?.cancel()
+        stopMonitoringWorkItem = nil
+
+        installHandlersIfNeeded()
+        registerObservers()
+        installSignalHandlersIfNeeded()
+        hotUpdaterUpdateSignalLaunchState(bundleId, shouldRollback: shouldRollback)
+    }
+
+    func handleUncaughtException(_ exception: NSException) {
+        writeCrashMarker()
+        previousUncaughtExceptionHandler?(exception)
+    }
+
+    private func installHandlersIfNeeded() {
+        guard !handlersInstalled else {
+            return
+        }
+
+        previousFatalHandler = RCTGetFatalHandler()
+        previousFatalExceptionHandler = RCTGetFatalExceptionHandler()
+        previousUncaughtExceptionHandler = NSGetUncaughtExceptionHandler()
+
+        RCTSetFatalHandler { [weak self] error in
+            self?.writeCrashMarker()
+            self?.previousFatalHandler?(error)
+        }
+
+        RCTSetFatalExceptionHandler { [weak self] exception in
+            self?.writeCrashMarker()
+            self?.previousFatalExceptionHandler?(exception)
+        }
+
+        NSSetUncaughtExceptionHandler(hotUpdaterUncaughtExceptionHandler)
+        handlersInstalled = true
+    }
+
+    private func installSignalHandlersIfNeeded() {
+        guard !signalHandlersInstalled else {
+            return
+        }
+
+        try? FileManager.default.createDirectory(
+            at: crashMarkerURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+        hotUpdaterInstallSignalHandlers(crashMarkerURL.path)
+        signalHandlersInstalled = true
+    }
+
+    private func registerObservers() {
+        unregisterObservers()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleJavaScriptDidFailToLoad),
+            name: NSNotification.Name.RCTJavaScriptDidFailToLoad,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleContentDidAppear),
+            name: NSNotification.Name.RCTContentDidAppear,
+            object: nil
+        )
+    }
+
+    private func unregisterObservers() {
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSNotification.Name.RCTJavaScriptDidFailToLoad,
+            object: nil
+        )
+        NotificationCenter.default.removeObserver(
+            self,
+            name: NSNotification.Name.RCTContentDidAppear,
+            object: nil
+        )
+    }
+
+    @objc private func handleJavaScriptDidFailToLoad() {
+        unregisterObservers()
+    }
+
+    @objc private func handleContentDidAppear() {
+        guard isMonitoring else {
+            return
+        }
+
+        unregisterObservers()
+        contentAppearedCallback?(currentBundleId)
+        shouldRollbackOnCrash = false
+        hotUpdaterUpdateSignalLaunchState(currentBundleId, shouldRollback: false)
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.finishMonitoring()
+        }
+        stopMonitoringWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
+    }
+
+    private func finishMonitoring() {
+        isMonitoring = false
+        currentBundleId = nil
+        shouldRollbackOnCrash = false
+        contentAppearedCallback = nil
+        hotUpdaterUpdateSignalLaunchState(nil, shouldRollback: false)
+    }
+
+    private func writeCrashMarker() {
+        guard isMonitoring else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: crashMarkerURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            let payload: [String: Any] = [
+                "bundleId": currentBundleId ?? NSNull(),
+                "shouldRollback": shouldRollbackOnCrash,
+            ]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            try data.write(to: crashMarkerURL, options: .atomic)
+        } catch {
+            NSLog("[HotUpdaterRecovery] Failed to write crash marker: \(error)")
         }
     }
 }

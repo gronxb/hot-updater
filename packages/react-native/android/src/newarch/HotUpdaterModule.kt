@@ -145,16 +145,10 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
-    override fun notifyAppReady(params: ReadableMap): WritableNativeMap {
+    override fun notifyAppReady(): WritableNativeMap {
         val result = WritableNativeMap()
-        val bundleId = params.getString("bundleId")
-        if (bundleId == null) {
-            result.putString("status", "STABLE")
-            return result
-        }
-
         val impl = getInstance()
-        val statusMap = impl.notifyAppReady(bundleId)
+        val statusMap = impl.notifyAppReady()
 
         result.putString("status", statusMap["status"] as? String ?: "STABLE")
         statusMap["crashedBundleId"]?.let {
