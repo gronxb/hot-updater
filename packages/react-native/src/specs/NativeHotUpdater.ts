@@ -1,4 +1,5 @@
 import type { TurboModule } from "react-native";
+import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 import { TurboModuleRegistry } from "react-native";
 
 export interface UpdateBundleParams {
@@ -118,7 +119,7 @@ export interface Spec extends TurboModule {
    * Gets the current manifest assets map from native bundle storage.
    * Returns an empty object when manifest.json is missing or invalid.
    */
-  getManifestAssets: () => Record<string, string>;
+  getManifestAssets: () => UnsafeObject;
 
   // EventEmitter
   addListener(eventName: string): void;
