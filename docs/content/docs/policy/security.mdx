@@ -67,7 +67,6 @@ To ensure safe handling of environment variables, you can whitelist only the nec
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
   plugins: [
-    'hot-updater/babel-plugin',
     [
       'module:react-native-dotenv',
       {
@@ -80,6 +79,10 @@ module.exports = {
   ],
 };
 ```
+
+If your Expo app uses DOM components with `use dom`, add
+`hot-updater/babel-plugin` separately. Standard React Native and standard Expo
+projects do not need it.
 
 ## Best Practices
 

@@ -107,6 +107,16 @@ export interface Spec extends TurboModule {
    */
   getBaseURL: () => string;
 
+  /**
+   * Gets the bundle ID for the current active OTA bundle.
+   * Native reads this from the active bundle directory's manifest.json and
+   * falls back to the legacy BUNDLE_ID file when manifest.json is absent.
+   *
+   * Returns an empty string when no OTA bundle is active. JS should then fall
+   * back to MIN_BUNDLE_ID for the initial embedded bundle.
+   */
+  getBundleId: () => string;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

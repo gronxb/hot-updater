@@ -1,62 +1,19 @@
 import { transformSync } from "@babel/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import babelPlugin from "./babel";
-
-// Mock fs module for getBundleId() testing
-vi.mock("fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("fs")>();
-  return {
-    ...actual,
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-    writeFileSync: vi.fn(),
-  };
-});
-
-// Mock path module
-vi.mock("path", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("path")>();
-  return {
-    ...actual,
-    join: vi.fn(),
-  };
-});
-
-// Mock uuidv7 for predictable UUID generation
-vi.mock("uuidv7", () => ({
-  uuidv7: vi.fn(),
-}));
 
 /**
  * Helper function to transform code using the babel plugin
- * @param code - Input code string
- * @param buildOutDir - Optional BUILD_OUT_DIR environment variable
  * @returns Transformed code or null if transformation failed
  */
-function transformCode(code: string, buildOutDir?: string): string | null {
-  const oldEnv = process.env["BUILD_OUT_DIR"];
+function transformCode(code: string): string | null {
+  const result = transformSync(code, {
+    plugins: [babelPlugin],
+    configFile: false,
+    babelrc: false,
+  });
 
-  if (buildOutDir !== undefined) {
-    process.env["BUILD_OUT_DIR"] = buildOutDir;
-  }
-
-  try {
-    const result = transformSync(code, {
-      plugins: [babelPlugin],
-      configFile: false,
-      babelrc: false,
-    });
-
-    return result?.code ?? null;
-  } finally {
-    if (buildOutDir !== undefined) {
-      if (oldEnv !== undefined) {
-        process.env["BUILD_OUT_DIR"] = oldEnv;
-      } else {
-        delete process.env["BUILD_OUT_DIR"];
-      }
-    }
-  }
+  return result?.code ?? null;
 }
 
 /**
@@ -67,110 +24,40 @@ function normalizeCode(code: string): string {
 }
 
 describe("Babel Plugin - Hot Updater", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    delete process.env["BUILD_OUT_DIR"];
-  });
+  describe("Bundle ID Placeholder Handling", () => {
+    it("leaves __HOT_UPDATER_BUNDLE_ID untouched", () => {
+      const input = `const bundleId = __HOT_UPDATER_BUNDLE_ID;`;
 
-  afterEach(() => {
-    delete process.env["BUILD_OUT_DIR"];
-  });
+      const result = transformCode(input);
 
-  describe("Bundle ID Replacement", () => {
-    describe("when BUILD_OUT_DIR is not set", () => {
-      it("should replace __HOT_UPDATER_BUNDLE_ID with NIL_UUID", () => {
-        const input = `const bundleId = __HOT_UPDATER_BUNDLE_ID;`;
-        const expected = `const bundleId = "00000000-0000-0000-0000-000000000000";`;
-
-        const result = transformCode(input);
-
-        expect(normalizeCode(result!)).toBe(normalizeCode(expected));
-      });
-
-      it("should handle multiple occurrences of __HOT_UPDATER_BUNDLE_ID", () => {
-        const input = `
-          const bundleId1 = __HOT_UPDATER_BUNDLE_ID;
-          const bundleId2 = __HOT_UPDATER_BUNDLE_ID;
-          console.log(__HOT_UPDATER_BUNDLE_ID);
-        `;
-
-        const result = transformCode(input);
-
-        expect(result).toContain('"00000000-0000-0000-0000-000000000000"');
-        expect(
-          (result!.match(/00000000-0000-0000-0000-000000000000/g) || []).length,
-        ).toBe(3);
-      });
-
-      it("should replace __HOT_UPDATER_BUNDLE_ID in function calls", () => {
-        const input = `console.log(__HOT_UPDATER_BUNDLE_ID);`;
-        const expected = `console.log("00000000-0000-0000-0000-000000000000");`;
-
-        const result = transformCode(input);
-
-        expect(normalizeCode(result!)).toBe(normalizeCode(expected));
-      });
-
-      it("should replace __HOT_UPDATER_BUNDLE_ID in object properties", () => {
-        const input = `const obj = { id: __HOT_UPDATER_BUNDLE_ID };`;
-        const expected = `const obj = { id: "00000000-0000-0000-0000-000000000000" };`;
-
-        const result = transformCode(input);
-
-        expect(normalizeCode(result!)).toBe(normalizeCode(expected));
-      });
-
-      it("should replace __HOT_UPDATER_BUNDLE_ID in array literals", () => {
-        const input = `const arr = [__HOT_UPDATER_BUNDLE_ID, "other"];`;
-        const expected = `const arr = ["00000000-0000-0000-0000-000000000000", "other"];`;
-
-        const result = transformCode(input);
-
-        expect(normalizeCode(result!)).toBe(normalizeCode(expected));
-      });
-
-      it("should replace __HOT_UPDATER_BUNDLE_ID in return statements", () => {
-        const input = `function getId() { return __HOT_UPDATER_BUNDLE_ID; }`;
-        const expected = `function getId() { return "00000000-0000-0000-0000-000000000000"; }`;
-
-        const result = transformCode(input);
-
-        expect(normalizeCode(result!)).toBe(normalizeCode(expected));
-      });
+      expect(normalizeCode(result!)).toBe(normalizeCode(input));
     });
 
-    // Note: Tests for BUILD_OUT_DIR being set are skipped because getBundleId()
-    // is called once when the module loads, making it difficult to test different
-    // scenarios in the same test run. The core functionality (replacing
-    // __HOT_UPDATER_BUNDLE_ID) is already well tested with NIL_UUID above.
+    it("does not replace variables with similar names", () => {
+      const input = `
+        const __HOT_UPDATER_BUNDLE_ID_OLD = "old";
+        const MY___HOT_UPDATER_BUNDLE_ID = "mine";
+        const bundleId = __HOT_UPDATER_BUNDLE_ID;
+      `;
 
-    describe("edge cases", () => {
-      it("should not replace variables with similar names", () => {
-        const input = `
-          const __HOT_UPDATER_BUNDLE_ID_OLD = "old";
-          const MY___HOT_UPDATER_BUNDLE_ID = "mine";
-          const bundleId = __HOT_UPDATER_BUNDLE_ID;
-        `;
+      const result = transformCode(input);
 
-        const result = transformCode(input);
+      expect(result).toContain("__HOT_UPDATER_BUNDLE_ID_OLD");
+      expect(result).toContain("MY___HOT_UPDATER_BUNDLE_ID");
+      expect(result).toContain("__HOT_UPDATER_BUNDLE_ID");
+      expect(result).not.toContain("00000000-0000-0000-0000-000000000000");
+    });
 
-        expect(result).toContain("__HOT_UPDATER_BUNDLE_ID_OLD");
-        expect(result).toContain("MY___HOT_UPDATER_BUNDLE_ID");
-        expect(result).toContain("00000000-0000-0000-0000-000000000000");
-      });
+    it("handles empty input", () => {
+      const input = ``;
+      const result = transformCode(input);
+      expect(result).toBe("");
+    });
 
-      it("should handle empty input", () => {
-        const input = ``;
-        const result = transformCode(input);
-        expect(result).toBe("");
-      });
-
-      it("should handle code without __HOT_UPDATER_BUNDLE_ID", () => {
-        const input = `const foo = "bar";`;
-        const result = transformCode(input);
-        expect(result).toContain('const foo = "bar"');
-        expect(result).not.toContain("__HOT_UPDATER_BUNDLE_ID");
-      });
+    it("handles code without __HOT_UPDATER_BUNDLE_ID", () => {
+      const input = `const foo = "bar";`;
+      const result = transformCode(input);
+      expect(result).toContain('const foo = "bar"');
     });
   });
 
@@ -555,7 +442,7 @@ describe("Babel Plugin - Hot Updater", () => {
   });
 
   describe("combined transformations", () => {
-    it("should apply both bundle ID and WebView transformations", () => {
+    it("should apply WebView transformations without replacing bundle ID placeholders", () => {
       const input = `
         const bundleId = __HOT_UPDATER_BUNDLE_ID;
         React.createElement(WebView, { filePath: "index.html" });
@@ -563,7 +450,7 @@ describe("Babel Plugin - Hot Updater", () => {
 
       const result = transformCode(input);
 
-      expect(result).toContain("00000000-0000-0000-0000-000000000000");
+      expect(result).toContain("__HOT_UPDATER_BUNDLE_ID");
       expect(result).toContain("overrideUri");
       expect(result).toContain("index.html");
     });
@@ -585,9 +472,7 @@ describe("Babel Plugin - Hot Updater", () => {
 
       const result = transformCode(input);
 
-      expect(
-        (result!.match(/00000000-0000-0000-0000-000000000000/g) || []).length,
-      ).toBe(2);
+      expect((result!.match(/__HOT_UPDATER_BUNDLE_ID/g) || []).length).toBe(2);
 
       expect(result).toContain("page1.html");
       expect(result).toContain("component.html");

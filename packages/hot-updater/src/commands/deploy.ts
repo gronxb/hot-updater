@@ -17,6 +17,11 @@ import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import {
+  BUNDLE_MANIFEST_FILENAME,
+  createBundleManifest,
+  writeBundleManifestFile,
+} from "@/utils/bundleManifest";
+import {
   isFingerprintEquals,
   nativeFingerprint,
   readLocalFingerprint,
@@ -236,6 +241,7 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let manifestTempDir: string | null = null;
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
@@ -284,6 +290,10 @@ export const deploy = async (options: DeployOptions) => {
           if (!buildPath) {
             throw new Error("Build result not found");
           }
+          const buildResult = taskRef.buildResult;
+          if (!buildResult) {
+            throw new Error("Build result not found");
+          }
           const files = await fs.promises.readdir(buildPath, {
             recursive: true,
           });
@@ -298,23 +308,44 @@ export const deploy = async (options: DeployOptions) => {
               .map((file) => path.join(buildPath, file)),
           );
 
+          bundleId = buildResult.bundleId;
+          manifestTempDir = await fs.promises.mkdtemp(
+            path.join(normalizeOutputPath, ".bundle-manifest-"),
+          );
+
+          const manifestPath = path.join(
+            manifestTempDir,
+            BUNDLE_MANIFEST_FILENAME,
+          );
+
+          const manifest = await createBundleManifest(bundleId, targetFiles);
+          await writeBundleManifestFile(manifestPath, manifest);
+
+          const archiveTargetFiles = [
+            ...targetFiles,
+            {
+              path: manifestPath,
+              name: BUNDLE_MANIFEST_FILENAME,
+            },
+          ];
+
           switch (compressStrategy) {
             case "tar.br":
               await createTarBrTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: archiveTargetFiles,
               });
               break;
             case "tar.gz":
               await createTarGzTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: archiveTargetFiles,
               });
               break;
             case "zip":
               await createZipTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: archiveTargetFiles,
               });
               break;
             default:
@@ -323,7 +354,6 @@ export const deploy = async (options: DeployOptions) => {
               );
           }
 
-          bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
 
           // Sign bundle if signing is enabled
@@ -478,6 +508,9 @@ export const deploy = async (options: DeployOptions) => {
     console.error(e);
     process.exit(1);
   } finally {
+    if (manifestTempDir) {
+      await fs.promises.rm(manifestTempDir, { recursive: true, force: true });
+    }
     await databasePlugin.onUnmount?.();
   }
 };

@@ -37,31 +37,10 @@ export default defineConfig({
 });
 ```
 
-## Re.Pack Integration (Recommended)
+## Re.Pack Integration
 
-Rock framework uses [Re.Pack](https://re-pack.dev/) bundler. It's recommended to use the Re.Pack plugin to set bundle ID at build time.
-
-Install the Re.Pack plugin:
-
-```package-install
-npm install @hot-updater/repack --save-dev
-```
-
-Add the plugin to your `rspack.config.mjs`:
-
-```js title="rspack.config.mjs"
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-
-export default {
-  // ...
-  plugins: [
-    new Repack.RepackPlugin(),
-    new HotUpdaterPlugin() // [!code ++]
-  ],
-};
-```
-
-See the [Re.Pack integration documentation](/docs/integration-plugins/repack) for more details.
+Rock uses [Re.Pack](https://re-pack.dev/) under the hood, but no additional Hot
+Updater Re.Pack plugin is required.
 
 ## Key Features
 

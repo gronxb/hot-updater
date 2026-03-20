@@ -5,9 +5,7 @@
  * @format
  */
 
-import { 
-  useHotUpda rStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
@@ -37,7 +35,7 @@ function App(): React.JSX.Element {
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>BundleId {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
       <Text>Fingerprint: {HotUpdater.getFingerprintHash()}</Text>

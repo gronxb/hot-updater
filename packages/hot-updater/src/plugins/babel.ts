@@ -1,56 +1,20 @@
 import type { PluginObj } from "@babel/core";
-import type { NodePath } from "@babel/traverse";
 import type * as babelTypes from "@babel/types";
-import { colors } from "@hot-updater/cli-tools";
-import fs from "fs";
-import path from "path";
-import { uuidv7 } from "uuidv7";
-
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-
-const getBundleId = () => {
-  const buildOutDir = process.env["BUILD_OUT_DIR"];
-  if (!buildOutDir) {
-    return NIL_UUID;
-  }
-
-  const bundleIdPath = path.join(buildOutDir, "BUNDLE_ID");
-
-  let bundleId = uuidv7();
-
-  if (fs.existsSync(bundleIdPath)) {
-    bundleId = fs.readFileSync(bundleIdPath, "utf-8");
-  } else {
-    fs.writeFileSync(bundleIdPath, bundleId);
-    console.log(colors.green(`[HotUpdater] Generated bundle ID: ${bundleId}`));
-  }
-
-  return bundleId;
-};
 
 /**
  * Hot Updater Babel Plugin
  *
- * This plugin handles two transformations:
- * 1. Replaces __HOT_UPDATER_BUNDLE_ID with the actual bundle ID
- * 2. Transforms Expo DOM component filePath to overrideUri for OTA updates
+ * This plugin transforms Expo DOM component filePath to overrideUri for OTA
+ * updates.
  */
 export default function ({
   types: t,
 }: {
   types: typeof babelTypes;
 }): PluginObj {
-  const bundleId = getBundleId();
-
   return {
     name: "hot-updater-babel-plugin",
     visitor: {
-      Identifier(path: NodePath<babelTypes.Identifier>) {
-        // Transform __HOT_UPDATER_BUNDLE_ID to actual bundle ID
-        if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
-          path.replaceWith(t.stringLiteral(bundleId));
-        }
-      },
       Program: {
         exit(programPath) {
           // Collect filePath declarations

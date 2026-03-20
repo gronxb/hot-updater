@@ -78,6 +78,12 @@ interface BundleStorageService {
     fun getBaseURL(): String
 
     /**
+     * Gets the bundle ID for the current active OTA bundle directory.
+     * Returns an empty string when the app is using the embedded bundle.
+     */
+    fun getBundleId(): String
+
+    /**
      * Restores the original bundle and clears downloaded bundle state.
      * @return true if the reset was successful
      */
@@ -147,6 +153,55 @@ class BundleFileStorageService(
         val regex = Regex("bundle-store/([^/]+)/")
         return regex.find(currentUrl)?.groupValues?.get(1)
     }
+
+    private fun getActiveBundleDirectory(): File? {
+        val metadata = loadMetadataOrNull()
+        val activeBundleId =
+            when {
+                metadata?.verificationPending == true && metadata.stagingBundleId != null ->
+                    metadata.stagingBundleId
+                metadata?.stableBundleId != null -> metadata.stableBundleId
+                else -> extractBundleIdFromCurrentURL()
+            }
+
+        if (activeBundleId.isNullOrEmpty()) {
+            return null
+        }
+
+        val bundleDir = File(getBundleStoreDir(), activeBundleId)
+        return bundleDir.takeIf { it.exists() }
+    }
+
+    private fun readBundleIdFromManifest(bundleDir: File): String? {
+        val manifestFile = File(bundleDir, "manifest.json")
+        if (!manifestFile.exists()) {
+            return null
+        }
+
+        return try {
+            val manifest = JSONObject(manifestFile.readText())
+            manifest.optString("bundleId").takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read manifest.json bundleId from ${bundleDir.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun readBundleIdFromLegacyFile(bundleDir: File): String? {
+        val legacyBundleIdFile = File(bundleDir, "BUNDLE_ID")
+        if (!legacyBundleIdFile.exists()) {
+            return null
+        }
+
+        return try {
+            legacyBundleIdFile.readText().trim().takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read legacy BUNDLE_ID from ${bundleDir.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun currentLaunchBundleId(): String? = extractBundleIdFromCurrentURL()
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -813,25 +868,20 @@ class BundleFileStorageService(
      */
     override fun getBaseURL(): String {
         return try {
-            val metadata = loadMetadataOrNull()
-            val activeBundleId =
-                when {
-                    metadata?.verificationPending == true && metadata.stagingBundleId != null ->
-                        metadata.stagingBundleId
-                    metadata?.stableBundleId != null -> metadata.stableBundleId
-                    else -> extractBundleIdFromCurrentURL()
-                }
-
-            if (activeBundleId != null) {
-                val bundleDir = File(getBundleStoreDir(), activeBundleId)
-                if (bundleDir.exists()) {
-                    return "file://${bundleDir.absolutePath}"
-                }
-            }
-
-            ""
+            val bundleDir = getActiveBundleDirectory() ?: return ""
+            "file://${bundleDir.absolutePath}"
         } catch (e: Exception) {
             Log.e(TAG, "Error getting base URL: ${e.message}")
+            ""
+        }
+    }
+
+    override fun getBundleId(): String {
+        return try {
+            val bundleDir = getActiveBundleDirectory() ?: return ""
+            readBundleIdFromManifest(bundleDir) ?: readBundleIdFromLegacyFile(bundleDir) ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting bundle ID: ${e.message}")
             ""
         }
     }

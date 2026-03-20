@@ -99,8 +99,7 @@
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "read-package-up": "^11.0.0",
-    "uuidv7": "^1.0.2"
+    "read-package-up": "^11.0.0"
   },
   "peerDependencies": {
     "@hot-updater/aws": "*",

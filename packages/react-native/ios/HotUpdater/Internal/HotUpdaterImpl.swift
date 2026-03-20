@@ -304,6 +304,14 @@ import React
         return bundleStorage.getBaseURL()
     }
 
+    /**
+     * Gets the bundle ID for the current active OTA bundle.
+     * Returns an empty string when the app is running the embedded bundle.
+     */
+    public func getBundleId() -> String {
+        return bundleStorage.getBundleId()
+    }
+
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {

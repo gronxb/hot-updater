@@ -7,14 +7,7 @@
 
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
-import {
-  Button,
-  Image,
-  Modal,
-  SafeAreaView,
-  Text,
-  View,
-} from "react-native";
+import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 import DOMComponent from "./src/web";
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
@@ -43,7 +36,7 @@ function App(): React.JSX.Element {
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>BundleId {HotUpdater.getBundleId()}</Text>
       <Text>Channel {String(HotUpdater.getChannel())}</Text>
 
       <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
