@@ -8,6 +8,7 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
+import { uuidv7 } from "uuidv7";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -71,10 +72,6 @@ const runBundle = async ({
   try {
     const result = await execa("npx", args, {
       cwd,
-      env: {
-        ...process.env,
-        BUILD_OUT_DIR: buildPath,
-      },
       reject: true,
     });
     stdout = result.stdout;
@@ -84,20 +81,7 @@ const runBundle = async ({
     }
   }
 
-  const bundleId = await fs.promises
-    .readFile(path.join(buildPath, "BUNDLE_ID"), "utf-8")
-    .catch(() => null);
-
-  if (!bundleId) {
-    throw new Error(`If you are using Babel, please check if 'hot-updater/babel-plugin' is configured in babel.config.js
-Example:
-module.exports = {
-  plugins: [
-    ["hot-updater/babel-plugin"]
-  ]
-}
-`);
-  }
+  const bundleId = uuidv7();
 
   const enableHermes = isHermesEnabled(cwd, platform);
   if (enableHermes) {

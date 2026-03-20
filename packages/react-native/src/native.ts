@@ -9,6 +9,8 @@ export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
+
 /**
  * Built-in reload behaviors used by `HotUpdater.reload()`.
  *
@@ -34,10 +36,27 @@ export type CustomReloadHandler = () => void | Promise<void>;
  */
 export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 
-declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
+const getInjectedBundleId = (): string =>
+  typeof __HOT_UPDATER_BUNDLE_ID !== "undefined" && __HOT_UPDATER_BUNDLE_ID
+    ? __HOT_UPDATER_BUNDLE_ID
+    : NIL_UUID;
+
+const getNativeBundleId = (): string => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getBundleId?: () => string;
+  };
+
+  if (typeof nativeModule.getBundleId === "function") {
+    return nativeModule.getBundleId() || "";
+  }
+
+  return getInjectedBundleId();
+};
 
 export const HotUpdaterConstants = {
-  HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
+  get HOT_UPDATER_BUNDLE_ID(): string {
+    return getNativeBundleId() || NIL_UUID;
+  },
 };
 
 class HotUpdaterSessionState {
@@ -322,9 +341,13 @@ export const getMinBundleId = (): string => {
  * @returns {string} Resolves with the current version id or null if not available.
  */
 export const getBundleId = (): string => {
-  return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
-    ? getMinBundleId()
-    : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
+  const bundleId = getNativeBundleId();
+
+  if (!bundleId || bundleId === NIL_UUID) {
+    return getMinBundleId();
+  }
+
+  return bundleId;
 };
 
 /**

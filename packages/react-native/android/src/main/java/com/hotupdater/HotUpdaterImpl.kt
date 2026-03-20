@@ -411,6 +411,12 @@ class HotUpdaterImpl {
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
 
+    /**
+     * Gets the bundle ID for the current active OTA bundle.
+     * Returns an empty string when the app is running the embedded bundle.
+     */
+    fun getBundleId(): String = bundleStorage.getBundleId()
+
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()
         if (success) {

@@ -176,6 +176,11 @@ class HotUpdaterModule internal constructor(
         return impl.getBaseURL()
     }
 
+    override fun getBundleId(): String {
+        val impl = getInstance()
+        return impl.getBundleId()
+    }
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {

@@ -6,7 +6,6 @@
  */
 
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-// biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -19,7 +18,6 @@ import {
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import { proxy, useSnapshot } from "valtio";
-
 
 const notify = proxy<{
   status?: string;
@@ -61,7 +59,7 @@ function App(): React.JSX.Element {
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
+      <Text>BundleId {HotUpdater.getBundleId()}</Text>
       <Text>Channel "{HotUpdater.getChannel()}"</Text>
       <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
       <Text>BASE: {(globalThis as any)?.HotUpdaterGetBaseURL()}</Text>
