@@ -110,6 +110,7 @@ public protocol BundleStorageService {
 
     // Launch state support
     func notifyAppReady() -> [String: Any]
+    func handleContentAppeared()
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
     
@@ -126,6 +127,7 @@ public protocol BundleStorageService {
 }
 
 class BundleFileStorageService: BundleStorageService {
+    private static let launchBundleIdKey = "launchBundleId"
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
@@ -230,14 +232,10 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
-    private func consumePendingLaunchReport() -> [String: Any]? {
+    private func loadPendingLaunchReport() -> [String: Any]? {
         guard let reportURL = pendingLaunchReportFileURL(),
               fileSystem.fileExists(atPath: reportURL.path) else {
             return nil
-        }
-
-        defer {
-            try? fileSystem.removeItem(atPath: reportURL.path)
         }
 
         do {
@@ -249,6 +247,10 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             var report: [String: Any] = ["status": status]
+            if let launchBundleId = json[Self.launchBundleIdKey] as? String,
+               !launchBundleId.isEmpty {
+                report[Self.launchBundleIdKey] = launchBundleId
+            }
             if let crashedBundleId = json["crashedBundleId"] as? String,
                !crashedBundleId.isEmpty {
                 report["crashedBundleId"] = crashedBundleId
@@ -258,6 +260,42 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Failed to read persisted launch report: \(error)")
             return nil
         }
+    }
+
+    private func launchReportMatchesActiveBundle(_ report: [String: Any], activeBundleId: String?) -> Bool {
+        guard let reportBundleId = report[Self.launchBundleIdKey] as? String else {
+            return true
+        }
+
+        return reportBundleId == activeBundleId
+    }
+
+    private func toPublicLaunchReport(_ report: [String: Any]) -> [String: Any] {
+        var publicReport: [String: Any] = [:]
+        publicReport["status"] = report["status"]
+
+        if let crashedBundleId = report["crashedBundleId"] as? String,
+           !crashedBundleId.isEmpty {
+            publicReport["crashedBundleId"] = crashedBundleId
+        }
+
+        return publicReport
+    }
+
+    private func buildLaunchReport(status: String,
+                                   launchBundleId: String?,
+                                   crashedBundleId: String? = nil) -> [String: Any] {
+        var report: [String: Any] = ["status": status]
+
+        if let launchBundleId, !launchBundleId.isEmpty {
+            report[Self.launchBundleIdKey] = launchBundleId
+        }
+
+        if let crashedBundleId, !crashedBundleId.isEmpty {
+            report["crashedBundleId"] = crashedBundleId
+        }
+
+        return report
     }
 
     private func activeBundleId() -> String? {
@@ -440,8 +478,6 @@ class BundleFileStorageService: BundleStorageService {
         metadata.stableBundleId = stagingId
         metadata.stagingBundleId = nil
         metadata.verificationPending = false
-        metadata.verificationAttemptedAt = nil
-        metadata.stagingExecutionCount = nil
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         if saveMetadata(metadata) {
@@ -469,22 +505,20 @@ class BundleFileStorageService: BundleStorageService {
         let _ = saveCrashedHistory(crashedHistory)
         NSLog("[BundleStorage('\(id)')] Added bundle '\(stagingId)' to crashed history")
 
-        let report: [String: Any] = [
-            "status": "RECOVERED",
-            "crashedBundleId": stagingId
-        ]
-        self.sessionLaunchReport = report
-        savePendingLaunchReport(report)
-
         // Clear staging
         metadata.stagingBundleId = nil
         metadata.verificationPending = false
-        metadata.verificationAttemptedAt = nil
-        metadata.stagingExecutionCount = nil
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         if saveMetadata(metadata) {
+            let report = buildLaunchReport(
+                status: "RECOVERED",
+                launchBundleId: metadata.stableBundleId,
+                crashedBundleId: stagingId
+            )
+            self.sessionLaunchReport = toPublicLaunchReport(report)
             self.sessionLaunchBundleId = metadata.stableBundleId
+            savePendingLaunchReport(report)
             NSLog("[BundleStorage] Rolled back to stable bundle: \(metadata.stableBundleId ?? "fallback")")
 
             // Update HotUpdaterBundleURL to point to stable bundle
@@ -829,8 +863,6 @@ class BundleFileStorageService: BundleStorageService {
                             var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
                             metadata.stagingBundleId = bundleId
                             metadata.verificationPending = true
-                            metadata.verificationAttemptedAt = nil
-                            metadata.stagingExecutionCount = nil
                             metadata.updatedAt = Date().timeIntervalSince1970 * 1000
                             let _ = self.saveMetadata(metadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
@@ -1146,8 +1178,6 @@ class BundleFileStorageService: BundleStorageService {
                         var metadata = self.loadMetadataOrNull() ?? BundleMetadata()
                         metadata.stagingBundleId = bundleId
                         metadata.verificationPending = true
-                        metadata.verificationAttemptedAt = nil
-                        metadata.stagingExecutionCount = nil
                         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
                         let _ = self.saveMetadata(metadata)
                         NSLog("[BundleStorage] Set staging bundle: \(bundleId), verificationPending: true")
@@ -1207,6 +1237,43 @@ class BundleFileStorageService: BundleStorageService {
 
     // MARK: - Rollback Support
 
+    func handleContentAppeared() {
+        let activeBundleId = currentLaunchBundleId()
+        recordLaunchCompletion()
+
+        if let report = self.sessionLaunchReport {
+            if self.sessionLaunchBundleId == activeBundleId {
+                return
+            }
+
+            self.sessionLaunchReport = nil
+            self.sessionLaunchBundleId = nil
+        }
+
+        guard var metadata = loadMetadataOrNull() else {
+            return
+        }
+
+        if let stagingId = metadata.stagingBundleId,
+           metadata.verificationPending,
+           stagingId == activeBundleId {
+            NSLog("[BundleStorage] React content appeared for staging bundle, promoting to stable")
+            promoteStagingToStable()
+            let report: [String: Any] = ["status": "PROMOTED"]
+            self.sessionLaunchReport = report
+            self.sessionLaunchBundleId = activeBundleId
+            return
+        }
+
+        if let stableId = metadata.stableBundleId,
+           metadata.verificationPending,
+           stableId == activeBundleId {
+            metadata.verificationPending = false
+            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+            let _ = saveMetadata(metadata)
+        }
+    }
+
     func notifyAppReady() -> [String: Any] {
         let activeBundleId = currentLaunchBundleId()
 
@@ -1220,45 +1287,19 @@ class BundleFileStorageService: BundleStorageService {
             self.sessionLaunchBundleId = nil
         }
 
-        recordLaunchCompletion()
+        if let report = loadPendingLaunchReport() {
+            if launchReportMatchesActiveBundle(report, activeBundleId: activeBundleId) {
+                let publicReport = toPublicLaunchReport(report)
+                self.sessionLaunchReport = publicReport
+                self.sessionLaunchBundleId = activeBundleId
+                clearPendingLaunchReport()
+                return publicReport
+            }
 
-        if let report = consumePendingLaunchReport() {
-            self.sessionLaunchReport = report
-            self.sessionLaunchBundleId = activeBundleId
-            return report
+            clearPendingLaunchReport()
         }
 
-        guard var metadata = loadMetadataOrNull() else {
-            let report: [String: Any] = ["status": "STABLE"]
-            self.sessionLaunchReport = report
-            self.sessionLaunchBundleId = activeBundleId
-            return report
-        }
-
-        if let stagingId = metadata.stagingBundleId,
-           metadata.verificationPending,
-           stagingId == activeBundleId {
-            NSLog("[BundleStorage] Mounted staging bundle, promoting to stable")
-            promoteStagingToStable()
-            let report: [String: Any] = ["status": "PROMOTED"]
-            self.sessionLaunchReport = report
-            self.sessionLaunchBundleId = activeBundleId
-            return report
-        }
-
-        if let stableId = metadata.stableBundleId,
-           metadata.verificationPending,
-           stableId == activeBundleId {
-            metadata.verificationPending = false
-            metadata.verificationAttemptedAt = nil
-            metadata.stagingExecutionCount = nil
-            metadata.updatedAt = Date().timeIntervalSince1970 * 1000
-            let _ = saveMetadata(metadata)
-        }
-        let report: [String: Any] = ["status": "STABLE"]
-        self.sessionLaunchReport = report
-        self.sessionLaunchBundleId = activeBundleId
-        return report
+        return ["status": "STABLE"]
     }
 
     /**
@@ -1338,9 +1379,7 @@ class BundleFileStorageService: BundleStorageService {
             isolationKey: isolationKey,
             stableBundleId: nil,
             stagingBundleId: nil,
-            verificationPending: false,
-            verificationAttemptedAt: nil,
-            stagingExecutionCount: nil
+            verificationPending: false
         )
 
         guard saveMetadata(clearedMetadata) else {

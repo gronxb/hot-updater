@@ -12,10 +12,6 @@ public struct BundleMetadata: Codable {
     var stableBundleId: String?
     var stagingBundleId: String?
     var verificationPending: Bool
-    // Legacy fields are retained only for decoding metadata written by older
-    // SDK versions. New crash detection no longer depends on them.
-    var verificationAttemptedAt: Double?
-    var stagingExecutionCount: Int?
     var updatedAt: Double
 
     enum CodingKeys: String, CodingKey {
@@ -24,8 +20,6 @@ public struct BundleMetadata: Codable {
         case stableBundleId = "stable_bundle_id"
         case stagingBundleId = "staging_bundle_id"
         case verificationPending = "verification_pending"
-        case verificationAttemptedAt = "verification_attempted_at"
-        case stagingExecutionCount = "staging_execution_count"
         case updatedAt = "updated_at"
     }
 
@@ -35,8 +29,6 @@ public struct BundleMetadata: Codable {
         stableBundleId: String? = nil,
         stagingBundleId: String? = nil,
         verificationPending: Bool = false,
-        verificationAttemptedAt: Double? = nil,
-        stagingExecutionCount: Int? = nil,
         updatedAt: Double = Date().timeIntervalSince1970 * 1000
     ) {
         self.schema = schema
@@ -44,8 +36,6 @@ public struct BundleMetadata: Codable {
         self.stableBundleId = stableBundleId
         self.stagingBundleId = stagingBundleId
         self.verificationPending = verificationPending
-        self.verificationAttemptedAt = verificationAttemptedAt
-        self.stagingExecutionCount = stagingExecutionCount
         self.updatedAt = updatedAt
     }
 

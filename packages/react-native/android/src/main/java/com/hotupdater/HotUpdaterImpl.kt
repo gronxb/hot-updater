@@ -5,8 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Process
 import android.util.Log
+import com.facebook.react.bridge.ReactMarker
+import com.facebook.react.bridge.ReactMarkerConstants
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Core implementation class for HotUpdater functionality
@@ -27,6 +31,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
+        registerContentAppearedListener(this.bundleStorage)
         HotUpdaterCrashHandler.initialize(this.context)
     }
 
@@ -66,6 +71,24 @@ class HotUpdaterImpl {
         private const val TAG = "HotUpdaterImpl"
         private const val DEFAULT_CHANNEL = "production"
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
+        private val contentAppearedListenerRegistered = AtomicBoolean(false)
+        private val contentAppearedExecutor = Executors.newSingleThreadExecutor()
+
+        @Volatile
+        private var activeBundleStorage: BundleStorageService? = null
+
+        private val contentAppearedListener =
+            ReactMarker.MarkerListener { name, _, _ ->
+                if (name == ReactMarkerConstants.CONTENT_APPEARED) {
+                    contentAppearedExecutor.execute {
+                        try {
+                            activeBundleStorage?.handleContentAppeared()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to finalize launch after content appeared", e)
+                        }
+                    }
+                }
+            }
 
         /**
          * Create BundleStorageService with all dependencies
@@ -95,6 +118,14 @@ class HotUpdaterImpl {
             val appContext = context.applicationContext
             val isolationKey = getIsolationKey(appContext)
             return VersionedPreferencesService(appContext, isolationKey)
+        }
+
+        private fun registerContentAppearedListener(bundleStorage: BundleStorageService) {
+            activeBundleStorage = bundleStorage
+
+            if (contentAppearedListenerRegistered.compareAndSet(false, true)) {
+                ReactMarker.addListener(contentAppearedListener)
+            }
         }
 
         /**

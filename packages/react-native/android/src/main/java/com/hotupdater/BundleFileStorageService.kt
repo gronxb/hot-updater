@@ -54,10 +54,16 @@ interface BundleStorageService {
     )
 
     /**
-     * Records that the active bundle reached mounted JS state and returns the session launch report.
-     * @return Map containing status and optional crashedBundleId
+     * Returns the current launch report for the active bundle, if one exists.
+     * This is informational only and does not affect rollback or promotion.
      */
     fun notifyAppReady(): Map<String, Any?>
+
+    /**
+     * Finalizes the current launch when React content first appears on screen.
+     * This is the native trigger for launch completion and staging promotion.
+     */
+    fun handleContentAppeared()
 
     /**
      * Gets the crashed bundle history
@@ -97,6 +103,7 @@ class BundleFileStorageService(
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
+        private const val LAUNCH_BUNDLE_ID_KEY = "launchBundleId"
     }
 
     init {
@@ -154,7 +161,7 @@ class BundleFileStorageService(
         }
     }
 
-    private fun consumePendingLaunchReport(): Map<String, Any?>? {
+    private fun loadPendingLaunchReport(): Map<String, Any?>? {
         val reportFile = getPendingLaunchReportFile()
         if (!reportFile.exists()) {
             return null
@@ -162,25 +169,57 @@ class BundleFileStorageService(
 
         return try {
             val json = JSONObject(reportFile.readText())
-            reportFile.delete()
-
             val status = json.optString("status", "")
             if (status.isBlank()) {
                 null
             } else {
                 buildMap {
                     put("status", status)
+                    if (json.has(LAUNCH_BUNDLE_ID_KEY) && !json.isNull(LAUNCH_BUNDLE_ID_KEY)) {
+                        put(LAUNCH_BUNDLE_ID_KEY, json.getString(LAUNCH_BUNDLE_ID_KEY))
+                    }
                     if (json.has("crashedBundleId") && !json.isNull("crashedBundleId")) {
                         put("crashedBundleId", json.getString("crashedBundleId"))
                     }
                 }
             }
         } catch (e: Exception) {
-            reportFile.delete()
             Log.w(TAG, "Failed to read persisted launch report: ${e.message}")
             null
         }
     }
+
+    private fun launchReportMatchesActiveBundle(
+        report: Map<String, Any?>,
+        activeBundleId: String?,
+    ): Boolean {
+        val reportBundleId = report[LAUNCH_BUNDLE_ID_KEY] as? String
+        return reportBundleId == null || reportBundleId == activeBundleId
+    }
+
+    private fun toPublicLaunchReport(report: Map<String, Any?>): Map<String, Any?> =
+        buildMap {
+            put("status", report["status"])
+            val crashedBundleId = report["crashedBundleId"] as? String
+            if (!crashedBundleId.isNullOrEmpty()) {
+                put("crashedBundleId", crashedBundleId)
+            }
+        }
+
+    private fun buildLaunchReport(
+        status: String,
+        launchBundleId: String?,
+        crashedBundleId: String? = null,
+    ): Map<String, Any?> =
+        buildMap {
+            put("status", status)
+            if (!launchBundleId.isNullOrEmpty()) {
+                put(LAUNCH_BUNDLE_ID_KEY, launchBundleId)
+            }
+            if (!crashedBundleId.isNullOrEmpty()) {
+                put("crashedBundleId", crashedBundleId)
+            }
+        }
 
     private fun createInitialMetadata(): BundleMetadata {
         val currentBundleId = extractBundleIdFromCurrentURL()
@@ -189,8 +228,6 @@ class BundleFileStorageService(
             stableBundleId = currentBundleId,
             stagingBundleId = null,
             verificationPending = false,
-            verificationAttemptedAt = null,
-            stagingExecutionCount = null,
         )
     }
 
@@ -271,8 +308,6 @@ class BundleFileStorageService(
     private fun clearVerificationState(metadata: BundleMetadata): BundleMetadata =
         metadata.copy(
             verificationPending = false,
-            verificationAttemptedAt = null,
-            stagingExecutionCount = null,
             updatedAt = System.currentTimeMillis(),
         )
 
@@ -326,8 +361,6 @@ class BundleFileStorageService(
                 stableBundleId = stagingBundleId,
                 stagingBundleId = null,
                 verificationPending = false,
-                verificationAttemptedAt = null,
-                stagingExecutionCount = null,
                 updatedAt = System.currentTimeMillis(),
             )
         saveMetadata(updatedMetadata)
@@ -355,18 +388,18 @@ class BundleFileStorageService(
         crashedHistory.addEntry(stagingBundleId)
         saveCrashedHistory(crashedHistory)
 
-        val report =
-            mapOf(
-                "status" to "RECOVERED",
-                "crashedBundleId" to stagingBundleId,
-            )
-        sessionLaunchReport = report
-        savePendingLaunchReport(report)
-
         // Clear staging pointer
         val updatedMetadata = clearVerificationState(metadata).copy(stagingBundleId = null)
         saveMetadata(updatedMetadata)
+        val report =
+            buildLaunchReport(
+                status = "RECOVERED",
+                launchBundleId = updatedMetadata.stableBundleId,
+                crashedBundleId = stagingBundleId,
+            )
+        sessionLaunchReport = toPublicLaunchReport(report)
         sessionLaunchBundleId = updatedMetadata.stableBundleId
+        savePendingLaunchReport(report)
 
         // Update bundle URL to point to stable bundle
         val stableBundleId = updatedMetadata.stableBundleId
@@ -412,6 +445,43 @@ class BundleFileStorageService(
 
     // MARK: - Launch State
 
+    @Synchronized
+    override fun handleContentAppeared() {
+        val activeBundleId = currentLaunchBundleId()
+        HotUpdaterCrashHandler.markLaunchCompleted(context)
+
+        sessionLaunchReport?.let {
+            if (sessionLaunchBundleId == activeBundleId) {
+                return
+            }
+
+            sessionLaunchReport = null
+            sessionLaunchBundleId = null
+        }
+
+        val metadata =
+            loadMetadataOrNull()
+                ?: return
+
+        if (isVerificationPending(metadata)) {
+            val stagingBundleId = metadata.stagingBundleId
+            if (stagingBundleId != null && stagingBundleId == activeBundleId) {
+                Log.d(TAG, "React content appeared for staging bundle $activeBundleId, promoting to stable")
+                promoteStagingToStable()
+                val report = mapOf("status" to "PROMOTED")
+                sessionLaunchReport = report
+                sessionLaunchBundleId = activeBundleId
+                return
+            }
+
+            if (metadata.stableBundleId != null && metadata.stableBundleId == activeBundleId) {
+                Log.d(TAG, "React content appeared for stable bundle $activeBundleId, clearing stale verification state")
+                saveMetadata(clearVerificationState(metadata))
+            }
+        }
+    }
+
+    @Synchronized
     override fun notifyAppReady(): Map<String, Any?> {
         val activeBundleId = currentLaunchBundleId()
 
@@ -425,44 +495,20 @@ class BundleFileStorageService(
             sessionLaunchBundleId = null
         }
 
-        HotUpdaterCrashHandler.markLaunchCompleted(context)
-
-        consumePendingLaunchReport()?.let {
-            sessionLaunchReport = it
-            sessionLaunchBundleId = activeBundleId
-            return it
-        }
-
-        val metadata =
-            loadMetadataOrNull()
-                ?: run {
-                    val report = mapOf("status" to "STABLE")
-                    sessionLaunchReport = report
-                    sessionLaunchBundleId = activeBundleId
-                    return report
-                }
-
-        if (isVerificationPending(metadata)) {
-            val stagingBundleId = metadata.stagingBundleId
-            if (stagingBundleId != null && stagingBundleId == activeBundleId) {
-                Log.d(TAG, "Mounted staging bundle $activeBundleId, promoting to stable")
-                promoteStagingToStable()
-                val report = mapOf("status" to "PROMOTED")
+        val pendingReport = loadPendingLaunchReport()
+        if (pendingReport != null) {
+            if (launchReportMatchesActiveBundle(pendingReport, activeBundleId)) {
+                val report = toPublicLaunchReport(pendingReport)
                 sessionLaunchReport = report
                 sessionLaunchBundleId = activeBundleId
+                clearPendingLaunchReport()
                 return report
             }
 
-            if (metadata.stableBundleId != null && metadata.stableBundleId == activeBundleId) {
-                Log.d(TAG, "Mounted stable bundle $activeBundleId, clearing stale verification state")
-                saveMetadata(clearVerificationState(metadata))
-            }
+            clearPendingLaunchReport()
         }
 
-        val report = mapOf("status" to "STABLE")
-        sessionLaunchReport = report
-        sessionLaunchBundleId = activeBundleId
-        return report
+        return mapOf("status" to "STABLE")
     }
 
     // MARK: - Bundle URL Operations
@@ -618,8 +664,6 @@ class BundleFileStorageService(
                     currentMetadata.copy(
                         stagingBundleId = bundleId,
                         verificationPending = true,
-                        verificationAttemptedAt = null,
-                        stagingExecutionCount = null,
                         updatedAt = System.currentTimeMillis(),
                     )
                 saveMetadata(updatedMetadata)
@@ -631,7 +675,7 @@ class BundleFileStorageService(
                 val stableBundleId = currentMetadata.stableBundleId
                 cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
 
-                Log.d(TAG, "Existing bundle set as staging, will be promoted after launch confirmation")
+                Log.d(TAG, "Existing bundle set as staging, will be promoted when React content appears")
                 return
             } else {
                 // If index.android.bundle is missing, delete and re-download
@@ -815,8 +859,6 @@ class BundleFileStorageService(
                         currentMetadata.copy(
                             stagingBundleId = bundleId,
                             verificationPending = true,
-                            verificationAttemptedAt = null,
-                            stagingExecutionCount = null,
                             updatedAt = System.currentTimeMillis(),
                         )
                     saveMetadata(updatedMetadata)
@@ -832,7 +874,7 @@ class BundleFileStorageService(
                     val stableBundleId = currentMetadata.stableBundleId
                     cleanupOldBundles(bundleStoreDir, stableBundleId, bundleId)
 
-                    Log.d(TAG, "Downloaded and set bundle as staging successfully. Will be promoted after launch confirmation.")
+                    Log.d(TAG, "Downloaded and set bundle as staging successfully. Will be promoted when React content appears.")
                     // Progress already at 1.0 from unzip completion
                 }
             }
@@ -939,8 +981,6 @@ class BundleFileStorageService(
                     stableBundleId = null,
                     stagingBundleId = null,
                     verificationPending = false,
-                    verificationAttemptedAt = null,
-                    stagingExecutionCount = null,
                 )
 
             if (!saveMetadata(clearedMetadata)) {

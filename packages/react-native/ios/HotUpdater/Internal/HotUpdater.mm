@@ -2,6 +2,7 @@
 #import "HotUpdaterCrashHandler.h"
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
+#import <React/RCTRootView.h>
 
 
 #if __has_include("HotUpdater/HotUpdater-Swift.h")
@@ -65,10 +66,18 @@ RCT_EXPORT_MODULE();
 // Static singleton HotUpdaterImpl getter
 + (HotUpdaterImpl *)sharedImpl {
     static HotUpdaterImpl *_sharedImpl = nil;
+    static id contentDidAppearObserver = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         [HotUpdaterCrashHandler install];
         _sharedImpl = [[HotUpdaterImpl alloc] init];
+        contentDidAppearObserver =
+            [[NSNotificationCenter defaultCenter] addObserverForName:RCTContentDidAppearNotification
+                                                              object:nil
+                                                               queue:[NSOperationQueue mainQueue]
+                                                          usingBlock:^(__unused NSNotification *note) {
+            [_sharedImpl handleContentAppeared];
+        }];
     });
     return _sharedImpl;
 }

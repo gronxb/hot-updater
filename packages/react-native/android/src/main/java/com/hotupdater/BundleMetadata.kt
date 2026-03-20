@@ -14,10 +14,6 @@ data class BundleMetadata(
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
     val verificationPending: Boolean = false,
-    // Legacy fields are kept only so newer SDKs can read metadata written by
-    // previous releases without forcing users to clear local state manually.
-    val verificationAttemptedAt: Long? = null,
-    val stagingExecutionCount: Int? = null,
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
     companion object {
@@ -47,18 +43,6 @@ data class BundleMetadata(
                         null
                     },
                 verificationPending = json.optBoolean("verificationPending", false),
-                verificationAttemptedAt =
-                    if (json.has("verificationAttemptedAt") && !json.isNull("verificationAttemptedAt")) {
-                        json.getLong("verificationAttemptedAt")
-                    } else {
-                        null
-                    },
-                stagingExecutionCount =
-                    if (json.has("stagingExecutionCount") && !json.isNull("stagingExecutionCount")) {
-                        json.getInt("stagingExecutionCount")
-                    } else {
-                        null
-                    },
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             )
 
@@ -102,8 +86,6 @@ data class BundleMetadata(
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
-            put("verificationAttemptedAt", verificationAttemptedAt ?: JSONObject.NULL)
-            put("stagingExecutionCount", stagingExecutionCount ?: JSONObject.NULL)
             put("updatedAt", updatedAt)
         }
 

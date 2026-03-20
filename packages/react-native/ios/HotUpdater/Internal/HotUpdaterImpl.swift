@@ -268,6 +268,10 @@ import React
 
     // MARK: - Rollback Support
 
+    public func handleContentAppeared() {
+        bundleStorage.handleContentAppeared()
+    }
+
     public func notifyAppReady() -> [String: Any] {
         return bundleStorage.notifyAppReady()
     }

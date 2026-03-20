@@ -39,7 +39,7 @@ interface CommonHotUpdaterOptions {
   requestTimeout?: number;
 
   /**
-   * Callback invoked when the app is ready and bundle verification completes.
+   * Callback invoked after native launch state has been finalized.
    * Provides information about bundle promotion, recovery from crashes, or stable state.
    *
    * @param result - Bundle state information
@@ -170,7 +170,7 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     /**
      * Update mode
-     * - "manual": Only notify app ready, user manually calls checkForUpdate()
+     * - "manual": Only forward native launch state, user manually calls checkForUpdate()
      */
     updateMode: "manual";
   };
@@ -211,9 +211,9 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 /**
- * Records a successful mount in native code, then forwards the launch report to callbacks.
+ * Reads the native launch report and forwards it to optional JS callbacks.
  */
-const reportBundleLaunch = async (options: {
+const forwardLaunchReport = async (options: {
   resolver?: HotUpdaterResolver;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
@@ -242,14 +242,14 @@ const reportBundleLaunch = async (options: {
   }
 };
 
-const BundleLaunchReporter: React.FC<{
+const LaunchReportForwarder: React.FC<{
   resolver?: HotUpdaterResolver;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
 }> = ({ resolver, requestHeaders, requestTimeout, onNotifyAppReady }) => {
-  useLayoutEffect(() => {
-    void reportBundleLaunch({
+  useEffect(() => {
+    void forwardLaunchReport({
       resolver,
       requestHeaders,
       requestTimeout,
@@ -269,7 +269,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         return (
           <>
             <WrappedComponent {...props} />
-            <BundleLaunchReporter
+            <LaunchReportForwarder
               resolver={options.resolver}
               requestHeaders={options.requestHeaders}
               requestTimeout={options.requestTimeout}
@@ -387,7 +387,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
       return (
         <>
           <WrappedComponent {...props} />
-          <BundleLaunchReporter
+          <LaunchReportForwarder
             resolver={restOptions.resolver}
             requestHeaders={restOptions.requestHeaders}
             requestTimeout={restOptions.requestTimeout}

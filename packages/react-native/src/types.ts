@@ -110,8 +110,9 @@ export interface HotUpdaterResolver {
 
   /**
    * Custom implementation for handling the app-ready callback.
-   * Native launch state is determined before this callback runs.
-   * This hook is informational and does not control crash recovery or rollback.
+   * Native launch state is determined independently before this callback runs.
+   * This hook is informational and does not control crash recovery, rollback,
+   * or staging promotion.
    *
    * @param params - All parameters about the current app state
    * @returns Notification result

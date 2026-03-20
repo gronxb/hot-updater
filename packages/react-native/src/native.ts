@@ -368,6 +368,10 @@ export type NotifyAppReadyResult = {
   crashedBundleId?: string;
 };
 
+/**
+ * Reads the native launch report for the current bundle.
+ * Native rollback and promotion have already been decided before this runs.
+ */
 const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();
   // Oldarch returns JSON string, newarch returns object
