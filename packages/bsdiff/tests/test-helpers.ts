@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyBsdiffPatch } from "../src/internal/bsdiff.js";
-import { type Bytes } from "../src/internal/bytes.js";
+import type { Bytes } from "../src/internal/bytes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

@@ -1,5 +1,5 @@
 import { HdiffError } from "../errors.js";
-import { type Bytes } from "./bytes.js";
+import type { Bytes } from "./bytes.js";
 
 type HermesValidateExports = {
   memory: WebAssembly.Memory;
