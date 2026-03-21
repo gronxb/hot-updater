@@ -1,8 +1,8 @@
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { brotliCompressSync, brotliDecompressSync, constants } from "node:zlib";
+import {
+  createTarBrTargetFiles,
+  createTarGzTargetFiles,
+  createZipTargetFiles,
+} from "@hot-updater/cli-tools";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type {
   Bundle,
@@ -10,8 +10,13 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { detectCompressionFormat } from "@hot-updater/plugin-core";
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
 import JSZip from "jszip";
+import os from "node:os";
+import path from "node:path";
 import * as tar from "tar";
+import { brotliDecompressSync } from "node:zlib";
 import { createUUIDv7WithSameTimestamp } from "../extract-timestamp-from-uuidv7";
 
 const LEGACY_BUNDLE_ERROR =
@@ -146,111 +151,14 @@ async function extractArchive(archivePath: string, extractDir: string) {
   }
 }
 
-async function addDirectoryToZip(
-  sourceDir: string,
-  zipFolder: JSZip,
-): Promise<void> {
-  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+async function getArchiveTargetFiles(bundleDir: string) {
+  const entries = await fs.readdir(bundleDir, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
 
-  for (const entry of entries) {
-    const sourcePath = path.join(sourceDir, entry.name);
-
-    if (entry.isDirectory()) {
-      const nextFolder = zipFolder.folder(entry.name);
-      if (nextFolder) {
-        await addDirectoryToZip(sourcePath, nextFolder);
-      }
-      continue;
-    }
-
-    zipFolder.file(entry.name, await fs.readFile(sourcePath));
-  }
-}
-
-async function createZipArchiveFromDirectory(
-  sourceDir: string,
-  archivePath: string,
-) {
-  const zip = new JSZip();
-  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-  entries.sort((left, right) => left.name.localeCompare(right.name));
-
-  for (const entry of entries) {
-    const sourcePath = path.join(sourceDir, entry.name);
-
-    if (entry.isDirectory()) {
-      const folder = zip.folder(entry.name);
-      if (folder) {
-        await addDirectoryToZip(sourcePath, folder);
-      }
-      continue;
-    }
-
-    zip.file(entry.name, await fs.readFile(sourcePath));
-  }
-
-  const content = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: 9 },
-    platform: "UNIX",
-  });
-
-  await fs.writeFile(archivePath, content);
-}
-
-async function createTarGzArchiveFromDirectory(
-  sourceDir: string,
-  archivePath: string,
-) {
-  const entries = await fs.readdir(sourceDir);
-  entries.sort((left, right) => left.localeCompare(right));
-
-  await tar.create(
-    {
-      file: archivePath,
-      cwd: sourceDir,
-      portable: true,
-      mtime: new Date(0),
-      gzip: true,
-    },
-    entries,
-  );
-}
-
-async function createTarBrArchiveFromDirectory(
-  sourceDir: string,
-  archivePath: string,
-) {
-  const tarPath = path.join(path.dirname(archivePath), "bundle.tar");
-  const entries = await fs.readdir(sourceDir);
-  entries.sort((left, right) => left.localeCompare(right));
-
-  await tar.create(
-    {
-      file: tarPath,
-      cwd: sourceDir,
-      portable: true,
-      mtime: new Date(0),
-      gzip: false,
-    },
-    entries,
-  );
-
-  try {
-    const tarBuffer = await fs.readFile(tarPath);
-    const compressedBuffer = brotliCompressSync(tarBuffer, {
-      params: {
-        [constants.BROTLI_PARAM_QUALITY]: 11,
-        [constants.BROTLI_PARAM_LGWIN]: 24,
-      },
-    });
-
-    await fs.writeFile(archivePath, compressedBuffer);
-  } finally {
-    await fs.rm(tarPath, { force: true });
-  }
+  return entries.map((entry) => ({
+    path: path.join(bundleDir, entry.name),
+    name: entry.name,
+  }));
 }
 
 async function createArchiveFromDirectory(
@@ -258,15 +166,26 @@ async function createArchiveFromDirectory(
   archivePath: string,
   format: ReturnType<typeof detectCompressionFormat>["format"],
 ) {
+  const targetFiles = await getArchiveTargetFiles(sourceDir);
+
   switch (format) {
     case "zip":
-      await createZipArchiveFromDirectory(sourceDir, archivePath);
+      await createZipTargetFiles({
+        outfile: archivePath,
+        targetFiles,
+      });
       return;
     case "tar.gz":
-      await createTarGzArchiveFromDirectory(sourceDir, archivePath);
+      await createTarGzTargetFiles({
+        outfile: archivePath,
+        targetFiles,
+      });
       return;
     case "tar.br":
-      await createTarBrArchiveFromDirectory(sourceDir, archivePath);
+      await createTarBrTargetFiles({
+        outfile: archivePath,
+        targetFiles,
+      });
       return;
   }
 }
@@ -335,6 +254,7 @@ export async function createCopiedBundleArchive({
     bundle.storageUri,
     storagePlugin,
   );
+  // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
   const archiveFilename = getArchiveFilename(bundle.storageUri);
   const workDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-console-promote-"),
