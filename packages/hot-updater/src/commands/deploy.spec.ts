@@ -1,57 +1,53 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  mockBuildPlugin,
-  mockCli,
-  mockDatabasePlugin,
-  mockStoragePlugin,
-} = vi.hoisted(() => {
-  const mockBuildPlugin = {
-    build: vi.fn(),
-    name: "mock-build",
-  };
-  const mockStoragePlugin = {
-    name: "mock-storage",
-    upload: vi.fn(),
-  };
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
-  };
-  const mockCli = {
-    appendToProjectRootGitignore: vi.fn(),
-    createTarBrTargetFiles: vi.fn(),
-    createTarGzTargetFiles: vi.fn(),
-    createZipTargetFiles: vi.fn(),
-    getCwd: vi.fn(),
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        step: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
+const { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin } =
+  vi.hoisted(() => {
+    const mockBuildPlugin = {
+      build: vi.fn(),
+      name: "mock-build",
+    };
+    const mockStoragePlugin = {
+      name: "mock-storage",
+      upload: vi.fn(),
+    };
+    const mockDatabasePlugin = {
+      appendBundle: vi.fn(),
+      commitBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      getBundleById: vi.fn(),
+      getBundles: vi.fn(),
+      getChannels: vi.fn(),
+      name: "mock-database",
+      onUnmount: vi.fn(),
+      updateBundle: vi.fn(),
+    };
+    const mockCli = {
+      appendToProjectRootGitignore: vi.fn(),
+      createTarBrTargetFiles: vi.fn(),
+      createTarGzTargetFiles: vi.fn(),
+      createZipTargetFiles: vi.fn(),
+      getCwd: vi.fn(),
+      loadConfig: vi.fn(),
+      p: {
+        confirm: vi.fn(),
+        isCancel: vi.fn(),
+        log: {
+          error: vi.fn(),
+          info: vi.fn(),
+          step: vi.fn(),
+          success: vi.fn(),
+          warn: vi.fn(),
+        },
+        note: vi.fn(),
+        outro: vi.fn(),
+        spinner: vi.fn(),
+        tasks: vi.fn(),
+        text: vi.fn(),
       },
-      note: vi.fn(),
-      outro: vi.fn(),
-      spinner: vi.fn(),
-      tasks: vi.fn(),
-      text: vi.fn(),
-    },
-  };
+    };
 
-  return { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin };
-});
+    return { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin };
+  });
 
 vi.mock("@hot-updater/cli-tools", () => ({
   colors: {
@@ -149,12 +145,12 @@ vi.mock("./console", () => ({
 }));
 
 import fs from "fs";
+import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { writeBundleManifest } from "@/utils/bundleManifest";
 import { deploy, normalizeRolloutPercentage } from "./deploy";
 
 describe("normalizeRolloutPercentage", () => {
@@ -252,11 +248,9 @@ describe("deploy rollout wiring", () => {
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
-    vi.mocked(fs.promises.readdir).mockResolvedValue(
-      ["index.bundle"] as unknown as Awaited<
-        ReturnType<typeof fs.promises.readdir>
-      >,
-    );
+    vi.mocked(fs.promises.readdir).mockResolvedValue([
+      "index.bundle",
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
     vi.mocked(fs.promises.rm).mockResolvedValue(undefined);
     vi.mocked(fs.statSync).mockReturnValue({
       isDirectory: () => false,

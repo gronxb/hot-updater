@@ -55,8 +55,7 @@ export const normalizeRolloutPercentage = (
     return 100;
   }
 
-  const parsedRollout =
-    typeof rollout === "number" ? rollout : Number(rollout);
+  const parsedRollout = typeof rollout === "number" ? rollout : Number(rollout);
 
   if (
     !Number.isInteger(parsedRollout) ||
