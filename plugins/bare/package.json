@@ -26,12 +26,12 @@
   },
   "dependencies": {
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "execa": "catalog:",
-    "uuidv7": "^1.0.2"
+    "execa": "catalog:"
   },
   "exports": {
     ".": {

@@ -1,10 +1,7 @@
-import {
-  type ChildProcessWithoutNullStreams,
-  spawn,
-  spawnSync,
-} from "node:child_process";
+import { type ChildProcessByStdio, spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { hdiff } from "../src/node.js";
@@ -15,10 +12,12 @@ const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
 type EndpointExpectation = {
-  patch: Uint8Array;
+  patch: Uint8Array<ArrayBuffer>;
   patchSize: number;
   patchSha256: string;
 };
+
+type RuntimeChild = ChildProcessByStdio<null, Readable, Readable>;
 
 const hasNode = hasCommand("node", ["--version"]);
 const hasBun = hasCommand("bun", ["--version"]);
@@ -153,7 +152,7 @@ function spawnRuntime(input: {
   args: string[];
   env: Record<string, string>;
 }): {
-  child: ChildProcessWithoutNullStreams;
+  child: RuntimeChild;
   logs: { stdout: string[]; stderr: string[] };
 } {
   const child = spawn(input.command, input.args, {
@@ -183,7 +182,7 @@ function appendLog(store: string[], value: string): void {
 
 async function waitForHealthy(
   url: string,
-  child: ChildProcessWithoutNullStreams,
+  child: RuntimeChild,
   logs: { stdout: string[]; stderr: string[] },
 ): Promise<void> {
   const deadline = Date.now() + 45_000;
@@ -210,9 +209,7 @@ async function waitForHealthy(
   );
 }
 
-async function stopRuntime(
-  child: ChildProcessWithoutNullStreams,
-): Promise<void> {
+async function stopRuntime(child: RuntimeChild): Promise<void> {
   if (child.exitCode !== null) {
     return;
   }
@@ -227,10 +224,7 @@ async function stopRuntime(
   await waitForExit(child, 3_000);
 }
 
-function waitForExit(
-  child: ChildProcessWithoutNullStreams,
-  timeoutMs: number,
-): Promise<boolean> {
+function waitForExit(child: RuntimeChild, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     if (child.exitCode !== null) {
       resolve(true);
@@ -317,7 +311,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
+async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (value) =>
     value.toString(16).padStart(2, "0"),

@@ -1,56 +1,40 @@
-import type { PluginObj } from "@babel/core";
-import type { NodePath } from "@babel/traverse";
 import type * as babelTypes from "@babel/types";
-import { colors } from "@hot-updater/cli-tools";
-import fs from "fs";
-import path from "path";
-import { uuidv7 } from "uuidv7";
 
-const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+type ObjectExpressionPath = {
+  node: babelTypes.ObjectExpression;
+  parent: babelTypes.Node;
+};
 
-const getBundleId = () => {
-  const buildOutDir = process.env["BUILD_OUT_DIR"];
-  if (!buildOutDir) {
-    return NIL_UUID;
-  }
+type ProgramPath = {
+  node: babelTypes.Program;
+  traverse(visitor: {
+    ObjectExpression(path: ObjectExpressionPath): void;
+  }): void;
+};
 
-  const bundleIdPath = path.join(buildOutDir, "BUNDLE_ID");
-
-  let bundleId = uuidv7();
-
-  if (fs.existsSync(bundleIdPath)) {
-    bundleId = fs.readFileSync(bundleIdPath, "utf-8");
-  } else {
-    fs.writeFileSync(bundleIdPath, bundleId);
-    console.log(colors.green(`[HotUpdater] Generated bundle ID: ${bundleId}`));
-  }
-
-  return bundleId;
+type HotUpdaterBabelPlugin = {
+  name: string;
+  visitor: {
+    Program: {
+      exit(programPath: ProgramPath): void;
+    };
+  };
 };
 
 /**
  * Hot Updater Babel Plugin
  *
- * This plugin handles two transformations:
- * 1. Replaces __HOT_UPDATER_BUNDLE_ID with the actual bundle ID
- * 2. Transforms Expo DOM component filePath to overrideUri for OTA updates
+ * This plugin transforms Expo DOM component filePath to overrideUri for OTA
+ * updates.
  */
 export default function ({
   types: t,
 }: {
   types: typeof babelTypes;
-}): PluginObj {
-  const bundleId = getBundleId();
-
+}): HotUpdaterBabelPlugin {
   return {
     name: "hot-updater-babel-plugin",
     visitor: {
-      Identifier(path: NodePath<babelTypes.Identifier>) {
-        // Transform __HOT_UPDATER_BUNDLE_ID to actual bundle ID
-        if (path.node.name === "__HOT_UPDATER_BUNDLE_ID") {
-          path.replaceWith(t.stringLiteral(bundleId));
-        }
-      },
       Program: {
         exit(programPath) {
           // Collect filePath declarations
@@ -224,15 +208,21 @@ export default function ({
                   ),
                   [],
                 ),
-                t.unaryExpression("void", t.numericLiteral(0), true),
+                t.unaryExpression("void", t.numericLiteral(0)),
               );
 
-              const iife = t.callExpression(arrowFunction, [safeGetBaseURL]);
+              const iifeCall = t.callExpression(arrowFunction, [
+                safeGetBaseURL,
+              ]);
 
-              // Replace filePath with spread of IIFE
-              const spreadProperty = t.spreadElement(iife);
+              // Replace only filePath so existing spread/forwarded props keep
+              // their original order and override behavior.
               const propIndex = objPath.node.properties.indexOf(filePathProp);
-              objPath.node.properties.splice(propIndex, 1, spreadProperty);
+              objPath.node.properties.splice(
+                propIndex,
+                1,
+                t.spreadElement(iifeCall),
+              );
             },
           });
         },

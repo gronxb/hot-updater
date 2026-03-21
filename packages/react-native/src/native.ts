@@ -9,6 +9,23 @@ export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
+export interface ManifestAsset {
+  fileHash: string;
+}
+
+export interface Manifest {
+  bundleId: string;
+  assets: Record<string, ManifestAsset>;
+}
+
+type ActiveBundleSnapshotCacheValues = {
+  bundleId?: string;
+  manifest?: Manifest;
+  baseURL?: string | null;
+};
+
+type ActiveBundleSnapshotCacheKey = keyof ActiveBundleSnapshotCacheValues;
+
 /**
  * Built-in reload behaviors used by `HotUpdater.reload()`.
  *
@@ -34,17 +51,15 @@ export type CustomReloadHandler = () => void | Promise<void>;
  */
 export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 
-declare const __HOT_UPDATER_BUNDLE_ID: string | undefined;
-
-export const HotUpdaterConstants = {
-  HOT_UPDATER_BUNDLE_ID: __HOT_UPDATER_BUNDLE_ID || NIL_UUID,
-};
-
 class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
+  private readonly activeBundleSnapshotCache = new Map<
+    ActiveBundleSnapshotCacheKey,
+    ActiveBundleSnapshotCacheValues[ActiveBundleSnapshotCacheKey]
+  >();
 
   constructor() {
     const constants = HotUpdaterNative.getConstants();
@@ -85,18 +100,74 @@ class HotUpdaterSessionState {
     if (channel) {
       this.currentChannel = channel;
     }
+    this.clearActiveBundleSnapshotCache();
   }
 
   resetChannelState() {
     this.currentChannel = this.defaultChannel;
     this.lastInstalledBundleId = null;
     this.inflightUpdates.clear();
+    this.clearActiveBundleSnapshotCache();
+  }
+
+  getCachedBundleId(): string | undefined {
+    return this.getActiveBundleSnapshotValue("bundleId");
+  }
+
+  cacheBundleId(bundleId: string) {
+    this.setActiveBundleSnapshotValue("bundleId", bundleId);
+  }
+
+  getCachedManifest(): Manifest | undefined {
+    const manifest = this.getActiveBundleSnapshotValue("manifest");
+    return manifest ? cloneManifest(manifest) : undefined;
+  }
+
+  cacheManifest(manifest: Manifest) {
+    this.setActiveBundleSnapshotValue("manifest", cloneManifest(manifest));
+  }
+
+  getCachedBaseURL(): string | null | undefined {
+    return this.getActiveBundleSnapshotValue("baseURL");
+  }
+
+  cacheBaseURL(baseURL: string | null) {
+    this.setActiveBundleSnapshotValue("baseURL", baseURL);
+  }
+
+  private clearActiveBundleSnapshotCache() {
+    this.activeBundleSnapshotCache.clear();
+  }
+
+  private getActiveBundleSnapshotValue<K extends ActiveBundleSnapshotCacheKey>(
+    key: K,
+  ): ActiveBundleSnapshotCacheValues[K] | undefined {
+    return this.activeBundleSnapshotCache.get(key) as
+      | ActiveBundleSnapshotCacheValues[K]
+      | undefined;
+  }
+
+  private setActiveBundleSnapshotValue<K extends ActiveBundleSnapshotCacheKey>(
+    key: K,
+    value: ActiveBundleSnapshotCacheValues[K],
+  ) {
+    this.activeBundleSnapshotCache.set(key, value);
   }
 }
 
 const sessionState = new HotUpdaterSessionState();
 let reloadBehavior: ReloadBehaviorSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
+
+const cloneManifest = (manifest: Manifest): Manifest => ({
+  bundleId: manifest.bundleId,
+  assets: Object.fromEntries(
+    Object.entries(manifest.assets).map(([key, asset]) => [
+      key,
+      { fileHash: asset.fileHash },
+    ]),
+  ),
+});
 
 const getReloadProcess = (): (() => Promise<void>) | null => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
@@ -318,13 +389,72 @@ export const getMinBundleId = (): string => {
 /**
  * Fetches the current bundle version id.
  *
- * @async
- * @returns {string} Resolves with the current version id or null if not available.
+ * JS falls back to MIN_BUNDLE_ID only after native confirms there is no active
+ * downloaded bundle. When the native module does not expose `getBundleId()`,
+ * treat it as a JS/native SDK mismatch instead of silently reporting the
+ * built-in bundle.
+ *
+ * @returns {string} Resolves with the current version id.
  */
 export const getBundleId = (): string => {
-  return HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID === NIL_UUID
-    ? getMinBundleId()
-    : HotUpdaterConstants.HOT_UPDATER_BUNDLE_ID;
+  const cachedBundleId = sessionState.getCachedBundleId();
+  if (cachedBundleId !== undefined) {
+    return cachedBundleId;
+  }
+
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getBundleId?: () => string | null;
+  };
+
+  if (typeof nativeModule.getBundleId !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  const bundleId = nativeModule.getBundleId();
+
+  const resolvedBundleId =
+    !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
+
+  sessionState.cacheBundleId(resolvedBundleId);
+  return resolvedBundleId;
+};
+
+/**
+ * Fetches the current manifest for the active bundle.
+ *
+ * Returns a normalized manifest with empty assets when manifest.json is missing
+ * or invalid.
+ */
+export const getManifest = (): Manifest => {
+  const cachedManifest = sessionState.getCachedManifest();
+  if (cachedManifest !== undefined) {
+    return cachedManifest;
+  }
+
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getManifest?: () => Record<string, unknown> | string;
+  };
+  const manifest = nativeModule.getManifest?.();
+
+  let normalizedManifest: Manifest;
+
+  if (!manifest) {
+    normalizedManifest = createEmptyManifest();
+  } else if (typeof manifest === "string") {
+    try {
+      normalizedManifest = normalizeManifest(JSON.parse(manifest));
+    } catch {
+      normalizedManifest = createEmptyManifest();
+    }
+  } else {
+    normalizedManifest = normalizeManifest(manifest);
+  }
+
+  sessionState.cacheBundleId(normalizedManifest.bundleId);
+  sessionState.cacheManifest(normalizedManifest);
+  return cloneManifest(normalizedManifest);
 };
 
 /**
@@ -390,7 +520,7 @@ export type NotifyAppReadyResult = {
  */
 export const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();
-  // Oldarch returns JSON string, newarch returns array
+  // Older Android old-arch implementations returned JSON strings.
   if (typeof result === "string") {
     try {
       return normalizeNotifyAppReadyResult(JSON.parse(result));
@@ -414,6 +544,65 @@ const normalizeNotifyAppReadyResult = (
   return { status: "STABLE" };
 };
 
+const createEmptyManifest = (): Manifest => ({
+  bundleId: getBundleId(),
+  assets: {},
+});
+
+const normalizeManifest = (value: unknown): Manifest => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return createEmptyManifest();
+  }
+
+  const bundleIdValue = (value as { bundleId?: unknown }).bundleId;
+  const bundleId =
+    typeof bundleIdValue === "string" && bundleIdValue.trim()
+      ? bundleIdValue.trim()
+      : getBundleId();
+
+  return {
+    bundleId,
+    assets: normalizeManifestAssets((value as { assets?: unknown }).assets),
+  };
+};
+
+const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entry]) => {
+      const trimmedKey = key.trim();
+
+      if (!trimmedKey) {
+        return [];
+      }
+
+      if (typeof entry === "string") {
+        const fileHash = entry.trim();
+
+        if (!fileHash) {
+          return [];
+        }
+
+        return [[trimmedKey, { fileHash }] as const];
+      }
+
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return [];
+      }
+
+      const { fileHash } = entry as { fileHash?: unknown };
+      if (typeof fileHash !== "string" || !fileHash.trim()) {
+        return [];
+      }
+
+      return [[trimmedKey, { fileHash: fileHash.trim() }] as const];
+    }),
+  );
+};
+
 /**
  * Gets the list of bundle IDs that have been marked as crashed.
  * These bundles will be rejected if attempted to install again.
@@ -422,7 +611,7 @@ const normalizeNotifyAppReadyResult = (
  */
 export const getCrashHistory = (): string[] => {
   const result = HotUpdaterNative.getCrashHistory();
-  // Oldarch returns JSON string, newarch returns array
+  // Older Android old-arch implementations returned JSON strings.
   if (typeof result === "string") {
     try {
       return JSON.parse(result);
@@ -451,11 +640,15 @@ export const clearCrashHistory = (): boolean => {
  * @returns {string | null} Base URL string (e.g., "file:///data/.../bundle-store/abc123") or null if not available
  */
 export const getBaseURL = (): string | null => {
-  const result = HotUpdaterNative.getBaseURL();
-  if (typeof result === "string" && result !== "") {
-    return result;
+  const cachedBaseURL = sessionState.getCachedBaseURL();
+  if (cachedBaseURL !== undefined) {
+    return cachedBaseURL;
   }
-  return null;
+
+  const result = HotUpdaterNative.getBaseURL();
+  const baseURL = typeof result === "string" && result !== "" ? result : null;
+  sessionState.cacheBaseURL(baseURL);
+  return baseURL;
 };
 
 /**

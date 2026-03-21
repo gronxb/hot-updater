@@ -334,6 +334,22 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         return bundleStorage.getBaseURL()
     }
 
+    /**
+     * Gets the current active bundle ID from bundle storage.
+     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Built-in bundle fallback is handled in JS.
+     */
+    public func getBundleId() -> String? {
+        return bundleStorage.getBundleId()
+    }
+
+    /**
+     * Gets the current manifest from bundle storage.
+     */
+    public func getManifest() -> ManifestAssets {
+        return bundleStorage.getManifest()
+    }
+
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
     }

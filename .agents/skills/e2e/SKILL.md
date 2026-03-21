@@ -21,6 +21,9 @@ Do not encode a fixed test scenario in this skill. The caller provides the scena
 - Rebuild the native app after native package changes. `pnpm -w build` alone is not enough for simulator/device validation.
 - Treat `notifyAppReady` as read-only. It must not affect crash detection, rollback, or promotion.
 - Public launch status should only be `STABLE` or `RECOVERED`.
+- For crash-bundle scenarios, the crash must happen at module top level, outside
+  the React component. Do not rely on `useEffect`, render-time component code,
+  or UI-triggered throws for rollback validation.
 
 ## Fixed Targets
 
@@ -107,6 +110,26 @@ agent-device diff snapshot -i
 <repo-root>/.agents/skills/e2e/scripts/inspect_android_state.sh
 ```
 
+The example UI is scrollable. Capture a top-of-screen snapshot first, then use
+`agent-device scrollintoview "<section title>"` and re-snapshot as each target
+section becomes visible. For most scenarios, inspect sections in this order:
+
+1. `Runtime Snapshot`
+2. `Launch Status`
+3. `Crash History`
+4. Optional deeper sections such as `Manifest Assets`, `Runtime Details`, and
+   `Actions`
+
+Typical section navigation examples:
+
+```bash
+agent-device snapshot -i
+agent-device scrollintoview "Launch Status"
+agent-device snapshot -i
+agent-device scrollintoview "Crash History"
+agent-device snapshot -i
+```
+
 ## Assertions
 
 Apply these assertions only when they match the caller's scenario:
@@ -123,18 +146,22 @@ Apply these assertions only when they match the caller's scenario:
 If the caller explicitly asks for a crash bundle, use a temporary patch like this and revert it immediately after deploy:
 
 ```ts
-useEffect(() => {
-  const currentBundleId = HotUpdater.getBundleId();
-  const safeBundleIds = new Set([
-    "<built-in-bundle-id>",
-    "<current-stable-bundle-id>",
-  ]);
+const E2E_SAFE_BUNDLE_IDS = new Set([
+  "<built-in-bundle-id>",
+  "<current-stable-bundle-id>",
+]);
 
-  if (!safeBundleIds.has(currentBundleId)) {
-    throw new Error("hot-updater e2e crash bundle");
-  }
-}, []);
+const E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();
+
+if (!E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {
+  throw new Error("hot-updater e2e crash bundle");
+}
 ```
+
+Place this patch at module scope, outside `App`, so the OTA bundle crashes
+while the JS module is being evaluated. A crash patch inside `App`,
+`useEffect`, or a button handler is not reliable enough for this rollback
+scenario and may fail to produce the intended crashing bundle.
 
 ## Reporting
 

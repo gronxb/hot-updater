@@ -2,12 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyBsdiffPatch } from "../src/internal/bsdiff.js";
+import type { Bytes } from "../src/internal/bytes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT = path.resolve(__dirname, "..");
 
-export async function readFixtureHbc(name: "one" | "two"): Promise<Uint8Array> {
+export async function readFixtureHbc(name: "one" | "two"): Promise<Bytes> {
   const fixturePath = path.resolve(
     ROOT,
     "fixture",
@@ -18,10 +19,7 @@ export async function readFixtureHbc(name: "one" | "two"): Promise<Uint8Array> {
   return new Uint8Array(bytes);
 }
 
-export async function applyBspatch(
-  base: Uint8Array,
-  patch: Uint8Array,
-): Promise<Uint8Array> {
+export async function applyBspatch(base: Bytes, patch: Bytes): Promise<Bytes> {
   return await applyBsdiffPatch(base, patch);
 }
 
