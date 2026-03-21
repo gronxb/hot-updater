@@ -1,4 +1,5 @@
 import { HdiffError } from "../errors.js";
+import { type Bytes } from "./bytes.js";
 
 type HermesValidateExports = {
   memory: WebAssembly.Memory;
@@ -23,7 +24,7 @@ enum ValidateCode {
 let wasmPromise: Promise<HermesValidateExports> | undefined;
 
 export async function validateExecutionHbc(
-  input: Uint8Array,
+  input: Bytes,
 ): Promise<ValidatedHbc> {
   const wasm = await getHermesValidator();
   if (typeof wasm.alloc === "function" && typeof wasm.dealloc === "function") {

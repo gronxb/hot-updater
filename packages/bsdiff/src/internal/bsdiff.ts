@@ -1,4 +1,5 @@
 import { HdiffError } from "../errors.js";
+import { type Bytes } from "./bytes.js";
 
 type BsdiffExports = {
   memory: WebAssembly.Memory;
@@ -31,9 +32,9 @@ enum BsdiffStatus {
 let wasmPromise: Promise<BsdiffExports> | undefined;
 
 export async function createBsdiffPatch(
-  base: Uint8Array,
-  next: Uint8Array,
-): Promise<Uint8Array> {
+  base: Bytes,
+  next: Bytes,
+): Promise<Bytes> {
   const wasm = await getBsdiffWasm();
 
   const status = runBinaryOperation(
@@ -52,9 +53,9 @@ export async function createBsdiffPatch(
 }
 
 export async function applyBsdiffPatch(
-  base: Uint8Array,
-  patch: Uint8Array,
-): Promise<Uint8Array> {
+  base: Bytes,
+  patch: Bytes,
+): Promise<Bytes> {
   const wasm = await getBsdiffWasm();
 
   const status = runBinaryOperation(
@@ -74,8 +75,8 @@ export async function applyBsdiffPatch(
 
 function runBinaryOperation(
   wasm: BsdiffExports,
-  left: Uint8Array,
-  right: Uint8Array,
+  left: Bytes,
+  right: Bytes,
   run: (
     leftPtr: number,
     leftLen: number,
@@ -103,7 +104,7 @@ function runBinaryOperation(
 function writeBytesToMemory(
   memory: WebAssembly.Memory,
   ptr: number,
-  bytes: Uint8Array,
+  bytes: Bytes,
 ): void {
   if (bytes.byteLength === 0) {
     return;
@@ -111,7 +112,7 @@ function writeBytesToMemory(
   new Uint8Array(memory.buffer, ptr, bytes.byteLength).set(bytes);
 }
 
-function readAndFreeOutput(wasm: BsdiffExports): Uint8Array {
+function readAndFreeOutput(wasm: BsdiffExports): Bytes {
   const outPtr = wasm.output_ptr();
   const outLen = wasm.output_len();
 

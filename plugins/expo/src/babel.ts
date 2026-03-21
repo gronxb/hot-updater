@@ -1,5 +1,25 @@
-import type { PluginObj } from "@babel/core";
 import type * as babelTypes from "@babel/types";
+
+type ObjectExpressionPath = {
+  node: babelTypes.ObjectExpression;
+  parent: babelTypes.Node;
+};
+
+type ProgramPath = {
+  node: babelTypes.Program;
+  traverse(visitor: {
+    ObjectExpression(path: ObjectExpressionPath): void;
+  }): void;
+};
+
+type HotUpdaterBabelPlugin = {
+  name: string;
+  visitor: {
+    Program: {
+      exit(programPath: ProgramPath): void;
+    };
+  };
+};
 
 /**
  * Hot Updater Babel Plugin
@@ -11,7 +31,7 @@ export default function ({
   types: t,
 }: {
   types: typeof babelTypes;
-}): PluginObj {
+}): HotUpdaterBabelPlugin {
   return {
     name: "hot-updater-babel-plugin",
     visitor: {

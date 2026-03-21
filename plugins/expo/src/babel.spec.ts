@@ -1,5 +1,23 @@
-import { transformSync } from "@babel/core";
+import { createRequire } from "node:module";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type TransformResult = {
+  code?: string | null;
+};
+
+type TransformSync = (
+  code: string,
+  options: {
+    plugins: unknown[];
+    configFile: false;
+    babelrc: false;
+  },
+) => TransformResult | null;
+
+const require = createRequire(import.meta.url);
+const { transformSync } = require("@babel/core") as {
+  transformSync: TransformSync;
+};
 
 async function transformCode(code: string): Promise<string | null> {
   try {
