@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/rock",
   "type": "module",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -26,12 +26,12 @@
   },
   "dependencies": {
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "execa": "catalog:",
-    "uuidv7": "^1.0.2"
+    "execa": "catalog:"
   },
   "exports": {
     ".": {

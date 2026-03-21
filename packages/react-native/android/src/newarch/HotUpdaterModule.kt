@@ -146,32 +146,9 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
-    override fun notifyAppReady(params: ReadableMap): WritableNativeMap {
-        val result = WritableNativeMap()
-        val bundleId = params.getString("bundleId")
-        if (bundleId == null) {
-            result.putString("status", "STABLE")
-            return result
-        }
+    override fun notifyAppReady(): WritableNativeMap = getInstance().notifyAppReady().toWritableNativeMap()
 
-        val impl = getInstance()
-        val statusMap = impl.notifyAppReady(bundleId)
-
-        result.putString("status", statusMap["status"] as? String ?: "STABLE")
-        statusMap["crashedBundleId"]?.let {
-            result.putString("crashedBundleId", it as String)
-        }
-
-        return result
-    }
-
-    override fun getCrashHistory(): WritableNativeArray {
-        val impl = getInstance()
-        val crashHistory = impl.getCrashHistory()
-        val result = WritableNativeArray()
-        crashHistory.forEach { result.pushString(it) }
-        return result
-    }
+    override fun getCrashHistory(): WritableNativeArray = getInstance().getCrashHistory().toWritableNativeArray()
 
     override fun clearCrashHistory(): Boolean {
         val impl = getInstance()
@@ -188,6 +165,13 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun getUserId(): String = deviceIdService.getUserId()
+
+    override fun getBundleId(): String? {
+        val impl = getInstance()
+        return impl.getBundleId()
+    }
+
+    override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

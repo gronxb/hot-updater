@@ -2,5 +2,5 @@
   "title": "Integration Plugins",
   "description": "Third-party service and tool integrations",
   "icon": "Plug",
-  "pages": ["sentry", "datadog", "repack"]
+  "pages": ["sentry", "datadog"]
 }

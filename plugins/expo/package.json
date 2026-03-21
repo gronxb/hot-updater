@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/expo",
   "type": "module",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -27,20 +27,25 @@
   },
   "dependencies": {
     "@babel/core": "7.26.0",
+    "@babel/types": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/plugin-core": "workspace:*"
+    "@hot-updater/plugin-core": "workspace:*",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "execa": "catalog:",
-    "uuidv7": "^1.0.2",
     "vitest": "catalog:"
   },
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./babel-plugin": {
+      "import": "./dist/babel-plugin.js",
+      "require": "./dist/babel-plugin.cjs"
     },
     "./package.json": "./package.json"
   }

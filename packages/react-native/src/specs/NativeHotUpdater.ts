@@ -1,5 +1,6 @@
 import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
+import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
 export interface UpdateBundleParams {
   bundleId: string;
@@ -60,18 +61,16 @@ export interface Spec extends TurboModule {
   updateBundle(params: UpdateBundleParams): Promise<boolean>;
 
   /**
-   * Notifies the native side that the app has successfully started with the given bundle.
-   * If the bundle matches the staging bundle, it promotes to stable.
+   * Reads the launch report for the current process.
+   * This is a read-only API; native launch state has already been finalized.
    *
-   * @param params - Parameters containing the bundle ID
    * @returns Object with status and optional crashedBundleId
-   * - `status: "PROMOTED"` - Staging bundle was promoted to stable (ACTIVE event)
    * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
    * - `status: "STABLE"` - No changes, already stable
    * - `crashedBundleId` - Present only when status is "RECOVERED"
    */
-  notifyAppReady(params: { bundleId: string }): {
-    status: "PROMOTED" | "RECOVERED" | "STABLE";
+  notifyAppReady(): {
+    status: "RECOVERED" | "STABLE";
     crashedBundleId?: string;
   };
 
@@ -106,6 +105,21 @@ export interface Spec extends TurboModule {
    * @returns Base URL string (e.g., "file:///data/.../bundle-store/abc123") or "" if not available
    */
   getBaseURL: () => string;
+
+  /**
+   * Gets the current active bundle ID from native bundle storage.
+   * Native reads the extracted bundle manifest first and falls back to the
+   * legacy BUNDLE_ID file when needed. Built-in bundle fallback is handled in JS.
+   *
+   * @returns Active bundle ID from bundle storage, or null when unavailable
+   */
+  getBundleId: () => string | null;
+
+  /**
+   * Gets the current manifest from native bundle storage.
+   * Returns an empty object when manifest.json is missing or invalid.
+   */
+  getManifest: () => UnsafeObject;
 
   /**
    * Sets a custom user ID for rollout calculations.

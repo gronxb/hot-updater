@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
@@ -39,12 +39,11 @@ interface CommonHotUpdaterOptions {
   requestTimeout?: number;
 
   /**
-   * Callback invoked when the app is ready and bundle verification completes.
-   * Provides information about bundle promotion, recovery from crashes, or stable state.
+   * Callback invoked when the app is ready and the native launch report is available.
+   * Provides information about rollback recovery or stable state.
    *
    * @param result - Bundle state information
    * @param result.status - Current bundle state:
-   *   - "PROMOTED": Staging bundle was promoted to stable (new update applied)
    *   - "RECOVERED": App recovered from a crash, rollback occurred
    *   - "STABLE": No changes, bundle is stable
    * @param result.crashedBundleId - Present only when status is "RECOVERED"
@@ -55,7 +54,9 @@ interface CommonHotUpdaterOptions {
    *   baseURL: "https://api.example.com",
    *   updateMode: "manual",
    *   onNotifyAppReady: ({ status, crashedBundleId }) => {
-   *     console.log(status, crashedBundleId);
+   *     if (status === "RECOVERED") {
+   *       analytics.track("bundle_rollback", { crashedBundleId });
+   *     }
    *   }
    * })(App);
    * ```
@@ -216,7 +217,6 @@ const handleNotifyAppReady = async (options: {
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
 }): Promise<void> => {
   try {
-    // Always call native notifyAppReady for bundle promotion
     const nativeResult = nativeNotifyAppReady();
 
     // If resolver.notifyAppReady exists, call it with simplified params
@@ -245,7 +245,7 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   if (options.updateMode === "manual") {
     return (WrappedComponent: React.ComponentType<P>) => {
       const ManualHOC: React.FC<P> = (props: P) => {
-        useLayoutEffect(() => {
+        useEffect(() => {
           void handleNotifyAppReady(options);
         }, []);
 
@@ -338,13 +338,13 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         restOptions.onProgress?.(progress);
       }, [progress]);
 
-      // Notify native side that app is ready (JS bundle fully loaded)
-      useLayoutEffect(() => {
+      // Read the native launch report after the first render commit.
+      useEffect(() => {
         void handleNotifyAppReady(restOptions);
       }, []);
 
       // Start update check
-      useLayoutEffect(() => {
+      useEffect(() => {
         initHotUpdater();
       }, []);
 

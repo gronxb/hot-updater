@@ -43,6 +43,24 @@ const handleUpdateRequest = async (
     };
   }
 
+  const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
+
+  if (cdnUrl) {
+    let storagePath: string;
+    if (!storageUri) {
+      storagePath = [rest.id, "bundle.zip"].join("/");
+    } else {
+      const storageUrl = new URL(storageUri);
+      storagePath = storageUrl.pathname.slice(1);
+    }
+
+    const baseUrl = cdnUrl.endsWith("/") ? cdnUrl.slice(0, -1) : cdnUrl;
+    return {
+      ...rest,
+      fileUrl: `${baseUrl}/${storagePath}`,
+    };
+  }
+
   let signedUrl: string | null = null;
   if (!storageUri) {
     const [_signedUrl] = await admin

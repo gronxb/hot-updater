@@ -1,5 +1,27 @@
 # @hot-updater/react-native
 
+## 0.28.0
+
+### Minor Changes
+
+- 09e3217: fix(react-native): improve rollback recovery
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.28.0
+- @hot-updater/core@0.28.0
+- @hot-updater/js@0.28.0
+- @hot-updater/plugin-core@0.28.0
+
+## 0.27.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.27.1
+- @hot-updater/core@0.27.1
+- @hot-updater/js@0.27.1
+- @hot-updater/plugin-core@0.27.1
+
 ## 0.27.0
 
 ### Minor Changes

@@ -15,6 +15,8 @@ class HotUpdaterImpl {
     private val context: Context
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
+    private val recoveryManager: HotUpdaterRecoveryManager
+    private var currentLaunchSelection: LaunchSelection? = null
 
     /**
      * Primary constructor with dependency injection (for testing)
@@ -27,6 +29,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         this.bundleStorage = bundleStorage
         this.preferences = preferences
+        this.recoveryManager = HotUpdaterRecoveryManager(this.context)
     }
 
     /**
@@ -265,7 +268,7 @@ class HotUpdaterImpl {
      * Gets the path to the bundle file
      * @return The path to the bundle file
      */
-    fun getJSBundleFile(): String = bundleStorage.getBundleURL()
+    fun getJSBundleFile(): String = prepareLaunchIfNeeded().bundleUrl
 
     /**
      * Updates the bundle from the specified URL
@@ -299,6 +302,7 @@ class HotUpdaterImpl {
      */
     suspend fun reload(reactContext: Context) {
         try {
+            currentLaunchSelection = null
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
             }
@@ -309,6 +313,7 @@ class HotUpdaterImpl {
 
     suspend fun reloadProcess(reactContext: Context) {
         try {
+            currentLaunchSelection = null
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
                     Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
@@ -330,22 +335,24 @@ class HotUpdaterImpl {
 
     // Use a cold restart in release builds so bundle application does not depend on RN reload timing.
     private fun restartApplication(reactContext: Context): Boolean {
+        val applicationContext = reactContext.applicationContext
         val currentActivity =
             (reactContext as? com.facebook.react.bridge.ReactApplicationContext)?.currentActivity
-        if (currentActivity == null) {
-            Log.w(TAG, "Cannot restart app: current activity unavailable")
-            return false
-        }
 
         return try {
             val restartIntent =
-                Intent(currentActivity, HotUpdaterRestartActivity::class.java).apply {
+                Intent(applicationContext, HotUpdaterRestartActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, currentActivity.packageName)
+                    putExtra(HotUpdaterRestartActivity.EXTRA_PACKAGE_NAME, applicationContext.packageName)
                     putExtra(HotUpdaterRestartActivity.EXTRA_TARGET_PID, Process.myPid())
                 }
-            val options = ActivityOptions.makeCustomAnimation(currentActivity, 0, 0)
-            currentActivity.startActivity(restartIntent, options.toBundle())
+            if (currentActivity != null) {
+                val options = ActivityOptions.makeCustomAnimation(currentActivity, 0, 0)
+                currentActivity.startActivity(restartIntent, options.toBundle())
+            } else {
+                applicationContext.startActivity(restartIntent)
+            }
 
             Log.i(TAG, "Started restart trampoline to apply update bundle")
             return true
@@ -356,12 +363,11 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Notifies the system that the app has successfully started with the given bundle.
-     * If the bundle matches the staging bundle, it promotes to stable.
-     * @param bundleId The ID of the currently running bundle
+     * Returns the launch report for the current process.
+     * Startup success and rollback are finalized before JS reads it.
      * @return Map containing status and optional crashedBundleId
      */
-    fun notifyAppReady(bundleId: String): Map<String, Any?> = bundleStorage.notifyAppReady(bundleId)
+    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     /**
      * Gets the crashed bundle history.
@@ -383,11 +389,43 @@ class HotUpdaterImpl {
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
 
+    /**
+     * Gets the current active bundle ID from bundle storage.
+     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Built-in bundle fallback is handled in JS.
+     */
+    fun getBundleId(): String? = bundleStorage.getBundleId()
+
+    /**
+     * Gets the current manifest from bundle storage.
+     */
+    fun getManifest(): Map<String, Any?> = bundleStorage.getManifest()
+
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()
         if (success) {
             preferences.setItem(CHANNEL_STORAGE_KEY, null)
+            currentLaunchSelection = null
         }
         return success
+    }
+
+    private fun prepareLaunchIfNeeded(): LaunchSelection {
+        currentLaunchSelection?.let { return it }
+
+        val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+        val selection = bundleStorage.prepareLaunch(pendingRecovery)
+        recoveryManager.startMonitoring(
+            bundleId = selection.launchedBundleId,
+            shouldRollback = selection.shouldRollbackOnCrash,
+            onContentAppeared = { launchedBundleId ->
+                bundleStorage.markLaunchCompleted(launchedBundleId)
+            },
+            onRecoveryRestartRequested = {
+                restartApplication(context)
+            },
+        )
+        currentLaunchSelection = selection
+        return selection
     }
 }

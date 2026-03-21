@@ -1,7 +1,13 @@
 #import "HotUpdater.h"
+#import <React/RCTExceptionsManager.h>
+#import <React/RCTInitializing.h>
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
 
+#include <fcntl.h>
+#include <limits.h>
+#include <signal.h>
+#include <unistd.h>
 
 #if __has_include("HotUpdater/HotUpdater-Swift.h")
 #import "HotUpdater/HotUpdater-Swift.h"
@@ -9,16 +15,258 @@
 #import "HotUpdater-Swift.h"
 #endif
 
+@interface HotUpdater (InternalSharedImpl)
++ (HotUpdaterImpl *)sharedImpl;
++ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs;
+@end
+
+namespace {
+constexpr size_t kHotUpdaterMaxBundleIdLength = 128;
+const int kHotUpdaterSignals[] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP};
+
+char gHotUpdaterCrashMarkerPath[PATH_MAX] = {0};
+char gHotUpdaterBundleId[kHotUpdaterMaxBundleIdLength] = {0};
+volatile sig_atomic_t gHotUpdaterShouldRollback = 0;
+struct sigaction gHotUpdaterPreviousActions[NSIG];
+__weak RCTBridge *gHotUpdaterBridge = nil;
+
+size_t HotUpdaterSafeStringLength(const char *value, size_t maxLength)
+{
+  size_t length = 0;
+  while (length < maxLength && value[length] != '\0') {
+    ++length;
+  }
+  return length;
+}
+
+void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *source)
+{
+  if (destinationSize == 0) {
+    return;
+  }
+
+  size_t index = 0;
+  while (index + 1 < destinationSize && source[index] != '\0') {
+    destination[index] = source[index];
+    ++index;
+  }
+  destination[index] = '\0';
+}
+
+void HotUpdaterWriteCrashMarker()
+{
+  if (gHotUpdaterCrashMarkerPath[0] == '\0') {
+    return;
+  }
+
+  int fd = open(gHotUpdaterCrashMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    return;
+  }
+
+  constexpr char prefix[] = "{\"bundleId\":\"";
+  constexpr char middle[] = "\",\"shouldRollback\":";
+  constexpr char trueLiteral[] = "true";
+  constexpr char falseLiteral[] = "false";
+  constexpr char suffix[] = "}\n";
+
+  write(fd, prefix, sizeof(prefix) - 1);
+  if (gHotUpdaterBundleId[0] != '\0') {
+    write(fd, gHotUpdaterBundleId, HotUpdaterSafeStringLength(gHotUpdaterBundleId, kHotUpdaterMaxBundleIdLength));
+  }
+  write(fd, middle, sizeof(middle) - 1);
+  if (gHotUpdaterShouldRollback != 0) {
+    write(fd, trueLiteral, sizeof(trueLiteral) - 1);
+  } else {
+    write(fd, falseLiteral, sizeof(falseLiteral) - 1);
+  }
+  write(fd, suffix, sizeof(suffix) - 1);
+  close(fd);
+}
+
+void HotUpdaterSignalHandler(int signum, siginfo_t *info, void *context);
+
+void HotUpdaterForwardToPreviousHandler(int signum, siginfo_t *info, void *context)
+{
+  const struct sigaction &previousAction = gHotUpdaterPreviousActions[signum];
+
+  if ((previousAction.sa_flags & SA_SIGINFO) != 0 && previousAction.sa_sigaction != nullptr &&
+      previousAction.sa_sigaction != HotUpdaterSignalHandler) {
+    previousAction.sa_sigaction(signum, info, context);
+    return;
+  }
+
+  if (previousAction.sa_handler == SIG_IGN) {
+    return;
+  }
+
+  if (previousAction.sa_handler != nullptr && previousAction.sa_handler != SIG_DFL &&
+      previousAction.sa_handler != SIG_ERR) {
+    previousAction.sa_handler(signum);
+    return;
+  }
+
+  struct sigaction defaultAction {};
+  defaultAction.sa_handler = SIG_DFL;
+  sigemptyset(&defaultAction.sa_mask);
+  sigaction(signum, &defaultAction, nullptr);
+  raise(signum);
+}
+
+void HotUpdaterSignalHandler(int signum, siginfo_t *info, void *context)
+{
+  HotUpdaterWriteCrashMarker();
+  HotUpdaterForwardToPreviousHandler(signum, info, context);
+}
+} // namespace
+
+extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
+{
+  HotUpdaterSafeCopy(gHotUpdaterCrashMarkerPath, sizeof(gHotUpdaterCrashMarkerPath), crashMarkerPath.UTF8String ?: "");
+
+  struct sigaction action {};
+  action.sa_sigaction = HotUpdaterSignalHandler;
+  action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+  sigemptyset(&action.sa_mask);
+
+  for (int signum : kHotUpdaterSignals) {
+    sigaction(signum, &action, &gHotUpdaterPreviousActions[signum]);
+  }
+}
+
+extern "C" void HotUpdaterUpdateSignalLaunchState(NSString * _Nullable bundleId, BOOL shouldRollback)
+{
+  HotUpdaterSafeCopy(gHotUpdaterBundleId, sizeof(gHotUpdaterBundleId), bundleId.UTF8String ?: "");
+  gHotUpdaterShouldRollback = shouldRollback ? 1 : 0;
+}
+
+extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
+{
+  __block BOOL didTriggerReload = NO;
+
+  void (^reloadBlock)(void) = ^{
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl resetLaunchPreparation];
+
+    NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+    if (!bundleURL) {
+      RCTLogWarn(@"[HotUpdater.mm] Failed to resolve bundle URL for recovery reload");
+      return;
+    }
+
+    RCTReloadCommandSetBundleURL(bundleURL);
+    RCTBridge *bridge = gHotUpdaterBridge;
+    if (bridge) {
+      [bridge setValue:bundleURL forKey:@"bundleURL"];
+    }
+    RCTTriggerReloadCommandListeners(@"HotUpdater recovery reload");
+    didTriggerReload = YES;
+  };
+
+  if ([NSThread isMainThread]) {
+    reloadBlock();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), reloadBlock);
+  }
+
+  return didTriggerReload;
+}
+
+extern "C" NSString *HotUpdaterGetMinBundleId(void)
+{
+  static NSString *uuid = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+#if DEBUG
+    uuid = @"00000000-0000-0000-0000-000000000000";
+#else
+    // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
+    NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+    NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
+
+    // Step 2: If custom value exists and is not empty
+    if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
+      // Check if it's a timestamp (pure digits) or UUID
+      NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+      BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
+
+      if (isTimestamp) {
+        // Convert timestamp (milliseconds) to UUID v7
+        uint64_t timestampMs = [customValue longLongValue];
+        uuid = [HotUpdater generateUUIDv7FromTimestamp:timestampMs];
+        RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
+      } else {
+        // Use as UUID directly
+        uuid = customValue;
+        RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
+      }
+      return;
+    }
+
+    // Step 3: Fallback to default logic (26-hour subtraction)
+    RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
+
+    NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+
+    // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
+    [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
+    [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+    [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
+    NSDate *buildDate = [formatter dateFromString:compileDateStr];
+    if (!buildDate) {
+      RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
+      uuid = @"00000000-0000-0000-0000-000000000000";
+      return;
+    }
+
+    // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
+    // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
+    // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
+    // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
+    // Example: Build at 15:00 in any timezone -> parse as 15:00 UTC -> subtract 26h -> 13:00 UTC (previous day)
+    NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
+    uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
+
+    uuid = [HotUpdater generateUUIDv7FromTimestamp:buildTimestampMs];
+#endif
+  });
+  return uuid;
+}
+
 
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
+
+@interface HotUpdaterRecoverySignalBridge : NSObject
+@end
+
+@implementation HotUpdaterRecoverySignalBridge
+
++ (void)installSignalHandlers:(NSString *)crashMarkerPath
+{
+    HotUpdaterInstallSignalHandlers(crashMarkerPath);
+}
+
++ (void)updateLaunchState:(NSString * _Nullable)bundleId shouldRollback:(BOOL)shouldRollback
+{
+    HotUpdaterUpdateSignalLaunchState(bundleId, shouldRollback);
+}
+
+@end
+
+@interface HotUpdater () <RCTInitializing>
+@end
 
 @implementation HotUpdater {
     bool hasListeners;
     // Keep track of tasks ONLY for removing observers when this ObjC instance is invalidated
     NSMutableSet<NSURLSessionTask *> *observedTasks; // Changed to NSURLSessionTask for broader compatibility if needed
 }
+
+@synthesize bridge = _bridge;
+@synthesize moduleRegistry = _moduleRegistry;
 
 + (BOOL)requiresMainQueueSetup {
     return YES;
@@ -43,10 +291,25 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
     return self;
 }
 
+- (void)initialize
+{
+    [self configureExceptionsManagerWithModuleRegistry:self.moduleRegistry];
+}
+
+- (void)setBridge:(RCTBridge *)bridge
+{
+    [super setBridge:bridge];
+    gHotUpdaterBridge = bridge;
+    [self configureExceptionsManagerWithBridge:bridge];
+}
+
 // Clean up observers when module is invalidated or deallocated
 - (void)invalidate {
     RCTLogInfo(@"[HotUpdater.mm] invalidate called, removing observers.");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (gHotUpdaterBridge == self.bridge) {
+        gHotUpdaterBridge = nil;
+    }
     // Swift side should handle KVO observer removal for its tasks
     [super invalidate];
 }
@@ -54,6 +317,57 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 - (void)dealloc {
     RCTLogInfo(@"[HotUpdater.mm] dealloc called, removing observers.");
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (gHotUpdaterBridge == self.bridge) {
+        gHotUpdaterBridge = nil;
+    }
+}
+
+- (void)configureExceptionsManagerWithBridge:(RCTBridge *)bridge
+{
+    if (!bridge) {
+        return;
+    }
+
+    id exceptionsManager = [bridge moduleForClass:[RCTExceptionsManager class]];
+    [self applyExceptionsManagerReloadLimit:exceptionsManager];
+}
+
+- (void)configureExceptionsManagerWithModuleRegistry:(id)moduleRegistry
+{
+    if (!moduleRegistry || ![moduleRegistry respondsToSelector:@selector(moduleForName:lazilyLoadIfNecessary:)]) {
+        return;
+    }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    SEL selector = @selector(moduleForName:lazilyLoadIfNecessary:);
+    NSMethodSignature *signature = [moduleRegistry methodSignatureForSelector:selector];
+    if (!signature) {
+        return;
+    }
+
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    invocation.target = moduleRegistry;
+    invocation.selector = selector;
+
+    const char *moduleName = "ExceptionsManager";
+    BOOL lazilyLoad = YES;
+    [invocation setArgument:&moduleName atIndex:2];
+    [invocation setArgument:&lazilyLoad atIndex:3];
+    [invocation invoke];
+
+    __unsafe_unretained id exceptionsManager = nil;
+    [invocation getReturnValue:&exceptionsManager];
+#pragma clang diagnostic pop
+
+    [self applyExceptionsManagerReloadLimit:exceptionsManager];
+}
+
+- (void)applyExceptionsManagerReloadLimit:(id)exceptionsManager
+{
+    if ([exceptionsManager isKindOfClass:[RCTExceptionsManager class]]) {
+        ((RCTExceptionsManager *)exceptionsManager).maxReloadAttempts = 0;
+    }
 }
 
 
@@ -75,68 +389,11 @@ RCT_EXPORT_MODULE();
 
 // Returns the minimum bundle ID string, either from Info.plist or generated from build timestamp
 - (NSString *)getMinBundleId {
-     static NSString *uuid = nil;
-     static dispatch_once_t onceToken;
-     dispatch_once(&onceToken, ^{
-     #if DEBUG
-         uuid = @"00000000-0000-0000-0000-000000000000";
-     #else
-         // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
-         NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-         NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
-
-         // Step 2: If custom value exists and is not empty
-         if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
-             // Check if it's a timestamp (pure digits) or UUID
-             NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
-             BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
-
-             if (isTimestamp) {
-                 // Convert timestamp (milliseconds) to UUID v7
-                 uint64_t timestampMs = [customValue longLongValue];
-                 uuid = [self generateUUIDv7FromTimestamp:timestampMs];
-                 RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
-             } else {
-                 // Use as UUID directly
-                 uuid = customValue;
-                 RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
-             }
-             return;
-         }
-
-         // Step 3: Fallback to default logic (26-hour subtraction)
-         RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
-
-         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-
-         // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
-         [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
-         [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
-         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
-         NSDate *buildDate = [formatter dateFromString:compileDateStr];
-         if (!buildDate) {
-             RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
-             uuid = @"00000000-0000-0000-0000-000000000000";
-             return;
-         }
-
-         // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
-         // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
-         // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
-         // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
-         // Example: Build at 15:00 in any timezone → parse as 15:00 UTC → subtract 26h → 13:00 UTC (previous day)
-         NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
-         uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
-
-         uuid = [self generateUUIDv7FromTimestamp:buildTimestampMs];
-     #endif
-     });
-     return uuid;
+     return HotUpdaterGetMinBundleId();
 }
 
 // Helper method: Generate UUID v7 from timestamp (milliseconds)
-- (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
++ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
     unsigned char bytes[16];
 
     // UUID v7 format: timestamp_ms (48 bits) + ver (4 bits) + random (12 bits) + variant (2 bits) + random (62 bits)
@@ -257,8 +514,12 @@ RCT_EXPORT_MODULE();
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            [impl resetLaunchPreparation];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL) {
+                RCTReloadCommandSetBundleURL(bundleURL);
+            }
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
@@ -300,14 +561,10 @@ RCT_EXPORT_MODULE();
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 
-- (NSDictionary *)notifyAppReady:(JS::NativeHotUpdater::SpecNotifyAppReadyParams &)params {
-    NSString *bundleId = nil;
-    if (params.bundleId()) {
-        bundleId = params.bundleId();
-    }
-    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+- (NSDictionary *)notifyAppReady {
+    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReadyWithBundleId:bundleId];
+    return [impl notifyAppReady];
 }
 
 - (NSArray<NSString *> *)getCrashHistory {
@@ -341,6 +598,19 @@ RCT_EXPORT_MODULE();
     return [impl getUserId];
 }
 
+- (NSString * _Nullable)getBundleId {
+    NSLog(@"[HotUpdater.mm] getBundleId called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getBundleId];
+}
+
+- (NSDictionary<NSString *, id> *)getManifest {
+    NSLog(@"[HotUpdater.mm] getManifest called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSDictionary<NSString *, id> *manifest = [impl getManifest];
+    return manifest ?: @{};
+}
+
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -372,8 +642,12 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+            [impl resetLaunchPreparation];
             NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
+            if (bundleURL) {
+                RCTReloadCommandSetBundleURL(bundleURL);
+            }
             if (bundleURL && super.bridge) {
                 [super.bridge setValue:bundleURL forKey:@"bundleURL"];
             } else if (!super.bridge) {
@@ -401,11 +675,10 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
     [impl updateBundle:params resolver:resolve rejecter:reject];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady:(NSDictionary *)params) {
-    NSString *bundleId = params[@"bundleId"];
-    NSLog(@"[HotUpdater.mm] notifyAppReady called with bundleId: %@", bundleId);
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {
+    NSLog(@"[HotUpdater.mm] notifyAppReady called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl notifyAppReadyWithBundleId:bundleId];
+    return [impl notifyAppReady];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {
@@ -437,6 +710,19 @@ RCT_EXPORT_METHOD(setUserId:(NSString *)customId) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl getUserId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
+    NSLog(@"[HotUpdater.mm] getBundleId called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getBundleId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {
+    NSLog(@"[HotUpdater.mm] getManifest called");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    NSDictionary<NSString *, id> *manifest = [impl getManifest];
+    return manifest ?: @{};
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve

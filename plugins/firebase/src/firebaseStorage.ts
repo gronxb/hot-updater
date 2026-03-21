@@ -59,6 +59,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
           await file.save(fileContent, {
             metadata: {
               contentType: contentType,
+              cacheControl: "public, max-age=31536000, immutable",
             },
           });
 
