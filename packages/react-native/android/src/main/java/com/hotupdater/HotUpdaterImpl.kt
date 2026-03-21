@@ -399,8 +399,7 @@ class HotUpdaterImpl {
     /**
      * Gets the current manifest from bundle storage.
      */
-    fun getManifest(): Map<String, Any?> =
-        bundleStorage.getManifest()
+    fun getManifest(): Map<String, Any?> = bundleStorage.getManifest()
 
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()

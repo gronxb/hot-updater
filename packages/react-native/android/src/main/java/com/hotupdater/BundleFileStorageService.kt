@@ -130,6 +130,7 @@ class BundleFileStorageService(
     }
 
     private var currentLaunchReport: LaunchReport? = null
+
     @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
     private val activeBundleMetadataLock = Any()
@@ -214,10 +215,11 @@ class BundleFileStorageService(
     }
 
     private fun getActiveBundleMetadataSnapshot(): ActiveBundleMetadataSnapshot? {
-        val activeBundleId = getActiveBundleId() ?: run {
-            clearActiveBundleMetadataSnapshot()
-            return null
-        }
+        val activeBundleId =
+            getActiveBundleId() ?: run {
+                clearActiveBundleMetadataSnapshot()
+                return null
+            }
 
         activeBundleMetadataSnapshot
             ?.takeIf { it.activeBundleId == activeBundleId }

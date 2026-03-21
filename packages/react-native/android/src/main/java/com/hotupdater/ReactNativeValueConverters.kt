@@ -21,7 +21,10 @@ internal fun List<*>.toWritableNativeArray(): WritableNativeArray {
     return result
 }
 
-private fun WritableMap.putReactValue(key: String, value: Any?) {
+private fun WritableMap.putReactValue(
+    key: String,
+    value: Any?,
+) {
     when (value) {
         null -> putNull(key)
         is Boolean -> putBoolean(key, value)
