@@ -1,16 +1,23 @@
-export type BytesLike = Uint8Array | ArrayBuffer;
+export type Bytes = Uint8Array<ArrayBuffer>;
+export type BytesLike = Uint8Array<ArrayBufferLike> | ArrayBufferLike;
 
-export function toUint8Array(value: BytesLike): Uint8Array {
+export function toUint8Array(value: BytesLike): Bytes {
   if (value instanceof Uint8Array) {
-    return value;
+    return Uint8Array.from(value);
   }
   if (value instanceof ArrayBuffer) {
     return new Uint8Array(value);
   }
-  throw new TypeError("Expected Uint8Array or ArrayBuffer");
+  if (
+    typeof SharedArrayBuffer !== "undefined" &&
+    value instanceof SharedArrayBuffer
+  ) {
+    return Uint8Array.from(new Uint8Array(value));
+  }
+  throw new TypeError("Expected Uint8Array or ArrayBufferLike");
 }
 
-export function equalsBytes(a: Uint8Array, b: Uint8Array): boolean {
+export function equalsBytes(a: Bytes, b: Bytes): boolean {
   if (a.byteLength !== b.byteLength) {
     return false;
   }
@@ -22,6 +29,6 @@ export function equalsBytes(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-export function cloneBytes(value: Uint8Array): Uint8Array {
-  return new Uint8Array(value);
+export function cloneBytes(value: Uint8Array<ArrayBufferLike>): Bytes {
+  return Uint8Array.from(value);
 }

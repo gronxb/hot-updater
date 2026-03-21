@@ -7,6 +7,7 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
+import { uuidv7 } from "uuidv7";
 import { compileHermes } from "./hermes";
 
 interface RunBundleArgs {
@@ -33,6 +34,7 @@ const runBundle = async ({
 
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
+  const bundleId = uuidv7();
 
   const args = [
     "bundle",
@@ -58,40 +60,12 @@ const runBundle = async ({
   try {
     await execa(cliPath, args, {
       cwd,
-      env: {
-        ...process.env,
-        BUILD_OUT_DIR: buildPath,
-      },
       reject: true,
     });
   } catch (error) {
     if (error instanceof ExecaError) {
       throw error.stderr;
     }
-  }
-
-  const bundleId = await fs
-    .readFile(path.join(buildPath, "BUNDLE_ID"), "utf-8")
-    .catch(() => null);
-
-  if (!bundleId) {
-    throw new Error(`If you are using Babel, please check if 'hot-updater/babel-plugin' is configured in babel.config.js
-Example:
-module.exports = {
-  plugins: [
-    ["hot-updater/babel-plugin"]
-  ]
-}
-  
-
-If you are using Repack, please check if '@hot-updater/repack' plugin is configured in rspack.config.mjs
-Example:
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-
-{
-  plugins: [new Repack.RepackPlugin(), new HotUpdaterPlugin()],
-}
-`);
   }
 
   if (enableHermes) {

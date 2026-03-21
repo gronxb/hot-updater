@@ -389,6 +389,18 @@ class HotUpdaterImpl {
      */
     fun getBaseURL(): String = bundleStorage.getBaseURL()
 
+    /**
+     * Gets the current active bundle ID from bundle storage.
+     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Built-in bundle fallback is handled in JS.
+     */
+    fun getBundleId(): String? = bundleStorage.getBundleId()
+
+    /**
+     * Gets the current manifest from bundle storage.
+     */
+    fun getManifest(): Map<String, Any?> = bundleStorage.getManifest()
+
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()
         if (success) {

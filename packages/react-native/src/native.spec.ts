@@ -1,18 +1,22 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
-  vi.stubGlobal("__HOT_UPDATER_BUNDLE_ID", "bundle-id");
+  const getManifest = vi.fn<() => Record<string, unknown> | string>();
+  const getCrashHistory = vi.fn<() => string[] | string>(() => []);
 
   return {
     clearCrashHistory: vi.fn(() => true),
-    getBaseURL: vi.fn(() => null),
+    getBaseURL: vi.fn<() => string | null>(() => null),
+    getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
+    getManifest,
+    getCrashHistory,
     getConstants: vi.fn(() => ({
       APP_VERSION: null,
       CHANNEL: "production",
       DEFAULT_CHANNEL: "production",
       FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "min-bundle-id",
     })),
-    getCrashHistory: vi.fn(() => []),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
     resetChannel: vi.fn(),
@@ -41,12 +45,30 @@ describe("notifyAppReady", () => {
   beforeEach(() => {
     vi.resetModules();
     nativeModuleMock.notifyAppReady.mockReset();
+    nativeModuleMock.getBaseURL.mockReset();
+    nativeModuleMock.getBundleId.mockReset();
+    nativeModuleMock.getCrashHistory.mockReset();
     nativeModuleMock.getConstants.mockReturnValue({
       APP_VERSION: null,
       CHANNEL: "production",
       DEFAULT_CHANNEL: "production",
       FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "min-bundle-id",
     });
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-id");
+    nativeModuleMock.getBaseURL.mockReturnValue(null);
+    nativeModuleMock.getCrashHistory.mockReturnValue([]);
+    nativeModuleMock.getManifest.mockReset();
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "index.android.bundle": {
+          fileHash: "hash-123",
+        },
+      },
+      bundleId: "bundle-id",
+    });
+    nativeModuleMock.resetChannel.mockReset();
+    nativeModuleMock.updateBundle.mockReset();
   });
 
   it("normalizes legacy PROMOTED launch reports to STABLE", async () => {
@@ -80,5 +102,307 @@ describe("notifyAppReady", () => {
     const { notifyAppReady } = await import("./native");
 
     expect(notifyAppReady()).toEqual({ status: "STABLE" });
+  });
+
+  it("returns the native bundle id when available", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("bundle-123");
+  });
+
+  it("throws when native SDK does not expose getBundleId", async () => {
+    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
+      getBundleId?: typeof nativeModuleMock.getBundleId;
+    };
+    const originalGetBundleId = nativeModule.getBundleId;
+    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
+
+    try {
+      const { getBundleId } = await import("./native");
+
+      expect(() => getBundleId()).toThrow(
+        "Native module is missing 'getBundleId()'",
+      );
+    } finally {
+      nativeModule.getBundleId = originalGetBundleId;
+    }
+  });
+
+  it("falls back to MIN_BUNDLE_ID when native reports an empty bundle id", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("");
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("falls back to MIN_BUNDLE_ID when native bundle id is null", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("falls back to MIN_BUNDLE_ID for legacy NIL_UUID bundle ids", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000000",
+    );
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("returns manifest from native objects", async () => {
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("normalizes legacy manifest asset entries from native objects", async () => {
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "assets/logo.png": "hash-logo",
+      },
+      bundleId: "bundle-123",
+    });
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("parses manifest from old-arch JSON payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue(
+      JSON.stringify({
+        assets: {
+          "assets/logo.png": {
+            fileHash: "hash-logo",
+          },
+        },
+        bundleId: "bundle-123",
+      }),
+    );
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("normalizes legacy manifest asset entries from old-arch JSON payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue(
+      JSON.stringify({
+        assets: {
+          "assets/logo.png": "hash-logo",
+        },
+        bundleId: "bundle-123",
+      }),
+    );
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("returns an empty-assets manifest for malformed payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue("{");
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "bundle-id",
+    });
+  });
+
+  it("caches active bundle getters within a JS runtime", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+    nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-123");
+
+    const { getBaseURL, getBundleId, getManifest } = await import("./native");
+
+    expect(getBundleId()).toBe("bundle-123");
+    expect(getBundleId()).toBe("bundle-123");
+    expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(1);
+
+    const firstManifest = getManifest();
+    firstManifest.assets["assets/logo.png"] = {
+      fileHash: "mutated-hash",
+    };
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+    expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(1);
+
+    expect(getBaseURL()).toBe("file:///bundle-123");
+    expect(getBaseURL()).toBe("file:///bundle-123");
+    expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates cached bundle getters after updateBundle succeeds", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {},
+      bundleId: "bundle-123",
+    });
+    nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-123");
+    nativeModuleMock.updateBundle.mockResolvedValue(true);
+
+    const { getBaseURL, getBundleId, getManifest, updateBundle } = await import(
+      "./native"
+    );
+
+    expect(getBundleId()).toBe("bundle-123");
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "bundle-123",
+    });
+    expect(getBaseURL()).toBe("file:///bundle-123");
+
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-456");
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {},
+      bundleId: "bundle-456",
+    });
+    nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-456");
+
+    await updateBundle({
+      bundleId: "bundle-456",
+      fileHash: null,
+      fileUrl: "https://example.com/bundle.zip",
+      status: "UPDATE",
+    });
+
+    expect(getBundleId()).toBe("bundle-456");
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "bundle-456",
+    });
+    expect(getBaseURL()).toBe("file:///bundle-456");
+    expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(2);
+    expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(2);
+    expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("invalidates cached bundle getters after resetChannel succeeds", async () => {
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: null,
+      CHANNEL: "beta",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "min-bundle-id",
+    });
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-beta");
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {},
+      bundleId: "bundle-beta",
+    });
+    nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-beta");
+    nativeModuleMock.resetChannel.mockResolvedValue(true);
+
+    const { getBaseURL, getBundleId, getManifest, resetChannel } = await import(
+      "./native"
+    );
+
+    expect(getBundleId()).toBe("bundle-beta");
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "bundle-beta",
+    });
+    expect(getBaseURL()).toBe("file:///bundle-beta");
+
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+    nativeModuleMock.getManifest.mockReturnValue({});
+    nativeModuleMock.getBaseURL.mockReturnValue("");
+
+    await expect(resetChannel()).resolves.toBe(true);
+
+    expect(getBundleId()).toBe("min-bundle-id");
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "min-bundle-id",
+    });
+    expect(getBaseURL()).toBeNull();
+    expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(2);
+    expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(2);
+    expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("parses crash history from legacy JSON payloads", async () => {
+    nativeModuleMock.getCrashHistory.mockReturnValue(
+      JSON.stringify(["bundle-1", "bundle-2"]),
+    );
+
+    const { getCrashHistory } = await import("./native");
+
+    expect(getCrashHistory()).toEqual(["bundle-1", "bundle-2"]);
+  });
+
+  it("falls back to an empty crash history for malformed payloads", async () => {
+    nativeModuleMock.getCrashHistory.mockReturnValue("{");
+
+    const { getCrashHistory } = await import("./native");
+
+    expect(getCrashHistory()).toEqual([]);
   });
 });

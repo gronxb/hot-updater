@@ -16,6 +16,7 @@ import path from "path";
 import semverValid from "semver/ranges/valid";
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
+import { writeBundleManifest } from "@/utils/bundleManifest";
 import {
   isFingerprintEquals,
   nativeFingerprint,
@@ -297,24 +298,40 @@ export const deploy = async (options: DeployOptions) => {
               )
               .map((file) => path.join(buildPath, file)),
           );
+          const currentBundleId = taskRef.buildResult.bundleId;
+          bundleId = currentBundleId;
+
+          const { manifestPath } = await writeBundleManifest({
+            buildPath,
+            bundleId: currentBundleId,
+            targetFiles,
+          });
+
+          const bundleTargetFiles = [
+            ...targetFiles,
+            {
+              path: manifestPath,
+              name: "manifest.json",
+            },
+          ];
 
           switch (compressStrategy) {
             case "tar.br":
               await createTarBrTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: bundleTargetFiles,
               });
               break;
             case "tar.gz":
               await createTarGzTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: bundleTargetFiles,
               });
               break;
             case "zip":
               await createZipTargetFiles({
                 outfile: bundlePath,
-                targetFiles: targetFiles,
+                targetFiles: bundleTargetFiles,
               });
               break;
             default:
@@ -322,8 +339,6 @@ export const deploy = async (options: DeployOptions) => {
                 `Unsupported compression strategy: ${compressStrategy}`,
               );
           }
-
-          bundleId = taskRef.buildResult.bundleId;
           fileHash = await getFileHashFromFile(bundlePath);
 
           // Sign bundle if signing is enabled

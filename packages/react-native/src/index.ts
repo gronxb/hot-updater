@@ -14,6 +14,7 @@ import {
   getCrashHistory,
   getDefaultChannel,
   getFingerprintHash,
+  getManifest,
   getMinBundleId,
   isChannelSwitched,
   reload,
@@ -29,6 +30,8 @@ import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,
+  Manifest,
+  ManifestAsset,
   NotifyAppReadyResult,
   ReloadBehavior,
   ReloadBehaviorSetting,
@@ -219,6 +222,11 @@ function createHotUpdaterClient() {
      * Retrieves the initial bundle ID based on the build time of the native app.
      */
     getMinBundleId,
+
+    /**
+     * Fetches the current manifest for the active bundle.
+     */
+    getManifest,
 
     /**
      * Fetches the current channel of the app.
