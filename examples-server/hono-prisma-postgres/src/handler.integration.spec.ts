@@ -8,7 +8,6 @@ import {
 import {
   cleanupServer,
   createGetUpdateInfo,
-  hasDockerDaemon,
   killPort,
   spawnServerProcess,
   waitForServer,
@@ -22,11 +21,8 @@ import { afterAll, beforeAll, describe } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const describeWithDocker = hasDockerDaemon() ? describe : describe.skip;
 
-describeWithDocker(
-  "Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)",
-  () => {
+describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let testDbName: string;
@@ -167,5 +163,4 @@ describeWithDocker(
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
   });
-  },
-);
+});

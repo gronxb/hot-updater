@@ -1,19 +1,13 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import path from "path";
 import { defineWorkersConfig } from "@cloudflare/vitest-pool-workers/config";
 
-const root = dirname(fileURLToPath(import.meta.url));
-
 export default defineWorkersConfig({
-  root,
   test: {
-    include: ["**/*.spec.ts", "**/*.test.ts"],
-    exclude: ["dist/**", "worker/dist/**", "node_modules/**", ".ignored/**"],
-    globalSetup: resolve(root, "vitest.global-setup.mts"),
+    globalSetup: path.resolve(__dirname, "vitest.global-setup.mts"),
     poolOptions: {
       workers: {
         wrangler: {
-          configPath: resolve(root, "worker", "wrangler.test.json"),
+          configPath: path.resolve(__dirname, "worker", "wrangler.test.json"),
         },
       },
     },

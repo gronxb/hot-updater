@@ -58,10 +58,6 @@
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
-    "@vitest/expect": "3.2.4",
-    "@vitest/runner": "3.2.4",
-    "@vitest/snapshot": "3.2.4",
-    "@vitest/utils": "3.2.4",
     "dayjs": "^1.11.13",
     "execa": "catalog:",
     "hono": "^4.6.3",
@@ -70,7 +66,7 @@
     "semver": "^7.6.3",
     "toml": "^3.0.0",
     "typescript": "^5.5.2",
-    "vitest": "3.2.4",
+    "vitest": "2.1.8",
     "wrangler": "^4.5.0",
     "xdg-app-paths": "^8.3.0"
   }
