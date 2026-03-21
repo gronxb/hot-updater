@@ -12,24 +12,17 @@ import { PromoteChannelDialog } from "./PromoteChannelDialog";
 
 const {
   mockSetBundleId,
-  mockCreateBundleMutation,
-  mockUpdateBundleMutation,
+  mockPromoteBundleMutation,
   mockToastSuccess,
   mockToastError,
-  mockCreateUUIDv7WithSameTimestamp,
 } = vi.hoisted(() => ({
   mockSetBundleId: vi.fn(),
-  mockCreateBundleMutation: {
-    isPending: false,
-    mutateAsync: vi.fn(),
-  },
-  mockUpdateBundleMutation: {
+  mockPromoteBundleMutation: {
     isPending: false,
     mutateAsync: vi.fn(),
   },
   mockToastSuccess: vi.fn(),
   mockToastError: vi.fn(),
-  mockCreateUUIDv7WithSameTimestamp: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -47,12 +40,7 @@ vi.mock("@/hooks/useFilterParams", () => ({
 
 vi.mock("@/lib/api", () => ({
   useChannelsQuery: () => ({ data: ["stable", "beta"] }),
-  useCreateBundleMutation: () => mockCreateBundleMutation,
-  useUpdateBundleMutation: () => mockUpdateBundleMutation,
-}));
-
-vi.mock("@/lib/extract-timestamp-from-uuidv7", () => ({
-  createUUIDv7WithSameTimestamp: mockCreateUUIDv7WithSameTimestamp,
+  usePromoteBundleMutation: () => mockPromoteBundleMutation,
 }));
 
 vi.mock("@/components/ui/dialog", () => ({
@@ -164,13 +152,10 @@ describe("PromoteChannelDialog", () => {
 
   beforeEach(() => {
     mockSetBundleId.mockReset();
-    mockCreateBundleMutation.isPending = false;
-    mockCreateBundleMutation.mutateAsync.mockReset();
-    mockUpdateBundleMutation.isPending = false;
-    mockUpdateBundleMutation.mutateAsync.mockReset();
+    mockPromoteBundleMutation.isPending = false;
+    mockPromoteBundleMutation.mutateAsync.mockReset();
     mockToastSuccess.mockReset();
     mockToastError.mockReset();
-    mockCreateUUIDv7WithSameTimestamp.mockReset();
     mockOnSuccess.mockReset();
   });
 
@@ -179,8 +164,13 @@ describe("PromoteChannelDialog", () => {
   });
 
   it("opens the copied bundle detail and adds a toast action with the new bundleId", async () => {
-    mockCreateUUIDv7WithSameTimestamp.mockReturnValue("bundle-copy-id");
-    mockCreateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+    mockPromoteBundleMutation.mutateAsync.mockResolvedValue({
+      bundle: {
+        ...bundle,
+        id: "bundle-copy-id",
+        channel: "beta",
+      },
+    });
 
     render(
       <PromoteChannelDialog
@@ -199,10 +189,10 @@ describe("PromoteChannelDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
 
     await waitFor(() => {
-      expect(mockCreateBundleMutation.mutateAsync).toHaveBeenCalledWith({
-        ...bundle,
-        id: "bundle-copy-id",
-        channel: "beta",
+      expect(mockPromoteBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        action: "copy",
+        bundleId: bundle.id,
+        targetChannel: "beta",
       });
     });
 
@@ -227,7 +217,12 @@ describe("PromoteChannelDialog", () => {
   });
 
   it("opens the moved bundle detail with the same bundleId", async () => {
-    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+    mockPromoteBundleMutation.mutateAsync.mockResolvedValue({
+      bundle: {
+        ...bundle,
+        channel: "beta",
+      },
+    });
 
     render(
       <PromoteChannelDialog
@@ -244,9 +239,10 @@ describe("PromoteChannelDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
 
     await waitFor(() => {
-      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+      expect(mockPromoteBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        action: "move",
         bundleId: bundle.id,
-        bundle: { channel: "beta" },
+        targetChannel: "beta",
       });
     });
 
@@ -262,7 +258,12 @@ describe("PromoteChannelDialog", () => {
   });
 
   it("allows promoting to a brand-new channel that is not in the channel list", async () => {
-    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+    mockPromoteBundleMutation.mutateAsync.mockResolvedValue({
+      bundle: {
+        ...bundle,
+        channel: "nightly",
+      },
+    });
 
     render(
       <PromoteChannelDialog
@@ -279,13 +280,42 @@ describe("PromoteChannelDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
 
     await waitFor(() => {
-      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+      expect(mockPromoteBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        action: "move",
         bundleId: bundle.id,
-        bundle: { channel: "nightly" },
+        targetChannel: "nightly",
       });
     });
 
     expect(mockSetBundleId).not.toHaveBeenCalled();
     expect(mockOnSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the backend error message when promotion fails", async () => {
+    mockPromoteBundleMutation.mutateAsync.mockRejectedValue(
+      new Error("Legacy bundle without manifest.json"),
+    );
+
+    render(
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={() => {}}
+        onSuccess={mockOnSuccess}
+      />,
+    );
+
+    const [actionSelect] = screen.getAllByRole("combobox");
+    fireEvent.change(actionSelect, { target: { value: "copy" } });
+    fireEvent.change(screen.getByLabelText("Target Channel"), {
+      target: { value: "beta" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith(
+        "Legacy bundle without manifest.json",
+      );
+    });
   });
 });

@@ -1,5 +1,4 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -22,12 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useFilterParams } from "@/hooks/useFilterParams";
-import {
-  useChannelsQuery,
-  useCreateBundleMutation,
-  useUpdateBundleMutation,
-} from "@/lib/api";
-import { createUUIDv7WithSameTimestamp } from "@/lib/extract-timestamp-from-uuidv7";
+import { useChannelsQuery, usePromoteBundleMutation } from "@/lib/api";
 
 interface PromoteChannelDialogProps {
   bundle: Bundle;
@@ -49,8 +43,7 @@ export function PromoteChannelDialog({
 
   const { setBundleId } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
-  const createBundleMutation = useCreateBundleMutation();
-  const updateBundleMutation = useUpdateBundleMutation();
+  const promoteBundleMutation = usePromoteBundleMutation();
 
   const availableChannels = channels.filter((c) => c !== bundle.channel);
   const isCopy = action === "copy";
@@ -85,22 +78,13 @@ export function PromoteChannelDialog({
     }
 
     try {
-      let nextBundleId = bundle.id;
-
-      if (isCopy) {
-        nextBundleId = createUUIDv7WithSameTimestamp(bundle.id);
-
-        await createBundleMutation.mutateAsync({
-          ...bundle,
-          id: nextBundleId,
-          channel: normalizedTargetChannel,
-        });
-      } else {
-        await updateBundleMutation.mutateAsync({
+      const { bundle: promotedBundle } =
+        await promoteBundleMutation.mutateAsync({
+          action,
           bundleId: bundle.id,
-          bundle: { channel: normalizedTargetChannel },
+          targetChannel: normalizedTargetChannel,
         });
-      }
+      const nextBundleId = promotedBundle.id;
 
       handleOpenChange(false);
       onSuccess?.();
@@ -118,7 +102,9 @@ export function PromoteChannelDialog({
         },
       );
     } catch (error) {
-      toast.error("Failed to promote bundle");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to promote bundle",
+      );
       console.error(error);
     }
   };
@@ -156,12 +142,12 @@ export function PromoteChannelDialog({
           </div>
 
           {isCopy && (
-            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-              <TriangleAlert className="text-amber-600 dark:text-amber-400" />
+            <Alert>
               <AlertTitle>Copying creates a new bundle ID</AlertTitle>
-              <AlertDescription className="text-amber-800/90 dark:text-amber-200/90">
-                The copied bundle will receive a new database ID, which can
-                differ from the bundle ID embedded inside the JavaScript bundle.
+              <AlertDescription>
+                Console rewrites the copied archive&apos;s `manifest.json`
+                before uploading it. Bundles created without `manifest.json`
+                cannot be copied.
               </AlertDescription>
             </Alert>
           )}
@@ -216,8 +202,7 @@ export function PromoteChannelDialog({
             disabled={
               !normalizedTargetChannel ||
               isSameChannel ||
-              createBundleMutation.isPending ||
-              updateBundleMutation.isPending
+              promoteBundleMutation.isPending
             }
           >
             {isCopy ? "Copy" : "Move"}
