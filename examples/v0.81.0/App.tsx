@@ -441,10 +441,6 @@ export default HotUpdater.wrap({
     </Modal>
   ),
   onError: (error) => {
-    if (error instanceof Error) {
-      Alert.alert("Error", error.message);
-    } else {
-      Alert.alert("Error", "An unknown error occurred");
-    }
+    console.error(error);
   },
 })(App);

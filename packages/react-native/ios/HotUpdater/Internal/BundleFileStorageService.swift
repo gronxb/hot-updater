@@ -1,6 +1,6 @@
 import Foundation
 
-typealias ManifestAssets = [String: Any]
+public typealias ManifestAssets = [String: Any]
 
 public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
