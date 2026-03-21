@@ -1,0 +1,4 @@
+interface:
+  display_name: "E2E Auto"
+  short_description: "Run the fixed OTA success-and-recovery flow on v0.81.0"
+  default_prompt: "Use $e2e-auto to run the built-in OTA success-and-recovery E2E flow on examples/v0.81.0."

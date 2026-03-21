@@ -3,7 +3,7 @@ module.exports = function (api) {
   return {
     presets: ['babel-preset-expo'],
     plugins: [
-      'hot-updater/babel-plugin',
+      '@hot-updater/expo/babel-plugin',
     ],
   };
 };

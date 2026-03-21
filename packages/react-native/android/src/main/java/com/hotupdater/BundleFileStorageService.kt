@@ -4,6 +4,7 @@ import android.os.StatFs
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
@@ -81,6 +82,18 @@ interface BundleStorageService {
     fun getBaseURL(): String
 
     /**
+     * Gets the current active bundle ID from bundle storage.
+     * Reads manifest.json first and falls back to older metadata when needed.
+     */
+    fun getBundleId(): String?
+
+    /**
+     * Gets the current manifest from bundle storage.
+     * Returns an empty map when manifest.json is missing or invalid.
+     */
+    fun getManifest(): Map<String, Any?>
+
+    /**
      * Restores the original bundle and clears downloaded bundle state.
      * @return true if the reset was successful
      */
@@ -102,6 +115,12 @@ class BundleFileStorageService(
         private const val TAG = "BundleStorage"
     }
 
+    private data class ActiveBundleMetadataSnapshot(
+        val activeBundleId: String,
+        val bundleId: String?,
+        val manifest: Map<String, Any?>,
+    )
+
     init {
         // Ensure bundle store directory exists
         getBundleStoreDir().mkdirs()
@@ -111,6 +130,10 @@ class BundleFileStorageService(
     }
 
     private var currentLaunchReport: LaunchReport? = null
+
+    @Volatile
+    private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
+    private val activeBundleMetadataLock = Any()
 
     // MARK: - Bundle Store Directory
 
@@ -180,6 +203,121 @@ class BundleFileStorageService(
             metadata.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingBundleId
             metadata.stableBundleId != null -> metadata.stableBundleId
             else -> null
+        }
+
+    private fun getActiveBundleId(): String? {
+        val metadata = loadMetadataOrNull()
+        return when {
+            metadata?.stagingBundleId != null -> metadata.stagingBundleId
+            metadata?.stableBundleId != null -> metadata.stableBundleId
+            else -> extractBundleIdFromCurrentURL()
+        }
+    }
+
+    private fun getActiveBundleMetadataSnapshot(): ActiveBundleMetadataSnapshot? {
+        val activeBundleId =
+            getActiveBundleId() ?: run {
+                clearActiveBundleMetadataSnapshot()
+                return null
+            }
+
+        activeBundleMetadataSnapshot
+            ?.takeIf { it.activeBundleId == activeBundleId }
+            ?.let { return it }
+
+        synchronized(activeBundleMetadataLock) {
+            activeBundleMetadataSnapshot
+                ?.takeIf { it.activeBundleId == activeBundleId }
+                ?.let { return it }
+
+            val bundleDir = File(getBundleStoreDir(), activeBundleId)
+            if (!bundleDir.exists()) {
+                activeBundleMetadataSnapshot = null
+                return null
+            }
+
+            return resolveActiveBundleMetadataSnapshot(bundleDir).also {
+                activeBundleMetadataSnapshot = it
+            }
+        }
+    }
+
+    private fun clearActiveBundleMetadataSnapshot() {
+        synchronized(activeBundleMetadataLock) {
+            activeBundleMetadataSnapshot = null
+        }
+    }
+
+    private fun resolveActiveBundleMetadataSnapshot(bundleDir: File): ActiveBundleMetadataSnapshot {
+        val manifest = readManifestFromBundleDir(bundleDir) ?: emptyMap()
+        val manifestBundleId =
+            (manifest["bundleId"] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+
+        return ActiveBundleMetadataSnapshot(
+            activeBundleId = bundleDir.name,
+            bundleId = manifestBundleId ?: readCompatibilityBundleIdFromBundleDir(bundleDir),
+            manifest = manifest,
+        )
+    }
+
+    private fun readCompatibilityBundleIdFromBundleDir(bundleDir: File): String? {
+        val compatibilityBundleIdFile = File(bundleDir, compatibilityBundleIdFilename())
+        if (!compatibilityBundleIdFile.exists()) {
+            return null
+        }
+
+        return try {
+            compatibilityBundleIdFile.readText().trim().takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "Failed to read compatibility bundle metadata from ${compatibilityBundleIdFile.absolutePath}: ${e.message}",
+            )
+            null
+        }
+    }
+
+    private fun compatibilityBundleIdFilename(): String = "BUNDLE_ID"
+
+    private fun readManifestFromBundleDir(bundleDir: File): Map<String, Any?>? {
+        val manifestFile = File(bundleDir, "manifest.json")
+        if (!manifestFile.exists()) {
+            return null
+        }
+
+        return try {
+            JSONObject(manifestFile.readText()).let(::jsonObjectToMap)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read manifest from ${manifestFile.absolutePath}: ${e.message}")
+            null
+        }
+    }
+
+    private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
+        val result = linkedMapOf<String, Any?>()
+        val keys = jsonObject.keys()
+
+        while (keys.hasNext()) {
+            val key = keys.next()
+            result[key] = jsonValueToKotlin(jsonObject.opt(key))
+        }
+
+        return result
+    }
+
+    private fun jsonArrayToList(jsonArray: org.json.JSONArray): List<Any?> =
+        List(jsonArray.length()) { index ->
+            jsonValueToKotlin(jsonArray.opt(index))
+        }
+
+    private fun jsonValueToKotlin(value: Any?): Any? =
+        when (value) {
+            JSONObject.NULL -> null
+            is JSONObject -> jsonObjectToMap(value)
+            is org.json.JSONArray -> jsonArrayToList(value)
+            else -> value
         }
 
     /**
@@ -400,6 +538,7 @@ class BundleFileStorageService(
     override fun setBundleURL(localPath: String?): Boolean {
         Log.d(TAG, "setBundleURL: $localPath")
         preferences.setItem("HotUpdaterBundleURL", localPath)
+        clearActiveBundleMetadataSnapshot()
         return true
     }
 
@@ -779,13 +918,7 @@ class BundleFileStorageService(
      */
     override fun getBaseURL(): String {
         return try {
-            val metadata = loadMetadataOrNull()
-            val activeBundleId =
-                when {
-                    metadata?.stagingBundleId != null -> metadata.stagingBundleId
-                    metadata?.stableBundleId != null -> metadata.stableBundleId
-                    else -> extractBundleIdFromCurrentURL()
-                }
+            val activeBundleId = getActiveBundleId()
 
             if (activeBundleId != null) {
                 val bundleDir = File(getBundleStoreDir(), activeBundleId)
@@ -800,6 +933,22 @@ class BundleFileStorageService(
             ""
         }
     }
+
+    override fun getBundleId(): String? =
+        try {
+            getActiveBundleMetadataSnapshot()?.bundleId
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting bundle ID: ${e.message}")
+            null
+        }
+
+    override fun getManifest(): Map<String, Any?> =
+        try {
+            getActiveBundleMetadataSnapshot()?.manifest ?: emptyMap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting manifest: ${e.message}")
+            emptyMap()
+        }
 
     override suspend fun resetChannel(): Boolean =
         withContext(Dispatchers.IO) {
