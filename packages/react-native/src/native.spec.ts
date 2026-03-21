@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -117,7 +117,7 @@ describe("notifyAppReady", () => {
       getBundleId?: typeof nativeModuleMock.getBundleId;
     };
     const originalGetBundleId = nativeModule.getBundleId;
-    delete nativeModule.getBundleId;
+    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
 
     try {
       const { getBundleId } = await import("./native");
