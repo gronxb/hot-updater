@@ -130,7 +130,7 @@ model bundles {
 
 model private_hot_updater_settings {
   key   String @id
-  value String @default("0.21.0")
+  value String @default("0.29.0")
 }
 ```
 

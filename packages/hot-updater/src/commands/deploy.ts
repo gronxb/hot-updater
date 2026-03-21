@@ -44,8 +44,30 @@ export interface DeployOptions {
   message?: string;
   disabled?: boolean;
   platform?: Platform;
+  rollout?: number;
   targetAppVersion?: string;
 }
+
+export const normalizeRolloutPercentage = (
+  rollout: number | string | undefined,
+): number => {
+  if (rollout === undefined) {
+    return 100;
+  }
+
+  const parsedRollout =
+    typeof rollout === "number" ? rollout : Number(rollout);
+
+  if (
+    !Number.isInteger(parsedRollout) ||
+    parsedRollout < 0 ||
+    parsedRollout > 100
+  ) {
+    throw new Error("Rollout percentage must be an integer between 0 and 100");
+  }
+
+  return parsedRollout;
+};
 
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
@@ -64,6 +86,7 @@ export const deploy = async (options: DeployOptions) => {
   printBanner();
 
   const cwd = getCwd();
+  const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
 
   const gitCommit = await getLatestGitCommit();
   const [gitCommitHash, gitMessage] = [
@@ -138,6 +161,7 @@ export const deploy = async (options: DeployOptions) => {
     fingerprintHash: null,
   };
   p.log.step(`Channel: ${channel}`);
+  p.log.step(`Rollout: ${rolloutPercentage}%`);
 
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
@@ -440,6 +464,7 @@ export const deploy = async (options: DeployOptions) => {
                     }
                   : {}),
               },
+              rolloutPercentage,
             });
             await databasePlugin.commitBundle();
           } catch (e) {

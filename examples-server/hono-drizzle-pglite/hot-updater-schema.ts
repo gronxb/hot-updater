@@ -19,5 +19,5 @@ export const bundles = pgTable("bundles", {
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.26.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.29.0")
 })

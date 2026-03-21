@@ -16,7 +16,11 @@ import {
 } from "@/commandOptions";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
-import { type DeployOptions, deploy } from "@/commands/deploy";
+import {
+  type DeployOptions,
+  deploy,
+  normalizeRolloutPercentage,
+} from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
@@ -141,6 +145,21 @@ program
       "-o, --bundle-output-path <bundleOutputPath>",
       "the path where the bundle.zip will be generated",
     ),
+  )
+  .addOption(
+    new Option(
+      "-r, --rollout <percentage>",
+      "specify the rollout percentage for the deployed bundle (0-100)",
+    )
+      .argParser((value) => {
+        try {
+          return normalizeRolloutPercentage(value);
+        } catch (error) {
+          p.log.error((error as Error).message);
+          process.exit(1);
+        }
+      })
+      .default(100),
   )
   .addOption(interactiveCommandOption)
   .addOption(

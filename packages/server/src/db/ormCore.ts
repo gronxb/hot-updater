@@ -36,7 +36,12 @@ const parseTargetDeviceIds = (value: unknown): string[] | null => {
   return null;
 };
 
-const schemas = [v0_21_0, v0_29_0];
+const schemas: [typeof v0_21_0, typeof v0_29_0] = [v0_21_0, v0_29_0];
+
+const getLastItem = <T extends unknown[]>(
+  items: T,
+): T extends [...infer _, infer Last] ? Last : never =>
+  items.at(-1) as T extends [...infer _, infer Last] ? Last : never;
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot_updater",
@@ -61,7 +66,8 @@ export function createOrmDatabaseCore({
   const client = HotUpdaterDB.client(database);
 
   const ensureORM = async () => {
-    const lastSchemaVersion = schemas.at(-1)!.version as "0.26.0";
+    const latestSchema = getLastItem(schemas);
+    const lastSchemaVersion = latestSchema.version;
 
     try {
       const migrator = client.createMigrator();

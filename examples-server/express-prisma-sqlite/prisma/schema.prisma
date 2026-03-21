@@ -38,6 +38,6 @@ model bundles {
 }
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.26.0")
+  value String @default("0.29.0")
 }
 // --- END HOT-UPDATER MODELS ---
