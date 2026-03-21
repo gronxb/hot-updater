@@ -2,6 +2,7 @@ import { typiaValidator } from "@hono/typia-validator";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
 import typia from "typia";
+import { promoteBundle as promoteBundleWithConfig } from "../src/lib/server/promoteBundle";
 import { isConfigLoaded, prepareConfig } from "./config";
 
 const DEFAULT_PAGE_LIMIT = 20;
@@ -122,6 +123,50 @@ const api = new Hono()
   )
 
   // POST /api/bundles
+  .post(
+    "/bundles/:bundleId/promote",
+    typiaValidator(
+      "json",
+      typia.createValidate<{
+        action: "copy" | "move";
+        targetChannel: string;
+      }>(),
+    ),
+    async (c) => {
+      try {
+        const bundleId = c.req.param("bundleId");
+        const { action, targetChannel } = c.req.valid("json");
+
+        const { config, databasePlugin, storagePlugin } = await prepareConfig();
+        const bundle = await promoteBundleWithConfig(
+          {
+            action,
+            bundleId,
+            targetChannel,
+          },
+          {
+            config,
+            databasePlugin,
+            storagePlugin,
+          },
+        );
+
+        return c.json({ success: true, bundle });
+      } catch (error) {
+        console.error("Error during bundle promotion:", error);
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to promote bundle",
+          },
+          500,
+        );
+      }
+    },
+  )
+
   .post(
     "/bundles",
     typiaValidator("json", typia.createValidate<Bundle>()),
