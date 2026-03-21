@@ -4,7 +4,11 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
+import {
+  getNumericCohortRolloutPosition,
+  NIL_UUID,
+  NUMERIC_COHORT_SIZE,
+} from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
@@ -33,6 +37,69 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   shouldForceUpdate: true,
   status: "ROLLBACK",
 } as const;
+
+type RolloutStrategy = "appVersion" | "fingerprint";
+
+const createRolloutBundle = (
+  strategy: RolloutStrategy,
+  overrides: Partial<Bundle> = {},
+): Bundle => {
+  if (strategy === "appVersion") {
+    return {
+      ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+      targetAppVersion: "1.0",
+      enabled: true,
+      shouldForceUpdate: false,
+      id: "00000000-0000-0000-0000-000000000001",
+      ...overrides,
+    };
+  }
+
+  return {
+    ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+    fingerprintHash: "hash1",
+    enabled: true,
+    shouldForceUpdate: false,
+    id: "00000000-0000-0000-0000-000000000001",
+    ...overrides,
+  };
+};
+
+const createRolloutArgs = (
+  strategy: RolloutStrategy,
+  overrides: Partial<GetBundlesArgs> = {},
+): GetBundlesArgs => {
+  if (strategy === "appVersion") {
+    return {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      _updateStrategy: "appVersion",
+      ...overrides,
+    } as GetBundlesArgs;
+  }
+
+  return {
+    fingerprintHash: "hash1",
+    bundleId: NIL_UUID,
+    platform: "ios",
+    _updateStrategy: "fingerprint",
+    ...overrides,
+  } as GetBundlesArgs;
+};
+
+const findNumericCohort = (
+  bundleId: string,
+  predicate: (position: number) => boolean,
+): string => {
+  for (let cohort = 1; cohort <= NUMERIC_COHORT_SIZE; cohort++) {
+    if (predicate(getNumericCohortRolloutPosition(bundleId, cohort))) {
+      return String(cohort);
+    }
+  }
+
+  throw new Error(`No numeric cohort matched for bundle ${bundleId}`);
+};
 
 export const setupGetUpdateInfoTestSuite = ({
   getUpdateInfo,
@@ -1898,889 +1965,220 @@ export const setupGetUpdateInfoTestSuite = ({
     });
   });
 
-  describe("gradual rollout", () => {
-    describe("percentage-based rollout", () => {
-      it("returns null when rolloutPercentage is 0%", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout - no devices should receive
-          },
-        ];
+  const describeRolloutBehavior = (strategy: RolloutStrategy) => {
+    const label =
+      strategy === "appVersion"
+        ? "app version strategy"
+        : "fingerprint strategy";
 
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "test-device-123",
+    describe(`gradual rollout (${label})`, () => {
+      it("returns null when rolloutCohortCount is 0", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
         });
 
         expect(update).toBeNull();
       });
 
-      it("applies update when rolloutPercentage is 100%", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100, // 100% rollout
-          },
-        ];
+      it("applies update when rolloutCohortCount is 1000", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 1000,
+        });
 
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "test-device-123",
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
         });
 
         expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
+          id: bundle.id,
           shouldForceUpdate: false,
           status: "UPDATE",
         });
       });
 
-      it("applies update when rolloutPercentage is null (defaults to 100%)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: null, // null means 100%
-          },
-        ];
+      it("applies update when rolloutCohortCount is null", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: null,
+        });
 
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "test-device-123",
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
         });
 
         expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
+          id: bundle.id,
           shouldForceUpdate: false,
           status: "UPDATE",
         });
       });
 
-      it("applies update for device eligible by hash (50% rollout)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50,
-          },
-        ];
-
-        // Find a deviceId that hashes to < 50
-        // Using "device-43" which hashes to 22
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-43", // Hash: 22 < 50
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("returns null for device ineligible by hash (50% rollout)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50,
-          },
-        ];
-
-        // Find a deviceId that hashes to >= 50
-        // Using "device-99" which hashes to 79
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-99", // Hash: 79 >= 50
-        });
-
-        expect(update).toBeNull();
-      });
-    });
-
-    describe("targeted updates", () => {
-      it("applies update when deviceId is in targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A", "device-B", "device-C"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-B",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("returns null when deviceId is not in targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A", "device-B", "device-C"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-X", // Not in the list
-        });
-
-        expect(update).toBeNull();
-      });
-
-      it("targetDeviceIds takes priority over rolloutPercentage", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout, but targetDeviceIds should override
-            targetDeviceIds: ["device-special"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-special",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("applies update when targetDeviceIds is empty array (fallback to percentage)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100,
-            targetDeviceIds: [], // Empty array - should fallback to percentage
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "any-device",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-    });
-
-    describe("ROLLBACK behavior", () => {
-      it("applies ROLLBACK regardless of rolloutPercentage", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout
-          },
-        ];
-
-        // Current bundle doesn't exist, should rollback to bundle 1
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: "00000000-0000-0000-0000-000000000002", // This bundle doesn't exist
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "test-device",
-        });
-
-        // ROLLBACK should always be allowed, regardless of rollout settings
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: true,
-          status: "ROLLBACK",
-        });
-      });
-
-      it("applies ROLLBACK regardless of targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A"], // Only device-A targeted
-          },
-        ];
-
-        // Current bundle doesn't exist, should rollback
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-B", // Not in targetDeviceIds, but ROLLBACK should work
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: true,
-          status: "ROLLBACK",
-        });
-      });
-    });
-
-    describe("backward compatibility", () => {
-      it("applies update when deviceId is not provided (legacy client)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50, // 50% rollout
-          },
-        ];
-
-        // No deviceId provided - should treat as 100% rollout for backward compatibility
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          // deviceId not provided
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("applies update when deviceId is undefined", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: undefined, // Explicitly undefined
-        });
-
-        // Should apply update because deviceId is undefined (legacy behavior)
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-    });
-
-    describe("combined scenarios", () => {
-      it("returns null when UPDATE but ineligible, then applies ROLLBACK", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000002", // Newer bundle
-            rolloutPercentage: 50,
-          },
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001", // Older bundle
-            rolloutPercentage: 100,
-          },
-        ];
-
-        // Device on bundle 2, but becomes ineligible, should rollback to bundle 1
-        const updateEligible = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-99", // Ineligible for bundle 2 (hash >= 50)
-        });
-
-        // No update available because device is ineligible for newer bundle
-        expect(updateEligible).toBeNull();
-
-        // But if bundle 2 is disabled, should rollback to bundle 1
-        const bundlesWithDisabled = bundles.map((b) =>
-          b.id === "00000000-0000-0000-0000-000000000002"
-            ? { ...b, enabled: false }
-            : b,
+      it("keeps the rollout shuffle stable as the rollout expands and shrinks", async () => {
+        const bundleId = "00000000-0000-0000-0000-000000000010";
+        const alwaysIncludedCohort = findNumericCohort(
+          bundleId,
+          (position) => position < 200,
+        );
+        const newlyIncludedCohort = findNumericCohort(
+          bundleId,
+          (position) => position >= 200 && position < 400,
+        );
+        const removedCohort = findNumericCohort(
+          bundleId,
+          (position) => position >= 10 && position < 200,
         );
 
-        const rollback = await getUpdateInfo(bundlesWithDisabled, {
-          appVersion: "1.0",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-99",
+        const bundle = createRolloutBundle(strategy, {
+          id: bundleId,
+          rolloutCohortCount: 200,
         });
 
-        expect(rollback).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: true,
-          status: "ROLLBACK",
-        });
-      });
-
-      it("applies update when both rolloutPercentage and targetDeviceIds favor the device", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
-            targetAppVersion: "1.0",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100, // Would allow this device
-            targetDeviceIds: ["device-special"], // Also allows this device
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-          deviceId: "device-special",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
+        await expect(
+          getUpdateInfo([bundle], {
+            ...createRolloutArgs(strategy),
+            cohort: alwaysIncludedCohort,
+          }),
+        ).resolves.toMatchObject({
+          id: bundleId,
           status: "UPDATE",
         });
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 400,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: alwaysIncludedCohort,
+            },
+          ),
+        ).resolves.toMatchObject({
+          id: bundleId,
+          status: "UPDATE",
+        });
+
+        await expect(
+          getUpdateInfo([bundle], {
+            ...createRolloutArgs(strategy),
+            cohort: newlyIncludedCohort,
+          }),
+        ).resolves.toBeNull();
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 400,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: newlyIncludedCohort,
+            },
+          ),
+        ).resolves.toMatchObject({
+          id: bundleId,
+          status: "UPDATE",
+        });
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 10,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: removedCohort,
+            },
+          ),
+        ).resolves.toBeNull();
       });
-    });
-  });
 
-  describe("gradual rollout (fingerprint strategy)", () => {
-    describe("percentage-based rollout", () => {
-      it("returns null when rolloutPercentage is 0%", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout - no devices should receive
-          },
-        ];
+      it("excludes custom cohorts from gradual rollout", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 1000,
+        });
 
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "test-device-123",
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "qa-group",
         });
 
         expect(update).toBeNull();
       });
 
-      it("applies update when rolloutPercentage is 100%", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100, // 100% rollout
-          },
-        ];
+      it("applies update when cohort is in targetCohorts", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["qa-group"],
+        });
 
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "test-device-123",
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "qa-group",
         });
 
         expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
+          id: bundle.id,
           shouldForceUpdate: false,
           status: "UPDATE",
         });
       });
 
-      it("applies update when rolloutPercentage is null (defaults to 100%)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: null, // null means 100%
-          },
-        ];
+      it("gives targetCohorts priority over rolloutCohortCount", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["900"],
+        });
 
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "test-device-123",
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "900",
         });
 
         expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
+          id: bundle.id,
           shouldForceUpdate: false,
           status: "UPDATE",
         });
       });
 
-      it("applies update for device eligible by hash (50% rollout)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50,
-          },
-        ];
+      it("applies ROLLBACK regardless of rollout settings", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["qa-group"],
+        });
 
-        // Using "device-43" which hashes to 22 < 50
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-43", // Hash: 22 < 50
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy, {
+            bundleId: "00000000-0000-0000-0000-000000000002",
+          }),
+          cohort: "not-targeted",
         });
 
         expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("returns null for device ineligible by hash (50% rollout)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50,
-          },
-        ];
-
-        // Using "device-99" which hashes to 79 >= 50
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-99", // Hash: 79 >= 50
-        });
-
-        expect(update).toBeNull();
-      });
-    });
-
-    describe("targeted updates", () => {
-      it("applies update when deviceId is in targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A", "device-B", "device-C"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-B",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("returns null when deviceId is not in targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A", "device-B", "device-C"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-X", // Not in the list
-        });
-
-        expect(update).toBeNull();
-      });
-
-      it("targetDeviceIds takes priority over rolloutPercentage", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout, but targetDeviceIds should override
-            targetDeviceIds: ["device-special"],
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-special",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("applies update when targetDeviceIds is empty array (fallback to percentage)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100,
-            targetDeviceIds: [], // Empty array - should fallback to percentage
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "any-device",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-    });
-
-    describe("ROLLBACK behavior", () => {
-      it("applies ROLLBACK regardless of rolloutPercentage", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout
-          },
-        ];
-
-        // Current bundle doesn't exist, should rollback to bundle 1
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: "00000000-0000-0000-0000-000000000002", // This bundle doesn't exist
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "test-device",
-        });
-
-        // ROLLBACK should always be allowed, regardless of rollout settings
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: true,
-          status: "ROLLBACK",
-        });
-      });
-
-      it("applies ROLLBACK regardless of targetDeviceIds", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            targetDeviceIds: ["device-A"], // Only device-A targeted
-          },
-        ];
-
-        // Current bundle doesn't exist, should rollback
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-B", // Not in targetDeviceIds, but ROLLBACK should work
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
+          id: bundle.id,
           shouldForceUpdate: true,
           status: "ROLLBACK",
         });
       });
     });
+  };
 
-    describe("backward compatibility", () => {
-      it("applies update when deviceId is not provided (legacy client)", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 50, // 50% rollout
-          },
-        ];
-
-        // No deviceId provided - should treat as 100% rollout for backward compatibility
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          // deviceId not provided
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-
-      it("applies update when deviceId is undefined", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 0, // 0% rollout
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: undefined, // Explicitly undefined
-        });
-
-        // Should apply update because deviceId is undefined (legacy behavior)
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-    });
-
-    describe("combined scenarios", () => {
-      it("returns null when UPDATE but ineligible, then applies ROLLBACK", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000002", // Newer bundle
-            rolloutPercentage: 50,
-          },
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001", // Older bundle
-            rolloutPercentage: 100,
-          },
-        ];
-
-        // Device on bundle 2, but becomes ineligible, should rollback to bundle 1
-        const updateEligible = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-99", // Ineligible for bundle 2 (hash >= 50)
-        });
-
-        // No update available because device is ineligible for newer bundle
-        expect(updateEligible).toBeNull();
-
-        // But if bundle 2 is disabled, should rollback to bundle 1
-        const bundlesWithDisabled = bundles.map((b) =>
-          b.id === "00000000-0000-0000-0000-000000000002"
-            ? { ...b, enabled: false }
-            : b,
-        );
-
-        const rollback = await getUpdateInfo(bundlesWithDisabled, {
-          fingerprintHash: "hash1",
-          bundleId: "00000000-0000-0000-0000-000000000002",
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-99",
-        });
-
-        expect(rollback).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: true,
-          status: "ROLLBACK",
-        });
-      });
-
-      it("applies update when both rolloutPercentage and targetDeviceIds favor the device", async () => {
-        const bundles: Bundle[] = [
-          {
-            ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
-            fingerprintHash: "hash1",
-            enabled: true,
-            shouldForceUpdate: false,
-            id: "00000000-0000-0000-0000-000000000001",
-            rolloutPercentage: 100, // Would allow this device
-            targetDeviceIds: ["device-special"], // Also allows this device
-          },
-        ];
-
-        const update = await getUpdateInfo(bundles, {
-          fingerprintHash: "hash1",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "fingerprint",
-          deviceId: "device-special",
-        });
-
-        expect(update).toMatchObject({
-          id: "00000000-0000-0000-0000-000000000001",
-          shouldForceUpdate: false,
-          status: "UPDATE",
-        });
-      });
-    });
-  });
+  describeRolloutBehavior("appVersion");
+  describeRolloutBehavior("fingerprint");
 };

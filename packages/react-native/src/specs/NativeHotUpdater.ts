@@ -122,18 +122,17 @@ export interface Spec extends TurboModule {
   getManifest: () => UnsafeObject;
 
   /**
-   * Sets a custom user ID for rollout calculations.
-   * If not called, native device ID (IDFV/ANDROID_ID) will be used.
+   * Sets a cohort override for rollout calculations.
+   * Pass an empty string to clear the override.
    */
-  setUserId: (customId: string) => void;
+  setCohort: (cohort: string) => void;
 
   /**
-   * Gets the user ID used for rollout calculations.
-   * Returns custom ID if set, otherwise returns native device ID.
-   * - iOS: IDFV (Identifier For Vendor)
-   * - Android: ANDROID_ID
+   * Gets the cohort used for rollout calculations.
+   * Returns the custom cohort when set, otherwise returns the default numeric
+   * cohort derived from the device identifier.
    */
-  getUserId: () => string;
+  getCohort: () => string;
 
   // EventEmitter
   addListener(eventName: string): void;

@@ -27,9 +27,9 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getBaseURL(): String
 
-    abstract fun setUserId(customId: String)
+    abstract fun setCohort(customId: String)
 
-    abstract fun getUserId(): String
+    abstract fun getCohort(): String
 
     abstract fun getBundleId(): String?
 

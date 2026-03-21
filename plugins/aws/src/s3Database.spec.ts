@@ -8,6 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/plugin-core";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { Buffer } from "buffer";
 import { Readable } from "stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -158,6 +159,28 @@ describe("s3Database plugin", () => {
       ...s3Config,
       cloudfrontDistributionId: "test-distribution-id",
     })();
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id) => plugin.getBundleById(id),
+    getChannels: () => plugin.getChannels(),
+    insertBundle: async (bundle) => {
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+    },
+    getBundles: (options) => plugin.getBundles(options),
+    updateBundleById: async (bundleId, newBundle) => {
+      await plugin.updateBundle(bundleId, newBundle);
+      await plugin.commitBundle();
+    },
+    deleteBundleById: async (bundleId) => {
+      const bundle = await plugin.getBundleById(bundleId);
+      if (!bundle) {
+        return;
+      }
+      await plugin.deleteBundle(bundle);
+      await plugin.commitBundle();
+    },
   });
 
   it("should append a new bundle and commit to S3", async () => {

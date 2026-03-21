@@ -7,7 +7,11 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { isDeviceEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  isCohortEligibleForUpdate,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
@@ -18,7 +22,7 @@ import { v0_29_0 } from "../schema/v0_29_0";
 import type { PaginationInfo } from "../types";
 import type { DatabaseAPI } from "./types";
 
-const parseTargetDeviceIds = (value: unknown): string[] | null => {
+const parseTargetCohorts = (value: unknown): string[] | null => {
   if (!value) return null;
   if (Array.isArray(value)) {
     return value.filter((v): v is string => typeof v === "string");
@@ -115,8 +119,8 @@ export function createOrmDatabaseCore({
           "target_app_version",
           "fingerprint_hash",
           "metadata",
-          "rollout_percentage",
-          "target_device_ids",
+          "rollout_cohort_count",
+          "target_cohorts",
         ],
         where: (b) => b("id", "=", id),
       });
@@ -133,8 +137,9 @@ export function createOrmDatabaseCore({
         storageUri: result.storage_uri,
         targetAppVersion: result.target_app_version ?? null,
         fingerprintHash: result.fingerprint_hash ?? null,
-        rolloutPercentage: result.rollout_percentage ?? 100,
-        targetDeviceIds: parseTargetDeviceIds(result.target_device_ids),
+        rolloutCohortCount:
+          result.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        targetCohorts: parseTargetCohorts(result.target_cohorts),
       };
       return bundle;
     },
@@ -148,8 +153,8 @@ export function createOrmDatabaseCore({
         message: string | null;
         storage_uri: string | null;
         file_hash: string;
-        rollout_percentage?: number | null;
-        target_device_ids?: unknown | null;
+        rollout_cohort_count?: number | null;
+        target_cohorts?: unknown | null;
       };
 
       const toUpdateInfo = (
@@ -176,16 +181,13 @@ export function createOrmDatabaseCore({
 
       const isEligibleForUpdate = (
         row: UpdateSelectRow,
-        deviceId: string | undefined,
+        cohort: string | undefined,
       ): boolean => {
-        if (!deviceId) {
-          return true;
-        }
-
-        return isDeviceEligibleForUpdate(
-          deviceId,
-          row.rollout_percentage ?? null,
-          parseTargetDeviceIds(row.target_device_ids),
+        return isCohortEligibleForUpdate(
+          row.id,
+          cohort,
+          row.rollout_cohort_count ?? null,
+          parseTargetCohorts(row.target_cohorts),
         );
       };
 
@@ -195,7 +197,7 @@ export function createOrmDatabaseCore({
         bundleId,
         minBundleId = NIL_UUID,
         channel = "production",
-        deviceId,
+        cohort,
       }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
         const versionRows = await orm.findMany("bundles", {
           select: ["target_app_version"],
@@ -223,8 +225,8 @@ export function createOrmDatabaseCore({
                   "message",
                   "storage_uri",
                   "file_hash",
-                  "rollout_percentage",
-                  "target_device_ids",
+                  "rollout_cohort_count",
+                  "target_cohorts",
                   "channel",
                   "target_app_version",
                   "enabled",
@@ -258,7 +260,7 @@ export function createOrmDatabaseCore({
 
         if (bundleId === NIL_UUID) {
           if (latestCandidate && latestCandidate.id !== bundleId) {
-            if (!isEligibleForUpdate(latestCandidate, deviceId)) {
+            if (!isEligibleForUpdate(latestCandidate, cohort)) {
               return null;
             }
             return toUpdateInfo(latestCandidate, "UPDATE");
@@ -271,7 +273,7 @@ export function createOrmDatabaseCore({
             latestCandidate &&
             latestCandidate.id.localeCompare(currentBundle.id) > 0
           ) {
-            if (!isEligibleForUpdate(latestCandidate, deviceId)) {
+            if (!isEligibleForUpdate(latestCandidate, cohort)) {
               return null;
             }
             return toUpdateInfo(latestCandidate, "UPDATE");
@@ -280,7 +282,7 @@ export function createOrmDatabaseCore({
         }
 
         if (updateCandidate) {
-          if (!isEligibleForUpdate(updateCandidate, deviceId)) {
+          if (!isEligibleForUpdate(updateCandidate, cohort)) {
             return null;
           }
           return toUpdateInfo(updateCandidate, "UPDATE");
@@ -301,7 +303,7 @@ export function createOrmDatabaseCore({
         bundleId,
         minBundleId = NIL_UUID,
         channel = "production",
-        deviceId,
+        cohort,
       }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
         const candidates = await orm.findMany("bundles", {
           select: [
@@ -310,8 +312,8 @@ export function createOrmDatabaseCore({
             "message",
             "storage_uri",
             "file_hash",
-            "rollout_percentage",
-            "target_device_ids",
+            "rollout_cohort_count",
+            "target_cohorts",
             "channel",
             "fingerprint_hash",
             "enabled",
@@ -339,7 +341,7 @@ export function createOrmDatabaseCore({
 
         if (bundleId === NIL_UUID) {
           if (latestCandidate && latestCandidate.id !== bundleId) {
-            if (!isEligibleForUpdate(latestCandidate, deviceId)) {
+            if (!isEligibleForUpdate(latestCandidate, cohort)) {
               return null;
             }
             return toUpdateInfo(latestCandidate, "UPDATE");
@@ -352,7 +354,7 @@ export function createOrmDatabaseCore({
             latestCandidate &&
             latestCandidate.id.localeCompare(currentBundle.id) > 0
           ) {
-            if (!isEligibleForUpdate(latestCandidate, deviceId)) {
+            if (!isEligibleForUpdate(latestCandidate, cohort)) {
               return null;
             }
             return toUpdateInfo(latestCandidate, "UPDATE");
@@ -361,7 +363,7 @@ export function createOrmDatabaseCore({
         }
 
         if (updateCandidate) {
-          if (!isEligibleForUpdate(updateCandidate, deviceId)) {
+          if (!isEligibleForUpdate(updateCandidate, cohort)) {
             return null;
           }
           return toUpdateInfo(updateCandidate, "UPDATE");
@@ -428,8 +430,8 @@ export function createOrmDatabaseCore({
           "target_app_version",
           "fingerprint_hash",
           "metadata",
-          "rollout_percentage",
-          "target_device_ids",
+          "rollout_cohort_count",
+          "target_cohorts",
         ],
         where: (b) => {
           const conditions = [];
@@ -457,8 +459,9 @@ export function createOrmDatabaseCore({
             storageUri: r.storage_uri,
             targetAppVersion: r.target_app_version ?? null,
             fingerprintHash: r.fingerprint_hash ?? null,
-            rolloutPercentage: r.rollout_percentage ?? 100,
-            targetDeviceIds: parseTargetDeviceIds(r.target_device_ids),
+            rolloutCohortCount:
+              r.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+            targetCohorts: parseTargetCohorts(r.target_cohorts),
           }),
         )
         .sort((a, b) => b.id.localeCompare(a.id));
@@ -487,8 +490,9 @@ export function createOrmDatabaseCore({
         target_app_version: bundle.targetAppVersion,
         fingerprint_hash: bundle.fingerprintHash,
         metadata: bundle.metadata ?? {},
-        rollout_percentage: bundle.rolloutPercentage ?? 100,
-        target_device_ids: bundle.targetDeviceIds ?? null,
+        rollout_cohort_count:
+          bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        target_cohorts: bundle.targetCohorts ?? null,
       };
       const { id, ...updateValues } = values;
       await orm.upsert("bundles", {
@@ -519,8 +523,9 @@ export function createOrmDatabaseCore({
         target_app_version: merged.targetAppVersion,
         fingerprint_hash: merged.fingerprintHash,
         metadata: merged.metadata ?? {},
-        rollout_percentage: merged.rolloutPercentage ?? 100,
-        target_device_ids: merged.targetDeviceIds ?? null,
+        rollout_cohort_count:
+          merged.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        target_cohorts: merged.targetCohorts ?? null,
       };
       const { id: id2, ...updateValues2 } = values;
       await orm.upsert("bundles", {

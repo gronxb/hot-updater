@@ -87,6 +87,7 @@ interface UpdateRequestParams {
   bundleId: string;
   channel: string;
   minBundleId: string;
+  cohort?: string;
   appVersion?: string;
   fingerprintHash?: string;
 }
@@ -113,6 +114,18 @@ const processDefaultValues = (channel: string, minBundleId: string) => ({
   actualMinBundleId: minBundleId === "default" ? NIL_UUID : minBundleId,
 });
 
+const decodeMaybe = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const handleUpdateRequest = async (
   c: Context<{ Bindings: Bindings }>,
   params: UpdateRequestParams,
@@ -126,6 +139,7 @@ const handleUpdateRequest = async (
       bundleId: params.bundleId,
       minBundleId: params.minBundleId,
       channel: params.channel,
+      cohort: params.cohort,
       ...(strategy === "appVersion"
         ? { appVersion: params.appVersion!, _updateStrategy: "appVersion" }
         : {
@@ -175,6 +189,7 @@ app.get("/api/check-update", async (c) => {
     const appVersion = headers["x-app-version"]?.[0]?.value;
     const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
     const channel = headers["x-channel"]?.[0]?.value ?? "production";
+    const cohort = headers["x-cohort"]?.[0]?.value;
     const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
 
     const requiredError = validateRequiredParams({ bundleId, platform }, [
@@ -207,6 +222,7 @@ app.get("/api/check-update", async (c) => {
       bundleId,
       channel,
       minBundleId,
+      cohort,
       ...(fingerprintHash ? { fingerprintHash } : { appVersion }),
     };
 
@@ -224,14 +240,14 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get(
-  "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+  "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
-    const { platform, appVersion, channel, minBundleId, bundleId } =
+    const { platform, appVersion, channel, minBundleId, bundleId, cohort } =
       c.req.param();
 
     const requiredError = validateRequiredParams(
-      { platform, appVersion, bundleId },
-      ["platform", "appVersion", "bundleId"],
+      { platform, appVersion, bundleId, cohort },
+      ["platform", "appVersion", "bundleId", "cohort"],
     );
     if (requiredError) {
       return c.json({ error: requiredError }, 400);
@@ -255,6 +271,7 @@ app.get(
       channel: actualChannel,
       minBundleId: actualMinBundleId,
       appVersion,
+      cohort: decodeMaybe(cohort),
     };
 
     return handleUpdateRequest(
@@ -268,14 +285,20 @@ app.get(
 );
 
 app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
-    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-      c.req.param();
+    const {
+      platform,
+      fingerprintHash,
+      channel,
+      minBundleId,
+      bundleId,
+      cohort,
+    } = c.req.param();
 
     const requiredError = validateRequiredParams(
-      { platform, fingerprintHash, bundleId },
-      ["platform", "fingerprintHash", "bundleId"],
+      { platform, fingerprintHash, bundleId, cohort },
+      ["platform", "fingerprintHash", "bundleId", "cohort"],
     );
     if (requiredError) {
       return c.json({ error: requiredError }, 400);
@@ -299,6 +322,7 @@ app.get(
       channel: actualChannel,
       minBundleId: actualMinBundleId,
       fingerprintHash,
+      cohort: decodeMaybe(cohort),
     };
 
     return handleUpdateRequest(

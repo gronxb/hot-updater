@@ -67,25 +67,25 @@ export interface Bundle {
   metadata?: BundleMetadata;
 
   /**
-   * Rollout percentage (0-100). Controls gradual rollout to devices.
-   * - 0: No devices receive this update
-   * - 50: ~50% of devices eligible based on device ID hash
-   * - 100 or null: All devices receive this update (full rollout)
+   * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
+   * - 0: No cohorts receive this update
+   * - 250: 25.0% of numeric cohorts receive this update
+   * - 1000 or null: All numeric cohorts receive this update (full rollout)
    *
-   * @default 100
+   * @default 1000
    */
-  rolloutPercentage?: number | null;
+  rolloutCohortCount?: number | null;
 
   /**
-   * Target specific device IDs for this update.
-   * If provided, only these devices will receive the update.
-   * If empty/null, rolloutPercentage-based rollout is used.
+   * Target specific cohorts for this update.
+   * If provided, only these cohorts will receive the update.
+   * If empty/null, rolloutCohortCount-based rollout is used.
    *
    * NOTE: This field is stored in database but should NOT be returned to
    * update-check clients for security reasons. Server uses it for rollout
    * decisions only.
    */
-  targetDeviceIds?: string[] | null;
+  targetCohorts?: string[] | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
@@ -123,17 +123,14 @@ export interface UpdateInfo {
   storageUri: string | null;
   fileHash: string | null;
   /**
-   * Rollout percentage (0-100). Controls gradual rollout to devices.
-   * - 0: No devices receive this update
-   * - 50: ~50% of devices eligible based on device ID hash
-   * - 100 or null: All devices receive this update (full rollout)
+   * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
    */
-  rolloutPercentage?: number | null;
+  rolloutCohortCount?: number | null;
   /**
-   * Target specific device IDs for this update.
+   * Target specific cohorts for this update.
    * Used internally for rollout decisions.
    */
-  targetDeviceIds?: string[] | null;
+  targetCohorts?: string[] | null;
 }
 
 /**
@@ -180,10 +177,9 @@ export type FingerprintGetBundlesArgs = {
    */
   channel?: string;
   /**
-   * Device/user identifier used for server-side rollout decisions.
-   * If omitted, rollout is treated as 100% for backward compatibility.
+   * Cohort identifier used for server-side rollout decisions.
    */
-  deviceId?: string;
+  cohort?: string;
   /**
    * The fingerprint hash of the bundle.
    */
@@ -217,10 +213,9 @@ export type AppVersionGetBundlesArgs = {
    */
   channel?: string;
   /**
-   * Device/user identifier used for server-side rollout decisions.
-   * If omitted, rollout is treated as 100% for backward compatibility.
+   * Cohort identifier used for server-side rollout decisions.
    */
-  deviceId?: string;
+  cohort?: string;
   /**
    * The current app version.
    */

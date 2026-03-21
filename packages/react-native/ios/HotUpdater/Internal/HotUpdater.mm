@@ -588,14 +588,14 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
-- (void)setUserId:(NSString *)customId {
+- (void)setCohort:(NSString *)customId {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUserId:customId];
+    [impl setCohort:customId];
 }
 
-- (NSString *)getUserId {
+- (NSString *)getCohort {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getCohort];
 }
 
 - (NSString * _Nullable)getBundleId {
@@ -702,14 +702,14 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     return baseURL ?: @"";
 }
 
-RCT_EXPORT_METHOD(setUserId:(NSString *)customId) {
+RCT_EXPORT_METHOD(setCohort:(NSString *)customId) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl setUserId:customId];
+    [impl setCohort:customId];
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCohort) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    return [impl getUserId];
+    return [impl getCohort];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {

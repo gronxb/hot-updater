@@ -45,14 +45,14 @@ const appVersionStrategy = async (
     bundleId,
     appVersion,
     channel,
-    deviceId,
+    cohort,
   }: {
     appPlatform: string;
     minBundleId: string;
     bundleId: string;
     appVersion: string;
     channel: string;
-    deviceId?: string | null;
+    cohort?: string | null;
   },
 ) => {
   const { data: appVersionList } = await supabase.rpc(
@@ -74,7 +74,7 @@ const appVersionStrategy = async (
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_app_version_list: compatibleAppVersionList,
-    device_id: deviceId || null,
+    cohort: cohort || null,
   });
 };
 
@@ -86,14 +86,14 @@ const fingerprintHashStrategy = async (
     bundleId,
     channel,
     fingerprintHash,
-    deviceId,
+    cohort,
   }: {
     appPlatform: string;
     bundleId: string;
     minBundleId: string | null;
     channel: string | null;
     fingerprintHash: string;
-    deviceId?: string | null;
+    cohort?: string | null;
   },
 ) => {
   return supabase.rpc("get_update_info_by_fingerprint_hash", {
@@ -102,7 +102,7 @@ const fingerprintHashStrategy = async (
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_fingerprint_hash: fingerprintHash,
-    device_id: deviceId || null,
+    cohort: cohort || null,
   });
 };
 
@@ -118,7 +118,7 @@ const handleUpdateRequest = async (
           bundleId: updateConfig.bundleId,
           channel: updateConfig.channel!,
           fingerprintHash: updateConfig.fingerprintHash!,
-          deviceId: updateConfig.deviceId,
+          cohort: updateConfig.cohort,
         })
       : await appVersionStrategy(supabase, {
           appPlatform: updateConfig.platform,
@@ -126,7 +126,7 @@ const handleUpdateRequest = async (
           bundleId: updateConfig.bundleId,
           appVersion: updateConfig.appVersion!,
           channel: updateConfig.channel!,
-          deviceId: updateConfig.deviceId,
+          cohort: updateConfig.cohort,
         });
 
   if (error) {
@@ -178,6 +178,18 @@ declare global {
 const functionName = HotUpdater.FUNCTION_NAME;
 const app = new Hono().basePath(`/${functionName}`);
 
+const decodeMaybe = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 app.get("/ping", (c) => c.text("pong"));
 
 app.get("/", async (c) => {
@@ -188,7 +200,7 @@ app.get("/", async (c) => {
     const fingerprintHash = c.req.header("x-fingerprint-hash");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
-    const deviceId = c.req.header("x-device-id");
+    const cohort = c.req.header("x-cohort");
 
     if (!appVersion && !fingerprintHash) {
       return c.json(
@@ -222,7 +234,7 @@ app.get("/", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
-          deviceId: deviceId || undefined,
+          cohort: cohort || undefined,
           _updateStrategy: "fingerprint" as const,
         } satisfies GetBundlesArgs)
       : ({
@@ -231,7 +243,7 @@ app.get("/", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
-          deviceId: deviceId || undefined,
+          cohort: cohort || undefined,
           _updateStrategy: "appVersion" as const,
         } satisfies GetBundlesArgs);
 
@@ -248,7 +260,7 @@ app.get("/", async (c) => {
 });
 
 app.get(
-  "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     try {
       const {
@@ -257,6 +269,7 @@ app.get(
         channel,
         minBundleId,
         bundleId,
+        cohort,
       } = c.req.param();
 
       if (!bundleId || !platform) {
@@ -280,6 +293,7 @@ app.get(
         bundleId,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
+        cohort: decodeMaybe(cohort),
         _updateStrategy: "appVersion" as const,
       } satisfies GetBundlesArgs;
 
@@ -297,11 +311,17 @@ app.get(
 );
 
 app.get(
-  "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     try {
-      const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-        c.req.param();
+      const {
+        platform,
+        fingerprintHash,
+        channel,
+        minBundleId,
+        bundleId,
+        cohort,
+      } = c.req.param();
 
       if (!bundleId || !platform) {
         return c.json(
@@ -324,6 +344,7 @@ app.get(
         bundleId,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
+        cohort: decodeMaybe(cohort),
         _updateStrategy: "fingerprint" as const,
       } satisfies GetBundlesArgs;
 

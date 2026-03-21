@@ -155,7 +155,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       targetAppVersion: "1.x.x",
       storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
       fingerprintHash: null,
-      rolloutPercentage: 100,
+      rolloutCohortCount: 1000,
     });
     await repo.commitBundle();
 

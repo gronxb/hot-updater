@@ -9,14 +9,23 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BundleEditorForm } from "./BundleEditorForm";
 
-const mockUpdateBundleMutation = {
-  isPending: false,
-  mutateAsync: vi.fn(),
-};
-const mockBundleDownloadUrlMutation = {
-  isPending: false,
-  mutateAsync: vi.fn(),
-};
+const {
+  mockUpdateBundleMutation,
+  mockBundleDownloadUrlMutation,
+  mockToastError,
+  mockToastSuccess,
+} = vi.hoisted(() => ({
+  mockUpdateBundleMutation: {
+    isPending: false,
+    mutateAsync: vi.fn(),
+  },
+  mockBundleDownloadUrlMutation: {
+    isPending: false,
+    mutateAsync: vi.fn(),
+  },
+  mockToastError: vi.fn(),
+  mockToastSuccess: vi.fn(),
+}));
 
 vi.mock("@/lib/api", () => ({
   useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
@@ -33,8 +42,8 @@ vi.mock("./PromoteChannelDialog", () => ({
 
 vi.mock("sonner", () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
+    success: mockToastSuccess,
+    error: mockToastError,
   },
 }));
 
@@ -50,8 +59,8 @@ const bundle: Bundle = {
   message: "Initial message",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
-  rolloutPercentage: 100,
-  targetDeviceIds: [],
+  rolloutCohortCount: 1000,
+  targetCohorts: [],
 };
 
 describe("BundleEditorForm", () => {
@@ -82,6 +91,8 @@ describe("BundleEditorForm", () => {
     mockBundleDownloadUrlMutation.mutateAsync.mockReset();
     mockUpdateBundleMutation.isPending = false;
     mockUpdateBundleMutation.mutateAsync.mockReset();
+    mockToastError.mockReset();
+    mockToastSuccess.mockReset();
   });
 
   afterEach(() => {
@@ -170,21 +181,21 @@ describe("BundleEditorForm", () => {
     expect(saveButton.hasAttribute("disabled")).toBe(false);
   });
 
-  it("submits the remaining target device IDs after one is removed", async () => {
+  it("submits the remaining target cohorts after one is removed", async () => {
     mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
 
     render(
       <BundleEditorForm
         bundle={{
           ...bundle,
-          targetDeviceIds: ["device-1", "device-2"],
+          targetCohorts: ["device-1", "device-2"],
         }}
         onClose={() => {}}
       />,
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Remove device ID device-1" }),
+      screen.getByRole("button", { name: "Remove cohort device-1" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
@@ -192,27 +203,27 @@ describe("BundleEditorForm", () => {
       expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
         bundleId: bundle.id,
         bundle: expect.objectContaining({
-          targetDeviceIds: ["device-2"],
+          targetCohorts: ["device-2"],
         }),
       });
     });
   });
 
-  it("submits null when the last target device ID is removed", async () => {
+  it("submits null when the last target cohort is removed", async () => {
     mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
 
     render(
       <BundleEditorForm
         bundle={{
           ...bundle,
-          targetDeviceIds: ["device-1"],
+          targetCohorts: ["device-1"],
         }}
         onClose={() => {}}
       />,
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Remove device ID device-1" }),
+      screen.getByRole("button", { name: "Remove cohort device-1" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
@@ -220,10 +231,44 @@ describe("BundleEditorForm", () => {
       expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
         bundleId: bundle.id,
         bundle: expect.objectContaining({
-          targetDeviceIds: null,
+          targetCohorts: null,
         }),
       });
     });
+  });
+
+  it("normalizes cohorts before submitting", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: " QA-GROUP " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetCohorts: ["qa-group"],
+        }),
+      });
+    });
+  });
+
+  it("rejects invalid cohorts", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: "Bad Cohort" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+
+    expect(mockToastError).toHaveBeenCalledWith(
+      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+    );
   });
 
   it("opens the download URL when Download Bundle is clicked", async () => {

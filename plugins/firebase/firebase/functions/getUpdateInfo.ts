@@ -6,40 +6,14 @@ import type {
   UpdateInfo,
   UpdateStatus,
 } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  isCohortEligibleForUpdate,
+} from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-
-function hashUserId(userId: string): number {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    const char = userId.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return Math.abs(hash % 100);
-}
-
-function isDeviceEligibleForPercentage(
-  userId: string,
-  rolloutPercentage: number | null | undefined,
-): boolean {
-  if (
-    rolloutPercentage === null ||
-    rolloutPercentage === undefined ||
-    rolloutPercentage >= 100
-  ) {
-    return true;
-  }
-
-  if (rolloutPercentage <= 0) {
-    return false;
-  }
-
-  const userHash = hashUserId(userId);
-  return userHash < rolloutPercentage;
-}
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   id: NIL_UUID,
@@ -62,8 +36,8 @@ const convertToBundle = (data: any): Bundle => ({
   gitCommitHash: data.git_commit_hash,
   fingerprintHash: data.fingerprint_hash,
   storageUri: data.storage_uri,
-  rolloutPercentage: data.rollout_percentage ?? null,
-  targetDeviceIds: data.target_device_ids || null,
+  rolloutCohortCount: data.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+  targetCohorts: data.target_cohorts || null,
 });
 
 const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
@@ -75,54 +49,21 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
   fileHash: bundle.fileHash,
 });
 
-const checkTargetDeviceIdsEligibility = (
-  bundle: Bundle,
-  deviceId: string | undefined,
-): boolean => {
-  // If bundle has targetDeviceIds, device must be in the list
-  if (bundle.targetDeviceIds && bundle.targetDeviceIds.length > 0) {
-    if (!deviceId) {
-      return false;
-    }
-    return bundle.targetDeviceIds.includes(deviceId);
-  }
-  // No targetDeviceIds restriction - check percentage
-  return true;
-};
-
 const makeResponseWithRollout = (
   bundle: Bundle,
   status: UpdateStatus,
-  deviceId: string | undefined,
+  cohort: string | undefined,
 ): UpdateInfo | null => {
-  if (status === "UPDATE") {
-    // Check targetDeviceIds eligibility
-    if (!checkTargetDeviceIdsEligibility(bundle, deviceId)) {
-      return null;
-    }
-
-    // If device matched via targetDeviceIds, skip percentage check (priority 1)
-    if (
-      bundle.targetDeviceIds &&
-      bundle.targetDeviceIds.length > 0 &&
-      deviceId &&
-      bundle.targetDeviceIds.includes(deviceId)
-    ) {
-      // Device is explicitly targeted - skip percentage check
-      return makeResponse(bundle, status);
-    }
-
-    // Check percentage-based rollout (priority 2)
-    if (deviceId) {
-      const isEligible = isDeviceEligibleForPercentage(
-        deviceId,
-        bundle.rolloutPercentage,
-      );
-
-      if (!isEligible) {
-        return null;
-      }
-    }
+  if (
+    status === "UPDATE" &&
+    !isCohortEligibleForUpdate(
+      bundle.id,
+      cohort,
+      bundle.rolloutCohortCount,
+      bundle.targetCohorts,
+    )
+  ) {
+    return null;
   }
 
   return makeResponse(bundle, status);
@@ -150,7 +91,7 @@ const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
@@ -182,11 +123,11 @@ const fingerprintStrategy = async (
     let rollbackCandidate: Bundle | null = null;
 
     if (bundleId === NIL_UUID) {
-      // Two-stage query for UPDATE candidates when deviceId is provided
-      if (deviceId) {
-        // Stage 1: Try to find bundle with explicit targetDeviceIds match
+      // Two-stage query for UPDATE candidates when cohort is provided
+      if (cohort) {
+        // Stage 1: Try to find bundle with explicit targetCohorts match
         const targetedSnap = await baseQuery
-          .where("target_device_ids", "array-contains", deviceId)
+          .where("target_cohorts", "array-contains", cohort)
           .orderBy("id", "desc")
           .limit(1)
           .get();
@@ -205,11 +146,11 @@ const fingerprintStrategy = async (
       }
     } else {
       // UPDATE candidate query
-      if (deviceId) {
+      if (cohort) {
         // Stage 1: Try with array-contains filter
         const targetedUpdateSnap = await baseQuery
           .where("id", ">=", bundleId)
-          .where("target_device_ids", "array-contains", deviceId)
+          .where("target_cohorts", "array-contains", cohort)
           .orderBy("id", "desc")
           .limit(1)
           .get();
@@ -244,11 +185,11 @@ const fingerprintStrategy = async (
 
     if (bundleId === NIL_UUID) {
       return updateCandidate
-        ? makeResponseWithRollout(updateCandidate, "UPDATE", deviceId)
+        ? makeResponseWithRollout(updateCandidate, "UPDATE", cohort)
         : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
+      return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
     }
 
     if (updateCandidate && updateCandidate.id === bundleId) {
@@ -281,7 +222,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
@@ -337,11 +278,11 @@ const appVersionStrategy = async (
     let rollbackCandidate: Bundle | null = null;
 
     if (bundleId === NIL_UUID) {
-      // Two-stage query for UPDATE candidates when deviceId is provided
-      if (deviceId) {
-        // Stage 1: Try to find bundle with explicit targetDeviceIds match
+      // Two-stage query for UPDATE candidates when cohort is provided
+      if (cohort) {
+        // Stage 1: Try to find bundle with explicit targetCohorts match
         const targetedSnap = await baseQuery
-          .where("target_device_ids", "array-contains", deviceId)
+          .where("target_cohorts", "array-contains", cohort)
           .orderBy("id", "desc")
           .limit(1)
           .get();
@@ -360,11 +301,11 @@ const appVersionStrategy = async (
       }
     } else {
       // UPDATE candidate query
-      if (deviceId) {
+      if (cohort) {
         // Stage 1: Try with array-contains filter
         const targetedUpdateSnap = await baseQuery
           .where("id", ">=", bundleId)
-          .where("target_device_ids", "array-contains", deviceId)
+          .where("target_cohorts", "array-contains", cohort)
           .orderBy("id", "desc")
           .limit(1)
           .get();
@@ -399,11 +340,11 @@ const appVersionStrategy = async (
 
     if (bundleId === NIL_UUID) {
       return updateCandidate
-        ? makeResponseWithRollout(updateCandidate, "UPDATE", deviceId)
+        ? makeResponseWithRollout(updateCandidate, "UPDATE", cohort)
         : null;
     }
     if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponseWithRollout(updateCandidate, "UPDATE", deviceId);
+      return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
     }
 
     if (updateCandidate && updateCandidate.id === bundleId) {

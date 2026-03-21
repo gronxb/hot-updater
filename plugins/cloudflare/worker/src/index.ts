@@ -45,7 +45,7 @@ app.get("/api/check-update", async (c) => {
   const minBundleId = c.req.header("x-min-bundle-id") as string;
   const appVersion = c.req.header("x-app-version") as string | null;
   const channel = c.req.header("x-channel") as string | null;
-  const deviceId = c.req.header("x-device-id") as string | null;
+  const cohort = c.req.header("x-cohort") as string | null;
   const fingerprintHash =
     c.req.header("x-fingerprint-hash") ?? (null as string | null);
 
@@ -72,7 +72,7 @@ app.get("/api/check-update", async (c) => {
         platform: appPlatform,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
-        deviceId: deviceId || undefined,
+        cohort: cohort || undefined,
         _updateStrategy: "fingerprint" as const,
       } satisfies GetBundlesArgs)
     : ({
@@ -81,7 +81,7 @@ app.get("/api/check-update", async (c) => {
         platform: appPlatform,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
-        deviceId: deviceId || undefined,
+        cohort: cohort || undefined,
         _updateStrategy: "appVersion" as const,
       } satisfies GetBundlesArgs);
 
@@ -96,7 +96,7 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     const {
       platform,
@@ -104,6 +104,7 @@ app.get(
       channel,
       minBundleId,
       bundleId,
+      cohort,
     } = c.req.param();
 
     if (!bundleId || !platform) {
@@ -119,6 +120,7 @@ app.get(
       bundleId,
       minBundleId: minBundleId || NIL_UUID,
       channel: channel || "production",
+      cohort: decodeMaybe(cohort),
       _updateStrategy: "appVersion" as const,
     } satisfies GetBundlesArgs;
 
@@ -134,80 +136,7 @@ app.get(
 );
 
 app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:deviceId",
-  async (c) => {
-    const {
-      platform,
-      "app-version": appVersion,
-      channel,
-      minBundleId,
-      bundleId,
-      deviceId,
-    } = c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      deviceId: decodeMaybe(deviceId),
-      _updateStrategy: "appVersion" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-  async (c) => {
-    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-      c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      fingerprintHash,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      _updateStrategy: "fingerprint" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:deviceId",
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     const {
       platform,
@@ -215,7 +144,7 @@ app.get(
       channel,
       minBundleId,
       bundleId,
-      deviceId,
+      cohort,
     } = c.req.param();
 
     if (!bundleId || !platform) {
@@ -231,7 +160,7 @@ app.get(
       bundleId,
       minBundleId: minBundleId || NIL_UUID,
       channel: channel || "production",
-      deviceId: decodeMaybe(deviceId),
+      cohort: decodeMaybe(cohort),
       _updateStrategy: "fingerprint" as const,
     } satisfies GetBundlesArgs;
 

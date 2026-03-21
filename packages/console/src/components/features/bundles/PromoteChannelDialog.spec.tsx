@@ -155,8 +155,8 @@ const bundle: Bundle = {
   message: "Initial message",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
-  rolloutPercentage: 100,
-  targetDeviceIds: [],
+  rolloutCohortCount: 1000,
+  targetCohorts: [],
 };
 
 describe("PromoteChannelDialog", () => {

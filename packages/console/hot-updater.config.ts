@@ -14,7 +14,7 @@ const bundles: Bundle[] = [
     channel: "production",
     storageUri: "s3://hot-updater/0195c7c0-8bbe-7885-ae58-09bcab7f7a87.zip",
     fingerprintHash: null,
-    rolloutPercentage: 100,
+    rolloutCohortCount: 1000,
   },
   {
     id: "0195c7bf-e8f2-7546-8aba-8bad8243afeb",
@@ -28,7 +28,7 @@ const bundles: Bundle[] = [
     channel: "production",
     storageUri: "s3://hot-updater/0195c7bf-e8f2-7546-8aba-8bad8243afeb.zip",
     fingerprintHash: null,
-    rolloutPercentage: 50,
+    rolloutCohortCount: 500,
   },
   {
     id: "0195c7bf-d48d-7785-9295-15b154d271a3",
@@ -42,7 +42,7 @@ const bundles: Bundle[] = [
     channel: "production",
     storageUri: "s3://hot-updater/0195c7bf-d48d-7785-9295-15b154d271a3.zip",
     fingerprintHash: null,
-    rolloutPercentage: 100,
+    rolloutCohortCount: 1000,
   },
   {
     id: "0195c7be-a123-7785-9295-15b154d271a4",
@@ -56,7 +56,7 @@ const bundles: Bundle[] = [
     channel: "staging",
     storageUri: "s3://hot-updater/0195c7be-a123-7785-9295-15b154d271a4.zip",
     fingerprintHash: "fp-jkl012",
-    rolloutPercentage: 100,
+    rolloutCohortCount: 1000,
   },
   {
     id: "0195c7bd-b234-7785-9295-15b154d271a5",
@@ -70,7 +70,7 @@ const bundles: Bundle[] = [
     channel: "dev",
     storageUri: "s3://hot-updater/0195c7bd-b234-7785-9295-15b154d271a5.zip",
     fingerprintHash: "fp-mno345",
-    rolloutPercentage: 10,
+    rolloutCohortCount: 100,
   },
   {
     id: "0195c7bc-c345-7785-9295-15b154d271a6",
@@ -84,7 +84,7 @@ const bundles: Bundle[] = [
     channel: "dev",
     storageUri: "s3://hot-updater/0195c7bc-c345-7785-9295-15b154d271a6.zip",
     fingerprintHash: "fp-pqr678",
-    rolloutPercentage: 100,
+    rolloutCohortCount: 1000,
   },
   {
     id: "0195c7bb-d456-7785-9295-15b154d271a7",
@@ -98,7 +98,7 @@ const bundles: Bundle[] = [
     channel: "staging",
     storageUri: "s3://hot-updater/0195c7bb-d456-7785-9295-15b154d271a7.zip",
     fingerprintHash: null,
-    rolloutPercentage: 75,
+    rolloutCohortCount: 750,
   },
   {
     id: "0195c7ba-e567-7785-9295-15b154d271a8",
@@ -112,7 +112,7 @@ const bundles: Bundle[] = [
     channel: "production",
     storageUri: "s3://hot-updater/0195c7ba-e567-7785-9295-15b154d271a8.zip",
     fingerprintHash: "fp-stu901",
-    rolloutPercentage: 20,
+    rolloutCohortCount: 200,
   },
 ];
 

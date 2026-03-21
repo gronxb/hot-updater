@@ -1,3 +1,8 @@
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  isValidCohort,
+  normalizeCohortValue,
+} from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { useForm, useStore } from "@tanstack/react-form";
 import { Download, Plus, X } from "lucide-react";
@@ -29,8 +34,8 @@ type BundleEditorFormValues = {
   targetAppVersion: string;
   enabled: boolean;
   shouldForceUpdate: boolean;
-  rolloutPercentage: number;
-  targetDeviceIds: string[];
+  rolloutCohortCount: number;
+  targetCohorts: string[];
 };
 
 function getTargetAppVersionValidation(value: string) {
@@ -64,17 +69,21 @@ function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
     targetAppVersion: bundle.targetAppVersion || "",
     enabled: bundle.enabled,
     shouldForceUpdate: bundle.shouldForceUpdate,
-    rolloutPercentage: bundle.rolloutPercentage ?? 100,
-    targetDeviceIds: bundle.targetDeviceIds ?? [],
+    rolloutCohortCount:
+      bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+    targetCohorts: bundle.targetCohorts ?? [],
   };
 }
+
+const formatRolloutPercentage = (rolloutCohortCount: number) =>
+  (rolloutCohortCount / 10).toFixed(1);
 
 export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   const bundleDownloadUrlMutation = useBundleDownloadUrlMutation();
   const updateBundleMutation = useUpdateBundleMutation();
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [newDeviceId, setNewDeviceId] = useState("");
+  const [newCohort, setNewCohort] = useState("");
   const shouldEditTargetAppVersion = Boolean(bundle.targetAppVersion);
 
   const form = useForm({
@@ -90,6 +99,21 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         return;
       }
 
+      const normalizedTargetCohorts = Array.from(
+        new Set(
+          value.targetCohorts.map((cohort) => normalizeCohortValue(cohort)),
+        ),
+      );
+      const invalidCohort = normalizedTargetCohorts.find(
+        (cohort) => !isValidCohort(cohort),
+      );
+      if (invalidCohort) {
+        toast.error(
+          "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+        );
+        return;
+      }
+
       try {
         await updateBundleMutation.mutateAsync({
           bundleId: bundle.id,
@@ -98,9 +122,11 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
             targetAppVersion: targetAppVersion || undefined,
             enabled: value.enabled,
             shouldForceUpdate: value.shouldForceUpdate,
-            rolloutPercentage: value.rolloutPercentage,
-            targetDeviceIds:
-              value.targetDeviceIds.length > 0 ? value.targetDeviceIds : null,
+            rolloutCohortCount: value.rolloutCohortCount,
+            targetCohorts:
+              normalizedTargetCohorts.length > 0
+                ? normalizedTargetCohorts
+                : null,
           },
         });
         toast.success("Bundle updated successfully");
@@ -127,32 +153,39 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
   const hasTargetAppVersionError = Boolean(targetAppVersionValidation.error);
   const isDownloading = bundleDownloadUrlMutation.isPending;
 
-  const handleAddDeviceId = () => {
-    const trimmed = newDeviceId.trim();
-    if (!trimmed) return;
+  const handleAddCohort = () => {
+    const normalizedCohort = normalizeCohortValue(newCohort);
+    if (!normalizedCohort) return;
 
-    const currentIds = form.getFieldValue("targetDeviceIds");
-    if (currentIds.includes(trimmed)) {
-      toast.error("Device ID already exists");
+    if (!isValidCohort(normalizedCohort)) {
+      toast.error(
+        "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+      );
       return;
     }
 
-    form.setFieldValue("targetDeviceIds", [...currentIds, trimmed]);
-    setNewDeviceId("");
+    const currentCohorts = form.getFieldValue("targetCohorts");
+    if (currentCohorts.includes(normalizedCohort)) {
+      toast.error("Cohort already exists");
+      return;
+    }
+
+    form.setFieldValue("targetCohorts", [...currentCohorts, normalizedCohort]);
+    setNewCohort("");
   };
 
-  const handleRemoveDeviceId = (idToRemove: string) => {
-    const currentIds = form.getFieldValue("targetDeviceIds");
+  const handleRemoveCohort = (cohortToRemove: string) => {
+    const currentCohorts = form.getFieldValue("targetCohorts");
     form.setFieldValue(
-      "targetDeviceIds",
-      currentIds.filter((id: string) => id !== idToRemove),
+      "targetCohorts",
+      currentCohorts.filter((cohort: string) => cohort !== cohortToRemove),
     );
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      handleAddDeviceId();
+      handleAddCohort();
     }
   };
 
@@ -281,21 +314,21 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           )}
         </form.Field>
 
-        <form.Field name="rolloutPercentage">
+        <form.Field name="rolloutCohortCount">
           {(field) => (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="rolloutPercentage">Rollout Percentage</Label>
+                <Label htmlFor="rolloutCohortCount">Rollout Percentage</Label>
                 <span className="text-sm font-medium">
-                  {field.state.value}%
+                  {formatRolloutPercentage(field.state.value)}%
                 </span>
               </div>
               <Slider
-                id="rolloutPercentage"
+                id="rolloutCohortCount"
                 value={[field.state.value]}
                 onValueChange={([value]) => field.handleChange(value)}
                 min={0}
-                max={100}
+                max={1000}
                 step={1}
                 className="mt-2"
               />
@@ -303,43 +336,44 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           )}
         </form.Field>
 
-        <form.Field name="targetDeviceIds">
+        <form.Field name="targetCohorts">
           {(field) => (
             <div className="space-y-2">
-              <Label>Target Device IDs (optional)</Label>
+              <Label>Target Cohorts (optional)</Label>
               <div className="flex gap-2">
                 <Input
-                  value={newDeviceId}
-                  onChange={(e) => setNewDeviceId(e.target.value)}
+                  value={newCohort}
+                  onChange={(e) => setNewCohort(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Enter device ID..."
+                  placeholder="Enter cohort..."
                   className="font-mono text-xs"
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon"
-                  onClick={handleAddDeviceId}
-                  disabled={!newDeviceId.trim()}
+                  onClick={handleAddCohort}
+                  disabled={!newCohort.trim()}
+                  aria-label="Add cohort"
                 >
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
               {field.state.value.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {field.state.value.map((deviceId: string) => (
+                  {field.state.value.map((cohort: string) => (
                     <Badge
-                      key={deviceId}
+                      key={cohort}
                       variant="secondary"
                       className="font-mono text-xs gap-1 pr-1"
                     >
-                      {deviceId.length > 20
-                        ? `${deviceId.slice(0, 20)}...`
-                        : deviceId}
+                      {cohort.length > 20
+                        ? `${cohort.slice(0, 20)}...`
+                        : cohort}
                       <button
                         type="button"
-                        onClick={() => handleRemoveDeviceId(deviceId)}
-                        aria-label={`Remove device ID ${deviceId}`}
+                        onClick={() => handleRemoveCohort(cohort)}
+                        aria-label={`Remove cohort ${cohort}`}
                         className="ml-1 rounded-full hover:bg-muted-foreground/20 p-0.5"
                       >
                         <X className="h-3 w-3" />
@@ -350,7 +384,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
               )}
               {field.state.value.length > 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  {field.state.value.length} device
+                  {field.state.value.length} cohort
                   {field.state.value.length !== 1 ? "s" : ""} targeted
                 </p>
               )}

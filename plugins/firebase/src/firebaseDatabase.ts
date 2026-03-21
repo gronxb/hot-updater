@@ -1,4 +1,7 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  type SnakeCaseBundle,
+} from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -21,6 +24,9 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   storageUri: firestoreData.storage_uri,
   fingerprintHash: firestoreData.fingerprint_hash,
   metadata: firestoreData?.metadata ?? {},
+  rolloutCohortCount:
+    firestoreData.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+  targetCohorts: firestoreData.target_cohorts ?? null,
 });
 
 export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
@@ -157,6 +163,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 storage_uri: data.storageUri,
                 fingerprint_hash: data.fingerprintHash,
                 metadata: data.metadata ?? {},
+                rollout_cohort_count:
+                  data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                target_cohorts: data.targetCohorts ?? null,
               } as SnakeCaseBundle;
 
               // Add channel to channels collection
@@ -212,6 +221,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   storage_uri: data.storageUri,
                   fingerprint_hash: data.fingerprintHash,
                   metadata: data.metadata ?? {},
+                  rollout_cohort_count:
+                    data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                  target_cohorts: data.targetCohorts ?? null,
                 } as SnakeCaseBundle,
                 { merge: true },
               );

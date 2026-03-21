@@ -12,6 +12,7 @@ export function RolloutPercentageBadge({
   className,
 }: RolloutPercentageBadgeProps) {
   const isPartialRollout = percentage < 100;
+  const formattedPercentage = percentage.toFixed(1);
 
   return (
     <Badge
@@ -19,7 +20,7 @@ export function RolloutPercentageBadge({
       className={cn("gap-1", className)}
     >
       {isPartialRollout && <AlertTriangle className="h-3 w-3" />}
-      {percentage}%
+      {formattedPercentage}%
     </Badge>
   );
 }

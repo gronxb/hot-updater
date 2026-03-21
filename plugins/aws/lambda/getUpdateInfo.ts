@@ -109,7 +109,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const targetAppVersions = await readManifestJson<string[]>(
@@ -141,7 +141,7 @@ const appVersionStrategy = async (
     appVersion,
     minBundleId,
     channel,
-    deviceId,
+    cohort,
     _updateStrategy: "appVersion",
   });
 };
@@ -158,7 +158,7 @@ const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const result = await readManifestJson<Bundle[]>(
@@ -171,7 +171,7 @@ const fingerprintStrategy = async (
     fingerprintHash,
     minBundleId,
     channel,
-    deviceId,
+    cohort,
     _updateStrategy: "fingerprint",
   });
 };

@@ -16,10 +16,10 @@ export const v0_29_0 = schema({
       target_app_version: column("target_app_version", "string").nullable(),
       fingerprint_hash: column("fingerprint_hash", "string").nullable(),
       metadata: column("metadata", "json"),
-      rollout_percentage: column("rollout_percentage", "integer").defaultTo(
-        100,
+      rollout_cohort_count: column("rollout_cohort_count", "integer").defaultTo(
+        1000,
       ),
-      target_device_ids: column("target_device_ids", "json").nullable(),
+      target_cohorts: column("target_cohorts", "json").nullable(),
     }),
   },
   relations: {},

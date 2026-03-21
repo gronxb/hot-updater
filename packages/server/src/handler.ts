@@ -51,22 +51,6 @@ const handleVersion: RouteHandler = async () => {
   });
 };
 
-const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
-  const updateInfo = await api.getAppUpdateInfo({
-    _updateStrategy: "fingerprint",
-    platform: params.platform as "ios" | "android",
-    fingerprintHash: params.fingerprintHash,
-    channel: params.channel,
-    minBundleId: params.minBundleId,
-    bundleId: params.bundleId,
-  });
-
-  return new Response(JSON.stringify(updateInfo), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
 const decodeMaybe = (value: string | undefined): string | undefined => {
   if (value === undefined) return undefined;
   try {
@@ -76,7 +60,7 @@ const decodeMaybe = (value: string | undefined): string | undefined => {
   }
 };
 
-const handleFingerprintUpdateWithDeviceId: RouteHandler = async (
+const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
   _request,
   api,
@@ -88,7 +72,7 @@ const handleFingerprintUpdateWithDeviceId: RouteHandler = async (
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
-    deviceId: decodeMaybe(params.deviceId),
+    cohort: decodeMaybe(params.cohort),
   });
 
   return new Response(JSON.stringify(updateInfo), {
@@ -97,23 +81,7 @@ const handleFingerprintUpdateWithDeviceId: RouteHandler = async (
   });
 };
 
-const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
-  const updateInfo = await api.getAppUpdateInfo({
-    _updateStrategy: "appVersion",
-    platform: params.platform as "ios" | "android",
-    appVersion: params.appVersion,
-    channel: params.channel,
-    minBundleId: params.minBundleId,
-    bundleId: params.bundleId,
-  });
-
-  return new Response(JSON.stringify(updateInfo), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
-const handleAppVersionUpdateWithDeviceId: RouteHandler = async (
+const handleAppVersionUpdateWithCohort: RouteHandler = async (
   params,
   _request,
   api,
@@ -125,7 +93,7 @@ const handleAppVersionUpdateWithDeviceId: RouteHandler = async (
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
-    deviceId: decodeMaybe(params.deviceId),
+    cohort: decodeMaybe(params.cohort),
   });
 
   return new Response(JSON.stringify(updateInfo), {
@@ -238,10 +206,8 @@ const handleGetChannels: RouteHandler = async (_params, _request, api) => {
 // Route handlers map
 const routes: Record<string, RouteHandler> = {
   version: handleVersion,
-  fingerprintUpdate: handleFingerprintUpdate,
-  fingerprintUpdateWithDeviceId: handleFingerprintUpdateWithDeviceId,
-  appVersionUpdate: handleAppVersionUpdate,
-  appVersionUpdateWithDeviceId: handleAppVersionUpdateWithDeviceId,
+  fingerprintUpdateWithCohort: handleFingerprintUpdateWithCohort,
+  appVersionUpdateWithCohort: handleAppVersionUpdateWithCohort,
   getBundle: handleGetBundle,
   getBundles: handleGetBundles,
   createBundles: handleCreateBundles,
@@ -269,26 +235,14 @@ export function createHandler(
   addRoute(
     router,
     "GET",
-    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-    "fingerprintUpdate",
+    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
+    "fingerprintUpdateWithCohort",
   );
   addRoute(
     router,
     "GET",
-    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:deviceId",
-    "fingerprintUpdateWithDeviceId",
-  );
-  addRoute(
-    router,
-    "GET",
-    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-    "appVersionUpdate",
-  );
-  addRoute(
-    router,
-    "GET",
-    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:deviceId",
-    "appVersionUpdateWithDeviceId",
+    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
+    "appVersionUpdateWithCohort",
   );
   addRoute(router, "GET", "/api/bundles/channels", "getChannels");
   addRoute(router, "GET", "/api/bundles/:id", "getBundle");

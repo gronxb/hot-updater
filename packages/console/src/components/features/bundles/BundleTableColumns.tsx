@@ -1,3 +1,4 @@
+import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
 import { Fingerprint, Package } from "lucide-react";
@@ -79,10 +80,10 @@ export const bundleColumns = [
       <EnabledStatusIcon enabled={info.getValue()} falseIcon="minus" />
     ),
   }),
-  columnHelper.accessor("rolloutPercentage", {
+  columnHelper.accessor("rolloutCohortCount", {
     header: "Rollout",
     cell: (info) => {
-      const percentage = info.getValue() ?? 100;
+      const percentage = (info.getValue() ?? DEFAULT_ROLLOUT_COHORT_COUNT) / 10;
       return <RolloutPercentageBadge percentage={percentage} />;
     },
   }),

@@ -19,7 +19,7 @@ class HotUpdaterModule internal constructor(
     reactContext: ReactApplicationContext,
 ) : HotUpdaterSpec(reactContext) {
     private val mReactApplicationContext: ReactApplicationContext = reactContext
-    private val deviceIdService = DeviceIdService(reactContext)
+    private val cohortService = CohortService(reactContext)
 
     // Managed coroutine scope for the module lifecycle
     private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -160,11 +160,11 @@ class HotUpdaterModule internal constructor(
         return impl.getBaseURL()
     }
 
-    override fun setUserId(customId: String) {
-        deviceIdService.setUserId(customId)
+    override fun setCohort(cohort: String) {
+        cohortService.setCohort(cohort)
     }
 
-    override fun getUserId(): String = deviceIdService.getUserId()
+    override fun getCohort(): String = cohortService.getCohort()
 
     override fun getBundleId(): String? {
         val impl = getInstance()

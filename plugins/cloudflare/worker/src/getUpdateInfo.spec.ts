@@ -16,16 +16,16 @@ declare module "cloudflare:test" {
 }
 
 const createInsertBundleQuery = (bundle: Bundle) => {
-  const rolloutPercentage = bundle.rolloutPercentage ?? 100;
-  const targetDeviceIds = bundle.targetDeviceIds
-    ? `'${JSON.stringify(bundle.targetDeviceIds)}'`
+  const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
+  const targetCohorts = bundle.targetCohorts
+    ? `'${JSON.stringify(bundle.targetCohorts)}'`
     : "null";
 
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message, channel,
-      storage_uri, fingerprint_hash, rollout_percentage, target_device_ids
+      storage_uri, fingerprint_hash, rollout_cohort_count, target_cohorts
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
@@ -38,8 +38,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       '${bundle.channel}',
       ${bundle.storageUri ? `'${bundle.storageUri}'` : "null"},
       ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"},
-      ${rolloutPercentage},
-      ${targetDeviceIds}
+      ${rolloutCohortCount},
+      ${targetCohorts}
     ) ON CONFLICT(id) DO UPDATE SET
       file_hash = excluded.file_hash,
       platform = excluded.platform,
@@ -51,8 +51,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       channel = excluded.channel,
       storage_uri = excluded.storage_uri,
       fingerprint_hash = excluded.fingerprint_hash,
-      rollout_percentage = excluded.rollout_percentage,
-      target_device_ids = excluded.target_device_ids;
+      rollout_cohort_count = excluded.rollout_cohort_count,
+      target_cohorts = excluded.target_cohorts;
   `;
 };
 

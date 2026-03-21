@@ -20,7 +20,7 @@ class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
 ) : HotUpdaterSpec(context) {
     private val mReactApplicationContext: ReactApplicationContext = context
-    private val deviceIdService = DeviceIdService(context)
+    private val cohortService = CohortService(context)
 
     // Managed coroutine scope for the module lifecycle
     private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -180,12 +180,12 @@ class HotUpdaterModule internal constructor(
     override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
     @ReactMethod
-    override fun setUserId(customId: String) {
-        deviceIdService.setUserId(customId)
+    override fun setCohort(cohort: String) {
+        cohortService.setCohort(cohort)
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getUserId(): String = deviceIdService.getUserId()
+    override fun getCohort(): String = cohortService.getCohort()
 
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

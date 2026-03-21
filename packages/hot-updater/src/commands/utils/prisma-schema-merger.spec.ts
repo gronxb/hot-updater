@@ -16,8 +16,8 @@ const HOT_UPDATER_MODELS = `model bundles {
   target_app_version  String?
   fingerprint_hash    String?
   metadata            Json
-  rollout_percentage  Int     @default(100)
-  target_device_ids   Json?
+  rollout_cohort_count Int    @default(1000)
+  target_cohorts      Json?
 }
 
 model private_hot_updater_settings {
@@ -87,8 +87,8 @@ describe("prisma-schema-merger", () => {
   target_app_version String?
   fingerprint_hash String?
   metadata Json
-  rollout_percentage Int @default(100)
-  target_device_ids Json?
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
 }
 model private_hot_updater_settings {
   key String @id
@@ -101,7 +101,7 @@ model private_hot_updater_settings {
       // User model should still be preserved
       expect(result.content).toContain("model User");
       // Updated models should be present
-      expect(result.content).toContain("rollout_percentage");
+      expect(result.content).toContain("rollout_cohort_count");
       expect(result.content).toContain('"0.29.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
@@ -188,8 +188,8 @@ model bundles {
   target_app_version  String?
   fingerprint_hash    String?
   metadata            Json
-  rollout_percentage  Int     @default(100)
-  target_device_ids   Json?
+  rollout_cohort_count Int    @default(1000)
+  target_cohorts      Json?
 }
 
 model private_hot_updater_settings {

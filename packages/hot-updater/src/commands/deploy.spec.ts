@@ -151,7 +151,11 @@ import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
-import { deploy, normalizeRolloutPercentage } from "./deploy";
+import {
+  deploy,
+  getRolloutCohortCountFromPercentage,
+  normalizeRolloutPercentage,
+} from "./deploy";
 
 describe("normalizeRolloutPercentage", () => {
   it("defaults to 100 when rollout is omitted", () => {
@@ -174,6 +178,14 @@ describe("normalizeRolloutPercentage", () => {
     expect(() => normalizeRolloutPercentage("12.5")).toThrow(
       "Rollout percentage must be an integer between 0 and 100",
     );
+  });
+});
+
+describe("getRolloutCohortCountFromPercentage", () => {
+  it("maps rollout percentages to 1..1000 cohort counts", () => {
+    expect(getRolloutCohortCountFromPercentage(0)).toBe(0);
+    expect(getRolloutCohortCountFromPercentage(55)).toBe(550);
+    expect(getRolloutCohortCountFromPercentage(100)).toBe(1000);
   });
 });
 
@@ -257,7 +269,7 @@ describe("deploy rollout wiring", () => {
     } as ReturnType<typeof fs.statSync>);
   });
 
-  it("stores rolloutPercentage=100 when deploy options omit rollout", async () => {
+  it("stores rolloutCohortCount=1000 when deploy options omit rollout", async () => {
     await deploy({
       channel: "production",
       forceUpdate: false,
@@ -268,12 +280,12 @@ describe("deploy rollout wiring", () => {
 
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
-        rolloutPercentage: 100,
+        rolloutCohortCount: 1000,
       }),
     );
   });
 
-  it("stores an explicit rolloutPercentage on the created bundle", async () => {
+  it("stores an explicit rolloutCohortCount on the created bundle", async () => {
     await deploy({
       channel: "production",
       forceUpdate: false,
@@ -285,7 +297,24 @@ describe("deploy rollout wiring", () => {
 
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
-        rolloutPercentage: 0,
+        rolloutCohortCount: 0,
+      }),
+    );
+  });
+
+  it("converts rollout percentages to rollout cohort counts before storing", async () => {
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      rollout: 55,
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rolloutCohortCount: 550,
       }),
     );
   });

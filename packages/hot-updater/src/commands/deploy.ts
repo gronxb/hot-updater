@@ -68,6 +68,12 @@ export const normalizeRolloutPercentage = (
   return parsedRollout;
 };
 
+export const getRolloutCohortCountFromPercentage = (
+  rolloutPercentage: number,
+): number => {
+  return rolloutPercentage * 10;
+};
+
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
@@ -86,6 +92,8 @@ export const deploy = async (options: DeployOptions) => {
 
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+  const rolloutCohortCount =
+    getRolloutCohortCountFromPercentage(rolloutPercentage);
 
   const gitCommit = await getLatestGitCommit();
   const [gitCommitHash, gitMessage] = [
@@ -463,7 +471,7 @@ export const deploy = async (options: DeployOptions) => {
                     }
                   : {}),
               },
-              rolloutPercentage,
+              rolloutCohortCount,
             });
             await databasePlugin.commitBundle();
           } catch (e) {

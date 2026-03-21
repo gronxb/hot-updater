@@ -31,10 +31,9 @@ export interface ResolverCheckUpdateParams {
   channel: string;
 
   /**
-   * Device/user identifier used for server-side rollout decisions.
-   * If omitted, server treats rollout as 100% for backward compatibility.
+   * Cohort identifier used for server-side rollout decisions.
    */
-  deviceId?: string;
+  cohort: string;
 
   /**
    * Update strategy being used

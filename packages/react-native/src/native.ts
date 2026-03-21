@@ -1,4 +1,8 @@
-import type { UpdateStatus } from "@hot-updater/core";
+import {
+  isValidCohort,
+  normalizeCohortValue,
+  type UpdateStatus,
+} from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
@@ -669,17 +673,29 @@ export const resetChannel = async (): Promise<boolean> => {
 };
 
 /**
- * Sets a custom user ID used for rollout calculations.
- * If unset/empty, native device ID will be used.
+ * Sets a cohort override used for update checks.
+ * Pass an empty string to clear the override and fall back to the default
+ * numeric cohort derived from the device identifier.
  */
-export const setUserId = (customId: string): void => {
-  HotUpdaterNative.setUserId(customId);
+export const setCohort = (cohort: string): void => {
+  const normalized = normalizeCohortValue(cohort);
+  if (normalized.length === 0) {
+    HotUpdaterNative.setCohort("");
+    return;
+  }
+
+  if (!isValidCohort(normalized)) {
+    throw new Error(
+      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+    );
+  }
+
+  HotUpdaterNative.setCohort(normalized);
 };
 
 /**
- * Gets the user ID used for rollout calculations.
- * Returns custom ID if set, otherwise returns native device ID.
+ * Gets the cohort used for rollout calculations.
  */
-export const getUserId = (): string => {
-  return HotUpdaterNative.getUserId();
+export const getCohort = (): string => {
+  return HotUpdaterNative.getCohort();
 };

@@ -1,4 +1,7 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  type SnakeCaseBundle,
+} from "@hot-updater/core";
 import type { Bundle, PaginationOptions } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -54,7 +57,7 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   return { sql: whereClause, params };
 }
 
-function parseTargetDeviceIds(value: unknown): string[] | null {
+function parseTargetCohorts(value: unknown): string[] | null {
   if (!value) return null;
   if (Array.isArray(value)) {
     return value.filter((v): v is string => typeof v === "string");
@@ -87,8 +90,10 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
     metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
-    rolloutPercentage: (row.rollout_percentage as number | null) ?? 100,
-    targetDeviceIds: parseTargetDeviceIds(row.target_device_ids as unknown),
+    rolloutCohortCount:
+      (row.rollout_cohort_count as number | null) ??
+      DEFAULT_ROLLOUT_COHORT_COUNT,
+    targetCohorts: parseTargetCohorts(row.target_cohorts as unknown),
   };
 }
 
@@ -242,8 +247,8 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 storage_uri,
                 fingerprint_hash,
                 metadata,
-                rollout_percentage,
-                target_device_ids
+                rollout_cohort_count,
+                target_cohorts
               )
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
@@ -263,9 +268,9 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               bundle.metadata
                 ? JSON.stringify(bundle.metadata)
                 : JSON.stringify({}),
-              bundle.rolloutPercentage ?? 100,
-              bundle.targetDeviceIds
-                ? JSON.stringify(bundle.targetDeviceIds)
+              bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+              bundle.targetCohorts
+                ? JSON.stringify(bundle.targetCohorts)
                 : null,
             ];
 

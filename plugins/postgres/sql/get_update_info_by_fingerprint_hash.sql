@@ -6,7 +6,7 @@ CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
     min_bundle_id uuid,
     target_channel text,
     target_fingerprint_hash text,
-    device_id TEXT DEFAULT NULL
+    cohort TEXT DEFAULT NULL
 )
 RETURNS TABLE (
     id            uuid,
@@ -30,8 +30,8 @@ BEGIN
             b.message,
             b.storage_uri,
             b.file_hash,
-            b.rollout_percentage,
-            b.target_device_ids
+            b.rollout_cohort_count,
+            b.target_cohorts
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -46,13 +46,20 @@ BEGIN
         LIMIT 1
     ),
     any_update_candidate AS (
-        SELECT cb.id
+        SELECT
+            cb.id,
+            cb.should_force_update,
+            cb.message,
+            cb.storage_uri,
+            cb.file_hash,
+            cb.rollout_cohort_count,
+            cb.target_cohorts
         FROM candidate_bundles cb
         WHERE cb.id > bundle_id
         ORDER BY cb.id DESC
         LIMIT 1
     ),
-    update_candidate AS (
+    eligible_update_candidate AS (
         SELECT
             cb.id,
             cb.should_force_update,
@@ -60,18 +67,13 @@ BEGIN
             'UPDATE' AS status,
             cb.storage_uri,
             cb.file_hash
-        FROM candidate_bundles cb
-        WHERE cb.id > bundle_id
-          AND (
-            device_id IS NULL
-            OR is_device_eligible(
-              device_id,
-              cb.rollout_percentage,
-              cb.target_device_ids
-            )
-          )
-        ORDER BY cb.id DESC
-        LIMIT 1
+        FROM any_update_candidate cb
+        WHERE is_cohort_eligible(
+            cb.id,
+            cohort,
+            cb.rollout_cohort_count,
+            cb.target_cohorts
+        )
     ),
     rollback_candidate AS (
         SELECT
@@ -89,10 +91,10 @@ BEGIN
         LIMIT 1
     ),
     final_result AS (
-        SELECT * FROM update_candidate
+        SELECT * FROM eligible_update_candidate
         UNION ALL
         SELECT * FROM rollback_candidate
-        WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
+        WHERE NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
     )
     SELECT *
     FROM final_result

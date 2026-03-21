@@ -14,12 +14,12 @@ const baseBundle: Bundle = {
   message: "Initial message",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
-  rolloutPercentage: 100,
-  targetDeviceIds: ["device-1", "device-2"],
+  rolloutCohortCount: 1000,
+  targetCohorts: ["device-1", "device-2"],
 };
 
 describe("createDatabasePlugin", () => {
-  it("replaces targetDeviceIds instead of merging array items", async () => {
+  it("replaces targetCohorts instead of merging array items", async () => {
     const commitBundle = vi.fn();
 
     const plugin = createDatabasePlugin({
@@ -43,7 +43,7 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await plugin.updateBundle(baseBundle.id, {
-      targetDeviceIds: ["device-2"],
+      targetCohorts: ["device-2"],
     });
     await plugin.commitBundle();
 
@@ -53,14 +53,14 @@ describe("createDatabasePlugin", () => {
           operation: "update",
           data: {
             ...baseBundle,
-            targetDeviceIds: ["device-2"],
+            targetCohorts: ["device-2"],
           },
         },
       ],
     });
   });
 
-  it("preserves pending updates while allowing targetDeviceIds to be cleared", async () => {
+  it("preserves pending updates while allowing targetCohorts to be cleared", async () => {
     const commitBundle = vi.fn();
 
     const plugin = createDatabasePlugin({
@@ -84,7 +84,7 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.updateBundle(baseBundle.id, { targetDeviceIds: null });
+    await plugin.updateBundle(baseBundle.id, { targetCohorts: null });
     await plugin.commitBundle();
 
     expect(commitBundle).toHaveBeenCalledWith({
@@ -94,7 +94,7 @@ describe("createDatabasePlugin", () => {
           data: {
             ...baseBundle,
             enabled: false,
-            targetDeviceIds: null,
+            targetCohorts: null,
           },
         },
       ],

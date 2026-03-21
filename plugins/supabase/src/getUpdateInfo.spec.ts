@@ -1,15 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
-import {
-  type Bundle,
-  type GetBundlesArgs,
-  NIL_UUID,
-  type UpdateInfo,
-} from "@hot-updater/core";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import camelcaseKeys from "camelcase-keys";
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
 import { afterAll, beforeEach, describe } from "vitest";
-import { prepareSql } from "./prepareSql";
 
 const createInsertBundleQuery = (bundle: Bundle) => {
   const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
@@ -52,6 +50,23 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   `;
 };
 
+const createInsertBundleQueries = (bundles: Bundle[]) => {
+  return bundles.map(createInsertBundleQuery).join("\n");
+};
+
+const prepareSql = async () => {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const migrationsDir = path.join(currentDir, "../supabase/migrations");
+  const files = (await fs.readdir(migrationsDir))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  const contents = await Promise.all(
+    files.map((file) => fs.readFile(path.join(migrationsDir, file), "utf-8")),
+  );
+
+  return contents.join("\n");
+};
+
 const createGetUpdateInfo =
   (db: PGlite) =>
   async (
@@ -65,10 +80,9 @@ const createGetUpdateInfo =
       channel = "production",
       _updateStrategy,
     } = args;
-    await db.exec(createInsertBundleQuerys(bundles));
+    await db.exec(createInsertBundleQueries(bundles));
 
     if (_updateStrategy === "fingerprint") {
-      const fingerprintHash = args.fingerprintHash;
       const cohort = args.cohort;
       const cohortSql = cohort ? `'${cohort}'` : "NULL";
       const result = await db.query<{
@@ -85,7 +99,7 @@ const createGetUpdateInfo =
         '${bundleId}',
         '${minBundleId}',
         '${channel}',
-        '${fingerprintHash}',
+        '${args.fingerprintHash}',
         ${cohortSql}
       );
       `,
@@ -95,11 +109,9 @@ const createGetUpdateInfo =
         return null;
       }
 
-      const row = result.rows[0];
-      return camelcaseKeys(row) as UpdateInfo;
+      return camelcaseKeys(result.rows[0]) as UpdateInfo;
     }
 
-    const appVersion = args.appVersion;
     const { rows: appVersionList } = await db.query<{
       target_app_version: string;
     }>(
@@ -110,7 +122,7 @@ const createGetUpdateInfo =
 
     const targetAppVersionList = filterCompatibleAppVersions(
       appVersionList?.map((group) => group.target_app_version) ?? [],
-      appVersion,
+      args.appVersion,
     );
 
     const cohort = args.cohort;
@@ -126,11 +138,11 @@ const createGetUpdateInfo =
       `
       SELECT * FROM get_update_info_by_app_version(
         '${platform}',
-        '${appVersion}',
+        '${args.appVersion}',
         '${bundleId}',
-        '${minBundleId ?? NIL_UUID}',
+        '${minBundleId}',
         '${channel}',
-        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[],
+        ARRAY[${targetAppVersionList.map((value) => `'${value}'`).join(",")}]::text[],
         ${cohortSql}
       );
       `,
@@ -140,21 +152,15 @@ const createGetUpdateInfo =
       return null;
     }
 
-    const row = result.rows[0];
-    return camelcaseKeys(row) as UpdateInfo;
+    return camelcaseKeys(result.rows[0]) as UpdateInfo;
   };
 
-const createInsertBundleQuerys = (bundles: Bundle[]) => {
-  return bundles.map(createInsertBundleQuery).join("\n");
-};
-
 const db = new PGlite();
+await db.exec(await prepareSql());
 
-const sql = await prepareSql();
-await db.exec(sql);
-const getUpdateInfo = createGetUpdateInfo(db);
+describe("supabase stored procedures", () => {
+  const getUpdateInfo = createGetUpdateInfo(db);
 
-describe("getUpdateInfo", () => {
   beforeEach(async () => {
     await db.exec("DELETE FROM bundles");
   });
@@ -163,7 +169,5 @@ describe("getUpdateInfo", () => {
     await db.close();
   });
 
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo: getUpdateInfo,
-  });
+  setupGetUpdateInfoTestSuite({ getUpdateInfo });
 });

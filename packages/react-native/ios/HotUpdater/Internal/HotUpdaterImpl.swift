@@ -32,7 +32,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 @objcMembers public class HotUpdaterImpl: NSObject {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
-    private let deviceIdService: DeviceIdService
+    private let cohortService: CohortService
     private let recoveryManager: HotUpdaterRecoveryManager
     private var currentLaunchSelection: LaunchSelection?
 
@@ -71,7 +71,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
     internal init(bundleStorage: BundleStorageService, preferences: PreferencesService, recoveryManager: HotUpdaterRecoveryManager) {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
-        self.deviceIdService = DeviceIdService()
+        self.cohortService = CohortService()
         self.recoveryManager = recoveryManager
         super.init()
 
@@ -146,14 +146,14 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
     }
 
-    // MARK: - User ID Management
+    // MARK: - Cohort Management
 
-    public func setUserId(_ customId: String) {
-        deviceIdService.setUserId(customId)
+    public func setCohort(_ cohort: String) {
+        cohortService.setCohort(cohort)
     }
 
-    public func getUserId() -> String {
-        return deviceIdService.getUserId()
+    public func getCohort() -> String {
+        return cohortService.getCohort()
     }
 
     // MARK: - Bundle URL Management

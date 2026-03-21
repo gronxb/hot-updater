@@ -2,43 +2,14 @@ import {
   type AppVersionGetBundlesArgs,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
+  isCohortEligibleForUpdate,
   NIL_UUID,
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/js";
 
-function hashUserId(userId: string): number {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    const char = userId.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
-  }
-  return Math.abs(hash % 100);
-}
-
-function isDeviceEligibleForPercentage(
-  userId: string,
-  rolloutPercentage: number | null | undefined,
-): boolean {
-  if (
-    rolloutPercentage === null ||
-    rolloutPercentage === undefined ||
-    rolloutPercentage >= 100
-  ) {
-    return true;
-  }
-
-  if (rolloutPercentage <= 0) {
-    return false;
-  }
-
-  const userHash = hashUserId(userId);
-  return userHash < rolloutPercentage;
-}
-
-const parseTargetDeviceIds = (value: string | null): string[] | null => {
+const parseTargetCohorts = (value: string | null): string[] | null => {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -59,7 +30,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: AppVersionGetBundlesArgs,
 ) => {
   const appVersionList = await DB.prepare(
@@ -87,7 +58,7 @@ const appVersionStrategy = async (
       ? AS bundle_id,
       ? AS min_bundle_id,
       ? AS channel,
-      ? AS device_id,
+      ? AS cohort,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
@@ -97,8 +68,8 @@ const appVersionStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
-      b.rollout_percentage,
-      b.target_device_ids,
+      b.rollout_cohort_count,
+      b.target_cohorts,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -109,15 +80,6 @@ const appVersionStrategy = async (
       AND b.target_app_version IN (${targetAppVersionList
         .map((version) => `'${version}'`)
         .join(",")})
-      AND (
-        b.target_device_ids IS NULL
-        OR b.target_device_ids = 'null'
-        OR json_array_length(b.target_device_ids) = 0
-        OR EXISTS (
-          SELECT 1 FROM json_each(b.target_device_ids)
-          WHERE json_each.value = input.device_id
-        )
-      )
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -128,8 +90,8 @@ const appVersionStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
-      b.rollout_percentage,
-      b.target_device_ids,
+      b.rollout_cohort_count,
+      b.target_cohorts,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -145,7 +107,7 @@ const appVersionStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_percentage, target_device_ids
+  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_cohort_count, target_cohorts
   FROM final_result, input
   WHERE id <> bundle_id
 
@@ -158,15 +120,15 @@ const appVersionStrategy = async (
     'ROLLBACK' AS status,
     NULL AS storage_uri,
     NULL AS file_hash,
-    NULL AS rollout_percentage,
-    NULL AS target_device_ids
+    NULL AS rollout_cohort_count,
+    NULL AS target_cohorts
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
 `;
 
   const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId, minBundleId, channel, deviceId ?? "")
+    .bind(platform, appVersion, bundleId, minBundleId, channel, cohort ?? "")
     .first<{
       id: string;
       should_force_update: number;
@@ -174,42 +136,24 @@ const appVersionStrategy = async (
       message: string | null;
       storage_uri: string | null;
       file_hash: string | null;
-      rollout_percentage: number | null;
-      target_device_ids: string | null;
+      rollout_cohort_count: number | null;
+      target_cohorts: string | null;
     }>();
 
   if (!result) {
     return null;
   }
 
-  if (deviceId && result.status === "UPDATE") {
-    // If device is in targetDeviceIds, skip percentage check (priority 1)
-    const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
-    if (
-      targetDeviceIds &&
-      targetDeviceIds.length > 0 &&
-      targetDeviceIds.includes(deviceId)
-    ) {
-      // Device is explicitly targeted - skip percentage check
-      return {
-        id: result.id,
-        shouldForceUpdate: Boolean(result.should_force_update),
-        status: result.status,
-        message: result.message,
-        storageUri: result.storage_uri,
-        fileHash: result.file_hash,
-      } as UpdateInfo;
-    }
-
-    // Check percentage-based rollout (priority 2)
-    const eligible = isDeviceEligibleForPercentage(
-      deviceId,
-      result.rollout_percentage,
-    );
-
-    if (!eligible) {
-      return null;
-    }
+  if (
+    result.status === "UPDATE" &&
+    !isCohortEligibleForUpdate(
+      result.id,
+      cohort,
+      result.rollout_cohort_count,
+      parseTargetCohorts(result.target_cohorts),
+    )
+  ) {
+    return null;
   }
 
   return {
@@ -230,7 +174,7 @@ export const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
-    deviceId,
+    cohort,
   }: FingerprintGetBundlesArgs,
 ) => {
   const sql = /* sql */ `
@@ -241,7 +185,7 @@ export const fingerprintStrategy = async (
       ? AS min_bundle_id,
       ? AS channel,
       ? AS fingerprint_hash,
-      ? AS device_id,
+      ? AS cohort,
       '00000000-0000-0000-0000-000000000000' AS nil_uuid
   ),
   update_candidate AS (
@@ -251,8 +195,8 @@ export const fingerprintStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
-      b.rollout_percentage,
-      b.target_device_ids,
+      b.rollout_cohort_count,
+      b.target_cohorts,
       'UPDATE' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -261,15 +205,6 @@ export const fingerprintStrategy = async (
       AND b.id >= input.min_bundle_id
       AND b.channel = input.channel
       AND b.fingerprint_hash = input.fingerprint_hash
-      AND (
-        b.target_device_ids IS NULL
-        OR b.target_device_ids = 'null'
-        OR json_array_length(b.target_device_ids) = 0
-        OR EXISTS (
-          SELECT 1 FROM json_each(b.target_device_ids)
-          WHERE json_each.value = input.device_id
-        )
-      )
     ORDER BY b.id DESC
     LIMIT 1
   ),
@@ -280,8 +215,8 @@ export const fingerprintStrategy = async (
       b.message,
       b.storage_uri,
       b.file_hash,
-      b.rollout_percentage,
-      b.target_device_ids,
+      b.rollout_cohort_count,
+      b.target_cohorts,
       'ROLLBACK' AS status
     FROM bundles b, input
     WHERE b.enabled = 1
@@ -299,7 +234,7 @@ export const fingerprintStrategy = async (
     SELECT * FROM rollback_candidate
     WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_percentage, target_device_ids
+  SELECT id, should_force_update, message, status, storage_uri, file_hash, rollout_cohort_count, target_cohorts
   FROM final_result, input
   WHERE id <> bundle_id
 
@@ -312,8 +247,8 @@ export const fingerprintStrategy = async (
     'ROLLBACK' AS status,
     NULL AS storage_uri,
     NULL AS file_hash,
-    NULL AS rollout_percentage,
-    NULL AS target_device_ids
+    NULL AS rollout_cohort_count,
+    NULL AS target_cohorts
   FROM input
   WHERE (SELECT COUNT(*) FROM final_result) = 0
     AND bundle_id > min_bundle_id;
@@ -326,7 +261,7 @@ export const fingerprintStrategy = async (
       minBundleId,
       channel,
       fingerprintHash,
-      deviceId ?? "",
+      cohort ?? "",
     )
     .first<{
       id: string;
@@ -335,42 +270,24 @@ export const fingerprintStrategy = async (
       message: string | null;
       storage_uri: string | null;
       file_hash: string | null;
-      rollout_percentage: number | null;
-      target_device_ids: string | null;
+      rollout_cohort_count: number | null;
+      target_cohorts: string | null;
     }>();
 
   if (!result) {
     return null;
   }
 
-  if (deviceId && result.status === "UPDATE") {
-    // If device is in targetDeviceIds, skip percentage check (priority 1)
-    const targetDeviceIds = parseTargetDeviceIds(result.target_device_ids);
-    if (
-      targetDeviceIds &&
-      targetDeviceIds.length > 0 &&
-      targetDeviceIds.includes(deviceId)
-    ) {
-      // Device is explicitly targeted - skip percentage check
-      return {
-        id: result.id,
-        shouldForceUpdate: Boolean(result.should_force_update),
-        status: result.status,
-        message: result.message,
-        storageUri: result.storage_uri,
-        fileHash: result.file_hash,
-      } as UpdateInfo;
-    }
-
-    // Check percentage-based rollout (priority 2)
-    const eligible = isDeviceEligibleForPercentage(
-      deviceId,
-      result.rollout_percentage,
-    );
-
-    if (!eligible) {
-      return null;
-    }
+  if (
+    result.status === "UPDATE" &&
+    !isCohortEligibleForUpdate(
+      result.id,
+      cohort,
+      result.rollout_cohort_count,
+      parseTargetCohorts(result.target_cohorts),
+    )
+  ) {
+    return null;
   }
 
   return {

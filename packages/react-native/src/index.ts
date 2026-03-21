@@ -11,17 +11,17 @@ import {
   getBaseURL,
   getBundleId,
   getChannel,
+  getCohort,
   getCrashHistory,
   getDefaultChannel,
   getFingerprintHash,
   getManifest,
   getMinBundleId,
-  getUserId,
   isChannelSwitched,
   reload,
   resetChannel,
+  setCohort,
   setReloadBehavior,
-  setUserId,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -267,15 +267,15 @@ function createHotUpdaterClient() {
     isChannelSwitched,
 
     /**
-     * Sets a custom user ID for rollout calculations.
-     * If unset/empty, native device ID will be used.
+     * Sets a cohort override for rollout calculations.
+     * Pass an empty string to clear the override.
      */
-    setUserId,
+    setCohort,
 
     /**
-     * Gets the user ID used for rollout calculations.
+     * Gets the cohort used for rollout calculations.
      */
-    getUserId,
+    getCohort,
 
     /**
      * Adds a listener to HotUpdater events.

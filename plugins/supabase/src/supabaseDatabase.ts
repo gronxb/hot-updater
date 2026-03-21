@@ -1,3 +1,4 @@
+import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -24,7 +25,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         const { data, error } = await supabase
           .from("bundles")
           .select(
-            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata, rollout_percentage, target_device_ids",
+            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata, rollout_cohort_count, target_cohorts",
           )
           .eq("id", bundleId)
           .single();
@@ -45,8 +46,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
           metadata: data.metadata ?? {},
-          rolloutPercentage: data.rollout_percentage ?? 100,
-          targetDeviceIds: data.target_device_ids ?? null,
+          rolloutCohortCount:
+            data.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+          targetCohorts: data.target_cohorts ?? null,
         } as Bundle;
       },
 
@@ -69,7 +71,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         let query = supabase
           .from("bundles")
           .select(
-            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, rollout_percentage, target_device_ids",
+            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, rollout_cohort_count, target_cohorts",
           )
           .order("id", { ascending: false });
 
@@ -105,8 +107,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
               metadata: bundle.metadata ?? {},
-              rolloutPercentage: bundle.rollout_percentage ?? 100,
-              targetDeviceIds: bundle.target_device_ids ?? null,
+              rolloutCohortCount:
+                bundle.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+              targetCohorts: bundle.target_cohorts ?? null,
             }))
           : [];
 
@@ -160,8 +163,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
                 fingerprint_hash: bundle.fingerprintHash,
                 storage_uri: bundle.storageUri,
                 metadata: bundle.metadata,
-                rollout_percentage: bundle.rolloutPercentage ?? 100,
-                target_device_ids: bundle.targetDeviceIds ?? null,
+                rollout_cohort_count:
+                  bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                target_cohorts: bundle.targetCohorts ?? null,
               },
               { onConflict: "id" },
             );

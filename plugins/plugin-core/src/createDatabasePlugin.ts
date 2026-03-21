@@ -38,7 +38,7 @@ type DatabasePluginFactory<TConfig> = (
   config: TConfig,
 ) => DatabasePluginMethods;
 
-const REPLACE_ON_UPDATE_KEYS = ["targetDeviceIds"] as const;
+const REPLACE_ON_UPDATE_KEYS = ["targetCohorts"] as const;
 
 function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
   return mergeWith(baseBundle, patch, (_targetValue, sourceValue, key) => {

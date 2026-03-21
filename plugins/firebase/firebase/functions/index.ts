@@ -20,6 +20,18 @@ if (!admin.apps.length) {
 
 const app = new Hono();
 
+const decodeMaybe = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 app.get("/ping", (c) => {
   return c.text("pong");
 });
@@ -98,6 +110,7 @@ app.get("/api/check-update", async (c) => {
     const bundleId = c.req.header("x-bundle-id");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
+    const cohort = c.req.header("x-cohort");
     const fingerprintHash = c.req.header("x-fingerprint-hash");
 
     if (!bundleId || !platform) {
@@ -125,6 +138,7 @@ app.get("/api/check-update", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
+          cohort: cohort || undefined,
           _updateStrategy: "fingerprint" as const,
         } satisfies GetBundlesArgs)
       : ({
@@ -133,6 +147,7 @@ app.get("/api/check-update", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
+          cohort: cohort || undefined,
           _updateStrategy: "appVersion" as const,
         } satisfies GetBundlesArgs);
 
@@ -152,7 +167,7 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     try {
       const {
@@ -161,6 +176,7 @@ app.get(
         channel,
         minBundleId,
         bundleId,
+        cohort,
       } = c.req.param();
 
       if (!bundleId || !platform) {
@@ -178,6 +194,7 @@ app.get(
         bundleId,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
+        cohort: decodeMaybe(cohort),
         _updateStrategy: "appVersion" as const,
       } satisfies GetBundlesArgs;
 
@@ -198,11 +215,17 @@ app.get(
 );
 
 app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     try {
-      const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-        c.req.param();
+      const {
+        platform,
+        fingerprintHash,
+        channel,
+        minBundleId,
+        bundleId,
+        cohort,
+      } = c.req.param();
 
       if (!bundleId || !platform) {
         return c.json(
@@ -219,6 +242,7 @@ app.get(
         bundleId,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
+        cohort: decodeMaybe(cohort),
         _updateStrategy: "fingerprint" as const,
       } satisfies GetBundlesArgs;
 

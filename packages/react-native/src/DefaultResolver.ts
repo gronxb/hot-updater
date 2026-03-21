@@ -14,21 +14,18 @@ export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
     checkUpdate: async (
       params: ResolverCheckUpdateParams,
     ): Promise<AppUpdateInfo | null> => {
-      // Build URL based on strategy (existing buildUpdateUrl logic)
       let url: string;
-      const deviceIdPath = params.deviceId
-        ? `/${encodeURIComponent(params.deviceId)}`
-        : "";
+      const cohortPath = `/${encodeURIComponent(params.cohort)}`;
+
       if (params.updateStrategy === "fingerprint") {
         if (!params.fingerprintHash) {
           throw new Error("Fingerprint hash is required");
         }
-        url = `${baseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}${deviceIdPath}`;
+        url = `${baseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
       } else {
-        url = `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}${deviceIdPath}`;
+        url = `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
       }
 
-      // Use existing fetchUpdateInfo
       return fetchUpdateInfo({
         url,
         requestHeaders: params.requestHeaders,

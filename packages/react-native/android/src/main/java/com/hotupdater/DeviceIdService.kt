@@ -5,29 +5,54 @@ import android.content.SharedPreferences
 import android.provider.Settings
 import java.util.UUID
 
-class DeviceIdService(
+class CohortService(
     private val context: Context,
 ) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("HotUpdaterDeviceId", Context.MODE_PRIVATE)
+        context.getSharedPreferences("HotUpdaterCohort", Context.MODE_PRIVATE)
 
     companion object {
-        private const val CUSTOM_USER_ID_KEY = "custom_user_id"
-        private const val FALLBACK_USER_ID_KEY = "fallback_user_id"
+        private const val CUSTOM_COHORT_KEY = "custom_cohort"
+        private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
     }
 
-    fun setUserId(customId: String) {
-        if (customId.isEmpty()) {
-            prefs.edit().remove(CUSTOM_USER_ID_KEY).apply()
+    private fun hashString(value: String): Int {
+        var hash = 0
+        for (char in value) {
+            hash = (hash shl 5) - hash + char.code
+        }
+        return hash
+    }
+
+    private fun defaultNumericCohort(identifier: String): String {
+        val hash = hashString(identifier)
+        val normalized = ((hash % 1000) + 1000) % 1000
+        return (normalized + 1).toString()
+    }
+
+    private fun fallbackIdentifier(): String {
+        val fallback = prefs.getString(FALLBACK_IDENTIFIER_KEY, null)
+        if (!fallback.isNullOrEmpty()) {
+            return fallback
+        }
+
+        val generated = UUID.randomUUID().toString()
+        prefs.edit().putString(FALLBACK_IDENTIFIER_KEY, generated).apply()
+        return generated
+    }
+
+    fun setCohort(cohort: String) {
+        if (cohort.isEmpty()) {
+            prefs.edit().remove(CUSTOM_COHORT_KEY).apply()
             return
         }
-        prefs.edit().putString(CUSTOM_USER_ID_KEY, customId).apply()
+        prefs.edit().putString(CUSTOM_COHORT_KEY, cohort).apply()
     }
 
-    fun getUserId(): String {
-        val customId = prefs.getString(CUSTOM_USER_ID_KEY, null)
-        if (!customId.isNullOrEmpty()) {
-            return customId
+    fun getCohort(): String {
+        val cohort = prefs.getString(CUSTOM_COHORT_KEY, null)
+        if (!cohort.isNullOrEmpty()) {
+            return cohort
         }
 
         val androidId =
@@ -36,16 +61,9 @@ class DeviceIdService(
                 Settings.Secure.ANDROID_ID,
             )
         if (!androidId.isNullOrEmpty()) {
-            return androidId
+            return defaultNumericCohort(androidId)
         }
 
-        val fallback = prefs.getString(FALLBACK_USER_ID_KEY, null)
-        if (!fallback.isNullOrEmpty()) {
-            return fallback
-        }
-
-        val generated = UUID.randomUUID().toString()
-        prefs.edit().putString(FALLBACK_USER_ID_KEY, generated).apply()
-        return generated
+        return defaultNumericCohort(fallbackIdentifier())
     }
 }
