@@ -8,6 +8,7 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
+import { uuidv7 } from "uuidv7";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -47,6 +48,7 @@ const runBundle = async ({
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
   const entryFile = resolveMain(cwd);
+  const bundleId = uuidv7();
 
   const args = [
     "expo",
@@ -71,10 +73,6 @@ const runBundle = async ({
   try {
     const result = await execa("npx", args, {
       cwd,
-      env: {
-        ...process.env,
-        BUILD_OUT_DIR: buildPath,
-      },
       reject: true,
     });
     stdout = result.stdout;
@@ -82,21 +80,6 @@ const runBundle = async ({
     if (error instanceof ExecaError) {
       throw error.stderr;
     }
-  }
-
-  const bundleId = await fs.promises
-    .readFile(path.join(buildPath, "BUNDLE_ID"), "utf-8")
-    .catch(() => null);
-
-  if (!bundleId) {
-    throw new Error(`If you are using Babel, please check if '@hot-updater/expo/babel-plugin' is configured in babel.config.js
-Example:
-module.exports = {
-  plugins: [
-    ["@hot-updater/expo/babel-plugin"]
-  ]
-}
-`);
   }
 
   const enableHermes = isHermesEnabled(cwd, platform);

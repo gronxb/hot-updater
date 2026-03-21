@@ -655,9 +655,6 @@ importers:
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
-      '@hot-updater/expo':
-        specifier: workspace:*
-        version: link:../../plugins/expo
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:../../plugins/standalone
@@ -758,9 +755,6 @@ importers:
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
-      '@hot-updater/expo':
-        specifier: workspace:*
-        version: link:../../plugins/expo
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -864,9 +858,6 @@ importers:
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
-      '@hot-updater/expo':
-        specifier: workspace:*
-        version: link:../../plugins/expo
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
@@ -988,9 +979,6 @@ importers:
       '@hot-updater/cloudflare':
         specifier: workspace:*
         version: link:../../plugins/cloudflare
-      '@hot-updater/expo':
-        specifier: workspace:*
-        version: link:../../plugins/expo
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
@@ -1645,6 +1633,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -1652,9 +1643,6 @@ importers:
       execa:
         specifier: 'catalog:'
         version: 9.5.2
-      uuidv7:
-        specifier: ^1.0.2
-        version: 1.0.2
 
   plugins/cloudflare:
     dependencies:
@@ -1927,6 +1915,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      uuidv7:
+        specifier: ^1.0.2
+        version: 1.0.2
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -1934,9 +1925,6 @@ importers:
       execa:
         specifier: 'catalog:'
         version: 9.5.2
-      uuidv7:
-        specifier: ^1.0.2
-        version: 1.0.2
 
   plugins/sentry-plugin:
     dependencies:

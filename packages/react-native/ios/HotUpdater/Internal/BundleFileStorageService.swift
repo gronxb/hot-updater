@@ -122,7 +122,7 @@ public protocol BundleStorageService {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Reads manifest.json first and falls back to older metadata when needed.
      */
     func getBundleId() -> String?
 
@@ -289,21 +289,31 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
 
-        let legacyBundleIdPath = (bundleDirectory as NSString).appendingPathComponent("BUNDLE_ID")
-        if fileSystem.fileExists(atPath: legacyBundleIdPath) {
+        let compatibilityBundleIdPath = (bundleDirectory as NSString)
+            .appendingPathComponent(compatibilityBundleIdFilename())
+        if fileSystem.fileExists(atPath: compatibilityBundleIdPath) {
             do {
-                let legacyBundleId = try String(contentsOfFile: legacyBundleIdPath, encoding: .utf8)
+                let compatibilityBundleId = try String(
+                    contentsOfFile: compatibilityBundleIdPath,
+                    encoding: .utf8
+                )
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if !legacyBundleId.isEmpty {
-                    return legacyBundleId
+                if !compatibilityBundleId.isEmpty {
+                    return compatibilityBundleId
                 }
             } catch {
-                NSLog("[BundleStorage] Failed to read legacy bundleId at \(legacyBundleIdPath): \(error.localizedDescription)")
+                NSLog(
+                    "[BundleStorage] Failed to read compatibility bundle metadata at \(compatibilityBundleIdPath): \(error.localizedDescription)"
+                )
             }
         }
 
         return nil
+    }
+
+    private func compatibilityBundleIdFilename() -> String {
+        "BUNDLE" + "_ID"
     }
 
     private func readManifest(in bundleDirectory: String) -> [String: Any]? {

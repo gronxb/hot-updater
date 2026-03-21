@@ -27,7 +27,6 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
-    "@hot-updater/expo": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",

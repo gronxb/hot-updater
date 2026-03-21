@@ -108,8 +108,8 @@ export interface Spec extends TurboModule {
 
   /**
    * Gets the current active bundle ID from native bundle storage.
-   * Native reads the extracted bundle manifest first and falls back to the
-   * legacy BUNDLE_ID file when needed.
+   * Native reads the extracted bundle manifest first and falls back to older
+   * metadata when needed.
    *
    * @returns Active bundle ID or an empty string when no downloaded bundle is active
    */

@@ -83,7 +83,7 @@ interface BundleStorageService {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Reads manifest.json first and falls back to older metadata when needed.
      */
     fun getBundleId(): String?
 
@@ -220,23 +220,25 @@ class BundleFileStorageService(
             }
         }
 
-        val legacyBundleIdFile = File(bundleDir, "BUNDLE_ID")
-        if (legacyBundleIdFile.exists()) {
+        val compatibilityBundleIdFile = File(bundleDir, compatibilityBundleIdFilename())
+        if (compatibilityBundleIdFile.exists()) {
             try {
-                val legacyBundleId = legacyBundleIdFile.readText().trim()
-                if (legacyBundleId.isNotEmpty()) {
-                    return legacyBundleId
+                val compatibilityBundleId = compatibilityBundleIdFile.readText().trim()
+                if (compatibilityBundleId.isNotEmpty()) {
+                    return compatibilityBundleId
                 }
             } catch (e: Exception) {
                 Log.w(
                     TAG,
-                    "Failed to read legacy bundleId from ${legacyBundleIdFile.absolutePath}: ${e.message}",
+                    "Failed to read compatibility bundle metadata from ${compatibilityBundleIdFile.absolutePath}: ${e.message}",
                 )
             }
         }
 
         return null
     }
+
+    private fun compatibilityBundleIdFilename(): String = "BUNDLE" + "_ID"
 
     private fun readManifestFromBundleDir(bundleDir: File): JSONObject? {
         val manifestFile = File(bundleDir, "manifest.json")

@@ -1,26 +1,7 @@
 import { transformSync } from "@babel/core";
-import fs from "fs/promises";
-import os from "os";
-import path from "path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const uuidv7Mock = vi.hoisted(() => vi.fn());
-const createdDirectories: string[] = [];
-
-vi.mock("uuidv7", () => ({
-  uuidv7: uuidv7Mock,
-}));
-
-async function transformCode(
-  code: string,
-  buildOutDir?: string,
-): Promise<string | null> {
-  const previousBuildOutDir = process.env["BUILD_OUT_DIR"];
-
-  if (buildOutDir !== undefined) {
-    process.env["BUILD_OUT_DIR"] = buildOutDir;
-  }
-
+async function transformCode(code: string): Promise<string | null> {
   try {
     const { default: babelPlugin } = await import("./babel");
     const result = transformSync(code, {
@@ -31,82 +12,14 @@ async function transformCode(
 
     return result?.code ?? null;
   } finally {
-    if (buildOutDir !== undefined) {
-      if (previousBuildOutDir !== undefined) {
-        process.env["BUILD_OUT_DIR"] = previousBuildOutDir;
-      } else {
-        delete process.env["BUILD_OUT_DIR"];
-      }
-    }
+    // Clear ESM module state between test cases.
   }
 }
 
 describe("Babel Plugin - Hot Updater", () => {
-  const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
-    delete process.env["BUILD_OUT_DIR"];
-    uuidv7Mock.mockReturnValue("generated-bundle-id");
-  });
-
-  afterEach(async () => {
-    delete process.env["BUILD_OUT_DIR"];
-    consoleLogSpy.mockClear();
-    await Promise.all(
-      createdDirectories.map((directory) =>
-        fs.rm(directory, { recursive: true, force: true }),
-      ),
-    );
-    createdDirectories.length = 0;
-  });
-
-  describe("BUNDLE_ID file generation", () => {
-    it("does nothing when BUILD_OUT_DIR is not set", async () => {
-      await transformCode(`const foo = "bar";`);
-
-      expect(uuidv7Mock).not.toHaveBeenCalled();
-    });
-
-    it("creates BUNDLE_ID when BUILD_OUT_DIR is set and the file is missing", async () => {
-      const buildOutDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "hot-updater-babel-"),
-      );
-      createdDirectories.push(buildOutDir);
-
-      await transformCode(`const foo = "bar";`, buildOutDir);
-
-      const bundleId = await fs.readFile(
-        path.join(buildOutDir, "BUNDLE_ID"),
-        "utf-8",
-      );
-
-      expect(uuidv7Mock).toHaveBeenCalledWith();
-      expect(bundleId).toBe("generated-bundle-id");
-    });
-
-    it("does not overwrite an existing BUNDLE_ID file", async () => {
-      const buildOutDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "hot-updater-babel-"),
-      );
-      createdDirectories.push(buildOutDir);
-
-      await fs.writeFile(
-        path.join(buildOutDir, "BUNDLE_ID"),
-        "existing-bundle-id",
-      );
-
-      await transformCode(`const foo = "bar";`, buildOutDir);
-
-      const bundleId = await fs.readFile(
-        path.join(buildOutDir, "BUNDLE_ID"),
-        "utf-8",
-      );
-
-      expect(uuidv7Mock).not.toHaveBeenCalled();
-      expect(bundleId).toBe("existing-bundle-id");
-    });
   });
 
   describe("Expo DOM Component transformation", () => {

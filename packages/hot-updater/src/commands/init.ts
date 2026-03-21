@@ -44,7 +44,7 @@ export const init = async () => {
         value: {
           name: "bare",
           dependencies: [],
-          devDependencies: ["@hot-updater/bare", "@hot-updater/expo"],
+          devDependencies: ["@hot-updater/bare"],
         },
         hint: "React Native CLI",
         label: "Bare",
@@ -53,7 +53,7 @@ export const init = async () => {
         value: {
           name: "rock",
           dependencies: [],
-          devDependencies: ["@hot-updater/rock", "@hot-updater/expo"],
+          devDependencies: ["@hot-updater/rock"],
         },
         hint: "React Native Enterprise Framework by Callstack",
         label: "Rock",

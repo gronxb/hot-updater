@@ -1,7 +1,6 @@
 module.exports = {
   presets: ['module:@react-native/babel-preset'],
   plugins: [
-    '@hot-updater/expo/babel-plugin',
     [
       'module:react-native-dotenv',
       {

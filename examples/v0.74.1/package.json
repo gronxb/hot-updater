@@ -27,7 +27,6 @@
     "@babel/runtime": "^7.24.5",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
-    "@hot-updater/expo": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli-platform-android": "13.6.6",

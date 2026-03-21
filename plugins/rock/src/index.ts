@@ -7,6 +7,7 @@ import type {
 import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
+import { uuidv7 } from "uuidv7";
 
 interface RunBundleArgs {
   entryFile: string;
@@ -27,6 +28,7 @@ const runBundle = async ({
 }: RunBundleArgs) => {
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
+  const bundleId = uuidv7();
 
   const args = [
     "rock",
@@ -51,10 +53,6 @@ const runBundle = async ({
   try {
     const result = await execa("npx", args, {
       cwd,
-      env: {
-        ...process.env,
-        BUILD_OUT_DIR: buildPath,
-      },
       reject: true,
     });
     stdout = result.stdout;
@@ -62,25 +60,6 @@ const runBundle = async ({
     if (error instanceof ExecaError) {
       throw error.stderr;
     }
-  }
-
-  const bundleId = await fs
-    .readFile(path.join(buildPath, "BUNDLE_ID"), "utf-8")
-    .catch(() => null);
-
-  if (!bundleId) {
-    throw new Error(`Could not find BUNDLE_ID in the build output.
-
-Please check if '@hot-updater/expo/babel-plugin' is configured in babel.config.js.
-This plugin is required for bare and Rock builds, including Re.Pack-based Babel pipelines.
-
-Example:
-module.exports = {
-  plugins: [
-    ["@hot-updater/expo/babel-plugin"]
-  ]
-}
-`);
   }
 
   return {

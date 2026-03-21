@@ -21,7 +21,6 @@
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
-    "@hot-updater/expo": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli": "15.0.1",
     "@react-native-community/cli-platform-android": "15.0.1",
