@@ -191,6 +191,20 @@ export function createOrmDatabaseCore({
         );
       };
 
+      const findLatestEligibleUpdateCandidate = (
+        rows: UpdateSelectRow[],
+        bundleId: string,
+        cohort: string | undefined,
+      ): UpdateSelectRow | null => {
+        return (
+          rows.find(
+            (row) =>
+              row.id.localeCompare(bundleId) > 0 &&
+              isEligibleForUpdate(row, cohort),
+          ) ?? null
+        );
+      };
+
       const appVersionStrategy = async ({
         platform,
         appVersion,
@@ -251,40 +265,30 @@ export function createOrmDatabaseCore({
           b.id.localeCompare(a.id);
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
-        const latestCandidate = sorted[0] ?? null;
         const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+        const updateCandidate = findLatestEligibleUpdateCandidate(
+          sorted,
+          bundleId,
+          cohort,
+        );
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
         if (bundleId === NIL_UUID) {
-          if (latestCandidate && latestCandidate.id !== bundleId) {
-            if (!isEligibleForUpdate(latestCandidate, cohort)) {
-              return null;
-            }
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
         if (currentBundle) {
-          if (
-            latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
-          ) {
-            if (!isEligibleForUpdate(latestCandidate, cohort)) {
-              return null;
-            }
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
         if (updateCandidate) {
-          if (!isEligibleForUpdate(updateCandidate, cohort)) {
-            return null;
-          }
           return toUpdateInfo(updateCandidate, "UPDATE");
         }
         if (rollbackCandidate) {
@@ -332,40 +336,30 @@ export function createOrmDatabaseCore({
           b.id.localeCompare(a.id);
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
-        const latestCandidate = sorted[0] ?? null;
         const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+        const updateCandidate = findLatestEligibleUpdateCandidate(
+          sorted,
+          bundleId,
+          cohort,
+        );
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
         if (bundleId === NIL_UUID) {
-          if (latestCandidate && latestCandidate.id !== bundleId) {
-            if (!isEligibleForUpdate(latestCandidate, cohort)) {
-              return null;
-            }
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
         if (currentBundle) {
-          if (
-            latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
-          ) {
-            if (!isEligibleForUpdate(latestCandidate, cohort)) {
-              return null;
-            }
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
         if (updateCandidate) {
-          if (!isEligibleForUpdate(updateCandidate, cohort)) {
-            return null;
-          }
           return toUpdateInfo(updateCandidate, "UPDATE");
         }
         if (rollbackCandidate) {

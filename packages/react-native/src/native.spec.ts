@@ -8,6 +8,7 @@ const nativeModuleMock = vi.hoisted(() => {
     clearCrashHistory: vi.fn(() => true),
     getBaseURL: vi.fn<() => string | null>(() => null),
     getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
+    getCohort: vi.fn<() => string>(() => "123"),
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
@@ -20,6 +21,7 @@ const nativeModuleMock = vi.hoisted(() => {
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
     resetChannel: vi.fn(),
+    setCohort: vi.fn(),
     setBundleURL: vi.fn(),
     switchChannel: vi.fn(),
     updateBundle: vi.fn(),
@@ -58,6 +60,8 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getBundleId.mockReturnValue("bundle-id");
     nativeModuleMock.getBaseURL.mockReturnValue(null);
     nativeModuleMock.getCrashHistory.mockReturnValue([]);
+    nativeModuleMock.getCohort.mockReset();
+    nativeModuleMock.getCohort.mockReturnValue("123");
     nativeModuleMock.getManifest.mockReset();
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {
@@ -68,6 +72,7 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-id",
     });
     nativeModuleMock.resetChannel.mockReset();
+    nativeModuleMock.setCohort.mockReset();
     nativeModuleMock.updateBundle.mockReset();
   });
 
@@ -404,5 +409,40 @@ describe("notifyAppReady", () => {
     const { getCrashHistory } = await import("./native");
 
     expect(getCrashHistory()).toEqual([]);
+  });
+
+  it("passes normalized cohort overrides to native", async () => {
+    const { setCohort } = await import("./native");
+
+    setCohort(" QA-Group ");
+
+    expect(nativeModuleMock.setCohort).toHaveBeenCalledWith("qa-group");
+  });
+
+  it("uses the native clear sentinel when clearing the cohort override", async () => {
+    const { setCohort } = await import("./native");
+
+    setCohort("");
+
+    expect(nativeModuleMock.setCohort).toHaveBeenCalledWith(
+      "__hot_updater_clear__",
+    );
+  });
+
+  it("throws for invalid cohort overrides", async () => {
+    const { setCohort } = await import("./native");
+
+    expect(() => setCohort("Bad Cohort")).toThrow(
+      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+    );
+    expect(nativeModuleMock.setCohort).not.toHaveBeenCalled();
+  });
+
+  it("returns the cohort reported by native", async () => {
+    nativeModuleMock.getCohort.mockReturnValue("qa-group");
+
+    const { getCohort } = await import("./native");
+
+    expect(getCohort()).toBe("qa-group");
   });
 });

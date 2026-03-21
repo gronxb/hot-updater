@@ -3,6 +3,7 @@ import UIKit
 
 final class CohortService {
     private let userDefaults: UserDefaults
+    private let clearOverrideSentinel = "__hot_updater_clear__"
 
     private let customCohortKey = "HotUpdater_CustomCohort"
     private let fallbackIdentifierKey = "HotUpdater_FallbackCohortIdentifier"
@@ -38,7 +39,7 @@ final class CohortService {
     }
 
     func setCohort(_ cohort: String) {
-        if cohort.isEmpty {
+        if cohort.isEmpty || cohort == clearOverrideSentinel {
             userDefaults.removeObject(forKey: customCohortKey)
             return
         }

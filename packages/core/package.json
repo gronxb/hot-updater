@@ -12,6 +12,22 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./hotUpdateDirUtil": {
+      "import": "./dist/hotUpdateDirUtil.js",
+      "require": "./dist/hotUpdateDirUtil.cjs"
+    },
+    "./rollout": {
+      "import": "./dist/rollout.js",
+      "require": "./dist/rollout.cjs"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "require": "./dist/types.cjs"
+    },
+    "./uuid": {
+      "import": "./dist/uuid.js",
+      "require": "./dist/uuid.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

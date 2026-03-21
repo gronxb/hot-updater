@@ -22,6 +22,15 @@
 		<string>????</string>
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
+		<key>CFBundleURLTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>hotupdaterexample</string>
+				</array>
+			</dict>
+		</array>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
 		<string>375ccd5f2d85d8cb55d7ccf3991032cca7e3c51d</string>
 		<key>LSRequiresIPhoneOS</key>

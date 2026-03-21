@@ -45,20 +45,6 @@ BEGIN
         WHERE cb.id = bundle_id
         LIMIT 1
     ),
-    any_update_candidate AS (
-        SELECT
-            cb.id,
-            cb.should_force_update,
-            cb.message,
-            cb.storage_uri,
-            cb.file_hash,
-            cb.rollout_cohort_count,
-            cb.target_cohorts
-        FROM candidate_bundles cb
-        WHERE cb.id > bundle_id
-        ORDER BY cb.id DESC
-        LIMIT 1
-    ),
     eligible_update_candidate AS (
         SELECT
             cb.id,
@@ -67,13 +53,16 @@ BEGIN
             'UPDATE' AS status,
             cb.storage_uri,
             cb.file_hash
-        FROM any_update_candidate cb
-        WHERE is_cohort_eligible(
-            cb.id,
-            cohort,
-            cb.rollout_cohort_count,
-            cb.target_cohorts
-        )
+        FROM candidate_bundles cb
+        WHERE cb.id > bundle_id
+          AND is_cohort_eligible(
+              cb.id,
+              cohort,
+              cb.rollout_cohort_count,
+              cb.target_cohorts
+          )
+        ORDER BY cb.id DESC
+        LIMIT 1
     ),
     rollback_candidate AS (
         SELECT
@@ -86,7 +75,7 @@ BEGIN
         FROM candidate_bundles cb
         WHERE cb.id < bundle_id
           AND NOT EXISTS (SELECT 1 FROM current_candidate)
-          AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+          AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY cb.id DESC
         LIMIT 1
     ),
@@ -113,7 +102,7 @@ BEGIN
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
       AND NOT EXISTS (SELECT 1 FROM current_candidate)
-      AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+      AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
       AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
 $$;

@@ -4,13 +4,12 @@ import type {
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
   UpdateInfo,
-  UpdateStatus,
 } from "@hot-updater/core";
+import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  isCohortEligibleForUpdate,
-} from "@hot-updater/core";
-import { filterCompatibleAppVersions } from "@hot-updater/js";
+  filterCompatibleAppVersions,
+  getUpdateInfo as getUpdateInfoJS,
+} from "@hot-updater/js";
 import type { Firestore } from "firebase-admin/firestore";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -40,35 +39,6 @@ const convertToBundle = (data: any): Bundle => ({
   targetCohorts: data.target_cohorts || null,
 });
 
-const makeResponse = (bundle: Bundle, status: UpdateStatus): UpdateInfo => ({
-  id: bundle.id,
-  message: bundle.message,
-  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
-  status,
-  storageUri: bundle.storageUri,
-  fileHash: bundle.fileHash,
-});
-
-const makeResponseWithRollout = (
-  bundle: Bundle,
-  status: UpdateStatus,
-  cohort: string | undefined,
-): UpdateInfo | null => {
-  if (
-    status === "UPDATE" &&
-    !isCohortEligibleForUpdate(
-      bundle.id,
-      cohort,
-      bundle.rolloutCohortCount,
-      bundle.targetCohorts,
-    )
-  ) {
-    return null;
-  }
-
-  return makeResponse(bundle, status);
-};
-
 export const getUpdateInfo = async (
   db: Firestore,
   args: GetBundlesArgs,
@@ -95,119 +65,30 @@ const fingerprintStrategy = async (
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
-    let currentBundle: Bundle | null = null;
-    if (bundleId !== NIL_UUID) {
-      const doc = await db.collection("bundles").doc(bundleId).get();
-      if (doc.exists) {
-        const data = doc.data()!;
-        if (data.channel !== channel) {
-          return null;
-        }
-        currentBundle = convertToBundle(data);
-      }
-    }
-
     if (bundleId.localeCompare(minBundleId) < 0) {
       return null;
     }
 
-    const baseQuery = db
+    const snapshot = await db
       .collection("bundles")
       .where("platform", "==", platform)
       .where("channel", "==", channel)
       .where("enabled", "==", true)
       .where("id", ">=", minBundleId)
-      .where("fingerprint_hash", "==", fingerprintHash);
+      .where("fingerprint_hash", "==", fingerprintHash)
+      .get();
 
-    let updateCandidate: Bundle | null = null;
-    let rollbackCandidate: Bundle | null = null;
+    const bundles = snapshot.docs.map((doc) => convertToBundle(doc.data()));
 
-    if (bundleId === NIL_UUID) {
-      // Two-stage query for UPDATE candidates when cohort is provided
-      if (cohort) {
-        // Stage 1: Try to find bundle with explicit targetCohorts match
-        const targetedSnap = await baseQuery
-          .where("target_cohorts", "array-contains", cohort)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-
-        if (!targetedSnap.empty) {
-          updateCandidate = convertToBundle(targetedSnap.docs[0].data());
-        }
-      }
-
-      // Stage 2: If no targeted match, query without array-contains filter
-      if (!updateCandidate) {
-        const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
-        if (!snap.empty) {
-          updateCandidate = convertToBundle(snap.docs[0].data());
-        }
-      }
-    } else {
-      // UPDATE candidate query
-      if (cohort) {
-        // Stage 1: Try with array-contains filter
-        const targetedUpdateSnap = await baseQuery
-          .where("id", ">=", bundleId)
-          .where("target_cohorts", "array-contains", cohort)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-
-        if (!targetedUpdateSnap.empty) {
-          updateCandidate = convertToBundle(targetedUpdateSnap.docs[0].data());
-        }
-      }
-
-      // Stage 2: If no targeted match, query without array-contains
-      if (!updateCandidate) {
-        const updateSnap = await baseQuery
-          .where("id", ">=", bundleId)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-        if (!updateSnap.empty) {
-          updateCandidate = convertToBundle(updateSnap.docs[0].data());
-        }
-      }
-
-      // ROLLBACK candidate query (no array-contains filter for rollbacks)
-      const rollbackSnap = await baseQuery
-        .where("id", "<", bundleId)
-        .orderBy("id", "desc")
-        .limit(1)
-        .get();
-      if (!rollbackSnap.empty) {
-        rollbackCandidate = convertToBundle(rollbackSnap.docs[0].data());
-      }
-    }
-
-    if (bundleId === NIL_UUID) {
-      return updateCandidate
-        ? makeResponseWithRollout(updateCandidate, "UPDATE", cohort)
-        : null;
-    }
-    if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
-    }
-
-    if (updateCandidate && updateCandidate.id === bundleId) {
-      if (currentBundle?.enabled) {
-        return null;
-      }
-      return rollbackCandidate
-        ? makeResponse(rollbackCandidate, "ROLLBACK")
-        : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-
-    if (!updateCandidate) {
-      if (rollbackCandidate) {
-        return makeResponse(rollbackCandidate, "ROLLBACK");
-      }
-      return bundleId === minBundleId ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-    return null;
+    return getUpdateInfoJS(bundles, {
+      platform,
+      fingerprintHash,
+      bundleId,
+      minBundleId,
+      channel,
+      cohort,
+      _updateStrategy: "fingerprint",
+    });
   } catch (error) {
     console.error("Error in getUpdateInfo:", error);
     throw error;
@@ -226,18 +107,6 @@ const appVersionStrategy = async (
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   try {
-    let currentBundle: Bundle | null = null;
-    if (bundleId !== NIL_UUID) {
-      const doc = await db.collection("bundles").doc(bundleId).get();
-      if (doc.exists) {
-        const data = doc.data()!;
-        if (data.channel !== channel) {
-          return null;
-        }
-        currentBundle = convertToBundle(data);
-      }
-    }
-
     if (bundleId.localeCompare(minBundleId) < 0) {
       return null;
     }
@@ -266,103 +135,26 @@ const appVersionStrategy = async (
       return bundleId === minBundleId ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
     }
 
-    const baseQuery = db
+    const snapshot = await db
       .collection("bundles")
       .where("platform", "==", platform)
       .where("channel", "==", channel)
       .where("enabled", "==", true)
       .where("id", ">=", minBundleId)
-      .where("target_app_version", "in", targetAppVersionList);
+      .where("target_app_version", "in", targetAppVersionList)
+      .get();
 
-    let updateCandidate: Bundle | null = null;
-    let rollbackCandidate: Bundle | null = null;
+    const bundles = snapshot.docs.map((doc) => convertToBundle(doc.data()));
 
-    if (bundleId === NIL_UUID) {
-      // Two-stage query for UPDATE candidates when cohort is provided
-      if (cohort) {
-        // Stage 1: Try to find bundle with explicit targetCohorts match
-        const targetedSnap = await baseQuery
-          .where("target_cohorts", "array-contains", cohort)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-
-        if (!targetedSnap.empty) {
-          updateCandidate = convertToBundle(targetedSnap.docs[0].data());
-        }
-      }
-
-      // Stage 2: If no targeted match, query without array-contains filter
-      if (!updateCandidate) {
-        const snap = await baseQuery.orderBy("id", "desc").limit(1).get();
-        if (!snap.empty) {
-          updateCandidate = convertToBundle(snap.docs[0].data());
-        }
-      }
-    } else {
-      // UPDATE candidate query
-      if (cohort) {
-        // Stage 1: Try with array-contains filter
-        const targetedUpdateSnap = await baseQuery
-          .where("id", ">=", bundleId)
-          .where("target_cohorts", "array-contains", cohort)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-
-        if (!targetedUpdateSnap.empty) {
-          updateCandidate = convertToBundle(targetedUpdateSnap.docs[0].data());
-        }
-      }
-
-      // Stage 2: If no targeted match, query without array-contains
-      if (!updateCandidate) {
-        const updateSnap = await baseQuery
-          .where("id", ">=", bundleId)
-          .orderBy("id", "desc")
-          .limit(1)
-          .get();
-        if (!updateSnap.empty) {
-          updateCandidate = convertToBundle(updateSnap.docs[0].data());
-        }
-      }
-
-      // ROLLBACK candidate query (no array-contains filter for rollbacks)
-      const rollbackSnap = await baseQuery
-        .where("id", "<", bundleId)
-        .orderBy("id", "desc")
-        .limit(1)
-        .get();
-      if (!rollbackSnap.empty) {
-        rollbackCandidate = convertToBundle(rollbackSnap.docs[0].data());
-      }
-    }
-
-    if (bundleId === NIL_UUID) {
-      return updateCandidate
-        ? makeResponseWithRollout(updateCandidate, "UPDATE", cohort)
-        : null;
-    }
-    if (updateCandidate && updateCandidate.id !== bundleId) {
-      return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
-    }
-
-    if (updateCandidate && updateCandidate.id === bundleId) {
-      if (currentBundle?.enabled) {
-        return null;
-      }
-      return rollbackCandidate
-        ? makeResponse(rollbackCandidate, "ROLLBACK")
-        : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-
-    if (!updateCandidate) {
-      if (rollbackCandidate) {
-        return makeResponse(rollbackCandidate, "ROLLBACK");
-      }
-      return bundleId === minBundleId ? null : INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-    }
-    return null;
+    return getUpdateInfoJS(bundles, {
+      platform,
+      appVersion,
+      bundleId,
+      minBundleId,
+      channel,
+      cohort,
+      _updateStrategy: "appVersion",
+    });
   } catch (error) {
     console.error("Error in getUpdateInfo:", error);
     throw error;

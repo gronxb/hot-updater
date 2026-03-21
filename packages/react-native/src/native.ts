@@ -1,8 +1,4 @@
-import {
-  isValidCohort,
-  normalizeCohortValue,
-  type UpdateStatus,
-} from "@hot-updater/core";
+import type { UpdateStatus } from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
@@ -12,6 +8,35 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const NUMERIC_COHORT_SIZE = 1000;
+const CUSTOM_COHORT_PATTERN = /^[a-z0-9-]+$/;
+const CLEAR_COHORT_SENTINEL = "__hot_updater_clear__";
+
+const normalizeCohortValue = (cohort: string): string => {
+  const normalized = cohort.trim().toLowerCase();
+
+  if (!/^\d+$/.test(normalized)) {
+    return normalized;
+  }
+
+  const parsed = Number.parseInt(normalized, 10);
+  if (Number.isNaN(parsed) || parsed < 1 || parsed > NUMERIC_COHORT_SIZE) {
+    return normalized;
+  }
+
+  return String(parsed);
+};
+
+const isValidCohort = (cohort: string): boolean => {
+  const normalized = normalizeCohortValue(cohort);
+
+  if (/^\d+$/.test(normalized)) {
+    const parsed = Number.parseInt(normalized, 10);
+    return parsed >= 1 && parsed <= NUMERIC_COHORT_SIZE;
+  }
+
+  return CUSTOM_COHORT_PATTERN.test(normalized);
+};
 
 export interface ManifestAsset {
   fileHash: string;
@@ -680,7 +705,7 @@ export const resetChannel = async (): Promise<boolean> => {
 export const setCohort = (cohort: string): void => {
   const normalized = normalizeCohortValue(cohort);
   if (normalized.length === 0) {
-    HotUpdaterNative.setCohort("");
+    HotUpdaterNative.setCohort(CLEAR_COHORT_SENTINEL);
     return;
   }
 

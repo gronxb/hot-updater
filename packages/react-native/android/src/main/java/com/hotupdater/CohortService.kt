@@ -14,6 +14,7 @@ class CohortService(
     companion object {
         private const val CUSTOM_COHORT_KEY = "custom_cohort"
         private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
+        private const val CLEAR_OVERRIDE_SENTINEL = "__hot_updater_clear__"
     }
 
     private fun hashString(value: String): Int {
@@ -42,7 +43,7 @@ class CohortService(
     }
 
     fun setCohort(cohort: String) {
-        if (cohort.isEmpty()) {
+        if (cohort.isEmpty() || cohort == CLEAR_OVERRIDE_SENTINEL) {
             prefs.edit().remove(CUSTOM_COHORT_KEY).apply()
             return
         }

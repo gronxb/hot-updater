@@ -28,24 +28,36 @@ const makeResponse = (bundle: Bundle, status: UpdateStatus) => ({
   fileHash: bundle.fileHash,
 });
 
-const makeResponseWithRollout = (
+const isEligibleUpdateCandidate = (
   bundle: Bundle,
-  status: UpdateStatus,
   cohort: string | undefined,
-): UpdateInfo | null => {
-  if (
-    status === "UPDATE" &&
-    !isCohortEligibleForUpdate(
-      bundle.id,
-      cohort,
-      bundle.rolloutCohortCount,
-      bundle.targetCohorts,
-    )
-  ) {
-    return null;
+): boolean => {
+  return isCohortEligibleForUpdate(
+    bundle.id,
+    cohort,
+    bundle.rolloutCohortCount,
+    bundle.targetCohorts,
+  );
+};
+
+const findLatestEligibleUpdateCandidate = (
+  bundles: Bundle[],
+  bundleId: string,
+  cohort: string | undefined,
+): Bundle | null => {
+  let updateCandidate: Bundle | null = null;
+
+  for (const bundle of bundles) {
+    if (
+      bundle.id.localeCompare(bundleId) > 0 &&
+      isEligibleUpdateCandidate(bundle, cohort) &&
+      (!updateCandidate || bundle.id.localeCompare(updateCandidate.id) > 0)
+    ) {
+      updateCandidate = bundle;
+    }
   }
 
-  return makeResponse(bundle, status);
+  return updateCandidate;
 };
 
 export const getUpdateInfo = async (
@@ -101,60 +113,43 @@ const appVersionStrategy = async (
   }
 
   // Determine the latest bundle, update candidate, rollback candidate, and current bundle in a single iteration
-  let latestCandidate: Bundle | null = null;
-  let updateCandidate: Bundle | null = null;
   let rollbackCandidate: Bundle | null = null;
   let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
-    // Latest bundle (bundle with the largest ID)
-    if (!latestCandidate || b.id.localeCompare(latestCandidate.id) > 0) {
-      latestCandidate = b;
-    }
     // Check if current bundle exists
     if (b.id === bundleId) {
       currentBundle = b;
-    } else if (bundleId !== NIL_UUID) {
-      // Update candidate: largest ID among those greater than the current bundle
-      if (b.id.localeCompare(bundleId) > 0) {
-        if (!updateCandidate || b.id.localeCompare(updateCandidate.id) > 0) {
-          updateCandidate = b;
-        }
-      }
+    } else if (bundleId !== NIL_UUID && b.id.localeCompare(bundleId) < 0) {
       // Rollback candidate: largest ID among those smaller than the current bundle
-      else if (b.id.localeCompare(bundleId) < 0) {
-        if (
-          !rollbackCandidate ||
-          b.id.localeCompare(rollbackCandidate.id) > 0
-        ) {
-          rollbackCandidate = b;
-        }
+      if (!rollbackCandidate || b.id.localeCompare(rollbackCandidate.id) > 0) {
+        rollbackCandidate = b;
       }
     }
   }
 
+  const updateCandidate = findLatestEligibleUpdateCandidate(
+    candidateBundles,
+    bundleId,
+    cohort,
+  );
+
   if (bundleId === NIL_UUID) {
-    // For NIL_UUID, return an update if there's a latest candidate
-    if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
-      return makeResponseWithRollout(latestCandidate, "UPDATE", cohort);
+    if (updateCandidate) {
+      return makeResponse(updateCandidate, "UPDATE");
     }
     return null;
   }
 
   if (currentBundle) {
-    // If current bundle exists, compare with latest candidate to determine update
-    if (
-      latestCandidate &&
-      latestCandidate.id.localeCompare(currentBundle.id) > 0
-    ) {
-      return makeResponseWithRollout(latestCandidate, "UPDATE", cohort);
+    if (updateCandidate) {
+      return makeResponse(updateCandidate, "UPDATE");
     }
     return null;
   }
 
-  // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
-    return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
+    return makeResponse(updateCandidate, "UPDATE");
   }
   if (rollbackCandidate) {
     return makeResponse(rollbackCandidate, "ROLLBACK");
@@ -204,60 +199,43 @@ const fingerprintStrategy = async (
   }
 
   // Determine the latest bundle, update candidate, rollback candidate, and current bundle in a single iteration
-  let latestCandidate: Bundle | null = null;
-  let updateCandidate: Bundle | null = null;
   let rollbackCandidate: Bundle | null = null;
   let currentBundle: Bundle | undefined;
 
   for (const b of candidateBundles) {
-    // Latest bundle (bundle with the largest ID)
-    if (!latestCandidate || b.id.localeCompare(latestCandidate.id) > 0) {
-      latestCandidate = b;
-    }
     // Check if current bundle exists
     if (b.id === bundleId) {
       currentBundle = b;
-    } else if (bundleId !== NIL_UUID) {
-      // Update candidate: largest ID among those greater than the current bundle
-      if (b.id.localeCompare(bundleId) > 0) {
-        if (!updateCandidate || b.id.localeCompare(updateCandidate.id) > 0) {
-          updateCandidate = b;
-        }
-      }
+    } else if (bundleId !== NIL_UUID && b.id.localeCompare(bundleId) < 0) {
       // Rollback candidate: largest ID among those smaller than the current bundle
-      else if (b.id.localeCompare(bundleId) < 0) {
-        if (
-          !rollbackCandidate ||
-          b.id.localeCompare(rollbackCandidate.id) > 0
-        ) {
-          rollbackCandidate = b;
-        }
+      if (!rollbackCandidate || b.id.localeCompare(rollbackCandidate.id) > 0) {
+        rollbackCandidate = b;
       }
     }
   }
 
+  const updateCandidate = findLatestEligibleUpdateCandidate(
+    candidateBundles,
+    bundleId,
+    cohort,
+  );
+
   if (bundleId === NIL_UUID) {
-    // For NIL_UUID, return an update if there's a latest candidate
-    if (latestCandidate && latestCandidate.id.localeCompare(bundleId) > 0) {
-      return makeResponseWithRollout(latestCandidate, "UPDATE", cohort);
+    if (updateCandidate) {
+      return makeResponse(updateCandidate, "UPDATE");
     }
     return null;
   }
 
   if (currentBundle) {
-    // If current bundle exists, compare with latest candidate to determine update
-    if (
-      latestCandidate &&
-      latestCandidate.id.localeCompare(currentBundle.id) > 0
-    ) {
-      return makeResponseWithRollout(latestCandidate, "UPDATE", cohort);
+    if (updateCandidate) {
+      return makeResponse(updateCandidate, "UPDATE");
     }
     return null;
   }
 
-  // If current bundle doesn't exist, prioritize update candidate, then rollback candidate
   if (updateCandidate) {
-    return makeResponseWithRollout(updateCandidate, "UPDATE", cohort);
+    return makeResponse(updateCandidate, "UPDATE");
   }
   if (rollbackCandidate) {
     return makeResponse(rollbackCandidate, "ROLLBACK");

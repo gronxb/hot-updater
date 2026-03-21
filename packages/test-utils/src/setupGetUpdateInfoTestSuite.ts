@@ -2157,6 +2157,39 @@ export const setupGetUpdateInfoTestSuite = ({
         });
       });
 
+      it("returns the latest eligible update when a newer bundle targets a different cohort", async () => {
+        const eligibleBundleId = "00000000-0000-0000-0000-000000000020";
+        const blockedBundleId = "00000000-0000-0000-0000-000000000021";
+        const eligibleCohort = findNumericCohort(
+          eligibleBundleId,
+          (position) => position < 200,
+        );
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: eligibleBundleId,
+              rolloutCohortCount: 200,
+            }),
+            createRolloutBundle(strategy, {
+              id: blockedBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy),
+            cohort: eligibleCohort,
+          },
+        );
+
+        expect(update).toMatchObject({
+          id: eligibleBundleId,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
       it("applies ROLLBACK regardless of rollout settings", async () => {
         const bundle = createRolloutBundle(strategy, {
           rolloutCohortCount: 0,

@@ -13,8 +13,8 @@ export const bundles = pgTable("bundles", {
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
   metadata: json("metadata").notNull(),
-  rollout_percentage: integer("rollout_percentage").notNull().default(100),
-  target_device_ids: json("target_device_ids")
+  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
+  target_cohorts: json("target_cohorts")
 })
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {

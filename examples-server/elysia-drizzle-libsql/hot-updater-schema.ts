@@ -13,8 +13,8 @@ export const bundles = sqliteTable("bundles", {
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
   metadata: blob("metadata", { mode: "json" }).notNull(),
-  rollout_percentage: integer("rollout_percentage").notNull().default(100),
-  target_device_ids: blob("target_device_ids", { mode: "json" })
+  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
+  target_cohorts: blob("target_cohorts", { mode: "json" })
 })
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {

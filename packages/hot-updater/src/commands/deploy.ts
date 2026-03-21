@@ -7,7 +7,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import { HotUpdateDirUtil } from "@hot-updater/core";
+import { HotUpdateDirUtil } from "@hot-updater/core/hotUpdateDirUtil";
 import type { Platform } from "@hot-updater/plugin-core";
 import fs from "fs";
 import isPortReachable from "is-port-reachable";

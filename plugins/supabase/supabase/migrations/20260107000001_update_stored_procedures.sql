@@ -1,7 +1,6 @@
--- Update stored procedures to support cohort rollout filtering
--- Latest update candidates are selected first; cohort eligibility is then
--- applied to that candidate so ineligible cohorts do not silently fall back
--- to older updates.
+-- Update stored procedures to support cohort rollout filtering.
+-- Pick the latest eligible update for the request cohort instead of letting a
+-- newer ineligible bundle shadow an older eligible bundle.
 
 CREATE OR REPLACE FUNCTION get_update_info_by_app_version (
     app_platform   platforms,
@@ -27,23 +26,15 @@ DECLARE
     NIL_UUID CONSTANT uuid := '00000000-0000-0000-0000-000000000000';
 BEGIN
     RETURN QUERY
-    WITH any_update_candidate AS (
-        SELECT
-            b.id,
-            b.should_force_update,
-            b.message,
-            b.storage_uri,
-            b.file_hash,
-            b.rollout_cohort_count,
-            b.target_cohorts
+    WITH current_candidate AS (
+        SELECT b.id
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id >= bundle_id
-          AND b.id > min_bundle_id
+          AND b.id >= min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
           AND b.channel = target_channel
-        ORDER BY b.id DESC
+          AND b.id = bundle_id
         LIMIT 1
     ),
     eligible_update_candidate AS (
@@ -54,13 +45,21 @@ BEGIN
             'UPDATE' AS status,
             b.storage_uri,
             b.file_hash
-        FROM any_update_candidate b
-        WHERE is_cohort_eligible(
+        FROM bundles b
+        WHERE b.enabled = TRUE
+          AND b.platform = app_platform
+          AND b.id >= min_bundle_id
+          AND b.id > bundle_id
+          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND b.channel = target_channel
+          AND is_cohort_eligible(
             b.id,
             cohort,
             b.rollout_cohort_count,
             b.target_cohorts
         )
+        ORDER BY b.id DESC
+        LIMIT 1
     ),
     rollback_candidate AS (
         SELECT
@@ -74,8 +73,11 @@ BEGIN
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id < bundle_id
-          AND b.id > min_bundle_id
-          AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+          AND b.id >= min_bundle_id
+          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND b.channel = target_channel
+          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -101,14 +103,9 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
-      AND NOT EXISTS (
-          SELECT 1
-          FROM bundles b
-          WHERE b.id = bundle_id
-            AND b.enabled = TRUE
-            AND b.platform = app_platform
-      );
+      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
+      AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
 $$;
 
@@ -135,23 +132,15 @@ DECLARE
     NIL_UUID CONSTANT uuid := '00000000-0000-0000-0000-000000000000';
 BEGIN
     RETURN QUERY
-    WITH any_update_candidate AS (
-        SELECT
-            b.id,
-            b.should_force_update,
-            b.message,
-            b.storage_uri,
-            b.file_hash,
-            b.rollout_cohort_count,
-            b.target_cohorts
+    WITH current_candidate AS (
+        SELECT b.id
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
-          AND b.id >= bundle_id
-          AND b.id > min_bundle_id
+          AND b.id >= min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
-        ORDER BY b.id DESC
+          AND b.id = bundle_id
         LIMIT 1
     ),
     eligible_update_candidate AS (
@@ -162,13 +151,21 @@ BEGIN
             'UPDATE' AS status,
             b.storage_uri,
             b.file_hash
-        FROM any_update_candidate b
-        WHERE is_cohort_eligible(
+        FROM bundles b
+        WHERE b.enabled = TRUE
+          AND b.platform = app_platform
+          AND b.id >= min_bundle_id
+          AND b.id > bundle_id
+          AND b.channel = target_channel
+          AND b.fingerprint_hash = target_fingerprint_hash
+          AND is_cohort_eligible(
             b.id,
             cohort,
             b.rollout_cohort_count,
             b.target_cohorts
         )
+        ORDER BY b.id DESC
+        LIMIT 1
     ),
     rollback_candidate AS (
         SELECT
@@ -182,10 +179,11 @@ BEGIN
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id < bundle_id
-          AND b.id > min_bundle_id
+          AND b.id >= min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
-          AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
+          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY b.id DESC
         LIMIT 1
     ),
@@ -211,13 +209,8 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (SELECT 1 FROM any_update_candidate)
-      AND NOT EXISTS (
-          SELECT 1
-          FROM bundles b
-          WHERE b.id = bundle_id
-            AND b.enabled = TRUE
-            AND b.platform = app_platform
-      );
+      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
+      AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
 $$;

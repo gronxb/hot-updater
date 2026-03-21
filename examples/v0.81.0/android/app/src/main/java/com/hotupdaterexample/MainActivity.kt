@@ -17,6 +17,7 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onNewIntent(intent: Intent) {
+    setIntent(intent)
     super.onNewIntent(intent)
     logRestartIntent(intent)
   }

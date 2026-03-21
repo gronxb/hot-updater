@@ -26,8 +26,8 @@ model bundles {
   target_app_version String?
   fingerprint_hash String?
   metadata Json
-  rollout_percentage Int @default(100)
-  target_device_ids Json?
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
