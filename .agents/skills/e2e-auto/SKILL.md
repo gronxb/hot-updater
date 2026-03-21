@@ -23,6 +23,9 @@ This skill owns the scenario. Do not ask the caller to provide the test steps.
 - Use `agent-device snapshot -i`; do not use screenshots unless the caller explicitly asks.
 - Keep the success marker out of the crash bundle. The success marker must reappear only if rollback returns to the previous stable bundle.
 - Public launch status should only be `STABLE` or `RECOVERED`.
+- For the crash phase, the crash patch must live at module top level, outside
+  `App`, so the OTA bundle fails during JS module evaluation. Do not use
+  `useEffect`, component-body throws, or button-driven crashes for this skill.
 
 ## Fixed Scenario
 
@@ -124,6 +127,107 @@ agent-device diff snapshot -i
 <repo-root>/.agents/skills/e2e/scripts/inspect_android_state.sh
 ```
 
+## UI Funnel And Snapshot Playbook
+
+The example app now uses a non-scroll home screen plus modal panels.
+In this skill, the home screen is the primary evidence for pass/fail.
+Only open a modal when you need extra detail that is not already visible on the
+home screen.
+
+### Home Screen First
+
+After every clean launch or relaunch:
+
+1. Run `agent-device snapshot -i` on the home screen before pressing anything.
+2. Use this first home snapshot as the primary checkpoint for:
+   - `Bundle ID`
+   - `Manifest Bundle ID`
+   - `Scenario Marker` when the temporary success patch is present
+   - pretty-printed status JSON
+   - crash history summary
+3. Do not start by opening a modal. The built-in scenario should prove the main
+   OTA outcome from the home screen whenever possible.
+
+The home screen always exposes these tappable entry points:
+
+- `Runtime Details`
+- `Manifest Inspector`
+- `Crash Timeline`
+- `Actions`
+
+### Modal Usage Rules
+
+- Press `Runtime Details` only when you need channel, app version, fingerprint,
+  or base URL details. After the modal opens, run `agent-device snapshot -i`,
+  verify the values, then press `Close`.
+- Press `Manifest Inspector` only when you need per-asset inspection. After the
+  modal opens, run `agent-device snapshot -i`, verify `Manifest Bundle ID`,
+  `Manifest Asset Count`, and the currently visible asset entry. Use
+  `Previous Asset` or `Next Asset` only if you need another asset, then
+  re-snapshot after each press.
+- Press `Crash Timeline` only when you need a focused view of crash entries.
+  After the modal opens, run `agent-device snapshot -i`, verify `Crash Count`
+  and the currently selected crash entry, then press `Close`.
+- Press `Actions` only to use `Refresh Runtime Snapshot`, `Reload App`, or
+  `Clear Crash History`. If you open it, capture a snapshot of the modal first
+  so the replay clearly shows which action was available and pressed.
+- After closing any modal, return to the home screen and run
+  `agent-device snapshot -i` again before making a pass/fail decision.
+
+### Baseline Snapshot Expectations
+
+For the first clean launch after install:
+
+1. Stay on the home screen.
+2. Run `agent-device snapshot -i`.
+3. Record `BUILTIN_BUNDLE_ID` from the `Bundle ID` row.
+4. Confirm `Manifest Bundle ID` matches the same built-in id.
+5. Confirm the crash history area shows `No crashed bundles recorded.`
+6. Treat this home snapshot as the baseline reference before any OTA deploy.
+
+### Phase 1 Snapshot Flow
+
+After the stable OTA deploy and app relaunch:
+
+1. Stay on the home screen and run `agent-device snapshot -i`.
+2. Verify directly on this home snapshot:
+   - `Scenario Marker`
+   - `E2E AUTO SUCCESS`
+   - `Bundle ID = STABLE_BUNDLE_ID`
+   - `Manifest Bundle ID = STABLE_BUNDLE_ID`
+   - status JSON contains `"status": "STABLE"`
+   - crash history still shows `No crashed bundles recorded.`
+3. Only if asset evidence is needed, press `Manifest Inspector`, snapshot the
+   modal, and verify `Manifest Bundle ID` plus the visible asset hash there.
+4. Press `Close`, then take one more home snapshot if you need a final clean
+   evidence frame for reporting.
+
+### Phase 2 Snapshot Flow
+
+After the crash OTA deploy and the recovered relaunch:
+
+1. Stay on the recovered home screen and run `agent-device snapshot -i`.
+2. Verify directly on this home snapshot:
+   - `Scenario Marker`
+   - `E2E AUTO SUCCESS`
+   - `Bundle ID = STABLE_BUNDLE_ID`
+   - `Manifest Bundle ID = STABLE_BUNDLE_ID`
+   - status JSON contains `"status": "RECOVERED"`
+   - status JSON contains `"crashedBundleId": "<CRASH_BUNDLE_ID>"`
+   - the crash history section visibly includes `CRASH_BUNDLE_ID`
+3. If the home crash history is truncated or ambiguous, press `Crash Timeline`,
+   snapshot the modal, and verify `Crash Count` plus the selected crash entry.
+4. Press `Close`, then take one more home snapshot if you need the clean final
+   recovered frame for the report.
+
+### Diff Guidance
+
+- Use `agent-device diff snapshot -i` immediately after opening a modal or
+  after recovery relaunch when you want a compact confirmation of what changed.
+- Do not use diff output as the only evidence for ids or statuses. The final
+  verdict must still come from a readable full snapshot and optional local
+  metadata files.
+
 ## Phase 1: Stable Bundle
 
 Create a temporary visible marker in `examples/v0.81.0/App.tsx`.
@@ -166,26 +270,29 @@ Phase 1 passes only if all of these are true:
 
 Start from the clean baseline source with the success patch already reverted.
 
-Add this temporary crash patch inside `App` with the real values substituted:
+Add this temporary crash patch at module scope, outside `App`, with the real
+values substituted:
 
 ```tsx
-useEffect(() => {
-  const currentBundleId = HotUpdater.getBundleId();
-  const safeBundleIds = new Set([
-    "<BUILTIN_BUNDLE_ID>",
-    "<STABLE_BUNDLE_ID>",
-  ]);
+const AUTO_E2E_SAFE_BUNDLE_IDS = new Set([
+  "<BUILTIN_BUNDLE_ID>",
+  "<STABLE_BUNDLE_ID>",
+]);
 
-  if (!safeBundleIds.has(currentBundleId)) {
-    throw new Error("hot-updater e2e-auto crash bundle");
-  }
-}, []);
+const AUTO_E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();
+
+if (!AUTO_E2E_SAFE_BUNDLE_IDS.has(AUTO_E2E_CURRENT_BUNDLE_ID)) {
+  throw new Error("hot-updater e2e-auto crash bundle");
+}
 ```
 
 Recommended placement:
 
-- Add this `useEffect` after the existing `BootSplash.hide` effect.
+- Add this patch near the other module-level helpers, before `function App()`.
 - Do not keep the success marker in this crash bundle patch.
+- Do not put the crash logic inside `App`, `useEffect`, or any UI event
+  handler. Those patterns do not reliably produce the crashing OTA bundle this
+  scenario needs.
 
 Then:
 

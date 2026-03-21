@@ -39,11 +39,20 @@ Important:
 
 The example app exposes these useful texts in snapshots:
 
-- `BundleId: ...`
-- `Reload`
-- `Clear Crash History`
-- pretty-printed status JSON
-- crash history entries
+- `Bundle ID`
+- `Manifest Bundle ID`
+- pretty-printed status JSON on the home screen
+- the latest crash history entry, or `No crashed bundles recorded.`
+- `Runtime Details`
+- `Manifest Inspector`
+- `Crash Timeline`
+- `Actions`
+
+Notes:
+
+- The home screen is intentionally non-scroll so the core OTA assertions stay
+  visible in one snapshot.
+- `Reload App` and `Clear Crash History` now live inside the `Actions` modal.
 
 ## Local State Files
 
