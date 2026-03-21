@@ -39,20 +39,29 @@ Important:
 
 The example app exposes these useful texts in snapshots:
 
+- `Runtime Snapshot`
 - `Bundle ID`
 - `Manifest Bundle ID`
-- pretty-printed status JSON on the home screen
-- the latest crash history entry, or `No crashed bundles recorded.`
+- `Launch Status`
+- pretty-printed status JSON
+- `Crash History`
+- crash history entries, or `No crashed bundles recorded.`
+- `OTA Asset Preview`
+- `Manifest Assets`
 - `Runtime Details`
-- `Manifest Inspector`
-- `Crash Timeline`
 - `Actions`
+- `Refresh Runtime Snapshot`
+- `Reload App`
+- `Clear Crash History`
 
 Notes:
 
-- The home screen is intentionally non-scroll so the core OTA assertions stay
-  visible in one snapshot.
-- `Reload App` and `Clear Crash History` now live inside the `Actions` modal.
+- The example UI is intentionally scrollable. Start with a top-of-screen
+  snapshot, then use `agent-device scrollintoview "<section title>"` and
+  re-snapshot as each target section becomes visible.
+- For OTA verdicts, the usual snapshot order is: `Runtime Snapshot` ->
+  `Launch Status` -> `Crash History` -> optional deeper sections such as
+  `Manifest Assets`, `Runtime Details`, and `Actions`.
 
 ## Local State Files
 

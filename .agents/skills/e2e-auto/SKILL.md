@@ -127,102 +127,93 @@ agent-device diff snapshot -i
 <repo-root>/.agents/skills/e2e/scripts/inspect_android_state.sh
 ```
 
-## UI Funnel And Snapshot Playbook
+## Scroll And Snapshot Playbook
 
-The example app now uses a non-scroll home screen plus modal panels.
-In this skill, the home screen is the primary evidence for pass/fail.
-Only open a modal when you need extra detail that is not already visible on the
-home screen.
+The example app is intentionally scrollable.
+In this skill, capture one section at a time with a fresh snapshot.
+Prefer `agent-device scrollintoview "<section title>"` over manual swipes when
+the section heading text is available.
 
-### Home Screen First
+### Section Order
 
-After every clean launch or relaunch:
+Use this default section order:
 
-1. Run `agent-device snapshot -i` on the home screen before pressing anything.
-2. Use this first home snapshot as the primary checkpoint for:
-   - `Bundle ID`
-   - `Manifest Bundle ID`
-   - `Scenario Marker` when the temporary success patch is present
-   - pretty-printed status JSON
-   - crash history summary
-3. Do not start by opening a modal. The built-in scenario should prove the main
-   OTA outcome from the home screen whenever possible.
+1. top-of-screen launch snapshot
+2. `Runtime Snapshot`
+3. `Launch Status`
+4. `Crash History`
+5. optional deeper sections such as `OTA Asset Preview`, `Manifest Assets`,
+   `Runtime Details`, and `Actions`
 
-The home screen always exposes these tappable entry points:
+Typical navigation pattern:
 
-- `Runtime Details`
-- `Manifest Inspector`
-- `Crash Timeline`
-- `Actions`
+```bash
+agent-device snapshot -i
+agent-device scrollintoview "Launch Status"
+agent-device snapshot -i
+agent-device scrollintoview "Crash History"
+agent-device snapshot -i
+```
 
-### Modal Usage Rules
-
-- Press `Runtime Details` only when you need channel, app version, fingerprint,
-  or base URL details. After the modal opens, run `agent-device snapshot -i`,
-  verify the values, then press `Close`.
-- Press `Manifest Inspector` only when you need per-asset inspection. After the
-  modal opens, run `agent-device snapshot -i`, verify `Manifest Bundle ID`,
-  `Manifest Asset Count`, and the currently visible asset entry. Use
-  `Previous Asset` or `Next Asset` only if you need another asset, then
-  re-snapshot after each press.
-- Press `Crash Timeline` only when you need a focused view of crash entries.
-  After the modal opens, run `agent-device snapshot -i`, verify `Crash Count`
-  and the currently selected crash entry, then press `Close`.
-- Press `Actions` only to use `Refresh Runtime Snapshot`, `Reload App`, or
-  `Clear Crash History`. If you open it, capture a snapshot of the modal first
-  so the replay clearly shows which action was available and pressed.
-- After closing any modal, return to the home screen and run
-  `agent-device snapshot -i` again before making a pass/fail decision.
+If text lookup drifts, fall back to `agent-device swipe ...` or other explicit
+scroll gestures and capture a fresh snapshot immediately after the motion.
 
 ### Baseline Snapshot Expectations
 
 For the first clean launch after install:
 
-1. Stay on the home screen.
-2. Run `agent-device snapshot -i`.
-3. Record `BUILTIN_BUNDLE_ID` from the `Bundle ID` row.
-4. Confirm `Manifest Bundle ID` matches the same built-in id.
-5. Confirm the crash history area shows `No crashed bundles recorded.`
-6. Treat this home snapshot as the baseline reference before any OTA deploy.
+1. Run `agent-device snapshot -i` at the top of the scroll view.
+2. Record `BUILTIN_BUNDLE_ID` from the `Bundle ID` row in `Runtime Snapshot`.
+3. Confirm `Manifest Bundle ID` matches the same built-in id.
+4. Run `agent-device scrollintoview "Crash History"`.
+5. Run `agent-device snapshot -i`.
+6. Confirm the crash history area shows `No crashed bundles recorded.`
+7. Treat these snapshots as the baseline reference before any OTA deploy.
 
 ### Phase 1 Snapshot Flow
 
 After the stable OTA deploy and app relaunch:
 
-1. Stay on the home screen and run `agent-device snapshot -i`.
-2. Verify directly on this home snapshot:
+1. Run `agent-device snapshot -i` at the top of the scroll view.
+2. Verify on this top snapshot:
    - `Scenario Marker`
    - `E2E AUTO SUCCESS`
    - `Bundle ID = STABLE_BUNDLE_ID`
    - `Manifest Bundle ID = STABLE_BUNDLE_ID`
-   - status JSON contains `"status": "STABLE"`
-   - crash history still shows `No crashed bundles recorded.`
-3. Only if asset evidence is needed, press `Manifest Inspector`, snapshot the
-   modal, and verify `Manifest Bundle ID` plus the visible asset hash there.
-4. Press `Close`, then take one more home snapshot if you need a final clean
-   evidence frame for reporting.
+3. Run `agent-device scrollintoview "Launch Status"`.
+4. Run `agent-device snapshot -i`.
+5. Verify the status JSON contains `"status": "STABLE"`.
+6. Run `agent-device scrollintoview "Crash History"`.
+7. Run `agent-device snapshot -i`.
+8. Verify the crash history still shows `No crashed bundles recorded.`
+9. Only if asset evidence is needed, run
+   `agent-device scrollintoview "Manifest Assets"`, snapshot that section, and
+   verify the visible asset hash there.
 
 ### Phase 2 Snapshot Flow
 
 After the crash OTA deploy and the recovered relaunch:
 
-1. Stay on the recovered home screen and run `agent-device snapshot -i`.
-2. Verify directly on this home snapshot:
+1. Run `agent-device snapshot -i` at the top of the recovered scroll view.
+2. Verify on this top snapshot:
    - `Scenario Marker`
    - `E2E AUTO SUCCESS`
    - `Bundle ID = STABLE_BUNDLE_ID`
    - `Manifest Bundle ID = STABLE_BUNDLE_ID`
-   - status JSON contains `"status": "RECOVERED"`
-   - status JSON contains `"crashedBundleId": "<CRASH_BUNDLE_ID>"`
-   - the crash history section visibly includes `CRASH_BUNDLE_ID`
-3. If the home crash history is truncated or ambiguous, press `Crash Timeline`,
-   snapshot the modal, and verify `Crash Count` plus the selected crash entry.
-4. Press `Close`, then take one more home snapshot if you need the clean final
-   recovered frame for the report.
+3. Run `agent-device scrollintoview "Launch Status"`.
+4. Run `agent-device snapshot -i`.
+5. Verify the status JSON contains `"status": "RECOVERED"` and
+   `"crashedBundleId": "<CRASH_BUNDLE_ID>"`.
+6. Run `agent-device scrollintoview "Crash History"`.
+7. Run `agent-device snapshot -i`.
+8. Verify the crash history section visibly includes `CRASH_BUNDLE_ID`.
+9. Only if asset or action evidence is needed, scroll further to
+   `Manifest Assets`, `Runtime Details`, or `Actions` and capture another
+   snapshot there.
 
 ### Diff Guidance
 
-- Use `agent-device diff snapshot -i` immediately after opening a modal or
+- Use `agent-device diff snapshot -i` immediately after each section change or
   after recovery relaunch when you want a compact confirmation of what changed.
 - Do not use diff output as the only evidence for ids or statuses. The final
   verdict must still come from a readable full snapshot and optional local

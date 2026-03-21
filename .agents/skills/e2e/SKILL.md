@@ -110,6 +110,26 @@ agent-device diff snapshot -i
 <repo-root>/.agents/skills/e2e/scripts/inspect_android_state.sh
 ```
 
+The example UI is scrollable. Capture a top-of-screen snapshot first, then use
+`agent-device scrollintoview "<section title>"` and re-snapshot as each target
+section becomes visible. For most scenarios, inspect sections in this order:
+
+1. `Runtime Snapshot`
+2. `Launch Status`
+3. `Crash History`
+4. Optional deeper sections such as `Manifest Assets`, `Runtime Details`, and
+   `Actions`
+
+Typical section navigation examples:
+
+```bash
+agent-device snapshot -i
+agent-device scrollintoview "Launch Status"
+agent-device snapshot -i
+agent-device scrollintoview "Crash History"
+agent-device snapshot -i
+```
+
 ## Assertions
 
 Apply these assertions only when they match the caller's scenario:
