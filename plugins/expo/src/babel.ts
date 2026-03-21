@@ -215,15 +215,14 @@ export default function ({
                 safeGetBaseURL,
               ]);
 
-              // Replace entire object with spread of IIFE result
-              const newProperties = objPath.node.properties.filter(
-                (prop) => prop !== filePathProp && !t.isSpreadElement(prop),
-              );
-
-              objPath.node.properties = [
-                ...newProperties,
+              // Replace only filePath so existing spread/forwarded props keep
+              // their original order and override behavior.
+              const propIndex = objPath.node.properties.indexOf(filePathProp);
+              objPath.node.properties.splice(
+                propIndex,
+                1,
                 t.spreadElement(iifeCall),
-              ];
+              );
             },
           });
         },

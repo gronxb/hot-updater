@@ -67,13 +67,19 @@ describe("Babel Plugin - Hot Updater", () => {
 
     it("preserves spread dom props when generating overrideUri", async () => {
       const result = await transformCode(`
-        const domProps = { backgroundColor: "white" };
+        const domProps = {
+          dom: { backgroundColor: "white" },
+          style: { flex: 1 }
+        };
         React.createElement(WebView, {
           ...domProps,
           filePath: "index.html"
         });
       `);
 
+      expect(result).toMatch(
+        /React\.createElement\(WebView,\s*\{\s*\.\.\.domProps,\s*\.\.\.\(/s,
+      );
       expect(result).toContain("...domProps.dom");
       expect(result).toContain("overrideUri");
     });
