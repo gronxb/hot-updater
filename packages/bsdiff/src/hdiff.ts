@@ -3,10 +3,7 @@ import { createBsdiffPatch } from "./internal/bsdiff.js";
 import { type Bytes, type BytesLike, toUint8Array } from "./internal/bytes.js";
 import { validateExecutionHbc } from "./internal/hermes-validate.js";
 
-export async function hdiff(
-  base: BytesLike,
-  next: BytesLike,
-): Promise<Bytes> {
+export async function hdiff(base: BytesLike, next: BytesLike): Promise<Bytes> {
   const baseBytes = toUint8Array(base);
   const nextBytes = toUint8Array(next);
 

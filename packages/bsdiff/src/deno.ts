@@ -23,7 +23,9 @@ function loadDenoWasmModule(): WebAssembly.Module {
   }
 
   try {
-    return new WebAssembly.Module(toUint8Array(deno.readFileSync(HDIFF_WASM_URL)));
+    return new WebAssembly.Module(
+      toUint8Array(deno.readFileSync(HDIFF_WASM_URL)),
+    );
   } catch {
     throw new HdiffError(
       "PATCH_FAILED",

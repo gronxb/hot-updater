@@ -1,8 +1,4 @@
-import {
-  type ChildProcessByStdio,
-  spawn,
-  spawnSync,
-} from "node:child_process";
+import { type ChildProcessByStdio, spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -213,9 +209,7 @@ async function waitForHealthy(
   );
 }
 
-async function stopRuntime(
-  child: RuntimeChild,
-): Promise<void> {
+async function stopRuntime(child: RuntimeChild): Promise<void> {
   if (child.exitCode !== null) {
     return;
   }
@@ -230,10 +224,7 @@ async function stopRuntime(
   await waitForExit(child, 3_000);
 }
 
-function waitForExit(
-  child: RuntimeChild,
-  timeoutMs: number,
-): Promise<boolean> {
+function waitForExit(child: RuntimeChild, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     if (child.exitCode !== null) {
       resolve(true);

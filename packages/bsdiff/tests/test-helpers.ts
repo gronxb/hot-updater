@@ -19,10 +19,7 @@ export async function readFixtureHbc(name: "one" | "two"): Promise<Bytes> {
   return new Uint8Array(bytes);
 }
 
-export async function applyBspatch(
-  base: Bytes,
-  patch: Bytes,
-): Promise<Bytes> {
+export async function applyBspatch(base: Bytes, patch: Bytes): Promise<Bytes> {
   return await applyBsdiffPatch(base, patch);
 }
 
