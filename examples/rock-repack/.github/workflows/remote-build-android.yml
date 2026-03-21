@@ -1,0 +1,64 @@
+name: Remote Build Android
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: remote-build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Rock Remote Build - Android device
+        uses: callstackincubator/android@v2
+        with:
+          sign: true
+          variant: release
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          keystore-base64: ${{ secrets.KEYSTORE_BASE64 }}
+          keystore-store-file: ${{ secrets.ROCK_UPLOAD_STORE_FILE }}
+          keystore-store-password: ${{ secrets.ROCK_UPLOAD_STORE_PASSWORD }}
+          keystore-key-alias: ${{ secrets.ROCK_UPLOAD_KEY_ALIAS }}
+          keystore-key-password: ${{ secrets.ROCK_UPLOAD_KEY_PASSWORD }}
+
+  build-debug:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Rock Remote Build - Android
+        uses: callstackincubator/android@v2
+        with:
+          variant: debug
+          github-token: ${{ secrets.GITHUB_TOKEN }}
