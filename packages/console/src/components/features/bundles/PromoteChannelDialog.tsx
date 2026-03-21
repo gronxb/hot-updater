@@ -137,10 +137,7 @@ export function PromoteChannelDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="promote-action">Action</Label>
-            <Select
-              value={action}
-              onValueChange={handleActionChange}
-            >
+            <Select value={action} onValueChange={handleActionChange}>
               <SelectTrigger id="promote-action">
                 <SelectValue placeholder="Select an action" />
               </SelectTrigger>

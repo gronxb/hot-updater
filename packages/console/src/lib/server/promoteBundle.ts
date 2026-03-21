@@ -1,22 +1,22 @@
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { brotliDecompressSync } from "node:zlib";
+import type { ConfigResponse } from "@hot-updater/cli-tools";
 import {
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
 } from "@hot-updater/cli-tools";
-import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { detectCompressionFormat } from "@hot-updater/plugin-core";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
 import JSZip from "jszip";
-import os from "node:os";
-import path from "node:path";
 import * as tar from "tar";
-import { brotliDecompressSync } from "node:zlib";
 import { createUUIDv7 } from "../extract-timestamp-from-uuidv7";
 
 const LEGACY_BUNDLE_ERROR =
