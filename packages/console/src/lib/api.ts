@@ -9,6 +9,7 @@ import {
   getChannels,
   getConfig,
   getConfigLoaded,
+  promoteBundle as promoteBundleApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
@@ -136,6 +137,30 @@ export function useCreateBundleMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function usePromoteBundleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      action: "copy" | "move";
+      bundleId: string;
+      nextBundleId?: string;
+      targetChannel: string;
+    }) => promoteBundleApi({ data: params }),
+    onSuccess: async ({ bundle }) => {
+      queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundle(bundle.id),
+        }),
       ]);
     },
   });

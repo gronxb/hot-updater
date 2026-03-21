@@ -22,6 +22,13 @@ type UpdateBundleInput = {
   bundle: Partial<Bundle>;
 };
 
+type PromoteBundleInput = {
+  action: "copy" | "move";
+  bundleId: string;
+  nextBundleId?: string;
+  targetChannel: string;
+};
+
 type DeleteBundleInput = {
   bundleId: string;
 };
@@ -176,6 +183,28 @@ export const updateBundle = createServerFn({ method: "POST" })
       return { success: true, bundle: updatedBundle };
     } catch (error) {
       console.error("Error during bundle update:", error);
+      throw error;
+    }
+  });
+
+export const promoteBundle = createServerFn({ method: "POST" })
+  .inputValidator((input: PromoteBundleInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { promoteBundle: promoteBundleWithConfig } = await import(
+        "./server/promoteBundle"
+      );
+      const { config, databasePlugin, storagePlugin } = await prepareConfig();
+      const bundle = await promoteBundleWithConfig(data, {
+        config,
+        databasePlugin,
+        storagePlugin,
+      });
+
+      return { success: true, bundle };
+    } catch (error) {
+      console.error("Error during bundle promotion:", error);
       throw error;
     }
   });

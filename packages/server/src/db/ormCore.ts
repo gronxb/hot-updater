@@ -61,7 +61,7 @@ export function createOrmDatabaseCore({
   const client = HotUpdaterDB.client(database);
 
   const ensureORM = async () => {
-    const lastSchemaVersion = schemas.at(-1)!.version as "0.26.0";
+    const lastSchemaVersion = v0_29_0.version;
 
     try {
       const migrator = client.createMigrator();
