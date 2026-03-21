@@ -7,6 +7,12 @@
       "@cloudflare/vitest-pool-workers"
     ]
   },
-  "include": ["src", "worker-configuration.d.ts", "worker", "iac"],
+  "include": [
+    "src",
+    "worker-configuration.d.ts",
+    "cloudflare-test.d.ts",
+    "worker",
+    "iac"
+  ],
   "exclude": ["lib", "supabase"]
 }
