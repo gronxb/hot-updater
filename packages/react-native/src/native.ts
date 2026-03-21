@@ -18,6 +18,14 @@ export interface Manifest {
   assets: Record<string, ManifestAsset>;
 }
 
+type ActiveBundleSnapshotCacheValues = {
+  bundleId?: string;
+  manifest?: Manifest;
+  baseURL?: string | null;
+};
+
+type ActiveBundleSnapshotCacheKey = keyof ActiveBundleSnapshotCacheValues;
+
 /**
  * Built-in reload behaviors used by `HotUpdater.reload()`.
  *
@@ -48,6 +56,10 @@ class HotUpdaterSessionState {
   private currentChannel: string;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
+  private readonly activeBundleSnapshotCache = new Map<
+    ActiveBundleSnapshotCacheKey,
+    ActiveBundleSnapshotCacheValues[ActiveBundleSnapshotCacheKey]
+  >();
 
   constructor() {
     const constants = HotUpdaterNative.getConstants();
@@ -88,18 +100,74 @@ class HotUpdaterSessionState {
     if (channel) {
       this.currentChannel = channel;
     }
+    this.clearActiveBundleSnapshotCache();
   }
 
   resetChannelState() {
     this.currentChannel = this.defaultChannel;
     this.lastInstalledBundleId = null;
     this.inflightUpdates.clear();
+    this.clearActiveBundleSnapshotCache();
+  }
+
+  getCachedBundleId(): string | undefined {
+    return this.getActiveBundleSnapshotValue("bundleId");
+  }
+
+  cacheBundleId(bundleId: string) {
+    this.setActiveBundleSnapshotValue("bundleId", bundleId);
+  }
+
+  getCachedManifest(): Manifest | undefined {
+    const manifest = this.getActiveBundleSnapshotValue("manifest");
+    return manifest ? cloneManifest(manifest) : undefined;
+  }
+
+  cacheManifest(manifest: Manifest) {
+    this.setActiveBundleSnapshotValue("manifest", cloneManifest(manifest));
+  }
+
+  getCachedBaseURL(): string | null | undefined {
+    return this.getActiveBundleSnapshotValue("baseURL");
+  }
+
+  cacheBaseURL(baseURL: string | null) {
+    this.setActiveBundleSnapshotValue("baseURL", baseURL);
+  }
+
+  private clearActiveBundleSnapshotCache() {
+    this.activeBundleSnapshotCache.clear();
+  }
+
+  private getActiveBundleSnapshotValue<K extends ActiveBundleSnapshotCacheKey>(
+    key: K,
+  ): ActiveBundleSnapshotCacheValues[K] | undefined {
+    return this.activeBundleSnapshotCache.get(key) as
+      | ActiveBundleSnapshotCacheValues[K]
+      | undefined;
+  }
+
+  private setActiveBundleSnapshotValue<K extends ActiveBundleSnapshotCacheKey>(
+    key: K,
+    value: ActiveBundleSnapshotCacheValues[K],
+  ) {
+    this.activeBundleSnapshotCache.set(key, value);
   }
 }
 
 const sessionState = new HotUpdaterSessionState();
 let reloadBehavior: ReloadBehaviorSetting = "processRestart";
 let customReloadHandler: CustomReloadHandler | null = null;
+
+const cloneManifest = (manifest: Manifest): Manifest => ({
+  bundleId: manifest.bundleId,
+  assets: Object.fromEntries(
+    Object.entries(manifest.assets).map(([key, asset]) => [
+      key,
+      { fileHash: asset.fileHash },
+    ]),
+  ),
+});
 
 const getReloadProcess = (): (() => Promise<void>) | null => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
@@ -327,16 +395,21 @@ export const getMinBundleId = (): string => {
  * @returns {string} Resolves with the current version id.
  */
 export const getBundleId = (): string => {
+  const cachedBundleId = sessionState.getCachedBundleId();
+  if (cachedBundleId !== undefined) {
+    return cachedBundleId;
+  }
+
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
     getBundleId?: () => string | null;
   };
   const bundleId = nativeModule.getBundleId?.();
 
-  if (!bundleId || bundleId === NIL_UUID) {
-    return getMinBundleId();
-  }
+  const resolvedBundleId =
+    !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
 
-  return bundleId;
+  sessionState.cacheBundleId(resolvedBundleId);
+  return resolvedBundleId;
 };
 
 /**
@@ -346,24 +419,33 @@ export const getBundleId = (): string => {
  * or invalid.
  */
 export const getManifest = (): Manifest => {
+  const cachedManifest = sessionState.getCachedManifest();
+  if (cachedManifest !== undefined) {
+    return cachedManifest;
+  }
+
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
     getManifest?: () => Record<string, unknown> | string;
   };
   const manifest = nativeModule.getManifest?.();
 
+  let normalizedManifest: Manifest;
+
   if (!manifest) {
-    return createEmptyManifest();
-  }
-
-  if (typeof manifest === "string") {
+    normalizedManifest = createEmptyManifest();
+  } else if (typeof manifest === "string") {
     try {
-      return normalizeManifest(JSON.parse(manifest));
+      normalizedManifest = normalizeManifest(JSON.parse(manifest));
     } catch {
-      return createEmptyManifest();
+      normalizedManifest = createEmptyManifest();
     }
+  } else {
+    normalizedManifest = normalizeManifest(manifest);
   }
 
-  return normalizeManifest(manifest);
+  sessionState.cacheBundleId(normalizedManifest.bundleId);
+  sessionState.cacheManifest(normalizedManifest);
+  return cloneManifest(normalizedManifest);
 };
 
 /**
@@ -549,11 +631,15 @@ export const clearCrashHistory = (): boolean => {
  * @returns {string | null} Base URL string (e.g., "file:///data/.../bundle-store/abc123") or null if not available
  */
 export const getBaseURL = (): string | null => {
-  const result = HotUpdaterNative.getBaseURL();
-  if (typeof result === "string" && result !== "") {
-    return result;
+  const cachedBaseURL = sessionState.getCachedBaseURL();
+  if (cachedBaseURL !== undefined) {
+    return cachedBaseURL;
   }
-  return null;
+
+  const result = HotUpdaterNative.getBaseURL();
+  const baseURL = typeof result === "string" && result !== "" ? result : null;
+  sessionState.cacheBaseURL(baseURL);
+  return baseURL;
 };
 
 /**
