@@ -39,7 +39,7 @@
 
   ### Plugin Types
 
-  - **Build Plugin**: Support for bundlers like Metro, Re.Pack, Expo
+  - **Build Plugin**: Support for bundlers like Metro, Expo, Rock
   - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
   - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
@@ -148,5 +148,4 @@ export default defineConfig({
   }),
 });
 ```
-
 

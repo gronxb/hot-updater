@@ -18,41 +18,15 @@ npm install @hot-updater/sentry-plugin --save-dev
 
 ## Step 1: Configure Sentry
 
-<Tabs items={['Metro', 'Re.Pack']}>
-  <Tab value="Metro">
-    
+You need to configure Metro. Please refer to the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/) above for detailed setup instructions.
 
-    You need to configure Metro. Please refer to the [Sentry documentation](https://docs.sentry.io/platforms/react-native/manual-setup/metro/) above for detailed setup instructions.
+```js title="metro.config.js"
+const { getDefaultConfig } = require("@react-native/metro-config");
+const { withSentryConfig } = require("@sentry/react-native/metro");
 
-    ```js title="metro.config.js"
-    const { getDefaultConfig } = require("@react-native/metro-config");
-    const { withSentryConfig } = require("@sentry/react-native/metro");
-
-    const config = getDefaultConfig(__dirname);
-    module.exports = withSentryConfig(config);
-    ```
-  </Tab>
-  <Tab value="Re.Pack">
-
-  You need to configure Re.Pack.
-
-```package-install
-repack-plugin-sentry
+const config = getDefaultConfig(__dirname);
+module.exports = withSentryConfig(config);
 ```
-
-```js title="rspack.config.mjs"
-import { SentryDebugIdPlugin } from "repack-plugin-sentry";
-
-export default {
-  // ... your other config
-  plugins: [
-    // ... your other plugins
-    new SentryDebugIdPlugin(), // [!code ++]
-  ],
-};
-```
-  </Tab>
-</Tabs>
 
 
 

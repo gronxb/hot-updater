@@ -59,13 +59,19 @@ Run prebuild to apply the changes:
 npx expo prebuild
 ```
 
-Run the following command to customize your Babel configuration:
+## Expo DOM Components (`use dom`)
+
+> **Note**: This setup is only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)).
+
+Expo DOM components are designed for EAS Update. Hot Updater uses `overrideUri` internally (via Babel plugin) to redirect DOM components to the correct bundle path.
+
+### Babel plugin
+
+Add the Babel plugin only when you use Expo DOM components:
 
 ```package-install
 npx expo customize babel.config.js
 ```
-
-Add the following to your `babel.config.js` file:
 
 ```js title="babel.config.js"
 module.exports = {
@@ -75,12 +81,6 @@ module.exports = {
   ],
 };
 ```
-
-## Expo DOM Components (`use dom`)
-
-> **Note**: This setup is only required for Expo SDK < 55. Expo SDK 55+ includes native `overrideUri` support ([PR #40397](https://github.com/expo/expo/pull/40397)).
-
-Expo DOM components are designed for EAS Update. Hot Updater uses `overrideUri` internally (via Babel plugin) to redirect DOM components to the correct bundle path.
 
 ### Apply patch
 
