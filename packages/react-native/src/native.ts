@@ -389,8 +389,10 @@ export const getMinBundleId = (): string => {
 /**
  * Fetches the current bundle version id.
  *
- * JS falls back to MIN_BUNDLE_ID when native has no active downloaded bundle.
- * This keeps the built-in bundle behavior in JS instead of native.
+ * JS falls back to MIN_BUNDLE_ID only after native confirms there is no active
+ * downloaded bundle. When the native module does not expose `getBundleId()`,
+ * treat it as a JS/native SDK mismatch instead of silently reporting the
+ * built-in bundle.
  *
  * @returns {string} Resolves with the current version id.
  */
@@ -403,7 +405,14 @@ export const getBundleId = (): string => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
     getBundleId?: () => string | null;
   };
-  const bundleId = nativeModule.getBundleId?.();
+
+  if (typeof nativeModule.getBundleId !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  const bundleId = nativeModule.getBundleId();
 
   const resolvedBundleId =
     !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;

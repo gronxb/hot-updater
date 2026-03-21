@@ -112,7 +112,25 @@ describe("notifyAppReady", () => {
     expect(getBundleId()).toBe("bundle-123");
   });
 
-  it("falls back to MIN_BUNDLE_ID when native bundle id is missing", async () => {
+  it("throws when native SDK does not expose getBundleId", async () => {
+    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
+      getBundleId?: typeof nativeModuleMock.getBundleId;
+    };
+    const originalGetBundleId = nativeModule.getBundleId;
+    delete nativeModule.getBundleId;
+
+    try {
+      const { getBundleId } = await import("./native");
+
+      expect(() => getBundleId()).toThrow(
+        "Native module is missing 'getBundleId()'",
+      );
+    } finally {
+      nativeModule.getBundleId = originalGetBundleId;
+    }
+  });
+
+  it("falls back to MIN_BUNDLE_ID when native reports an empty bundle id", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("");
 
     const { getBundleId } = await import("./native");
