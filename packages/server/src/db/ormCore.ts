@@ -14,7 +14,7 @@ import { fumadb } from "fumadb";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
-import { v0_26_0 } from "../schema/v0_26_0";
+import { v0_29_0 } from "../schema/v0_29_0";
 import type { PaginationInfo } from "../types";
 import type { DatabaseAPI } from "./types";
 
@@ -36,7 +36,7 @@ const parseTargetDeviceIds = (value: unknown): string[] | null => {
   return null;
 };
 
-const schemas = [v0_21_0, v0_26_0];
+const schemas = [v0_21_0, v0_29_0];
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot_updater",

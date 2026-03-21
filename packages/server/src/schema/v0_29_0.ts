@@ -1,7 +1,7 @@
 import { column, idColumn, schema, table } from "fumadb/schema";
 
-export const v0_26_0 = schema({
-  version: "0.26.0",
+export const v0_29_0 = schema({
+  version: "0.29.0",
   tables: {
     bundles: table("bundles", {
       id: idColumn("id", "uuid"),
