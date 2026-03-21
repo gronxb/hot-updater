@@ -26,16 +26,17 @@ export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
   }
 
   const MDX = page.data.body;
-  const mdxComponents = defaultMdxComponents as Parameters<
-    typeof MDX
-  >[0]["components"];
   return (
     <DocsPage toc={page.data.toc}>
       <DocsTitle>{page.data.title}</DocsTitle>
       <VersionTag version={page.data?.version} />
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX components={mdxComponents} />
+        <MDX
+          components={{
+            ...defaultMdxComponents,
+          }}
+        />
       </DocsBody>
     </DocsPage>
   );
