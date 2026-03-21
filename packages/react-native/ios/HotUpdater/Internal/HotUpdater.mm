@@ -588,11 +588,10 @@ RCT_EXPORT_MODULE();
     return baseURL ?: @"";
 }
 
-- (NSString *)getBundleId {
+- (NSString * _Nullable)getBundleId {
     NSLog(@"[HotUpdater.mm] getBundleId called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSString *bundleId = [impl getBundleId];
-    return bundleId ?: @"";
+    return [impl getBundleId];
 }
 
 - (NSDictionary<NSString *, id> *)getManifest {
@@ -696,8 +695,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
     NSLog(@"[HotUpdater.mm] getBundleId called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSString *bundleId = [impl getBundleId];
-    return bundleId ?: @"";
+    return [impl getBundleId];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {

@@ -321,12 +321,14 @@ export const getMinBundleId = (): string => {
 /**
  * Fetches the current bundle version id.
  *
- * @async
- * @returns {string} Resolves with the current version id or null if not available.
+ * JS falls back to MIN_BUNDLE_ID when native has no active downloaded bundle.
+ * This keeps the built-in bundle behavior in JS instead of native.
+ *
+ * @returns {string} Resolves with the current version id.
  */
 export const getBundleId = (): string => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getBundleId?: () => string;
+    getBundleId?: () => string | null;
   };
   const bundleId = nativeModule.getBundleId?.();
 
@@ -427,7 +429,7 @@ export type NotifyAppReadyResult = {
  */
 export const notifyAppReady = (): NotifyAppReadyResult => {
   const result = HotUpdaterNative.notifyAppReady();
-  // Oldarch returns JSON string, newarch returns array
+  // Older Android old-arch implementations returned JSON strings.
   if (typeof result === "string") {
     try {
       return normalizeNotifyAppReadyResult(JSON.parse(result));
@@ -518,7 +520,7 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
  */
 export const getCrashHistory = (): string[] => {
   const result = HotUpdaterNative.getCrashHistory();
-  // Oldarch returns JSON string, newarch returns array
+  // Older Android old-arch implementations returned JSON strings.
   if (typeof result === "string") {
     try {
       return JSON.parse(result);

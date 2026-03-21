@@ -146,26 +146,9 @@ class HotUpdaterModule internal constructor(
         // No-op
     }
 
-    override fun notifyAppReady(): WritableNativeMap {
-        val result = WritableNativeMap()
-        val impl = getInstance()
-        val statusMap = impl.notifyAppReady()
+    override fun notifyAppReady(): WritableNativeMap = getInstance().notifyAppReady().toWritableNativeMap()
 
-        result.putString("status", statusMap["status"] as? String ?: "STABLE")
-        statusMap["crashedBundleId"]?.let {
-            result.putString("crashedBundleId", it as String)
-        }
-
-        return result
-    }
-
-    override fun getCrashHistory(): WritableNativeArray {
-        val impl = getInstance()
-        val crashHistory = impl.getCrashHistory()
-        val result = WritableNativeArray()
-        crashHistory.forEach { result.pushString(it) }
-        return result
-    }
+    override fun getCrashHistory(): WritableNativeArray = getInstance().getCrashHistory().toWritableNativeArray()
 
     override fun clearCrashHistory(): Boolean {
         val impl = getInstance()
@@ -177,15 +160,12 @@ class HotUpdaterModule internal constructor(
         return impl.getBaseURL()
     }
 
-    override fun getBundleId(): String {
+    override fun getBundleId(): String? {
         val impl = getInstance()
         return impl.getBundleId()
     }
 
-    override fun getManifest(): WritableNativeMap {
-        val impl = getInstance()
-        return toWritableNativeMap(impl.getManifest())
-    }
+    override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
@@ -203,47 +183,5 @@ class HotUpdaterModule internal constructor(
 
     companion object {
         const val NAME = "HotUpdater"
-    }
-
-    private fun toWritableNativeMap(source: Map<String, Any?>): WritableNativeMap {
-        val result = WritableNativeMap()
-        source.forEach { (key, value) ->
-            putValue(result, key, value)
-        }
-        return result
-    }
-
-    private fun toWritableNativeArray(source: List<*>): WritableNativeArray {
-        val result = WritableNativeArray()
-        source.forEach { value ->
-            when (value) {
-                null -> result.pushNull()
-                is Boolean -> result.pushBoolean(value)
-                is Number -> result.pushDouble(value.toDouble())
-                is String -> result.pushString(value)
-                is Map<*, *> -> {
-                    @Suppress("UNCHECKED_CAST")
-                    result.pushMap(toWritableNativeMap(value as Map<String, Any?>))
-                }
-                is List<*> -> result.pushArray(toWritableNativeArray(value))
-                else -> result.pushString(value.toString())
-            }
-        }
-        return result
-    }
-
-    private fun putValue(target: WritableMap, key: String, value: Any?) {
-        when (value) {
-            null -> target.putNull(key)
-            is Boolean -> target.putBoolean(key, value)
-            is Number -> target.putDouble(key, value.toDouble())
-            is String -> target.putString(key, value)
-            is Map<*, *> -> {
-                @Suppress("UNCHECKED_CAST")
-                target.putMap(key, toWritableNativeMap(value as Map<String, Any?>))
-            }
-            is List<*> -> target.putArray(key, toWritableNativeArray(value))
-            else -> target.putString(key, value.toString())
-        }
     }
 }

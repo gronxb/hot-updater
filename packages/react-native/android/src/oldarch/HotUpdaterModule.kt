@@ -7,6 +7,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
@@ -14,8 +15,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 class HotUpdaterModule internal constructor(
     context: ReactApplicationContext,
@@ -153,26 +152,10 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun notifyAppReady(): String {
-        val result = JSONObject()
-
-        val impl = getInstance()
-        val statusMap = impl.notifyAppReady()
-
-        result.put("status", statusMap["status"] as? String ?: "STABLE")
-        statusMap["crashedBundleId"]?.let {
-            result.put("crashedBundleId", it as String)
-        }
-
-        return result.toString()
-    }
+    override fun notifyAppReady(): WritableNativeMap = getInstance().notifyAppReady().toWritableNativeMap()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getCrashHistory(): String {
-        val impl = getInstance()
-        val crashHistory = impl.getCrashHistory()
-        return JSONArray(crashHistory).toString()
-    }
+    override fun getCrashHistory(): WritableNativeArray = getInstance().getCrashHistory().toWritableNativeArray()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun clearCrashHistory(): Boolean {
@@ -187,16 +170,13 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getBundleId(): String {
+    override fun getBundleId(): String? {
         val impl = getInstance()
         return impl.getBundleId()
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getManifest(): String {
-        val impl = getInstance()
-        return JSONObject(impl.getManifest()).toString()
-    }
+    override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
     @ReactMethod
     override fun resetChannel(promise: Promise) {

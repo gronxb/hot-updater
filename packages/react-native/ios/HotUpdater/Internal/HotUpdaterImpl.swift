@@ -17,9 +17,6 @@ private func hotUpdaterUpdateSignalLaunchStateSymbol(
 @_silgen_name("HotUpdaterPerformRecoveryReload")
 private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
 
-@_silgen_name("HotUpdaterGetMinBundleId")
-private func hotUpdaterGetMinBundleIdSymbol() -> NSString
-
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
@@ -30,10 +27,6 @@ private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollba
 
 private func hotUpdaterPerformRecoveryReload() -> Bool {
     return hotUpdaterPerformRecoveryReloadSymbol().boolValue
-}
-
-private func hotUpdaterGetMinBundleId() -> String {
-    return hotUpdaterGetMinBundleIdSymbol() as String
 }
 
 @objcMembers public class HotUpdaterImpl: NSObject {
@@ -343,11 +336,11 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     /**
      * Gets the current active bundle ID from bundle storage.
-     * Returns MIN_BUNDLE_ID when the app is using the built-in bundle.
-     * In DEV builds MIN_BUNDLE_ID resolves to NIL_UUID.
+     * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
+     * Built-in bundle fallback is handled in JS.
      */
-    public func getBundleId() -> String {
-        return bundleStorage.getBundleId() ?? hotUpdaterGetMinBundleId()
+    public func getBundleId() -> String? {
+        return bundleStorage.getBundleId()
     }
 
     /**

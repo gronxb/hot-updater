@@ -115,6 +115,12 @@ class BundleFileStorageService(
         private const val TAG = "BundleStorage"
     }
 
+    private data class ActiveBundleMetadataSnapshot(
+        val activeBundleId: String,
+        val bundleId: String?,
+        val manifest: Map<String, Any?>,
+    )
+
     init {
         // Ensure bundle store directory exists
         getBundleStoreDir().mkdirs()
@@ -124,6 +130,9 @@ class BundleFileStorageService(
     }
 
     private var currentLaunchReport: LaunchReport? = null
+    @Volatile
+    private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
+    private val activeBundleMetadataLock = Any()
 
     // MARK: - Bundle Store Directory
 
@@ -204,50 +213,80 @@ class BundleFileStorageService(
         }
     }
 
-    private fun readBundleIdFromBundleDir(bundleDir: File): String? {
-        if (!bundleDir.exists()) {
+    private fun getActiveBundleMetadataSnapshot(): ActiveBundleMetadataSnapshot? {
+        val activeBundleId = getActiveBundleId() ?: run {
+            clearActiveBundleMetadataSnapshot()
             return null
         }
 
-        readManifestFromBundleDir(bundleDir)?.let { manifest ->
-            try {
-                val manifestBundleId = manifest.optString("bundleId").trim()
-                if (manifestBundleId.isNotEmpty()) {
-                    return manifestBundleId
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to read manifest bundleId from ${bundleDir.absolutePath}/manifest.json: ${e.message}")
+        activeBundleMetadataSnapshot
+            ?.takeIf { it.activeBundleId == activeBundleId }
+            ?.let { return it }
+
+        synchronized(activeBundleMetadataLock) {
+            activeBundleMetadataSnapshot
+                ?.takeIf { it.activeBundleId == activeBundleId }
+                ?.let { return it }
+
+            val bundleDir = File(getBundleStoreDir(), activeBundleId)
+            if (!bundleDir.exists()) {
+                activeBundleMetadataSnapshot = null
+                return null
+            }
+
+            return resolveActiveBundleMetadataSnapshot(bundleDir).also {
+                activeBundleMetadataSnapshot = it
             }
         }
-
-        val compatibilityBundleIdFile = File(bundleDir, compatibilityBundleIdFilename())
-        if (compatibilityBundleIdFile.exists()) {
-            try {
-                val compatibilityBundleId = compatibilityBundleIdFile.readText().trim()
-                if (compatibilityBundleId.isNotEmpty()) {
-                    return compatibilityBundleId
-                }
-            } catch (e: Exception) {
-                Log.w(
-                    TAG,
-                    "Failed to read compatibility bundle metadata from ${compatibilityBundleIdFile.absolutePath}: ${e.message}",
-                )
-            }
-        }
-
-        return null
     }
 
-    private fun compatibilityBundleIdFilename(): String = "BUNDLE" + "_ID"
+    private fun clearActiveBundleMetadataSnapshot() {
+        synchronized(activeBundleMetadataLock) {
+            activeBundleMetadataSnapshot = null
+        }
+    }
 
-    private fun readManifestFromBundleDir(bundleDir: File): JSONObject? {
+    private fun resolveActiveBundleMetadataSnapshot(bundleDir: File): ActiveBundleMetadataSnapshot {
+        val manifest = readManifestFromBundleDir(bundleDir) ?: emptyMap()
+        val manifestBundleId =
+            (manifest["bundleId"] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+
+        return ActiveBundleMetadataSnapshot(
+            activeBundleId = bundleDir.name,
+            bundleId = manifestBundleId ?: readCompatibilityBundleIdFromBundleDir(bundleDir),
+            manifest = manifest,
+        )
+    }
+
+    private fun readCompatibilityBundleIdFromBundleDir(bundleDir: File): String? {
+        val compatibilityBundleIdFile = File(bundleDir, compatibilityBundleIdFilename())
+        if (!compatibilityBundleIdFile.exists()) {
+            return null
+        }
+
+        return try {
+            compatibilityBundleIdFile.readText().trim().takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "Failed to read compatibility bundle metadata from ${compatibilityBundleIdFile.absolutePath}: ${e.message}",
+            )
+            null
+        }
+    }
+
+    private fun compatibilityBundleIdFilename(): String = "BUNDLE_ID"
+
+    private fun readManifestFromBundleDir(bundleDir: File): Map<String, Any?>? {
         val manifestFile = File(bundleDir, "manifest.json")
         if (!manifestFile.exists()) {
             return null
         }
 
         return try {
-            JSONObject(manifestFile.readText())
+            JSONObject(manifestFile.readText()).let(::jsonObjectToMap)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to read manifest from ${manifestFile.absolutePath}: ${e.message}")
             null
@@ -497,6 +536,7 @@ class BundleFileStorageService(
     override fun setBundleURL(localPath: String?): Boolean {
         Log.d(TAG, "setBundleURL: $localPath")
         preferences.setItem("HotUpdaterBundleURL", localPath)
+        clearActiveBundleMetadataSnapshot()
         return true
     }
 
@@ -894,9 +934,7 @@ class BundleFileStorageService(
 
     override fun getBundleId(): String? =
         try {
-            getActiveBundleId()?.let { activeBundleId ->
-                readBundleIdFromBundleDir(File(getBundleStoreDir(), activeBundleId))
-            }
+            getActiveBundleMetadataSnapshot()?.bundleId
         } catch (e: Exception) {
             Log.e(TAG, "Error getting bundle ID: ${e.message}")
             null
@@ -904,10 +942,7 @@ class BundleFileStorageService(
 
     override fun getManifest(): Map<String, Any?> =
         try {
-            getActiveBundleId()?.let { activeBundleId ->
-                readManifestFromBundleDir(File(getBundleStoreDir(), activeBundleId))
-                    ?.let(::jsonObjectToMap)
-            } ?: emptyMap()
+            getActiveBundleMetadataSnapshot()?.manifest ?: emptyMap()
         } catch (e: Exception) {
             Log.e(TAG, "Error getting manifest: ${e.message}")
             emptyMap()

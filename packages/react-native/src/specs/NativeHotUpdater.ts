@@ -1,6 +1,6 @@
 import type { TurboModule } from "react-native";
-import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 import { TurboModuleRegistry } from "react-native";
+import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
 export interface UpdateBundleParams {
   bundleId: string;
@@ -108,12 +108,12 @@ export interface Spec extends TurboModule {
 
   /**
    * Gets the current active bundle ID from native bundle storage.
-   * Native reads the extracted bundle manifest first and falls back to older
-   * metadata when needed.
+   * Native reads the extracted bundle manifest first and falls back to the
+   * legacy BUNDLE_ID file when needed. Built-in bundle fallback is handled in JS.
    *
-   * @returns Active bundle ID, MIN_BUNDLE_ID for the built-in bundle, or NIL_UUID in DEV
+   * @returns Active bundle ID from bundle storage, or null when unavailable
    */
-  getBundleId: () => string;
+  getBundleId: () => string | null;
 
   /**
    * Gets the current manifest from native bundle storage.

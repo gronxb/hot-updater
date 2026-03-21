@@ -4,6 +4,8 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableArray
+import com.facebook.react.bridge.WritableMap
 
 abstract class HotUpdaterSpec internal constructor(
     context: ReactApplicationContext,
@@ -17,17 +19,17 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun reloadProcess(promise: Promise)
 
-    abstract fun notifyAppReady(): String
+    abstract fun notifyAppReady(): WritableMap
 
-    abstract fun getCrashHistory(): String
+    abstract fun getCrashHistory(): WritableArray
 
     abstract fun clearCrashHistory(): Boolean
 
     abstract fun getBaseURL(): String
 
-    abstract fun getBundleId(): String
+    abstract fun getBundleId(): String?
 
-    abstract fun getManifest(): String
+    abstract fun getManifest(): WritableMap
 
     abstract fun resetChannel(promise: Promise)
 }

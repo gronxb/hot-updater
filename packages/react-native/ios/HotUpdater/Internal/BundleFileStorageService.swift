@@ -141,6 +141,12 @@ public protocol BundleStorageService {
 }
 
 class BundleFileStorageService: BundleStorageService {
+    private struct ActiveBundleMetadataSnapshot {
+        let activeBundleId: String
+        let bundleId: String?
+        let manifest: ManifestAssets
+    }
+
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
@@ -155,6 +161,8 @@ class BundleFileStorageService: BundleStorageService {
     private var activeTasks: [URLSessionTask] = []
 
     private var currentLaunchReport: LaunchReport?
+    private let activeBundleMetadataLock = NSLock()
+    private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
@@ -280,17 +288,69 @@ class BundleFileStorageService: BundleStorageService {
         return getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
     }
 
-    private func readBundleId(in bundleDirectory: String) -> String? {
-        if let manifestJson = readManifest(in: bundleDirectory) {
-            let manifestBundleId =
-                (manifestJson["bundleId"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+    private func withActiveBundleMetadataLock<T>(_ body: () -> T) -> T {
+        activeBundleMetadataLock.lock()
+        defer { activeBundleMetadataLock.unlock() }
+        return body()
+    }
 
-            if let manifestBundleId, !manifestBundleId.isEmpty {
-                return manifestBundleId
-            }
+    private func clearActiveBundleMetadataSnapshot() {
+        withActiveBundleMetadataLock {
+            activeBundleMetadataSnapshot = nil
+        }
+    }
+
+    private func getActiveBundleMetadataSnapshot() -> ActiveBundleMetadataSnapshot? {
+        guard let activeBundleId = getActiveBundleId(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            clearActiveBundleMetadataSnapshot()
+            return nil
         }
 
+        if let snapshot = withActiveBundleMetadataLock({
+            activeBundleMetadataSnapshot?.activeBundleId == activeBundleId
+                ? activeBundleMetadataSnapshot
+                : nil
+        }) {
+            return snapshot
+        }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            clearActiveBundleMetadataSnapshot()
+            return nil
+        }
+
+        let snapshot = resolveActiveBundleMetadataSnapshot(
+            activeBundleId: activeBundleId,
+            bundleDirectory: bundleDir
+        )
+        return withActiveBundleMetadataLock {
+            activeBundleMetadataSnapshot = snapshot
+            return snapshot
+        }
+    }
+
+    private func resolveActiveBundleMetadataSnapshot(
+        activeBundleId: String,
+        bundleDirectory: String
+    ) -> ActiveBundleMetadataSnapshot {
+        let manifest = readManifest(in: bundleDirectory) ?? [:]
+        let manifestBundleId =
+            (manifest["bundleId"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedBundleId =
+            (manifestBundleId?.isEmpty == false ? manifestBundleId : nil) ??
+            readCompatibilityBundleId(in: bundleDirectory)
+
+        return ActiveBundleMetadataSnapshot(
+            activeBundleId: activeBundleId,
+            bundleId: resolvedBundleId,
+            manifest: manifest
+        )
+    }
+
+    private func readCompatibilityBundleId(in bundleDirectory: String) -> String? {
         let compatibilityBundleIdPath = (bundleDirectory as NSString)
             .appendingPathComponent(compatibilityBundleIdFilename())
         if fileSystem.fileExists(atPath: compatibilityBundleIdPath) {
@@ -315,7 +375,7 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func compatibilityBundleIdFilename() -> String {
-        "BUNDLE" + "_ID"
+        "BUNDLE_ID"
     }
 
     private func readManifest(in bundleDirectory: String) -> [String: Any]? {
@@ -679,6 +739,7 @@ class BundleFileStorageService: BundleStorageService {
         do {
             NSLog("[BundleStorage] Setting bundle URL to: \(localPath ?? "nil")")
             try self.preferences.setItem(localPath, forKey: "HotUpdaterBundleURL")
+            clearActiveBundleMetadataSnapshot()
             return .success(())
         } catch let error {
             return .failure(error)
@@ -1269,31 +1330,11 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     func getBundleId() -> String? {
-        guard let activeBundleId = getActiveBundleId(),
-              case .success(let storeDir) = bundleStoreDir() else {
-            return nil
-        }
-
-        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
-        guard fileSystem.fileExists(atPath: bundleDir) else {
-            return nil
-        }
-
-        return readBundleId(in: bundleDir)
+        return getActiveBundleMetadataSnapshot()?.bundleId
     }
 
     func getManifest() -> ManifestAssets {
-        guard let activeBundleId = getActiveBundleId(),
-              case .success(let storeDir) = bundleStoreDir() else {
-            return [:]
-        }
-
-        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
-        guard fileSystem.fileExists(atPath: bundleDir) else {
-            return [:]
-        }
-
-        return readManifest(in: bundleDir) ?? [:]
+        return getActiveBundleMetadataSnapshot()?.manifest ?? [:]
     }
 
     func resetChannel() -> Result<Bool, Error> {

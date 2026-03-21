@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
+  const getCrashHistory = vi.fn<() => string[] | string>(() => []);
 
   return {
     clearCrashHistory: vi.fn(() => true),
     getBaseURL: vi.fn(() => null),
-    getBundleId: vi.fn(() => "bundle-id"),
+    getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
     getManifest,
+    getCrashHistory,
     getConstants: vi.fn(() => ({
       APP_VERSION: null,
       CHANNEL: "production",
@@ -15,7 +17,6 @@ const nativeModuleMock = vi.hoisted(() => {
       FINGERPRINT_HASH: null,
       MIN_BUNDLE_ID: "min-bundle-id",
     })),
-    getCrashHistory: vi.fn(() => []),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
     resetChannel: vi.fn(),
@@ -105,6 +106,24 @@ describe("notifyAppReady", () => {
 
   it("falls back to MIN_BUNDLE_ID when native bundle id is missing", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("");
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("falls back to MIN_BUNDLE_ID when native bundle id is null", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+
+    const { getBundleId } = await import("./native");
+
+    expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("falls back to MIN_BUNDLE_ID for legacy NIL_UUID bundle ids", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000000",
+    );
 
     const { getBundleId } = await import("./native");
 
@@ -214,5 +233,23 @@ describe("notifyAppReady", () => {
       assets: {},
       bundleId: "bundle-id",
     });
+  });
+
+  it("parses crash history from legacy JSON payloads", async () => {
+    nativeModuleMock.getCrashHistory.mockReturnValue(
+      JSON.stringify(["bundle-1", "bundle-2"]),
+    );
+
+    const { getCrashHistory } = await import("./native");
+
+    expect(getCrashHistory()).toEqual(["bundle-1", "bundle-2"]);
+  });
+
+  it("falls back to an empty crash history for malformed payloads", async () => {
+    nativeModuleMock.getCrashHistory.mockReturnValue("{");
+
+    const { getCrashHistory } = await import("./native");
+
+    expect(getCrashHistory()).toEqual([]);
   });
 });
