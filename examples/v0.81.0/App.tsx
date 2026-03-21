@@ -145,14 +145,6 @@ function App(): React.JSX.Element {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.eyebrow}>HotUpdater Example v0.81.0</Text>
-        <Text style={styles.title}>Scrollable OTA Report</Text>
-        <Text style={styles.description}>
-          This screen is intentionally scrollable. Use agent-device to capture a
-          snapshot, scroll to the next section, and re-snapshot for the rest of
-          the OTA evidence.
-        </Text>
-
         <Section title="Runtime Snapshot">
           <InfoRow label="Bundle ID" value={runtimeSnapshot.bundleId} />
           <InfoRow
