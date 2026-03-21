@@ -129,19 +129,21 @@ const api = new Hono()
       "json",
       typia.createValidate<{
         action: "copy" | "move";
+        nextBundleId?: string;
         targetChannel: string;
       }>(),
     ),
     async (c) => {
       try {
         const bundleId = c.req.param("bundleId");
-        const { action, targetChannel } = c.req.valid("json");
+        const { action, nextBundleId, targetChannel } = c.req.valid("json");
 
         const { config, databasePlugin, storagePlugin } = await prepareConfig();
         const bundle = await promoteBundleWithConfig(
           {
             action,
             bundleId,
+            nextBundleId,
             targetChannel,
           },
           {

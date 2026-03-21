@@ -12,11 +12,13 @@ import { PromoteChannelDialog } from "./PromoteChannelDialog";
 
 const {
   mockSetBundleId,
+  mockCreateUUIDv7,
   mockPromoteBundleMutation,
   mockToastSuccess,
   mockToastError,
 } = vi.hoisted(() => ({
   mockSetBundleId: vi.fn(),
+  mockCreateUUIDv7: vi.fn(),
   mockPromoteBundleMutation: {
     isPending: false,
     mutateAsync: vi.fn(),
@@ -36,6 +38,10 @@ vi.mock("@/hooks/useFilterParams", () => ({
   useFilterParams: () => ({
     setBundleId: mockSetBundleId,
   }),
+}));
+
+vi.mock("@/lib/extract-timestamp-from-uuidv7", () => ({
+  createUUIDv7: mockCreateUUIDv7,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -149,8 +155,11 @@ const bundle: Bundle = {
 
 describe("PromoteChannelDialog", () => {
   const mockOnSuccess = vi.fn();
+  const copiedBundleId = "0195a409-0111-7654-8abc-def012345678";
 
   beforeEach(() => {
+    mockCreateUUIDv7.mockReset();
+    mockCreateUUIDv7.mockReturnValue(copiedBundleId);
     mockSetBundleId.mockReset();
     mockPromoteBundleMutation.isPending = false;
     mockPromoteBundleMutation.mutateAsync.mockReset();
@@ -185,6 +194,7 @@ describe("PromoteChannelDialog", () => {
     const targetChannelInput = screen.getByLabelText("Target Channel");
 
     fireEvent.change(actionSelect, { target: { value: "copy" } });
+    expect(screen.getByText(copiedBundleId)).toBeTruthy();
     fireEvent.change(targetChannelInput, { target: { value: "beta" } });
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
 
@@ -192,6 +202,7 @@ describe("PromoteChannelDialog", () => {
       expect(mockPromoteBundleMutation.mutateAsync).toHaveBeenCalledWith({
         action: "copy",
         bundleId: bundle.id,
+        nextBundleId: copiedBundleId,
         targetChannel: "beta",
       });
     });
