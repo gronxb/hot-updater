@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useChannelsQuery, usePromoteBundleMutation } from "@/lib/api";
+import { createUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 
 interface PromoteChannelDialogProps {
   bundle: Bundle;
@@ -40,6 +41,7 @@ export function PromoteChannelDialog({
 }: PromoteChannelDialogProps) {
   const [targetChannel, setTargetChannel] = useState<string>("");
   const [action, setAction] = useState<PromoteAction>("move");
+  const [copyBundleId, setCopyBundleId] = useState("");
 
   const { setBundleId } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
@@ -49,6 +51,7 @@ export function PromoteChannelDialog({
   const isCopy = action === "copy";
   const normalizedTargetChannel = targetChannel.trim();
   const isSameChannel = normalizedTargetChannel === bundle.channel;
+  const displayedCopyBundleId = copyBundleId || "Generating bundle ID...";
 
   const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
@@ -56,6 +59,16 @@ export function PromoteChannelDialog({
     if (!nextOpen) {
       setTargetChannel("");
       setAction("move");
+      setCopyBundleId("");
+    }
+  };
+
+  const handleActionChange = (value: string) => {
+    const nextAction = value as PromoteAction;
+    setAction(nextAction);
+
+    if (nextAction === "copy") {
+      setCopyBundleId((current) => current || createUUIDv7());
     }
   };
 
@@ -78,13 +91,15 @@ export function PromoteChannelDialog({
     }
 
     try {
+      const nextBundleId = isCopy ? copyBundleId || createUUIDv7() : undefined;
       const { bundle: promotedBundle } =
         await promoteBundleMutation.mutateAsync({
           action,
           bundleId: bundle.id,
+          nextBundleId,
           targetChannel: normalizedTargetChannel,
         });
-      const nextBundleId = promotedBundle.id;
+      const promotedBundleId = promotedBundle.id;
 
       handleOpenChange(false);
       onSuccess?.();
@@ -93,11 +108,11 @@ export function PromoteChannelDialog({
           ? `Bundle copied to ${normalizedTargetChannel}`
           : `Bundle moved to ${normalizedTargetChannel}`,
         {
-          description: `bundleId: ${nextBundleId}`,
+          description: `bundleId: ${promotedBundleId}`,
           action: {
             label: "Show Detail",
             onClick: () =>
-              openBundleDetail(nextBundleId, normalizedTargetChannel),
+              openBundleDetail(promotedBundleId, normalizedTargetChannel),
           },
         },
       );
@@ -124,7 +139,7 @@ export function PromoteChannelDialog({
             <Label htmlFor="promote-action">Action</Label>
             <Select
               value={action}
-              onValueChange={(value) => setAction(value as PromoteAction)}
+              onValueChange={handleActionChange}
             >
               <SelectTrigger id="promote-action">
                 <SelectValue placeholder="Select an action" />
@@ -143,11 +158,19 @@ export function PromoteChannelDialog({
 
           {isCopy && (
             <Alert>
-              <AlertTitle>Copying creates a new bundle ID</AlertTitle>
-              <AlertDescription>
-                Console rewrites the copied archive&apos;s `manifest.json`
-                before uploading it. Bundles created without `manifest.json`
-                cannot be copied.
+              <AlertTitle>Copy bundle ID</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>
+                  Console will rebuild the copied archive with this new bundle
+                  ID.
+                </p>
+                <p className="break-all font-mono text-[11px]">
+                  {displayedCopyBundleId}
+                </p>
+                <p>
+                  Bundles created without <code>manifest.json</code> cannot be
+                  copied.
+                </p>
               </AlertDescription>
             </Alert>
           )}
@@ -201,6 +224,7 @@ export function PromoteChannelDialog({
             onClick={handlePromote}
             disabled={
               !normalizedTargetChannel ||
+              (isCopy && !copyBundleId) ||
               isSameChannel ||
               promoteBundleMutation.isPending
             }

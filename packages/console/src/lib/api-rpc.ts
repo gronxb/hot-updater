@@ -25,6 +25,7 @@ type UpdateBundleInput = {
 type PromoteBundleInput = {
   action: "copy" | "move";
   bundleId: string;
+  nextBundleId?: string;
   targetChannel: string;
 };
 

@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import * as tar from "tar";
 import { brotliDecompressSync } from "node:zlib";
-import { createUUIDv7WithSameTimestamp } from "../extract-timestamp-from-uuidv7";
+import { createUUIDv7 } from "../extract-timestamp-from-uuidv7";
 
 const LEGACY_BUNDLE_ERROR =
   "This OTA bundle was created by a version that does not support manifest.json. Copy bundle is not available.";
@@ -30,6 +30,7 @@ interface BundleManifest {
 export interface PromoteBundleInput {
   action: "copy" | "move";
   bundleId: string;
+  nextBundleId?: string;
   targetChannel: string;
 }
 
@@ -321,7 +322,7 @@ async function deleteUploadedCopy(
 }
 
 export async function promoteBundle(
-  { action, bundleId, targetChannel }: PromoteBundleInput,
+  { action, bundleId, nextBundleId, targetChannel }: PromoteBundleInput,
   deps: PromoteBundleDependencies,
 ) {
   const normalizedTargetChannel = targetChannel.trim();
@@ -358,11 +359,11 @@ export async function promoteBundle(
     throw new Error("Storage plugin is not configured");
   }
 
-  const nextBundleId = createUUIDv7WithSameTimestamp(bundle.id);
+  const resolvedNextBundleId = nextBundleId?.trim() || createUUIDv7();
   const copiedBundle = await createCopiedBundleArchive({
     bundle,
     config: deps.config,
-    nextBundleId,
+    nextBundleId: resolvedNextBundleId,
     storagePlugin: deps.storagePlugin,
     targetChannel: normalizedTargetChannel,
   });

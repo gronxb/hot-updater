@@ -149,6 +149,7 @@ export function usePromoteBundleMutation() {
     mutationFn: (params: {
       action: "copy" | "move";
       bundleId: string;
+      nextBundleId?: string;
       targetChannel: string;
     }) => promoteBundleApi({ data: params }),
     onSuccess: async ({ bundle }) => {
