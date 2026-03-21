@@ -17,6 +17,7 @@
 
 @interface HotUpdater (InternalSharedImpl)
 + (HotUpdaterImpl *)sharedImpl;
++ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs;
 @end
 
 namespace {
@@ -169,6 +170,68 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
   }
 
   return didTriggerReload;
+}
+
+extern "C" NSString *HotUpdaterGetMinBundleId(void)
+{
+  static NSString *uuid = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+#if DEBUG
+    uuid = @"00000000-0000-0000-0000-000000000000";
+#else
+    // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
+    NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+    NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
+
+    // Step 2: If custom value exists and is not empty
+    if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
+      // Check if it's a timestamp (pure digits) or UUID
+      NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+      BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
+
+      if (isTimestamp) {
+        // Convert timestamp (milliseconds) to UUID v7
+        uint64_t timestampMs = [customValue longLongValue];
+        uuid = [HotUpdater generateUUIDv7FromTimestamp:timestampMs];
+        RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
+      } else {
+        // Use as UUID directly
+        uuid = customValue;
+        RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
+      }
+      return;
+    }
+
+    // Step 3: Fallback to default logic (26-hour subtraction)
+    RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
+
+    NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+
+    // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
+    [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
+    [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
+    [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
+    NSDate *buildDate = [formatter dateFromString:compileDateStr];
+    if (!buildDate) {
+      RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
+      uuid = @"00000000-0000-0000-0000-000000000000";
+      return;
+    }
+
+    // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
+    // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
+    // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
+    // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
+    // Example: Build at 15:00 in any timezone -> parse as 15:00 UTC -> subtract 26h -> 13:00 UTC (previous day)
+    NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
+    uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
+
+    uuid = [HotUpdater generateUUIDv7FromTimestamp:buildTimestampMs];
+#endif
+  });
+  return uuid;
 }
 
 
@@ -326,68 +389,11 @@ RCT_EXPORT_MODULE();
 
 // Returns the minimum bundle ID string, either from Info.plist or generated from build timestamp
 - (NSString *)getMinBundleId {
-     static NSString *uuid = nil;
-     static dispatch_once_t onceToken;
-     dispatch_once(&onceToken, ^{
-     #if DEBUG
-         uuid = @"00000000-0000-0000-0000-000000000000";
-     #else
-         // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
-         NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-         NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
-
-         // Step 2: If custom value exists and is not empty
-         if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
-             // Check if it's a timestamp (pure digits) or UUID
-             NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
-             BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
-
-             if (isTimestamp) {
-                 // Convert timestamp (milliseconds) to UUID v7
-                 uint64_t timestampMs = [customValue longLongValue];
-                 uuid = [self generateUUIDv7FromTimestamp:timestampMs];
-                 RCTLogInfo(@"[HotUpdater.mm] Using timestamp %@ as MIN_BUNDLE_ID: %@", customValue, uuid);
-             } else {
-                 // Use as UUID directly
-                 uuid = customValue;
-                 RCTLogInfo(@"[HotUpdater.mm] Using custom MIN_BUNDLE_ID from Info.plist: %@", uuid);
-             }
-             return;
-         }
-
-         // Step 3: Fallback to default logic (26-hour subtraction)
-         RCTLogInfo(@"[HotUpdater.mm] No custom MIN_BUNDLE_ID found, using default calculation");
-
-         NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-
-         // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
-         [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
-         [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
-         [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"]; // Correct format for __DATE__ __TIME__
-         NSDate *buildDate = [formatter dateFromString:compileDateStr];
-         if (!buildDate) {
-             RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
-             uuid = @"00000000-0000-0000-0000-000000000000";
-             return;
-         }
-
-         // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
-         // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
-         // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
-         // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
-         // Example: Build at 15:00 in any timezone → parse as 15:00 UTC → subtract 26h → 13:00 UTC (previous day)
-         NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
-         uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
-
-         uuid = [self generateUUIDv7FromTimestamp:buildTimestampMs];
-     #endif
-     });
-     return uuid;
+     return HotUpdaterGetMinBundleId();
 }
 
 // Helper method: Generate UUID v7 from timestamp (milliseconds)
-- (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
++ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
     unsigned char bytes[16];
 
     // UUID v7 format: timestamp_ms (48 bits) + ver (4 bits) + random (12 bits) + variant (2 bits) + random (62 bits)
@@ -589,11 +595,11 @@ RCT_EXPORT_MODULE();
     return bundleId ?: @"";
 }
 
-- (NSDictionary<NSString *, NSString *> *)getManifestAssets {
-    NSLog(@"[HotUpdater.mm] getManifestAssets called");
+- (NSDictionary<NSString *, id> *)getManifest {
+    NSLog(@"[HotUpdater.mm] getManifest called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSDictionary<NSString *, NSString *> *assets = [impl getManifestAssets];
-    return assets ?: @{};
+    NSDictionary<NSString *, id> *manifest = [impl getManifest];
+    return manifest ?: @{};
 }
 
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
@@ -694,11 +700,11 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
     return bundleId ?: @"";
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifestAssets) {
-    NSLog(@"[HotUpdater.mm] getManifestAssets called");
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {
+    NSLog(@"[HotUpdater.mm] getManifest called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSDictionary<NSString *, NSString *> *assets = [impl getManifestAssets];
-    return assets ?: @{};
+    NSDictionary<NSString *, id> *manifest = [impl getManifest];
+    return manifest ?: @{};
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve

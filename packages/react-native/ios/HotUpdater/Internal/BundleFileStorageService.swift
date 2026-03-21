@@ -1,5 +1,7 @@
 import Foundation
 
+typealias ManifestAssets = [String: Any]
+
 public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
     case downloadFailed(Error)
@@ -127,10 +129,10 @@ public protocol BundleStorageService {
     func getBundleId() -> String?
 
     /**
-     * Gets the current manifest assets map from bundle storage.
+     * Gets the current manifest from bundle storage.
      * Returns an empty object when manifest.json is missing or invalid.
      */
-    func getManifestAssets() -> [String: String]
+    func getManifest() -> ManifestAssets
 
     /**
      * Restores the original bundle and clears downloaded bundle state.
@@ -329,30 +331,6 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Failed to read manifest at \(manifestPath): \(error.localizedDescription)")
             return nil
         }
-    }
-
-    private func readManifestAssets(in bundleDirectory: String) -> [String: String] {
-        guard let manifestJson = readManifest(in: bundleDirectory),
-              let assets = manifestJson["assets"] as? [String: Any] else {
-            return [:]
-        }
-
-        return Dictionary(
-            uniqueKeysWithValues: assets.compactMap { key, value in
-                guard let value = value as? String else {
-                    return nil
-                }
-
-                let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
-                let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                guard !trimmedKey.isEmpty, !trimmedValue.isEmpty else {
-                    return nil
-                }
-
-                return (trimmedKey, trimmedValue)
-            }
-        )
     }
 
     /**
@@ -1304,7 +1282,7 @@ class BundleFileStorageService: BundleStorageService {
         return readBundleId(in: bundleDir)
     }
 
-    func getManifestAssets() -> [String: String] {
+    func getManifest() -> ManifestAssets {
         guard let activeBundleId = getActiveBundleId(),
               case .success(let storeDir) = bundleStoreDir() else {
             return [:]
@@ -1315,7 +1293,7 @@ class BundleFileStorageService: BundleStorageService {
             return [:]
         }
 
-        return readManifestAssets(in: bundleDir)
+        return readManifest(in: bundleDir) ?? [:]
     }
 
     func resetChannel() -> Result<Bool, Error> {

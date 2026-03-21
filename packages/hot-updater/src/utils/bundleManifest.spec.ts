@@ -45,8 +45,12 @@ describe("bundleManifest", () => {
     expect(manifest).toEqual({
       bundleId: "bundle-123",
       assets: {
-        "assets/logo.png": hash("logo-content"),
-        "index.android.bundle": hash("bundle-content"),
+        "assets/logo.png": {
+          fileHash: hash("logo-content"),
+        },
+        "index.android.bundle": {
+          fileHash: hash("bundle-content"),
+        },
       },
     });
   });
@@ -74,7 +78,9 @@ describe("bundleManifest", () => {
     expect(writtenManifest).toEqual({
       bundleId: "bundle-456",
       assets: {
-        "index.android.bundle": hash("bundle-content"),
+        "index.android.bundle": {
+          fileHash: hash("bundle-content"),
+        },
       },
     });
     expect(writtenManifest.assets).not.toHaveProperty("manifest.json");

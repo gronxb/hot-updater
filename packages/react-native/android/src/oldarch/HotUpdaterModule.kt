@@ -193,9 +193,9 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getManifestAssets(): String {
+    override fun getManifest(): String {
         val impl = getInstance()
-        return JSONObject(impl.getManifestAssets()).toString()
+        return JSONObject(impl.getManifest()).toString()
     }
 
     @ReactMethod

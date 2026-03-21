@@ -111,15 +111,15 @@ export interface Spec extends TurboModule {
    * Native reads the extracted bundle manifest first and falls back to older
    * metadata when needed.
    *
-   * @returns Active bundle ID or an empty string when no downloaded bundle is active
+   * @returns Active bundle ID, MIN_BUNDLE_ID for the built-in bundle, or NIL_UUID in DEV
    */
   getBundleId: () => string;
 
   /**
-   * Gets the current manifest assets map from native bundle storage.
+   * Gets the current manifest from native bundle storage.
    * Returns an empty object when manifest.json is missing or invalid.
    */
-  getManifestAssets: () => UnsafeObject;
+  getManifest: () => UnsafeObject;
 
   // EventEmitter
   addListener(eventName: string): void;

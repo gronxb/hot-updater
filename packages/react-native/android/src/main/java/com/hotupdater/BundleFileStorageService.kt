@@ -88,10 +88,10 @@ interface BundleStorageService {
     fun getBundleId(): String?
 
     /**
-     * Gets the current manifest assets map from bundle storage.
+     * Gets the current manifest from bundle storage.
      * Returns an empty map when manifest.json is missing or invalid.
      */
-    fun getManifestAssets(): Map<String, String>
+    fun getManifest(): Map<String, Any?>
 
     /**
      * Restores the original bundle and clears downloaded bundle state.
@@ -254,24 +254,30 @@ class BundleFileStorageService(
         }
     }
 
-    private fun readManifestAssetsFromBundleDir(bundleDir: File): Map<String, String> {
-        val assets = linkedMapOf<String, String>()
-        val manifestAssets =
-            readManifestFromBundleDir(bundleDir)?.optJSONObject("assets")
-                ?: return emptyMap()
+    private fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
+        val result = linkedMapOf<String, Any?>()
+        val keys = jsonObject.keys()
 
-        val keys = manifestAssets.keys()
         while (keys.hasNext()) {
             val key = keys.next()
-            val value = manifestAssets.optString(key).trim()
-
-            if (key.isNotBlank() && value.isNotEmpty()) {
-                assets[key] = value
-            }
+            result[key] = jsonValueToKotlin(jsonObject.opt(key))
         }
 
-        return assets
+        return result
     }
+
+    private fun jsonArrayToList(jsonArray: org.json.JSONArray): List<Any?> =
+        List(jsonArray.length()) { index ->
+            jsonValueToKotlin(jsonArray.opt(index))
+        }
+
+    private fun jsonValueToKotlin(value: Any?): Any? =
+        when (value) {
+            JSONObject.NULL -> null
+            is JSONObject -> jsonObjectToMap(value)
+            is org.json.JSONArray -> jsonArrayToList(value)
+            else -> value
+        }
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -896,13 +902,14 @@ class BundleFileStorageService(
             null
         }
 
-    override fun getManifestAssets(): Map<String, String> =
+    override fun getManifest(): Map<String, Any?> =
         try {
             getActiveBundleId()?.let { activeBundleId ->
-                readManifestAssetsFromBundleDir(File(getBundleStoreDir(), activeBundleId))
+                readManifestFromBundleDir(File(getBundleStoreDir(), activeBundleId))
+                    ?.let(::jsonObjectToMap)
             } ?: emptyMap()
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting manifest assets: ${e.message}")
+            Log.e(TAG, "Error getting manifest: ${e.message}")
             emptyMap()
         }
 

@@ -2,9 +2,13 @@ import fs from "fs/promises";
 import path from "path";
 import { getFileHashFromFile } from "./getFileHash";
 
-export interface BundleManifest {
+export interface Manifest {
   bundleId: string;
-  assets: Record<string, string>;
+  assets: Record<string, ManifestAsset>;
+}
+
+export interface ManifestAsset {
+  fileHash: string;
 }
 
 export const createBundleManifest = async ({
@@ -13,14 +17,19 @@ export const createBundleManifest = async ({
 }: {
   bundleId: string;
   targetFiles: { path: string; name: string }[];
-}): Promise<BundleManifest> => {
+}): Promise<Manifest> => {
   const assets = Object.fromEntries(
     await Promise.all(
       [...targetFiles]
         .sort((left, right) => left.name.localeCompare(right.name))
         .map(
           async (target) =>
-            [target.name, await getFileHashFromFile(target.path)] as const,
+            [
+              target.name,
+              {
+                fileHash: await getFileHashFromFile(target.path),
+              },
+            ] as const,
         ),
     ),
   );

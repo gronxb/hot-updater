@@ -8,7 +8,15 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-export type ManifestAssets = Record<string, string>;
+
+export interface ManifestAsset {
+  fileHash: string;
+}
+
+export interface Manifest {
+  bundleId: string;
+  assets: Record<string, ManifestAsset>;
+}
 
 /**
  * Built-in reload behaviors used by `HotUpdater.reload()`.
@@ -330,29 +338,30 @@ export const getBundleId = (): string => {
 };
 
 /**
- * Fetches the current manifest assets map for the active bundle.
+ * Fetches the current manifest for the active bundle.
  *
- * Returns an empty object when manifest.json is missing or invalid.
+ * Returns a normalized manifest with empty assets when manifest.json is missing
+ * or invalid.
  */
-export const getManifestAssets = (): ManifestAssets => {
+export const getManifest = (): Manifest => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getManifestAssets?: () => ManifestAssets | string;
+    getManifest?: () => Record<string, unknown> | string;
   };
-  const assets = nativeModule.getManifestAssets?.();
+  const manifest = nativeModule.getManifest?.();
 
-  if (!assets) {
-    return {};
+  if (!manifest) {
+    return createEmptyManifest();
   }
 
-  if (typeof assets === "string") {
+  if (typeof manifest === "string") {
     try {
-      return normalizeManifestAssets(JSON.parse(assets));
+      return normalizeManifest(JSON.parse(manifest));
     } catch {
-      return {};
+      return createEmptyManifest();
     }
   }
 
-  return normalizeManifestAssets(assets);
+  return normalizeManifest(manifest);
 };
 
 /**
@@ -442,15 +451,62 @@ const normalizeNotifyAppReadyResult = (
   return { status: "STABLE" };
 };
 
-const normalizeManifestAssets = (value: unknown): ManifestAssets => {
+const createEmptyManifest = (): Manifest => ({
+  bundleId: getBundleId(),
+  assets: {},
+});
+
+const normalizeManifest = (value: unknown): Manifest => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return createEmptyManifest();
+  }
+
+  const bundleIdValue = (value as { bundleId?: unknown }).bundleId;
+  const bundleId =
+    typeof bundleIdValue === "string" && bundleIdValue.trim()
+      ? bundleIdValue.trim()
+      : getBundleId();
+
+  return {
+    bundleId,
+    assets: normalizeManifestAssets((value as { assets?: unknown }).assets),
+  };
+};
+
+const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
 
   return Object.fromEntries(
-    Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
-    ),
+    Object.entries(value).flatMap(([key, entry]) => {
+      const trimmedKey = key.trim();
+
+      if (!trimmedKey) {
+        return [];
+      }
+
+      if (typeof entry === "string") {
+        const fileHash = entry.trim();
+
+        if (!fileHash) {
+          return [];
+        }
+
+        return [[trimmedKey, { fileHash }] as const];
+      }
+
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return [];
+      }
+
+      const { fileHash } = entry as { fileHash?: unknown };
+      if (typeof fileHash !== "string" || !fileHash.trim()) {
+        return [];
+      }
+
+      return [[trimmedKey, { fileHash: fileHash.trim() }] as const];
+    }),
   );
 };
 

@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
-  const getManifestAssets = vi.fn<() => Record<string, string> | string>();
+  const getManifest = vi.fn<() => Record<string, unknown> | string>();
 
   return {
     clearCrashHistory: vi.fn(() => true),
     getBaseURL: vi.fn(() => null),
     getBundleId: vi.fn(() => "bundle-id"),
-    getManifestAssets,
+    getManifest,
     getConstants: vi.fn(() => ({
       APP_VERSION: null,
       CHANNEL: "production",
@@ -52,8 +52,13 @@ describe("notifyAppReady", () => {
       MIN_BUNDLE_ID: "min-bundle-id",
     });
     nativeModuleMock.getBundleId.mockReturnValue("bundle-id");
-    nativeModuleMock.getManifestAssets.mockReturnValue({
-      "index.android.bundle": "hash-123",
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "index.android.bundle": {
+          fileHash: "hash-123",
+        },
+      },
+      bundleId: "bundle-id",
     });
   });
 
@@ -106,39 +111,108 @@ describe("notifyAppReady", () => {
     expect(getBundleId()).toBe("min-bundle-id");
   });
 
-  it("returns manifest assets from native objects", async () => {
-    nativeModuleMock.getManifestAssets.mockReturnValue({
-      "assets/logo.png": "hash-logo",
-      "index.android.bundle": "hash-bundle",
+  it("returns manifest from native objects", async () => {
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
+      },
+      bundleId: "bundle-123",
     });
 
-    const { getManifestAssets } = await import("./native");
+    const { getManifest } = await import("./native");
 
-    expect(getManifestAssets()).toEqual({
-      "assets/logo.png": "hash-logo",
-      "index.android.bundle": "hash-bundle",
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
+      },
+      bundleId: "bundle-123",
     });
   });
 
-  it("parses manifest assets from old-arch JSON payloads", async () => {
-    nativeModuleMock.getManifestAssets.mockReturnValue(
-      JSON.stringify({
+  it("normalizes legacy manifest asset entries from native objects", async () => {
+    nativeModuleMock.getManifest.mockReturnValue({
+      assets: {
         "assets/logo.png": "hash-logo",
+      },
+      bundleId: "bundle-123",
+    });
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("parses manifest from old-arch JSON payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue(
+      JSON.stringify({
+        assets: {
+          "assets/logo.png": {
+            fileHash: "hash-logo",
+          },
+        },
+        bundleId: "bundle-123",
       }),
     );
 
-    const { getManifestAssets } = await import("./native");
+    const { getManifest } = await import("./native");
 
-    expect(getManifestAssets()).toEqual({
-      "assets/logo.png": "hash-logo",
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
     });
   });
 
-  it("returns an empty object for malformed manifest assets payloads", async () => {
-    nativeModuleMock.getManifestAssets.mockReturnValue("{");
+  it("normalizes legacy manifest asset entries from old-arch JSON payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue(
+      JSON.stringify({
+        assets: {
+          "assets/logo.png": "hash-logo",
+        },
+        bundleId: "bundle-123",
+      }),
+    );
 
-    const { getManifestAssets } = await import("./native");
+    const { getManifest } = await import("./native");
 
-    expect(getManifestAssets()).toEqual({});
+    expect(getManifest()).toEqual({
+      assets: {
+        "assets/logo.png": {
+          fileHash: "hash-logo",
+        },
+      },
+      bundleId: "bundle-123",
+    });
+  });
+
+  it("returns an empty-assets manifest for malformed payloads", async () => {
+    nativeModuleMock.getManifest.mockReturnValue("{");
+
+    const { getManifest } = await import("./native");
+
+    expect(getManifest()).toEqual({
+      assets: {},
+      bundleId: "bundle-id",
+    });
   });
 });

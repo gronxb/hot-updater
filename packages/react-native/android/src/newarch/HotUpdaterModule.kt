@@ -8,6 +8,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableNativeArray
 import com.facebook.react.bridge.WritableNativeMap
+import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -181,15 +182,9 @@ class HotUpdaterModule internal constructor(
         return impl.getBundleId()
     }
 
-    override fun getManifestAssets(): WritableNativeMap {
+    override fun getManifest(): WritableNativeMap {
         val impl = getInstance()
-        val result = WritableNativeMap()
-
-        impl.getManifestAssets().forEach { (key, value) ->
-            result.putString(key, value)
-        }
-
-        return result
+        return toWritableNativeMap(impl.getManifest())
     }
 
     override fun resetChannel(promise: Promise) {
@@ -208,5 +203,47 @@ class HotUpdaterModule internal constructor(
 
     companion object {
         const val NAME = "HotUpdater"
+    }
+
+    private fun toWritableNativeMap(source: Map<String, Any?>): WritableNativeMap {
+        val result = WritableNativeMap()
+        source.forEach { (key, value) ->
+            putValue(result, key, value)
+        }
+        return result
+    }
+
+    private fun toWritableNativeArray(source: List<*>): WritableNativeArray {
+        val result = WritableNativeArray()
+        source.forEach { value ->
+            when (value) {
+                null -> result.pushNull()
+                is Boolean -> result.pushBoolean(value)
+                is Number -> result.pushDouble(value.toDouble())
+                is String -> result.pushString(value)
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    result.pushMap(toWritableNativeMap(value as Map<String, Any?>))
+                }
+                is List<*> -> result.pushArray(toWritableNativeArray(value))
+                else -> result.pushString(value.toString())
+            }
+        }
+        return result
+    }
+
+    private fun putValue(target: WritableMap, key: String, value: Any?) {
+        when (value) {
+            null -> target.putNull(key)
+            is Boolean -> target.putBoolean(key, value)
+            is Number -> target.putDouble(key, value.toDouble())
+            is String -> target.putString(key, value)
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                target.putMap(key, toWritableNativeMap(value as Map<String, Any?>))
+            }
+            is List<*> -> target.putArray(key, toWritableNativeArray(value))
+            else -> target.putString(key, value.toString())
+        }
     }
 }
