@@ -7,5 +7,10 @@ export default defineConfig({
     // Run tests sequentially to avoid resource conflicts
     maxConcurrency: 1,
     pool: "forks",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });
