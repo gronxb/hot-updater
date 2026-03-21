@@ -188,12 +188,41 @@ export function createOrmDatabaseCore({
             latestCandidate &&
             latestCandidate.id.localeCompare(currentBundle.id) > 0
           ) {
+            // Propagate should_force_update if any intermediate bundle requires it
+            if (!latestCandidate.should_force_update) {
+              const hasIntermediateForced = sorted.some(
+                (b) =>
+                  b.id.localeCompare(bundleId) > 0 &&
+                  Boolean(b.should_force_update),
+              );
+              if (hasIntermediateForced) {
+                return toUpdateInfo(
+                  { ...latestCandidate, should_force_update: true },
+                  "UPDATE",
+                );
+              }
+            }
             return toUpdateInfo(latestCandidate, "UPDATE");
           }
           return null;
         }
 
         if (updateCandidate) {
+          // Propagate should_force_update if any intermediate bundle requires it
+          if (!updateCandidate.should_force_update) {
+            const hasIntermediateForced = sorted.some(
+              (b) =>
+                b.id.localeCompare(bundleId) > 0 &&
+                b.id.localeCompare(updateCandidate.id) <= 0 &&
+                Boolean(b.should_force_update),
+            );
+            if (hasIntermediateForced) {
+              return toUpdateInfo(
+                { ...updateCandidate, should_force_update: true },
+                "UPDATE",
+              );
+            }
+          }
           return toUpdateInfo(updateCandidate, "UPDATE");
         }
         if (rollbackCandidate) {
@@ -257,12 +286,41 @@ export function createOrmDatabaseCore({
             latestCandidate &&
             latestCandidate.id.localeCompare(currentBundle.id) > 0
           ) {
+            // Propagate should_force_update if any intermediate bundle requires it
+            if (!latestCandidate.should_force_update) {
+              const hasIntermediateForced = sorted.some(
+                (b) =>
+                  b.id.localeCompare(bundleId) > 0 &&
+                  Boolean(b.should_force_update),
+              );
+              if (hasIntermediateForced) {
+                return toUpdateInfo(
+                  { ...latestCandidate, should_force_update: true },
+                  "UPDATE",
+                );
+              }
+            }
             return toUpdateInfo(latestCandidate, "UPDATE");
           }
           return null;
         }
 
         if (updateCandidate) {
+          // Propagate should_force_update if any intermediate bundle requires it
+          if (!updateCandidate.should_force_update) {
+            const hasIntermediateForced = sorted.some(
+              (b) =>
+                b.id.localeCompare(bundleId) > 0 &&
+                b.id.localeCompare(updateCandidate.id) <= 0 &&
+                Boolean(b.should_force_update),
+            );
+            if (hasIntermediateForced) {
+              return toUpdateInfo(
+                { ...updateCandidate, should_force_update: true },
+                "UPDATE",
+              );
+            }
+          }
           return toUpdateInfo(updateCandidate, "UPDATE");
         }
         if (rollbackCandidate) {

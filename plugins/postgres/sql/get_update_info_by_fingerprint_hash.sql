@@ -40,6 +40,19 @@ BEGIN
         ORDER BY b.id DESC
         LIMIT 1
     ),
+    intermediate_forced AS (
+        SELECT 1 AS has_forced
+        FROM bundles b
+        WHERE bundle_id != NIL_UUID
+          AND b.enabled = TRUE
+          AND b.platform = app_platform
+          AND b.id > bundle_id
+          AND b.id > min_bundle_id
+          AND b.channel = target_channel
+          AND b.fingerprint_hash = target_fingerprint_hash
+          AND b.should_force_update = TRUE
+        LIMIT 1
+    ),
     rollback_candidate AS (
         SELECT
             b.id,
@@ -64,7 +77,16 @@ BEGIN
         SELECT * FROM rollback_candidate
         WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
     )
-    SELECT *
+    SELECT
+        final_result.id,
+        CASE
+            WHEN final_result.status = 'UPDATE' AND EXISTS (SELECT 1 FROM intermediate_forced) THEN TRUE
+            ELSE final_result.should_force_update
+        END AS should_force_update,
+        final_result.message,
+        final_result.status,
+        final_result.storage_uri,
+        final_result.file_hash
     FROM final_result
     WHERE final_result.id != bundle_id
 
