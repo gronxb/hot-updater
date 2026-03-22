@@ -240,6 +240,50 @@ app.get("/api/check-update", async (c) => {
 });
 
 app.get(
+  "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    const { platform, appVersion, channel, minBundleId, bundleId } =
+      c.req.param();
+
+    const requiredError = validateRequiredParams(
+      { platform, appVersion, bundleId },
+      ["platform", "appVersion", "bundleId"],
+    );
+    if (requiredError) {
+      return c.json({ error: requiredError }, 400);
+    }
+
+    if (!validatePlatform(platform)) {
+      return c.json(
+        { error: "Invalid platform. Must be 'ios' or 'android'." },
+        400,
+      );
+    }
+
+    const { actualChannel, actualMinBundleId } = processDefaultValues(
+      channel,
+      minBundleId,
+    );
+
+    const params: UpdateRequestParams = {
+      platform,
+      bundleId,
+      channel: actualChannel,
+      minBundleId: actualMinBundleId,
+      appVersion,
+    };
+
+    return handleUpdateRequest(
+      c,
+      params,
+      "appVersion",
+      ONE_YEAR_IN_SECONDS,
+      SHARED_EDGE_CACHE_CONTROL,
+    );
+  },
+);
+
+app.get(
   "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     const { platform, appVersion, channel, minBundleId, bundleId, cohort } =
@@ -278,6 +322,50 @@ app.get(
       c,
       params,
       "appVersion",
+      ONE_YEAR_IN_SECONDS,
+      SHARED_EDGE_CACHE_CONTROL,
+    );
+  },
+);
+
+app.get(
+  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
+      c.req.param();
+
+    const requiredError = validateRequiredParams(
+      { platform, fingerprintHash, bundleId },
+      ["platform", "fingerprintHash", "bundleId"],
+    );
+    if (requiredError) {
+      return c.json({ error: requiredError }, 400);
+    }
+
+    if (!validatePlatform(platform)) {
+      return c.json(
+        { error: "Invalid platform. Must be 'ios' or 'android'." },
+        400,
+      );
+    }
+
+    const { actualChannel, actualMinBundleId } = processDefaultValues(
+      channel,
+      minBundleId,
+    );
+
+    const params: UpdateRequestParams = {
+      platform,
+      bundleId,
+      channel: actualChannel,
+      minBundleId: actualMinBundleId,
+      fingerprintHash,
+    };
+
+    return handleUpdateRequest(
+      c,
+      params,
+      "fingerprint",
       ONE_YEAR_IN_SECONDS,
       SHARED_EDGE_CACHE_CONTROL,
     );

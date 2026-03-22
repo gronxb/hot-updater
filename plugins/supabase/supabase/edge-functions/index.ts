@@ -260,6 +260,55 @@ app.get("/", async (c) => {
 });
 
 app.get(
+  "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    try {
+      const {
+        platform,
+        "app-version": appVersion,
+        channel,
+        minBundleId,
+        bundleId,
+      } = c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        {
+          auth: { autoRefreshToken: false, persistSession: false },
+        },
+      );
+
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        appVersion,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(supabase, updateConfig);
+      return c.json(result);
+    } catch (err: unknown) {
+      return c.json(
+        {
+          error: err instanceof Error ? err.message : "Unknown error",
+        },
+        500,
+      );
+    }
+  },
+);
+
+app.get(
   "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
   async (c) => {
     try {
@@ -295,6 +344,50 @@ app.get(
         channel: channel || "production",
         cohort: decodeMaybe(cohort),
         _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(supabase, updateConfig);
+      return c.json(result);
+    } catch (err: unknown) {
+      return c.json(
+        {
+          error: err instanceof Error ? err.message : "Unknown error",
+        },
+        500,
+      );
+    }
+  },
+);
+
+app.get(
+  "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+  async (c) => {
+    try {
+      const { platform, fingerprintHash, channel, minBundleId, bundleId } =
+        c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        {
+          auth: { autoRefreshToken: false, persistSession: false },
+        },
+      );
+
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        fingerprintHash,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        _updateStrategy: "fingerprint" as const,
       } satisfies GetBundlesArgs;
 
       const result = await handleUpdateRequest(supabase, updateConfig);

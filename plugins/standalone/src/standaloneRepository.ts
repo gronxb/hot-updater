@@ -10,6 +10,10 @@ export interface RouteConfig {
 }
 
 export interface Routes {
+  /**
+   * @deprecated Use `create` and `update`. Kept for backward compatibility.
+   */
+  upsert?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
@@ -58,14 +62,22 @@ export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
     factory: (config) => {
+      const legacyUpsertRoute = config.routes?.upsert;
       const routes = {
         create: () =>
-          createRoute(defaultRoutes.create(), config.routes?.create?.()),
+          createRoute(
+            defaultRoutes.create(),
+            config.routes?.create?.() ?? legacyUpsertRoute?.(),
+          ),
         update: (bundleId: string) =>
           createRoute(
             defaultRoutes.update(bundleId),
             config.routes?.update?.(bundleId),
           ),
+        legacyUpsert: () =>
+          legacyUpsertRoute
+            ? createRoute(defaultRoutes.create(), legacyUpsertRoute())
+            : null,
         list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
         retrieve: (bundleId: string) =>
           createRoute(
@@ -208,11 +220,15 @@ export const standaloneRepository =
                 throw new Error("Failed to commit bundle");
               }
             } else if (op.operation === "update") {
-              const { path, headers: routeHeaders } = routes.update(op.data.id);
+              const legacyRoute =
+                !config.routes?.update && routes.legacyUpsert();
+              const { path, headers: routeHeaders } = legacyRoute
+                ? legacyRoute
+                : routes.update(op.data.id);
               const response = await fetch(buildUrl(path), {
-                method: "PATCH",
+                method: legacyRoute ? "POST" : "PATCH",
                 headers: getHeaders(routeHeaders),
-                body: JSON.stringify(op.data),
+                body: JSON.stringify(legacyRoute ? [op.data] : op.data),
               });
 
               if (!response.ok) {

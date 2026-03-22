@@ -235,8 +235,20 @@ export function createHandler(
   addRoute(
     router,
     "GET",
+    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+    "fingerprintUpdateWithCohort",
+  );
+  addRoute(
+    router,
+    "GET",
     "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
     "fingerprintUpdateWithCohort",
+  );
+  addRoute(
+    router,
+    "GET",
+    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+    "appVersionUpdateWithCohort",
   );
   addRoute(
     router,
