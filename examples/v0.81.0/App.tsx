@@ -10,7 +10,6 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Image,
-  Linking,
   Modal,
   Pressable,
   SafeAreaView,
@@ -26,11 +25,6 @@ const notify = proxy<{
   status?: string;
   crashedBundleId?: string;
 }>({});
-const E2E_DEEP_LINK_SCHEME = "hotupdaterexample";
-
-type CohortCommand =
-  | { action: "restore"; nextCohort: string }
-  | { action: "set"; nextCohort: string };
 
 const getGlobalBaseUrl = (): string | null => {
   const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
@@ -67,43 +61,6 @@ const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   manifest: HotUpdater.getManifest(),
   minBundleId: HotUpdater.getMinBundleId(),
 });
-
-const parseCohortCommandFromUrl = (url: string): CohortCommand | null => {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== `${E2E_DEEP_LINK_SCHEME}:`) {
-      return null;
-    }
-
-    const segments = [
-      parsed.hostname,
-      ...parsed.pathname.split("/").filter(Boolean),
-    ];
-
-    if (segments[0] !== "cohort") {
-      return null;
-    }
-
-    if (
-      (segments[1] === "set" || segments[1] === "restore") &&
-      typeof segments[2] === "string"
-    ) {
-      return {
-        action: segments[1],
-        nextCohort: decodeURIComponent(segments[2]),
-      };
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-};
-
-const applyCohortCommand = (command: CohortCommand): string => {
-  HotUpdater.setCohort(command.nextCohort);
-  return `deeplink ${command.action} -> ${HotUpdater.getCohort()}`;
-};
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   if (!/^[0-9a-fA-F-]{36}$/.test(uuid)) {
     return "N/A";
@@ -181,45 +138,6 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     setRuntimeSnapshot(readRuntimeSnapshot());
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const handleIncomingUrl = (url: string | null): boolean => {
-      if (!url) {
-        return false;
-      }
-
-      const command = parseCohortCommandFromUrl(url);
-      if (!command) {
-        return false;
-      }
-
-      const actionResult = applyCohortCommand(command);
-
-      if (isMounted) {
-        setCohortActionResult(actionResult);
-        setRuntimeSnapshot(readRuntimeSnapshot());
-      }
-
-      return true;
-    };
-
-    Linking.getInitialURL()
-      .then((initialUrl) => {
-        handleIncomingUrl(initialUrl);
-      })
-      .catch(() => undefined);
-
-    const subscription = Linking.addEventListener("url", ({ url }) => {
-      handleIncomingUrl(url);
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.remove();
-    };
   }, []);
 
   useEffect(() => {
