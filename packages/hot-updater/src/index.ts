@@ -186,13 +186,7 @@ program
 
     const port = await getConsolePort();
 
-    await openConsole(port, (info) => {
-      console.log(
-        `Server running on ${colors.magenta(
-          colors.underline(`http://localhost:${info.port}`),
-        )}`,
-      );
-    });
+    await openConsole(port);
   });
 
 program
