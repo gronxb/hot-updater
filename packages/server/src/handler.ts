@@ -5,7 +5,7 @@ import type {
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
 import type { DatabaseBundleQueryOptions } from "@hot-updater/plugin-core";
-import { addRoute, createRouter, findRoute } from "rou3";
+import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { PaginationInfo } from "./types";
 
 declare const __VERSION__: string;

@@ -1,11 +1,11 @@
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import * as admin from "firebase-admin";
+import { firebaseDatabase } from "../../src/firebaseDatabase";
+import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 import {
   createFirebaseFunctionsHandler,
   HOT_UPDATER_BASE_PATH,
 } from "./runtime";
-import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 
 declare global {
   var HotUpdater: {

@@ -1,7 +1,7 @@
-import { createHotUpdater } from "@hot-updater/server";
-import { createAwsLambdaEdgeHandler, HOT_UPDATER_BASE_PATH } from "./runtime";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
+import { createAwsLambdaEdgeHandler, HOT_UPDATER_BASE_PATH } from "./runtime";
 
 declare global {
   var HotUpdater: {

@@ -3,7 +3,7 @@ import {
   isCanonicalUpdateRoute,
   rewriteLegacyExactRequestToCanonical,
   wildcardPattern,
-} from "@hot-updater/server";
+} from "@hot-updater/server/runtime";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";

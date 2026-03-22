@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 
 const HOT_UPDATE_DIR_NAME = ".hot-updater";
 const HOT_UPDATE_OUTPUT_DIR_NAME = "output";

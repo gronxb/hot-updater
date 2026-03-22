@@ -2,7 +2,7 @@ import {
   type createHotUpdater,
   rewriteLegacyExactRequestToCanonical,
   wildcardPattern,
-} from "@hot-updater/server";
+} from "@hot-updater/server/runtime";
 import type { HttpsFunction } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 import { createFirebaseApp } from "./createFirebaseApp";

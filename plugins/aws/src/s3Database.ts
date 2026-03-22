@@ -13,6 +13,7 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import mime from "mime";
+import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import { streamToString } from "./utils/streamToString";
 
 export interface S3DatabaseConfig extends S3ClientConfig {
@@ -149,7 +150,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
       ...s3Config
     } = config;
 
-    const client = new S3Client(s3Config);
+    const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
     const cloudfrontClient = cloudfrontDistributionId
       ? new CloudFrontClient({
           credentials: s3Config.credentials,

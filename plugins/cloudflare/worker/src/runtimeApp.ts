@@ -3,7 +3,7 @@ import {
   type createHotUpdater,
   rewriteLegacyExactRequestToCanonical,
   wildcardPattern,
-} from "@hot-updater/server";
+} from "@hot-updater/server/runtime";
 import { Hono } from "hono";
 
 export type CloudflareWorkerEnv = {

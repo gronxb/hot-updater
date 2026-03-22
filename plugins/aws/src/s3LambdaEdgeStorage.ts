@@ -4,6 +4,7 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
+import { applySsmRuntimeAwsConfig } from "./runtimeAwsConfig";
 import type { S3StorageConfig } from "./s3Storage";
 import { s3Storage } from "./s3Storage";
 
@@ -43,7 +44,7 @@ const getPrivateKeyFromSsm = async (
     );
   }
 
-  const ssmClient = new SSM({ region });
+  const ssmClient = new SSM(applySsmRuntimeAwsConfig({ region }));
   const response = await ssmClient.getParameter({
     Name: parameterName,
     WithDecryption: true,

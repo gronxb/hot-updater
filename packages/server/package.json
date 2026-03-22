@@ -32,6 +32,10 @@
       "import": "./dist/node.js",
       "require": "./dist/node.cjs"
     },
+    "./runtime": {
+      "import": "./dist/runtime.js",
+      "require": "./dist/runtime.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

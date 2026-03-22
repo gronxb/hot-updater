@@ -5,6 +5,7 @@ export default defineConfig([
   {
     entry: [
       "./src/index.ts",
+      "./src/runtime.ts",
       "./src/node.ts",
       "./src/adapters/kysely.ts",
       "./src/adapters/drizzle.ts",

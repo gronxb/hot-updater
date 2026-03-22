@@ -3,7 +3,7 @@ import {
   normalizeBasePath,
   rewriteLegacyExactRequestToCanonical,
   wildcardPattern,
-} from "@hot-updater/server";
+} from "@hot-updater/server/runtime";
 import { Hono } from "hono";
 
 type HotUpdaterRuntime = Pick<

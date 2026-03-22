@@ -19,7 +19,12 @@ export default defineConfig([
     outDir: "dist/firebase/functions",
     external: ["firebase-functions", "firebase-admin"],
     failOnWarn: true,
-    noExternal: ["@hot-updater/core", "@hot-updater/js"],
+    noExternal: [
+      "@hot-updater/core",
+      "@hot-updater/js",
+      "@hot-updater/plugin-core",
+      "@hot-updater/server",
+    ],
   },
   {
     entry: ["iac/index.ts"],

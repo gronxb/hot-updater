@@ -1,5 +1,5 @@
 import { verifyJwtSignedUrl } from "@hot-updater/js";
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import { d1WorkerDatabase } from "../../src/cloudflareWorkerDatabase";
 import { r2WorkerStorage } from "../../src/cloudflareWorkerStorage";
 import {
