@@ -1650,21 +1650,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.17
         version: 0.2.17
-      '@hot-updater/aws':
-        specifier: workspace:*
-        version: link:../../plugins/aws
-      '@hot-updater/cloudflare':
-        specifier: workspace:*
-        version: link:../../plugins/cloudflare
-      '@hot-updater/firebase':
-        specifier: workspace:*
-        version: link:../../plugins/firebase
       '@hot-updater/standalone':
         specifier: workspace:*
         version: link:../../plugins/standalone
-      '@hot-updater/supabase':
-        specifier: workspace:*
-        version: link:../../plugins/supabase
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../test-utils

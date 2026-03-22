@@ -59,11 +59,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@hot-updater/aws": "workspace:*",
-    "@hot-updater/cloudflare": "workspace:*",
-    "@hot-updater/firebase": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
-    "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",

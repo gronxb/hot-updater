@@ -6,7 +6,7 @@ import {
 } from "@hot-updater/server";
 import { Hono } from "hono";
 
-const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"] as const;
+const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 
 type SupabaseServerInput =
   | {

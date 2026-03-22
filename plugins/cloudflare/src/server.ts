@@ -7,7 +7,7 @@ import {
 import { Hono } from "hono";
 
 const DEFAULT_BASE_PATH = "/api/check-update";
-const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"] as const;
+const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 
 type CloudflareServerInput =
   | {
