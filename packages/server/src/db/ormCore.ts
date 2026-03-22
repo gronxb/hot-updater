@@ -12,7 +12,11 @@ import {
   isCohortEligibleForUpdate,
   NIL_UUID,
 } from "@hot-updater/core";
-import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleQueryOptions,
+  DatabaseBundleQueryWhere,
+} from "@hot-updater/plugin-core";
+import { semverSatisfies } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import type { FumaDBAdapter } from "fumadb/adapters";
@@ -68,6 +72,8 @@ export function createOrmDatabaseCore({
   generateSchema: HotUpdaterClient["generateSchema"];
 } {
   const client = HotUpdaterDB.client(database);
+  const UPDATE_CHECK_PAGE_SIZE = 100;
+  const isMongoAdapter = client.adapter.name.toLowerCase().includes("mongodb");
 
   const ensureORM = async () => {
     const latestSchema = getLastItem(schemas);
@@ -100,6 +106,68 @@ export function createOrmDatabaseCore({
       }
       throw error;
     }
+  };
+
+  const buildBundleWhere = (where?: DatabaseBundleQueryWhere) => (b: any) => {
+    if (where?.id?.in && where.id.in.length === 0) {
+      return false;
+    }
+
+    if (where?.targetAppVersionIn && where.targetAppVersionIn.length === 0) {
+      return false;
+    }
+
+    const conditions = [];
+
+    if (where?.channel !== undefined) {
+      conditions.push(b("channel", "=", where.channel));
+    }
+    if (where?.platform !== undefined) {
+      conditions.push(b("platform", "=", where.platform));
+    }
+    if (where?.enabled !== undefined) {
+      conditions.push(b("enabled", "=", where.enabled));
+    }
+    if (where?.id?.eq !== undefined) {
+      conditions.push(b("id", "=", where.id.eq));
+    }
+    if (where?.id?.gt !== undefined) {
+      conditions.push(b("id", ">", where.id.gt));
+    }
+    if (where?.id?.gte !== undefined) {
+      conditions.push(b("id", ">=", where.id.gte));
+    }
+    if (where?.id?.lt !== undefined) {
+      conditions.push(b("id", "<", where.id.lt));
+    }
+    if (where?.id?.lte !== undefined) {
+      conditions.push(b("id", "<=", where.id.lte));
+    }
+    if (where?.id?.in) {
+      conditions.push(b("id", "in", where.id.in));
+    }
+    if (where?.targetAppVersionNotNull) {
+      conditions.push(b.isNotNull("target_app_version"));
+    }
+    if (where?.targetAppVersion !== undefined) {
+      conditions.push(
+        where.targetAppVersion === null
+          ? b.isNull("target_app_version")
+          : b("target_app_version", "=", where.targetAppVersion),
+      );
+    }
+    if (where?.targetAppVersionIn) {
+      conditions.push(b("target_app_version", "in", where.targetAppVersionIn));
+    }
+    if (where?.fingerprintHash !== undefined) {
+      conditions.push(
+        where.fingerprintHash === null
+          ? b.isNull("fingerprint_hash")
+          : b("fingerprint_hash", "=", where.fingerprintHash),
+      );
+    }
+
+    return conditions.length > 0 ? b.and(...conditions) : true;
   };
 
   const api: DatabaseAPI = {
@@ -155,6 +223,8 @@ export function createOrmDatabaseCore({
         file_hash: string;
         rollout_cohort_count?: number | null;
         target_cohorts?: unknown | null;
+        target_app_version?: string | null;
+        fingerprint_hash?: string | null;
       };
 
       const toUpdateInfo = (
@@ -191,18 +261,149 @@ export function createOrmDatabaseCore({
         );
       };
 
-      const findLatestEligibleUpdateCandidate = (
-        rows: UpdateSelectRow[],
-        bundleId: string,
-        cohort: string | undefined,
-      ): UpdateSelectRow | null => {
-        return (
-          rows.find(
-            (row) =>
-              row.id.localeCompare(bundleId) > 0 &&
-              isEligibleForUpdate(row, cohort),
-          ) ?? null
-        );
+      const findUpdateInfoByScanning = async ({
+        args,
+        where,
+        isCandidate,
+      }: {
+        args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs;
+        where: DatabaseBundleQueryWhere;
+        isCandidate: (row: UpdateSelectRow) => boolean;
+      }): Promise<UpdateInfo | null> => {
+        if (isMongoAdapter) {
+          const rows = await orm.findMany("bundles", {
+            select: [
+              "id",
+              "should_force_update",
+              "message",
+              "storage_uri",
+              "file_hash",
+              "rollout_cohort_count",
+              "target_cohorts",
+              "target_app_version",
+              "fingerprint_hash",
+            ],
+            where: buildBundleWhere(where),
+          });
+
+          rows.sort((a, b) => b.id.localeCompare(a.id));
+
+          for (const row of rows) {
+            if (!isCandidate(row)) {
+              continue;
+            }
+
+            if (args.bundleId === NIL_UUID) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return toUpdateInfo(row, "UPDATE");
+              }
+              continue;
+            }
+
+            const compareResult = row.id.localeCompare(args.bundleId);
+
+            if (compareResult > 0) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return toUpdateInfo(row, "UPDATE");
+              }
+              continue;
+            }
+
+            if (compareResult === 0) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return null;
+              }
+              continue;
+            }
+
+            return toUpdateInfo(row, "ROLLBACK");
+          }
+
+          if (args.bundleId === NIL_UUID) {
+            return null;
+          }
+
+          if (
+            args.minBundleId &&
+            args.bundleId.localeCompare(args.minBundleId) <= 0
+          ) {
+            return null;
+          }
+
+          return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
+        }
+
+        let offset = 0;
+
+        while (true) {
+          const rows = await orm.findMany("bundles", {
+            select: [
+              "id",
+              "should_force_update",
+              "message",
+              "storage_uri",
+              "file_hash",
+              "rollout_cohort_count",
+              "target_cohorts",
+              "target_app_version",
+              "fingerprint_hash",
+            ],
+            where: buildBundleWhere(where),
+            orderBy: [["id", "desc"]],
+            limit: UPDATE_CHECK_PAGE_SIZE,
+            offset,
+          });
+
+          for (const row of rows) {
+            if (!isCandidate(row)) {
+              continue;
+            }
+
+            if (args.bundleId === NIL_UUID) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return toUpdateInfo(row, "UPDATE");
+              }
+              continue;
+            }
+
+            const compareResult = row.id.localeCompare(args.bundleId);
+
+            if (compareResult > 0) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return toUpdateInfo(row, "UPDATE");
+              }
+              continue;
+            }
+
+            if (compareResult === 0) {
+              if (isEligibleForUpdate(row, args.cohort)) {
+                return null;
+              }
+              continue;
+            }
+
+            return toUpdateInfo(row, "ROLLBACK");
+          }
+
+          if (rows.length < UPDATE_CHECK_PAGE_SIZE) {
+            break;
+          }
+
+          offset += UPDATE_CHECK_PAGE_SIZE;
+        }
+
+        if (args.bundleId === NIL_UUID) {
+          return null;
+        }
+
+        if (
+          args.minBundleId &&
+          args.bundleId.localeCompare(args.minBundleId) <= 0
+        ) {
+          return null;
+        }
+
+        return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
       };
 
       const appVersionStrategy = async ({
@@ -213,95 +414,29 @@ export function createOrmDatabaseCore({
         channel = "production",
         cohort,
       }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
-        const versionRows = await orm.findMany("bundles", {
-          select: ["target_app_version"],
-          where: (b) => b.and(b("platform", "=", platform)),
+        return findUpdateInfoByScanning({
+          args: {
+            _updateStrategy: "appVersion",
+            platform,
+            appVersion,
+            bundleId,
+            minBundleId,
+            channel,
+            cohort,
+          },
+          where: {
+            enabled: true,
+            platform,
+            channel,
+            id: {
+              gte: minBundleId,
+            },
+            targetAppVersionNotNull: true,
+          },
+          isCandidate: (row) =>
+            !!row.target_app_version &&
+            semverSatisfies(row.target_app_version, appVersion),
         });
-        const allTargetVersions = Array.from(
-          new Set(
-            (versionRows ?? [])
-              .map((r) => r.target_app_version)
-              .filter((v): v is string => Boolean(v)),
-          ),
-        );
-        const compatibleVersions = filterCompatibleAppVersions(
-          allTargetVersions,
-          appVersion,
-        );
-
-        const baseRows =
-          compatibleVersions.length === 0
-            ? []
-            : await orm.findMany("bundles", {
-                select: [
-                  "id",
-                  "should_force_update",
-                  "message",
-                  "storage_uri",
-                  "file_hash",
-                  "rollout_cohort_count",
-                  "target_cohorts",
-                  "channel",
-                  "target_app_version",
-                  "enabled",
-                ],
-                where: (b) =>
-                  b.and(
-                    b("enabled", "=", true),
-                    b("platform", "=", platform),
-                    b("id", ">=", minBundleId ?? NIL_UUID),
-                    b("channel", "=", channel),
-                    b.isNotNull("target_app_version"),
-                  ),
-              });
-
-        const candidates = (baseRows ?? []).filter((r) =>
-          r.target_app_version
-            ? compatibleVersions.includes(r.target_app_version)
-            : false,
-        );
-
-        const byIdDesc = (a: { id: string }, b: { id: string }) =>
-          b.id.localeCompare(a.id);
-        const sorted = (candidates ?? []).slice().sort(byIdDesc);
-
-        const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate = findLatestEligibleUpdateCandidate(
-          sorted,
-          bundleId,
-          cohort,
-        );
-        const currentBundleEligible = currentBundle
-          ? isEligibleForUpdate(currentBundle, cohort)
-          : false;
-        const rollbackCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
-
-        if (bundleId === NIL_UUID) {
-          if (updateCandidate) {
-            return toUpdateInfo(updateCandidate, "UPDATE");
-          }
-          return null;
-        }
-
-        if (currentBundleEligible) {
-          if (updateCandidate) {
-            return toUpdateInfo(updateCandidate, "UPDATE");
-          }
-          return null;
-        }
-
-        if (updateCandidate) {
-          return toUpdateInfo(updateCandidate, "UPDATE");
-        }
-        if (rollbackCandidate) {
-          return toUpdateInfo(rollbackCandidate, "ROLLBACK");
-        }
-
-        if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
-          return null;
-        }
-        return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
       };
 
       const fingerprintStrategy = async ({
@@ -312,70 +447,27 @@ export function createOrmDatabaseCore({
         channel = "production",
         cohort,
       }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
-        const candidates = await orm.findMany("bundles", {
-          select: [
-            "id",
-            "should_force_update",
-            "message",
-            "storage_uri",
-            "file_hash",
-            "rollout_cohort_count",
-            "target_cohorts",
-            "channel",
-            "fingerprint_hash",
-            "enabled",
-          ],
-          where: (b) =>
-            b.and(
-              b("enabled", "=", true),
-              b("platform", "=", platform),
-              b("id", ">=", minBundleId ?? NIL_UUID),
-              b("channel", "=", channel),
-              b("fingerprint_hash", "=", fingerprintHash),
-            ),
+        return findUpdateInfoByScanning({
+          args: {
+            _updateStrategy: "fingerprint",
+            platform,
+            fingerprintHash,
+            bundleId,
+            minBundleId,
+            channel,
+            cohort,
+          },
+          where: {
+            enabled: true,
+            platform,
+            channel,
+            id: {
+              gte: minBundleId,
+            },
+            fingerprintHash,
+          },
+          isCandidate: (row) => row.fingerprint_hash === fingerprintHash,
         });
-
-        const byIdDesc = (a: { id: string }, b: { id: string }) =>
-          b.id.localeCompare(a.id);
-        const sorted = (candidates ?? []).slice().sort(byIdDesc);
-
-        const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate = findLatestEligibleUpdateCandidate(
-          sorted,
-          bundleId,
-          cohort,
-        );
-        const currentBundleEligible = currentBundle
-          ? isEligibleForUpdate(currentBundle, cohort)
-          : false;
-        const rollbackCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
-
-        if (bundleId === NIL_UUID) {
-          if (updateCandidate) {
-            return toUpdateInfo(updateCandidate, "UPDATE");
-          }
-          return null;
-        }
-
-        if (currentBundleEligible) {
-          if (updateCandidate) {
-            return toUpdateInfo(updateCandidate, "UPDATE");
-          }
-          return null;
-        }
-
-        if (updateCandidate) {
-          return toUpdateInfo(updateCandidate, "UPDATE");
-        }
-        if (rollbackCandidate) {
-          return toUpdateInfo(rollbackCandidate, "ROLLBACK");
-        }
-
-        if (minBundleId && bundleId.localeCompare(minBundleId) <= 0) {
-          return null;
-        }
-        return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
       };
 
       if (args._updateStrategy === "appVersion") {
@@ -403,74 +495,96 @@ export function createOrmDatabaseCore({
       const orm = await ensureORM();
       const rows = await orm.findMany("bundles", {
         select: ["channel"],
+        orderBy: [["channel", "asc"]],
       });
       const set = new Set(rows?.map((r) => r.channel) ?? []);
       return Array.from(set);
     },
 
-    async getBundles(options: {
-      where?: { channel?: string; platform?: string };
-      limit: number;
-      offset: number;
-    }): Promise<{ data: Bundle[]; pagination: PaginationInfo }> {
+    async getBundles(
+      options: DatabaseBundleQueryOptions,
+    ): Promise<{ data: Bundle[]; pagination: PaginationInfo }> {
       const orm = await ensureORM();
-      const { where, limit, offset } = options;
+      const { where, limit, offset, orderBy } = options;
 
-      const rows = await orm.findMany("bundles", {
-        select: [
-          "id",
-          "platform",
-          "should_force_update",
-          "enabled",
-          "file_hash",
-          "git_commit_hash",
-          "message",
-          "channel",
-          "storage_uri",
-          "target_app_version",
-          "fingerprint_hash",
-          "metadata",
-          "rollout_cohort_count",
-          "target_cohorts",
-        ],
-        where: (b) => {
-          const conditions = [];
-          if (where?.channel) {
-            conditions.push(b("channel", "=", where.channel));
-          }
-          if (where?.platform) {
-            conditions.push(b("platform", "=", where.platform));
-          }
-          return conditions.length > 0 ? b.and(...conditions) : true;
-        },
+      const total = await orm.count("bundles", {
+        where: buildBundleWhere(where),
       });
 
-      const all: Bundle[] = rows
-        .map(
-          (r): Bundle => ({
-            id: r.id,
-            platform: r.platform as Platform,
-            shouldForceUpdate: Boolean(r.should_force_update),
-            enabled: Boolean(r.enabled),
-            fileHash: r.file_hash,
-            gitCommitHash: r.git_commit_hash ?? null,
-            message: r.message ?? null,
-            channel: r.channel,
-            storageUri: r.storage_uri,
-            targetAppVersion: r.target_app_version ?? null,
-            fingerprintHash: r.fingerprint_hash ?? null,
-            rolloutCohortCount:
-              r.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-            targetCohorts: parseTargetCohorts(r.target_cohorts),
-          }),
-        )
-        .sort((a, b) => b.id.localeCompare(a.id));
+      const selectedColumns: Array<
+        | "id"
+        | "platform"
+        | "should_force_update"
+        | "enabled"
+        | "file_hash"
+        | "git_commit_hash"
+        | "message"
+        | "channel"
+        | "storage_uri"
+        | "target_app_version"
+        | "fingerprint_hash"
+        | "metadata"
+        | "rollout_cohort_count"
+        | "target_cohorts"
+      > = [
+        "id",
+        "platform",
+        "should_force_update",
+        "enabled",
+        "file_hash",
+        "git_commit_hash",
+        "message",
+        "channel",
+        "storage_uri",
+        "target_app_version",
+        "fingerprint_hash",
+        "metadata",
+        "rollout_cohort_count",
+        "target_cohorts",
+      ];
 
-      const total = all.length;
-      const sliced = all.slice(offset, offset + limit);
+      const rows = isMongoAdapter
+        ? (
+            await orm.findMany("bundles", {
+              select: selectedColumns,
+              where: buildBundleWhere(where),
+            })
+          )
+            .sort((a, b) => {
+              const direction = orderBy?.direction ?? "desc";
+              const result = a.id.localeCompare(b.id);
+              return direction === "asc" ? result : -result;
+            })
+            .slice(offset, offset + limit)
+        : await orm.findMany("bundles", {
+            select: selectedColumns,
+            where: buildBundleWhere(where),
+            orderBy: [[orderBy?.field ?? "id", orderBy?.direction ?? "desc"]],
+            limit,
+            offset,
+          });
+
+      const data: Bundle[] = rows.map(
+        (r): Bundle => ({
+          id: r.id,
+          platform: r.platform as Platform,
+          shouldForceUpdate: Boolean(r.should_force_update),
+          enabled: Boolean(r.enabled),
+          fileHash: r.file_hash,
+          gitCommitHash: r.git_commit_hash ?? null,
+          message: r.message ?? null,
+          channel: r.channel,
+          storageUri: r.storage_uri,
+          targetAppVersion: r.target_app_version ?? null,
+          fingerprintHash: r.fingerprint_hash ?? null,
+          rolloutCohortCount:
+            r.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+          targetCohorts: parseTargetCohorts(r.target_cohorts),
+        }),
+      );
 
       return {
-        data: sliced,
+        data,
         pagination: calculatePagination(total, { limit, offset }),
       };
     },

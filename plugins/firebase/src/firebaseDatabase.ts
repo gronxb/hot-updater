@@ -2,7 +2,11 @@ import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   type SnakeCaseBundle,
 } from "@hot-updater/core";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleQueryOrder,
+  DatabaseBundleQueryWhere,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -10,6 +14,62 @@ import {
 import * as admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
+
+const bundleMatchesQueryWhere = (
+  bundle: Bundle,
+  where: DatabaseBundleQueryWhere | undefined,
+) => {
+  if (!where) return true;
+  if (where.channel !== undefined && bundle.channel !== where.channel)
+    return false;
+  if (where.platform !== undefined && bundle.platform !== where.platform)
+    return false;
+  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
+    return false;
+  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
+  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
+    return false;
+  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
+    return false;
+  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
+    return false;
+  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
+    return false;
+  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
+  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
+    return false;
+  }
+  if (
+    where.targetAppVersion !== undefined &&
+    bundle.targetAppVersion !== where.targetAppVersion
+  ) {
+    return false;
+  }
+  if (
+    where.targetAppVersionIn &&
+    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
+  ) {
+    return false;
+  }
+  if (
+    where.fingerprintHash !== undefined &&
+    bundle.fingerprintHash !== where.fingerprintHash
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const sortBundles = (
+  bundles: Bundle[],
+  orderBy: DatabaseBundleQueryOrder | undefined,
+) => {
+  const direction = orderBy?.direction ?? "desc";
+  return bundles.slice().sort((a, b) => {
+    const result = a.id.localeCompare(b.id);
+    return direction === "asc" ? result : -result;
+  });
+};
 
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   channel: firestoreData.channel,
@@ -63,7 +123,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset } = options;
+        const { where, limit, offset, orderBy } = options;
 
         let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
 
@@ -73,8 +133,45 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         if (where?.platform) {
           query = query.where("platform", "==", where.platform);
         }
+        if (where?.enabled !== undefined) {
+          query = query.where("enabled", "==", where.enabled);
+        }
+        if (
+          where?.fingerprintHash !== undefined &&
+          where.fingerprintHash !== null
+        ) {
+          query = query.where("fingerprint_hash", "==", where.fingerprintHash);
+        }
+        if (
+          where?.targetAppVersion !== undefined &&
+          where.targetAppVersion !== null
+        ) {
+          query = query.where(
+            "target_app_version",
+            "==",
+            where.targetAppVersion,
+          );
+        }
+        if (where?.id?.eq) {
+          query = query.where("id", "==", where.id.eq);
+        }
+        if (where?.id?.gt) {
+          query = query.where("id", ">", where.id.gt);
+        }
+        if (where?.id?.gte) {
+          query = query.where("id", ">=", where.id.gte);
+        }
+        if (where?.id?.lt) {
+          query = query.where("id", "<", where.id.lt);
+        }
+        if (where?.id?.lte) {
+          query = query.where("id", "<=", where.id.lte);
+        }
 
-        query = query.orderBy("id", "desc");
+        query = query.orderBy(
+          "id",
+          orderBy?.direction === "asc" ? "asc" : "desc",
+        );
 
         const totalCountQuery = query;
         const totalSnapshot = await totalCountQuery.get();
@@ -89,8 +186,11 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
         const querySnapshot = await query.get();
 
-        bundles = querySnapshot.docs.map((doc) =>
-          convertToBundle(doc.data() as SnakeCaseBundle),
+        bundles = sortBundles(
+          querySnapshot.docs
+            .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
+            .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+          orderBy,
         );
 
         return {

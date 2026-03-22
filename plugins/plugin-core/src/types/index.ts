@@ -16,6 +16,38 @@ export interface PaginationInfo {
   totalPages: number;
 }
 
+export interface DatabaseBundleIdFilter {
+  eq?: string;
+  gt?: string;
+  gte?: string;
+  lt?: string;
+  lte?: string;
+  in?: string[];
+}
+
+export interface DatabaseBundleQueryWhere {
+  channel?: string;
+  platform?: Platform;
+  enabled?: boolean;
+  id?: DatabaseBundleIdFilter;
+  targetAppVersion?: string | null;
+  targetAppVersionIn?: string[];
+  targetAppVersionNotNull?: boolean;
+  fingerprintHash?: string | null;
+}
+
+export interface DatabaseBundleQueryOrder {
+  field: "id";
+  direction: "asc" | "desc";
+}
+
+export interface DatabaseBundleQueryOptions {
+  where?: DatabaseBundleQueryWhere;
+  limit: number;
+  offset: number;
+  orderBy?: DatabaseBundleQueryOrder;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -23,11 +55,7 @@ export interface BuildPluginConfig {
 export interface DatabasePlugin {
   getChannels: () => Promise<string[]>;
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }) => Promise<{
+  getBundles: (options: DatabaseBundleQueryOptions) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;

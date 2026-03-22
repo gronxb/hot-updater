@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import { mergeWith } from "es-toolkit";
 import type {
+  DatabaseBundleQueryOptions,
   DatabasePlugin,
   DatabasePluginHooks,
   PaginationInfo,
@@ -8,11 +9,7 @@ import type {
 
 export interface AbstractDatabasePlugin {
   getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }) => Promise<{
+  getBundles: (options: DatabaseBundleQueryOptions) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;

@@ -2,7 +2,12 @@ import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   type SnakeCaseBundle,
 } from "@hot-updater/core";
-import type { Bundle, PaginationOptions } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleQueryOrder,
+  DatabaseBundleQueryWhere,
+  PaginationOptions,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -17,10 +22,7 @@ export interface D1DatabaseConfig {
 }
 
 // Helper interfaces for clarity
-interface QueryConditions {
-  channel?: string;
-  platform?: string;
-}
+type QueryConditions = DatabaseBundleQueryWhere;
 
 interface BuildQueryResult {
   sql: string;
@@ -49,6 +51,80 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   if (conditions.platform) {
     clauses.push("platform = ?");
     params.push(conditions.platform);
+  }
+
+  if (conditions.enabled !== undefined) {
+    clauses.push("enabled = ?");
+    params.push(conditions.enabled ? 1 : 0);
+  }
+
+  if (conditions.id?.in) {
+    if (conditions.id.in.length === 0) {
+      clauses.push("1 = 0");
+    } else {
+      clauses.push(`id IN (${conditions.id.in.map(() => "?").join(", ")})`);
+      params.push(...conditions.id.in);
+    }
+  }
+
+  if (conditions.id?.eq) {
+    clauses.push("id = ?");
+    params.push(conditions.id.eq);
+  }
+
+  if (conditions.id?.gt) {
+    clauses.push("id > ?");
+    params.push(conditions.id.gt);
+  }
+
+  if (conditions.id?.gte) {
+    clauses.push("id >= ?");
+    params.push(conditions.id.gte);
+  }
+
+  if (conditions.id?.lt) {
+    clauses.push("id < ?");
+    params.push(conditions.id.lt);
+  }
+
+  if (conditions.id?.lte) {
+    clauses.push("id <= ?");
+    params.push(conditions.id.lte);
+  }
+
+  if (conditions.targetAppVersionNotNull) {
+    clauses.push("target_app_version IS NOT NULL");
+  }
+
+  if (conditions.targetAppVersion !== undefined) {
+    if (conditions.targetAppVersion === null) {
+      clauses.push("target_app_version IS NULL");
+    } else {
+      clauses.push("target_app_version = ?");
+      params.push(conditions.targetAppVersion);
+    }
+  }
+
+  if (conditions.targetAppVersionIn) {
+    if (conditions.targetAppVersionIn.length === 0) {
+      clauses.push("1 = 0");
+    } else {
+      clauses.push(
+        `target_app_version IN (${conditions.targetAppVersionIn
+          .map(() => "?")
+          .join(", ")})`,
+      );
+      params.push(...conditions.targetAppVersionIn);
+    }
+  }
+
+  if (conditions.fingerprintHash !== undefined) {
+    if (conditions.fingerprintHash === null) {
+      clauses.push("fingerprint_hash IS NULL");
+    } else {
+      clauses.push("fingerprint_hash = ?");
+      params.push(conditions.fingerprintHash);
+    }
   }
 
   const whereClause =
@@ -127,14 +203,17 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       conditions: QueryConditions,
       limit: number,
       offset: number,
+      orderBy?: DatabaseBundleQueryOrder,
     ): Promise<Bundle[]> {
       const { sql: whereClause, params } = buildWhereClause(conditions);
+      const orderBySql =
+        orderBy?.direction === "asc" ? "ORDER BY id ASC" : "ORDER BY id DESC";
 
       // Build the complete query
       const sql = minify(`
       SELECT * FROM bundles
       ${whereClause}
-      ORDER BY id DESC
+      ${orderBySql}
       LIMIT ?
       OFFSET ?
     `);
@@ -177,13 +256,13 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where = {}, limit, offset } = options;
+        const { where = {}, limit, offset, orderBy } = options;
 
         // 1. Get total count for pagination
         const totalCount = await getTotalCount(where);
 
         // 2. Get paginated bundles
-        bundles = await getPaginatedBundles(where, limit, offset);
+        bundles = await getPaginatedBundles(where, limit, offset, orderBy);
 
         // 3. Calculate pagination metadata
         const paginationOptions: PaginationOptions = { limit, offset };

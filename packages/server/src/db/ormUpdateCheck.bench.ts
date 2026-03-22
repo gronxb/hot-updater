@@ -1,14 +1,18 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { AppVersionGetBundlesArgs, UpdateInfo } from "../../../core/src";
-import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  NIL_UUID,
-  isCohortEligibleForUpdate,
-} from "../../../core/src";
-import { filterCompatibleAppVersions } from "../../../../plugins/plugin-core/src";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { bench, describe } from "vitest";
+import { filterCompatibleAppVersions } from "../../../../plugins/plugin-core/src";
+import type {
+  AppVersionGetBundlesArgs,
+  Platform,
+  UpdateInfo,
+} from "../../../core/src";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  isCohortEligibleForUpdate,
+  NIL_UUID,
+} from "../../../core/src";
 import { kyselyAdapter } from "../adapters/kysely";
 import { createOrmDatabaseCore } from "./ormCore";
 
@@ -17,7 +21,24 @@ const BENCH_APP_VERSION = "1.0.0";
 const BENCH_PLATFORM = "ios" as const;
 const BENCH_CHANNEL = "production";
 
-const createBundleRow = (index: number) => ({
+interface BenchBundleRow {
+  id: string;
+  platform: Platform;
+  should_force_update: boolean;
+  enabled: boolean;
+  file_hash: string;
+  git_commit_hash: string;
+  message: string;
+  channel: string;
+  storage_uri: string;
+  target_app_version: string | null;
+  fingerprint_hash: string | null;
+  metadata: Record<string, unknown>;
+  rollout_cohort_count: number | null;
+  target_cohorts: string[] | null;
+}
+
+const createBundleRow = (index: number): BenchBundleRow => ({
   id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
   platform: BENCH_PLATFORM,
   should_force_update: false,
@@ -34,6 +55,10 @@ const createBundleRow = (index: number) => ({
   target_cohorts: null,
 });
 
+interface BenchDatabase {
+  bundles: BenchBundleRow;
+}
+
 const parseTargetCohorts = (value: unknown): string[] | null => {
   if (!value) return null;
   if (Array.isArray(value)) {
@@ -43,7 +68,9 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
     try {
       const parsed = JSON.parse(value) as unknown;
       if (Array.isArray(parsed)) {
-        return parsed.filter((entry): entry is string => typeof entry === "string");
+        return parsed.filter(
+          (entry): entry is string => typeof entry === "string",
+        );
       }
     } catch {
       return null;
@@ -53,7 +80,7 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
 };
 
 const oldOrmCoreGetUpdateInfo = async (
-  db: Kysely<any>,
+  db: Kysely<BenchDatabase>,
   args: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const toUpdateInfo = (
@@ -181,7 +208,7 @@ const oldOrmCoreGetUpdateInfo = async (
 };
 
 const pg = new PGlite();
-const kysely = new Kysely({ dialect: new PGliteDialect(pg) });
+const kysely = new Kysely<BenchDatabase>({ dialect: new PGliteDialect(pg) });
 const ormCore = createOrmDatabaseCore({
   database: kyselyAdapter({
     db: kysely,

@@ -4,6 +4,7 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
+import type { DatabaseBundleQueryOptions } from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "rou3";
 import type { PaginationInfo } from "./types";
 
@@ -15,11 +16,9 @@ export interface HandlerAPI {
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
   ) => Promise<AppUpdateInfo | null>;
   getBundleById: (id: string) => Promise<Bundle | null>;
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   insertBundle: (bundle: Bundle) => Promise<void>;
   updateBundleById: (
     bundleId: string,
@@ -128,7 +127,7 @@ const handleGetBundles: RouteHandler = async (_params, request, api) => {
   const result = await api.getBundles({
     where: {
       ...(channel && { channel }),
-      ...(platform && { platform }),
+      ...(platform && { platform: platform as Bundle["platform"] }),
     },
     limit,
     offset,

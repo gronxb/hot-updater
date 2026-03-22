@@ -4,7 +4,11 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleQueryOptions,
+  DatabasePlugin,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import type { PaginationInfo } from "../types";
 
@@ -44,11 +48,9 @@ export interface DatabaseAPI {
   getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
   getAppUpdateInfo(args: GetBundlesArgs): Promise<AppUpdateInfo | null>;
   getChannels(): Promise<string[]>;
-  getBundles(options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  getBundles(
+    options: DatabaseBundleQueryOptions,
+  ): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   insertBundle(bundle: Bundle): Promise<void>;
   updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;

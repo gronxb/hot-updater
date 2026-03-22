@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 interface PaginationInfo {
@@ -7,6 +7,32 @@ interface PaginationInfo {
   hasPreviousPage: boolean;
   currentPage: number;
   totalPages: number;
+}
+
+interface DatabaseBundleQueryOptions {
+  where?: {
+    channel?: string;
+    platform?: Platform;
+    enabled?: boolean;
+    id?: {
+      eq?: string;
+      gt?: string;
+      gte?: string;
+      lt?: string;
+      lte?: string;
+      in?: string[];
+    };
+    targetAppVersion?: string | null;
+    targetAppVersionIn?: string[];
+    targetAppVersionNotNull?: boolean;
+    fingerprintHash?: string | null;
+  };
+  limit: number;
+  offset: number;
+  orderBy?: {
+    field: "id";
+    direction: "asc" | "desc";
+  };
 }
 
 const DEFAULT_ROLLOUT_BUNDLE: Bundle = {
@@ -36,11 +62,9 @@ export const setupBundleMethodsTestSuite = ({
   getBundleById: (id: string) => Promise<Bundle | null>;
   getChannels: () => Promise<string[]>;
   insertBundle: (bundle: Bundle) => Promise<void>;
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   updateBundleById: (
     bundleId: string,
     newBundle: Partial<Bundle>,

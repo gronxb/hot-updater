@@ -1,3 +1,13 @@
+import { bench, describe } from "vitest";
+import type {
+  DatabaseBundleQueryOptions,
+  DatabaseBundleQueryWhere,
+  DatabasePlugin,
+} from "../../../../plugins/plugin-core/src";
+import {
+  calculatePagination,
+  semverSatisfies,
+} from "../../../../plugins/plugin-core/src";
 import type {
   AppVersionGetBundlesArgs,
   Bundle,
@@ -9,16 +19,6 @@ import {
   isCohortEligibleForUpdate,
   NIL_UUID,
 } from "../../../core/src";
-import type {
-  DatabaseBundleQueryOptions,
-  DatabaseBundleQueryWhere,
-  DatabasePlugin,
-} from "../../../../plugins/plugin-core/src";
-import {
-  calculatePagination,
-  semverSatisfies,
-} from "../../../../plugins/plugin-core/src";
-import { bench, describe } from "vitest";
 import { createPluginDatabaseCore } from "./pluginCore";
 
 const BUNDLE_COUNT = 20_000;
@@ -28,7 +28,9 @@ const BENCH_CHANNEL = "production";
 
 const cloneBundle = (bundle: Bundle): Bundle => ({
   ...bundle,
-  metadata: bundle.metadata ? structuredClone(bundle.metadata) : bundle.metadata,
+  metadata: bundle.metadata
+    ? structuredClone(bundle.metadata)
+    : bundle.metadata,
   targetCohorts: bundle.targetCohorts ? [...bundle.targetCohorts] : null,
 });
 
@@ -37,9 +39,12 @@ const bundleMatchesWhere = (
   where: DatabaseBundleQueryWhere | undefined,
 ) => {
   if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel) return false;
-  if (where.platform !== undefined && bundle.platform !== where.platform) return false;
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled) return false;
+  if (where.channel !== undefined && bundle.channel !== where.channel)
+    return false;
+  if (where.platform !== undefined && bundle.platform !== where.platform)
+    return false;
+  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
+    return false;
   if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
   if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
     return false;
@@ -50,10 +55,7 @@ const bundleMatchesWhere = (
   if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
     return false;
   if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
-  if (
-    where.targetAppVersionNotNull &&
-    bundle.targetAppVersion === null
-  ) {
+  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
     return false;
   }
   if (
@@ -102,7 +104,7 @@ const createBundle = (
   storageUri: `s3://bench/bundles/${index}.zip`,
   targetAppVersion,
   fingerprintHash: `fingerprint-${index % 10}`,
-  metadata: { index },
+  metadata: { app_version: String(index) },
   rolloutCohortCount: DEFAULT_ROLLOUT_COHORT_COUNT,
   targetCohorts: null,
 });
@@ -110,9 +112,7 @@ const createBundle = (
 const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
   const bundlesById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
 
-  const sortByDirection = (
-    direction: "asc" | "desc" | undefined,
-  ): Bundle[] => {
+  const sortByDirection = (direction: "asc" | "desc" | undefined): Bundle[] => {
     const sorted = bundles.slice().sort((a, b) => a.id.localeCompare(b.id));
     return direction === "asc" ? sorted : sorted.reverse();
   };
@@ -125,7 +125,9 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
     async getBundles(options: DatabaseBundleQueryOptions) {
       const { where, limit, offset, orderBy } = options;
       const source = sortByDirection(orderBy?.direction);
-      const matched = source.filter((bundle) => bundleMatchesWhere(bundle, where));
+      const matched = source.filter((bundle) =>
+        bundleMatchesWhere(bundle, where),
+      );
       const page = matched.slice(offset, offset + limit).map(cloneBundle);
 
       return {
@@ -153,7 +155,7 @@ const oldPluginCoreGetUpdateInfo = async (
   plugin: DatabasePlugin,
   args: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
-  const where: { channel?: string; platform?: string } = {
+  const where: DatabaseBundleQueryWhere = {
     channel: args.channel ?? BENCH_CHANNEL,
     platform: args.platform,
   };
