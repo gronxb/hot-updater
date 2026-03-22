@@ -4,6 +4,7 @@ export default defineConfig([
   {
     entry: [
       "src/index.ts",
+      "src/react-native.ts",
       "src/hotUpdateDirUtil.ts",
       "src/rollout.ts",
       "src/types.ts",

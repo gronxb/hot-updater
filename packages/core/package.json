@@ -6,6 +6,7 @@
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
+  "react-native": "./dist/react-native.js",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
@@ -15,6 +16,10 @@
     "./hotUpdateDirUtil": {
       "import": "./dist/hotUpdateDirUtil.js",
       "require": "./dist/hotUpdateDirUtil.cjs"
+    },
+    "./react-native": {
+      "import": "./dist/react-native.js",
+      "require": "./dist/react-native.cjs"
     },
     "./rollout": {
       "import": "./dist/rollout.js",
