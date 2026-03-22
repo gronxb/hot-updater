@@ -34,16 +34,21 @@ export interface HandlerOptions {
    * @default "/api"
    */
   basePath?: string;
-  features?: HandlerFeatureFlags;
+  routes?: HandlerRoutes;
 }
 
-export interface HandlerFeatureFlags {
+export interface HandlerRoutes {
   /**
-   * When enabled, only update-check routes are mounted.
-   * This excludes version and bundle management endpoints.
-   * @default false
+   * Controls whether update-check routes are mounted.
+   * @default true
    */
-  updateCheckOnly?: boolean;
+  updateCheck?: boolean;
+  /**
+   * Controls whether bundle management routes are mounted.
+   * This includes `/version` and `/api/bundles*`.
+   * @default true
+   */
+  bundles?: boolean;
 }
 
 type RouteHandler = (
@@ -235,38 +240,41 @@ export function createHandler(
   options: HandlerOptions = {},
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
-  const updateCheckOnly = options.features?.updateCheckOnly ?? false;
+  const updateCheckEnabled = options.routes?.updateCheck ?? true;
+  const bundlesEnabled = options.routes?.bundles ?? true;
 
   // Create and configure router
   const router = createRouter();
 
   // Register routes
-  addRoute(
-    router,
-    "GET",
-    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-    "fingerprintUpdateWithCohort",
-  );
-  addRoute(
-    router,
-    "GET",
-    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-    "fingerprintUpdateWithCohort",
-  );
-  addRoute(
-    router,
-    "GET",
-    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-    "appVersionUpdateWithCohort",
-  );
-  addRoute(
-    router,
-    "GET",
-    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-    "appVersionUpdateWithCohort",
-  );
+  if (updateCheckEnabled) {
+    addRoute(
+      router,
+      "GET",
+      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
+      "fingerprintUpdateWithCohort",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
+      "fingerprintUpdateWithCohort",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+      "appVersionUpdateWithCohort",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
+      "appVersionUpdateWithCohort",
+    );
+  }
 
-  if (!updateCheckOnly) {
+  if (bundlesEnabled) {
     addRoute(router, "GET", "/version", "version");
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");

@@ -1,5 +1,5 @@
 import type { StoragePlugin } from "@hot-updater/plugin-core";
-import { createHandler, type HandlerFeatureFlags } from "../handler";
+import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import {
   createOrmDatabaseCore,
@@ -42,7 +42,7 @@ export interface CreateHotUpdaterOptions {
   storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
   basePath?: string;
   cwd?: string;
-  features?: HandlerFeatureFlags;
+  routes?: HandlerRoutes;
 }
 
 export function createHotUpdater(
@@ -102,7 +102,7 @@ export function createHotUpdater(
     ...core.api,
     handler: createHandler(core.api, {
       basePath,
-      features: options.features,
+      routes: options.routes,
     }),
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,

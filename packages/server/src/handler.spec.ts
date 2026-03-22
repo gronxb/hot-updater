@@ -64,12 +64,13 @@ describe("createHandler", () => {
     });
   });
 
-  it("mounts only update-check routes when updateCheckOnly is enabled", async () => {
+  it("can mount only update-check routes", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
-      features: {
-        updateCheckOnly: true,
+      routes: {
+        updateCheck: true,
+        bundles: false,
       },
     });
 
@@ -88,5 +89,28 @@ describe("createHandler", () => {
     expect(versionResponse.status).toBe(404);
     expect(bundlesResponse.status).toBe(404);
     expect(updateResponse.status).toBe(200);
+  });
+
+  it("can mount only bundle routes", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: {
+        updateCheck: false,
+        bundles: true,
+      },
+    });
+
+    const channelsResponse = await handler(
+      new Request("http://localhost/hot-updater/api/bundles/channels"),
+    );
+    const updateResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
+    expect(channelsResponse.status).toBe(200);
+    expect(updateResponse.status).toBe(404);
   });
 });

@@ -16,8 +16,9 @@ const createTestHotUpdater = () =>
     }),
     storages: [mockStorage({})],
     basePath: HOT_UPDATER_BASE_PATH,
-    features: {
-      updateCheckOnly: true,
+    routes: {
+      updateCheck: true,
+      bundles: false,
     },
   });
 

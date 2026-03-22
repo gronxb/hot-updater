@@ -205,6 +205,10 @@ export default HotUpdater.wrap({
 
 ```
 
+<Callout type="info">
+The managed AWS runtime only exposes update-check endpoints. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints and `/version` are not mounted on the public function URL.
+</Callout>
+
 
 ## Step 6: If You Use Expo, Add the Config Plugin
 

@@ -57,6 +57,15 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+By default, `createHotUpdater` mounts both update-check routes and bundle management routes. If you want this server to expose only update checks, add:
+
+```typescript title="src/hotUpdater.ts"
+routes: {
+  updateCheck: true,
+  bundles: false,
+},
+```
+
 ## Server Setup
 
 Create the server entry point.
