@@ -1751,6 +1751,9 @@ importers:
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../mock
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -1939,6 +1942,9 @@ importers:
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../mock
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -2169,6 +2175,9 @@ importers:
       '@hot-updater/js':
         specifier: workspace:*
         version: link:../js
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../mock
       '@hot-updater/postgres':
         specifier: workspace:*
         version: link:../postgres

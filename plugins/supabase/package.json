@@ -34,6 +34,7 @@
   },
   "files": [
     "dist",
+    "src/createSupabaseEdgeFunctionApp.ts",
     "sql",
     "supabase",
     "!supabase/.temp",
@@ -56,6 +57,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.15",
     "@hot-updater/js": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "camelcase-keys": "^9.1.3",
     "@hot-updater/postgres": "workspace:*",

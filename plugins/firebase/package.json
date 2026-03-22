@@ -52,6 +52,7 @@
   },
   "devDependencies": {
     "@hot-updater/js": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",

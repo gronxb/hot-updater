@@ -34,6 +34,16 @@ export interface HandlerOptions {
    * @default "/api"
    */
   basePath?: string;
+  features?: HandlerFeatureFlags;
+}
+
+export interface HandlerFeatureFlags {
+  /**
+   * When enabled, only update-check routes are mounted.
+   * This excludes version and bundle management endpoints.
+   * @default false
+   */
+  updateCheckOnly?: boolean;
 }
 
 type RouteHandler = (
@@ -225,12 +235,12 @@ export function createHandler(
   options: HandlerOptions = {},
 ): (request: Request) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
+  const updateCheckOnly = options.features?.updateCheckOnly ?? false;
 
   // Create and configure router
   const router = createRouter();
 
   // Register routes
-  addRoute(router, "GET", "/version", "version");
   addRoute(
     router,
     "GET",
@@ -255,12 +265,16 @@ export function createHandler(
     "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
     "appVersionUpdateWithCohort",
   );
-  addRoute(router, "GET", "/api/bundles/channels", "getChannels");
-  addRoute(router, "GET", "/api/bundles/:id", "getBundle");
-  addRoute(router, "GET", "/api/bundles", "getBundles");
-  addRoute(router, "POST", "/api/bundles", "createBundles");
-  addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
-  addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
+
+  if (!updateCheckOnly) {
+    addRoute(router, "GET", "/version", "version");
+    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
+    addRoute(router, "GET", "/api/bundles/:id", "getBundle");
+    addRoute(router, "GET", "/api/bundles", "getBundles");
+    addRoute(router, "POST", "/api/bundles", "createBundles");
+    addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
+    addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
+  }
 
   return async (request: Request): Promise<Response> => {
     try {

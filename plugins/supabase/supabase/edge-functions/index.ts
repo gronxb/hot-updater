@@ -1,14 +1,10 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { Hono } from "jsr:@hono/hono";
-import {
-  createHotUpdater,
-  rewriteLegacyExactRequestToCanonical,
-  wildcardPattern,
-} from "npm:@hot-updater/server";
+import { createHotUpdater } from "npm:@hot-updater/server";
 import {
   supabaseEdgeFunctionDatabase,
   supabaseEdgeFunctionStorage,
 } from "npm:@hot-updater/supabase";
+import { createSupabaseEdgeFunctionApp } from "../../src/createSupabaseEdgeFunctionApp";
 
 declare global {
   var HotUpdater: {
@@ -16,7 +12,6 @@ declare global {
   };
 }
 
-const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 const functionName = HotUpdater.FUNCTION_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -35,27 +30,14 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: hotUpdaterBasePath,
+  features: {
+    updateCheckOnly: true,
+  },
 });
 
-const app = new Hono().basePath(functionBasePath);
-
-app.get("/ping", (c) => c.text("pong"));
-
-app.get(hotUpdater.basePath, async (c) => {
-  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-    basePath: hotUpdater.basePath,
-    request: c.req.raw,
-  });
-
-  if (rewrittenRequest instanceof Response) {
-    return rewrittenRequest;
-  }
-
-  return hotUpdater.handler(rewrittenRequest);
-});
-
-app.on(HOT_UPDATER_METHODS, wildcardPattern(hotUpdater.basePath), async (c) => {
-  return hotUpdater.handler(c.req.raw);
+const app = createSupabaseEdgeFunctionApp({
+  functionBasePath,
+  getHotUpdater: () => hotUpdater,
 });
 
 Deno.serve(app.fetch);

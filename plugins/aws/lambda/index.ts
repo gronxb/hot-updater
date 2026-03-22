@@ -1,19 +1,7 @@
 import { SSM } from "@aws-sdk/client-ssm";
-import {
-  createHotUpdater,
-  isCanonicalUpdateRoute,
-  rewriteLegacyExactRequestToCanonical,
-  wildcardPattern,
-} from "@hot-updater/server";
-import type { CloudFrontRequestHandler } from "aws-lambda";
-import { Hono } from "hono";
-import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
-import { handle } from "hono/lambda-edge";
+import { createHotUpdater } from "@hot-updater/server";
 import { awsLambdaEdgeDatabase, awsLambdaEdgeStorage } from "../src";
-import {
-  NO_STORE_CACHE_CONTROL,
-  SHARED_EDGE_CACHE_CONTROL,
-} from "./cacheControl";
+import { createAwsLambdaEdgeHandler, HOT_UPDATER_BASE_PATH } from "./runtime";
 
 declare global {
   var HotUpdater: {
@@ -74,28 +62,7 @@ async function getPrivateKey(): Promise<string> {
   return privateKey;
 }
 
-type Bindings = {
-  callback: Callback;
-  request: CloudFrontRequest;
-};
-
-const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
-const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const hotUpdaterCache = new Map<string, ReturnType<typeof createHotUpdater>>();
-
-const cloudFrontHeadersToHeaders = (
-  headers: CloudFrontRequest["headers"],
-): Headers => {
-  const normalizedHeaders = new Headers();
-
-  for (const [key, values] of Object.entries(headers)) {
-    for (const value of values) {
-      normalizedHeaders.append(key, value.value);
-    }
-  }
-
-  return normalizedHeaders;
-};
 
 const getHotUpdater = (requestUrl: string) => {
   const publicBaseUrl = new URL(requestUrl).origin;
@@ -120,49 +87,15 @@ const getHotUpdater = (requestUrl: string) => {
       }),
     ],
     basePath: HOT_UPDATER_BASE_PATH,
+    features: {
+      updateCheckOnly: true,
+    },
   });
 
   hotUpdaterCache.set(publicBaseUrl, hotUpdater);
   return hotUpdater;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
-
-app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const hotUpdater = getHotUpdater(c.req.url);
-  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-    basePath: hotUpdater.basePath,
-    request: c.req.raw,
-    headers: cloudFrontHeadersToHeaders(c.env.request.headers),
-  });
-
-  if (rewrittenRequest instanceof Response) {
-    rewrittenRequest.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
-    return rewrittenRequest;
-  }
-
-  const response = await hotUpdater.handler(rewrittenRequest);
-
-  response.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
-  return response;
+export const handler = createAwsLambdaEdgeHandler({
+  getHotUpdater,
 });
-
-app.on(
-  HOT_UPDATER_METHODS,
-  wildcardPattern(HOT_UPDATER_BASE_PATH),
-  async (c) => {
-    const hotUpdater = getHotUpdater(c.req.url);
-    const response = await hotUpdater.handler(c.req.raw);
-
-    if (
-      c.req.method === "GET" &&
-      isCanonicalUpdateRoute(hotUpdater.basePath, new URL(c.req.url).pathname)
-    ) {
-      response.headers.set("Cache-Control", SHARED_EDGE_CACHE_CONTROL);
-    }
-
-    return response;
-  },
-);
-
-export const handler = handle(app) as CloudFrontRequestHandler;
