@@ -1,5 +1,6 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
+  INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
 } from "@hot-updater/core";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/api";
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
 import { PromoteChannelDialog } from "./PromoteChannelDialog";
+import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 
 interface BundleEditorFormProps {
   bundle: Bundle;
@@ -108,9 +110,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
         (cohort) => !isValidCohort(cohort),
       );
       if (invalidCohort) {
-        toast.error(
-          "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
-        );
+        toast.error(INVALID_COHORT_ERROR_MESSAGE);
         return;
       }
 
@@ -143,6 +143,10 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
     form.store,
     (state) => state.values.targetAppVersion,
   );
+  const targetCohorts = useStore(
+    form.store,
+    (state) => state.values.targetCohorts,
+  );
   const isSaving = isSubmitting || updateBundleMutation.isPending;
   const targetAppVersionValidation = shouldEditTargetAppVersion
     ? getTargetAppVersionValidation(targetAppVersion)
@@ -158,9 +162,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
     if (!normalizedCohort) return;
 
     if (!isValidCohort(normalizedCohort)) {
-      toast.error(
-        "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
-      );
+      toast.error(INVALID_COHORT_ERROR_MESSAGE);
       return;
     }
 
@@ -319,9 +321,19 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="rolloutCohortCount">Rollout Percentage</Label>
-                <span className="text-sm font-medium">
-                  {formatRolloutPercentage(field.state.value)}%
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">
+                    {formatRolloutPercentage(field.state.value)}%
+                  </span>
+                  <RolloutCohortsDialog
+                    bundleId={bundle.id}
+                    rolloutCohortCount={field.state.value}
+                    targetCohorts={targetCohorts}
+                    triggerLabel="Preview Cohorts"
+                    triggerVariant="outline"
+                    triggerSize="xs"
+                  />
+                </div>
               </div>
               <Slider
                 id="rolloutCohortCount"

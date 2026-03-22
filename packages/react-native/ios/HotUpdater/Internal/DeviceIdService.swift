@@ -3,9 +3,9 @@ import UIKit
 
 final class CohortService {
     private let userDefaults: UserDefaults
-    private let clearOverrideSentinel = "__hot_updater_clear__"
 
-    private let customCohortKey = "HotUpdater_CustomCohort"
+    // Keep the legacy key so existing custom cohorts continue to work.
+    private let cohortKey = "HotUpdater_CustomCohort"
     private let fallbackIdentifierKey = "HotUpdater_FallbackCohortIdentifier"
 
     init(userDefaults: UserDefaults = .standard) {
@@ -39,22 +39,25 @@ final class CohortService {
     }
 
     func setCohort(_ cohort: String) {
-        if cohort.isEmpty || cohort == clearOverrideSentinel {
-            userDefaults.removeObject(forKey: customCohortKey)
+        if cohort.isEmpty {
             return
         }
-        userDefaults.set(cohort, forKey: customCohortKey)
+        userDefaults.set(cohort, forKey: cohortKey)
     }
 
     func getCohort() -> String {
-        if let cohort = userDefaults.string(forKey: customCohortKey), !cohort.isEmpty {
+        if let cohort = userDefaults.string(forKey: cohortKey), !cohort.isEmpty {
             return cohort
         }
 
+        let initialCohort: String
         if let idfv = UIDevice.current.identifierForVendor?.uuidString, !idfv.isEmpty {
-            return defaultNumericCohort(for: idfv)
+            initialCohort = defaultNumericCohort(for: idfv)
+        } else {
+            initialCohort = defaultNumericCohort(for: fallbackIdentifier())
         }
 
-        return defaultNumericCohort(for: fallbackIdentifier())
+        userDefaults.set(initialCohort, forKey: cohortKey)
+        return initialCohort
     }
 }

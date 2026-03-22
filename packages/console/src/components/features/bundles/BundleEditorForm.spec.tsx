@@ -1,3 +1,4 @@
+import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import {
   cleanup,
@@ -266,9 +267,18 @@ describe("BundleEditorForm", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
 
-    expect(mockToastError).toHaveBeenCalledWith(
-      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
-    );
+    expect(mockToastError).toHaveBeenCalledWith(INVALID_COHORT_ERROR_MESSAGE);
+  });
+
+  it("rejects cohorts longer than the endpoint-safe limit", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: "a".repeat(65) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+
+    expect(mockToastError).toHaveBeenCalledWith(INVALID_COHORT_ERROR_MESSAGE);
   });
 
   it("opens the download URL when Download Bundle is clicked", async () => {

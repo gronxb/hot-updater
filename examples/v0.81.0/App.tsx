@@ -28,6 +28,10 @@ const notify = proxy<{
 }>({});
 const E2E_DEEP_LINK_SCHEME = "hotupdaterexample";
 
+type CohortCommand =
+  | { action: "restore"; nextCohort: string }
+  | { action: "set"; nextCohort: string };
+
 const getGlobalBaseUrl = (): string | null => {
   const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
   if (typeof maybeFn !== "function") {
@@ -64,9 +68,7 @@ const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   minBundleId: HotUpdater.getMinBundleId(),
 });
 
-const parseCohortCommandFromUrl = (
-  url: string,
-): { nextCohort: string | null } | null => {
+const parseCohortCommandFromUrl = (url: string): CohortCommand | null => {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== `${E2E_DEEP_LINK_SCHEME}:`) {
@@ -82,12 +84,14 @@ const parseCohortCommandFromUrl = (
       return null;
     }
 
-    if (segments[1] === "clear") {
-      return { nextCohort: null };
-    }
-
-    if (segments[1] === "set" && typeof segments[2] === "string") {
-      return { nextCohort: decodeURIComponent(segments[2]) };
+    if (
+      (segments[1] === "set" || segments[1] === "restore") &&
+      typeof segments[2] === "string"
+    ) {
+      return {
+        action: segments[1],
+        nextCohort: decodeURIComponent(segments[2]),
+      };
     }
   } catch {
     return null;
@@ -96,14 +100,9 @@ const parseCohortCommandFromUrl = (
   return null;
 };
 
-const applyCohortCommand = (nextCohort: string | null): string => {
-  if (nextCohort === null || nextCohort.length === 0) {
-    HotUpdater.setCohort("");
-    return `deeplink clear -> ${HotUpdater.getCohort()}`;
-  }
-
-  HotUpdater.setCohort(nextCohort);
-  return `deeplink set -> ${HotUpdater.getCohort()}`;
+const applyCohortCommand = (command: CohortCommand): string => {
+  HotUpdater.setCohort(command.nextCohort);
+  return `deeplink ${command.action} -> ${HotUpdater.getCohort()}`;
 };
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   if (!/^[0-9a-fA-F-]{36}$/.test(uuid)) {
@@ -174,6 +173,7 @@ const ActionButton = ({
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
+  const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [cohortActionResult, setCohortActionResult] = useState("idle");
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<RuntimeSnapshot>(() =>
     readRuntimeSnapshot(),
@@ -196,7 +196,7 @@ function App(): React.JSX.Element {
         return false;
       }
 
-      const actionResult = applyCohortCommand(command.nextCohort);
+      const actionResult = applyCohortCommand(command);
 
       if (isMounted) {
         setCohortActionResult(actionResult);
@@ -259,10 +259,10 @@ function App(): React.JSX.Element {
     setCohortActionResult(`set -> ${HotUpdater.getCohort()}`);
   };
 
-  const clearCohortOverride = () => {
-    HotUpdater.setCohort("");
+  const restoreInitialCohort = () => {
+    HotUpdater.setCohort(initialCohort);
     refreshRuntimeSnapshot();
-    setCohortActionResult(`clear -> ${HotUpdater.getCohort()}`);
+    setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
   };
 
   return (
@@ -387,8 +387,8 @@ function App(): React.JSX.Element {
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
-              title="Clear Cohort Override"
-              onPress={clearCohortOverride}
+              title="Restore Initial Cohort"
+              onPress={restoreInitialCohort}
             />
           </View>
           <Text selectable style={styles.actionResult}>

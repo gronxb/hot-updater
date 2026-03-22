@@ -61,12 +61,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     let hotUpdater = HotUpdaterImpl()
 
-    if command == "clear" {
-      hotUpdater.setCohort("")
-      return true
-    }
-
-    if command == "set", let cohort = pathComponents.dropFirst().first,
+    if (command == "set" || command == "restore"),
+       let cohort = pathComponents.dropFirst().first,
        !cohort.isEmpty {
       hotUpdater.setCohort(cohort.lowercased())
       return true
@@ -84,14 +80,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     defaults.removeObject(forKey: e2eCohortCommandKey)
 
-    if command == "clear" {
-      HotUpdaterImpl().setCohort("")
-      return
-    }
+    if command.hasPrefix("set:") || command.hasPrefix("restore:") {
+      let parts = command.split(separator: ":", maxSplits: 1)
+      guard parts.count == 2, let nextCohort = parts.last, !nextCohort.isEmpty else {
+        return
+      }
 
-    if command.hasPrefix("set:") {
-      let nextCohort = String(command.dropFirst(4)).lowercased()
-      HotUpdaterImpl().setCohort(nextCohort)
+      HotUpdaterImpl().setCohort(String(nextCohort).lowercased())
     }
   }
 }

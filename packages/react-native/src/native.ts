@@ -1,4 +1,9 @@
-import type { UpdateStatus } from "@hot-updater/core";
+import {
+  INVALID_COHORT_ERROR_MESSAGE,
+  isValidCohort,
+  normalizeCohortValue,
+  type UpdateStatus,
+} from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
@@ -8,34 +13,12 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-const NUMERIC_COHORT_SIZE = 1000;
-const CUSTOM_COHORT_PATTERN = /^[a-z0-9-]+$/;
-const CLEAR_COHORT_SENTINEL = "__hot_updater_clear__";
-
-const normalizeCohortValue = (cohort: string): string => {
-  const normalized = cohort.trim().toLowerCase();
-
-  if (!/^\d+$/.test(normalized)) {
-    return normalized;
-  }
-
-  const parsed = Number.parseInt(normalized, 10);
-  if (Number.isNaN(parsed) || parsed < 1 || parsed > NUMERIC_COHORT_SIZE) {
-    return normalized;
-  }
-
-  return String(parsed);
-};
-
-const isValidCohort = (cohort: string): boolean => {
+const normalizeAndValidateCohort = (cohort: string): string => {
   const normalized = normalizeCohortValue(cohort);
-
-  if (/^\d+$/.test(normalized)) {
-    const parsed = Number.parseInt(normalized, 10);
-    return parsed >= 1 && parsed <= NUMERIC_COHORT_SIZE;
+  if (!isValidCohort(normalized)) {
+    throw new Error(INVALID_COHORT_ERROR_MESSAGE);
   }
-
-  return CUSTOM_COHORT_PATTERN.test(normalized);
+  return normalized;
 };
 
 export interface ManifestAsset {
@@ -698,29 +681,22 @@ export const resetChannel = async (): Promise<boolean> => {
 };
 
 /**
- * Sets a cohort override used for update checks.
- * Pass an empty string to clear the override and fall back to the default
- * numeric cohort derived from the device identifier.
+ * Sets the persisted cohort used for update checks.
+ *
+ * HotUpdater only derives a device-based cohort when nothing has been stored
+ * yet. If you need to restore that initial value later, read it with
+ * `getCohort()` before calling `setCohort()`, then store it yourself.
  */
 export const setCohort = (cohort: string): void => {
-  const normalized = normalizeCohortValue(cohort);
-  if (normalized.length === 0) {
-    HotUpdaterNative.setCohort(CLEAR_COHORT_SENTINEL);
-    return;
-  }
-
-  if (!isValidCohort(normalized)) {
-    throw new Error(
-      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
-    );
-  }
-
+  const normalized = normalizeAndValidateCohort(cohort);
   HotUpdaterNative.setCohort(normalized);
 };
 
 /**
- * Gets the cohort used for rollout calculations.
+ * Gets the persisted cohort used for rollout calculations.
+ * If none has been stored yet, native derives the initial value once and
+ * persists it before returning.
  */
 export const getCohort = (): string => {
-  return HotUpdaterNative.getCohort();
+  return normalizeAndValidateCohort(HotUpdaterNative.getCohort());
 };

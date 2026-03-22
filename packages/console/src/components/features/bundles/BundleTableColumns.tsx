@@ -13,6 +13,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 
 const columnHelper = createColumnHelper<Bundle>();
 
@@ -83,8 +84,25 @@ export const bundleColumns = [
   columnHelper.accessor("rolloutCohortCount", {
     header: "Rollout",
     cell: (info) => {
-      const percentage = (info.getValue() ?? DEFAULT_ROLLOUT_COHORT_COUNT) / 10;
-      return <RolloutPercentageBadge percentage={percentage} />;
+      const bundle = info.row.original;
+      const rolloutCohortCount =
+        info.getValue() ?? DEFAULT_ROLLOUT_COHORT_COUNT;
+      const percentage = rolloutCohortCount / 10;
+
+      return (
+        <div className="flex flex-col items-start gap-1.5">
+          <RolloutPercentageBadge percentage={percentage} />
+          <RolloutCohortsDialog
+            bundleId={bundle.id}
+            rolloutCohortCount={rolloutCohortCount}
+            targetCohorts={bundle.targetCohorts}
+            triggerLabel="Cohorts"
+            triggerVariant="ghost"
+            triggerSize="xs"
+            triggerClassName="px-1.5"
+          />
+        </div>
+      );
     },
   }),
   columnHelper.accessor("message", {

@@ -1,5 +1,7 @@
 export const NUMERIC_COHORT_SIZE = 1000;
 export const DEFAULT_ROLLOUT_COHORT_COUNT = NUMERIC_COHORT_SIZE;
+export const MAX_COHORT_LENGTH = 64;
+export const INVALID_COHORT_ERROR_MESSAGE = `Invalid cohort. Use 1-1000 or a lowercase slug without spaces, up to ${MAX_COHORT_LENGTH} characters.`;
 
 const CUSTOM_COHORT_PATTERN = /^[a-z0-9-]+$/;
 
@@ -127,8 +129,13 @@ export function isNumericCohort(cohort: string): boolean {
 }
 
 export function isCustomCohort(cohort: string): boolean {
+  const normalized = normalizeCohortValue(cohort);
+
   return (
-    CUSTOM_COHORT_PATTERN.test(cohort) && getNumericCohortValue(cohort) === null
+    normalized.length > 0 &&
+    normalized.length <= MAX_COHORT_LENGTH &&
+    !/^\d+$/.test(normalized) &&
+    CUSTOM_COHORT_PATTERN.test(normalized)
   );
 }
 
@@ -158,6 +165,32 @@ export function getNumericCohortRolloutPosition(
     inverseMultiplier * (zeroBasedCohort - offset),
     NUMERIC_COHORT_SIZE,
   );
+}
+
+export function getRolledOutNumericCohorts(
+  bundleId: string,
+  rolloutCohortCount: number | null | undefined,
+): number[] {
+  const normalizedRolloutCount =
+    normalizeRolloutCohortCount(rolloutCohortCount);
+
+  if (normalizedRolloutCount <= 0) {
+    return [];
+  }
+
+  return Array.from(
+    { length: NUMERIC_COHORT_SIZE },
+    (_, index) => index + 1,
+  ).filter((cohortValue) => {
+    if (normalizedRolloutCount >= NUMERIC_COHORT_SIZE) {
+      return true;
+    }
+
+    return (
+      getNumericCohortRolloutPosition(bundleId, cohortValue) <
+      normalizedRolloutCount
+    );
+  });
 }
 
 export function isCohortEligibleForUpdate(

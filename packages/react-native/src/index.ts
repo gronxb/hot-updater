@@ -267,13 +267,13 @@ function createHotUpdaterClient() {
     isChannelSwitched,
 
     /**
-     * Sets a cohort override for rollout calculations.
-     * Pass an empty string to clear the override.
+     * Sets the persisted cohort used for rollout calculations.
+     * Call `getCohort()` first if you need to restore the initial value later.
      */
     setCohort,
 
     /**
-     * Gets the cohort used for rollout calculations.
+     * Gets the persisted cohort used for rollout calculations.
      */
     getCohort,
 

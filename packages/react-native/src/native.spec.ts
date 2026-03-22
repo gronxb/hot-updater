@@ -1,3 +1,4 @@
+import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
@@ -419,21 +420,25 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.setCohort).toHaveBeenCalledWith("qa-group");
   });
 
-  it("uses the native clear sentinel when clearing the cohort override", async () => {
+  it("throws when attempting to clear the cohort with an empty value", async () => {
     const { setCohort } = await import("./native");
 
-    setCohort("");
-
-    expect(nativeModuleMock.setCohort).toHaveBeenCalledWith(
-      "__hot_updater_clear__",
-    );
+    expect(() => setCohort("")).toThrow(INVALID_COHORT_ERROR_MESSAGE);
+    expect(nativeModuleMock.setCohort).not.toHaveBeenCalled();
   });
 
   it("throws for invalid cohort overrides", async () => {
     const { setCohort } = await import("./native");
 
-    expect(() => setCohort("Bad Cohort")).toThrow(
-      "Invalid cohort. Use 1-1000 or a lowercase slug without spaces.",
+    expect(() => setCohort("Bad Cohort")).toThrow(INVALID_COHORT_ERROR_MESSAGE);
+    expect(nativeModuleMock.setCohort).not.toHaveBeenCalled();
+  });
+
+  it("throws for cohort overrides longer than the limit", async () => {
+    const { setCohort } = await import("./native");
+
+    expect(() => setCohort("a".repeat(65))).toThrow(
+      INVALID_COHORT_ERROR_MESSAGE,
     );
     expect(nativeModuleMock.setCohort).not.toHaveBeenCalled();
   });
@@ -444,5 +449,21 @@ describe("notifyAppReady", () => {
     const { getCohort } = await import("./native");
 
     expect(getCohort()).toBe("qa-group");
+  });
+
+  it("normalizes the cohort reported by native", async () => {
+    nativeModuleMock.getCohort.mockReturnValue(" QA-GROUP ");
+
+    const { getCohort } = await import("./native");
+
+    expect(getCohort()).toBe("qa-group");
+  });
+
+  it("throws when native reports an invalid cohort", async () => {
+    nativeModuleMock.getCohort.mockReturnValue("1001");
+
+    const { getCohort } = await import("./native");
+
+    expect(() => getCohort()).toThrow(INVALID_COHORT_ERROR_MESSAGE);
   });
 });

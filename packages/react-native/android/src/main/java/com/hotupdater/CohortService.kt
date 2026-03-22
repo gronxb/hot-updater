@@ -12,9 +12,9 @@ class CohortService(
         context.getSharedPreferences("HotUpdaterCohort", Context.MODE_PRIVATE)
 
     companion object {
-        private const val CUSTOM_COHORT_KEY = "custom_cohort"
+        // Keep the legacy key so existing custom cohorts continue to work.
+        private const val COHORT_KEY = "custom_cohort"
         private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
-        private const val CLEAR_OVERRIDE_SENTINEL = "__hot_updater_clear__"
     }
 
     private fun hashString(value: String): Int {
@@ -43,15 +43,14 @@ class CohortService(
     }
 
     fun setCohort(cohort: String) {
-        if (cohort.isEmpty() || cohort == CLEAR_OVERRIDE_SENTINEL) {
-            prefs.edit().remove(CUSTOM_COHORT_KEY).apply()
+        if (cohort.isEmpty()) {
             return
         }
-        prefs.edit().putString(CUSTOM_COHORT_KEY, cohort).apply()
+        prefs.edit().putString(COHORT_KEY, cohort).apply()
     }
 
     fun getCohort(): String {
-        val cohort = prefs.getString(CUSTOM_COHORT_KEY, null)
+        val cohort = prefs.getString(COHORT_KEY, null)
         if (!cohort.isNullOrEmpty()) {
             return cohort
         }
@@ -61,10 +60,14 @@ class CohortService(
                 context.contentResolver,
                 Settings.Secure.ANDROID_ID,
             )
-        if (!androidId.isNullOrEmpty()) {
-            return defaultNumericCohort(androidId)
-        }
+        val initialCohort =
+            if (!androidId.isNullOrEmpty()) {
+                defaultNumericCohort(androidId)
+            } else {
+                defaultNumericCohort(fallbackIdentifier())
+            }
 
-        return defaultNumericCohort(fallbackIdentifier())
+        prefs.edit().putString(COHORT_KEY, initialCohort).apply()
+        return initialCohort
     }
 }
