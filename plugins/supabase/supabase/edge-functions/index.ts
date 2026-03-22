@@ -45,12 +45,14 @@ const appVersionStrategy = async (
     bundleId,
     appVersion,
     channel,
+    cohort,
   }: {
     appPlatform: string;
     minBundleId: string;
     bundleId: string;
     appVersion: string;
     channel: string;
+    cohort?: string | null;
   },
 ) => {
   const { data: appVersionList } = await supabase.rpc(
@@ -72,6 +74,7 @@ const appVersionStrategy = async (
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_app_version_list: compatibleAppVersionList,
+    cohort: cohort || null,
   });
 };
 
@@ -83,12 +86,14 @@ const fingerprintHashStrategy = async (
     bundleId,
     channel,
     fingerprintHash,
+    cohort,
   }: {
     appPlatform: string;
     bundleId: string;
     minBundleId: string | null;
     channel: string | null;
     fingerprintHash: string;
+    cohort?: string | null;
   },
 ) => {
   return supabase.rpc("get_update_info_by_fingerprint_hash", {
@@ -97,6 +102,7 @@ const fingerprintHashStrategy = async (
     min_bundle_id: minBundleId || NIL_UUID,
     target_channel: channel || "production",
     target_fingerprint_hash: fingerprintHash,
+    cohort: cohort || null,
   });
 };
 
@@ -112,6 +118,7 @@ const handleUpdateRequest = async (
           bundleId: updateConfig.bundleId,
           channel: updateConfig.channel!,
           fingerprintHash: updateConfig.fingerprintHash!,
+          cohort: updateConfig.cohort,
         })
       : await appVersionStrategy(supabase, {
           appPlatform: updateConfig.platform,
@@ -119,6 +126,7 @@ const handleUpdateRequest = async (
           bundleId: updateConfig.bundleId,
           appVersion: updateConfig.appVersion!,
           channel: updateConfig.channel!,
+          cohort: updateConfig.cohort,
         });
 
   if (error) {
@@ -170,6 +178,18 @@ declare global {
 const functionName = HotUpdater.FUNCTION_NAME;
 const app = new Hono().basePath(`/${functionName}`);
 
+const decodeMaybe = (value: string | undefined): string | undefined => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 app.get("/ping", (c) => c.text("pong"));
 
 app.get("/", async (c) => {
@@ -180,6 +200,7 @@ app.get("/", async (c) => {
     const fingerprintHash = c.req.header("x-fingerprint-hash");
     const minBundleId = c.req.header("x-min-bundle-id");
     const channel = c.req.header("x-channel");
+    const cohort = c.req.header("x-cohort");
 
     if (!appVersion && !fingerprintHash) {
       return c.json(
@@ -213,6 +234,7 @@ app.get("/", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
+          cohort: cohort || undefined,
           _updateStrategy: "fingerprint" as const,
         } satisfies GetBundlesArgs)
       : ({
@@ -221,6 +243,7 @@ app.get("/", async (c) => {
           bundleId,
           minBundleId: minBundleId || NIL_UUID,
           channel: channel || "production",
+          cohort: cohort || undefined,
           _updateStrategy: "appVersion" as const,
         } satisfies GetBundlesArgs);
 
@@ -286,6 +309,57 @@ app.get(
 );
 
 app.get(
+  "/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
+  async (c) => {
+    try {
+      const {
+        platform,
+        "app-version": appVersion,
+        channel,
+        minBundleId,
+        bundleId,
+        cohort,
+      } = c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        {
+          auth: { autoRefreshToken: false, persistSession: false },
+        },
+      );
+
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        appVersion,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        cohort: decodeMaybe(cohort),
+        _updateStrategy: "appVersion" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(supabase, updateConfig);
+      return c.json(result);
+    } catch (err: unknown) {
+      return c.json(
+        {
+          error: err instanceof Error ? err.message : "Unknown error",
+        },
+        500,
+      );
+    }
+  },
+);
+
+app.get(
   "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
   async (c) => {
     try {
@@ -313,6 +387,57 @@ app.get(
         bundleId,
         minBundleId: minBundleId || NIL_UUID,
         channel: channel || "production",
+        _updateStrategy: "fingerprint" as const,
+      } satisfies GetBundlesArgs;
+
+      const result = await handleUpdateRequest(supabase, updateConfig);
+      return c.json(result);
+    } catch (err: unknown) {
+      return c.json(
+        {
+          error: err instanceof Error ? err.message : "Unknown error",
+        },
+        500,
+      );
+    }
+  },
+);
+
+app.get(
+  "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
+  async (c) => {
+    try {
+      const {
+        platform,
+        fingerprintHash,
+        channel,
+        minBundleId,
+        bundleId,
+        cohort,
+      } = c.req.param();
+
+      if (!bundleId || !platform) {
+        return c.json(
+          { error: "Missing required parameters (platform, bundleId)." },
+          400,
+        );
+      }
+
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        {
+          auth: { autoRefreshToken: false, persistSession: false },
+        },
+      );
+
+      const updateConfig = {
+        platform: platform as "ios" | "android",
+        fingerprintHash,
+        bundleId,
+        minBundleId: minBundleId || NIL_UUID,
+        channel: channel || "production",
+        cohort: decodeMaybe(cohort),
         _updateStrategy: "fingerprint" as const,
       } satisfies GetBundlesArgs;
 

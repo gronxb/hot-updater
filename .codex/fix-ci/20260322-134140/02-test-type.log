@@ -1,0 +1,415 @@
+cwd: /Users/gronxb/Desktop/hot-updater3
+step: test:type
+command: pnpm -w test:type
+
+
+> @hot-updater/root@ test:type /Users/gronxb/Desktop/hot-updater3
+> nx run-many --target=test:type --projects=packages/*,plugins/*,docs,examples-server/*
+
+
+ NX   Running target test:type for 33 projects:
+
+- @hot-updater/android-helper
+- @hot-updater/apple-helper
+- @hot-updater/react-native
+- hot-updater
+- @hot-updater/test-utils
+- @hot-updater/cli-tools
+- @hot-updater/console
+- @hot-updater/bsdiff
+- @hot-updater/server
+- @hot-updater/core
+- @hot-updater/datadog-plugin
+- @hot-updater/sentry-plugin
+- @hot-updater/plugin-core
+- @hot-updater/cloudflare
+- @hot-updater/standalone
+- @hot-updater/firebase
+- @hot-updater/postgres
+- @hot-updater/supabase
+- @hot-updater/bare
+- @hot-updater/expo
+- @hot-updater/mock
+- @hot-updater/rock
+- @hot-updater/aws
+- @hot-updater/js
+- hot-updater-docs
+- @examples-server/elysia-drizzle-libsql
+- @examples-server/express-prisma-sqlite
+- @examples-server/hono-prisma-postgres
+- @examples-server/hono-drizzle-pglite
+- @examples-server/hono-kysely-pglite
+- @examples-server/hono-kysely-mysql
+- @examples-server/hono-mongodb
+- @examples-server/hono-s3
+
+
+
+> nx run @hot-updater/core:"test:type"
+
+(node:67316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67319) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/core@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/core
+> tsc --noEmit
+
+
+> nx run @hot-updater/bsdiff:"test:type"
+
+(node:67318) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67321) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/bsdiff@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/bsdiff
+> tsc --noEmit
+
+
+> nx run @hot-updater/test-utils:"test:type"
+
+(node:67459) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67462) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/test-utils@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/test-utils
+> tsc --noEmit
+
+
+> nx run hot-updater-docs:"test:type"
+
+(node:67317) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> hot-updater-docs@0.1.0 test:type /Users/gronxb/Desktop/hot-updater3/docs
+> tsc --noEmit
+
+
+> nx run @hot-updater/js:"test:type"
+
+(node:67542) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67546) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/js@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/js
+> tsc --noEmit
+
+
+> nx run @hot-updater/plugin-core:"test:type"
+
+(node:67541) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67549) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/plugin-core@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/plugin-core
+> tsc --noEmit
+
+
+> nx run @hot-updater/mock:"test:type"
+
+(node:67830) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67833) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/mock@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/mock
+> tsc --noEmit
+
+
+> nx run @hot-updater/standalone:"test:type"
+
+(node:67831) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67854) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/standalone@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/standalone
+> tsc --noEmit
+
+
+> nx run @hot-updater/cli-tools:"test:type"
+
+(node:67829) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67832) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/cli-tools@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/cli-tools
+> tsc --noEmit
+
+
+> nx run @hot-updater/datadog-plugin:"test:type"
+
+(node:67975) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68008) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/datadog-plugin@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/datadog-plugin
+> tsc --noEmit
+
+
+> nx run @hot-updater/postgres:"test:type"
+
+(node:67972) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:67974) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/postgres@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/postgres
+> tsc --noEmit
+
+
+> nx run @hot-updater/firebase:"test:type"
+
+(node:68096) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68100) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/firebase@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/firebase
+> tsc --noEmit
+
+
+> nx run @hot-updater/cloudflare:"test:type"
+
+(node:68095) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68099) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/cloudflare@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/cloudflare
+> tsc --noEmit
+
+
+> nx run @hot-updater/aws:"test:type"
+
+(node:67976) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68009) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/aws@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/aws
+> tsc --noEmit
+
+
+> nx run @hot-updater/supabase:"test:type"
+
+(node:68208) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68210) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/supabase@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/supabase
+> tsc --noEmit
+
+
+> nx run @hot-updater/android-helper:"test:type"
+
+(node:68232) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68295) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/android-helper@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/android-helper
+> tsc --noEmit
+
+
+> nx run @hot-updater/apple-helper:"test:type"
+
+(node:68568) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68569) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/apple-helper@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/apple-helper
+> tsc --noEmit
+
+
+> nx run @hot-updater/server:"test:type"
+
+(node:68514) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68515) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/server@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/server
+> tsc --noEmit
+
+
+> nx run @hot-updater/bare:"test:type"
+
+(node:68646) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/bare@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/bare
+> tsc --noEmit
+
+
+> nx run @hot-updater/console:"test:type"
+
+(node:68209) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68211) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/console@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/console
+> tsc --noEmit
+
+
+> nx run @hot-updater/rock:"test:type"
+
+(node:68670) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68698) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/rock@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/rock
+> tsc --noEmit
+
+
+> nx run @hot-updater/sentry-plugin:"test:type"
+
+(node:68779) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68813) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/sentry-plugin@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/sentry-plugin
+> tsc --noEmit
+
+
+> nx run @hot-updater/expo:"test:type"
+
+(node:68774) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68776) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/expo@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/plugins/expo
+> tsc --noEmit
+
+
+> nx run hot-updater:"test:type"
+
+(node:68775) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:68780) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> hot-updater@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/hot-updater
+> tsc --noEmit
+
+
+> nx run @hot-updater/react-native:"test:type"
+
+(node:69069) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69072) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @hot-updater/react-native@0.28.0 test:type /Users/gronxb/Desktop/hot-updater3/packages/react-native
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-prisma-postgres:"test:type"
+
+(node:69071) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69074) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-prisma-postgres@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-prisma-postgres
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-kysely-mysql:"test:type"
+
+(node:69070) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69073) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-kysely-mysql@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-kysely-mysql
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-drizzle-pglite:"test:type"
+
+(node:69213) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69214) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-drizzle-pglite@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-drizzle-pglite
+> tsc --noEmit
+
+
+> nx run @examples-server/elysia-drizzle-libsql:"test:type"
+
+(node:69290) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69291) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/elysia-drizzle-libsql@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/elysia-drizzle-libsql
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-kysely-pglite:"test:type"
+
+(node:69325) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69326) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-kysely-pglite@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-kysely-pglite
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-s3:"test:type"
+
+(node:69378) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69379) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-s3@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-s3
+> tsc --noEmit
+
+
+> nx run @examples-server/hono-mongodb:"test:type"
+
+(node:69609) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69610) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/hono-mongodb@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/hono-mongodb
+> tsc --noEmit
+
+
+> nx run @examples-server/express-prisma-sqlite:"test:type"
+
+(node:69665) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:69666) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+> @examples-server/express-prisma-sqlite@ test:type /Users/gronxb/Desktop/hot-updater3/examples-server/express-prisma-sqlite
+> tsc --noEmit
+
+
+
+
+ NX   Successfully ran target test:type for 33 projects
+
+

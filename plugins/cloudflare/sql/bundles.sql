@@ -12,7 +12,10 @@ CREATE TABLE bundles (
     channel TEXT NOT NULL,
     storage_uri TEXT,
     fingerprint_hash TEXT,
-    metadata JSONB DEFAULT '{}'
+    metadata JSONB DEFAULT '{}',
+    rollout_cohort_count INTEGER DEFAULT 1000
+      CHECK (rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000),
+    target_cohorts TEXT
 );
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);

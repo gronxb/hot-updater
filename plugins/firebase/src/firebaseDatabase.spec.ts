@@ -1,4 +1,5 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
@@ -20,6 +21,28 @@ describe("firebaseDatabase plugin", () => {
 
   beforeEach(async () => {
     await clearCollections();
+  });
+
+  setupBundleMethodsTestSuite({
+    getBundleById: (id) => plugin.getBundleById(id),
+    getChannels: () => plugin.getChannels(),
+    insertBundle: async (bundle) => {
+      await plugin.appendBundle(bundle);
+      await plugin.commitBundle();
+    },
+    getBundles: (options) => plugin.getBundles(options),
+    updateBundleById: async (bundleId, newBundle) => {
+      await plugin.updateBundle(bundleId, newBundle);
+      await plugin.commitBundle();
+    },
+    deleteBundleById: async (bundleId) => {
+      const bundle = await plugin.getBundleById(bundleId);
+      if (!bundle) {
+        return;
+      }
+      await plugin.deleteBundle(bundle);
+      await plugin.commitBundle();
+    },
   });
 
   it("should return null for a non-existent bundle id", async () => {
@@ -58,6 +81,8 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
       metadata: {},
+      rolloutCohortCount: 1000,
+      targetCohorts: null,
     });
   });
 

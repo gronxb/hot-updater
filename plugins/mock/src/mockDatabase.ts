@@ -61,7 +61,6 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
 
         await sleep(minMax(config.latency.min, config.latency.max));
 
-        // Process each operation sequentially
         for (const op of changedSets) {
           if (op.operation === "delete") {
             const targetIndex = bundles.findIndex((b) => b.id === op.data.id);

@@ -16,11 +16,13 @@ const HOT_UPDATER_MODELS = `model bundles {
   target_app_version  String?
   fingerprint_hash    String?
   metadata            Json
+  rollout_cohort_count Int    @default(1000)
+  target_cohorts      Json?
 }
 
 model private_hot_updater_settings {
   key   String @id
-  value String @default("0.21.0")
+  value String @default("0.29.0")
 }`;
 
 describe("prisma-schema-merger", () => {
@@ -73,24 +75,24 @@ describe("prisma-schema-merger", () => {
       );
 
       const updatedModels = `model bundles {
-  id                  String  @id
-  platform            String
+  id String @id
+  platform String
   should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  new_field           String  // New field added
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
+  enabled Boolean
+  file_hash String
+  git_commit_hash String?
+  message String?
+  channel String
+  storage_uri String
+  target_app_version String?
+  fingerprint_hash String?
+  metadata Json
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
 }
-
 model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.22.0")
+  key String @id
+  value String @default("0.29.0")
 }`;
 
       const result = mergePrismaSchema(schemaWithHotUpdater, updatedModels);
@@ -99,8 +101,8 @@ model private_hot_updater_settings {
       // User model should still be preserved
       expect(result.content).toContain("model User");
       // Updated models should be present
-      expect(result.content).toContain("new_field");
-      expect(result.content).toContain('"0.22.0"');
+      expect(result.content).toContain("rollout_cohort_count");
+      expect(result.content).toContain('"0.29.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
         result.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
@@ -186,11 +188,13 @@ model bundles {
   target_app_version  String?
   fingerprint_hash    String?
   metadata            Json
+  rollout_cohort_count Int    @default(1000)
+  target_cohorts      Json?
 }
 
 model private_hot_updater_settings {
   key   String @id
-  value String @default("0.21.0")
+  value String @default("0.29.0")
 }`;
 
       // Existing schema with User model

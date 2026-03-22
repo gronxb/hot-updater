@@ -1,4 +1,7 @@
-import type { SnakeCaseBundle } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  type SnakeCaseBundle,
+} from "@hot-updater/core";
 import type { Bundle, PaginationOptions } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -54,6 +57,24 @@ function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   return { sql: whereClause, params };
 }
 
+function parseTargetCohorts(value: unknown): string[] | null {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === "string");
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
 // Helper function to transform snake_case row to Bundle
 function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   return {
@@ -69,6 +90,10 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
     metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+    rolloutCohortCount:
+      (row.rollout_cohort_count as number | null) ??
+      DEFAULT_ROLLOUT_COHORT_COUNT,
+    targetCohorts: parseTargetCohorts(row.target_cohorts as unknown),
   };
 }
 
@@ -221,9 +246,11 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 target_app_version,
                 storage_uri,
                 fingerprint_hash,
-                metadata
+                metadata,
+                rollout_cohort_count,
+                target_cohorts
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             const params = [
@@ -241,6 +268,10 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               bundle.metadata
                 ? JSON.stringify(bundle.metadata)
                 : JSON.stringify({}),
+              bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+              bundle.targetCohorts
+                ? JSON.stringify(bundle.targetCohorts)
+                : null,
             ];
 
             await cf.d1.database.query(config.databaseId, {

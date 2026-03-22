@@ -13,6 +13,7 @@ export const HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS = [
   "x-app-platform",
   "x-min-bundle-id",
   "x-channel",
+  "x-cohort",
   "x-fingerprint-hash",
 ] as const;
 

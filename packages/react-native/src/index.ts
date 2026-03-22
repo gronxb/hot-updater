@@ -11,6 +11,7 @@ import {
   getBaseURL,
   getBundleId,
   getChannel,
+  getCohort,
   getCrashHistory,
   getDefaultChannel,
   getFingerprintHash,
@@ -19,6 +20,7 @@ import {
   isChannelSwitched,
   reload,
   resetChannel,
+  setCohort,
   setReloadBehavior,
   type UpdateParams,
   updateBundle,
@@ -263,6 +265,17 @@ function createHotUpdaterClient() {
      * @returns {boolean} true when a non-default channel has been applied
      */
     isChannelSwitched,
+
+    /**
+     * Sets the persisted cohort used for rollout calculations.
+     * Call `getCohort()` first if you need to restore the initial value later.
+     */
+    setCohort,
+
+    /**
+     * Gets the persisted cohort used for rollout calculations.
+     */
+    getCohort,
 
     /**
      * Adds a listener to HotUpdater events.

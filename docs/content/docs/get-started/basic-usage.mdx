@@ -519,6 +519,12 @@ For emergency updates with forced reload:
 npx hot-updater deploy -i -f
 ```
 
+For staged rollouts, set the initial audience percentage explicitly:
+
+```package-install
+npx hot-updater deploy -p ios -r 25
+```
+
 ### Monitor and Manage Updates
 
 Open the console to track deployments, manage versions, and perform rollbacks:

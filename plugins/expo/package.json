@@ -36,7 +36,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "execa": "catalog:",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   },
   "exports": {
     ".": {

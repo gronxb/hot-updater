@@ -24,7 +24,9 @@ const mockPrompt = vi.hoisted(() => ({
 }));
 
 vi.mock("@aws-sdk/client-cloudfront", () => ({
-  CloudFront: vi.fn(() => mockCloudFront),
+  CloudFront: vi.fn(function CloudFront() {
+    return mockCloudFront;
+  }),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({

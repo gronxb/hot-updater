@@ -48,9 +48,14 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
-    "@supabase/supabase-js": "^2.76.1"
+    "@supabase/supabase-js": "^2.76.1",
+    "uuidv7": "^1.0.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.2.15",
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
+    "camelcase-keys": "^9.1.3",
     "@hot-updater/postgres": "workspace:*",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",

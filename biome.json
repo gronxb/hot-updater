@@ -14,7 +14,8 @@
       "!**/ios",
       "!**/android",
       "!**/.source",
-      "!**/pages.gen.ts"
+      "!**/pages.gen.ts",
+      "!**/routeTree.gen.ts"
     ]
   },
   "formatter": {

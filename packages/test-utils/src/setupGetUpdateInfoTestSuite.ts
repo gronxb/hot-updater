@@ -4,7 +4,11 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
+import {
+  getNumericCohortRolloutPosition,
+  NIL_UUID,
+  NUMERIC_COHORT_SIZE,
+} from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 const DEFAULT_BUNDLE_APP_VERSION_STRATEGY = {
@@ -33,6 +37,69 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   shouldForceUpdate: true,
   status: "ROLLBACK",
 } as const;
+
+type RolloutStrategy = "appVersion" | "fingerprint";
+
+const createRolloutBundle = (
+  strategy: RolloutStrategy,
+  overrides: Partial<Bundle> = {},
+): Bundle => {
+  if (strategy === "appVersion") {
+    return {
+      ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+      targetAppVersion: "1.0",
+      enabled: true,
+      shouldForceUpdate: false,
+      id: "00000000-0000-0000-0000-000000000001",
+      ...overrides,
+    };
+  }
+
+  return {
+    ...DEFAULT_BUNDLE_FINGERPRINT_STRATEGY,
+    fingerprintHash: "hash1",
+    enabled: true,
+    shouldForceUpdate: false,
+    id: "00000000-0000-0000-0000-000000000001",
+    ...overrides,
+  };
+};
+
+const createRolloutArgs = (
+  strategy: RolloutStrategy,
+  overrides: Partial<GetBundlesArgs> = {},
+): GetBundlesArgs => {
+  if (strategy === "appVersion") {
+    return {
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      _updateStrategy: "appVersion",
+      ...overrides,
+    } as GetBundlesArgs;
+  }
+
+  return {
+    fingerprintHash: "hash1",
+    bundleId: NIL_UUID,
+    platform: "ios",
+    _updateStrategy: "fingerprint",
+    ...overrides,
+  } as GetBundlesArgs;
+};
+
+const findNumericCohort = (
+  bundleId: string,
+  predicate: (position: number) => boolean,
+): string => {
+  for (let cohort = 1; cohort <= NUMERIC_COHORT_SIZE; cohort++) {
+    if (predicate(getNumericCohortRolloutPosition(bundleId, cohort))) {
+      return String(cohort);
+    }
+  }
+
+  throw new Error(`No numeric cohort matched for bundle ${bundleId}`);
+};
 
 export const setupGetUpdateInfoTestSuite = ({
   getUpdateInfo,
@@ -1897,4 +1964,307 @@ export const setupGetUpdateInfoTestSuite = ({
       });
     });
   });
+
+  const describeRolloutBehavior = (strategy: RolloutStrategy) => {
+    const label =
+      strategy === "appVersion"
+        ? "app version strategy"
+        : "fingerprint strategy";
+
+    describe(`gradual rollout (${label})`, () => {
+      it("returns null when rolloutCohortCount is 0", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
+        });
+
+        expect(update).toBeNull();
+      });
+
+      it("applies update when rolloutCohortCount is 1000", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 1000,
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("applies update when rolloutCohortCount is null", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: null,
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "1",
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("keeps the rollout shuffle stable as the rollout expands and shrinks", async () => {
+        const bundleId = "00000000-0000-0000-0000-000000000010";
+        const alwaysIncludedCohort = findNumericCohort(
+          bundleId,
+          (position) => position < 200,
+        );
+        const newlyIncludedCohort = findNumericCohort(
+          bundleId,
+          (position) => position >= 200 && position < 400,
+        );
+        const removedCohort = findNumericCohort(
+          bundleId,
+          (position) => position >= 10 && position < 200,
+        );
+
+        const bundle = createRolloutBundle(strategy, {
+          id: bundleId,
+          rolloutCohortCount: 200,
+        });
+
+        await expect(
+          getUpdateInfo([bundle], {
+            ...createRolloutArgs(strategy),
+            cohort: alwaysIncludedCohort,
+          }),
+        ).resolves.toMatchObject({
+          id: bundleId,
+          status: "UPDATE",
+        });
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 400,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: alwaysIncludedCohort,
+            },
+          ),
+        ).resolves.toMatchObject({
+          id: bundleId,
+          status: "UPDATE",
+        });
+
+        await expect(
+          getUpdateInfo([bundle], {
+            ...createRolloutArgs(strategy),
+            cohort: newlyIncludedCohort,
+          }),
+        ).resolves.toBeNull();
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 400,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: newlyIncludedCohort,
+            },
+          ),
+        ).resolves.toMatchObject({
+          id: bundleId,
+          status: "UPDATE",
+        });
+
+        await expect(
+          getUpdateInfo(
+            [
+              {
+                ...bundle,
+                rolloutCohortCount: 10,
+              },
+            ],
+            {
+              ...createRolloutArgs(strategy),
+              cohort: removedCohort,
+            },
+          ),
+        ).resolves.toBeNull();
+      });
+
+      it("excludes custom cohorts from gradual rollout", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 1000,
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "qa-group",
+        });
+
+        expect(update).toBeNull();
+      });
+
+      it("applies update when cohort is in targetCohorts", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["qa-group"],
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "qa-group",
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("gives targetCohorts priority over rolloutCohortCount", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["900"],
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: "900",
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("returns the latest eligible update when a newer bundle targets a different cohort", async () => {
+        const eligibleBundleId = "00000000-0000-0000-0000-000000000020";
+        const blockedBundleId = "00000000-0000-0000-0000-000000000021";
+        const eligibleCohort = findNumericCohort(
+          eligibleBundleId,
+          (position) => position < 200,
+        );
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: eligibleBundleId,
+              rolloutCohortCount: 200,
+            }),
+            createRolloutBundle(strategy, {
+              id: blockedBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy),
+            cohort: eligibleCohort,
+          },
+        );
+
+        expect(update).toMatchObject({
+          id: eligibleBundleId,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("re-evaluates the current bundle eligibility after cohort changes and rolls back to the latest previous bundle", async () => {
+        const previousBundleId = "00000000-0000-0000-0000-000000000020";
+        const currentBundleId = "00000000-0000-0000-0000-000000000021";
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: previousBundleId,
+              rolloutCohortCount: 1000,
+            }),
+            createRolloutBundle(strategy, {
+              id: currentBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy, {
+              bundleId: currentBundleId,
+            }),
+            cohort: "1",
+          },
+        );
+
+        expect(update).toMatchObject({
+          id: previousBundleId,
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+
+      it("re-evaluates the current bundle eligibility after cohort changes and falls back to the built-in bundle when no previous bundle exists", async () => {
+        const currentBundleId = "00000000-0000-0000-0000-000000000021";
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: currentBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy, {
+              bundleId: currentBundleId,
+            }),
+            cohort: "1",
+          },
+        );
+
+        expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      });
+
+      it("applies ROLLBACK regardless of rollout settings", async () => {
+        const bundle = createRolloutBundle(strategy, {
+          rolloutCohortCount: 0,
+          targetCohorts: ["qa-group"],
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy, {
+            bundleId: "00000000-0000-0000-0000-000000000002",
+          }),
+          cohort: "not-targeted",
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+    });
+  };
+
+  describeRolloutBehavior("appVersion");
+  describeRolloutBehavior("fingerprint");
 };

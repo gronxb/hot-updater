@@ -7,21 +7,50 @@ import type {
   Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  isCohortEligibleForUpdate,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
+import { v0_29_0 } from "../schema/v0_29_0";
 import type { PaginationInfo } from "../types";
 import type { DatabaseAPI } from "./types";
 
+const parseTargetCohorts = (value: unknown): string[] | null => {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    return value.filter((v): v is string => typeof v === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === "string");
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const schemas: [typeof v0_21_0, typeof v0_29_0] = [v0_21_0, v0_29_0];
+
+const getLastItem = <T extends unknown[]>(
+  items: T,
+): T extends [...infer _, infer Last] ? Last : never =>
+  items.at(-1) as T extends [...infer _, infer Last] ? Last : never;
+
 export const HotUpdaterDB = fumadb({
   namespace: "hot_updater",
-  schemas: [v0_21_0],
+  schemas,
 });
-
 export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
 
 export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
@@ -40,10 +69,42 @@ export function createOrmDatabaseCore({
 } {
   const client = HotUpdaterDB.client(database);
 
+  const ensureORM = async () => {
+    const latestSchema = getLastItem(schemas);
+    const lastSchemaVersion = latestSchema.version;
+
+    try {
+      const migrator = client.createMigrator();
+      const currentVersion = await migrator.getVersion();
+
+      if (currentVersion === undefined) {
+        throw new Error(
+          "Database is not initialized. Please run 'npx hot-updater migrate' to set up the database schema.",
+        );
+      }
+
+      if (currentVersion !== lastSchemaVersion) {
+        throw new Error(
+          `Database schema version mismatch. Expected version ${lastSchemaVersion}, but database is on version ${currentVersion}. ` +
+            "Please run 'npx hot-updater migrate' to update your database schema.",
+        );
+      }
+
+      return client.orm(lastSchemaVersion);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("doesn't support migration")
+      ) {
+        return client.orm(lastSchemaVersion);
+      }
+      throw error;
+    }
+  };
+
   const api: DatabaseAPI = {
     async getBundleById(id: string): Promise<Bundle | null> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       const result = await orm.findFirst("bundles", {
         select: [
           "id",
@@ -58,6 +119,8 @@ export function createOrmDatabaseCore({
           "target_app_version",
           "fingerprint_hash",
           "metadata",
+          "rollout_cohort_count",
+          "target_cohorts",
         ],
         where: (b) => b("id", "=", id),
       });
@@ -74,13 +137,15 @@ export function createOrmDatabaseCore({
         storageUri: result.storage_uri,
         targetAppVersion: result.target_app_version ?? null,
         fingerprintHash: result.fingerprint_hash ?? null,
+        rolloutCohortCount:
+          result.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        targetCohorts: parseTargetCohorts(result.target_cohorts),
       };
       return bundle;
     },
 
     async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
 
       type UpdateSelectRow = {
         id: string;
@@ -88,6 +153,8 @@ export function createOrmDatabaseCore({
         message: string | null;
         storage_uri: string | null;
         file_hash: string;
+        rollout_cohort_count?: number | null;
+        target_cohorts?: unknown | null;
       };
 
       const toUpdateInfo = (
@@ -112,12 +179,39 @@ export function createOrmDatabaseCore({
         fileHash: null,
       };
 
+      const isEligibleForUpdate = (
+        row: UpdateSelectRow,
+        cohort: string | undefined,
+      ): boolean => {
+        return isCohortEligibleForUpdate(
+          row.id,
+          cohort,
+          row.rollout_cohort_count ?? null,
+          parseTargetCohorts(row.target_cohorts),
+        );
+      };
+
+      const findLatestEligibleUpdateCandidate = (
+        rows: UpdateSelectRow[],
+        bundleId: string,
+        cohort: string | undefined,
+      ): UpdateSelectRow | null => {
+        return (
+          rows.find(
+            (row) =>
+              row.id.localeCompare(bundleId) > 0 &&
+              isEligibleForUpdate(row, cohort),
+          ) ?? null
+        );
+      };
+
       const appVersionStrategy = async ({
         platform,
         appVersion,
         bundleId,
         minBundleId = NIL_UUID,
         channel = "production",
+        cohort,
       }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
         const versionRows = await orm.findMany("bundles", {
           select: ["target_app_version"],
@@ -145,6 +239,8 @@ export function createOrmDatabaseCore({
                   "message",
                   "storage_uri",
                   "file_hash",
+                  "rollout_cohort_count",
+                  "target_cohorts",
                   "channel",
                   "target_app_version",
                   "enabled",
@@ -169,26 +265,28 @@ export function createOrmDatabaseCore({
           b.id.localeCompare(a.id);
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
-        const latestCandidate = sorted[0] ?? null;
         const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+        const updateCandidate = findLatestEligibleUpdateCandidate(
+          sorted,
+          bundleId,
+          cohort,
+        );
+        const currentBundleEligible = currentBundle
+          ? isEligibleForUpdate(currentBundle, cohort)
+          : false;
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
         if (bundleId === NIL_UUID) {
-          if (latestCandidate && latestCandidate.id !== bundleId) {
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
-        if (currentBundle) {
-          if (
-            latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
-          ) {
-            return toUpdateInfo(latestCandidate, "UPDATE");
+        if (currentBundleEligible) {
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
@@ -212,6 +310,7 @@ export function createOrmDatabaseCore({
         bundleId,
         minBundleId = NIL_UUID,
         channel = "production",
+        cohort,
       }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
         const candidates = await orm.findMany("bundles", {
           select: [
@@ -220,6 +319,8 @@ export function createOrmDatabaseCore({
             "message",
             "storage_uri",
             "file_hash",
+            "rollout_cohort_count",
+            "target_cohorts",
             "channel",
             "fingerprint_hash",
             "enabled",
@@ -238,26 +339,28 @@ export function createOrmDatabaseCore({
           b.id.localeCompare(a.id);
         const sorted = (candidates ?? []).slice().sort(byIdDesc);
 
-        const latestCandidate = sorted[0] ?? null;
         const currentBundle = sorted.find((b) => b.id === bundleId);
-        const updateCandidate =
-          sorted.find((b) => b.id.localeCompare(bundleId) > 0) ?? null;
+        const updateCandidate = findLatestEligibleUpdateCandidate(
+          sorted,
+          bundleId,
+          cohort,
+        );
+        const currentBundleEligible = currentBundle
+          ? isEligibleForUpdate(currentBundle, cohort)
+          : false;
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
         if (bundleId === NIL_UUID) {
-          if (latestCandidate && latestCandidate.id !== bundleId) {
-            return toUpdateInfo(latestCandidate, "UPDATE");
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
 
-        if (currentBundle) {
-          if (
-            latestCandidate &&
-            latestCandidate.id.localeCompare(currentBundle.id) > 0
-          ) {
-            return toUpdateInfo(latestCandidate, "UPDATE");
+        if (currentBundleEligible) {
+          if (updateCandidate) {
+            return toUpdateInfo(updateCandidate, "UPDATE");
           }
           return null;
         }
@@ -297,8 +400,7 @@ export function createOrmDatabaseCore({
     },
 
     async getChannels(): Promise<string[]> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       const rows = await orm.findMany("bundles", {
         select: ["channel"],
       });
@@ -311,8 +413,7 @@ export function createOrmDatabaseCore({
       limit: number;
       offset: number;
     }): Promise<{ data: Bundle[]; pagination: PaginationInfo }> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       const { where, limit, offset } = options;
 
       const rows = await orm.findMany("bundles", {
@@ -329,6 +430,8 @@ export function createOrmDatabaseCore({
           "target_app_version",
           "fingerprint_hash",
           "metadata",
+          "rollout_cohort_count",
+          "target_cohorts",
         ],
         where: (b) => {
           const conditions = [];
@@ -356,6 +459,9 @@ export function createOrmDatabaseCore({
             storageUri: r.storage_uri,
             targetAppVersion: r.target_app_version ?? null,
             fingerprintHash: r.fingerprint_hash ?? null,
+            rolloutCohortCount:
+              r.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+            targetCohorts: parseTargetCohorts(r.target_cohorts),
           }),
         )
         .sort((a, b) => b.id.localeCompare(a.id));
@@ -370,8 +476,7 @@ export function createOrmDatabaseCore({
     },
 
     async insertBundle(bundle: Bundle): Promise<void> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       const values = {
         id: bundle.id,
         platform: bundle.platform,
@@ -385,6 +490,9 @@ export function createOrmDatabaseCore({
         target_app_version: bundle.targetAppVersion,
         fingerprint_hash: bundle.fingerprintHash,
         metadata: bundle.metadata ?? {},
+        rollout_cohort_count:
+          bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        target_cohorts: bundle.targetCohorts ?? null,
       };
       const { id, ...updateValues } = values;
       await orm.upsert("bundles", {
@@ -398,8 +506,7 @@ export function createOrmDatabaseCore({
       bundleId: string,
       newBundle: Partial<Bundle>,
     ): Promise<void> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       const current = await this.getBundleById(bundleId);
       if (!current) throw new Error("targetBundleId not found");
       const merged: Bundle = { ...current, ...newBundle };
@@ -416,6 +523,9 @@ export function createOrmDatabaseCore({
         target_app_version: merged.targetAppVersion,
         fingerprint_hash: merged.fingerprintHash,
         metadata: merged.metadata ?? {},
+        rollout_cohort_count:
+          merged.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+        target_cohorts: merged.targetCohorts ?? null,
       };
       const { id: id2, ...updateValues2 } = values;
       await orm.upsert("bundles", {
@@ -426,8 +536,7 @@ export function createOrmDatabaseCore({
     },
 
     async deleteBundleById(bundleId: string): Promise<void> {
-      const version = await client.version();
-      const orm = client.orm(version);
+      const orm = await ensureORM();
       await orm.deleteMany("bundles", { where: (b) => b("id", "=", bundleId) });
     },
   };

@@ -1,12 +1,60 @@
 import {
   type AppVersionGetBundlesArgs,
+  type Bundle,
+  DEFAULT_ROLLOUT_COHORT_COUNT,
   type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
   NIL_UUID,
-  type UpdateInfo,
-  type UpdateStatus,
 } from "@hot-updater/core";
-import { filterCompatibleAppVersions } from "@hot-updater/js";
+import {
+  filterCompatibleAppVersions,
+  getUpdateInfo as getUpdateInfoJS,
+} from "@hot-updater/js";
+
+const parseTargetCohorts = (value: string | null): string[] | null => {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === "string");
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+type BundleRow = {
+  id: string;
+  platform: Bundle["platform"];
+  should_force_update: number;
+  enabled: number;
+  file_hash: string;
+  git_commit_hash: string | null;
+  message: string | null;
+  channel: string;
+  storage_uri: string;
+  target_app_version: string | null;
+  fingerprint_hash: string | null;
+  rollout_cohort_count: number | null;
+  target_cohorts: string | null;
+};
+
+const convertToBundle = (row: BundleRow): Bundle => ({
+  id: row.id,
+  platform: row.platform,
+  shouldForceUpdate: Boolean(row.should_force_update),
+  enabled: Boolean(row.enabled),
+  fileHash: row.file_hash,
+  gitCommitHash: row.git_commit_hash,
+  message: row.message,
+  channel: row.channel,
+  storageUri: row.storage_uri,
+  targetAppVersion: row.target_app_version,
+  fingerprintHash: row.fingerprint_hash,
+  rolloutCohortCount: row.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+  targetCohorts: parseTargetCohorts(row.target_cohorts),
+});
 
 const appVersionStrategy = async (
   DB: D1Database,
@@ -16,6 +64,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    cohort,
   }: AppVersionGetBundlesArgs,
 ) => {
   const appVersionList = await DB.prepare(
@@ -24,10 +73,14 @@ const appVersionStrategy = async (
       target_app_version
     FROM bundles
     WHERE platform = ?
+      AND channel = ?
+      AND enabled = 1
+      AND id >= ?
+      AND target_app_version IS NOT NULL
     GROUP BY target_app_version
   `,
   )
-    .bind(platform)
+    .bind(platform, channel, minBundleId)
     .all<{ target_app_version: string; count: number }>();
 
   const targetAppVersionList = filterCompatibleAppVersions(
@@ -35,99 +88,55 @@ const appVersionStrategy = async (
     appVersion,
   );
 
-  const sql = /* sql */ `
-  WITH input AS (
-    SELECT
-      ? AS app_platform,
-      ? AS app_version,
-      ? AS bundle_id,
-      ? AS min_bundle_id,
-      ? AS channel,
-      '00000000-0000-0000-0000-000000000000' AS nil_uuid
-  ),
-  update_candidate AS (
-    SELECT
-      b.id,
-      b.should_force_update,
-      b.message,
-      b.storage_uri,
-      b.file_hash,
-      'UPDATE' AS status
-    FROM bundles b, input
-    WHERE b.enabled = 1
-      AND b.platform = input.app_platform
-      AND b.id >= input.bundle_id
-      AND b.id >= input.min_bundle_id
-      AND b.channel = input.channel
-      AND b.target_app_version IN (${targetAppVersionList
-        .map((version) => `'${version}'`)
-        .join(",")})
-    ORDER BY b.id DESC
-    LIMIT 1
-  ),
-  rollback_candidate AS (
-    SELECT
-      b.id,
-      1 AS should_force_update,
-      b.message,
-      b.storage_uri,
-      b.file_hash,
-      'ROLLBACK' AS status
-    FROM bundles b, input
-    WHERE b.enabled = 1
-      AND b.platform = input.app_platform
-      AND b.id < input.bundle_id
-      AND b.id >= input.min_bundle_id
-    ORDER BY b.id DESC
-    LIMIT 1
-  ),
-  final_result AS (
-    SELECT * FROM update_candidate
-    UNION ALL
-    SELECT * FROM rollback_candidate
-    WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
-  )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
-  FROM final_result, input
-  WHERE id <> bundle_id
-
-  UNION ALL
-
-  SELECT
-    nil_uuid AS id,
-    1 AS should_force_update,
-    NULL AS message,
-    'ROLLBACK' AS status,
-    NULL AS storage_uri,
-    NULL AS file_hash
-  FROM input
-  WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id > min_bundle_id;
-`;
-
-  const result = await DB.prepare(sql)
-    .bind(platform, appVersion, bundleId, minBundleId, channel)
-    .first<{
-      id: string;
-      should_force_update: number;
-      status: UpdateStatus;
-      message: string | null;
-      storage_uri: string | null;
-      file_hash: string | null;
-    }>();
-
-  if (!result) {
-    return null;
+  if (targetAppVersionList.length === 0) {
+    return getUpdateInfoJS([], {
+      platform,
+      appVersion,
+      bundleId,
+      minBundleId,
+      channel,
+      cohort,
+      _updateStrategy: "appVersion",
+    });
   }
 
-  return {
-    id: result.id,
-    shouldForceUpdate: Boolean(result.should_force_update),
-    status: result.status,
-    message: result.message,
-    storageUri: result.storage_uri,
-    fileHash: result.file_hash,
-  } as UpdateInfo;
+  const placeholders = targetAppVersionList.map(() => "?").join(", ");
+  const rows = await DB.prepare(
+    /* sql */ `
+    SELECT
+      id,
+      platform,
+      should_force_update,
+      enabled,
+      file_hash,
+      git_commit_hash,
+      message,
+      channel,
+      storage_uri,
+      target_app_version,
+      fingerprint_hash,
+      rollout_cohort_count,
+      target_cohorts
+    FROM bundles
+    WHERE enabled = 1
+      AND platform = ?
+      AND id >= ?
+      AND channel = ?
+      AND target_app_version IN (${placeholders})
+  `,
+  )
+    .bind(platform, minBundleId, channel, ...targetAppVersionList)
+    .all<BundleRow>();
+
+  return getUpdateInfoJS(rows.results.map(convertToBundle), {
+    platform,
+    appVersion,
+    bundleId,
+    minBundleId,
+    channel,
+    cohort,
+    _updateStrategy: "appVersion",
+  });
 };
 
 export const fingerprintStrategy = async (
@@ -138,101 +147,45 @@ export const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    cohort,
   }: FingerprintGetBundlesArgs,
 ) => {
-  const sql = /* sql */ `
-  WITH input AS (
+  const rows = await DB.prepare(
+    /* sql */ `
     SELECT
-      ? AS app_platform,
-      ? AS bundle_id,
-      ? AS min_bundle_id,
-      ? AS channel,
-      ? AS fingerprint_hash,
-      '00000000-0000-0000-0000-000000000000' AS nil_uuid
-  ),
-  update_candidate AS (
-    SELECT
-      b.id,
-      b.should_force_update,
-      b.message,
-      b.storage_uri,
-      b.file_hash,
-      'UPDATE' AS status
-    FROM bundles b, input
-    WHERE b.enabled = 1
-      AND b.platform = input.app_platform
-      AND b.id >= input.bundle_id
-      AND b.id >= input.min_bundle_id
-      AND b.channel = input.channel
-      AND b.fingerprint_hash = input.fingerprint_hash
-    ORDER BY b.id DESC
-    LIMIT 1
-  ),
-  rollback_candidate AS (
-    SELECT
-      b.id,
-      1 AS should_force_update,
-      b.message,
-      b.storage_uri,
-      b.file_hash,
-      'ROLLBACK' AS status
-    FROM bundles b, input
-    WHERE b.enabled = 1
-      AND b.platform = input.app_platform
-      AND b.id < input.bundle_id
-      AND b.id >= input.min_bundle_id
-      AND b.channel = input.channel
-      AND b.fingerprint_hash = input.fingerprint_hash
-    ORDER BY b.id DESC
-    LIMIT 1
-  ),
-  final_result AS (
-    SELECT * FROM update_candidate
-    UNION ALL
-    SELECT * FROM rollback_candidate
-    WHERE NOT EXISTS (SELECT 1 FROM update_candidate)
+      id,
+      platform,
+      should_force_update,
+      enabled,
+      file_hash,
+      git_commit_hash,
+      message,
+      channel,
+      storage_uri,
+      target_app_version,
+      fingerprint_hash,
+      rollout_cohort_count,
+      target_cohorts
+    FROM bundles
+    WHERE enabled = 1
+      AND platform = ?
+      AND id >= ?
+      AND channel = ?
+      AND fingerprint_hash = ?
+  `,
   )
-  SELECT id, should_force_update, message, status, storage_uri, file_hash
-  FROM final_result, input
-  WHERE id <> bundle_id
+    .bind(platform, minBundleId, channel, fingerprintHash)
+    .all<BundleRow>();
 
-  UNION ALL
-
-  SELECT
-    nil_uuid AS id,
-    1 AS should_force_update,
-    NULL AS message,
-    'ROLLBACK' AS status,
-    NULL AS storage_uri,
-    NULL AS file_hash
-  FROM input
-  WHERE (SELECT COUNT(*) FROM final_result) = 0
-    AND bundle_id > min_bundle_id;
-`;
-
-  const result = await DB.prepare(sql)
-    .bind(platform, bundleId, minBundleId, channel, fingerprintHash)
-    .first<{
-      id: string;
-      should_force_update: number;
-      status: UpdateStatus;
-      message: string | null;
-      storage_uri: string | null;
-      file_hash: string | null;
-    }>();
-
-  if (!result) {
-    return null;
-  }
-
-  return {
-    id: result.id,
-    shouldForceUpdate: Boolean(result.should_force_update),
-    status: result.status,
-    message: result.message,
-    storageUri: result.storage_uri,
-    fileHash: result.file_hash,
-  } as UpdateInfo;
+  return getUpdateInfoJS(rows.results.map(convertToBundle), {
+    platform,
+    fingerprintHash,
+    bundleId,
+    minBundleId,
+    channel,
+    cohort,
+    _updateStrategy: "fingerprint",
+  });
 };
 
 export const getUpdateInfo = (DB: D1Database, args: GetBundlesArgs) => {

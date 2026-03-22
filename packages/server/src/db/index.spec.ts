@@ -5,7 +5,10 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { firebaseStorage } from "@hot-updater/firebase";
 import { supabaseStorage } from "@hot-updater/supabase";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import {
@@ -87,6 +90,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  setupBundleMethodsTestSuite({
+    getBundleById: hotUpdater.getBundleById.bind(hotUpdater),
+    getChannels: hotUpdater.getChannels.bind(hotUpdater),
+    insertBundle: hotUpdater.insertBundle.bind(hotUpdater),
+    getBundles: hotUpdater.getBundles.bind(hotUpdater),
+    updateBundleById: hotUpdater.updateBundleById.bind(hotUpdater),
+    deleteBundleById: hotUpdater.deleteBundleById.bind(hotUpdater),
+  });
 
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {

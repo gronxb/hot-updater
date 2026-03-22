@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
+import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -71,6 +72,9 @@ beforeAll(async () => {
     http.post(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
       handleRequest(request),
     ),
+    http.patch(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
+      handleRequest(request),
+    ),
     http.delete(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
       handleRequest(request),
     ),
@@ -102,6 +106,27 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
   fingerprintHash: null,
   ...overrides,
 });
+
+const createInMemoryBlobDatabase = (store: Record<string, string>) =>
+  createBlobDatabasePlugin({
+    name: "blob-test",
+    factory: () => ({
+      apiBasePath: "/api/check-update",
+      listObjects: async (prefix: string) =>
+        Object.keys(store).filter((key) => key.startsWith(prefix)),
+      loadObject: async <T>(key: string) => {
+        const value = store[key];
+        return value ? (JSON.parse(value) as T) : null;
+      },
+      uploadObject: async <T>(key: string, data: T) => {
+        store[key] = JSON.stringify(data);
+      },
+      deleteObject: async (key: string) => {
+        delete store[key];
+      },
+      invalidatePaths: async () => {},
+    }),
+  })({});
 
 describe("Handler <-> Standalone Repository Integration", () => {
   it("Real integration: appendBundle + commitBundle → handler POST /bundles", async () => {
@@ -314,6 +339,15 @@ describe("Handler <-> Standalone Repository Integration", () => {
           },
         );
       }),
+      http.patch(`${baseUrl}/api/v2/*`, async ({ request }) => {
+        const response = await customApi.handler(request);
+        return HttpResponse.json(
+          (await response.json()) as Record<string, unknown>,
+          {
+            status: response.status,
+          },
+        );
+      }),
     );
 
     // Create standalone repository with matching basePath
@@ -346,5 +380,77 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Standalone should return null gracefully
     expect(result).toBeNull();
+  });
+
+  it("updates targetAppVersion through standalone without creating a duplicate blob entry", async () => {
+    const store: Record<string, string> = {};
+    const blobApi = createHotUpdater({
+      database: createInMemoryBlobDatabase(store),
+      basePath: "/blob-hot-updater",
+    });
+    const handleBlobRequest = async (request: Request) => {
+      const response = await blobApi.handler(request);
+      return HttpResponse.json(
+        (await response.json()) as Record<string, unknown>,
+        {
+          status: response.status,
+          headers: response.headers,
+        },
+      );
+    };
+
+    server.use(
+      http.get(`${baseUrl}/blob-hot-updater/api/bundles`, ({ request }) =>
+        handleBlobRequest(request),
+      ),
+      http.get(`${baseUrl}/blob-hot-updater/api/bundles/:id`, ({ request }) =>
+        handleBlobRequest(request),
+      ),
+      http.post(`${baseUrl}/blob-hot-updater/api/bundles`, ({ request }) =>
+        handleBlobRequest(request),
+      ),
+      http.patch(`${baseUrl}/blob-hot-updater/api/bundles/:id`, ({ request }) =>
+        handleBlobRequest(request),
+      ),
+      http.delete(
+        `${baseUrl}/blob-hot-updater/api/bundles/:id`,
+        ({ request }) => handleBlobRequest(request),
+      ),
+    );
+
+    const repo = standaloneRepository({
+      baseUrl: `${baseUrl}/blob-hot-updater`,
+    })();
+
+    const bundleId = uuidv7();
+    await repo.appendBundle(
+      createTestBundle({
+        id: bundleId,
+        platform: "ios",
+        targetAppVersion: "1.x.x",
+        storageUri: "s3://test-bucket/original.zip",
+      }),
+    );
+    await repo.commitBundle();
+
+    await repo.updateBundle(bundleId, { targetAppVersion: "1.0.2" });
+    await repo.commitBundle();
+
+    const updatedBundle = await repo.getBundleById(bundleId);
+    expect(updatedBundle?.targetAppVersion).toBe("1.0.2");
+
+    expect(store["production/ios/1.x.x/update.json"]).toBeUndefined();
+
+    const nextBundles = JSON.parse(
+      store["production/ios/1.0.2/update.json"] ?? "[]",
+    ) as Bundle[];
+    expect(nextBundles).toHaveLength(1);
+    expect(nextBundles[0]?.id).toBe(bundleId);
+    expect(nextBundles[0]?.targetAppVersion).toBe("1.0.2");
+
+    const targetVersions = JSON.parse(
+      store["production/ios/target-app-versions.json"] ?? "[]",
+    ) as string[];
+    expect(targetVersions).toEqual(["1.0.2"]);
   });
 });

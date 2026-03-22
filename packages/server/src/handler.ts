@@ -21,6 +21,10 @@ export interface HandlerAPI {
     offset: number;
   }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   insertBundle: (bundle: Bundle) => Promise<void>;
+  updateBundleById: (
+    bundleId: string,
+    bundle: Partial<Bundle>,
+  ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
   getChannels: () => Promise<string[]>;
 }
@@ -47,7 +51,20 @@ const handleVersion: RouteHandler = async () => {
   });
 };
 
-const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
+const decodeMaybe = (value: string | undefined): string | undefined => {
+  if (value === undefined) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
+const handleFingerprintUpdateWithCohort: RouteHandler = async (
+  params,
+  _request,
+  api,
+) => {
   const updateInfo = await api.getAppUpdateInfo({
     _updateStrategy: "fingerprint",
     platform: params.platform as "ios" | "android",
@@ -55,6 +72,7 @@ const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
+    cohort: decodeMaybe(params.cohort),
   });
 
   return new Response(JSON.stringify(updateInfo), {
@@ -63,7 +81,11 @@ const handleFingerprintUpdate: RouteHandler = async (params, _request, api) => {
   });
 };
 
-const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
+const handleAppVersionUpdateWithCohort: RouteHandler = async (
+  params,
+  _request,
+  api,
+) => {
   const updateInfo = await api.getAppUpdateInfo({
     _updateStrategy: "appVersion",
     platform: params.platform as "ios" | "android",
@@ -71,6 +93,7 @@ const handleAppVersionUpdate: RouteHandler = async (params, _request, api) => {
     channel: params.channel,
     minBundleId: params.minBundleId,
     bundleId: params.bundleId,
+    cohort: decodeMaybe(params.cohort),
   });
 
   return new Response(JSON.stringify(updateInfo), {
@@ -131,6 +154,37 @@ const handleCreateBundles: RouteHandler = async (_params, request, api) => {
   });
 };
 
+const handleUpdateBundle: RouteHandler = async (params, request, api) => {
+  const body = await request.json();
+  const payload = Array.isArray(body) ? body[0] : body;
+
+  if (!payload || typeof payload !== "object") {
+    return new Response(JSON.stringify({ error: "Invalid bundle payload" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (
+    "id" in payload &&
+    typeof payload.id === "string" &&
+    payload.id !== params.id
+  ) {
+    return new Response(JSON.stringify({ error: "Bundle id mismatch" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { id: _ignoredId, ...bundlePatch } = payload as Partial<Bundle>;
+  await api.updateBundleById(params.id, bundlePatch);
+
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 const handleDeleteBundle: RouteHandler = async (params, _request, api) => {
   await api.deleteBundleById(params.id);
 
@@ -152,11 +206,12 @@ const handleGetChannels: RouteHandler = async (_params, _request, api) => {
 // Route handlers map
 const routes: Record<string, RouteHandler> = {
   version: handleVersion,
-  fingerprintUpdate: handleFingerprintUpdate,
-  appVersionUpdate: handleAppVersionUpdate,
+  fingerprintUpdateWithCohort: handleFingerprintUpdateWithCohort,
+  appVersionUpdateWithCohort: handleAppVersionUpdateWithCohort,
   getBundle: handleGetBundle,
   getBundles: handleGetBundles,
   createBundles: handleCreateBundles,
+  updateBundle: handleUpdateBundle,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
 };
@@ -181,18 +236,31 @@ export function createHandler(
     router,
     "GET",
     "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-    "fingerprintUpdate",
+    "fingerprintUpdateWithCohort",
+  );
+  addRoute(
+    router,
+    "GET",
+    "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
+    "fingerprintUpdateWithCohort",
   );
   addRoute(
     router,
     "GET",
     "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-    "appVersionUpdate",
+    "appVersionUpdateWithCohort",
+  );
+  addRoute(
+    router,
+    "GET",
+    "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
+    "appVersionUpdateWithCohort",
   );
   addRoute(router, "GET", "/api/bundles/channels", "getChannels");
   addRoute(router, "GET", "/api/bundles/:id", "getBundle");
   addRoute(router, "GET", "/api/bundles", "getBundles");
   addRoute(router, "POST", "/api/bundles", "createBundles");
+  addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
   addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
 
   return async (request: Request): Promise<Response> => {

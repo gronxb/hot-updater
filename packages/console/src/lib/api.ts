@@ -1,85 +1,159 @@
-import { hc } from "hono/client";
-import type { RpcType } from "@/src-server/rpc";
+import type { Bundle } from "@hot-updater/plugin-core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createBundle as createBundleApi,
+  deleteBundle as deleteBundleApi,
+  getBundle,
+  getBundleDownloadUrl,
+  getBundles,
+  getChannels,
+  getConfig,
+  getConfigLoaded,
+  updateBundle as updateBundleApi,
+} from "./api-rpc";
 
-export const api = hc<RpcType>("/rpc");
+type BundleFilters = {
+  channel?: string;
+  platform?: "ios" | "android";
+  limit?: string;
+  offset?: string;
+};
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/solid-query";
-import type { Accessor } from "solid-js";
+type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
 
-const DEFAULT_CHANNEL = "production";
+const bundleListQueryKey = ["bundles"] as const;
 
-export const useBundlesQuery = (
-  query: Accessor<Parameters<typeof api.bundles.$get>[0]["query"]>,
-) =>
-  useQuery(() => ({
-    queryKey: ["bundles", query()],
-    queryFn: async () => {
-      const res = await api.bundles.$get({ query: query() });
-      return res.json();
-    },
-    placeholderData: (prev) => prev,
-    staleTime: Number.POSITIVE_INFINITY,
-  }));
+export const queryKeys = {
+  config: ["config"] as const,
+  channels: ["channels"] as const,
+  configLoaded: ["config-loaded"] as const,
+  bundles: {
+    all: bundleListQueryKey,
+    list: (filters?: BundleFilters) =>
+      [...bundleListQueryKey, filters ?? {}] as const,
+  },
+  bundle: (bundleId: string) => ["bundle", bundleId] as const,
+};
 
-export const useBundleQuery = (bundleId: string) =>
-  useQuery(() => ({
-    queryKey: ["bundle", bundleId],
-    queryFn: () => {
-      return api.bundles[":bundleId"]
-        .$get({ param: { bundleId } })
-        .then((res) => res.json());
-    },
-    placeholderData: (prev) => {
-      return prev;
-    },
-    staleTime: Number.POSITIVE_INFINITY,
-  }));
+function replaceBundleInQueryData(
+  data: BundlesQueryData | undefined,
+  updatedBundle: Bundle,
+) {
+  if (!data) {
+    return data;
+  }
 
-export const useConfigQuery = () =>
-  useQuery(() => ({
-    queryKey: ["config"],
-    queryFn: () => api.config.$get().then((res) => res.json()),
-    staleTime: Number.POSITIVE_INFINITY,
-    retryOnMount: false,
-  }));
+  return {
+    ...data,
+    data: data.data.map((bundle) =>
+      bundle.id === updatedBundle.id ? updatedBundle : bundle,
+    ),
+  };
+}
 
-export const useChannelsQuery = () =>
-  useQuery(() => ({
-    queryKey: ["channels"],
-    queryFn: () => api.channels.$get().then((res) => res.json()),
-    staleTime: Number.POSITIVE_INFINITY,
-    retryOnMount: false,
-    select: (data) => {
-      if (!data || data.length === 0) {
-        return null;
-      }
+// Query Hooks
+export function useConfigQuery() {
+  return useQuery({
+    queryKey: queryKeys.config,
+    queryFn: () => getConfig(),
+    staleTime: Infinity,
+  });
+}
 
-      if (data.includes(DEFAULT_CHANNEL)) {
-        return [
-          DEFAULT_CHANNEL,
-          ...data.filter((channel) => channel !== DEFAULT_CHANNEL),
-        ];
-      }
+export function useChannelsQuery() {
+  return useQuery({
+    queryKey: queryKeys.channels,
+    queryFn: () => getChannels(),
+    staleTime: Infinity,
+  });
+}
 
-      return data;
-    },
-  }));
+export function useConfigLoadedQuery() {
+  return useQuery({
+    queryKey: queryKeys.configLoaded,
+    queryFn: () => getConfigLoaded(),
+    staleTime: Infinity,
+  });
+}
 
-export const useBundleDeleteMutation = () => {
+export function useBundlesQuery(filters?: BundleFilters) {
+  return useQuery({
+    queryKey: queryKeys.bundles.list(filters),
+    queryFn: () => getBundles({ data: filters }),
+    staleTime: Infinity,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export function useBundleQuery(bundleId: string) {
+  return useQuery({
+    queryKey: queryKeys.bundle(bundleId),
+    queryFn: () => getBundle({ data: { bundleId } }),
+    staleTime: Infinity,
+    enabled: !!bundleId,
+  });
+}
+
+// Mutation Hooks
+export function useBundleDownloadUrlMutation() {
+  return useMutation({
+    mutationFn: (params: { bundleId: string }) =>
+      getBundleDownloadUrl({ data: params }),
+  });
+}
+
+export function useUpdateBundleMutation() {
   const queryClient = useQueryClient();
 
-  return useMutation<{ success: boolean }, Error, string>(() => ({
-    mutationFn: async (bundleId: string) => {
-      const response = await api.bundles[":bundleId"].$delete({
-        param: { bundleId },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to delete bundle: ${response.status}`);
-      }
-      return response.json();
+  return useMutation({
+    mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
+      updateBundleApi({ data: params }),
+    onSuccess: async ({ bundle: updatedBundle }, vars) => {
+      queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.bundles.all },
+        (data: BundlesQueryData | undefined) =>
+          replaceBundleInQueryData(data, updatedBundle),
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundle(vars.bundleId),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bundles"] });
+  });
+}
+
+export function useCreateBundleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
     },
-  }));
-};
+  });
+}
+
+export function useDeleteBundleMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { bundleId: string }) =>
+      deleteBundleApi({ data: params }),
+    onSuccess: async (_, vars) => {
+      queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}

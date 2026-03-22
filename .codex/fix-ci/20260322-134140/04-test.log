@@ -1,0 +1,60 @@
+cwd: /Users/gronxb/Desktop/hot-updater3
+step: test
+command: pnpm -w test
+
+
+> @hot-updater/root@ test /Users/gronxb/Desktop/hot-updater3
+> vitest
+
+
+ RUN  v4.1.0 /Users/gronxb/Desktop/hot-updater3
+
+Starting Firebase emulator...
+i  emulators: Starting emulators: firestore
+⚠  hub: emulator hub unable to start on port 4400, starting on 4402 instead.
+⚠  ui: Emulator UI unable to start on port 4000, starting on 4002 instead.
+⚠  logging: Logging Emulator unable to start on port 4500, starting on 4503 instead.
+⚠  firestore: Cloud Firestore Emulator does not support multiple databases yet.
+⚠  firestore: Did not find a Cloud Firestore rules file specified in a firebase.json config file.
+⚠  firestore: The emulator will default to allowing all reads and writes. Learn more about this option: https://firebase.google.com/docs/emulator-suite/install_and_configure#security_rules_configuration.
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator UI websocket is running on 9162.
+
+[90m┌─────────────────────────────────────────────────────────────┐[39m
+[90m│[39m ✔  All emulators ready! It is now safe to connect your app. [90m│[39m
+[90m│[39m i  View Emulator UI at http://127.0.0.1:4002/               [90m│[39m
+[90m└─────────────────────────────────────────────────────────────┘[39m
+
+[90m┌───────────[39m[90m┬─────────────────[39m[90m┬─────────────────────────────────┐[39m
+[90m│[39m[33m Emulator  [39m[90m│[39m[33m Host:Port       [39m[90m│[39m[33m View in Emulator UI             [39m[90m│[39m
+[90m├───────────[39m[90m┼─────────────────[39m[90m┼─────────────────────────────────┤[39m
+[90m│[39m Firestore [90m│[39m 127.0.0.1:54144 [90m│[39m http://127.0.0.1:4002/firestore [90m│[39m
+[90m└───────────[39m[90m┴─────────────────[39m[90m┴─────────────────────────────────┘[39m
+  Emulator Hub host: 127.0.0.1 port: 4402
+  Other reserved ports: 4503, 9162
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+ 
+Firebase emulator ready after 1 attempt(s)
+Firebase emulator started successfully
+[vpw:debug] Adding `enable_nodejs_tty_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_fs_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_http_modules` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_perf_hooks_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_v8_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_process_v2` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:info] Starting runtime for plugins/cloudflare...
+[vpw:debug] Adding `enable_nodejs_tty_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_fs_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_http_modules` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_perf_hooks_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_v8_module` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:debug] Adding `enable_nodejs_process_v2` compatibility flag during tests as this feature is needed to support the Vitest runner.
+[vpw:info] Starting runtime for plugins/cloudflare...
+
+ Test Files  71 passed | 2 skipped (73)
+      Tests  1925 passed | 204 skipped (2129)
+   Start at  13:42:50
+   Duration  87.19s (transform 15.70s, setup 0ms, import 41.80s, tests 105.61s, environment 4.41s)
+
+Successfully killed emulator process

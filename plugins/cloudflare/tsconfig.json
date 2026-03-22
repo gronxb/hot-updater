@@ -4,7 +4,7 @@
     "types": [
       "node",
       "@cloudflare/workers-types/experimental",
-      "@cloudflare/vitest-pool-workers"
+      "@cloudflare/vitest-pool-workers/types"
     ]
   },
   "include": [

@@ -17,6 +17,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "dotenv": "^16.6.1",
     "hono": "^4.9.12"
   },
@@ -28,6 +29,6 @@
     "hot-updater": "workspace:*",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
   }
 }

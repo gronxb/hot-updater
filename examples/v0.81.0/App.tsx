@@ -9,9 +9,10 @@ import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Button,
   Image,
+  Linking,
   Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -25,12 +26,26 @@ const notify = proxy<{
   status?: string;
   crashedBundleId?: string;
 }>({});
+const E2E_DEEP_LINK_SCHEME = "hotupdaterexample";
 
+type CohortCommand =
+  | { action: "restore"; nextCohort: string }
+  | { action: "set"; nextCohort: string };
+
+const getGlobalBaseUrl = (): string | null => {
+  const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
+  if (typeof maybeFn !== "function") {
+    return null;
+  }
+  const value = maybeFn();
+  return typeof value === "string" ? value : null;
+};
 type RuntimeSnapshot = {
   appVersion: string | null;
   baseURL: string | null;
   bundleId: string;
   channel: string;
+  cohort: string;
   crashHistory: string[];
   defaultChannel: string;
   fingerprintHash: string | null;
@@ -41,9 +56,10 @@ type RuntimeSnapshot = {
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
-  baseURL: globalThis.HotUpdaterGetBaseURL?.() ?? null,
+  baseURL: getGlobalBaseUrl(),
   bundleId: HotUpdater.getBundleId(),
   channel: HotUpdater.getChannel(),
+  cohort: HotUpdater.getCohort(),
   crashHistory: HotUpdater.getCrashHistory(),
   defaultChannel: HotUpdater.getDefaultChannel(),
   fingerprintHash: HotUpdater.getFingerprintHash(),
@@ -52,6 +68,42 @@ const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   minBundleId: HotUpdater.getMinBundleId(),
 });
 
+const parseCohortCommandFromUrl = (url: string): CohortCommand | null => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== `${E2E_DEEP_LINK_SCHEME}:`) {
+      return null;
+    }
+
+    const segments = [
+      parsed.hostname,
+      ...parsed.pathname.split("/").filter(Boolean),
+    ];
+
+    if (segments[0] !== "cohort") {
+      return null;
+    }
+
+    if (
+      (segments[1] === "set" || segments[1] === "restore") &&
+      typeof segments[2] === "string"
+    ) {
+      return {
+        action: segments[1],
+        nextCohort: decodeURIComponent(segments[2]),
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+};
+
+const applyCohortCommand = (command: CohortCommand): string => {
+  HotUpdater.setCohort(command.nextCohort);
+  return `deeplink ${command.action} -> ${HotUpdater.getCohort()}`;
+};
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   if (!/^[0-9a-fA-F-]{36}$/.test(uuid)) {
     return "N/A";
@@ -97,15 +149,77 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => (
   </View>
 );
 
+const ActionButton = ({
+  onPress,
+  title,
+}: {
+  onPress: () => void | Promise<void>;
+  title: string;
+}) => (
+  <Pressable
+    accessibilityLabel={title}
+    accessibilityRole="button"
+    onPress={() => void onPress()}
+    style={({ pressed }) => [
+      styles.actionButton,
+      pressed ? styles.actionButtonPressed : null,
+    ]}
+    testID={title}
+  >
+    <Text style={styles.actionButtonText}>{title}</Text>
+  </Pressable>
+);
+
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
+  const [initialCohort] = useState(() => HotUpdater.getCohort());
+  const [cohortActionResult, setCohortActionResult] = useState("idle");
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<RuntimeSnapshot>(() =>
     readRuntimeSnapshot(),
   );
 
   useEffect(() => {
     setRuntimeSnapshot(readRuntimeSnapshot());
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const handleIncomingUrl = (url: string | null): boolean => {
+      if (!url) {
+        return false;
+      }
+
+      const command = parseCohortCommandFromUrl(url);
+      if (!command) {
+        return false;
+      }
+
+      const actionResult = applyCohortCommand(command);
+
+      if (isMounted) {
+        setCohortActionResult(actionResult);
+        setRuntimeSnapshot(readRuntimeSnapshot());
+      }
+
+      return true;
+    };
+
+    Linking.getInitialURL()
+      .then((initialUrl) => {
+        handleIncomingUrl(initialUrl);
+      })
+      .catch(() => undefined);
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      handleIncomingUrl(url);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -137,6 +251,18 @@ function App(): React.JSX.Element {
 
       Alert.alert("Reload Error", message);
     }
+  };
+
+  const setCustomCohort = () => {
+    HotUpdater.setCohort("qa-group");
+    refreshRuntimeSnapshot();
+    setCohortActionResult(`set -> ${HotUpdater.getCohort()}`);
+  };
+
+  const restoreInitialCohort = () => {
+    HotUpdater.setCohort(initialCohort);
+    refreshRuntimeSnapshot();
+    setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
   };
 
   return (
@@ -217,6 +343,7 @@ function App(): React.JSX.Element {
 
         <Section title="Runtime Details">
           <InfoRow label="Channel" value={runtimeSnapshot.channel} />
+          <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
           <InfoRow
             label="Default Channel"
             value={runtimeSnapshot.defaultChannel}
@@ -238,17 +365,35 @@ function App(): React.JSX.Element {
 
         <Section title="Actions">
           <View style={styles.buttonBlock}>
-            <Button
+            <ActionButton
               title="Refresh Runtime Snapshot"
               onPress={refreshRuntimeSnapshot}
             />
           </View>
           <View style={styles.buttonBlock}>
-            <Button title="Reload App" onPress={reloadApp} />
+            <ActionButton title="Reload App" onPress={reloadApp} />
           </View>
           <View style={styles.buttonBlock}>
-            <Button title="Clear Crash History" onPress={clearCrashHistory} />
+            <ActionButton
+              title="Clear Crash History"
+              onPress={clearCrashHistory}
+            />
           </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton
+              title="Set Cohort qa-group"
+              onPress={setCustomCohort}
+            />
+          </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton
+              title="Restore Initial Cohort"
+              onPress={restoreInitialCohort}
+            />
+          </View>
+          <Text selectable style={styles.actionResult}>
+            Cohort Action Result: {cohortActionResult}
+          </Text>
         </Section>
       </ScrollView>
     </SafeAreaView>
@@ -256,6 +401,29 @@ function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  actionButton: {
+    alignItems: "center",
+    backgroundColor: "#1d4ed8",
+    borderRadius: 14,
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  actionButtonPressed: {
+    backgroundColor: "#1e40af",
+  },
+  actionButtonText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  actionResult: {
+    color: "#1f2937",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 12,
+  },
   assetCard: {
     backgroundColor: "#f3f4f6",
     borderRadius: 16,
