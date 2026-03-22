@@ -52,7 +52,7 @@ class DecompressService {
             """
             Failed to decompress file: $fileName ($fileSize bytes)
 
-            Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (file extension)
+            Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (Brotli + TAR validation)
 
             Supported formats:
             - ZIP archives (.zip)
