@@ -1,0 +1,4 @@
+interface:
+  display_name: "FixCI"
+  short_description: "Run build, typecheck, lint, and tests until green"
+  default_prompt: "Use $fix-ci to run build, typecheck, lint, and tests in this repo, fix failures, and stop only when all checks pass."
