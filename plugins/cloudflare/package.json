@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
     "./worker": {
       "default": "./worker/wrangler.json"
     },
@@ -50,7 +55,9 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",
+    "hono": "^4.6.3",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {
@@ -61,7 +68,6 @@
     "@types/semver": "^7.5.8",
     "dayjs": "^1.11.13",
     "execa": "catalog:",
-    "hono": "^4.6.3",
     "mime": "^4.0.4",
     "pg-minify": "^1.6.5",
     "semver": "^7.6.3",

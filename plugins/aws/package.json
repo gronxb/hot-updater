@@ -21,6 +21,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
     "./iac": {
       "types": "./dist/iac/index.d.ts",
       "import": "./dist/iac/index.js",
@@ -49,7 +54,6 @@
     "aws-sdk-client-mock": "^4.1.0",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:",
-    "hono": "^4.6.3",
     "mime": "^4.0.4"
   },
   "dependencies": {
@@ -64,6 +68,8 @@
     "@aws-sdk/credential-providers": "3.1008.0",
     "@aws-sdk/lib-storage": "3.1008.0",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "hono": "^4.6.3",
     "aws-lambda": "1.0.7"
   }
 }

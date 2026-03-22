@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    },
     "./scaffold": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"
@@ -48,7 +53,9 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@supabase/supabase-js": "^2.76.1",
+    "hono": "^4.6.3",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {

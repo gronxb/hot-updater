@@ -28,7 +28,7 @@ export type HotUpdaterAPI = DatabaseAPI & {
   generateSchema: HotUpdaterClient["generateSchema"];
 };
 
-interface HotUpdaterOptions {
+export interface CreateHotUpdaterOptions {
   database: DatabaseAdapter;
   /**
    * Storage plugins for handling file uploads and downloads.
@@ -42,7 +42,9 @@ interface HotUpdaterOptions {
   cwd?: string;
 }
 
-export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
+export function createHotUpdater(
+  options: CreateHotUpdaterOptions,
+): HotUpdaterAPI {
   // Initialize storage plugins - call factories if they are functions
   const storagePlugins = (
     options?.storages ??
