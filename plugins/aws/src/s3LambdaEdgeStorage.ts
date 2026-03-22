@@ -97,7 +97,7 @@ const resolvePrivateKey = (config: AwsLambdaEdgeStorageConfig) => {
   return privateKeyPromise;
 };
 
-export const s3LambdaEdgeStorage = (
+export const awsLambdaEdgeStorage = (
   config: AwsLambdaEdgeStorageConfig,
   hooks?: StoragePluginHooks,
 ) => {
@@ -108,7 +108,7 @@ export const s3LambdaEdgeStorage = (
 
     return {
       ...baseStorage,
-      name: "s3LambdaEdgeStorage",
+      name: "awsLambdaEdgeStorage",
       async getDownloadUrl(storageUri) {
         const storageUrl = new URL(storageUri);
 
@@ -137,3 +137,4 @@ export const s3LambdaEdgeStorage = (
   };
 };
 
+export const s3LambdaEdgeStorage = awsLambdaEdgeStorage;

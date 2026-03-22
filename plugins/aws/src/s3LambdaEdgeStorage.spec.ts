@@ -1,13 +1,13 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { awsLambdaEdgeStorage } from "./awsLambdaEdgeStorage";
+import { s3LambdaEdgeStorage } from "./s3LambdaEdgeStorage";
 
 vi.mock("@aws-sdk/cloudfront-signer", () => ({
   getSignedUrl: vi.fn(() => "https://signed.example.com/bundle.zip"),
 }));
 
-describe("awsLambdaEdgeStorage", () => {
+describe("s3LambdaEdgeStorage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -28,7 +28,7 @@ describe("awsLambdaEdgeStorage", () => {
           }) as any,
       );
 
-    const storage = awsLambdaEdgeStorage({
+    const storage = s3LambdaEdgeStorage({
       bucketName: "test-bucket",
       region: "us-east-1",
       keyPairId: "K123",
@@ -69,7 +69,7 @@ describe("awsLambdaEdgeStorage", () => {
           }) as any,
       );
 
-    const storage = awsLambdaEdgeStorage({
+    const storage = s3LambdaEdgeStorage({
       bucketName: "test-bucket",
       region: "us-east-1",
       keyPairId: "K123",
@@ -87,7 +87,7 @@ describe("awsLambdaEdgeStorage", () => {
   it("still supports a custom private key loader", async () => {
     const getPrivateKey = vi.fn().mockResolvedValue("custom-private-key");
 
-    const storage = awsLambdaEdgeStorage({
+    const storage = s3LambdaEdgeStorage({
       bucketName: "test-bucket",
       region: "us-east-1",
       keyPairId: "K123",
