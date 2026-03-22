@@ -6,5 +6,6 @@
 "@hot-updater/supabase": minor
 ---
 
-Add provider-specific serverless presets built on top of `@hot-updater/server`
-that mount the canonical wildcard routes directly through `hotUpdater.handler`.
+Add provider-specific serverless plugins for `createHotUpdater()` and refactor
+the managed runtimes to use `hotUpdater.handler` directly with a legacy exact-path
+rewrite route.

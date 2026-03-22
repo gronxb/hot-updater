@@ -1,21 +1,19 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import {
-  type GetBundlesArgs,
-  NIL_UUID,
-  type Platform,
-  type UpdateStrategy,
-} from "@hot-updater/core";
+  createHotUpdater,
+  isCanonicalUpdateRoute,
+  rewriteLegacyExactRequestToCanonical,
+  wildcardPattern,
+} from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
+import { awsLambdaEdgeDatabase, awsLambdaEdgeStorage } from "../src";
 import {
   NO_STORE_CACHE_CONTROL,
-  ONE_YEAR_IN_SECONDS,
   SHARED_EDGE_CACHE_CONTROL,
 } from "./cacheControl";
-import { getUpdateInfo } from "./getUpdateInfo";
-import { withSignedUrl } from "./withSignedUrl";
 
 declare global {
   var HotUpdater: {
@@ -66,7 +64,6 @@ async function getPrivateKey(): Promise<string> {
   }
 
   const privateKey = keyPair.privateKey;
-
   if (!privateKey || typeof privateKey !== "string") {
     throw new Error(
       `Invalid private key format in SSM parameter: ${SSM_PARAMETER_NAME}`,
@@ -82,344 +79,89 @@ type Bindings = {
   request: CloudFrontRequest;
 };
 
-interface UpdateRequestParams {
-  platform: Platform;
-  bundleId: string;
-  channel: string;
-  minBundleId: string;
-  cohort?: string;
-  appVersion?: string;
-  fingerprintHash?: string;
-}
+const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
+const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const hotUpdaterCache = new Map<string, ReturnType<typeof createHotUpdater>>();
+
+const cloudFrontHeadersToHeaders = (
+  headers: CloudFrontRequest["headers"],
+): Headers => {
+  const normalizedHeaders = new Headers();
+
+  for (const [key, values] of Object.entries(headers)) {
+    for (const value of values) {
+      normalizedHeaders.append(key, value.value);
+    }
+  }
+
+  return normalizedHeaders;
+};
+
+const getHotUpdater = (requestUrl: string) => {
+  const publicBaseUrl = new URL(requestUrl).origin;
+  const cached = hotUpdaterCache.get(publicBaseUrl);
+
+  if (cached) {
+    return cached;
+  }
+
+  const hotUpdater = createHotUpdater({
+    database: awsLambdaEdgeDatabase({
+      bucketName: S3_BUCKET_NAME,
+      region: SSM_REGION,
+    }),
+    storages: [
+      awsLambdaEdgeStorage({
+        bucketName: S3_BUCKET_NAME,
+        region: SSM_REGION,
+        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+        getPrivateKey,
+        publicBaseUrl,
+      }),
+    ],
+    basePath: HOT_UPDATER_BASE_PATH,
+  });
+
+  hotUpdaterCache.set(publicBaseUrl, hotUpdater);
+  return hotUpdater;
+};
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const validatePlatform = (platform: string): platform is Platform => {
-  return ["ios", "android"].includes(platform);
-};
+app.get(HOT_UPDATER_BASE_PATH, async (c) => {
+  const hotUpdater = getHotUpdater(c.req.url);
+  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
+    basePath: hotUpdater.basePath,
+    request: c.req.raw,
+    headers: cloudFrontHeadersToHeaders(c.env.request.headers),
+  });
 
-const validateRequiredParams = (
-  params: Record<string, any>,
-  required: string[],
-) => {
-  const missing = required.filter((key) => !params[key]);
-  if (missing.length > 0) {
-    return `Missing required parameters: ${missing.join(", ")}`;
+  if (rewrittenRequest instanceof Response) {
+    rewrittenRequest.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
+    return rewrittenRequest;
   }
-  return null;
-};
 
-const processDefaultValues = (channel: string, minBundleId: string) => ({
-  actualChannel: channel === "default" ? "production" : channel,
-  actualMinBundleId: minBundleId === "default" ? NIL_UUID : minBundleId,
+  const response = await hotUpdater.handler(rewrittenRequest);
+
+  response.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
+  return response;
 });
 
-const decodeMaybe = (value: string | undefined): string | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-};
-
-const handleUpdateRequest = async (
-  c: Context<{ Bindings: Bindings }>,
-  params: UpdateRequestParams,
-  strategy: UpdateStrategy,
-  expiresSeconds: number,
-  cacheControl?: string,
-) => {
-  try {
-    const updateConfig: GetBundlesArgs = {
-      platform: params.platform,
-      bundleId: params.bundleId,
-      minBundleId: params.minBundleId,
-      channel: params.channel,
-      cohort: params.cohort,
-      ...(strategy === "appVersion"
-        ? { appVersion: params.appVersion!, _updateStrategy: "appVersion" }
-        : {
-            fingerprintHash: params.fingerprintHash!,
-            _updateStrategy: "fingerprint",
-          }),
-    };
-
-    const updateInfo = await getUpdateInfo(
-      {
-        bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
-      },
-      updateConfig,
-    );
-
-    if (cacheControl) {
-      c.header("Cache-Control", cacheControl);
-    }
-
-    if (!updateInfo) {
-      return c.json(null);
-    }
-
-    const privateKey = await getPrivateKey();
-    const appUpdateInfo = await withSignedUrl({
-      data: updateInfo,
-      reqUrl: c.req.url,
-      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-      privateKey,
-      expiresSeconds,
-    });
-
-    return c.json(appUpdateInfo);
-  } catch (error) {
-    console.error("Update request error:", error);
-    return c.json({ error: "Internal Server Error" }, 500);
-  }
-};
-
-app.get("/api/check-update", async (c) => {
-  try {
-    const { headers } = c.env.request;
-
-    const bundleId = headers["x-bundle-id"]?.[0]?.value;
-    const platform = headers["x-app-platform"]?.[0]?.value;
-    const appVersion = headers["x-app-version"]?.[0]?.value;
-    const minBundleId = headers["x-min-bundle-id"]?.[0]?.value ?? NIL_UUID;
-    const channel = headers["x-channel"]?.[0]?.value ?? "production";
-    const cohort = headers["x-cohort"]?.[0]?.value;
-    const fingerprintHash = headers["x-fingerprint-hash"]?.[0]?.value;
-
-    const requiredError = validateRequiredParams({ bundleId, platform }, [
-      "bundleId",
-      "platform",
-    ]);
-    if (requiredError) {
-      return c.json({ error: requiredError }, 400);
-    }
-
-    if (!validatePlatform(platform)) {
-      return c.json(
-        { error: "Invalid platform. Must be 'ios' or 'android'." },
-        400,
-      );
-    }
-
-    if (!appVersion && !fingerprintHash) {
-      return c.json(
-        {
-          error:
-            "Missing required headers (x-app-version or x-fingerprint-hash).",
-        },
-        400,
-      );
-    }
-
-    const params: UpdateRequestParams = {
-      platform,
-      bundleId,
-      channel,
-      minBundleId,
-      cohort,
-      ...(fingerprintHash ? { fingerprintHash } : { appVersion }),
-    };
-
-    return handleUpdateRequest(
-      c,
-      params,
-      fingerprintHash ? "fingerprint" : "appVersion",
-      60,
-      NO_STORE_CACHE_CONTROL,
-    );
-  } catch (error) {
-    console.error("Legacy endpoint error:", error);
-    return c.json({ error: "Internal Server Error" }, 500);
-  }
-});
-
-app.get(
-  "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
+app.on(
+  HOT_UPDATER_METHODS,
+  wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    const { platform, appVersion, channel, minBundleId, bundleId } =
-      c.req.param();
+    const hotUpdater = getHotUpdater(c.req.url);
+    const response = await hotUpdater.handler(c.req.raw);
 
-    const requiredError = validateRequiredParams(
-      { platform, appVersion, bundleId },
-      ["platform", "appVersion", "bundleId"],
-    );
-    if (requiredError) {
-      return c.json({ error: requiredError }, 400);
+    if (
+      c.req.method === "GET" &&
+      isCanonicalUpdateRoute(hotUpdater.basePath, new URL(c.req.url).pathname)
+    ) {
+      response.headers.set("Cache-Control", SHARED_EDGE_CACHE_CONTROL);
     }
 
-    if (!validatePlatform(platform)) {
-      return c.json(
-        { error: "Invalid platform. Must be 'ios' or 'android'." },
-        400,
-      );
-    }
-
-    const { actualChannel, actualMinBundleId } = processDefaultValues(
-      channel,
-      minBundleId,
-    );
-
-    const params: UpdateRequestParams = {
-      platform,
-      bundleId,
-      channel: actualChannel,
-      minBundleId: actualMinBundleId,
-      appVersion,
-    };
-
-    return handleUpdateRequest(
-      c,
-      params,
-      "appVersion",
-      ONE_YEAR_IN_SECONDS,
-      SHARED_EDGE_CACHE_CONTROL,
-    );
-  },
-);
-
-app.get(
-  "/api/check-update/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-  async (c) => {
-    const { platform, appVersion, channel, minBundleId, bundleId, cohort } =
-      c.req.param();
-
-    const requiredError = validateRequiredParams(
-      { platform, appVersion, bundleId, cohort },
-      ["platform", "appVersion", "bundleId", "cohort"],
-    );
-    if (requiredError) {
-      return c.json({ error: requiredError }, 400);
-    }
-
-    if (!validatePlatform(platform)) {
-      return c.json(
-        { error: "Invalid platform. Must be 'ios' or 'android'." },
-        400,
-      );
-    }
-
-    const { actualChannel, actualMinBundleId } = processDefaultValues(
-      channel,
-      minBundleId,
-    );
-
-    const params: UpdateRequestParams = {
-      platform,
-      bundleId,
-      channel: actualChannel,
-      minBundleId: actualMinBundleId,
-      appVersion,
-      cohort: decodeMaybe(cohort),
-    };
-
-    return handleUpdateRequest(
-      c,
-      params,
-      "appVersion",
-      ONE_YEAR_IN_SECONDS,
-      SHARED_EDGE_CACHE_CONTROL,
-    );
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-  async (c) => {
-    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-      c.req.param();
-
-    const requiredError = validateRequiredParams(
-      { platform, fingerprintHash, bundleId },
-      ["platform", "fingerprintHash", "bundleId"],
-    );
-    if (requiredError) {
-      return c.json({ error: requiredError }, 400);
-    }
-
-    if (!validatePlatform(platform)) {
-      return c.json(
-        { error: "Invalid platform. Must be 'ios' or 'android'." },
-        400,
-      );
-    }
-
-    const { actualChannel, actualMinBundleId } = processDefaultValues(
-      channel,
-      minBundleId,
-    );
-
-    const params: UpdateRequestParams = {
-      platform,
-      bundleId,
-      channel: actualChannel,
-      minBundleId: actualMinBundleId,
-      fingerprintHash,
-    };
-
-    return handleUpdateRequest(
-      c,
-      params,
-      "fingerprint",
-      ONE_YEAR_IN_SECONDS,
-      SHARED_EDGE_CACHE_CONTROL,
-    );
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-  async (c) => {
-    const {
-      platform,
-      fingerprintHash,
-      channel,
-      minBundleId,
-      bundleId,
-      cohort,
-    } = c.req.param();
-
-    const requiredError = validateRequiredParams(
-      { platform, fingerprintHash, bundleId, cohort },
-      ["platform", "fingerprintHash", "bundleId", "cohort"],
-    );
-    if (requiredError) {
-      return c.json({ error: requiredError }, 400);
-    }
-
-    if (!validatePlatform(platform)) {
-      return c.json(
-        { error: "Invalid platform. Must be 'ios' or 'android'." },
-        400,
-      );
-    }
-
-    const { actualChannel, actualMinBundleId } = processDefaultValues(
-      channel,
-      minBundleId,
-    );
-
-    const params: UpdateRequestParams = {
-      platform,
-      bundleId,
-      channel: actualChannel,
-      minBundleId: actualMinBundleId,
-      fingerprintHash,
-      cohort: decodeMaybe(cohort),
-    };
-
-    return handleUpdateRequest(
-      c,
-      params,
-      "fingerprint",
-      ONE_YEAR_IN_SECONDS,
-      SHARED_EDGE_CACHE_CONTROL,
-    );
+    return response;
   },
 );
 

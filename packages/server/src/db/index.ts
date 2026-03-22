@@ -1,5 +1,6 @@
 import type { StoragePlugin } from "@hot-updater/plugin-core";
 import { createHandler } from "../handler";
+import { normalizeBasePath } from "../route";
 import {
   createOrmDatabaseCore,
   type HotUpdaterClient,
@@ -22,6 +23,7 @@ type PluginCore = ReturnType<typeof createPluginDatabaseCore>;
 type HotUpdaterCoreInternal = OrmCore | PluginCore;
 
 export type HotUpdaterAPI = DatabaseAPI & {
+  basePath: string;
   handler: (request: Request) => Promise<Response>;
   adapterName: string;
   createMigrator: () => Migrator;
@@ -45,6 +47,8 @@ export interface CreateHotUpdaterOptions {
 export function createHotUpdater(
   options: CreateHotUpdaterOptions,
 ): HotUpdaterAPI {
+  const basePath = normalizeBasePath(options.basePath ?? "/api");
+
   // Initialize storage plugins - call factories if they are functions
   const storagePlugins = (
     options?.storages ??
@@ -52,7 +56,7 @@ export function createHotUpdater(
     []
   ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
 
-  const resolveFileUrl = async (
+  const resolveStoragePluginUrl = async (
     storageUri: string | null,
   ): Promise<string | null> => {
     if (!storageUri) {
@@ -75,6 +79,10 @@ export function createHotUpdater(
     return fileUrl;
   };
 
+  const resolveFileUrl = async (storageUri: string | null) => {
+    return resolveStoragePluginUrl(storageUri);
+  };
+
   let core: HotUpdaterCoreInternal;
 
   const database = options.database;
@@ -89,14 +97,17 @@ export function createHotUpdater(
     });
   }
 
-  return {
+  const api = {
     ...core.api,
-    handler: createHandler(
-      core.api,
-      options?.basePath ? { basePath: options.basePath } : {},
-    ),
+    handler: createHandler(core.api, { basePath }),
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,
     generateSchema: core.generateSchema,
+  };
+
+  return {
+    ...api,
+    basePath,
+    handler: api.handler,
   };
 }

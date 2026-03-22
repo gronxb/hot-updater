@@ -1,248 +1,71 @@
-import { type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { verifyJwtSignedUrl, withJwtSignedUrl } from "@hot-updater/js";
+import { verifyJwtSignedUrl } from "@hot-updater/js";
+import {
+  createHotUpdater,
+  rewriteLegacyExactRequestToCanonical,
+  wildcardPattern,
+} from "@hot-updater/server";
 import { Hono } from "hono";
-import { getUpdateInfo } from "./getUpdateInfo";
+import { cloudflareWorkerDatabase } from "../../src/cloudflareWorkerDatabase";
+import { cloudflareWorkerStorage } from "../../src/cloudflareWorkerStorage";
 
 type Env = {
-  DB: D1Database;
+  DB: {
+    prepare: D1Database["prepare"];
+  };
   BUCKET: R2Bucket;
   JWT_SECRET: string;
 };
 
+const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
+const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const app = new Hono<{ Bindings: Env }>();
 
-const decodeMaybe = (value: string | undefined): string | undefined => {
-  if (value === undefined) return undefined;
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-};
+const hotUpdaterCache = new Map<string, ReturnType<typeof createHotUpdater>>();
 
-const handleUpdateRequest = async (
-  db: D1Database,
-  updateConfig: GetBundlesArgs,
-  reqUrl: string,
-  jwtSecret: string,
-) => {
-  const updateInfo = await getUpdateInfo(db, updateConfig);
+const getHotUpdater = (env: Env, requestUrl: string) => {
+  const publicBaseUrl = new URL(requestUrl).origin;
+  const cached = hotUpdaterCache.get(publicBaseUrl);
 
-  if (!updateInfo) {
-    return null;
+  if (cached) {
+    return cached;
   }
 
-  return withJwtSignedUrl({
-    data: updateInfo,
-    reqUrl,
-    jwtSecret,
+  const hotUpdater = createHotUpdater({
+    database: cloudflareWorkerDatabase({
+      db: env.DB,
+    }),
+    storages: [
+      cloudflareWorkerStorage({
+        jwtSecret: env.JWT_SECRET,
+        publicBaseUrl,
+      }),
+    ],
+    basePath: HOT_UPDATER_BASE_PATH,
   });
+
+  hotUpdaterCache.set(publicBaseUrl, hotUpdater);
+  return hotUpdater;
 };
 
-app.get("/api/check-update", async (c) => {
-  const bundleId = c.req.header("x-bundle-id") as string;
-  const appPlatform = c.req.header("x-app-platform") as "ios" | "android";
-  const minBundleId = c.req.header("x-min-bundle-id") as string;
-  const appVersion = c.req.header("x-app-version") as string | null;
-  const channel = c.req.header("x-channel") as string | null;
-  const cohort = c.req.header("x-cohort") as string | null;
-  const fingerprintHash =
-    c.req.header("x-fingerprint-hash") ?? (null as string | null);
+app.get(HOT_UPDATER_BASE_PATH, async (c) => {
+  const hotUpdater = getHotUpdater(c.env, c.req.url);
+  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
+    basePath: hotUpdater.basePath,
+    request: c.req.raw,
+  });
 
-  if (!bundleId || !appPlatform) {
-    return c.json(
-      { error: "Missing required headers (x-app-platform, x-bundle-id)." },
-      400,
-    );
-  }
-  if (!appVersion && !fingerprintHash) {
-    return c.json(
-      {
-        error:
-          "Missing required headers (x-app-version or x-fingerprint-hash).",
-      },
-      400,
-    );
+  if (rewrittenRequest instanceof Response) {
+    return rewrittenRequest;
   }
 
-  const updateConfig = fingerprintHash
-    ? ({
-        fingerprintHash,
-        bundleId,
-        platform: appPlatform,
-        minBundleId: minBundleId || NIL_UUID,
-        channel: channel || "production",
-        cohort: cohort || undefined,
-        _updateStrategy: "fingerprint" as const,
-      } satisfies GetBundlesArgs)
-    : ({
-        appVersion: appVersion!,
-        bundleId,
-        platform: appPlatform,
-        minBundleId: minBundleId || NIL_UUID,
-        channel: channel || "production",
-        cohort: cohort || undefined,
-        _updateStrategy: "appVersion" as const,
-      } satisfies GetBundlesArgs);
-
-  const result = await handleUpdateRequest(
-    c.env.DB,
-    updateConfig,
-    c.req.url,
-    c.env.JWT_SECRET,
-  );
-
-  return c.json(result, 200);
+  return hotUpdater.handler(rewrittenRequest);
 });
 
-app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
+app.on(
+  HOT_UPDATER_METHODS,
+  wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    const {
-      platform,
-      "app-version": appVersion,
-      channel,
-      minBundleId,
-      bundleId,
-    } = c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      _updateStrategy: "appVersion" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
-  },
-);
-
-app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId/:cohort",
-  async (c) => {
-    const {
-      platform,
-      "app-version": appVersion,
-      channel,
-      minBundleId,
-      bundleId,
-      cohort,
-    } = c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      appVersion,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      cohort: decodeMaybe(cohort),
-      _updateStrategy: "appVersion" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-  async (c) => {
-    const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-      c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      fingerprintHash,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      _updateStrategy: "fingerprint" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
-  },
-);
-
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-  async (c) => {
-    const {
-      platform,
-      fingerprintHash,
-      channel,
-      minBundleId,
-      bundleId,
-      cohort,
-    } = c.req.param();
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required parameters (platform, bundleId)." },
-        400,
-      );
-    }
-
-    const updateConfig = {
-      platform: platform as "ios" | "android",
-      fingerprintHash,
-      bundleId,
-      minBundleId: minBundleId || NIL_UUID,
-      channel: channel || "production",
-      cohort: decodeMaybe(cohort),
-      _updateStrategy: "fingerprint" as const,
-    } satisfies GetBundlesArgs;
-
-    const result = await handleUpdateRequest(
-      c.env.DB,
-      updateConfig,
-      c.req.url,
-      c.env.JWT_SECRET,
-    );
-
-    return c.json(result, 200);
+    return getHotUpdater(c.env, c.req.url).handler(c.req.raw);
   },
 );
 
