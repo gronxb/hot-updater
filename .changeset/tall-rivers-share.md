@@ -7,4 +7,4 @@
 ---
 
 Add provider-specific serverless presets built on top of `@hot-updater/server`
-and expose a shared legacy check-update helper for header-based update routes.
+that mount the canonical wildcard routes directly through `hotUpdater.handler`.

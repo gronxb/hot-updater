@@ -33,27 +33,15 @@ const createHotUpdaterMock = (): HotUpdaterAPI => {
 };
 
 describe("createFirebaseServerApp", () => {
-  it("handles legacy header-based check-update requests", async () => {
+  it("forwards canonical update routes to hotUpdater.handler", async () => {
     const hotUpdater = createHotUpdaterMock();
     const app = createFirebaseServerApp({ hotUpdater });
 
-    const response = await app.request("https://example.com/api/check-update", {
-      headers: {
-        "x-app-platform": "ios",
-        "x-app-version": "1.0.0",
-        "x-bundle-id": "bundle-id",
-      },
-    });
+    const response = await app.request(
+      "https://example.com/api/check-update/app-version/ios/1.0.0/production/default/default",
+    );
 
     expect(response.status).toBe(200);
-    expect(hotUpdater.getAppUpdateInfo).toHaveBeenCalledWith({
-      platform: "ios",
-      appVersion: "1.0.0",
-      bundleId: "bundle-id",
-      minBundleId: NIL_UUID,
-      channel: "production",
-      cohort: undefined,
-      _updateStrategy: "appVersion",
-    });
+    expect(hotUpdater.handler).toHaveBeenCalledOnce();
   });
 });

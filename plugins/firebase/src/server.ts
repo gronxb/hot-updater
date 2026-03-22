@@ -1,6 +1,5 @@
 import {
   type CreateHotUpdaterOptions,
-  createCheckUpdateResponse,
   createHotUpdater,
   type HotUpdaterAPI,
 } from "@hot-updater/server";
@@ -29,8 +28,6 @@ const normalizeBasePath = (basePath: string) => {
   return basePath.endsWith("/") ? basePath.slice(0, -1) : basePath;
 };
 
-const exactPattern = (basePath: string) => normalizeBasePath(basePath);
-
 const wildcardPattern = (basePath: string) => {
   const normalized = normalizeBasePath(basePath);
   return normalized === "/" ? "/*" : `${normalized}/*`;
@@ -58,10 +55,6 @@ const resolveServerOptions = (options: FirebaseServerInput) => {
 export function createFirebaseServerApp(options: FirebaseServerInput) {
   const { hotUpdater, basePath } = resolveServerOptions(options);
   const app = new Hono();
-
-  app.get(exactPattern(basePath), async (c) => {
-    return createCheckUpdateResponse(hotUpdater, c.req.raw);
-  });
 
   app.on(HOT_UPDATER_METHODS, wildcardPattern(basePath), async (c) => {
     return hotUpdater.handler(c.req.raw);

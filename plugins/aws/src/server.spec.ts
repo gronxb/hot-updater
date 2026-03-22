@@ -36,20 +36,16 @@ const createHotUpdaterMock = (): HotUpdaterAPI => {
 };
 
 describe("createAwsLambdaEdgeServerApp", () => {
-  it("sets cache headers for the legacy route", async () => {
+  it("forwards canonical update routes to hotUpdater.handler", async () => {
     const hotUpdater = createHotUpdaterMock();
     const app = createAwsLambdaEdgeServerApp({ hotUpdater });
 
-    const response = await app.request("https://example.com/api/check-update", {
-      headers: {
-        "x-app-platform": "ios",
-        "x-app-version": "1.0.0",
-        "x-bundle-id": "bundle-id",
-      },
-    });
+    const response = await app.request(
+      "https://example.com/api/check-update/app-version/ios/1.0.0/production/default/default",
+    );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(hotUpdater.handler).toHaveBeenCalledOnce();
   });
 
   it("sets shared cache headers for canonical update routes", async () => {

@@ -40,23 +40,11 @@ describe("createSupabaseServerApp", () => {
       functionName: "hot-updater",
     });
 
-    const response = await app.request("https://example.com/hot-updater", {
-      headers: {
-        "x-app-platform": "android",
-        "x-fingerprint-hash": "fp-hash",
-        "x-bundle-id": "bundle-id",
-      },
-    });
+    const response = await app.request(
+      "https://example.com/hot-updater/fingerprint/android/fp-hash/production/default/bundle-id",
+    );
 
     expect(response.status).toBe(200);
-    expect(hotUpdater.getAppUpdateInfo).toHaveBeenCalledWith({
-      platform: "android",
-      fingerprintHash: "fp-hash",
-      bundleId: "bundle-id",
-      minBundleId: NIL_UUID,
-      channel: "production",
-      cohort: undefined,
-      _updateStrategy: "fingerprint",
-    });
+    expect(hotUpdater.handler).toHaveBeenCalledOnce();
   });
 });
