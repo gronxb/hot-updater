@@ -45,7 +45,8 @@ export interface HandlerRoutes {
   updateCheck?: boolean;
   /**
    * Controls whether bundle management routes are mounted.
-   * This includes `/version` and `/api/bundles*`.
+   * This includes `/version` and `/api/bundles*`, which are used by the
+   * CLI `standaloneRepository` plugin.
    * @default true
    */
   bundles?: boolean;

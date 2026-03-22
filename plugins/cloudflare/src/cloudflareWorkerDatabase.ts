@@ -180,9 +180,9 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   };
 }
 
-export const cloudflareWorkerDatabase =
+export const d1WorkerDatabase =
   createDatabasePlugin<CloudflareWorkerDatabaseConfig>({
-    name: "cloudflareWorkerDatabase",
+    name: "d1WorkerDatabase",
     factory: (config) => {
       let bundles: Bundle[] = [];
 

@@ -1,7 +1,7 @@
 import { verifyJwtSignedUrl } from "@hot-updater/js";
 import { createHotUpdater } from "@hot-updater/server";
-import { cloudflareWorkerDatabase } from "../../src/cloudflareWorkerDatabase";
-import { cloudflareWorkerStorage } from "../../src/cloudflareWorkerStorage";
+import { d1WorkerDatabase } from "../../src/cloudflareWorkerDatabase";
+import { r2WorkerStorage } from "../../src/cloudflareWorkerStorage";
 import {
   type CloudflareWorkerEnv,
   createCloudflareWorkerApp,
@@ -19,11 +19,11 @@ const getHotUpdater = (env: CloudflareWorkerEnv, requestUrl: string) => {
   }
 
   const hotUpdater = createHotUpdater({
-    database: cloudflareWorkerDatabase({
+    database: d1WorkerDatabase({
       db: env.DB,
     }),
     storages: [
-      cloudflareWorkerStorage({
+      r2WorkerStorage({
         jwtSecret: env.JWT_SECRET,
         publicBaseUrl,
       }),

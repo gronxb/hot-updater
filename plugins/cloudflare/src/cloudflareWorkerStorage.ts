@@ -6,7 +6,7 @@ export interface CloudflareWorkerStorageConfig {
   publicBaseUrl: string;
 }
 
-export const cloudflareWorkerStorage = (
+export const r2WorkerStorage = (
   config: CloudflareWorkerStorageConfig,
 ) => {
   return (): StoragePlugin => {

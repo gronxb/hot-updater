@@ -1,10 +1,11 @@
 import { createHotUpdater } from "@hot-updater/server";
 import * as admin from "firebase-admin";
-import { firebaseFunctionsDatabase, firebaseFunctionsStorage } from "../../src";
 import {
   createFirebaseFunctionsHandler,
   HOT_UPDATER_BASE_PATH,
 } from "./runtime";
+import { firebaseDatabase } from "../../src/firebaseDatabase";
+import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 
 declare global {
   var HotUpdater: {
@@ -27,7 +28,7 @@ if (!storageBucket && !cdnUrl) {
 }
 
 const hotUpdater = createHotUpdater({
-  database: firebaseFunctionsDatabase(adminOptions),
+  database: firebaseDatabase(adminOptions),
   storages: [
     firebaseFunctionsStorage({
       ...adminOptions,

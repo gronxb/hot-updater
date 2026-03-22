@@ -88,7 +88,7 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 `createHotUpdater` mounts two route groups by default:
 
 - `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: bundle management endpoints used by the CLI, plus `/version`
+- `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin, plus `/version`
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
