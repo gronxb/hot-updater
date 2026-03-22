@@ -41,7 +41,14 @@ BEGIN
           AND b.channel = target_channel
     ),
     current_candidate AS (
-        SELECT cb.id
+        SELECT
+            cb.id,
+            is_cohort_eligible(
+                cb.id,
+                cohort,
+                cb.rollout_cohort_count,
+                cb.target_cohorts
+            ) AS is_eligible
         FROM candidate_bundles cb
         WHERE cb.id = bundle_id
         LIMIT 1
@@ -75,7 +82,11 @@ BEGIN
             cb.file_hash
         FROM candidate_bundles cb
         WHERE cb.id < bundle_id
-          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM current_candidate
+              WHERE current_candidate.is_eligible = TRUE
+          )
           AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY cb.id DESC
         LIMIT 1
@@ -102,7 +113,11 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (
+          SELECT 1
+          FROM current_candidate
+          WHERE current_candidate.is_eligible = TRUE
+      )
       AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
       AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;

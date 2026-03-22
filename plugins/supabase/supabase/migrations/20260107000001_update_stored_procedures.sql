@@ -27,7 +27,14 @@ DECLARE
 BEGIN
     RETURN QUERY
     WITH current_candidate AS (
-        SELECT b.id
+        SELECT
+            b.id,
+            is_cohort_eligible(
+                b.id,
+                cohort,
+                b.rollout_cohort_count,
+                b.target_cohorts
+            ) AS is_eligible
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -76,7 +83,11 @@ BEGIN
           AND b.id >= min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
           AND b.channel = target_channel
-          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM current_candidate
+              WHERE current_candidate.is_eligible = TRUE
+          )
           AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY b.id DESC
         LIMIT 1
@@ -103,7 +114,11 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (
+          SELECT 1
+          FROM current_candidate
+          WHERE current_candidate.is_eligible = TRUE
+      )
       AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
       AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
@@ -133,7 +148,14 @@ DECLARE
 BEGIN
     RETURN QUERY
     WITH current_candidate AS (
-        SELECT b.id
+        SELECT
+            b.id,
+            is_cohort_eligible(
+                b.id,
+                cohort,
+                b.rollout_cohort_count,
+                b.target_cohorts
+            ) AS is_eligible
         FROM bundles b
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
@@ -182,7 +204,11 @@ BEGIN
           AND b.id >= min_bundle_id
           AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
-          AND NOT EXISTS (SELECT 1 FROM current_candidate)
+          AND NOT EXISTS (
+              SELECT 1
+              FROM current_candidate
+              WHERE current_candidate.is_eligible = TRUE
+          )
           AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
         ORDER BY b.id DESC
         LIMIT 1
@@ -209,7 +235,11 @@ BEGIN
     WHERE (SELECT COUNT(*) FROM final_result) = 0
       AND bundle_id != NIL_UUID
       AND bundle_id > min_bundle_id
-      AND NOT EXISTS (SELECT 1 FROM current_candidate)
+      AND NOT EXISTS (
+          SELECT 1
+          FROM current_candidate
+          WHERE current_candidate.is_eligible = TRUE
+      )
       AND NOT EXISTS (SELECT 1 FROM eligible_update_candidate)
       AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;

@@ -133,6 +133,9 @@ const appVersionStrategy = async (
     bundleId,
     cohort,
   );
+  const currentBundleEligible = currentBundle
+    ? isEligibleUpdateCandidate(currentBundle, cohort)
+    : false;
 
   if (bundleId === NIL_UUID) {
     if (updateCandidate) {
@@ -141,7 +144,7 @@ const appVersionStrategy = async (
     return null;
   }
 
-  if (currentBundle) {
+  if (currentBundleEligible) {
     if (updateCandidate) {
       return makeResponse(updateCandidate, "UPDATE");
     }
@@ -219,6 +222,9 @@ const fingerprintStrategy = async (
     bundleId,
     cohort,
   );
+  const currentBundleEligible = currentBundle
+    ? isEligibleUpdateCandidate(currentBundle, cohort)
+    : false;
 
   if (bundleId === NIL_UUID) {
     if (updateCandidate) {
@@ -227,7 +233,7 @@ const fingerprintStrategy = async (
     return null;
   }
 
-  if (currentBundle) {
+  if (currentBundleEligible) {
     if (updateCandidate) {
       return makeResponse(updateCandidate, "UPDATE");
     }

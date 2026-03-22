@@ -271,6 +271,9 @@ export function createOrmDatabaseCore({
           bundleId,
           cohort,
         );
+        const currentBundleEligible = currentBundle
+          ? isEligibleForUpdate(currentBundle, cohort)
+          : false;
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
@@ -281,7 +284,7 @@ export function createOrmDatabaseCore({
           return null;
         }
 
-        if (currentBundle) {
+        if (currentBundleEligible) {
           if (updateCandidate) {
             return toUpdateInfo(updateCandidate, "UPDATE");
           }
@@ -342,6 +345,9 @@ export function createOrmDatabaseCore({
           bundleId,
           cohort,
         );
+        const currentBundleEligible = currentBundle
+          ? isEligibleForUpdate(currentBundle, cohort)
+          : false;
         const rollbackCandidate =
           sorted.find((b) => b.id.localeCompare(bundleId) < 0) ?? null;
 
@@ -352,7 +358,7 @@ export function createOrmDatabaseCore({
           return null;
         }
 
-        if (currentBundle) {
+        if (currentBundleEligible) {
           if (updateCandidate) {
             return toUpdateInfo(updateCandidate, "UPDATE");
           }

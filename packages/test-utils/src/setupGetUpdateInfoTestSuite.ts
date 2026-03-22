@@ -2190,6 +2190,59 @@ export const setupGetUpdateInfoTestSuite = ({
         });
       });
 
+      it("re-evaluates the current bundle eligibility after cohort changes and rolls back to the latest previous bundle", async () => {
+        const previousBundleId = "00000000-0000-0000-0000-000000000020";
+        const currentBundleId = "00000000-0000-0000-0000-000000000021";
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: previousBundleId,
+              rolloutCohortCount: 1000,
+            }),
+            createRolloutBundle(strategy, {
+              id: currentBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy, {
+              bundleId: currentBundleId,
+            }),
+            cohort: "1",
+          },
+        );
+
+        expect(update).toMatchObject({
+          id: previousBundleId,
+          shouldForceUpdate: true,
+          status: "ROLLBACK",
+        });
+      });
+
+      it("re-evaluates the current bundle eligibility after cohort changes and falls back to the built-in bundle when no previous bundle exists", async () => {
+        const currentBundleId = "00000000-0000-0000-0000-000000000021";
+
+        const update = await getUpdateInfo(
+          [
+            createRolloutBundle(strategy, {
+              id: currentBundleId,
+              rolloutCohortCount: 0,
+              targetCohorts: ["qa-group"],
+            }),
+          ],
+          {
+            ...createRolloutArgs(strategy, {
+              bundleId: currentBundleId,
+            }),
+            cohort: "1",
+          },
+        );
+
+        expect(update).toMatchObject(INIT_BUNDLE_ROLLBACK_UPDATE_INFO);
+      });
+
       it("applies ROLLBACK regardless of rollout settings", async () => {
         const bundle = createRolloutBundle(strategy, {
           rolloutCohortCount: 0,
