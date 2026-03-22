@@ -1,6 +1,6 @@
 import type { BuildType } from "@hot-updater/cli-tools";
 import { p } from "@hot-updater/cli-tools";
-import { HotUpdateDirUtil } from "@hot-updater/core/hotUpdateDirUtil";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import { ExecaError } from "execa";
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";

@@ -666,7 +666,7 @@ services:
       S3_PROTOCOL_ACCESS_KEY_ID: stub
       S3_PROTOCOL_ACCESS_KEY_SECRET: stub
     volumes:
-      - ${path.join(runtimeRoot, "storage")}:/var/lib/storage
+      - storage-data:/var/lib/storage
 
   gateway:
     image: ${NGINX_IMAGE}
@@ -679,6 +679,9 @@ services:
       - "127.0.0.1:${gatewayPort}:8000"
     volumes:
       - ${path.join(runtimeRoot, "nginx.conf")}:/etc/nginx/nginx.conf:ro
+
+volumes:
+  storage-data:
 `.trim();
 };
 
@@ -730,7 +733,6 @@ const writeSupabaseRuntimeFiles = async ({
   gatewayPort: number;
   storageRepoPath: string;
 }) => {
-  await mkdir(path.join(runtimeRoot, "storage"), { recursive: true });
   await mkdir(path.join(runtimeRoot, "db-init"), { recursive: true });
   await mkdir(path.join(runtimeRoot, "supabase/edge-functions"), {
     recursive: true,

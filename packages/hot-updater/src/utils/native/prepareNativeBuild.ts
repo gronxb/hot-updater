@@ -13,7 +13,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import { HotUpdateDirUtil } from "@hot-updater/core/hotUpdateDirUtil";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
 import path from "path";
 import {
