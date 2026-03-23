@@ -304,6 +304,43 @@ importers:
         specifier: ^5.8.3
         version: 5.8.3
 
+  examples-server/hono-e2e-local:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.2.17
+        version: 0.2.17
+      '@hono/node-server':
+        specifier: ^1.19.5
+        version: 1.19.11(hono@4.12.8)
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      hono:
+        specifier: ^4.9.12
+        version: 4.12.8
+      kysely:
+        specifier: 0.28.9
+        version: 0.28.9
+      kysely-pglite-dialect:
+        specifier: ^1.2.0
+        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.17
+        version: 20.19.11
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
+      tsx:
+        specifier: ^4.7.1
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   examples-server/hono-kysely-mysql:
     dependencies:
       '@hono/node-server':
@@ -1172,6 +1209,9 @@ importers:
       wrangler:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20260313.1)
+      yaml:
+        specifier: ^2.6.1
+        version: 2.6.1
 
   packages/android-helper:
     dependencies:
@@ -25900,7 +25940,7 @@ snapshots:
     dependencies:
       chalk: 4.1.2
       debug: 4.4.3
-      dotenv: 16.4.5
+      dotenv: 16.4.7
       dotenv-expand: 11.0.6
       getenv: 1.0.0
     transitivePeerDependencies:

@@ -5,6 +5,7 @@
  * @format
  */
 
+import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -25,6 +26,18 @@ const notify = proxy<{
   status?: string;
   crashedBundleId?: string;
 }>({});
+
+const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
+const HOT_UPDATER_BASE_URL =
+  HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
+const E2E_SCENARIO_MARKER = "__BUILTIN__";
+
+function maybeCrashForE2E() {
+  /* E2E_CRASH_GUARD_START */
+  /* E2E_CRASH_GUARD_END */
+}
+
+maybeCrashForE2E();
 
 const getGlobalBaseUrl = (): string | null => {
   const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
@@ -200,6 +213,7 @@ function App(): React.JSX.Element {
             value={extractFormatDateFromUUIDv7(runtimeSnapshot.bundleId)}
           />
           <InfoRow label="Min Bundle ID" value={runtimeSnapshot.minBundleId} />
+          <InfoRow label="E2E Scenario Marker" value={E2E_SCENARIO_MARKER} />
         </Section>
 
         <Section title="Launch Status">
@@ -481,7 +495,7 @@ const styles = StyleSheet.create({
 });
 
 export default HotUpdater.wrap({
-  baseURL: "http://localhost:3007/hot-updater",
+  baseURL: HOT_UPDATER_BASE_URL,
   updateStrategy: "appVersion",
   updateMode: "auto",
   onNotifyAppReady: (result) => {
