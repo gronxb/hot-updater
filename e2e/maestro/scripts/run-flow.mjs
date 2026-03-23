@@ -11,25 +11,42 @@ import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const EXAMPLE_DIR = path.resolve(__dirname, "../..");
-const REPO_DIR = path.resolve(EXAMPLE_DIR, "../..");
-const SERVER_DIR = path.join(REPO_DIR, "examples-server/hono-e2e-local");
-const RESULTS_ROOT = path.join(EXAMPLE_DIR, ".maestro/results");
+const REPO_DIR = path.resolve(__dirname, "../../..");
+const E2E_DIR = path.join(REPO_DIR, "e2e");
+const E2E_MAESTRO_DIR = path.join(E2E_DIR, "maestro");
+const E2E_RUNTIME_DIR = path.join(E2E_DIR, ".runtime");
+const SERVER_PACKAGE_DIR = path.join(REPO_DIR, "examples-server/hono-e2e-local");
+const RESULTS_ROOT = path.join(E2E_DIR, "results");
 const DEFAULT_SERVER_PORT = Number(process.env.HOT_UPDATER_SERVER_PORT || 3007);
 const DEFAULT_SERVER_HOST = "127.0.0.1";
+const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
-const IOS_FLOW_PATH = path.join(EXAMPLE_DIR, ".maestro/flows/release-ota-recovery.yaml");
-const ANDROID_FLOW_PATH = IOS_FLOW_PATH;
+const DEFAULT_FLOW_PATH = path.join(
+  E2E_MAESTRO_DIR,
+  "flows/release-ota-recovery.yaml",
+);
 
 function parseArgs(argv) {
-  const options = {};
+  const options = {
+    flow: DEFAULT_FLOW_PATH,
+    reuseApp: false,
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--platform") {
       options.platform = argv[index + 1];
       index += 1;
+      continue;
+    }
+    if (arg === "--flow") {
+      options.flow = path.resolve(REPO_DIR, argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg === "--reuse-app") {
+      options.reuseApp = true;
       continue;
     }
     if (arg === "--help" || arg === "-h") {
@@ -45,7 +62,7 @@ function parseArgs(argv) {
 function usage() {
   return [
     "Usage:",
-    "  node ./scripts/e2e/run-maestro-flow.mjs --platform <ios|android>",
+    "  node ./e2e/maestro/scripts/run-flow.mjs --platform <ios|android> [--flow <path>] [--reuse-app]",
   ].join("\n");
 }
 
@@ -117,7 +134,7 @@ async function runLogged(command, args, options = {}) {
   }
 }
 
-async function resolveServerPort(preferredPort) {
+async function resolveServerPort(preferredPort, allowRandomFallback) {
   const attempt = (port) =>
     new Promise((resolve, reject) => {
       const server = net.createServer();
@@ -140,7 +157,15 @@ async function resolveServerPort(preferredPort) {
   if (preferredPort > 0) {
     try {
       return await attempt(preferredPort);
-    } catch {}
+    } catch (error) {
+      if (!allowRandomFallback) {
+        throw error;
+      }
+    }
+  }
+
+  if (!allowRandomFallback) {
+    throw new Error(`Port ${preferredPort} is unavailable`);
   }
 
   return attempt(0);
@@ -241,6 +266,10 @@ function resolveAndroidSerial() {
   return match[0];
 }
 
+function getScenarioName(flowPath) {
+  return path.basename(flowPath, path.extname(flowPath));
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help || !options.platform) {
@@ -252,13 +281,27 @@ async function main() {
     throw new Error(`Unsupported platform: ${options.platform}`);
   }
 
+  if (!fs.existsSync(options.flow)) {
+    throw new Error(`Flow file does not exist: ${options.flow}`);
+  }
+
   const platform = options.platform;
+  const scenarioName = getScenarioName(options.flow);
   const maestroBin = resolveMaestroBin();
-  const resultsDir = path.join(RESULTS_ROOT, platform);
+  const resultsDir = path.join(RESULTS_ROOT, platform, scenarioName);
+  const runtimeDataDir = path.join(E2E_RUNTIME_DIR, "data");
+  const runtimeStorageDir = path.join(E2E_RUNTIME_DIR, "storage");
+
   await fsPromises.rm(resultsDir, { recursive: true, force: true });
   await fsPromises.mkdir(resultsDir, { recursive: true });
+  await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
 
-  const serverPort = await resolveServerPort(DEFAULT_SERVER_PORT);
+  const preferredPort = options.reuseApp && fs.existsSync(PORT_STATE_PATH)
+    ? Number((await fsPromises.readFile(PORT_STATE_PATH, "utf8")).trim())
+    : DEFAULT_SERVER_PORT;
+  const serverPort = await resolveServerPort(preferredPort, !options.reuseApp);
+  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
   const publicBaseUrl =
     platform === "android"
@@ -267,7 +310,6 @@ async function main() {
 
   let deviceId = "";
   let appId = "";
-  let flowPath = "";
 
   if (platform === "ios") {
     const simulatorName = process.env.IOS_SIMULATOR_NAME || "iPhone 16";
@@ -278,34 +320,39 @@ async function main() {
       `Using iOS simulator ${simulatorName} (${deviceId})\n`,
     );
     appId = IOS_APP_ID;
-    flowPath = IOS_FLOW_PATH;
   } else {
     deviceId = resolveAndroidSerial();
     appId = ANDROID_APP_ID;
-    flowPath = ANDROID_FLOW_PATH;
   }
 
-  await fsPromises.rm(path.join(SERVER_DIR, "data"), {
+  await fsPromises.rm(E2E_RUNTIME_DIR, {
     recursive: true,
     force: true,
   });
-  await fsPromises.rm(path.join(SERVER_DIR, "storage"), {
-    recursive: true,
-    force: true,
-  });
-  await fsPromises.mkdir(path.join(SERVER_DIR, "data"), { recursive: true });
-  await fsPromises.mkdir(path.join(SERVER_DIR, "storage"), { recursive: true });
+  await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
+  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+  await fsPromises.mkdir(runtimeDataDir, { recursive: true });
+  await fsPromises.mkdir(runtimeStorageDir, { recursive: true });
 
   await runLogged(
     "pnpm",
-    ["exec", "hot-updater", "db", "migrate", "src/db.ts", "--yes"],
+    [
+      "--dir",
+      SERVER_PACKAGE_DIR,
+      "exec",
+      "hot-updater",
+      "db",
+      "migrate",
+      "src/db.ts",
+      "--yes",
+    ],
     {
-      cwd: SERVER_DIR,
+      cwd: REPO_DIR,
       env: {
-        HOT_UPDATER_E2E_STORAGE_DIR: path.join(SERVER_DIR, "storage"),
+        HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
         HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
         PORT: String(serverPort),
-        TEST_DB_PATH: path.join(SERVER_DIR, "data/hot-updater-e2e"),
+        TEST_DB_PATH: path.join(runtimeDataDir, "hot-updater-e2e"),
       },
       logPath: path.join(resultsDir, "server-migrate.log"),
     },
@@ -313,26 +360,38 @@ async function main() {
 
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
-  const serverProcess = spawn("pnpm", ["exec", "tsx", "src/index.ts"], {
-    cwd: SERVER_DIR,
-    env: {
-      ...process.env,
-      HOT_UPDATER_E2E_ANDROID_APK_PATH:
-        "android/app/build/outputs/apk/release/app-release.apk",
-      HOT_UPDATER_E2E_APP_BASE_URL: `${publicBaseUrl}/hot-updater`,
-      HOT_UPDATER_E2E_APP_ID: appId,
-      HOT_UPDATER_E2E_DEVICE_ID: deviceId,
-      HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/tmp/hotupdater-v081-ios-maestro",
-      HOT_UPDATER_E2E_PLATFORM: platform,
-      HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
-      HOT_UPDATER_E2E_SERVER_BASE_URL: serverBaseUrl,
-      HOT_UPDATER_E2E_STORAGE_DIR: path.join(SERVER_DIR, "storage"),
-      HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
-      PORT: String(serverPort),
-      TEST_DB_PATH: path.join(SERVER_DIR, "data/hot-updater-e2e"),
+  const serverProcess = spawn(
+    "pnpm",
+    [
+      "--dir",
+      SERVER_PACKAGE_DIR,
+      "exec",
+      "tsx",
+      path.join(REPO_DIR, "e2e/maestro/server/index.ts"),
+    ],
+    {
+      cwd: REPO_DIR,
+      env: {
+        ...process.env,
+        HOT_UPDATER_E2E_ANDROID_APK_PATH:
+          "android/app/build/outputs/apk/release/app-release.apk",
+        HOT_UPDATER_E2E_APP_BASE_URL: `${publicBaseUrl}/hot-updater`,
+        HOT_UPDATER_E2E_APP_ID: appId,
+        HOT_UPDATER_E2E_DEVICE_ID: deviceId,
+        HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
+          "/tmp/hotupdater-v081-ios-maestro",
+        HOT_UPDATER_E2E_PLATFORM: platform,
+        HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
+        HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
+        HOT_UPDATER_E2E_SERVER_BASE_URL: serverBaseUrl,
+        HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
+        HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
+        PORT: String(serverPort),
+        TEST_DB_PATH: path.join(runtimeDataDir, "hot-updater-e2e"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
 
   serverProcess.stdout.on("data", (chunk) => serverLogStream.write(chunk));
   serverProcess.stderr.on("data", (chunk) => serverLogStream.write(chunk));
@@ -374,10 +433,10 @@ async function main() {
         `APP_ID=${appId}`,
         "-e",
         `CONTROL_URL=${serverBaseUrl}`,
-        flowPath,
+        options.flow,
       ],
       {
-        cwd: EXAMPLE_DIR,
+        cwd: REPO_DIR,
         logPath: path.join(resultsDir, "maestro.log"),
       },
     );

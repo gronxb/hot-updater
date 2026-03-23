@@ -1,0 +1,117 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: runtime-channel-switch-reset
+  RUNTIME_CHANNEL: beta
+  RUNTIME_MARKER: runtime-channel-beta-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-channel-summary.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${RUNTIME_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${RUNTIME_MARKER}
+      MESSAGE: Maestro runtime channel bundle
+      MODE: reset
+      OUTPUT_KEY: runtimeBundleId
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/set-text-input.yaml
+    env:
+      APP_ID: ${APP_ID}
+      FIELD_ID: runtime-channel-input
+      FIELD_LABEL: Runtime Channel Input
+      FIELD_VALUE: ${RUNTIME_CHANNEL}
+- runFlow:
+    file: subflows/open-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
+- tapOn: Install Runtime Channel Update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.runtimeBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: runtime-channel:${RUNTIME_CHANNEL} -> installed ${output.runtimeBundleId} (UPDATE)"
+- tapOn: Reload App
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.runtimeBundleId}
+      EXPECTED_MARKER: ${RUNTIME_MARKER}
+- runFlow:
+    file: subflows/assert-channel-summary.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=beta default=production switched=true"
+- runFlow:
+    file: subflows/open-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
+- scrollUntilVisible:
+    element: Reset Runtime Channel
+    direction: DOWN
+    timeout: 20000
+- tapOn: Reset Runtime Channel
+- runFlow:
+    file: subflows/assert-channel-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_ACTION_RESULT: "Channel Action Result: reset -> true"
+- tapOn: Reload App
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-channel-summary.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: PASSED

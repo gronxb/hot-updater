@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+---
+- scrollUntilVisible:
+    element: ${BUTTON_LABEL}
+    direction: DOWN
+    timeout: 20000
+- tapOn: ${BUTTON_LABEL}

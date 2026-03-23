@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible: Runtime Snapshot
+    timeout: 120000
+- assertVisible: ${EXPECTED_MARKER}

@@ -1,27 +1,34 @@
+import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import net from "net";
 import os from "os";
 import path from "path";
+import { randomUUID } from "crypto";
 import { spawn, spawnSync } from "child_process";
 import { setTimeout as sleep } from "timers/promises";
+import { fileURLToPath } from "url";
 
 type Platform = "ios" | "android";
 
-type JobResult =
-  | {
-      builtInBundleId?: string;
-      bundleId?: string;
-      emptyCrashHistoryText?: string;
-      initialMarker?: string;
-      stableMarker?: string;
-    }
-  | Record<string, never>;
+type JobResult = Record<string, unknown>;
 
 type JobState = {
   error?: string;
   result?: JobResult;
   status: "failed" | "running" | "succeeded";
+};
+
+type DeployMode = "crash" | "reset";
+
+type DeployedBundleRecord = {
+  bundleId: string;
+  channel: string;
+  enabled: boolean;
+  marker: string;
+  mode: DeployMode;
+  rolloutCohortCount: number | null;
+  shouldForceUpdate: boolean;
+  targetCohorts: string[] | null;
 };
 
 type SessionState = {
@@ -32,24 +39,50 @@ type SessionState = {
   appSourceFile: string;
   builtArtifactPath: string | null;
   builtInBundleId: string | null;
-  crashBundleId: string | null;
+  deployedBundles: DeployedBundleRecord[];
   envBackupPath: string | null;
   envFile: string;
   exampleDir: string;
   initialMarker: string;
   iosDerivedDataPath: string;
   platform: Platform;
-  repoDir: string;
   resultsDir: string;
+  reuseApp: boolean;
   serverApiBaseUrl: string;
-  stableBundleId: string | null;
-  stableMarker: string;
   storePath: string | null;
   writeExampleEnv: () => Promise<void>;
 };
 
-const EXAMPLE_DIR = path.resolve(process.cwd(), "../../examples/v0.81.0");
-const REPO_DIR = path.resolve(process.cwd(), "../..");
+type DeployBundleRequest = {
+  channel: string;
+  disabled?: boolean;
+  forceUpdate?: boolean;
+  marker: string;
+  message?: string;
+  mode: DeployMode;
+  rollout?: number;
+  safeBundleIds: string[];
+  targetAppVersion: string;
+  targetCohorts?: string[];
+};
+
+type PatchBundleRequest = {
+  bundleId: string;
+  enabled?: boolean;
+  rolloutCohortCount?: number | null;
+  shouldForceUpdate?: boolean;
+  targetCohorts?: string[] | null;
+};
+
+type LaunchReportAssertion = {
+  crashedBundleId?: string;
+  optional: boolean;
+  status: string;
+};
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_DIR = path.resolve(__dirname, "../../..");
+const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const EMPTY_CRASH_HISTORY = {
@@ -105,7 +138,7 @@ const session: SessionState = {
   appSourceFile: APP_SOURCE_FILE,
   builtArtifactPath: null,
   builtInBundleId: null,
-  crashBundleId: null,
+  deployedBundles: [],
   envBackupPath: null,
   envFile: ENV_FILE,
   exampleDir: EXAMPLE_DIR,
@@ -115,12 +148,9 @@ const session: SessionState = {
     process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
     "/tmp/hotupdater-v081-ios-maestro",
   platform,
-  repoDir: REPO_DIR,
   resultsDir,
+  reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
   serverApiBaseUrl: `${serverBaseUrl}/hot-updater`,
-  stableBundleId: null,
-  stableMarker:
-    platform === "ios" ? "stable-ios-maestro" : "stable-android-maestro",
   storePath: null,
   writeExampleEnv: async () => {
     const source = [
@@ -135,7 +165,15 @@ const session: SessionState = {
 
 const jobs = new Map<string, JobState>();
 
-function runCapture(command: string, args: string[], options: { allowFailure?: boolean; cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
+function runCapture(
+  command: string,
+  args: string[],
+  options: {
+    allowFailure?: boolean;
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+  } = {},
+) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
@@ -156,7 +194,16 @@ function runCapture(command: string, args: string[], options: { allowFailure?: b
   return result.stdout.trim();
 }
 
-async function runLogged(command: string, args: string[], options: { allowFailure?: boolean; cwd?: string; env?: NodeJS.ProcessEnv; logPath: string }) {
+async function runLogged(
+  command: string,
+  args: string[],
+  options: {
+    allowFailure?: boolean;
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    logPath: string;
+  },
+) {
   await fsPromises.mkdir(path.dirname(options.logPath), { recursive: true });
 
   const output: Buffer[] = [];
@@ -218,7 +265,7 @@ async function applyAppScenario({
   safeBundleIds,
 }: {
   marker: string;
-  mode: "crash" | "reset";
+  mode: DeployMode;
   safeBundleIds: string[];
 }) {
   const source = await fsPromises.readFile(session.appSourceFile, "utf8");
@@ -245,24 +292,13 @@ async function applyAppScenario({
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
 
   const nextSource = source
-    .replace(MARKER_PATTERN, `const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`)
+    .replace(
+      MARKER_PATTERN,
+      `const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`,
+    )
     .replace(CRASH_GUARD_PATTERN, crashGuardSource);
 
   await fsPromises.writeFile(session.appSourceFile, nextSource);
-}
-
-async function waitForHttp(url: string, attempts = 90) {
-  for (let index = 0; index < attempts; index += 1) {
-    try {
-      const response = await fetch(url);
-      if (response.ok) {
-        return;
-      }
-    } catch {}
-    await sleep(1000);
-  }
-
-  throw new Error(`Timed out waiting for ${url}`);
 }
 
 async function waitForFile(filePath: string, attempts = 90) {
@@ -276,25 +312,112 @@ async function waitForFile(filePath: string, attempts = 90) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-async function fetchLatestBundleId() {
-  const response = await fetch(`${session.serverApiBaseUrl}/api/bundles`);
+async function fetchLatestBundle(args: { channel?: string }) {
+  const url = new URL(`${session.serverApiBaseUrl}/api/bundles`);
+  url.searchParams.set("platform", session.platform);
+  if (args.channel) {
+    url.searchParams.set("channel", args.channel);
+  }
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("offset", "0");
+
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
       `Failed to fetch bundles: ${response.status} ${response.statusText}`,
     );
   }
 
-  const bundles = (await response.json()) as Array<{
-    id: string;
-    platform: Platform;
-  }>;
-  const latestBundle = bundles.find((bundle) => bundle.platform === session.platform);
+  const bundles = (await response.json()) as Array<{ id: string }>;
+  const latestBundle = bundles[0];
 
   if (!latestBundle?.id) {
     throw new Error(`No bundles found for platform ${session.platform}`);
   }
 
   return latestBundle.id;
+}
+
+async function fetchBundleById(bundleId: string) {
+  const response = await fetch(
+    `${session.serverApiBaseUrl}/api/bundles/${bundleId}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch bundle ${bundleId}: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return (await response.json()) as {
+    channel: string;
+    enabled: boolean;
+    id: string;
+    rolloutCohortCount?: number | null;
+    shouldForceUpdate?: boolean;
+    targetCohorts?: string[] | null;
+  };
+}
+
+async function patchBundle(
+  bundleId: string,
+  patch: {
+    enabled?: boolean;
+    rolloutCohortCount?: number | null;
+    shouldForceUpdate?: boolean;
+    targetCohorts?: string[] | null;
+  },
+) {
+  const response = await fetch(
+    `${session.serverApiBaseUrl}/api/bundles/${bundleId}`,
+    {
+      body: JSON.stringify(patch),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to patch bundle ${bundleId}: ${response.status} ${response.statusText}`,
+    );
+  }
+}
+
+function updateTrackedBundleRecord(
+  bundleId: string,
+  patch: {
+    enabled?: boolean;
+    rolloutCohortCount?: number | null;
+    shouldForceUpdate?: boolean;
+    targetCohorts?: string[] | null;
+  },
+) {
+  const record = session.deployedBundles.find(
+    (entry) => entry.bundleId === bundleId,
+  );
+
+  if (!record) {
+    return;
+  }
+
+  if (patch.enabled !== undefined) {
+    record.enabled = patch.enabled;
+  }
+
+  if (patch.rolloutCohortCount !== undefined) {
+    record.rolloutCohortCount = patch.rolloutCohortCount;
+  }
+
+  if (patch.shouldForceUpdate !== undefined) {
+    record.shouldForceUpdate = patch.shouldForceUpdate;
+  }
+
+  if (patch.targetCohorts !== undefined) {
+    record.targetCohorts = patch.targetCohorts;
+  }
 }
 
 async function waitForLoggedBundleId(logFile: string, attempts = 90) {
@@ -339,7 +462,34 @@ function ensureStorePath() {
   return session.storePath;
 }
 
+async function installIosArtifact(appPath: string) {
+  runCapture(
+    "xcrun",
+    ["simctl", "uninstall", deviceId as string, session.appId],
+    { allowFailure: true },
+  );
+  await runLogged("xcrun", ["simctl", "install", deviceId as string, appPath], {
+    logPath: path.join(session.resultsDir, "simctl-install.log"),
+  });
+}
+
 async function prepareIosRelease() {
+  const builtAppPath = path.join(
+    session.iosDerivedDataPath,
+    "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
+  );
+
+  if (session.reuseApp) {
+    if (!fs.existsSync(builtAppPath)) {
+      throw new Error(
+        `Cannot reuse iOS app because ${builtAppPath} does not exist`,
+      );
+    }
+    session.builtArtifactPath = builtAppPath;
+    await installIosArtifact(builtAppPath);
+    return;
+  }
+
   await runLogged("bundle", ["install"], {
     cwd: path.join(session.exampleDir, "ios"),
     logPath: path.join(session.resultsDir, "bundle-install.log"),
@@ -381,30 +531,21 @@ async function prepareIosRelease() {
     },
   );
 
-  session.builtArtifactPath = path.join(
-    session.iosDerivedDataPath,
-    "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
-  );
-
-  runCapture(
-    "xcrun",
-    ["simctl", "uninstall", deviceId as string, session.appId],
-    { allowFailure: true },
-  );
-  await runLogged(
-    "xcrun",
-    ["simctl", "install", deviceId as string, session.builtArtifactPath],
-    {
-      logPath: path.join(session.resultsDir, "simctl-install.log"),
-    },
-  );
+  session.builtArtifactPath = builtAppPath;
+  await installIosArtifact(builtAppPath);
 }
 
 async function prepareAndroidRelease() {
-  await runLogged("./gradlew", [":app:assembleRelease", "--rerun-tasks"], {
-    cwd: path.join(session.exampleDir, "android"),
-    logPath: path.join(session.resultsDir, "gradle-release.log"),
-  });
+  if (!session.reuseApp) {
+    await runLogged("./gradlew", [":app:assembleRelease", "--rerun-tasks"], {
+      cwd: path.join(session.exampleDir, "android"),
+      logPath: path.join(session.resultsDir, "gradle-release.log"),
+    });
+  } else if (!fs.existsSync(session.androidApkPath)) {
+    throw new Error(
+      `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
+    );
+  }
 
   session.builtArtifactPath = session.androidApkPath;
 
@@ -454,7 +595,11 @@ function copyAndroidFileIfExists(remotePath: string, localPath: string) {
   return true;
 }
 
-async function readBundleIdFromUiDump(expectedMarker: string, outputPath: string, attempts = 30) {
+async function readBundleIdFromUiDump(
+  expectedMarker: string,
+  outputPath: string,
+  attempts = 30,
+) {
   for (let index = 0; index < attempts; index += 1) {
     runCapture(
       "adb",
@@ -471,13 +616,7 @@ async function readBundleIdFromUiDump(expectedMarker: string, outputPath: string
 
     const xml = runCapture(
       "adb",
-      [
-        "-s",
-        deviceId as string,
-        "exec-out",
-        "cat",
-        "/sdcard/window_dump.xml",
-      ],
+      ["-s", deviceId as string, "exec-out", "cat", "/sdcard/window_dump.xml"],
       { allowFailure: true },
     );
 
@@ -500,10 +639,16 @@ async function readBundleIdFromUiDump(expectedMarker: string, outputPath: string
 }
 
 function readJson(filePath: string) {
-  return JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<
+    string,
+    unknown
+  >;
 }
 
-function assertMetadataState(metadata: Record<string, unknown>, bundleId: string) {
+function assertMetadataState(
+  metadata: Record<string, unknown>,
+  bundleId: string,
+) {
   const stagingBundleId =
     (metadata.stagingBundleId as string | undefined) ??
     (metadata.staging_bundle_id as string | undefined) ??
@@ -526,7 +671,44 @@ function assertMetadataState(metadata: Record<string, unknown>, bundleId: string
   }
 }
 
-function assertLaunchReport(filePath: string, expectedStatus: string, expectedCrashBundleId = "") {
+function assertMetadataReset(metadata: Record<string, unknown>) {
+  const stableBundleId =
+    (metadata.stableBundleId as string | undefined) ??
+    (metadata.stable_bundle_id as string | undefined) ??
+    null;
+  const stagingBundleId =
+    (metadata.stagingBundleId as string | undefined) ??
+    (metadata.staging_bundle_id as string | undefined) ??
+    null;
+  const verificationPending =
+    (metadata.verificationPending as boolean | undefined) ??
+    (metadata.verification_pending as boolean | undefined) ??
+    null;
+
+  if (stableBundleId !== null) {
+    throw new Error(
+      `Expected stableBundleId null but received ${String(stableBundleId)}`,
+    );
+  }
+
+  if (stagingBundleId !== null) {
+    throw new Error(
+      `Expected stagingBundleId null but received ${String(stagingBundleId)}`,
+    );
+  }
+
+  if (verificationPending !== false) {
+    throw new Error(
+      `Expected verificationPending false but received ${String(verificationPending)}`,
+    );
+  }
+}
+
+function assertLaunchReport(
+  filePath: string,
+  expectedStatus: string,
+  expectedCrashBundleId = "",
+) {
   const report = readJson(filePath);
 
   if (report.status !== expectedStatus) {
@@ -561,7 +743,11 @@ function assertCrashHistoryContains(filePath: string, bundleId: string) {
   }
 }
 
-async function waitForIosMetadataState(bundleId: string, verificationPending: boolean, attempts = 90) {
+async function waitForIosMetadataState(
+  bundleId: string,
+  verificationPending: boolean,
+  attempts = 90,
+) {
   const metadataPath = path.join(ensureStorePath(), "metadata.json");
 
   for (let index = 0; index < attempts; index += 1) {
@@ -587,7 +773,11 @@ async function waitForIosMetadataState(bundleId: string, verificationPending: bo
   throw new Error(`Timed out waiting for metadata state in ${metadataPath}`);
 }
 
-async function waitForAndroidMetadataState(bundleId: string, verificationPending: boolean, attempts = 90) {
+async function waitForAndroidMetadataState(
+  bundleId: string,
+  verificationPending: boolean,
+  attempts = 90,
+) {
   const probePath = path.join(session.resultsDir, "metadata-probe.json");
   const metadataPath = `${ensureStorePath()}/metadata.json`;
 
@@ -615,6 +805,10 @@ async function bootstrap() {
     session.envBackupPath = await backupFile(session.envFile);
   }
 
+  session.builtInBundleId = null;
+  session.deployedBundles = [];
+  session.storePath = null;
+
   await session.writeExampleEnv();
   await applyAppScenario({
     marker: session.initialMarker,
@@ -631,7 +825,6 @@ async function bootstrap() {
   return {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
     initialMarker: session.initialMarker,
-    stableMarker: session.stableMarker,
   };
 }
 
@@ -649,44 +842,134 @@ async function captureBuiltInBundleId() {
   return { builtInBundleId };
 }
 
-async function deployPhase(phase: "crash" | "stable") {
-  if (phase === "stable") {
-    await applyAppScenario({
-      marker: session.stableMarker,
-      mode: "reset",
-      safeBundleIds: [],
-    });
-  } else {
-    if (!session.builtInBundleId || !session.stableBundleId) {
-      throw new Error("Crash deploy requires builtInBundleId and stableBundleId");
-    }
-    await applyAppScenario({
-      marker: session.stableMarker,
-      mode: "crash",
-      safeBundleIds: [session.builtInBundleId, session.stableBundleId],
+async function deployBundle(request: DeployBundleRequest) {
+  await applyAppScenario({
+    marker: request.marker,
+    mode: request.mode,
+    safeBundleIds: request.safeBundleIds,
+  });
+
+  const args = [
+    "hot-updater",
+    "deploy",
+    "-p",
+    session.platform,
+    "-t",
+    request.targetAppVersion,
+    "-c",
+    request.channel,
+  ];
+
+  if (typeof request.rollout === "number") {
+    args.push("-r", String(request.rollout));
+  }
+
+  if (request.forceUpdate) {
+    args.push("-f");
+  }
+
+  if (request.disabled) {
+    args.push("--disabled");
+  }
+
+  if (request.message) {
+    args.push("-m", request.message);
+  }
+
+  await runLogged("pnpm", args, {
+    cwd: session.exampleDir,
+    logPath: path.join(
+      session.resultsDir,
+      `deploy-${request.channel}-${request.marker}.log`,
+    ),
+  });
+
+  const bundleId = await fetchLatestBundle({
+    channel: request.channel,
+  });
+
+  if (request.targetCohorts && request.targetCohorts.length > 0) {
+    await patchBundle(bundleId, {
+      targetCohorts: request.targetCohorts,
     });
   }
 
-  await runLogged(
-    "pnpm",
-    ["hot-updater", "deploy", "-p", session.platform, "-t", "1.0.x"],
-    {
-      cwd: session.exampleDir,
-      logPath: path.join(session.resultsDir, `deploy-${phase}.log`),
-    },
-  );
+  const bundle = await fetchBundleById(bundleId);
 
-  const bundleId = await fetchLatestBundleId();
-
-  if (phase === "stable") {
-    session.stableBundleId = bundleId;
-  } else {
-    session.crashBundleId = bundleId;
-  }
+  session.deployedBundles.push({
+    bundleId,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    marker: request.marker,
+    mode: request.mode,
+    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    targetCohorts: bundle.targetCohorts ?? null,
+  });
 
   return {
     bundleId,
-    stableMarker: session.stableMarker,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    marker: request.marker,
+    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    targetCohorts: bundle.targetCohorts ?? null,
+  };
+}
+
+async function updateBundle(request: PatchBundleRequest) {
+  await patchBundle(request.bundleId, {
+    enabled: request.enabled,
+    rolloutCohortCount: request.rolloutCohortCount,
+    shouldForceUpdate: request.shouldForceUpdate,
+    targetCohorts: request.targetCohorts,
+  });
+
+  const bundle = await fetchBundleById(request.bundleId);
+  updateTrackedBundleRecord(request.bundleId, {
+    enabled: bundle.enabled,
+    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    targetCohorts: bundle.targetCohorts ?? null,
+  });
+
+  return {
+    bundleId: bundle.id,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    targetCohorts: bundle.targetCohorts ?? null,
+  };
+}
+
+async function computeRolloutSample(bundleId: string) {
+  const bundle = await fetchBundleById(bundleId);
+  const rolloutCohorts = getRolledOutNumericCohorts(
+    bundleId,
+    bundle.rolloutCohortCount ?? null,
+  );
+
+  if (rolloutCohorts.length === 0) {
+    throw new Error(`Bundle ${bundleId} has no eligible numeric cohorts`);
+  }
+
+  const rolloutSet = new Set(rolloutCohorts);
+  const excludedCohort = Array.from({ length: 1000 }, (_, index) => index + 1)
+    .find((cohortValue) => !rolloutSet.has(cohortValue))
+    ?.toString();
+
+  if (!excludedCohort) {
+    throw new Error(
+      `Bundle ${bundleId} is rolled out to all numeric cohorts; no excluded sample exists`,
+    );
+  }
+
+  return {
+    excludedCohort,
+    includedCohort: String(rolloutCohorts[0]),
+    rolloutCohortCount: bundle.rolloutCohortCount ?? null,
   };
 }
 
@@ -700,7 +983,7 @@ async function waitForMetadata(bundleId: string, verificationPending: boolean) {
   return {};
 }
 
-async function captureState(prefix: "recovered" | "stable") {
+async function captureState(prefix: string) {
   const storePath = ensureStorePath();
 
   if (session.platform === "ios") {
@@ -766,7 +1049,10 @@ async function assertMetadataActive(bundleId: string) {
     session.platform === "ios"
       ? readJson(path.join(ensureStorePath(), "metadata.json"))
       : (() => {
-          const probePath = path.join(session.resultsDir, "metadata-assert.json");
+          const probePath = path.join(
+            session.resultsDir,
+            "metadata-assert.json",
+          );
           copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
           return readJson(probePath);
         })();
@@ -775,22 +1061,40 @@ async function assertMetadataActive(bundleId: string) {
   return {};
 }
 
+async function assertMetadataResetState() {
+  const metadata =
+    session.platform === "ios"
+      ? readJson(path.join(ensureStorePath(), "metadata.json"))
+      : (() => {
+          const probePath = path.join(
+            session.resultsDir,
+            "metadata-reset-assert.json",
+          );
+          copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
+          return readJson(probePath);
+        })();
+
+  assertMetadataReset(metadata);
+  return {};
+}
+
 async function assertLaunchReportState({
   crashedBundleId,
   optional,
   status,
-}: {
-  crashedBundleId?: string;
-  optional: boolean;
-  status: string;
-}) {
+}: LaunchReportAssertion) {
   const launchReportPath =
     session.platform === "ios"
       ? path.join(ensureStorePath(), "launch-report.json")
       : path.join(session.resultsDir, "launch-report-assert.json");
 
   if (session.platform === "android") {
-    if (!copyAndroidFileIfExists(`${ensureStorePath()}/launch-report.json`, launchReportPath)) {
+    if (
+      !copyAndroidFileIfExists(
+        `${ensureStorePath()}/launch-report.json`,
+        launchReportPath,
+      )
+    ) {
       if (optional) {
         return {};
       }
@@ -814,24 +1118,33 @@ async function assertCrashHistory(bundleId: string) {
       : path.join(session.resultsDir, "crash-history-assert.json");
 
   if (session.platform === "android") {
-    copyAndroidFile(`${ensureStorePath()}/crashed-history.json`, crashHistoryPath);
+    copyAndroidFile(
+      `${ensureStorePath()}/crashed-history.json`,
+      crashHistoryPath,
+    );
   }
 
   assertCrashHistoryContains(crashHistoryPath, bundleId);
   return {};
 }
 
-async function writeSummary() {
+async function writeSummary({
+  scenario,
+  status,
+}: {
+  scenario: string;
+  status: string;
+}) {
   await fsPromises.writeFile(
     path.join(session.resultsDir, "summary.json"),
     JSON.stringify(
       {
-        platform: session.platform,
         binaryType: "Release",
         builtInBundleId: session.builtInBundleId,
-        stableBundleId: session.stableBundleId,
-        crashBundleId: session.crashBundleId,
-        status: "RECOVERED",
+        deployedBundles: session.deployedBundles,
+        platform: session.platform,
+        scenario,
+        status,
       },
       null,
       2,
@@ -855,7 +1168,7 @@ async function cleanup() {
 }
 
 function createJob(task: () => Promise<JobResult>) {
-  const jobId = crypto.randomUUID();
+  const jobId = randomUUID();
   jobs.set(jobId, { status: "running" });
 
   void task()
@@ -875,8 +1188,12 @@ export function startBootstrapJob() {
   return createJob(() => bootstrap());
 }
 
-export function startDeployJob(phase: "crash" | "stable") {
-  return createJob(() => deployPhase(phase));
+export function startDeployBundleJob(request: DeployBundleRequest) {
+  return createJob(() => deployBundle(request));
+}
+
+export function startPatchBundleJob(request: PatchBundleRequest) {
+  return createJob(() => updateBundle(request));
 }
 
 export function getJob(jobId: string) {
@@ -887,11 +1204,18 @@ export async function handleCaptureBuiltInBundleId() {
   return captureBuiltInBundleId();
 }
 
-export async function handleWaitForMetadata(bundleId: string, verificationPending: boolean) {
+export async function handleComputeRolloutSample(bundleId: string) {
+  return computeRolloutSample(bundleId);
+}
+
+export async function handleWaitForMetadata(
+  bundleId: string,
+  verificationPending: boolean,
+) {
   return waitForMetadata(bundleId, verificationPending);
 }
 
-export async function handleCaptureState(prefix: "recovered" | "stable") {
+export async function handleCaptureState(prefix: string) {
   return captureState(prefix);
 }
 
@@ -899,28 +1223,25 @@ export async function handleAssertMetadataActive(bundleId: string) {
   return assertMetadataActive(bundleId);
 }
 
-export async function handleAssertLaunchReport({
-  crashedBundleId,
-  optional,
-  status,
-}: {
-  crashedBundleId?: string;
-  optional: boolean;
-  status: string;
-}) {
-  return assertLaunchReportState({
-    crashedBundleId,
-    optional,
-    status,
-  });
+export async function handleAssertMetadataReset() {
+  return assertMetadataResetState();
+}
+
+export async function handleAssertLaunchReport(
+  assertion: LaunchReportAssertion,
+) {
+  return assertLaunchReportState(assertion);
 }
 
 export async function handleAssertCrashHistory(bundleId: string) {
   return assertCrashHistory(bundleId);
 }
 
-export async function handleWriteSummary() {
-  return writeSummary();
+export async function handleWriteSummary(args: {
+  scenario: string;
+  status: string;
+}) {
+  return writeSummary(args);
 }
 
 export async function handleCleanup() {

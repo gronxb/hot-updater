@@ -17,6 +17,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
@@ -28,9 +29,8 @@ const notify = proxy<{
 }>({});
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
-const HOT_UPDATER_BASE_URL =
-  HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
-const E2E_SCENARIO_MARKER = "__BUILTIN__";
+const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
+const E2E_SCENARIO_MARKER = "runtime-channel-beta-maestro";
 
 function maybeCrashForE2E() {
   /* E2E_CRASH_GUARD_START */
@@ -110,10 +110,18 @@ const Section = ({
   </View>
 );
 
-const InfoRow = ({ label, value }: { label: string; value: string }) => (
+const InfoRow = ({
+  label,
+  value,
+  valueTestID,
+}: {
+  label: string;
+  value: string;
+  valueTestID?: string;
+}) => (
   <View style={styles.infoRow}>
     <Text style={styles.infoLabel}>{label}</Text>
-    <Text selectable style={styles.infoValue}>
+    <Text selectable style={styles.infoValue} testID={valueTestID}>
       {value}
     </Text>
   </View>
@@ -144,7 +152,11 @@ function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
   const [initialCohort] = useState(() => HotUpdater.getCohort());
+  const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
+  const [cohortInput, setCohortInput] = useState(() => initialCohort);
+  const [channelActionResult, setChannelActionResult] = useState("idle");
   const [cohortActionResult, setCohortActionResult] = useState("idle");
+  const [updateActionResult, setUpdateActionResult] = useState("idle");
   const [runtimeSnapshot, setRuntimeSnapshot] = useState<RuntimeSnapshot>(() =>
     readRuntimeSnapshot(),
   );
@@ -163,6 +175,10 @@ function App(): React.JSX.Element {
 
   const manifestAssetEntries = Object.entries(runtimeSnapshot.manifest.assets);
   const statusPayload = JSON.stringify(notifyState, null, 2);
+  const launchStatusText = `Current Launch Status: ${notifyState.status ?? "null"}`;
+  const crashedBundleText = `Current Crashed Bundle ID: ${notifyState.crashedBundleId ?? "null"}`;
+  const channelSummary = `current=${runtimeSnapshot.channel} default=${runtimeSnapshot.defaultChannel} switched=${String(runtimeSnapshot.isChannelSwitched)}`;
+  const cohortSummary = `current=${runtimeSnapshot.cohort} initial=${initialCohort}`;
 
   const refreshRuntimeSnapshot = () => {
     setRuntimeSnapshot(readRuntimeSnapshot());
@@ -184,15 +200,95 @@ function App(): React.JSX.Element {
     }
   };
 
-  const setCustomCohort = () => {
-    HotUpdater.setCohort("qa-group");
+  const installUpdate = async ({
+    actionLabel,
+    channel,
+  }: {
+    actionLabel: string;
+    channel?: string;
+  }) => {
+    try {
+      const updateInfo = await HotUpdater.checkForUpdate({
+        updateStrategy: "appVersion",
+        ...(channel ? { channel } : {}),
+      });
+
+      if (!updateInfo) {
+        setUpdateActionResult(`${actionLabel} -> no-update`);
+        refreshRuntimeSnapshot();
+        return;
+      }
+
+      const installed = await updateInfo.updateBundle();
+      setUpdateActionResult(
+        installed
+          ? `${actionLabel} -> installed ${updateInfo.id} (${updateInfo.status})`
+          : `${actionLabel} -> skipped`,
+      );
+      refreshRuntimeSnapshot();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to install update";
+      setUpdateActionResult(`${actionLabel} -> error ${message}`);
+    }
+  };
+
+  const installCurrentChannelUpdate = async () => {
+    await installUpdate({
+      actionLabel: "current-channel",
+    });
+  };
+
+  const installRuntimeChannelUpdate = async () => {
+    const normalizedChannel = runtimeChannelInput.trim().toLowerCase();
+
+    if (!normalizedChannel) {
+      setChannelActionResult("runtime-channel -> invalid");
+      return;
+    }
+
+    setChannelActionResult(`runtime-channel -> ${normalizedChannel}`);
+    await installUpdate({
+      actionLabel: `runtime-channel:${normalizedChannel}`,
+      channel: normalizedChannel,
+    });
+  };
+
+  const resetRuntimeChannel = async () => {
+    try {
+      const didReset = await HotUpdater.resetChannel();
+      refreshRuntimeSnapshot();
+      setChannelActionResult(`reset -> ${String(didReset)}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to reset channel";
+      setChannelActionResult(`reset -> error ${message}`);
+    }
+  };
+
+  const applyCohortValue = (nextCohort: string) => {
+    HotUpdater.setCohort(nextCohort);
+    setCohortInput(HotUpdater.getCohort());
     refreshRuntimeSnapshot();
     setCohortActionResult(`set -> ${HotUpdater.getCohort()}`);
   };
 
+  const applyCohortInput = () => {
+    try {
+      applyCohortValue(cohortInput);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to set cohort";
+      setCohortActionResult(`set -> error ${message}`);
+    }
+  };
+
+  const setQaCohort = () => {
+    applyCohortValue("qa");
+  };
+
   const restoreInitialCohort = () => {
-    HotUpdater.setCohort(initialCohort);
-    refreshRuntimeSnapshot();
+    applyCohortValue(initialCohort);
     setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
   };
 
@@ -200,10 +296,15 @@ function App(): React.JSX.Element {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <Section title="Runtime Snapshot">
-          <InfoRow label="Bundle ID" value={runtimeSnapshot.bundleId} />
+          <InfoRow
+            label="Bundle ID"
+            value={runtimeSnapshot.bundleId}
+            valueTestID="runtime-bundle-id"
+          />
           <InfoRow
             label="Manifest Bundle ID"
             value={runtimeSnapshot.manifest.bundleId}
@@ -213,7 +314,11 @@ function App(): React.JSX.Element {
             value={extractFormatDateFromUUIDv7(runtimeSnapshot.bundleId)}
           />
           <InfoRow label="Min Bundle ID" value={runtimeSnapshot.minBundleId} />
-          <InfoRow label="E2E Scenario Marker" value={E2E_SCENARIO_MARKER} />
+          <InfoRow
+            label="E2E Scenario Marker"
+            value={E2E_SCENARIO_MARKER}
+            valueTestID="runtime-scenario-marker"
+          />
         </Section>
 
         <Section title="Launch Status">
@@ -221,6 +326,16 @@ function App(): React.JSX.Element {
             label="Download Progress"
             value={`${Math.round(progress * 100)}%`}
           />
+          <Text selectable style={styles.actionResult} testID="launch-status-result">
+            {launchStatusText}
+          </Text>
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="launch-crashed-bundle-result"
+          >
+            {crashedBundleText}
+          </Text>
           <Text selectable style={styles.codeBlock}>
             {statusPayload}
           </Text>
@@ -276,6 +391,8 @@ function App(): React.JSX.Element {
         <Section title="Runtime Details">
           <InfoRow label="Channel" value={runtimeSnapshot.channel} />
           <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
+          <InfoRow label="Channel Summary" value={channelSummary} />
+          <InfoRow label="Cohort Summary" value={cohortSummary} />
           <InfoRow
             label="Default Channel"
             value={runtimeSnapshot.defaultChannel}
@@ -296,6 +413,49 @@ function App(): React.JSX.Element {
         </Section>
 
         <Section title="Actions">
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="current-channel-summary"
+          >
+            Current Channel Summary: {channelSummary}
+          </Text>
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="current-cohort-summary"
+          >
+            Current Cohort Summary: {cohortSummary}
+          </Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Runtime Channel Input</Text>
+            <TextInput
+              accessibilityLabel="Runtime Channel Input"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onChangeText={setRuntimeChannelInput}
+              placeholder="beta"
+              placeholderTextColor="#94a3b8"
+              style={styles.inputField}
+              testID="runtime-channel-input"
+              value={runtimeChannelInput}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Cohort Override Input</Text>
+            <TextInput
+              accessibilityLabel="Cohort Override Input"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="default"
+              onChangeText={setCohortInput}
+              placeholder={initialCohort}
+              placeholderTextColor="#94a3b8"
+              style={styles.inputField}
+              testID="cohort-input"
+              value={cohortInput}
+            />
+          </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Refresh Runtime Snapshot"
@@ -313,9 +473,30 @@ function App(): React.JSX.Element {
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
-              title="Set Cohort qa-group"
-              onPress={setCustomCohort}
+              title="Install Current Channel Update"
+              onPress={installCurrentChannelUpdate}
             />
+          </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton
+              title="Install Runtime Channel Update"
+              onPress={installRuntimeChannelUpdate}
+            />
+          </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton
+              title="Reset Runtime Channel"
+              onPress={resetRuntimeChannel}
+            />
+          </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton
+              title="Apply Cohort Input"
+              onPress={applyCohortInput}
+            />
+          </View>
+          <View style={styles.buttonBlock}>
+            <ActionButton title="Set Cohort qa" onPress={setQaCohort} />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
@@ -323,7 +504,25 @@ function App(): React.JSX.Element {
               onPress={restoreInitialCohort}
             />
           </View>
-          <Text selectable style={styles.actionResult}>
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="channel-action-result"
+          >
+            Channel Action Result: {channelActionResult}
+          </Text>
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="update-action-result"
+          >
+            Update Action Result: {updateActionResult}
+          </Text>
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="cohort-action-result"
+          >
             Cohort Action Result: {cohortActionResult}
           </Text>
         </Section>
@@ -460,6 +659,25 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e5e7eb",
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingVertical: 10,
+  },
+  inputField: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#bfdbfe",
+    borderRadius: 14,
+    borderWidth: 1,
+    color: "#0f172a",
+    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  inputGroup: {
+    marginTop: 12,
+  },
+  inputLabel: {
+    color: "#1e293b",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 8,
   },
   infoValue: {
     color: "#111827",
