@@ -1,6 +1,19 @@
 import fs from "fs/promises";
 import path from "path";
 import { Hono } from "hono";
+import {
+  getJob,
+  handleAssertCrashHistory,
+  handleAssertLaunchReport,
+  handleAssertMetadataActive,
+  handleCaptureBuiltInBundleId,
+  handleCaptureState,
+  handleCleanup,
+  handleWaitForMetadata,
+  handleWriteSummary,
+  startBootstrapJob,
+  startDeployJob,
+} from "./e2e-controller.js";
 import { hotUpdater } from "./db.js";
 
 const app = new Hono();
@@ -99,6 +112,100 @@ app.get("/storage/*", async (c) => {
   } catch {
     return c.notFound();
   }
+});
+
+app.post("/e2e/jobs/bootstrap", async (c) => {
+  return c.json({ jobId: startBootstrapJob() });
+});
+
+app.post("/e2e/jobs/deploy", async (c) => {
+  const payload = (await c.req.json()) as { phase?: "crash" | "stable" };
+  if (payload.phase !== "stable" && payload.phase !== "crash") {
+    return c.json({ error: "phase must be stable or crash" }, 400);
+  }
+
+  return c.json({ jobId: startDeployJob(payload.phase) });
+});
+
+app.get("/e2e/jobs/:jobId", async (c) => {
+  const job = getJob(c.req.param("jobId"));
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  return c.json(job);
+});
+
+app.post("/e2e/capture-built-in-bundle-id", async (c) => {
+  return c.json(await handleCaptureBuiltInBundleId());
+});
+
+app.post("/e2e/wait-for-metadata", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    verificationPending?: boolean;
+  };
+  if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
+    return c.json({ error: "bundleId and verificationPending are required" }, 400);
+  }
+
+  return c.json(
+    await handleWaitForMetadata(payload.bundleId, payload.verificationPending),
+  );
+});
+
+app.post("/e2e/capture-state", async (c) => {
+  const payload = (await c.req.json()) as { prefix?: "recovered" | "stable" };
+  if (payload.prefix !== "stable" && payload.prefix !== "recovered") {
+    return c.json({ error: "prefix must be stable or recovered" }, 400);
+  }
+
+  return c.json(await handleCaptureState(payload.prefix));
+});
+
+app.post("/e2e/assert-metadata-active", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(await handleAssertMetadataActive(payload.bundleId));
+});
+
+app.post("/e2e/assert-launch-report", async (c) => {
+  const payload = (await c.req.json()) as {
+    crashedBundleId?: string;
+    optional?: boolean;
+    status?: string;
+  };
+  if (!payload.status) {
+    return c.json({ error: "status is required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertLaunchReport({
+      crashedBundleId: payload.crashedBundleId,
+      optional: payload.optional ?? false,
+      status: payload.status,
+    }),
+  );
+});
+
+app.post("/e2e/assert-crash-history", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(await handleAssertCrashHistory(payload.bundleId));
+});
+
+app.post("/e2e/write-summary", async (c) => {
+  return c.json(await handleWriteSummary());
+});
+
+app.post("/e2e/cleanup", async (c) => {
+  return c.json(await handleCleanup());
 });
 
 export default app;

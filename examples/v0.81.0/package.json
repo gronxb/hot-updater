@@ -10,7 +10,7 @@
     "test": "jest",
     "pod-install": "cd ios && bundle install && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && cd ..",
     "fingerprint:create": "hot-updater fingerprint create",
-    "e2e:maestro": "node ./scripts/e2e/run-maestro-scenario.mjs --scenario ./.maestro/scenarios/release-ota-recovery.yaml",
+    "e2e:maestro": "pnpm run e2e:maestro:ios && pnpm run e2e:maestro:android",
     "e2e:maestro:ios": "bash ./scripts/e2e/run-ios-maestro.sh",
     "e2e:maestro:android": "bash ./scripts/e2e/run-android-maestro.sh"
   },
@@ -58,8 +58,7 @@
     "react-native-dotenv": "^3.4.11",
     "react-test-renderer": "19.1.0",
     "typescript": "^5.8.3",
-    "wrangler": "^4.30.0",
-    "yaml": "^2.6.1"
+    "wrangler": "^4.30.0"
   },
   "engines": {
     "node": ">=18"

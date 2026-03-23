@@ -1209,9 +1209,6 @@ importers:
       wrangler:
         specifier: ^4.30.0
         version: 4.30.0(@cloudflare/workers-types@4.20260313.1)
-      yaml:
-        specifier: ^2.6.1
-        version: 2.6.1
 
   packages/android-helper:
     dependencies:

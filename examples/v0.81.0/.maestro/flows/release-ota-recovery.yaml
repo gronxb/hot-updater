@@ -1,0 +1,142 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Runtime Snapshot
+    timeout: 120000
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deploy
+      CONTROL_URL: ${CONTROL_URL}
+      PHASE: stable
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      CONTROL_URL: ${CONTROL_URL}
+      BUNDLE_ID: ${output.stableBundleId}
+      VERIFICATION_PENDING: "true"
+- launchApp
+- extendedWaitUntil:
+    visible: Runtime Snapshot
+    timeout: 120000
+- assertVisible: ${output.stableBundleId}
+- assertVisible: ${output.stableMarker}
+- scrollUntilVisible:
+    element: Launch Status
+    direction: DOWN
+    timeout: 20000
+- assertVisible: Launch Status
+- scrollUntilVisible:
+    element: ${output.emptyCrashHistoryText}
+    direction: DOWN
+    timeout: 20000
+- assertVisible: ${output.emptyCrashHistoryText}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: stable
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      CONTROL_URL: ${CONTROL_URL}
+      BUNDLE_ID: ${output.stableBundleId}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertLaunchReport
+      CONTROL_URL: ${CONTROL_URL}
+      OPTIONAL: "true"
+      STATUS: STABLE
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deploy
+      CONTROL_URL: ${CONTROL_URL}
+      PHASE: crash
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      CONTROL_URL: ${CONTROL_URL}
+      BUNDLE_ID: ${output.crashBundleId}
+      VERIFICATION_PENDING: "true"
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: sleep
+      SECONDS: "8"
+- launchApp
+- extendedWaitUntil:
+    visible: Runtime Snapshot
+    timeout: 120000
+- assertVisible: ${output.stableBundleId}
+- assertVisible: ${output.stableMarker}
+- scrollUntilVisible:
+    element: Launch Status
+    direction: DOWN
+    timeout: 20000
+- assertVisible: Launch Status
+- assertVisible: ${output.crashBundleId}
+- scrollUntilVisible:
+    element: Clear Crash History
+    direction: DOWN
+    timeout: 20000
+- assertVisible: Clear Crash History
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: recovered
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      CONTROL_URL: ${CONTROL_URL}
+      BUNDLE_ID: ${output.stableBundleId}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertLaunchReport
+      CONTROL_URL: ${CONTROL_URL}
+      CRASHED_BUNDLE_ID: ${output.crashBundleId}
+      OPTIONAL: "true"
+      STATUS: RECOVERED
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertCrashHistory
+      CONTROL_URL: ${CONTROL_URL}
+      BUNDLE_ID: ${output.crashBundleId}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
