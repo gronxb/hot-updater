@@ -48,7 +48,7 @@ class HotUpdaterException(
         fun extractionFormatError(cause: Throwable? = null) =
             HotUpdaterException(
                 "EXTRACTION_FORMAT_ERROR",
-                "Invalid or corrupted bundle archive format",
+                "The downloaded bundle file is not a valid compressed archive",
                 cause,
             )
 

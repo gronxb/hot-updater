@@ -5,16 +5,19 @@ import Foundation
  * Automatically detects format by trying each strategy's validation and delegates to appropriate decompression strategy.
  */
 class DecompressService {
-    /// Array of available strategies in order of detection priority
-    private let strategies: [DecompressionStrategy]
+    /// Strategies with reliable file signatures that can be validated cheaply.
+    private let signatureStrategies: [DecompressionStrategy]
+    /// TAR.BR has no reliable magic bytes, so it is attempted as the final fallback.
+    private let tarBrStrategy: DecompressionStrategy
 
     init() {
-        // Order matters: Try ZIP first (clear magic bytes), then TAR.GZ (GZIP magic bytes), then TAR.BR (fallback)
-        self.strategies = [
+        // Order matters: Try ZIP first (clear magic bytes), then TAR.GZ (GZIP magic bytes).
+        // TAR.BR is attempted only after signature-based formats are ruled out.
+        self.signatureStrategies = [
             ZipDecompressionStrategy(),
-            TarGzDecompressionStrategy(),
-            TarBrDecompressionStrategy()
+            TarGzDecompressionStrategy()
         ]
+        self.tarBrStrategy = TarBrDecompressionStrategy()
     }
 
     /**
@@ -31,8 +34,8 @@ class DecompressService {
         let fileName = fileURL.lastPathComponent
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: file)[.size] as? UInt64) ?? 0
 
-        // Try each strategy's validation
-        for strategy in strategies {
+        // Try each signature-based strategy first.
+        for strategy in signatureStrategies {
             if strategy.isValid(file: file) {
                 NSLog("[DecompressService] Using strategy for \(fileName)")
                 try strategy.decompress(file: file, to: destination, progressHandler: progressHandler)
@@ -40,26 +43,21 @@ class DecompressService {
             }
         }
 
-        // No valid strategy found - provide detailed error message
-        let errorMessage = """
-Failed to decompress file: \(fileName) (\(fileSize) bytes)
+        NSLog("[DecompressService] No ZIP/TAR.GZ signature matched for \(fileName), trying TAR.BR fallback")
 
-Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (Brotli + TAR validation)
-
-Supported formats:
-- ZIP archives (.zip)
-- GZIP compressed TAR archives (.tar.gz)
-- Brotli compressed TAR archives (.tar.br)
-
-Please verify the file is not corrupted and matches one of the supported formats.
-"""
-
-        NSLog("[DecompressService] \(errorMessage)")
-        throw NSError(
-            domain: "DecompressService",
-            code: 1,
-            userInfo: [NSLocalizedDescriptionKey: errorMessage]
-        )
+        do {
+            try tarBrStrategy.decompress(file: file, to: destination, progressHandler: progressHandler)
+            NSLog("[DecompressService] Using TAR.BR fallback for \(fileName)")
+            return
+        } catch {
+            let invalidArchiveError = createInvalidArchiveError(
+                fileName: fileName,
+                fileSize: fileSize,
+                underlyingError: error
+            )
+            NSLog("[DecompressService] \(invalidArchiveError.localizedDescription)")
+            throw invalidArchiveError
+        }
     }
 
     /**
@@ -73,17 +71,42 @@ Please verify the file is not corrupted and matches one of the supported formats
     }
 
     /**
-     * Validates if a file is a valid compressed archive.
+     * Validates if a file matches one of the signature-based archive formats.
      * @param file Path to the file to validate
      * @return true if the file is valid for any strategy
      */
     func isValid(file: String) -> Bool {
-        for strategy in strategies {
+        for strategy in signatureStrategies {
             if strategy.isValid(file: file) {
                 return true
             }
         }
-        NSLog("[DecompressService] No valid strategy found for file: \(file)")
+        NSLog("[DecompressService] No ZIP/TAR.GZ signature matched for file: \(file). TAR.BR is handled during extraction fallback.")
         return false
+    }
+
+    private func createInvalidArchiveError(fileName: String, fileSize: UInt64, underlyingError: Error? = nil) -> NSError {
+        let errorMessage = """
+The downloaded bundle file is not a valid compressed archive: \(fileName) (\(fileSize) bytes)
+
+Supported formats:
+- ZIP archives (.zip)
+- GZIP compressed TAR archives (.tar.gz)
+- Brotli compressed TAR archives (.tar.br)
+"""
+
+        var userInfo: [String: Any] = [
+            NSLocalizedDescriptionKey: errorMessage
+        ]
+
+        if let underlyingError {
+            userInfo[NSUnderlyingErrorKey] = underlyingError
+        }
+
+        return NSError(
+            domain: "DecompressService",
+            code: 1,
+            userInfo: userInfo
+        )
     }
 }

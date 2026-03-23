@@ -12,14 +12,14 @@ class DecompressService {
         private const val TAG = "DecompressService"
     }
 
-    // Array of available strategies in order of detection priority
-    // Order matters: Try ZIP first (clear magic bytes), then TAR.GZ (GZIP magic bytes), then TAR.BR (fallback)
-    private val strategies =
+    // Strategies with reliable file signatures that can be validated cheaply.
+    // TAR.BR is attempted only as the final fallback because Brotli has no reliable magic bytes.
+    private val signatureStrategies =
         listOf(
             ZipDecompressionStrategy(),
             TarGzDecompressionStrategy(),
-            TarBrDecompressionStrategy(),
         )
+    private val tarBrStrategy = TarBrDecompressionStrategy()
 
     /**
      * Extracts a compressed file to the destination directory.
@@ -39,45 +39,51 @@ class DecompressService {
         val fileName = file.name
         val fileSize = if (file.exists()) file.length() else 0L
 
-        // Try each strategy's validation
-        for (strategy in strategies) {
+        // Try each signature-based strategy first.
+        for (strategy in signatureStrategies) {
             if (strategy.isValid(filePath)) {
                 Log.d(TAG, "Using strategy for $fileName")
                 return strategy.decompress(filePath, destinationPath, progressCallback)
             }
         }
 
-        // No valid strategy found - provide detailed error message
-        val errorMessage =
-            """
-            Failed to decompress file: $fileName ($fileSize bytes)
+        Log.d(TAG, "No ZIP/TAR.GZ signature matched for $fileName, trying TAR.BR fallback")
 
-            Tried strategies: ZIP (magic bytes 0x504B0304), TAR.GZ (magic bytes 0x1F8B), TAR.BR (Brotli + TAR validation)
+        if (tarBrStrategy.decompress(filePath, destinationPath, progressCallback)) {
+            Log.d(TAG, "Using TAR.BR fallback for $fileName")
+            return true
+        }
 
-            Supported formats:
-            - ZIP archives (.zip)
-            - GZIP compressed TAR archives (.tar.gz)
-            - Brotli compressed TAR archives (.tar.br)
-
-            Please verify the file is not corrupted and matches one of the supported formats.
-            """.trimIndent()
-
+        val errorMessage = createInvalidArchiveMessage(fileName, fileSize)
         Log.e(TAG, errorMessage)
         return false
     }
 
     /**
-     * Validates if a file is a valid compressed archive.
+     * Validates if a file matches one of the signature-based archive formats.
      * @param filePath Path to the file to validate
      * @return true if the file is a valid compressed archive
      */
     fun isValidZipFile(filePath: String): Boolean {
-        for (strategy in strategies) {
+        for (strategy in signatureStrategies) {
             if (strategy.isValid(filePath)) {
                 return true
             }
         }
-        Log.d(TAG, "No valid strategy found for file: $filePath")
+        Log.d(TAG, "No ZIP/TAR.GZ signature matched for file: $filePath. TAR.BR is handled during extraction fallback.")
         return false
     }
+
+    private fun createInvalidArchiveMessage(
+        fileName: String,
+        fileSize: Long,
+    ): String =
+        """
+        The downloaded bundle file is not a valid compressed archive: $fileName ($fileSize bytes)
+
+        Supported formats:
+        - ZIP archives (.zip)
+        - GZIP compressed TAR archives (.tar.gz)
+        - Brotli compressed TAR archives (.tar.br)
+        """.trimIndent()
 }
