@@ -53,11 +53,9 @@ export function createHotUpdater<TEnv = unknown>(
   const basePath = normalizeBasePath(options.basePath ?? "/api");
 
   // Initialize storage plugins - call factories if they are functions
-  const storagePlugins = (
-    options.storages ??
-    options.storagePlugins ??
-    []
-  ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
+  const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
+    (plugin) => (typeof plugin === "function" ? plugin() : plugin),
+  );
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
