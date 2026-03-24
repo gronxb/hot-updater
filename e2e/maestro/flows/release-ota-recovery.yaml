@@ -112,7 +112,6 @@ onFlowComplete:
     env:
       ACTION: sleep
       SECONDS: "8"
-- launchApp
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
