@@ -101,7 +101,9 @@ app.get(HOT_UPDATER_BASE_PATH, async (c) => {
     return rewrittenRequest;
   }
 
-  const response = await hotUpdater.handler(rewrittenRequest);
+  const response = await hotUpdater.handler(rewrittenRequest, {
+    request: rewrittenRequest,
+  });
   response.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
   return response;
 });
@@ -110,7 +112,9 @@ app.on(
   HOT_UPDATER_METHODS,
   wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    const response = await hotUpdater.handler(c.req.raw);
+    const response = await hotUpdater.handler(c.req.raw, {
+      request: c.req.raw,
+    });
 
     if (
       c.req.method === "GET" &&

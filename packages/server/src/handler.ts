@@ -74,16 +74,6 @@ type RouteHandler<TEnv = unknown> = (
   context?: HotUpdaterContext<TEnv>,
 ) => Promise<Response>;
 
-const withRequestContext = <TEnv>(
-  request: Request,
-  context?: HotUpdaterContext<TEnv>,
-): HotUpdaterContext<TEnv> => {
-  return {
-    ...(context ?? {}),
-    request,
-  };
-};
-
 // Route handlers
 const handleVersion: RouteHandler = async () => {
   return new Response(JSON.stringify({ version: __VERSION__ }), {
@@ -117,7 +107,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
       bundleId: params.bundleId,
       cohort: decodeMaybe(params.cohort),
     },
-    withRequestContext(_request, context),
+    context,
   );
 
   return new Response(JSON.stringify(updateInfo), {
@@ -142,7 +132,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
       bundleId: params.bundleId,
       cohort: decodeMaybe(params.cohort),
     },
-    withRequestContext(_request, context),
+    context,
   );
 
   return new Response(JSON.stringify(updateInfo), {

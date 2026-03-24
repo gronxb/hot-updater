@@ -50,12 +50,11 @@ describe("createHandler", () => {
         minBundleId: "default",
         platform: "ios",
       },
-      expect.objectContaining({
+      {
         env: {
           tenantId: "tenant-a",
         },
-        request: expect.any(Request),
-      }),
+      },
     );
   });
 
@@ -80,9 +79,7 @@ describe("createHandler", () => {
         minBundleId: "default",
         platform: "android",
       },
-      expect.objectContaining({
-        request: expect.any(Request),
-      }),
+      undefined,
     );
   });
 
