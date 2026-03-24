@@ -1,7 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  StoragePlugin,
+  StorageResolveContext,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -23,7 +26,10 @@ import { createHotUpdater } from "./index";
 
 function createTestStoragePlugin(
   protocol: string,
-  resolveFileUrl: (storageUri: string) => string,
+  resolveFileUrl: (
+    storageUri: string,
+    context?: StorageResolveContext,
+  ) => string,
 ): StoragePlugin {
   return {
     name: `${protocol}TestStorage`,
@@ -34,8 +40,8 @@ function createTestStoragePlugin(
       };
     },
     async delete() {},
-    async getDownloadUrl(storageUri) {
-      return { fileUrl: resolveFileUrl(storageUri) };
+    async getDownloadUrl(storageUri, context) {
+      return { fileUrl: resolveFileUrl(storageUri, context) };
     },
   };
 }

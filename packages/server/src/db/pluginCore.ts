@@ -13,6 +13,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
+  type StorageResolveContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 import type { DatabaseAPI } from "./types";
@@ -100,7 +101,10 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
 
 export function createPluginDatabaseCore(
   plugin: DatabasePlugin,
-  resolveFileUrl: (storageUri: string | null) => Promise<string | null>,
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: StorageResolveContext,
+  ) => Promise<string | null>,
 ): {
   api: DatabaseAPI;
   adapterName: string;
@@ -277,6 +281,7 @@ export function createPluginDatabaseCore(
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
+      context?: StorageResolveContext,
     ): Promise<AppUpdateInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) {
@@ -285,7 +290,7 @@ export function createPluginDatabaseCore(
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null);
+      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
       return { ...rest, fileUrl };
     },
 

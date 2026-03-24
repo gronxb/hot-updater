@@ -282,6 +282,10 @@ export interface NativeBuildArgs {
   ios?: Record<string, NativeBuildIosScheme>;
 }
 
+export interface StorageResolveContext {
+  request?: Request;
+}
+
 export interface StoragePlugin {
   /**
    * Protocol this storage plugin can resolve.
@@ -298,7 +302,10 @@ export interface StoragePlugin {
 
   delete: (storageUri: string) => Promise<void>;
 
-  getDownloadUrl: (storageUri: string) => Promise<{
+  getDownloadUrl: (
+    storageUri: string,
+    context?: StorageResolveContext,
+  ) => Promise<{
     fileUrl: string;
   }>;
   name: string;

@@ -1,4 +1,8 @@
-import type { StoragePlugin, StoragePluginHooks } from "./types";
+import type {
+  StoragePlugin,
+  StoragePluginHooks,
+  StorageResolveContext,
+} from "./types";
 
 /**
  * Storage plugin methods without name and supportedProtocol
@@ -53,7 +57,7 @@ export interface CreateStoragePluginOptions<TConfig> {
  *     return {
  *       async upload(key, filePath) { ... },
  *       async delete(storageUri) { ... },
- *       async getDownloadUrl(storageUri) { ... }
+ *       async getDownloadUrl(storageUri, context) { ... }
  *     };
  *   }
  * });
@@ -87,8 +91,11 @@ export const createStoragePlugin = <TConfig>(
           return getMethods().delete(storageUri);
         },
 
-        async getDownloadUrl(storageUri) {
-          return getMethods().getDownloadUrl(storageUri);
+        async getDownloadUrl(
+          storageUri: string,
+          context?: StorageResolveContext,
+        ) {
+          return getMethods().getDownloadUrl(storageUri, context);
         },
       };
     };

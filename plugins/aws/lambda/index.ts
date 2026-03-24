@@ -9,7 +9,8 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 import { s3Database } from "../src/s3Database";
-import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
+import { s3Storage } from "../src/s3Storage";
+import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
 
 declare global {
   var HotUpdater: {
@@ -36,41 +37,41 @@ type Bindings = {
   request: CloudFrontRequest;
 };
 
-const hotUpdaterCache = new Map<string, ReturnType<typeof createHotUpdater>>();
-
-const getHotUpdater = (requestUrl: string) => {
-  const publicBaseUrl = new URL(requestUrl).origin;
-  const cached = hotUpdaterCache.get(publicBaseUrl);
-
-  if (cached) {
-    return cached;
+const resolveRequestOrigin = ({ request }: { request?: Request }) => {
+  if (!request) {
+    throw new Error(
+      "CloudFront signed URL resolution requires a request context.",
+    );
   }
 
-  const hotUpdater = createHotUpdater({
-    database: s3Database({
-      bucketName: S3_BUCKET_NAME,
-      region: SSM_REGION,
-    }),
-    storages: [
-      s3LambdaEdgeStorage({
+  return new URL(request.url).origin;
+};
+
+const hotUpdater = createHotUpdater({
+  database: s3Database({
+    bucketName: S3_BUCKET_NAME,
+    region: SSM_REGION,
+  }),
+  storages: [
+    withCloudFrontSignedUrl(
+      s3Storage({
         bucketName: S3_BUCKET_NAME,
         region: SSM_REGION,
+      }),
+      {
         keyPairId: CLOUDFRONT_KEY_PAIR_ID,
         ssmRegion: SSM_REGION,
         ssmParameterName: SSM_PARAMETER_NAME,
-        publicBaseUrl,
-      }),
-    ],
-    basePath: HOT_UPDATER_BASE_PATH,
-    routes: {
-      updateCheck: true,
-      bundles: false,
-    },
-  });
-
-  hotUpdaterCache.set(publicBaseUrl, hotUpdater);
-  return hotUpdater;
-};
+        publicBaseUrl: resolveRequestOrigin,
+      },
+    ),
+  ],
+  basePath: HOT_UPDATER_BASE_PATH,
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
 
 const cloudFrontHeadersToHeaders = (
   headers: CloudFrontRequest["headers"],
@@ -89,7 +90,6 @@ const cloudFrontHeadersToHeaders = (
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const hotUpdater = getHotUpdater(c.req.url);
   const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
     basePath: hotUpdater.basePath,
     request: c.req.raw,
@@ -110,7 +110,6 @@ app.on(
   HOT_UPDATER_METHODS,
   wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    const hotUpdater = getHotUpdater(c.req.url);
     const response = await hotUpdater.handler(c.req.raw);
 
     if (

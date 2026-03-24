@@ -15,6 +15,7 @@ import {
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
+  StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import { semverSatisfies } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
@@ -64,7 +65,10 @@ export function createOrmDatabaseCore({
   resolveFileUrl,
 }: {
   database: FumaDBAdapter;
-  resolveFileUrl: (storageUri: string | null) => Promise<string | null>;
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: StorageResolveContext,
+  ) => Promise<string | null>;
 }): {
   api: DatabaseAPI;
   adapterName: string;
@@ -481,13 +485,14 @@ export function createOrmDatabaseCore({
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
+      context?: StorageResolveContext,
     ): Promise<AppUpdateInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) return null;
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null);
+      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
       return { ...rest, fileUrl };
     },
 

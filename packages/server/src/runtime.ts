@@ -1,4 +1,7 @@
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  StoragePlugin,
+  StorageResolveContext,
+} from "@hot-updater/plugin-core";
 import { createPluginDatabaseCore } from "./db/pluginCore";
 import {
   type DatabaseAdapter,
@@ -44,6 +47,7 @@ export function createHotUpdater(
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
+    context?: StorageResolveContext,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -64,7 +68,7 @@ export function createHotUpdater(
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
 
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri);
+    const { fileUrl } = await plugin.getDownloadUrl(storageUri, context);
     if (!fileUrl) {
       throw new Error("Storage plugin returned empty fileUrl");
     }

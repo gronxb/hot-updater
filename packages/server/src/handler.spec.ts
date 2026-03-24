@@ -31,15 +31,20 @@ describe("createHandler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
-      _updateStrategy: "appVersion",
-      appVersion: "1.0.0",
-      bundleId: "default",
-      channel: "production",
-      cohort: undefined,
-      minBundleId: "default",
-      platform: "ios",
-    });
+    expect(api.getAppUpdateInfo).toHaveBeenCalledWith(
+      {
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "default",
+        channel: "production",
+        cohort: undefined,
+        minBundleId: "default",
+        platform: "ios",
+      },
+      expect.objectContaining({
+        request: expect.any(Request),
+      }),
+    );
   });
 
   it("keeps the legacy fingerprint route without a cohort segment", async () => {
@@ -53,15 +58,20 @@ describe("createHandler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(api.getAppUpdateInfo).toHaveBeenCalledWith({
-      _updateStrategy: "fingerprint",
-      bundleId: "default",
-      channel: "production",
-      cohort: undefined,
-      fingerprintHash: "fingerprint-123",
-      minBundleId: "default",
-      platform: "android",
-    });
+    expect(api.getAppUpdateInfo).toHaveBeenCalledWith(
+      {
+        _updateStrategy: "fingerprint",
+        bundleId: "default",
+        channel: "production",
+        cohort: undefined,
+        fingerprintHash: "fingerprint-123",
+        minBundleId: "default",
+        platform: "android",
+      },
+      expect.objectContaining({
+        request: expect.any(Request),
+      }),
+    );
   });
 
   it("can mount only update-check routes", async () => {

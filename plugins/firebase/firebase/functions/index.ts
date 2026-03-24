@@ -22,41 +22,31 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-let hotUpdater: ReturnType<typeof createHotUpdater> | undefined;
+const adminOptions = admin.app().options;
+const storageBucket = adminOptions.storageBucket;
+const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
 
-const getHotUpdater = () => {
-  if (hotUpdater) {
-    return hotUpdater;
-  }
+if (!storageBucket && !cdnUrl) {
+  throw new Error(
+    "Firebase runtime requires storageBucket or HOT_UPDATER_CDN_URL to resolve bundle URLs.",
+  );
+}
 
-  const adminOptions = admin.app().options;
-  const storageBucket = adminOptions.storageBucket;
-  const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
-
-  if (!storageBucket && !cdnUrl) {
-    throw new Error(
-      "Firebase runtime requires storageBucket or HOT_UPDATER_CDN_URL to resolve bundle URLs.",
-    );
-  }
-
-  hotUpdater = createHotUpdater({
-    database: firebaseDatabase(adminOptions),
-    storages: [
-      firebaseFunctionsStorage({
-        ...adminOptions,
-        storageBucket,
-        cdnUrl,
-      }),
-    ],
-    basePath: HOT_UPDATER_BASE_PATH,
-    routes: {
-      updateCheck: true,
-      bundles: false,
-    },
-  });
-
-  return hotUpdater;
-};
+const hotUpdater = createHotUpdater({
+  database: firebaseDatabase(adminOptions),
+  storages: [
+    firebaseFunctionsStorage({
+      ...adminOptions,
+      storageBucket,
+      cdnUrl,
+    }),
+  ],
+  basePath: HOT_UPDATER_BASE_PATH,
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
 
 const app = new Hono();
 
@@ -65,9 +55,8 @@ app.get("/ping", (c) => {
 });
 
 app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const currentHotUpdater = getHotUpdater();
   const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-    basePath: currentHotUpdater.basePath,
+    basePath: hotUpdater.basePath,
     request: c.req.raw,
   });
 
@@ -75,14 +64,14 @@ app.get(HOT_UPDATER_BASE_PATH, async (c) => {
     return rewrittenRequest;
   }
 
-  return currentHotUpdater.handler(rewrittenRequest);
+  return hotUpdater.handler(rewrittenRequest);
 });
 
 app.on(
   HOT_UPDATER_METHODS,
   wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    return getHotUpdater().handler(c.req.raw);
+    return hotUpdater.handler(c.req.raw);
   },
 );
 

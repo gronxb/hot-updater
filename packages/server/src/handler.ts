@@ -4,7 +4,10 @@ import type {
   Bundle,
   FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
-import type { DatabaseBundleQueryOptions } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleQueryOptions,
+  StorageResolveContext,
+} from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { PaginationInfo } from "./types";
 
@@ -14,6 +17,7 @@ declare const __VERSION__: string;
 export interface HandlerAPI {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
+    context?: StorageResolveContext,
   ) => Promise<AppUpdateInfo | null>;
   getBundleById: (id: string) => Promise<Bundle | null>;
   getBundles: (
@@ -80,15 +84,18 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
   _request,
   api,
 ) => {
-  const updateInfo = await api.getAppUpdateInfo({
-    _updateStrategy: "fingerprint",
-    platform: params.platform as "ios" | "android",
-    fingerprintHash: params.fingerprintHash,
-    channel: params.channel,
-    minBundleId: params.minBundleId,
-    bundleId: params.bundleId,
-    cohort: decodeMaybe(params.cohort),
-  });
+  const updateInfo = await api.getAppUpdateInfo(
+    {
+      _updateStrategy: "fingerprint",
+      platform: params.platform as "ios" | "android",
+      fingerprintHash: params.fingerprintHash,
+      channel: params.channel,
+      minBundleId: params.minBundleId,
+      bundleId: params.bundleId,
+      cohort: decodeMaybe(params.cohort),
+    },
+    { request: _request },
+  );
 
   return new Response(JSON.stringify(updateInfo), {
     status: 200,
@@ -101,15 +108,18 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
   _request,
   api,
 ) => {
-  const updateInfo = await api.getAppUpdateInfo({
-    _updateStrategy: "appVersion",
-    platform: params.platform as "ios" | "android",
-    appVersion: params.appVersion,
-    channel: params.channel,
-    minBundleId: params.minBundleId,
-    bundleId: params.bundleId,
-    cohort: decodeMaybe(params.cohort),
-  });
+  const updateInfo = await api.getAppUpdateInfo(
+    {
+      _updateStrategy: "appVersion",
+      platform: params.platform as "ios" | "android",
+      appVersion: params.appVersion,
+      channel: params.channel,
+      minBundleId: params.minBundleId,
+      bundleId: params.bundleId,
+      cohort: decodeMaybe(params.cohort),
+    },
+    { request: _request },
+  );
 
   return new Response(JSON.stringify(updateInfo), {
     status: 200,

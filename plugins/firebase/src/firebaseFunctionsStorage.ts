@@ -52,7 +52,7 @@ export const firebaseFunctionsStorage = (
 
         return fallbackStorage.delete(storageUri);
       },
-      async getDownloadUrl(storageUri) {
+      async getDownloadUrl(storageUri, context) {
         if (config.cdnUrl) {
           const storageUrl = new URL(storageUri);
 
@@ -69,7 +69,7 @@ export const firebaseFunctionsStorage = (
           );
         }
 
-        return fallbackStorage.getDownloadUrl(storageUri);
+        return fallbackStorage.getDownloadUrl(storageUri, context);
       },
     };
   };

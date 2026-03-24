@@ -8,6 +8,7 @@ import type {
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   StoragePlugin,
+  StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import type { PaginationInfo } from "../types";
@@ -46,7 +47,10 @@ export function isFumaAdapter(
 export interface DatabaseAPI {
   getBundleById(id: string): Promise<Bundle | null>;
   getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
-  getAppUpdateInfo(args: GetBundlesArgs): Promise<AppUpdateInfo | null>;
+  getAppUpdateInfo(
+    args: GetBundlesArgs,
+    context?: StorageResolveContext,
+  ): Promise<AppUpdateInfo | null>;
   getChannels(): Promise<string[]>;
   getBundles(
     options: DatabaseBundleQueryOptions,

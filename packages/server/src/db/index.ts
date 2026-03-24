@@ -1,4 +1,7 @@
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  StoragePlugin,
+  StorageResolveContext,
+} from "@hot-updater/plugin-core";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import {
@@ -59,6 +62,7 @@ export function createHotUpdater(
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
+    context?: StorageResolveContext,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -73,15 +77,18 @@ export function createHotUpdater(
     if (!plugin) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri);
+    const { fileUrl } = await plugin.getDownloadUrl(storageUri, context);
     if (!fileUrl) {
       throw new Error("Storage plugin returned empty fileUrl");
     }
     return fileUrl;
   };
 
-  const resolveFileUrl = async (storageUri: string | null) => {
-    return resolveStoragePluginUrl(storageUri);
+  const resolveFileUrl = async (
+    storageUri: string | null,
+    context?: StorageResolveContext,
+  ) => {
+    return resolveStoragePluginUrl(storageUri, context);
   };
 
   let core: HotUpdaterCoreInternal;
