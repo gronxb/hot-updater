@@ -19,6 +19,7 @@ const SERVER_PACKAGE_DIR = path.join(REPO_DIR, "examples-server/hono-e2e-local")
 const RESULTS_ROOT = path.join(E2E_DIR, "results");
 const DEFAULT_SERVER_PORT = Number(process.env.HOT_UPDATER_SERVER_PORT || 3007);
 const DEFAULT_SERVER_HOST = "127.0.0.1";
+const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
@@ -107,6 +108,13 @@ function runCapture(command, args, options = {}) {
   return result.stdout.trim();
 }
 
+async function fetchWithTimeout(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+  });
+}
+
 async function runLogged(command, args, options = {}) {
   await fsPromises.mkdir(path.dirname(options.logPath), { recursive: true });
 
@@ -140,7 +148,7 @@ async function resolveServerPort(preferredPort, allowRandomFallback) {
       const server = net.createServer();
       server.unref();
       server.once("error", reject);
-      server.listen({ port }, () => {
+      server.listen({ host: DEFAULT_SERVER_HOST, port }, () => {
         const address = server.address();
         const actualPort =
           typeof address === "object" && address ? address.port : port;
@@ -174,7 +182,7 @@ async function resolveServerPort(preferredPort, allowRandomFallback) {
 async function waitForHttp(url, attempts = 90) {
   for (let index = 0; index < attempts; index += 1) {
     try {
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url);
       if (response.ok) {
         return;
       }
@@ -384,6 +392,7 @@ async function main() {
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
         HOT_UPDATER_E2E_SERVER_BASE_URL: serverBaseUrl,
+        HOT_UPDATER_E2E_SERVER_HOST: DEFAULT_SERVER_HOST,
         HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
         HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
         PORT: String(serverPort),
@@ -398,10 +407,10 @@ async function main() {
 
   const stopServer = async () => {
     try {
-      await fetch(`${serverBaseUrl}/e2e/cleanup`, { method: "POST" });
+      await fetchWithTimeout(`${serverBaseUrl}/e2e/cleanup`, { method: "POST" });
     } catch {}
     try {
-      await fetch(`${serverBaseUrl}/shutdown`, { method: "POST" });
+      await fetchWithTimeout(`${serverBaseUrl}/shutdown`, { method: "POST" });
     } catch {}
     serverProcess.kill("SIGTERM");
     await new Promise((resolve) => {

@@ -41,16 +41,18 @@ app.route("/", storageRoutes);
 app.route("/", e2eRoutes);
 
 const port = Number(process.env.PORT) || 3007;
+const hostname = process.env.HOT_UPDATER_E2E_SERVER_HOST || "127.0.0.1";
 
 try {
   serve(
     {
       fetch: app.fetch,
+      hostname,
       port,
     },
     (info) => {
       console.log(
-        `Hot Updater E2E Local Server listening on http://localhost:${info.port}`,
+        `Hot Updater E2E Local Server listening on http://${hostname}:${info.port}`,
       );
     },
   );
