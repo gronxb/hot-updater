@@ -132,4 +132,21 @@ describe("createHandler", () => {
     expect(channelsResponse.status).toBe(200);
     expect(updateResponse.status).toBe(404);
   });
+
+  it("returns 400 when the platform route parameter is invalid", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/web/1.0.0/production/default/default",
+      ),
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid platform: web. Expected 'ios' or 'android'.",
+    });
+    expect(response.status).toBe(400);
+    expect(api.getAppUpdateInfo).not.toHaveBeenCalled();
+  });
 });

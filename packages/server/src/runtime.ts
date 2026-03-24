@@ -41,8 +41,8 @@ export function createHotUpdater<TEnv = unknown>(
 ): HotUpdaterAPI<TEnv> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (
-    options?.storages ??
-    options?.storagePlugins ??
+    options.storages ??
+    options.storagePlugins ??
     []
   ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
 

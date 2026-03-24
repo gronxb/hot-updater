@@ -54,8 +54,8 @@ export function createHotUpdater<TEnv = unknown>(
 
   // Initialize storage plugins - call factories if they are functions
   const storagePlugins = (
-    options?.storages ??
-    options?.storagePlugins ??
+    options.storages ??
+    options.storagePlugins ??
     []
   ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
 

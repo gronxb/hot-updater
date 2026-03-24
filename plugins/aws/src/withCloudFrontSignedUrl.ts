@@ -52,7 +52,15 @@ const getPrivateKeyFromSsm = async (
     WithDecryption: true,
   });
 
-  if (!response.Parameter?.Value) {
+  const parameter = response.Parameter;
+  if (!parameter) {
+    throw new Error(
+      `Failed to retrieve private key from SSM parameter: ${parameterName}`,
+    );
+  }
+
+  const parameterValue = parameter.Value;
+  if (!parameterValue) {
     throw new Error(
       `Failed to retrieve private key from SSM parameter: ${parameterName}`,
     );
@@ -60,7 +68,7 @@ const getPrivateKeyFromSsm = async (
 
   let keyPair: { privateKey?: unknown };
   try {
-    keyPair = JSON.parse(response.Parameter.Value);
+    keyPair = JSON.parse(parameterValue);
   } catch (error) {
     throw new Error(
       `Invalid JSON format in SSM parameter: ${parameterName}. ${error instanceof Error ? error.message : String(error)}`,

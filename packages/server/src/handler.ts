@@ -3,6 +3,7 @@ import type {
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
+  Platform,
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
@@ -74,6 +75,13 @@ type RouteHandler<TEnv = unknown> = (
   context?: HotUpdaterContext<TEnv>,
 ) => Promise<Response>;
 
+class HandlerBadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HandlerBadRequestError";
+  }
+}
+
 // Route handlers
 const handleVersion: RouteHandler = async () => {
   return new Response(JSON.stringify({ version: __VERSION__ }), {
@@ -91,20 +99,75 @@ const decodeMaybe = (value: string | undefined): string | undefined => {
   }
 };
 
+const isPlatform = (value: string): value is Platform => {
+  return value === "ios" || value === "android";
+};
+
+const requireRouteParam = (
+  params: Record<string, string>,
+  key: string,
+): string => {
+  const value = params[key];
+  if (!value) {
+    throw new HandlerBadRequestError(`Missing route parameter: ${key}`);
+  }
+
+  return value;
+};
+
+const requirePlatformParam = (params: Record<string, string>): Platform => {
+  const platform = requireRouteParam(params, "platform");
+
+  if (!isPlatform(platform)) {
+    throw new HandlerBadRequestError(
+      `Invalid platform: ${platform}. Expected 'ios' or 'android'.`,
+    );
+  }
+
+  return platform;
+};
+
+type BundlePatchPayload = Partial<Bundle> & {
+  id?: string;
+};
+
+const requireBundlePatchPayload = (
+  payload: unknown,
+  bundleId: string,
+): Partial<Bundle> => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new HandlerBadRequestError("Invalid bundle payload");
+  }
+
+  const bundlePatch = payload as BundlePatchPayload;
+  if (bundlePatch.id !== undefined && bundlePatch.id !== bundleId) {
+    throw new HandlerBadRequestError("Bundle id mismatch");
+  }
+
+  const { id: _ignoredId, ...rest } = bundlePatch;
+  return rest;
+};
+
 const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
   _request,
   api,
   context,
 ) => {
+  const platform = requirePlatformParam(params);
+  const fingerprintHash = requireRouteParam(params, "fingerprintHash");
+  const channel = requireRouteParam(params, "channel");
+  const minBundleId = requireRouteParam(params, "minBundleId");
+  const bundleId = requireRouteParam(params, "bundleId");
+
   const updateInfo = await api.getAppUpdateInfo(
     {
       _updateStrategy: "fingerprint",
-      platform: params.platform as "ios" | "android",
-      fingerprintHash: params.fingerprintHash,
-      channel: params.channel,
-      minBundleId: params.minBundleId,
-      bundleId: params.bundleId,
+      platform,
+      fingerprintHash,
+      channel,
+      minBundleId,
+      bundleId,
       cohort: decodeMaybe(params.cohort),
     },
     context,
@@ -122,14 +185,20 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
   api,
   context,
 ) => {
+  const platform = requirePlatformParam(params);
+  const appVersion = requireRouteParam(params, "appVersion");
+  const channel = requireRouteParam(params, "channel");
+  const minBundleId = requireRouteParam(params, "minBundleId");
+  const bundleId = requireRouteParam(params, "bundleId");
+
   const updateInfo = await api.getAppUpdateInfo(
     {
       _updateStrategy: "appVersion",
-      platform: params.platform as "ios" | "android",
-      appVersion: params.appVersion,
-      channel: params.channel,
-      minBundleId: params.minBundleId,
-      bundleId: params.bundleId,
+      platform,
+      appVersion,
+      channel,
+      minBundleId,
+      bundleId,
       cohort: decodeMaybe(params.cohort),
     },
     context,
@@ -147,7 +216,8 @@ const handleGetBundle: RouteHandler = async (
   api,
   context,
 ) => {
-  const bundle = await api.getBundleById(params.id, context);
+  const bundleId = requireRouteParam(params, "id");
+  const bundle = await api.getBundleById(bundleId, context);
 
   if (!bundle) {
     return new Response(JSON.stringify({ error: "Bundle not found" }), {
@@ -170,15 +240,21 @@ const handleGetBundles: RouteHandler = async (
 ) => {
   const url = new URL(request.url);
   const channel = url.searchParams.get("channel") ?? undefined;
-  const platform = url.searchParams.get("platform") ?? undefined;
+  const platform = url.searchParams.get("platform");
   const limit = Number(url.searchParams.get("limit")) || 50;
   const offset = Number(url.searchParams.get("offset")) || 0;
+
+  if (platform !== null && !isPlatform(platform)) {
+    throw new HandlerBadRequestError(
+      `Invalid platform: ${platform}. Expected 'ios' or 'android'.`,
+    );
+  }
 
   const result = await api.getBundles(
     {
       where: {
         ...(channel && { channel }),
-        ...(platform && { platform: platform as Bundle["platform"] }),
+        ...(platform && { platform }),
       },
       limit,
       offset,
@@ -217,29 +293,11 @@ const handleUpdateBundle: RouteHandler = async (
   api,
   context,
 ) => {
+  const bundleId = requireRouteParam(params, "id");
   const body = await request.json();
   const payload = Array.isArray(body) ? body[0] : body;
-
-  if (!payload || typeof payload !== "object") {
-    return new Response(JSON.stringify({ error: "Invalid bundle payload" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (
-    "id" in payload &&
-    typeof payload.id === "string" &&
-    payload.id !== params.id
-  ) {
-    return new Response(JSON.stringify({ error: "Bundle id mismatch" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const { id: _ignoredId, ...bundlePatch } = payload as Partial<Bundle>;
-  await api.updateBundleById(params.id, bundlePatch, context);
+  const bundlePatch = requireBundlePatchPayload(payload, bundleId);
+  await api.updateBundleById(bundleId, bundlePatch, context);
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
@@ -253,7 +311,8 @@ const handleDeleteBundle: RouteHandler = async (
   api,
   context,
 ) => {
-  await api.deleteBundleById(params.id, context);
+  const bundleId = requireRouteParam(params, "id");
+  await api.deleteBundleById(bundleId, context);
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
@@ -377,6 +436,13 @@ export function createHandler<TEnv = unknown>(
 
       return await handler(match.params || {}, request, api, context);
     } catch (error) {
+      if (error instanceof HandlerBadRequestError) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       console.error("Hot Updater handler error:", error);
       return new Response(
         JSON.stringify({
