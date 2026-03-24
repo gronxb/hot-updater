@@ -13,7 +13,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
-  type StorageResolveContext,
+  type HotUpdaterContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 import type { DatabaseAPI } from "./types";
@@ -99,25 +99,29 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   fileHash: null,
 };
 
-export function createPluginDatabaseCore(
-  plugin: DatabasePlugin,
+export function createPluginDatabaseCore<TEnv = unknown>(
+  plugin: DatabasePlugin<TEnv>,
   resolveFileUrl: (
     storageUri: string | null,
-    context?: StorageResolveContext,
+    context?: HotUpdaterContext<TEnv>,
   ) => Promise<string | null>,
 ): {
-  api: DatabaseAPI;
+  api: DatabaseAPI<TEnv>;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
 } {
   const getSortedBundlePage = async (
     options: DatabaseBundleQueryOptions,
-  ): Promise<Awaited<ReturnType<DatabasePlugin["getBundles"]>>> => {
-    const result = await plugin.getBundles({
-      ...options,
-      orderBy: options.orderBy ?? DESC_ORDER,
-    });
+    context?: HotUpdaterContext<TEnv>,
+  ): Promise<Awaited<ReturnType<DatabasePlugin<TEnv>["getBundles"]>>> => {
+    const result = await plugin.getBundles(
+      {
+        ...options,
+        orderBy: options.orderBy ?? DESC_ORDER,
+      },
+      context,
+    );
 
     return {
       ...result,
@@ -141,20 +145,25 @@ export function createPluginDatabaseCore(
     args,
     queryWhere,
     isCandidate,
+    context,
   }: {
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs;
     queryWhere: DatabaseBundleQueryWhere;
     isCandidate: (bundle: Bundle) => boolean;
+    context?: HotUpdaterContext<TEnv>;
   }): Promise<UpdateInfo | null> => {
     let offset = 0;
 
     while (true) {
-      const { data, pagination } = await getSortedBundlePage({
-        where: queryWhere,
-        limit: PAGE_SIZE,
-        offset,
-        orderBy: DESC_ORDER,
-      });
+      const { data, pagination } = await getSortedBundlePage(
+        {
+          where: queryWhere,
+          limit: PAGE_SIZE,
+          offset,
+          orderBy: DESC_ORDER,
+        },
+        context,
+      );
 
       for (const bundle of data) {
         if (
@@ -228,12 +237,18 @@ export function createPluginDatabaseCore(
     },
   });
 
-  const api: DatabaseAPI = {
-    async getBundleById(id: string): Promise<Bundle | null> {
-      return plugin.getBundleById(id);
+  const api: DatabaseAPI<TEnv> = {
+    async getBundleById(
+      id: string,
+      context?: HotUpdaterContext<TEnv>,
+    ): Promise<Bundle | null> {
+      return plugin.getBundleById(id, context);
     },
 
-    async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
+    async getUpdateInfo(
+      args: GetBundlesArgs,
+      context?: HotUpdaterContext<TEnv>,
+    ): Promise<UpdateInfo | null> {
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
       const baseWhere = getBaseWhere({
@@ -249,6 +264,7 @@ export function createPluginDatabaseCore(
             ...baseWhere,
             fingerprintHash: args.fingerprintHash,
           },
+          context,
           isCandidate: (bundle) => {
             return (
               bundle.enabled &&
@@ -266,6 +282,7 @@ export function createPluginDatabaseCore(
         queryWhere: {
           ...baseWhere,
         },
+        context,
         isCandidate: (bundle) => {
           return (
             bundle.enabled &&
@@ -281,9 +298,9 @@ export function createPluginDatabaseCore(
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
-      context?: StorageResolveContext,
+      context?: HotUpdaterContext<TEnv>,
     ): Promise<AppUpdateInfo | null> {
-      const info = await this.getUpdateInfo(args);
+      const info = await this.getUpdateInfo(args, context);
       if (!info) {
         return null;
       }
@@ -294,34 +311,41 @@ export function createPluginDatabaseCore(
       return { ...rest, fileUrl };
     },
 
-    async getChannels(): Promise<string[]> {
-      return plugin.getChannels();
+    async getChannels(context?: HotUpdaterContext<TEnv>): Promise<string[]> {
+      return plugin.getChannels(context);
     },
 
-    async getBundles(options) {
-      return plugin.getBundles(options);
+    async getBundles(options, context?: HotUpdaterContext<TEnv>) {
+      return plugin.getBundles(options, context);
     },
 
-    async insertBundle(bundle: Bundle): Promise<void> {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
+    async insertBundle(
+      bundle: Bundle,
+      context?: HotUpdaterContext<TEnv>,
+    ): Promise<void> {
+      await plugin.appendBundle(bundle, context);
+      await plugin.commitBundle(context);
     },
 
     async updateBundleById(
       bundleId: string,
       newBundle: Partial<Bundle>,
+      context?: HotUpdaterContext<TEnv>,
     ): Promise<void> {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
+      await plugin.updateBundle(bundleId, newBundle, context);
+      await plugin.commitBundle(context);
     },
 
-    async deleteBundleById(bundleId: string): Promise<void> {
-      const bundle = await plugin.getBundleById(bundleId);
+    async deleteBundleById(
+      bundleId: string,
+      context?: HotUpdaterContext<TEnv>,
+    ): Promise<void> {
+      const bundle = await plugin.getBundleById(bundleId, context);
       if (!bundle) {
         return;
       }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.deleteBundle(bundle, context);
+      await plugin.commitBundle(context);
     },
   };
 

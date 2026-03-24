@@ -52,22 +52,35 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin {
-  getChannels: () => Promise<string[]>;
-  getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: DatabaseBundleQueryOptions) => Promise<{
+export interface DatabasePlugin<TEnv = unknown> {
+  getChannels: (context?: HotUpdaterContext<TEnv>) => Promise<string[]>;
+  getBundleById: (
+    bundleId: string,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<Bundle | null>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
+    context?: HotUpdaterContext<TEnv>,
   ) => Promise<void>;
-  appendBundle: (insertBundle: Bundle) => Promise<void>;
-  commitBundle: () => Promise<void>;
+  appendBundle: (
+    insertBundle: Bundle,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<void>;
+  commitBundle: (context?: HotUpdaterContext<TEnv>) => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
-  deleteBundle: (deleteBundle: Bundle) => Promise<void>;
+  deleteBundle: (
+    deleteBundle: Bundle,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<void>;
 }
 
 export interface DatabasePluginHooks {
@@ -282,11 +295,14 @@ export interface NativeBuildArgs {
   ios?: Record<string, NativeBuildIosScheme>;
 }
 
-export interface StorageResolveContext {
+export interface HotUpdaterContext<TEnv = unknown> {
   request?: Request;
+  env?: TEnv;
 }
 
-export interface StoragePlugin {
+export type StorageResolveContext<TEnv = unknown> = HotUpdaterContext<TEnv>;
+
+export interface StoragePlugin<TEnv = unknown> {
   /**
    * Protocol this storage plugin can resolve.
    * @example "s3", "r2", "supabase-storage".
@@ -304,7 +320,7 @@ export interface StoragePlugin {
 
   getDownloadUrl: (
     storageUri: string,
-    context?: StorageResolveContext,
+    context?: StorageResolveContext<TEnv>,
   ) => Promise<{
     fileUrl: string;
   }>;

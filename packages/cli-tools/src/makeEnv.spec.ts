@@ -2,7 +2,18 @@ import fs from "fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeEnv } from "./makeEnv";
 
-vi.mock("fs/promises");
+vi.mock("fs/promises", async () => {
+  const actual =
+    await vi.importActual<typeof import("fs/promises")>("fs/promises");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      readFile: vi.fn(),
+    },
+    readFile: vi.fn(),
+  };
+});
 
 describe("makeEnv", () => {
   beforeEach(() => {

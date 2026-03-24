@@ -18,45 +18,50 @@ const bundle: Bundle = {
   fingerprintHash: null,
 };
 
-const createDatabasePlugin = (): DatabasePlugin => ({
-  name: "testDatabase",
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById(id) {
-    return id === bundle.id ? bundle : null;
-  },
-  async getBundles() {
-    return {
-      data: [bundle],
-      pagination: {
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-        total: 1,
-      },
-    };
-  },
-  async getChannels() {
-    return ["production"];
-  },
-  async onUnmount() {},
-  async updateBundle() {},
-});
+type TestEnv = {
+  assetHost: string;
+};
 
 describe("runtime createHotUpdater", () => {
-  it("passes the handler request to storage getDownloadUrl", async () => {
-    const getDownloadUrl = vi.fn<StoragePlugin["getDownloadUrl"]>(
+  it("passes the handler context to database and storage resolution", async () => {
+    const getBundles = vi.fn<DatabasePlugin<TestEnv>["getBundles"]>(
+      async () => {
+        return {
+          data: [bundle],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 1,
+          },
+        };
+      },
+    );
+    const getDownloadUrl = vi.fn<StoragePlugin<TestEnv>["getDownloadUrl"]>(
       async (_storageUri, context) => {
         return {
-          fileUrl: new URL("/bundle.zip", context?.request?.url).toString(),
+          fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
         };
       },
     );
 
-    const hotUpdater = createHotUpdater({
-      database: createDatabasePlugin(),
+    const hotUpdater = createHotUpdater<TestEnv>({
+      database: {
+        name: "testDatabase",
+        async appendBundle() {},
+        async commitBundle() {},
+        async deleteBundle() {},
+        async getBundleById(id) {
+          return id === bundle.id ? bundle : null;
+        },
+        getBundles,
+        async getChannels() {
+          return ["production"];
+        },
+        async onUnmount() {},
+        async updateBundle() {},
+      },
       storages: [
         {
           name: "testStorage",
@@ -80,20 +85,37 @@ describe("runtime createHotUpdater", () => {
         "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
           `${NIL_UUID}/${NIL_UUID}`,
       ),
+      {
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+      },
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       fileHash: "hash123",
-      fileUrl: "https://updates.example.com/bundle.zip",
+      fileUrl: "https://assets.example.com/bundle.zip",
       id: "00000000-0000-0000-0000-000000000001",
       message: "Test bundle",
       shouldForceUpdate: false,
       status: "UPDATE",
     });
+    expect(getBundles).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request: expect.any(Request),
+      }),
+    );
     expect(getDownloadUrl).toHaveBeenCalledWith(
       "s3://test-bucket/bundles/bundle.zip",
       expect.objectContaining({
+        env: {
+          assetHost: "https://assets.example.com",
+        },
         request: expect.any(Request),
       }),
     );

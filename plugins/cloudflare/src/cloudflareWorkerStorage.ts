@@ -1,13 +1,53 @@
 import { signToken } from "@hot-updater/js";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  HotUpdaterContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 
-export interface CloudflareWorkerStorageConfig {
-  jwtSecret: string;
-  publicBaseUrl: string;
+export interface CloudflareWorkerStorageEnv {
+  JWT_SECRET: string;
 }
 
-export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
-  return (): StoragePlugin => {
+type ContextResolver<TEnv, TValue> = (
+  context: HotUpdaterContext<TEnv>,
+) => TValue | Promise<TValue>;
+
+export interface CloudflareWorkerStorageConfig<
+  TEnv extends CloudflareWorkerStorageEnv,
+> {
+  jwtSecret?: string | ContextResolver<TEnv, string>;
+  publicBaseUrl: string | ContextResolver<TEnv, string>;
+}
+
+const resolveContextValue = async <TEnv, TValue>(
+  value: TValue | ContextResolver<TEnv, TValue>,
+  context?: HotUpdaterContext<TEnv>,
+) => {
+  return typeof value === "function"
+    ? await (value as ContextResolver<TEnv, TValue>)(context ?? {})
+    : value;
+};
+
+const resolveJwtSecretFromContext = <TEnv extends CloudflareWorkerStorageEnv>(
+  context?: HotUpdaterContext<TEnv>,
+) => {
+  const jwtSecret = context?.env?.JWT_SECRET;
+
+  if (!jwtSecret) {
+    throw new Error(
+      "cloudflareWorkerStorage requires env.JWT_SECRET in the hot updater context.",
+    );
+  }
+
+  return jwtSecret;
+};
+
+export const r2WorkerStorage = <
+  TEnv extends CloudflareWorkerStorageEnv = CloudflareWorkerStorageEnv,
+>(
+  config: CloudflareWorkerStorageConfig<TEnv>,
+) => {
+  return (): StoragePlugin<TEnv> => {
     return {
       name: "cloudflareWorkerStorage",
       supportedProtocol: "r2",
@@ -21,7 +61,7 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
           "cloudflareWorkerStorage does not support delete() in the worker runtime.",
         );
       },
-      async getDownloadUrl(storageUri) {
+      async getDownloadUrl(storageUri, context) {
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -29,8 +69,15 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         }
 
         const key = `${storageUrl.host}${storageUrl.pathname}`;
-        const token = await signToken(key, config.jwtSecret);
-        const url = new URL(config.publicBaseUrl);
+        const [jwtSecret, publicBaseUrl] = await Promise.all([
+          resolveContextValue(
+            config.jwtSecret ?? resolveJwtSecretFromContext,
+            context,
+          ),
+          resolveContextValue(config.publicBaseUrl, context),
+        ]);
+        const token = await signToken(key, jwtSecret);
+        const url = new URL(publicBaseUrl);
 
         url.pathname = key;
         url.search = "";

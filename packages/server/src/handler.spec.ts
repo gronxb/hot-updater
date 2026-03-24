@@ -2,7 +2,11 @@ import { NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 import { createHandler, type HandlerAPI } from "./handler";
 
-const createApi = (): HandlerAPI => ({
+type TestEnv = {
+  tenantId: string;
+};
+
+const createApi = (): HandlerAPI<TestEnv> => ({
   getAppUpdateInfo: vi.fn().mockResolvedValue({
     fileHash: null,
     fileUrl: null,
@@ -28,6 +32,11 @@ describe("createHandler", () => {
       new Request(
         "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
       ),
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
     );
 
     expect(response.status).toBe(200);
@@ -42,6 +51,9 @@ describe("createHandler", () => {
         platform: "ios",
       },
       expect.objectContaining({
+        env: {
+          tenantId: "tenant-a",
+        },
         request: expect.any(Request),
       }),
     );

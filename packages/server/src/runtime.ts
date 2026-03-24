@@ -1,6 +1,6 @@
 import type {
+  HotUpdaterContext,
   StoragePlugin,
-  StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import { createPluginDatabaseCore } from "./db/pluginCore";
 import {
@@ -18,26 +18,27 @@ import {
   wildcardPattern,
 } from "./route";
 
-type HotUpdaterCoreInternal = ReturnType<typeof createPluginDatabaseCore>;
-
-export type HotUpdaterAPI = DatabaseAPI & {
+export type HotUpdaterAPI<TEnv = unknown> = DatabaseAPI<TEnv> & {
   basePath: string;
-  handler: (request: Request) => Promise<Response>;
+  handler: (
+    request: Request,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<Response>;
   adapterName: string;
 };
 
-export interface CreateHotUpdaterOptions {
-  database: DatabaseAdapter;
-  storages?: (StoragePlugin | StoragePluginFactory)[];
-  storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
+export interface CreateHotUpdaterOptions<TEnv = unknown> {
+  database: DatabaseAdapter<TEnv>;
+  storages?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
+  storagePlugins?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
   basePath?: string;
   cwd?: string;
   routes?: HandlerRoutes;
 }
 
-export function createHotUpdater(
-  options: CreateHotUpdaterOptions,
-): HotUpdaterAPI {
+export function createHotUpdater<TEnv = unknown>(
+  options: CreateHotUpdaterOptions<TEnv>,
+): HotUpdaterAPI<TEnv> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (
     options?.storages ??
@@ -47,7 +48,7 @@ export function createHotUpdater(
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
-    context?: StorageResolveContext,
+    context?: HotUpdaterContext<TEnv>,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -88,10 +89,7 @@ export function createHotUpdater(
   const plugin = isDatabasePluginFactory(options.database)
     ? options.database()
     : options.database;
-  const core: HotUpdaterCoreInternal = createPluginDatabaseCore(
-    plugin,
-    resolveStoragePluginUrl,
-  );
+  const core = createPluginDatabaseCore<TEnv>(plugin, resolveStoragePluginUrl);
 
   const api = {
     ...core.api,

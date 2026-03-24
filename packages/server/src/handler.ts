@@ -6,7 +6,7 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
-  StorageResolveContext,
+  HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { PaginationInfo } from "./types";
@@ -14,22 +14,33 @@ import type { PaginationInfo } from "./types";
 declare const __VERSION__: string;
 
 // Narrow API surface needed by the handler to avoid circular types
-export interface HandlerAPI {
+export interface HandlerAPI<TEnv = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: StorageResolveContext,
+    context?: HotUpdaterContext<TEnv>,
   ) => Promise<AppUpdateInfo | null>;
-  getBundleById: (id: string) => Promise<Bundle | null>;
+  getBundleById: (
+    id: string,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<Bundle | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
+    context?: HotUpdaterContext<TEnv>,
   ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
-  insertBundle: (bundle: Bundle) => Promise<void>;
+  insertBundle: (
+    bundle: Bundle,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<void>;
   updateBundleById: (
     bundleId: string,
     bundle: Partial<Bundle>,
+    context?: HotUpdaterContext<TEnv>,
   ) => Promise<void>;
-  deleteBundleById: (bundleId: string) => Promise<void>;
-  getChannels: () => Promise<string[]>;
+  deleteBundleById: (
+    bundleId: string,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<void>;
+  getChannels: (context?: HotUpdaterContext<TEnv>) => Promise<string[]>;
 }
 
 export interface HandlerOptions {
@@ -56,11 +67,22 @@ export interface HandlerRoutes {
   bundles?: boolean;
 }
 
-type RouteHandler = (
+type RouteHandler<TEnv = unknown> = (
   params: Record<string, string>,
   request: Request,
-  api: HandlerAPI,
+  api: HandlerAPI<TEnv>,
+  context?: HotUpdaterContext<TEnv>,
 ) => Promise<Response>;
+
+const withRequestContext = <TEnv>(
+  request: Request,
+  context?: HotUpdaterContext<TEnv>,
+): HotUpdaterContext<TEnv> => {
+  return {
+    ...(context ?? {}),
+    request,
+  };
+};
 
 // Route handlers
 const handleVersion: RouteHandler = async () => {
@@ -83,6 +105,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
   _request,
   api,
+  context,
 ) => {
   const updateInfo = await api.getAppUpdateInfo(
     {
@@ -94,7 +117,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
       bundleId: params.bundleId,
       cohort: decodeMaybe(params.cohort),
     },
-    { request: _request },
+    withRequestContext(_request, context),
   );
 
   return new Response(JSON.stringify(updateInfo), {
@@ -107,6 +130,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
   params,
   _request,
   api,
+  context,
 ) => {
   const updateInfo = await api.getAppUpdateInfo(
     {
@@ -118,7 +142,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
       bundleId: params.bundleId,
       cohort: decodeMaybe(params.cohort),
     },
-    { request: _request },
+    withRequestContext(_request, context),
   );
 
   return new Response(JSON.stringify(updateInfo), {
@@ -127,8 +151,13 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
   });
 };
 
-const handleGetBundle: RouteHandler = async (params, _request, api) => {
-  const bundle = await api.getBundleById(params.id);
+const handleGetBundle: RouteHandler = async (
+  params,
+  _request,
+  api,
+  context,
+) => {
+  const bundle = await api.getBundleById(params.id, context);
 
   if (!bundle) {
     return new Response(JSON.stringify({ error: "Bundle not found" }), {
@@ -143,21 +172,29 @@ const handleGetBundle: RouteHandler = async (params, _request, api) => {
   });
 };
 
-const handleGetBundles: RouteHandler = async (_params, request, api) => {
+const handleGetBundles: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
   const url = new URL(request.url);
   const channel = url.searchParams.get("channel") ?? undefined;
   const platform = url.searchParams.get("platform") ?? undefined;
   const limit = Number(url.searchParams.get("limit")) || 50;
   const offset = Number(url.searchParams.get("offset")) || 0;
 
-  const result = await api.getBundles({
-    where: {
-      ...(channel && { channel }),
-      ...(platform && { platform: platform as Bundle["platform"] }),
+  const result = await api.getBundles(
+    {
+      where: {
+        ...(channel && { channel }),
+        ...(platform && { platform: platform as Bundle["platform"] }),
+      },
+      limit,
+      offset,
     },
-    limit,
-    offset,
-  });
+    context,
+  );
 
   return new Response(JSON.stringify(result.data), {
     status: 200,
@@ -165,12 +202,17 @@ const handleGetBundles: RouteHandler = async (_params, request, api) => {
   });
 };
 
-const handleCreateBundles: RouteHandler = async (_params, request, api) => {
+const handleCreateBundles: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
   const body = await request.json();
   const bundles = Array.isArray(body) ? body : [body];
 
   for (const bundle of bundles) {
-    await api.insertBundle(bundle as Bundle);
+    await api.insertBundle(bundle as Bundle, context);
   }
 
   return new Response(JSON.stringify({ success: true }), {
@@ -179,7 +221,12 @@ const handleCreateBundles: RouteHandler = async (_params, request, api) => {
   });
 };
 
-const handleUpdateBundle: RouteHandler = async (params, request, api) => {
+const handleUpdateBundle: RouteHandler = async (
+  params,
+  request,
+  api,
+  context,
+) => {
   const body = await request.json();
   const payload = Array.isArray(body) ? body[0] : body;
 
@@ -202,7 +249,7 @@ const handleUpdateBundle: RouteHandler = async (params, request, api) => {
   }
 
   const { id: _ignoredId, ...bundlePatch } = payload as Partial<Bundle>;
-  await api.updateBundleById(params.id, bundlePatch);
+  await api.updateBundleById(params.id, bundlePatch, context);
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
@@ -210,8 +257,13 @@ const handleUpdateBundle: RouteHandler = async (params, request, api) => {
   });
 };
 
-const handleDeleteBundle: RouteHandler = async (params, _request, api) => {
-  await api.deleteBundleById(params.id);
+const handleDeleteBundle: RouteHandler = async (
+  params,
+  _request,
+  api,
+  context,
+) => {
+  await api.deleteBundleById(params.id, context);
 
   return new Response(JSON.stringify({ success: true }), {
     status: 200,
@@ -219,8 +271,13 @@ const handleDeleteBundle: RouteHandler = async (params, _request, api) => {
   });
 };
 
-const handleGetChannels: RouteHandler = async (_params, _request, api) => {
-  const channels = await api.getChannels();
+const handleGetChannels: RouteHandler = async (
+  _params,
+  _request,
+  api,
+  context,
+) => {
+  const channels = await api.getChannels(context);
 
   return new Response(JSON.stringify({ channels }), {
     status: 200,
@@ -229,7 +286,7 @@ const handleGetChannels: RouteHandler = async (_params, _request, api) => {
 };
 
 // Route handlers map
-const routes: Record<string, RouteHandler> = {
+const routes: Record<string, RouteHandler<any>> = {
   version: handleVersion,
   fingerprintUpdateWithCohort: handleFingerprintUpdateWithCohort,
   appVersionUpdateWithCohort: handleAppVersionUpdateWithCohort,
@@ -246,10 +303,10 @@ const routes: Record<string, RouteHandler> = {
  * This handler is framework-agnostic and works with any framework
  * that supports Web Standard Request/Response (Hono, Elysia, etc.)
  */
-export function createHandler(
-  api: HandlerAPI,
+export function createHandler<TEnv = unknown>(
+  api: HandlerAPI<TEnv>,
   options: HandlerOptions = {},
-): (request: Request) => Promise<Response> {
+): (request: Request, context?: HotUpdaterContext<TEnv>) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
   const updateCheckEnabled = options.routes?.updateCheck ?? true;
   const bundlesEnabled = options.routes?.bundles ?? true;
@@ -295,7 +352,10 @@ export function createHandler(
     addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
   }
 
-  return async (request: Request): Promise<Response> => {
+  return async (
+    request: Request,
+    context?: HotUpdaterContext<TEnv>,
+  ): Promise<Response> => {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
@@ -317,7 +377,7 @@ export function createHandler(
       }
 
       // Get handler and execute
-      const handler = routes[match.data as string];
+      const handler = routes[match.data as string] as RouteHandler<TEnv>;
       if (!handler) {
         return new Response(JSON.stringify({ error: "Handler not found" }), {
           status: 500,
@@ -325,7 +385,7 @@ export function createHandler(
         });
       }
 
-      return await handler(match.params || {}, request, api);
+      return await handler(match.params || {}, request, api, context);
     } catch (error) {
       console.error("Hot Updater handler error:", error);
       return new Response(

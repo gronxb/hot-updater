@@ -1,4 +1,5 @@
 import { verifyJwtSignedUrl } from "@hot-updater/js";
+import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
   createHotUpdater,
   rewriteLegacyExactRequestToCanonical,
@@ -19,41 +20,35 @@ export type CloudflareWorkerEnv = {
 export const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const hotUpdaterCache = new Map<string, ReturnType<typeof createHotUpdater>>();
-
-const getHotUpdater = (env: CloudflareWorkerEnv, requestUrl: string) => {
-  const publicBaseUrl = new URL(requestUrl).origin;
-  const cached = hotUpdaterCache.get(publicBaseUrl);
-
-  if (cached) {
-    return cached;
+const resolveRequestOrigin = (
+  context: HotUpdaterContext<CloudflareWorkerEnv>,
+) => {
+  if (!context.request) {
+    throw new Error(
+      "cloudflareWorkerStorage requires a request to resolve publicBaseUrl.",
+    );
   }
 
-  const hotUpdater = createHotUpdater({
-    database: d1WorkerDatabase({
-      db: env.DB,
-    }),
-    storages: [
-      r2WorkerStorage({
-        jwtSecret: env.JWT_SECRET,
-        publicBaseUrl,
-      }),
-    ],
-    basePath: HOT_UPDATER_BASE_PATH,
-    routes: {
-      updateCheck: true,
-      bundles: false,
-    },
-  });
-
-  hotUpdaterCache.set(publicBaseUrl, hotUpdater);
-  return hotUpdater;
+  return new URL(context.request.url).origin;
 };
+
+const hotUpdater = createHotUpdater<CloudflareWorkerEnv>({
+  database: d1WorkerDatabase<CloudflareWorkerEnv>(),
+  storages: [
+    r2WorkerStorage<CloudflareWorkerEnv>({
+      publicBaseUrl: resolveRequestOrigin,
+    }),
+  ],
+  basePath: HOT_UPDATER_BASE_PATH,
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
 app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const hotUpdater = getHotUpdater(c.env, c.req.url);
   const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
     basePath: hotUpdater.basePath,
     request: c.req.raw,
@@ -63,14 +58,20 @@ app.get(HOT_UPDATER_BASE_PATH, async (c) => {
     return rewrittenRequest;
   }
 
-  return hotUpdater.handler(rewrittenRequest);
+  return hotUpdater.handler(rewrittenRequest, {
+    request: rewrittenRequest,
+    env: c.env,
+  });
 });
 
 app.on(
   HOT_UPDATER_METHODS,
   wildcardPattern(HOT_UPDATER_BASE_PATH),
   async (c) => {
-    return getHotUpdater(c.env, c.req.url).handler(c.req.raw);
+    return hotUpdater.handler(c.req.raw, {
+      request: c.req.raw,
+      env: c.env,
+    });
   },
 );
 

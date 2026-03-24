@@ -5,6 +5,7 @@ import {
 import type {
   Bundle,
   DatabaseBundleQueryWhere,
+  HotUpdaterContext,
   PaginationOptions,
 } from "@hot-updater/plugin-core";
 import {
@@ -28,8 +29,14 @@ type D1Like = {
   prepare: (sql: string) => D1PreparedStatement;
 };
 
-export interface CloudflareWorkerDatabaseConfig {
-  db: D1Like;
+export interface CloudflareWorkerDatabaseEnv {
+  DB: D1Like;
+}
+
+interface CloudflareWorkerDatabaseConfig<
+  TEnv extends CloudflareWorkerDatabaseEnv,
+> {
+  getDb: (context?: HotUpdaterContext<TEnv>) => D1Like;
 }
 
 type QueryConditions = DatabaseBundleQueryWhere;
@@ -180,8 +187,24 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   };
 }
 
-export const d1WorkerDatabase =
-  createDatabasePlugin<CloudflareWorkerDatabaseConfig>({
+const resolveDbFromContext = <TEnv extends CloudflareWorkerDatabaseEnv>(
+  context?: HotUpdaterContext<TEnv>,
+) => {
+  const db = context?.env?.DB;
+
+  if (!db) {
+    throw new Error(
+      "d1WorkerDatabase requires env.DB in the hot updater context.",
+    );
+  }
+
+  return db;
+};
+
+export const d1WorkerDatabase = <
+  TEnv extends CloudflareWorkerDatabaseEnv = CloudflareWorkerDatabaseEnv,
+>() =>
+  createDatabasePlugin<CloudflareWorkerDatabaseConfig<TEnv>, TEnv>({
     name: "d1WorkerDatabase",
     factory: (config) => {
       let bundles: Bundle[] = [];
@@ -189,8 +212,10 @@ export const d1WorkerDatabase =
       const queryAll = async <TRow>(
         sql: string,
         params: unknown[] = [],
+        context?: HotUpdaterContext<TEnv>,
       ): Promise<TRow[]> => {
-        const result = await config.db
+        const result = await config
+          .getDb(context)
           .prepare(sql)
           .bind(...params)
           .all<TRow>();
@@ -200,8 +225,10 @@ export const d1WorkerDatabase =
       const queryFirst = async <TRow>(
         sql: string,
         params: unknown[] = [],
+        context?: HotUpdaterContext<TEnv>,
       ): Promise<TRow | null> => {
-        const result = await config.db
+        const result = await config
+          .getDb(context)
           .prepare(sql)
           .bind(...params)
           .first<TRow>();
@@ -209,7 +236,7 @@ export const d1WorkerDatabase =
       };
 
       return {
-        async getBundleById(bundleId) {
+        async getBundleById(bundleId, context) {
           const found = bundles.find((bundle) => bundle.id === bundleId);
           if (found) {
             return found;
@@ -218,12 +245,13 @@ export const d1WorkerDatabase =
           const row = await queryFirst<SnakeCaseBundle>(
             "SELECT * FROM bundles WHERE id = ? LIMIT 1",
             [bundleId],
+            context,
           );
 
           return row ? transformRowToBundle(row) : null;
         },
 
-        async getBundles(options) {
+        async getBundles(options, context) {
           const { where, limit, offset, orderBy } = options;
           const { sql: whereClause, params } = buildWhereClause(where);
           const orderSql =
@@ -234,12 +262,14 @@ export const d1WorkerDatabase =
           const countRows = await queryAll<{ total: number }>(
             `SELECT COUNT(*) as total FROM bundles${whereClause}`,
             params,
+            context,
           );
           const total = countRows[0]?.total ?? 0;
 
           const rows = await queryAll<SnakeCaseBundle>(
             `SELECT * FROM bundles${whereClause} ${orderSql} LIMIT ? OFFSET ?`,
             [...params, limit, offset],
+            context,
           );
 
           bundles = rows.map(transformRowToBundle);
@@ -251,21 +281,25 @@ export const d1WorkerDatabase =
           };
         },
 
-        async getChannels() {
+        async getChannels(context) {
           const rows = await queryAll<{ channel: string }>(
             "SELECT channel FROM bundles GROUP BY channel",
+            [],
+            context,
           );
           return rows.map((row) => row.channel);
         },
 
-        async commitBundle({ changedSets }) {
+        async commitBundle({ changedSets }, context) {
           if (changedSets.length === 0) {
             return;
           }
 
+          const db = config.getDb(context);
+
           for (const operation of changedSets) {
             if (operation.operation === "delete") {
-              await config.db
+              await db
                 .prepare("DELETE FROM bundles WHERE id = ?")
                 .bind(operation.data.id)
                 .run();
@@ -276,7 +310,7 @@ export const d1WorkerDatabase =
             }
 
             const bundle = operation.data;
-            await config.db
+            await db
               .prepare(`
                 INSERT OR REPLACE INTO bundles (
                   id,
@@ -319,4 +353,6 @@ export const d1WorkerDatabase =
         },
       };
     },
+  })({
+    getDb: resolveDbFromContext,
   });

@@ -1,6 +1,6 @@
 import type {
+  HotUpdaterContext,
   StoragePlugin,
-  StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
@@ -21,36 +21,35 @@ import {
 export type { HotUpdaterClient, Migrator } from "./ormCore";
 export { HotUpdaterDB } from "./ormCore";
 
-type OrmCore = ReturnType<typeof createOrmDatabaseCore>;
-type PluginCore = ReturnType<typeof createPluginDatabaseCore>;
-type HotUpdaterCoreInternal = OrmCore | PluginCore;
-
-export type HotUpdaterAPI = DatabaseAPI & {
+export type HotUpdaterAPI<TEnv = unknown> = DatabaseAPI<TEnv> & {
   basePath: string;
-  handler: (request: Request) => Promise<Response>;
+  handler: (
+    request: Request,
+    context?: HotUpdaterContext<TEnv>,
+  ) => Promise<Response>;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
 };
 
-export interface CreateHotUpdaterOptions {
-  database: DatabaseAdapter;
+export interface CreateHotUpdaterOptions<TEnv = unknown> {
+  database: DatabaseAdapter<TEnv>;
   /**
    * Storage plugins for handling file uploads and downloads.
    */
-  storages?: (StoragePlugin | StoragePluginFactory)[];
+  storages?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
-  storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
+  storagePlugins?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
   basePath?: string;
   cwd?: string;
   routes?: HandlerRoutes;
 }
 
-export function createHotUpdater(
-  options: CreateHotUpdaterOptions,
-): HotUpdaterAPI {
+export function createHotUpdater<TEnv = unknown>(
+  options: CreateHotUpdaterOptions<TEnv>,
+): HotUpdaterAPI<TEnv> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
 
   // Initialize storage plugins - call factories if they are functions
@@ -62,7 +61,7 @@ export function createHotUpdater(
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
-    context?: StorageResolveContext,
+    context?: HotUpdaterContext<TEnv>,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -86,24 +85,23 @@ export function createHotUpdater(
 
   const resolveFileUrl = async (
     storageUri: string | null,
-    context?: StorageResolveContext,
+    context?: HotUpdaterContext<TEnv>,
   ) => {
     return resolveStoragePluginUrl(storageUri, context);
   };
 
-  let core: HotUpdaterCoreInternal;
-
   const database = options.database;
 
-  if (isDatabasePluginFactory(database) || isDatabasePlugin(database)) {
-    const plugin = isDatabasePluginFactory(database) ? database() : database;
-    core = createPluginDatabaseCore(plugin, resolveFileUrl);
-  } else {
-    core = createOrmDatabaseCore({
-      database,
-      resolveFileUrl,
-    });
-  }
+  const core =
+    isDatabasePluginFactory(database) || isDatabasePlugin(database)
+      ? createPluginDatabaseCore<TEnv>(
+          isDatabasePluginFactory(database) ? database() : database,
+          resolveFileUrl,
+        )
+      : createOrmDatabaseCore<TEnv>({
+          database,
+          resolveFileUrl,
+        });
 
   const api = {
     ...core.api,
