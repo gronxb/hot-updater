@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   findOpenPort,
   hasCommand,
+  hasDockerCompose,
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
@@ -48,7 +49,7 @@ const JWT_SECRET = "super-secret-jwt-token-with-at-least-32-chars";
 const JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 365;
 const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
-const hasDocker = hasCommand("docker", ["compose", "version", "--short"]);
+const hasDocker = hasCommand("git", ["--version"]) && hasDockerCompose();
 const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {

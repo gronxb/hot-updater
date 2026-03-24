@@ -34,7 +34,6 @@
   },
   "files": [
     "dist",
-    "src/createSupabaseEdgeFunctionApp.ts",
     "sql",
     "supabase",
     "!supabase/.temp",

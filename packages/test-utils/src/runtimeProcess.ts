@@ -56,6 +56,16 @@ export const hasCommand = (command: string, args: string[]) => {
   return result.status === 0;
 };
 
+export const hasDockerDaemon = () => {
+  return hasCommand("docker", ["version", "--format", "{{.Server.Version}}"]);
+};
+
+export const hasDockerCompose = () => {
+  return (
+    hasCommand("docker", ["compose", "version", "--short"]) && hasDockerDaemon()
+  );
+};
+
 export const findOpenPort = async (): Promise<number> => {
   return await new Promise((resolve, reject) => {
     const server = net.createServer();

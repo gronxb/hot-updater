@@ -19,18 +19,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   findOpenPort,
   formatRuntimeLogs,
-  hasCommand,
+  hasDockerDaemon,
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
-import {
-  NO_STORE_CACHE_CONTROL,
-  SHARED_EDGE_CACHE_CONTROL,
-} from "./cacheControl";
-import { HOT_UPDATER_BASE_PATH } from "./runtime";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,11 +42,11 @@ const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
-const hasDocker = hasCommand("docker", [
-  "version",
-  "--format",
-  "{{.Server.Version}}",
-]);
+const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const NO_STORE_CACHE_CONTROL = "no-store";
+const SHARED_EDGE_CACHE_CONTROL =
+  "public, max-age=0, s-maxage=31536000, must-revalidate";
+const hasDocker = hasDockerDaemon();
 const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {

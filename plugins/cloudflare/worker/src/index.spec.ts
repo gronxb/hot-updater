@@ -2,8 +2,7 @@ import { env } from "cloudflare:test";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
-import worker from "./index";
-import { HOT_UPDATER_BASE_PATH } from "./runtimeApp";
+import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
   export interface ProvidedContext {

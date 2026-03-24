@@ -24,7 +24,6 @@ import {
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
-import { HOT_UPDATER_BASE_PATH } from "./runtime";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +32,7 @@ const BUILD_FILTER = "@hot-updater/firebase...";
 const REGION = "us-central1";
 const FUNCTION_NAME = "handler";
 const CDN_URL = "https://cdn.example.com";
+const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const hasFirebaseCli = hasCommand("pnpm", [
   "--filter",
   "@hot-updater/firebase",

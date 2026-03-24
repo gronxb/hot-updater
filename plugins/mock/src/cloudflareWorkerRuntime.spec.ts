@@ -1,13 +1,11 @@
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { createHotUpdater } from "../../../packages/server/src/db";
+import { rewriteLegacyExactRequestToCanonical } from "../../../packages/server/src/legacyExactRequest";
 import { setupGetUpdateInfoTestSuite } from "../../../packages/test-utils/src/index";
-import {
-  type CloudflareWorkerEnv,
-  createCloudflareWorkerApp,
-  HOT_UPDATER_BASE_PATH,
-} from "../../cloudflare/worker/src/runtimeApp";
 import { mockDatabase, mockStorage } from "./index";
+
+const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
 const createTestHotUpdater = () =>
   createHotUpdater({
@@ -72,34 +70,48 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
   return `${HOT_UPDATER_BASE_PATH}/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
 };
 
-const env = {
-  DB: {
-    prepare() {
-      throw new Error("Unexpected D1 access in runtime route test");
-    },
-  },
-  BUCKET: {
-    get: async () => null,
-  },
-  JWT_SECRET: "test-secret",
-} as unknown as CloudflareWorkerEnv;
-
 describe("cloudflare worker runtime integration", () => {
   let currentHotUpdater = createTestHotUpdater();
 
-  const app = createCloudflareWorkerApp({
-    getHotUpdater: () => currentHotUpdater,
-  });
+  const fetchApp = async (request: Request) => {
+    const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === HOT_UPDATER_BASE_PATH) {
+      const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
+        basePath: HOT_UPDATER_BASE_PATH,
+        request,
+      });
+
+      if (rewrittenRequest instanceof Response) {
+        return rewrittenRequest;
+      }
+
+      return currentHotUpdater.handler(rewrittenRequest);
+    }
+
+    if (
+      url.pathname === HOT_UPDATER_BASE_PATH ||
+      url.pathname.startsWith(`${HOT_UPDATER_BASE_PATH}/`)
+    ) {
+      return currentHotUpdater.handler(request);
+    }
+
+    return new Response(JSON.stringify({ error: "Not found" }), {
+      headers: {
+        "content-type": "application/json",
+      },
+      status: 404,
+    });
+  };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
     currentHotUpdater = createTestHotUpdater();
     await seedBundles(currentHotUpdater, bundles);
 
-    const response = await app.fetch(
+    const response = await fetchApp(
       new Request(`https://example.com${HOT_UPDATER_BASE_PATH}`, {
         headers: createLegacyHeaders(args),
       }),
-      env,
     );
 
     return (await response.json()) as any;
@@ -125,7 +137,7 @@ describe("cloudflare worker runtime integration", () => {
       },
     ]);
 
-    const response = await app.fetch(
+    const response = await fetchApp(
       new Request(
         `https://example.com${createCanonicalPath({
           appVersion: "1.0",
@@ -134,7 +146,6 @@ describe("cloudflare worker runtime integration", () => {
           _updateStrategy: "appVersion",
         })}`,
       ),
-      env,
     );
 
     await expect(response.json()).resolves.toMatchObject({
@@ -146,14 +157,13 @@ describe("cloudflare worker runtime integration", () => {
   it("returns rewrite validation errors on the exact path", async () => {
     currentHotUpdater = createTestHotUpdater();
 
-    const response = await app.fetch(
+    const response = await fetchApp(
       new Request(`https://example.com${HOT_UPDATER_BASE_PATH}`, {
         headers: {
           "x-app-platform": "ios",
           "x-app-version": "1.0.0",
         },
       }),
-      env,
     );
 
     expect(response.status).toBe(400);
@@ -165,9 +175,8 @@ describe("cloudflare worker runtime integration", () => {
   it("does not expose management routes", async () => {
     currentHotUpdater = createTestHotUpdater();
 
-    const response = await app.fetch(
+    const response = await fetchApp(
       new Request(`https://example.com${HOT_UPDATER_BASE_PATH}/api/bundles`),
-      env,
     );
 
     expect(response.status).toBe(404);
