@@ -1,6 +1,8 @@
 appId: ${APP_ID}
 ---
-- extendedWaitUntil:
-    visible: Runtime Snapshot
+- scrollUntilVisible:
+    element:
+      text: Runtime Snapshot
+    direction: UP
     timeout: 120000
 - assertVisible: ${EXPECTED_MARKER}

@@ -66,6 +66,7 @@ export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
+  private cachedCohort: string | undefined;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
@@ -145,6 +146,14 @@ class HotUpdaterSessionState {
 
   cacheBaseURL(baseURL: string | null) {
     this.setActiveBundleSnapshotValue("baseURL", baseURL);
+  }
+
+  getCachedCohort(): string | undefined {
+    return this.cachedCohort;
+  }
+
+  cacheCohort(cohort: string) {
+    this.cachedCohort = cohort;
   }
 
   private clearActiveBundleSnapshotCache() {
@@ -690,6 +699,7 @@ export const resetChannel = async (): Promise<boolean> => {
 export const setCohort = (cohort: string): void => {
   const normalized = normalizeAndValidateCohort(cohort);
   HotUpdaterNative.setCohort(normalized);
+  sessionState.cacheCohort(normalized);
 };
 
 /**
@@ -698,5 +708,12 @@ export const setCohort = (cohort: string): void => {
  * persists it before returning.
  */
 export const getCohort = (): string => {
-  return normalizeAndValidateCohort(HotUpdaterNative.getCohort());
+  const cachedCohort = sessionState.getCachedCohort();
+  if (cachedCohort !== undefined) {
+    return cachedCohort;
+  }
+
+  const cohort = normalizeAndValidateCohort(HotUpdaterNative.getCohort());
+  sessionState.cacheCohort(cohort);
+  return cohort;
 };
