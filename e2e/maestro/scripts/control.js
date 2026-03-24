@@ -1,5 +1,7 @@
+// Maestro runScript loads JavaScript files directly, so this helper stays JS.
+
 function request(method, pathname, body) {
-  const url = CONTROL_URL + pathname;
+  const url = `${CONTROL_URL}${pathname}`;
   const headers = {
     "Content-Type": "application/json",
   };
@@ -18,7 +20,7 @@ function request(method, pathname, body) {
 function expectOk(response, context) {
   if (!response.ok) {
     throw new Error(
-      context + " failed: " + response.status + " " + response.body,
+      `${context} failed: ${response.status} ${response.body}`,
     );
   }
 
@@ -40,7 +42,7 @@ function startJob(pathname, body) {
   }
 
   for (let attempt = 0; attempt < 720; attempt += 1) {
-    const pollResponse = request("GET", "/e2e/jobs/" + jobId);
+    const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
     if (job.status === "succeeded") {
@@ -54,7 +56,7 @@ function startJob(pathname, body) {
     pause(1000);
   }
 
-  throw new Error("timed out waiting for job " + jobId);
+  throw new Error(`timed out waiting for job ${jobId}`);
 }
 
 function maybeNumber(value) {
@@ -64,7 +66,7 @@ function maybeNumber(value) {
 
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
-    throw new Error("Invalid numeric value: " + value);
+    throw new Error(`Invalid numeric value: ${value}`);
   }
 
   return parsed;
@@ -83,7 +85,7 @@ function maybeBoolean(value) {
     return false;
   }
 
-  throw new Error("Invalid boolean value: " + value);
+  throw new Error(`Invalid boolean value: ${value}`);
 }
 
 function parseCsv(value) {
@@ -142,11 +144,14 @@ switch (ACTION) {
     });
 
     assignIfPresent(outputKey, result.bundleId);
-    assignIfPresent(outputKey + "Channel", result.channel);
-    assignIfPresent(outputKey + "Enabled", result.enabled);
-    assignIfPresent(outputKey + "Marker", result.marker);
-    assignIfPresent(outputKey + "RolloutCohortCount", result.rolloutCohortCount);
-    assignIfPresent(outputKey + "ShouldForceUpdate", result.shouldForceUpdate);
+    assignIfPresent(`${outputKey}Channel`, result.channel);
+    assignIfPresent(`${outputKey}Enabled`, result.enabled);
+    assignIfPresent(`${outputKey}Marker`, result.marker);
+    assignIfPresent(
+      `${outputKey}RolloutCohortCount`,
+      result.rolloutCohortCount,
+    );
+    assignIfPresent(`${outputKey}ShouldForceUpdate`, result.shouldForceUpdate);
     break;
   }
 
@@ -160,15 +165,15 @@ switch (ACTION) {
     });
 
     const prefix = OUTPUT_PREFIX || "";
-    assignIfPresent(prefix && prefix + "BundleId", result.bundleId);
-    assignIfPresent(prefix && prefix + "Channel", result.channel);
-    assignIfPresent(prefix && prefix + "Enabled", result.enabled);
+    assignIfPresent(prefix && `${prefix}BundleId`, result.bundleId);
+    assignIfPresent(prefix && `${prefix}Channel`, result.channel);
+    assignIfPresent(prefix && `${prefix}Enabled`, result.enabled);
     assignIfPresent(
-      prefix && prefix + "RolloutCohortCount",
+      prefix && `${prefix}RolloutCohortCount`,
       result.rolloutCohortCount,
     );
     assignIfPresent(
-      prefix && prefix + "ShouldForceUpdate",
+      prefix && `${prefix}ShouldForceUpdate`,
       result.shouldForceUpdate,
     );
     break;
@@ -180,9 +185,9 @@ switch (ACTION) {
       bundleId: BUNDLE_ID,
     });
     const result = expectOk(response, "compute rollout sample");
-    output[prefix + "IncludedCohort"] = result.includedCohort;
-    output[prefix + "ExcludedCohort"] = result.excludedCohort;
-    output[prefix + "RolloutCohortCount"] = result.rolloutCohortCount;
+    output[`${prefix}IncludedCohort`] = result.includedCohort;
+    output[`${prefix}ExcludedCohort`] = result.excludedCohort;
+    output[`${prefix}RolloutCohortCount`] = result.rolloutCohortCount;
     break;
   }
 
@@ -256,6 +261,6 @@ switch (ACTION) {
   }
 
   default: {
-    throw new Error("Unsupported ACTION: " + ACTION);
+    throw new Error(`Unsupported ACTION: ${ACTION}`);
   }
 }
