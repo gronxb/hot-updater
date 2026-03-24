@@ -54,10 +54,10 @@ onFlowComplete:
       FIELD_LABEL: Runtime Channel Input
       FIELD_VALUE: ${RUNTIME_CHANNEL}
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Runtime Channel Update
+      BUTTON_ID: action-install-runtime-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -70,7 +70,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: runtime-channel:${RUNTIME_CHANNEL} -> installed ${output.runtimeBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -83,20 +87,20 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=beta default=production switched=true"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- scrollUntilVisible:
-    element: Reset Runtime Channel
-    direction: DOWN
-    timeout: 20000
-- tapOn: Reset Runtime Channel
+      BUTTON_ID: action-reset-runtime-channel
 - runFlow:
     file: subflows/assert-channel-action-result.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_CHANNEL_ACTION_RESULT: "Channel Action Result: reset -> true"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:

@@ -5,6 +5,9 @@ appId: ${APP_ID}
     direction: DOWN
     timeout: 20000
     centerElement: true
+- extendedWaitUntil:
+    visible: ${EXPECTED_TEXT}
+    timeout: 10000
 - copyTextFrom:
     id: ${TARGET_ID}
 - assertTrue:

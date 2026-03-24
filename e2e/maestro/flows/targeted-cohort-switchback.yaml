@@ -74,22 +74,27 @@ onFlowComplete:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
+      BUTTON_ID: action-apply-cohort-input
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      BUTTON_ID: action-refresh-runtime-snapshot
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -102,7 +107,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.numericBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -117,22 +126,27 @@ onFlowComplete:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Set Cohort qa
+      BUTTON_ID: action-set-cohort-qa
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> qa"
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      BUTTON_ID: action-refresh-runtime-snapshot
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=qa"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -145,7 +159,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.qaBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -163,22 +181,27 @@ onFlowComplete:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
+      BUTTON_ID: action-apply-cohort-input
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      BUTTON_ID: action-refresh-runtime-snapshot
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -191,7 +214,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.numericBundleId} (ROLLBACK)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:

@@ -129,9 +129,11 @@ const InfoRow = ({
 
 const ActionButton = ({
   onPress,
+  testID,
   title,
 }: {
   onPress: () => void | Promise<void>;
+  testID?: string;
   title: string;
 }) => (
   <Pressable
@@ -142,7 +144,7 @@ const ActionButton = ({
       styles.actionButton,
       pressed ? styles.actionButtonPressed : null,
     ]}
-    testID={title}
+    testID={testID ?? title}
   >
     <Text style={styles.actionButtonText}>{title}</Text>
   </Pressable>
@@ -460,48 +462,63 @@ function App(): React.JSX.Element {
             <ActionButton
               title="Refresh Runtime Snapshot"
               onPress={refreshRuntimeSnapshot}
+              testID="action-refresh-runtime-snapshot"
             />
           </View>
           <View style={styles.buttonBlock}>
-            <ActionButton title="Reload App" onPress={reloadApp} />
+            <ActionButton
+              title="Reload App"
+              onPress={reloadApp}
+              testID="action-reload-app"
+            />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Clear Crash History"
               onPress={clearCrashHistory}
+              testID="action-clear-crash-history"
             />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Install Current Channel Update"
               onPress={installCurrentChannelUpdate}
+              testID="action-install-current-channel-update"
             />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Install Runtime Channel Update"
               onPress={installRuntimeChannelUpdate}
+              testID="action-install-runtime-channel-update"
             />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Reset Runtime Channel"
               onPress={resetRuntimeChannel}
+              testID="action-reset-runtime-channel"
             />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Apply Cohort Input"
               onPress={applyCohortInput}
+              testID="action-apply-cohort-input"
             />
           </View>
           <View style={styles.buttonBlock}>
-            <ActionButton title="Set Cohort qa" onPress={setQaCohort} />
+            <ActionButton
+              title="Set Cohort qa"
+              onPress={setQaCohort}
+              testID="action-set-cohort-qa"
+            />
           </View>
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Restore Initial Cohort"
               onPress={restoreInitialCohort}
+              testID="action-restore-initial-cohort"
             />
           </View>
           <Text

@@ -60,17 +60,22 @@ onFlowComplete:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
+      BUTTON_ID: action-apply-cohort-input
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.rolloutIncludedCohort}"
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.rolloutIncludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -83,7 +88,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.rolloutBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -106,23 +115,32 @@ onFlowComplete:
     file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
+      BUTTON_ID: action-apply-cohort-input
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.rolloutExcludedCohort}"
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.rolloutExcludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runFlow:
     file: subflows/assert-update-action-result.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed 00000000-0000-0000-0000-000000000000 (ROLLBACK)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
