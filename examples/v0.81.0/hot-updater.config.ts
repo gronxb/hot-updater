@@ -1,10 +1,29 @@
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { standaloneRepository } from "@hot-updater/standalone";
+import { standaloneRepository, standaloneStorage } from "@hot-updater/standalone";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
+
+const serverBaseUrl = (
+  process.env.HOT_UPDATER_SERVER_BASE_URL ?? "http://localhost:3007"
+).replace(/\/$/, "");
+
+const storage =
+  process.env.HOT_UPDATER_STORAGE_MODE === "standalone"
+    ? standaloneStorage({
+        baseUrl: serverBaseUrl,
+      })
+    : s3Storage({
+        region: "auto",
+        endpoint: process.env.R2_ENDPOINT,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+        },
+        bucketName: process.env.R2_BUCKET_NAME!,
+      });
 
 export default defineConfig({
   nativeBuild: {
@@ -37,17 +56,9 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true }),
-  storage: s3Storage({
-    region: "auto",
-    endpoint: process.env.R2_ENDPOINT,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    },
-    bucketName: process.env.R2_BUCKET_NAME!,
-  }),
+  storage,
   database: standaloneRepository({
-    baseUrl: "http://localhost:3007/hot-updater",
+    baseUrl: `${serverBaseUrl}/hot-updater`,
   }),
   fingerprint: {
     debug: true,

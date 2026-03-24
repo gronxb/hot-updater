@@ -1,0 +1,80 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: force-update-auto-reload
+  FORCE_CHANNEL: production
+  FORCE_MARKER: force-update-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${FORCE_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      FORCE_UPDATE: "true"
+      MARKER: ${FORCE_MARKER}
+      MESSAGE: Maestro force update bundle
+      MODE: reset
+      OUTPUT_KEY: forceBundleId
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- launchApp
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.forceBundleId}
+      EXPECTED_MARKER: ${FORCE_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- scrollUntilVisible:
+    element: ${output.emptyCrashHistoryText}
+    direction: DOWN
+    timeout: 20000
+- assertVisible: ${output.emptyCrashHistoryText}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: force-update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.forceBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: PASSED

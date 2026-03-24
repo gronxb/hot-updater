@@ -1,0 +1,12 @@
+appId: ${APP_ID}
+---
+- scrollUntilVisible:
+    element:
+      id: current-channel-summary
+    direction: DOWN
+    timeout: 20000
+- copyTextFrom:
+    id: current-channel-summary
+- assertTrue:
+    condition: ${maestro.copiedText.includes(EXPECTED_CHANNEL_SUMMARY)}
+    label: Current channel summary matches expected value

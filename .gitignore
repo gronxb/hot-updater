@@ -94,7 +94,8 @@ generated/
 .wrangler/
 
 .hot-updater/
+e2e/.runtime/
+e2e/results/
 
 # Claude Code settings
 .claude
-

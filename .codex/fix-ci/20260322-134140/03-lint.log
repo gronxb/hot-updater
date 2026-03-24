@@ -1,9 +1,0 @@
-cwd: /Users/gronxb/Desktop/hot-updater3
-step: lint
-command: pnpm -w lint
-
-
-> @hot-updater/root@ lint /Users/gronxb/Desktop/hot-updater3
-> biome check packages/** plugins/** docs
-
-Checked 443 files in 6s. No fixes applied.

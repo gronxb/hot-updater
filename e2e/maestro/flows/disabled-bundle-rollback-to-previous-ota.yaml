@@ -1,0 +1,140 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: disabled-bundle-rollback-to-previous-ota
+  ROLLBACK_CHANNEL: production
+  PREVIOUS_MARKER: previous-ota-maestro
+  CURRENT_MARKER: disabled-current-ota-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${ROLLBACK_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PREVIOUS_MARKER}
+      MESSAGE: Maestro previous OTA bundle
+      MODE: reset
+      OUTPUT_KEY: previousBundleId
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.previousBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- launchApp
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.previousBundleId}
+      EXPECTED_MARKER: ${PREVIOUS_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.previousBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${ROLLBACK_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${CURRENT_MARKER}
+      MESSAGE: Maestro disabled current OTA bundle
+      MODE: reset
+      OUTPUT_KEY: currentBundleId
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- launchApp
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.currentBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- launchApp
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.currentBundleId}
+      EXPECTED_MARKER: ${CURRENT_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.currentBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.currentBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- launchApp
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.previousBundleId}
+      EXPECTED_MARKER: ${PREVIOUS_MARKER}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: rollback-to-previous
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.previousBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: ROLLBACK_TO_PREVIOUS_OTA

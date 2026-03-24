@@ -29,6 +29,9 @@ importers:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.13.0
         version: 0.13.0(@cloudflare/workers-types@4.20260313.1)(@vitest/runner@4.1.0)(@vitest/snapshot@4.1.0)(vitest@4.1.0(@opentelemetry/api@1.9.0)(@types/node@25.5.0)(jsdom@29.0.0(@noble/hashes@1.8.0))(msw@2.12.10(@types/node@25.5.0)(typescript@5.8.3))(vite@8.0.0(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1)))
+      '@hono/node-server':
+        specifier: ^1.19.5
+        version: 1.19.11(hono@4.12.8)
       '@nx/js':
         specifier: ^21.0.1
         version: 21.0.1(@babel/traverse@7.29.0)(@swc-node/register@1.10.9(@swc/core@1.15.3(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.8.3))(@swc/core@1.15.3(@swc/helpers@0.5.17))(nx@21.0.1(@swc-node/register@1.10.9(@swc/core@1.15.3(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.8.3))(@swc/core@1.15.3(@swc/helpers@0.5.17)))
@@ -38,6 +41,9 @@ importers:
       execa:
         specifier: 'catalog:'
         version: 9.5.2
+      hono:
+        specifier: ^4.9.12
+        version: 4.12.8
       nx:
         specifier: ^21.0.1
         version: 21.0.1(@swc-node/register@1.10.9(@swc/core@1.15.3(@swc/helpers@0.5.17))(@swc/types@0.1.25)(typescript@5.8.3))(@swc/core@1.15.3(@swc/helpers@0.5.17))
@@ -303,6 +309,43 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
+
+  examples-server/hono-e2e-local:
+    dependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.2.17
+        version: 0.2.17
+      '@hono/node-server':
+        specifier: ^1.19.5
+        version: 1.19.11(hono@4.12.8)
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      hono:
+        specifier: ^4.9.12
+        version: 4.12.8
+      kysely:
+        specifier: 0.28.9
+        version: 0.28.9
+      kysely-pglite-dialect:
+        specifier: ^1.2.0
+        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.17
+        version: 20.19.11
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
+      tsx:
+        specifier: ^4.7.1
+        version: 4.21.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   examples-server/hono-kysely-mysql:
     dependencies:
@@ -25912,7 +25955,7 @@ snapshots:
     dependencies:
       chalk: 4.1.2
       debug: 4.4.3
-      dotenv: 16.4.5
+      dotenv: 16.4.7
       dotenv-expand: 11.0.6
       getenv: 1.0.0
     transitivePeerDependencies:
