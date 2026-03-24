@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -16,8 +17,9 @@ describe("Key Generation", () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = path.join(__dirname, `.test-keys-${Date.now()}`);
-    await fs.mkdir(testDir, { recursive: true });
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-key-generation-"),
+    );
   });
 
   afterEach(async () => {

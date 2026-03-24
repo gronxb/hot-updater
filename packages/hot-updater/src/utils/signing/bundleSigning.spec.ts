@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { signBundle, verifySignature } from "./bundleSigning";
@@ -11,8 +12,9 @@ describe("Bundle Signing", () => {
   let publicKeyPEM: string;
 
   beforeAll(async () => {
-    testDir = path.join(__dirname, `.test-keys-${Date.now()}`);
-    await fs.mkdir(testDir, { recursive: true });
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-bundle-signing-"),
+    );
 
     // Generate test key pair (2048 for faster tests)
     const keyPair = await generateKeyPair(2048);
