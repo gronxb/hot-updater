@@ -20,19 +20,20 @@ interface CloudFrontPrivateKeyFromSsm {
   ssmRegion: string;
 }
 
-export type PublicBaseUrlResolver = (
-  context: StorageResolveContext,
+export type PublicBaseUrlResolver<TContext = unknown> = (
+  context?: StorageResolveContext<TContext>,
 ) => string | Promise<string>;
 
 export type CloudFrontSignedUrlConfig =
   | CloudFrontPrivateKeyFromGetter
   | CloudFrontPrivateKeyFromSsm;
 
-export type WithCloudFrontSignedUrlOptions = CloudFrontSignedUrlConfig & {
-  keyPairId: string;
-  publicBaseUrl: string | PublicBaseUrlResolver;
-  expiresSeconds?: number;
-};
+export type WithCloudFrontSignedUrlOptions<TContext = unknown> =
+  CloudFrontSignedUrlConfig & {
+    keyPairId: string;
+    publicBaseUrl: string | PublicBaseUrlResolver<TContext>;
+    expiresSeconds?: number;
+  };
 
 const privateKeyCache = new Map<string, Promise<string>>();
 
@@ -110,9 +111,9 @@ const resolvePrivateKey = (
   return privateKeyPromise;
 };
 
-const resolvePublicBaseUrl = async (
-  config: WithCloudFrontSignedUrlOptions,
-  context: StorageResolveContext,
+const resolvePublicBaseUrl = async <TContext>(
+  config: WithCloudFrontSignedUrlOptions<TContext>,
+  context?: StorageResolveContext<TContext>,
 ) => {
   const publicBaseUrl =
     typeof config.publicBaseUrl === "function"
@@ -126,11 +127,11 @@ const resolvePublicBaseUrl = async (
   return publicBaseUrl;
 };
 
-export const withCloudFrontSignedUrl = (
-  storageFactory: () => StoragePlugin,
-  config: WithCloudFrontSignedUrlOptions,
+export const withCloudFrontSignedUrl = <TContext = unknown>(
+  storageFactory: () => StoragePlugin<TContext>,
+  config: WithCloudFrontSignedUrlOptions<TContext>,
 ) => {
-  return (): StoragePlugin => {
+  return (): StoragePlugin<TContext> => {
     const baseStorage = storageFactory();
 
     return {
@@ -145,7 +146,7 @@ export const withCloudFrontSignedUrl = (
 
         const [privateKey, publicBaseUrl] = await Promise.all([
           resolvePrivateKey(config),
-          resolvePublicBaseUrl(config, context ?? {}),
+          resolvePublicBaseUrl(config, context),
         ]);
         const url = new URL(publicBaseUrl);
         url.pathname = storageUrl.pathname;

@@ -7,6 +7,7 @@ import type {
   DatabaseBundleQueryWhere,
   HotUpdaterContext,
   PaginationOptions,
+  RequestEnvContext,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -34,9 +35,9 @@ export interface CloudflareWorkerDatabaseEnv {
 }
 
 interface CloudflareWorkerDatabaseConfig<
-  TEnv extends CloudflareWorkerDatabaseEnv,
+  TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 > {
-  getDb: (context?: HotUpdaterContext<TEnv>) => D1Like;
+  getDb: (context?: HotUpdaterContext<TContext>) => D1Like;
 }
 
 type QueryConditions = DatabaseBundleQueryWhere;
@@ -187,8 +188,8 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
   };
 }
 
-const resolveDbFromContext = <TEnv extends CloudflareWorkerDatabaseEnv>(
-  context?: HotUpdaterContext<TEnv>,
+const resolveDbFromContext = (
+  context?: RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 ) => {
   const db = context?.env?.DB;
 
@@ -202,9 +203,10 @@ const resolveDbFromContext = <TEnv extends CloudflareWorkerDatabaseEnv>(
 };
 
 export const d1WorkerDatabase = <
-  TEnv extends CloudflareWorkerDatabaseEnv = CloudflareWorkerDatabaseEnv,
+  TContext extends
+    RequestEnvContext<CloudflareWorkerDatabaseEnv> = RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 >() =>
-  createDatabasePlugin<CloudflareWorkerDatabaseConfig<TEnv>, TEnv>({
+  createDatabasePlugin<CloudflareWorkerDatabaseConfig<TContext>, TContext>({
     name: "d1WorkerDatabase",
     factory: (config) => {
       let bundles: Bundle[] = [];
@@ -212,7 +214,7 @@ export const d1WorkerDatabase = <
       const queryAll = async <TRow>(
         sql: string,
         params: unknown[] = [],
-        context?: HotUpdaterContext<TEnv>,
+        context?: HotUpdaterContext<TContext>,
       ): Promise<TRow[]> => {
         const result = await config
           .getDb(context)
@@ -225,7 +227,7 @@ export const d1WorkerDatabase = <
       const queryFirst = async <TRow>(
         sql: string,
         params: unknown[] = [],
-        context?: HotUpdaterContext<TEnv>,
+        context?: HotUpdaterContext<TContext>,
       ): Promise<TRow | null> => {
         const result = await config
           .getDb(context)

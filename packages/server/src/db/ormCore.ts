@@ -60,17 +60,17 @@ export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
 
 export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 
-export function createOrmDatabaseCore<TEnv = unknown>({
+export function createOrmDatabaseCore<TContext = unknown>({
   database,
   resolveFileUrl,
 }: {
   database: FumaDBAdapter;
   resolveFileUrl: (
     storageUri: string | null,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>;
 }): {
-  api: DatabaseAPI<TEnv>;
+  api: DatabaseAPI<TContext>;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
@@ -174,7 +174,7 @@ export function createOrmDatabaseCore<TEnv = unknown>({
     return conditions.length > 0 ? b.and(...conditions) : true;
   };
 
-  const api: DatabaseAPI<TEnv> = {
+  const api: DatabaseAPI<TContext> = {
     async getBundleById(id: string): Promise<Bundle | null> {
       const orm = await ensureORM();
       const result = await orm.findFirst("bundles", {
@@ -485,7 +485,7 @@ export function createOrmDatabaseCore<TEnv = unknown>({
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) return null;

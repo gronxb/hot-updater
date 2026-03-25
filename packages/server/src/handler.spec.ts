@@ -6,7 +6,11 @@ type TestEnv = {
   tenantId: string;
 };
 
-const createApi = (): HandlerAPI<TestEnv> => ({
+type TestContext = {
+  env: TestEnv;
+};
+
+const createApi = (): HandlerAPI<TestContext> => ({
   getAppUpdateInfo: vi.fn().mockResolvedValue({
     fileHash: null,
     fileUrl: null,

@@ -18,27 +18,27 @@ import {
   wildcardPattern,
 } from "./route";
 
-export type HotUpdaterAPI<TEnv = unknown> = DatabaseAPI<TEnv> & {
+export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   basePath: string;
   handler: (
     request: Request,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<Response>;
   adapterName: string;
 };
 
-export interface CreateHotUpdaterOptions<TEnv = unknown> {
-  database: DatabaseAdapter<TEnv>;
-  storages?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
-  storagePlugins?: (StoragePlugin<TEnv> | StoragePluginFactory<TEnv>)[];
+export interface CreateHotUpdaterOptions<TContext = unknown> {
+  database: DatabaseAdapter<TContext>;
+  storages?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
+  storagePlugins?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
   basePath?: string;
   cwd?: string;
   routes?: HandlerRoutes;
 }
 
-export function createHotUpdater<TEnv = unknown>(
-  options: CreateHotUpdaterOptions<TEnv>,
-): HotUpdaterAPI<TEnv> {
+export function createHotUpdater<TContext = unknown>(
+  options: CreateHotUpdaterOptions<TContext>,
+): HotUpdaterAPI<TContext> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
     (plugin) => (typeof plugin === "function" ? plugin() : plugin),
@@ -46,7 +46,7 @@ export function createHotUpdater<TEnv = unknown>(
 
   const resolveStoragePluginUrl = async (
     storageUri: string | null,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -87,7 +87,10 @@ export function createHotUpdater<TEnv = unknown>(
   const plugin = isDatabasePluginFactory(options.database)
     ? options.database()
     : options.database;
-  const core = createPluginDatabaseCore<TEnv>(plugin, resolveStoragePluginUrl);
+  const core = createPluginDatabaseCore<TContext>(
+    plugin,
+    resolveStoragePluginUrl,
+  );
 
   const api = {
     ...core.api,

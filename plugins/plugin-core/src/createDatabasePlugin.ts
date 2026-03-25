@@ -8,19 +8,19 @@ import type {
   PaginationInfo,
 } from "./types";
 
-export interface AbstractDatabasePlugin<TEnv = unknown> {
+export interface AbstractDatabasePlugin<TContext = unknown> {
   getBundleById: (
     bundleId: string,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<Bundle | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;
-  getChannels: (context?: HotUpdaterContext<TEnv>) => Promise<string[]>;
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   onUnmount?: () => Promise<void>;
   commitBundle: (
     params: {
@@ -29,24 +29,24 @@ export interface AbstractDatabasePlugin<TEnv = unknown> {
         data: Bundle;
       }[];
     },
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
 }
 
 /**
  * Database plugin methods without name
  */
-type DatabasePluginMethods<TEnv = unknown> = Omit<
-  AbstractDatabasePlugin<TEnv>,
+type DatabasePluginMethods<TContext = unknown> = Omit<
+  AbstractDatabasePlugin<TContext>,
   never
 >;
 
 /**
  * Factory function that creates database plugin methods
  */
-type DatabasePluginFactory<TConfig, TEnv = unknown> = (
+type DatabasePluginFactory<TConfig, TContext = unknown> = (
   config: TConfig,
-) => DatabasePluginMethods<TEnv>;
+) => DatabasePluginMethods<TContext>;
 
 const REPLACE_ON_UPDATE_KEYS = ["targetCohorts"] as const;
 
@@ -67,7 +67,7 @@ function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
 /**
  * Configuration options for creating a database plugin
  */
-export interface CreateDatabasePluginOptions<TConfig, TEnv = unknown> {
+export interface CreateDatabasePluginOptions<TConfig, TContext = unknown> {
   /**
    * The name of the database plugin (e.g., "postgres", "d1Database")
    */
@@ -75,7 +75,7 @@ export interface CreateDatabasePluginOptions<TConfig, TEnv = unknown> {
   /**
    * Function that creates the database plugin methods
    */
-  factory: DatabasePluginFactory<TConfig, TEnv>;
+  factory: DatabasePluginFactory<TConfig, TContext>;
 }
 
 /**
@@ -104,16 +104,16 @@ export interface CreateDatabasePluginOptions<TConfig, TEnv = unknown> {
  * });
  * ```
  */
-export function createDatabasePlugin<TConfig, TEnv = unknown>(
-  options: CreateDatabasePluginOptions<TConfig, TEnv>,
+export function createDatabasePlugin<TConfig, TContext = unknown>(
+  options: CreateDatabasePluginOptions<TConfig, TContext>,
 ) {
   return (
     config: TConfig,
     hooks?: DatabasePluginHooks,
-  ): (() => DatabasePlugin<TEnv>) => {
-    return (): DatabasePlugin<TEnv> => {
+  ): (() => DatabasePlugin<TContext>) => {
+    return (): DatabasePlugin<TContext> => {
       // Lazy initialization: factory is only called on first method invocation
-      let cachedMethods: DatabasePluginMethods<TEnv> | null = null;
+      let cachedMethods: DatabasePluginMethods<TContext> | null = null;
       const getMethods = () => {
         if (!cachedMethods) {
           cachedMethods = options.factory(config);

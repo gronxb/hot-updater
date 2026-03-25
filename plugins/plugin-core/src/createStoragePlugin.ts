@@ -7,17 +7,22 @@ import type {
 /**
  * Storage plugin methods without name and supportedProtocol
  */
-type StoragePluginMethods = Omit<StoragePlugin, "name" | "supportedProtocol">;
+type StoragePluginMethods<TContext = unknown> = Omit<
+  StoragePlugin<TContext>,
+  "name" | "supportedProtocol"
+>;
 
 /**
  * Factory function that creates storage plugin methods
  */
-type StoragePluginFactory<TConfig> = (config: TConfig) => StoragePluginMethods;
+type StoragePluginFactory<TConfig, TContext = unknown> = (
+  config: TConfig,
+) => StoragePluginMethods<TContext>;
 
 /**
  * Configuration options for creating a storage plugin
  */
-export interface CreateStoragePluginOptions<TConfig> {
+export interface CreateStoragePluginOptions<TConfig, TContext = unknown> {
   /**
    * The name of the storage plugin (e.g., "s3Storage", "r2Storage")
    */
@@ -34,7 +39,7 @@ export interface CreateStoragePluginOptions<TConfig> {
   /**
    * Function that creates the storage plugin methods (upload, delete, getDownloadUrl)
    */
-  factory: StoragePluginFactory<TConfig>;
+  factory: StoragePluginFactory<TConfig, TContext>;
 }
 
 /**
@@ -63,13 +68,13 @@ export interface CreateStoragePluginOptions<TConfig> {
  * });
  * ```
  */
-export const createStoragePlugin = <TConfig>(
-  options: CreateStoragePluginOptions<TConfig>,
+export const createStoragePlugin = <TConfig, TContext = unknown>(
+  options: CreateStoragePluginOptions<TConfig, TContext>,
 ) => {
   return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): StoragePlugin => {
+    return (): StoragePlugin<TContext> => {
       // Lazy initialization: factory is only called on first method invocation
-      let cachedMethods: StoragePluginMethods | null = null;
+      let cachedMethods: StoragePluginMethods<TContext> | null = null;
       const getMethods = () => {
         if (!cachedMethods) {
           cachedMethods = options.factory(config);
@@ -93,7 +98,7 @@ export const createStoragePlugin = <TConfig>(
 
         async getDownloadUrl(
           storageUri: string,
-          context?: StorageResolveContext,
+          context?: StorageResolveContext<TContext>,
         ) {
           return getMethods().getDownloadUrl(storageUri, context);
         },

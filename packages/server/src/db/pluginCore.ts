@@ -99,22 +99,22 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   fileHash: null,
 };
 
-export function createPluginDatabaseCore<TEnv = unknown>(
-  plugin: DatabasePlugin<TEnv>,
+export function createPluginDatabaseCore<TContext = unknown>(
+  plugin: DatabasePlugin<TContext>,
   resolveFileUrl: (
     storageUri: string | null,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>,
 ): {
-  api: DatabaseAPI<TEnv>;
+  api: DatabaseAPI<TContext>;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
 } {
   const getSortedBundlePage = async (
     options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TEnv>,
-  ): Promise<Awaited<ReturnType<DatabasePlugin<TEnv>["getBundles"]>>> => {
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<Awaited<ReturnType<DatabasePlugin<TContext>["getBundles"]>>> => {
     const result = await plugin.getBundles(
       {
         ...options,
@@ -150,7 +150,7 @@ export function createPluginDatabaseCore<TEnv = unknown>(
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs;
     queryWhere: DatabaseBundleQueryWhere;
     isCandidate: (bundle: Bundle) => boolean;
-    context?: HotUpdaterContext<TEnv>;
+    context?: HotUpdaterContext<TContext>;
   }): Promise<UpdateInfo | null> => {
     let offset = 0;
 
@@ -237,17 +237,17 @@ export function createPluginDatabaseCore<TEnv = unknown>(
     },
   });
 
-  const api: DatabaseAPI<TEnv> = {
+  const api: DatabaseAPI<TContext> = {
     async getBundleById(
       id: string,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
       return plugin.getBundleById(id, context);
     },
 
     async getUpdateInfo(
       args: GetBundlesArgs,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<UpdateInfo | null> {
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -298,7 +298,7 @@ export function createPluginDatabaseCore<TEnv = unknown>(
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateInfo | null> {
       const info = await this.getUpdateInfo(args, context);
       if (!info) {
@@ -311,17 +311,19 @@ export function createPluginDatabaseCore<TEnv = unknown>(
       return { ...rest, fileUrl };
     },
 
-    async getChannels(context?: HotUpdaterContext<TEnv>): Promise<string[]> {
+    async getChannels(
+      context?: HotUpdaterContext<TContext>,
+    ): Promise<string[]> {
       return plugin.getChannels(context);
     },
 
-    async getBundles(options, context?: HotUpdaterContext<TEnv>) {
+    async getBundles(options, context?: HotUpdaterContext<TContext>) {
       return plugin.getBundles(options, context);
     },
 
     async insertBundle(
       bundle: Bundle,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await plugin.appendBundle(bundle, context);
       await plugin.commitBundle(context);
@@ -330,7 +332,7 @@ export function createPluginDatabaseCore<TEnv = unknown>(
     async updateBundleById(
       bundleId: string,
       newBundle: Partial<Bundle>,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await plugin.updateBundle(bundleId, newBundle, context);
       await plugin.commitBundle(context);
@@ -338,7 +340,7 @@ export function createPluginDatabaseCore<TEnv = unknown>(
 
     async deleteBundleById(
       bundleId: string,
-      context?: HotUpdaterContext<TEnv>,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       const bundle = await plugin.getBundleById(bundleId, context);
       if (!bundle) {

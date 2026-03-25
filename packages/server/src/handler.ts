@@ -15,33 +15,33 @@ import type { PaginationInfo } from "./types";
 declare const __VERSION__: string;
 
 // Narrow API surface needed by the handler to avoid circular types
-export interface HandlerAPI<TEnv = unknown> {
+export interface HandlerAPI<TContext = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<AppUpdateInfo | null>;
   getBundleById: (
     id: string,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<Bundle | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   insertBundle: (
     bundle: Bundle,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   updateBundleById: (
     bundleId: string,
     bundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   deleteBundleById: (
     bundleId: string,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  getChannels: (context?: HotUpdaterContext<TEnv>) => Promise<string[]>;
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
 export interface HandlerOptions {
@@ -68,11 +68,11 @@ export interface HandlerRoutes {
   bundles?: boolean;
 }
 
-type RouteHandler<TEnv = unknown> = (
+type RouteHandler<TContext = unknown> = (
   params: Record<string, string>,
   request: Request,
-  api: HandlerAPI<TEnv>,
-  context?: HotUpdaterContext<TEnv>,
+  api: HandlerAPI<TContext>,
+  context?: HotUpdaterContext<TContext>,
 ) => Promise<Response>;
 
 class HandlerBadRequestError extends Error {
@@ -352,10 +352,13 @@ const routes: Record<string, RouteHandler<any>> = {
  * This handler is framework-agnostic and works with any framework
  * that supports Web Standard Request/Response (Hono, Elysia, etc.)
  */
-export function createHandler<TEnv = unknown>(
-  api: HandlerAPI<TEnv>,
+export function createHandler<TContext = unknown>(
+  api: HandlerAPI<TContext>,
   options: HandlerOptions = {},
-): (request: Request, context?: HotUpdaterContext<TEnv>) => Promise<Response> {
+): (
+  request: Request,
+  context?: HotUpdaterContext<TContext>,
+) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
   const updateCheckEnabled = options.routes?.updateCheck ?? true;
   const bundlesEnabled = options.routes?.bundles ?? true;
@@ -403,7 +406,7 @@ export function createHandler<TEnv = unknown>(
 
   return async (
     request: Request,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ): Promise<Response> => {
     try {
       const url = new URL(request.url);
@@ -426,7 +429,7 @@ export function createHandler<TEnv = unknown>(
       }
 
       // Get handler and execute
-      const handler = routes[match.data as string] as RouteHandler<TEnv>;
+      const handler = routes[match.data as string] as RouteHandler<TContext>;
       if (!handler) {
         return new Response(JSON.stringify({ error: "Handler not found" }), {
           status: 500,

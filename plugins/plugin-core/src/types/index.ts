@@ -52,15 +52,15 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin<TEnv = unknown> {
-  getChannels: (context?: HotUpdaterContext<TEnv>) => Promise<string[]>;
+export interface DatabasePlugin<TContext = unknown> {
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   getBundleById: (
     bundleId: string,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<Bundle | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
@@ -68,18 +68,18 @@ export interface DatabasePlugin<TEnv = unknown> {
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   appendBundle: (
     insertBundle: Bundle,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  commitBundle: (context?: HotUpdaterContext<TEnv>) => Promise<void>;
+  commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (
     deleteBundle: Bundle,
-    context?: HotUpdaterContext<TEnv>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
 }
 
@@ -295,14 +295,17 @@ export interface NativeBuildArgs {
   ios?: Record<string, NativeBuildIosScheme>;
 }
 
-export interface HotUpdaterContext<TEnv = unknown> {
+export interface RequestEnvContext<TEnv = unknown> {
   request?: Request;
   env?: TEnv;
 }
 
-export type StorageResolveContext<TEnv = unknown> = HotUpdaterContext<TEnv>;
+export type HotUpdaterContext<TContext = unknown> = TContext;
 
-export interface StoragePlugin<TEnv = unknown> {
+export type StorageResolveContext<TContext = unknown> =
+  HotUpdaterContext<TContext>;
+
+export interface StoragePlugin<TContext = unknown> {
   /**
    * Protocol this storage plugin can resolve.
    * @example "s3", "r2", "supabase-storage".
@@ -320,7 +323,7 @@ export interface StoragePlugin<TEnv = unknown> {
 
   getDownloadUrl: (
     storageUri: string,
-    context?: StorageResolveContext<TEnv>,
+    context?: StorageResolveContext<TContext>,
   ) => Promise<{
     fileUrl: string;
   }>;

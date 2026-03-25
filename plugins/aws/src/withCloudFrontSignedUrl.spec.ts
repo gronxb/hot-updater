@@ -1,5 +1,8 @@
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  RequestEnvContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 import { withCloudFrontSignedUrl } from "./withCloudFrontSignedUrl";
 
@@ -7,7 +10,9 @@ vi.mock("@aws-sdk/cloudfront-signer", () => ({
   getSignedUrl: vi.fn(() => "https://signed.example.com/bundle.zip"),
 }));
 
-const createBaseStorage = (): StoragePlugin => ({
+type TestContext = RequestEnvContext;
+
+const createBaseStorage = (): StoragePlugin<TestContext> => ({
   name: "baseStorage",
   supportedProtocol: "s3",
   async upload(key) {
@@ -23,17 +28,21 @@ const createBaseStorage = (): StoragePlugin => ({
 
 describe("withCloudFrontSignedUrl", () => {
   it("signs the CloudFront URL using the request origin", async () => {
-    const storage = withCloudFrontSignedUrl(() => createBaseStorage(), {
-      keyPairId: "K123",
-      getPrivateKey: async () => "private-key",
-      publicBaseUrl: ({ request }) => {
-        if (!request) {
-          throw new Error("request is required");
-        }
-        return new URL(request.url).origin;
+    const storage = withCloudFrontSignedUrl<TestContext>(
+      () => createBaseStorage(),
+      {
+        keyPairId: "K123",
+        getPrivateKey: async () => "private-key",
+        publicBaseUrl: (context) => {
+          const request = context?.request;
+          if (!request) {
+            throw new Error("request is required");
+          }
+          return new URL(request.url).origin;
+        },
+        expiresSeconds: 60,
       },
-      expiresSeconds: 60,
-    })();
+    )();
 
     await expect(
       storage.getDownloadUrl("s3://test-bucket/releases/bundle.zip", {

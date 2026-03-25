@@ -1,7 +1,11 @@
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import type {
+  DatabasePlugin,
+  RequestEnvContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { createHotUpdater } from "./runtime";
 
 const bundle: Bundle = {
@@ -22,13 +26,15 @@ type TestEnv = {
   assetHost: string;
 };
 
+type TestContext = RequestEnvContext<TestEnv>;
+
 describe("runtime createHotUpdater", () => {
   it("passes the handler context to database and storage resolution", async () => {
     const request = new Request(
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestEnv>["getBundles"]>(
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
       async () => {
         return {
           data: [bundle],
@@ -42,7 +48,7 @@ describe("runtime createHotUpdater", () => {
         };
       },
     );
-    const getDownloadUrl = vi.fn<StoragePlugin<TestEnv>["getDownloadUrl"]>(
+    const getDownloadUrl = vi.fn<StoragePlugin<TestContext>["getDownloadUrl"]>(
       async (_storageUri, context) => {
         return {
           fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
@@ -50,39 +56,44 @@ describe("runtime createHotUpdater", () => {
       },
     );
 
-    const hotUpdater = createHotUpdater<TestEnv>({
-      database: {
-        name: "testDatabase",
-        async appendBundle() {},
-        async commitBundle() {},
-        async deleteBundle() {},
-        async getBundleById(id) {
-          return id === bundle.id ? bundle : null;
-        },
-        getBundles,
-        async getChannels() {
-          return ["production"];
-        },
-        async onUnmount() {},
-        async updateBundle() {},
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        return id === bundle.id ? bundle : null;
       },
-      storages: [
-        {
-          name: "testStorage",
-          supportedProtocol: "s3",
-          async upload(key) {
-            return { storageUri: `s3://test-bucket/${key}` };
-          },
-          async delete() {},
-          getDownloadUrl,
-        },
-      ],
+      getBundles,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage: StoragePlugin<TestContext> = {
+      name: "testStorage",
+      supportedProtocol: "s3",
+      async upload(key) {
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
+      async delete() {},
+      getDownloadUrl,
+    };
+
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [storage],
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
         bundles: false,
       },
     });
+
+    expectTypeOf(hotUpdater.handler)
+      .parameter(1)
+      .toEqualTypeOf<TestContext | undefined>();
 
     const response = await hotUpdater.handler(request, {
       env: {
@@ -121,7 +132,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not inject the request into context unless explicitly provided", async () => {
-    const getBundles = vi.fn<DatabasePlugin<TestEnv>["getBundles"]>(
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
       async () => {
         return {
           data: [bundle],
@@ -136,35 +147,36 @@ describe("runtime createHotUpdater", () => {
       },
     );
 
-    const hotUpdater = createHotUpdater<TestEnv>({
-      database: {
-        name: "testDatabase",
-        async appendBundle() {},
-        async commitBundle() {},
-        async deleteBundle() {},
-        async getBundleById(id) {
-          return id === bundle.id ? bundle : null;
-        },
-        getBundles,
-        async getChannels() {
-          return ["production"];
-        },
-        async onUnmount() {},
-        async updateBundle() {},
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        return id === bundle.id ? bundle : null;
       },
-      storages: [
-        {
-          name: "testStorage",
-          supportedProtocol: "s3",
-          async upload(key) {
-            return { storageUri: `s3://test-bucket/${key}` };
-          },
-          async delete() {},
-          async getDownloadUrl() {
-            return { fileUrl: "https://assets.example.com/bundle.zip" };
-          },
-        },
-      ],
+      getBundles,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage: StoragePlugin<TestContext> = {
+      name: "testStorage",
+      supportedProtocol: "s3",
+      async upload(key) {
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
+      async delete() {},
+      async getDownloadUrl() {
+        return { fileUrl: "https://assets.example.com/bundle.zip" };
+      },
+    };
+
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [storage],
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,

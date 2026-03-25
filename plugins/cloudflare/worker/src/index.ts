@@ -1,5 +1,5 @@
 import { verifyJwtSignedUrl } from "@hot-updater/js";
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
+import type { RequestEnvContext } from "@hot-updater/plugin-core";
 import {
   createHotUpdater,
   rewriteLegacyExactRequestToCanonical,
@@ -20,22 +20,24 @@ export type CloudflareWorkerEnv = {
 export const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const resolveRequestOrigin = (
-  context: HotUpdaterContext<CloudflareWorkerEnv>,
-) => {
-  if (!context.request) {
+type CloudflareWorkerContext = RequestEnvContext<CloudflareWorkerEnv>;
+
+const resolveRequestOrigin = (context?: CloudflareWorkerContext) => {
+  const request = context?.request;
+
+  if (!request) {
     throw new Error(
       "cloudflareWorkerStorage requires a request to resolve publicBaseUrl.",
     );
   }
 
-  return new URL(context.request.url).origin;
+  return new URL(request.url).origin;
 };
 
-const hotUpdater = createHotUpdater<CloudflareWorkerEnv>({
-  database: d1WorkerDatabase<CloudflareWorkerEnv>(),
+const hotUpdater = createHotUpdater({
+  database: d1WorkerDatabase<CloudflareWorkerContext>(),
   storages: [
-    r2WorkerStorage<CloudflareWorkerEnv>({
+    r2WorkerStorage<CloudflareWorkerContext>({
       publicBaseUrl: resolveRequestOrigin,
     }),
   ],

@@ -37,14 +37,14 @@ type Bindings = {
   request: CloudFrontRequest;
 };
 
-const resolveRequestOrigin = ({ request }: { request?: Request }) => {
-  if (!request) {
+const resolveRequestOrigin = (context?: { request?: Request }) => {
+  if (!context?.request) {
     throw new Error(
       "CloudFront signed URL resolution requires a request context.",
     );
   }
 
-  return new URL(request.url).origin;
+  return new URL(context.request.url).origin;
 };
 
 const hotUpdater = createHotUpdater({
