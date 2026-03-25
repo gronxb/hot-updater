@@ -34,9 +34,18 @@ const REPO_DIR = path.resolve(__dirname, "../../..");
 const E2E_DIR = path.join(REPO_DIR, "e2e");
 const E2E_MAESTRO_DIR = path.join(E2E_DIR, "maestro");
 const E2E_RUNTIME_DIR = path.join(E2E_DIR, ".runtime");
+const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const SERVER_PACKAGE_DIR = path.join(
   REPO_DIR,
   "examples-server/hono-e2e-local",
+);
+const CLI_TOOLS_DIST_PATH = path.join(
+  REPO_DIR,
+  "packages/cli-tools/dist/index.js",
+);
+const CONSOLE_API_SERVER_SCRIPT_PATH = path.join(
+  REPO_DIR,
+  "e2e/maestro/server/console-api-server.mjs",
 );
 const RESULTS_ROOT = path.join(E2E_DIR, "results");
 const DEFAULT_SERVER_PORT = Number(process.env.HOT_UPDATER_SERVER_PORT || 3007);
@@ -223,6 +232,87 @@ async function resolveServerPort(
   return attempt(0);
 }
 
+function findListeningPids(port: number) {
+  const result = spawnSync(
+    "lsof",
+    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    return [];
+  }
+
+  return result.stdout
+    .split("\n")
+    .map((entry) => Number.parseInt(entry.trim(), 10))
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+}
+
+async function terminateListenersOnPort(port: number) {
+  const initialPids = findListeningPids(port);
+
+  if (initialPids.length === 0) {
+    return;
+  }
+
+  console.log(
+    `Port ${port} is in use. Terminating existing listener(s): ${initialPids.join(", ")}`,
+  );
+
+  for (const pid of initialPids) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (error) {
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String(error.code)
+          : "";
+      if (code !== "ESRCH") {
+        throw error;
+      }
+    }
+  }
+
+  for (let index = 0; index < 20; index += 1) {
+    if (findListeningPids(port).length === 0) {
+      return;
+    }
+    await sleep(250);
+  }
+
+  const remainingPids = findListeningPids(port);
+  for (const pid of remainingPids) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (error) {
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String(error.code)
+          : "";
+      if (code !== "ESRCH") {
+        throw error;
+      }
+    }
+  }
+
+  for (let index = 0; index < 20; index += 1) {
+    if (findListeningPids(port).length === 0) {
+      return;
+    }
+    await sleep(250);
+  }
+
+  throw new Error(`Failed to release port ${port}`);
+}
+
 async function waitForHttp(url: string, attempts = 90) {
   for (let index = 0; index < attempts; index += 1) {
     try {
@@ -235,6 +325,29 @@ async function waitForHttp(url: string, attempts = 90) {
   }
 
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+function resolveConsolePort() {
+  const output = runCapture(
+    "node",
+    [
+      "--input-type=module",
+      "-e",
+      [
+        `import { loadConfig } from ${JSON.stringify(CLI_TOOLS_DIST_PATH)};`,
+        "const config = await loadConfig(null);",
+        "process.stdout.write(String(config.console.port));",
+      ].join(" "),
+    ],
+    { cwd: EXAMPLE_DIR },
+  );
+
+  const port = Number.parseInt(output, 10);
+  if (Number.isNaN(port) || port <= 0) {
+    throw new Error(`Invalid console port resolved from config: ${output}`);
+  }
+
+  return port;
 }
 
 function resolveIosSimulatorUdid(preferredName: string) {
@@ -421,6 +534,38 @@ async function main() {
     },
   );
 
+  const preferredConsolePort = resolveConsolePort();
+  await terminateListenersOnPort(preferredConsolePort);
+  const consolePort = await resolveServerPort(preferredConsolePort, true);
+  const consoleBaseUrl = `http://${DEFAULT_SERVER_HOST}:${consolePort}`;
+  const consoleLogPath = path.join(resultsDir, "console-api.log");
+  const consoleLogStream = fs.createWriteStream(consoleLogPath, { flags: "w" });
+  const consoleProcess = spawn("node", [CONSOLE_API_SERVER_SCRIPT_PATH], {
+    cwd: EXAMPLE_DIR,
+    env: {
+      ...process.env,
+      HOST: DEFAULT_SERVER_HOST,
+      PORT: String(consolePort),
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  consoleProcess.stdout?.on("data", (chunk: Buffer | string) =>
+    consoleLogStream.write(chunk),
+  );
+  consoleProcess.stderr?.on("data", (chunk: Buffer | string) =>
+    consoleLogStream.write(chunk),
+  );
+
+  const stopConsoleServer = async () => {
+    consoleProcess.kill("SIGTERM");
+    await new Promise<void>((resolve) => {
+      consoleProcess.once("close", () => resolve());
+      setTimeout(() => resolve(), 3000);
+    });
+    consoleLogStream.end();
+  };
+
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
   const serverProcess = spawn(
@@ -438,15 +583,14 @@ async function main() {
         ...process.env,
         HOT_UPDATER_E2E_ANDROID_APK_PATH:
           "android/app/build/outputs/apk/release/app-release.apk",
-        HOT_UPDATER_E2E_APP_BASE_URL: `${publicBaseUrl}/hot-updater`,
         HOT_UPDATER_E2E_APP_ID: appId,
+        HOT_UPDATER_E2E_CONSOLE_BASE_URL: consoleBaseUrl,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
         HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
           "/tmp/hotupdater-v081-ios-maestro",
         HOT_UPDATER_E2E_PLATFORM: platform,
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
-        HOT_UPDATER_E2E_SERVER_BASE_URL: serverBaseUrl,
         HOT_UPDATER_E2E_SERVER_HOST: DEFAULT_SERVER_HOST,
         HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
         HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
@@ -482,6 +626,7 @@ async function main() {
   };
 
   try {
+    await waitForHttp(`${consoleBaseUrl}/ping`);
     await waitForHttp(`${serverBaseUrl}/hot-updater/version`);
 
     await runLogged(
@@ -512,6 +657,7 @@ async function main() {
     );
   } finally {
     await stopServer();
+    await stopConsoleServer();
   }
 }
 
