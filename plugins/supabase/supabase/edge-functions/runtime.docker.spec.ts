@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import {
+  access,
   mkdir,
   mkdtemp,
   readdir,
@@ -51,6 +52,38 @@ const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const hasDocker = hasCommand("git", ["--version"]) && hasDockerCompose();
 const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
+const REQUIRED_BUILD_ARTIFACTS = [
+  {
+    command: "pnpm --filter @hot-updater/core build",
+    path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.js"),
+  },
+  {
+    command: "pnpm --filter @hot-updater/server build",
+    path: path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.js"),
+  },
+  {
+    command: "pnpm --filter @hot-updater/plugin-core build",
+    path: path.join(WORKSPACE_ROOT, "plugins/plugin-core/dist/index.js"),
+  },
+  {
+    command: "pnpm --filter @hot-updater/supabase build",
+    path: path.join(WORKSPACE_ROOT, "plugins/supabase/dist/index.js"),
+  },
+] as const;
+
+const ensureBuiltArtifacts = async (
+  artifacts: ReadonlyArray<{ command: string; path: string }>,
+) => {
+  for (const artifact of artifacts) {
+    try {
+      await access(artifact.path);
+    } catch {
+      throw new Error(
+        `Missing built artifact at ${artifact.path}. Run \`${artifact.command}\` before running this test.`,
+      );
+    }
+  }
+};
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {
   const headers = new Headers({
@@ -113,26 +146,7 @@ describeIfDocker("supabase edge runtime acceptance", () => {
   let supabaseAdmin: ReturnType<typeof createClient>;
 
   beforeAll(async () => {
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", "@hot-updater/core", "build"],
-      cwd: WORKSPACE_ROOT,
-    });
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", "@hot-updater/server", "build"],
-      cwd: WORKSPACE_ROOT,
-    });
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", "@hot-updater/plugin-core", "build"],
-      cwd: WORKSPACE_ROOT,
-    });
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", "@hot-updater/supabase", "build"],
-      cwd: WORKSPACE_ROOT,
-    });
+    await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
 
     runtimeRoot = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/supabase/runtime-acceptance-"),

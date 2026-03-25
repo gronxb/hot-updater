@@ -1,4 +1,5 @@
 import {
+  access,
   mkdir,
   mkdtemp,
   readFile,
@@ -17,7 +18,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   findOpenPort,
   hasCommand,
-  runCheckedCommand,
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
@@ -28,7 +28,6 @@ import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
-const BUILD_FILTER = "@hot-updater/firebase...";
 const REGION = "us-central1";
 const FUNCTION_NAME = "handler";
 const CDN_URL = "https://cdn.example.com";
@@ -43,6 +42,50 @@ const hasFirebaseCli = hasCommand("pnpm", [
 const describeIfFirebaseCli = hasFirebaseCli
   ? describe.sequential
   : describe.skip;
+const REQUIRED_BUILD_ARTIFACTS = [
+  {
+    command: "pnpm --filter @hot-updater/firebase... build",
+    path: path.join(
+      WORKSPACE_ROOT,
+      "plugins/firebase/dist/firebase/firebase.json",
+    ),
+  },
+  {
+    command: "pnpm --filter @hot-updater/firebase... build",
+    path: path.join(
+      WORKSPACE_ROOT,
+      "plugins/firebase/dist/firebase/firestore.indexes.json",
+    ),
+  },
+  {
+    command: "pnpm --filter @hot-updater/firebase... build",
+    path: path.join(
+      WORKSPACE_ROOT,
+      "plugins/firebase/dist/firebase/functions/_package.json",
+    ),
+  },
+  {
+    command: "pnpm --filter @hot-updater/firebase... build",
+    path: path.join(
+      WORKSPACE_ROOT,
+      "plugins/firebase/dist/firebase/functions/index.cjs",
+    ),
+  },
+] as const;
+
+const ensureBuiltArtifacts = async (
+  artifacts: ReadonlyArray<{ command: string; path: string }>,
+) => {
+  for (const artifact of artifacts) {
+    try {
+      await access(artifact.path);
+    } catch {
+      throw new Error(
+        `Missing built artifact at ${artifact.path}. Run \`${artifact.command}\` before running this test.`,
+      );
+    }
+  }
+};
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {
   const headers = new Headers({
@@ -107,11 +150,7 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
       );
     }
 
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", BUILD_FILTER, "build"],
-      cwd: WORKSPACE_ROOT,
-    });
+    await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
 
     tempRoot = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/firebase/runtime-acceptance-"),

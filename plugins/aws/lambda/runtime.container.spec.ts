@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -30,7 +30,6 @@ import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../..");
-const BUILD_FILTER = "@hot-updater/aws";
 const REGION = "us-east-1";
 const ACCESS_KEY_ID = "test";
 const SECRET_ACCESS_KEY = "test";
@@ -48,6 +47,26 @@ const SHARED_EDGE_CACHE_CONTROL =
   "public, max-age=0, s-maxage=31536000, must-revalidate";
 const hasDocker = hasDockerDaemon();
 const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
+const REQUIRED_BUILD_ARTIFACTS = [
+  {
+    command: "pnpm --filter @hot-updater/aws build",
+    path: path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
+  },
+] as const;
+
+const ensureBuiltArtifacts = async (
+  artifacts: ReadonlyArray<{ command: string; path: string }>,
+) => {
+  for (const artifact of artifacts) {
+    try {
+      await access(artifact.path);
+    } catch {
+      throw new Error(
+        `Missing built artifact at ${artifact.path}. Run \`${artifact.command}\` before running this test.`,
+      );
+    }
+  }
+};
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {
   const headers = new Headers({
@@ -176,11 +195,7 @@ describeIfDocker("aws lambda runtime acceptance", () => {
   const dockerNetworkName = `hot-updater-aws-${process.pid}-${Date.now()}`;
 
   beforeAll(async () => {
-    runCheckedCommand({
-      command: "pnpm",
-      args: ["--filter", BUILD_FILTER, "build"],
-      cwd: WORKSPACE_ROOT,
-    });
+    await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
 
     previousAwsEndpointUrl = process.env.AWS_ENDPOINT_URL;
 
