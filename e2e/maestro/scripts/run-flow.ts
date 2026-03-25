@@ -29,6 +29,17 @@ type RunLoggedOptions = RunCaptureOptions & {
   logPath: string;
 };
 
+type ParsedEnvFile = Record<string, string>;
+
+type DeveloperE2ESetup = {
+  appBaseUrl: URL;
+  appBaseUrlRaw: string;
+  envPath: string;
+  parsedEnv: ParsedEnvFile;
+  serverBaseUrl: URL;
+  serverBaseUrlRaw: string;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
 const E2E_DIR = path.join(REPO_DIR, "e2e");
@@ -48,7 +59,13 @@ const CONSOLE_API_SERVER_SCRIPT_PATH = path.join(
   "e2e/maestro/server/console-api-server.mjs",
 );
 const RESULTS_ROOT = path.join(E2E_DIR, "results");
-const DEFAULT_SERVER_PORT = Number(process.env.HOT_UPDATER_SERVER_PORT || 3007);
+const LEGACY_STANDALONE_SERVER_PORT = 3007;
+const DEFAULT_UPDATE_SERVER_BASE_URL = `http://localhost:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater`;
+const DEFAULT_SERVER_PORT = Number(
+  process.env.HOT_UPDATER_E2E_CONTROL_PORT ||
+    process.env.HOT_UPDATER_SERVER_PORT ||
+    3107,
+);
 const DEFAULT_SERVER_HOST = "127.0.0.1";
 const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
@@ -129,6 +146,139 @@ function resolveMaestroBin() {
   throw new Error("Maestro CLI not found. Install it or add it to PATH.");
 }
 
+function parseEnvFile(source: string): ParsedEnvFile {
+  return Object.fromEntries(
+    source
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("#"))
+      .map((line) => {
+        const separatorIndex = line.indexOf("=");
+        if (separatorIndex === -1) {
+          return null;
+        }
+        return [
+          line.slice(0, separatorIndex).trim(),
+          line.slice(separatorIndex + 1).trim(),
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+}
+
+function parseConfiguredUrl(
+  name: string,
+  rawValue: string,
+  relativeEnvPath: string,
+  exampleUrl: string,
+) {
+  try {
+    return new URL(rawValue);
+  } catch {
+    throw new Error(
+      [
+        `Invalid ${name} in ${relativeEnvPath}: ${rawValue}`,
+        `Expected a full URL such as ${exampleUrl}.`,
+      ].join("\n"),
+    );
+  }
+}
+
+function getUrlPort(url: URL) {
+  if (url.port) {
+    return Number.parseInt(url.port, 10);
+  }
+
+  return url.protocol === "https:" ? 443 : 80;
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function ensureAndroidReverse(deviceId: string, appBaseUrl: URL) {
+  if (!isLoopbackHost(appBaseUrl.hostname)) {
+    return null;
+  }
+
+  const port = getUrlPort(appBaseUrl);
+  runCapture("adb", ["-s", deviceId, "reverse", `tcp:${port}`, `tcp:${port}`]);
+
+  return port;
+}
+
+async function validateDeveloperE2ESetup(
+  platform: Platform,
+): Promise<DeveloperE2ESetup> {
+  const envPath = path.join(EXAMPLE_DIR, ".env.hotupdater");
+  const envSource = fs.existsSync(envPath)
+    ? await fsPromises.readFile(envPath, "utf8")
+    : "";
+  const parsedEnv = parseEnvFile(envSource);
+  const appBaseUrlRaw =
+    parsedEnv.HOT_UPDATER_APP_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
+  const serverBaseUrlRaw =
+    parsedEnv.HOT_UPDATER_SERVER_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
+  const relativeEnvPath = path.relative(REPO_DIR, envPath);
+  const appBaseUrl = parseConfiguredUrl(
+    "HOT_UPDATER_APP_BASE_URL",
+    appBaseUrlRaw,
+    relativeEnvPath,
+    DEFAULT_UPDATE_SERVER_BASE_URL,
+  );
+  const serverBaseUrl = parseConfiguredUrl(
+    "HOT_UPDATER_SERVER_BASE_URL",
+    serverBaseUrlRaw,
+    relativeEnvPath,
+    DEFAULT_UPDATE_SERVER_BASE_URL,
+  );
+  const controlPort = DEFAULT_SERVER_PORT;
+  const appBaseUrlPort = getUrlPort(appBaseUrl);
+  const serverBaseUrlPort = getUrlPort(serverBaseUrl);
+
+  if (appBaseUrlPort === controlPort) {
+    throw new Error(
+      [
+        `HOT_UPDATER_APP_BASE_URL=${appBaseUrlRaw} points at the Maestro control server port ${controlPort}.`,
+        "Point the app at the standalone update server instead.",
+        `Use a URL such as http://localhost:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater.`,
+      ].join("\n"),
+    );
+  }
+
+  if (serverBaseUrlPort === controlPort) {
+    throw new Error(
+      [
+        `HOT_UPDATER_SERVER_BASE_URL=${serverBaseUrlRaw} points at the Maestro control server port ${controlPort}.`,
+        "hot-updater deploy must target the standalone update server instead.",
+        `Use a URL such as http://127.0.0.1:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater.`,
+      ].join("\n"),
+    );
+  }
+
+  if (
+    platform === "ios" &&
+    (appBaseUrl.hostname === "10.0.2.2" || appBaseUrl.hostname === "10.0.3.2")
+  ) {
+    throw new Error(
+      [
+        `HOT_UPDATER_APP_BASE_URL=${appBaseUrlRaw} is Android-emulator-only and is not reachable from the iOS simulator.`,
+        "iOS Maestro E2E does not rewrite .env.hotupdater.",
+        `Use an iOS-simulator-reachable host such as http://127.0.0.1:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater or a host LAN IP that both platforms can reach.`,
+      ].join("\n"),
+    );
+  }
+
+  return {
+    appBaseUrl,
+    appBaseUrlRaw,
+    envPath,
+    parsedEnv,
+    serverBaseUrl,
+    serverBaseUrlRaw,
+  };
+}
+
 function runCapture(
   command: string,
   args: string[],
@@ -161,6 +311,126 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}) {
   });
 }
 
+function stripAnsi(value: string) {
+  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function extractMeaningfulLogLines(contents: string, limit = 8) {
+  const lines = stripAnsi(contents)
+    .split(/\r?\n|\r/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const meaningful = lines.filter((line) =>
+    /\b(error|failed|exception|invalid|missing|timed out|timeout|unable|canceled|not found|expected|observed|verificationpending|stagingbundleid|crashedbundleid|launchreport|metadatapath|deploy|console-api|remote-bundles)\b/i.test(
+      line,
+    ),
+  );
+
+  const selected = (meaningful.length > 0 ? meaningful : lines)
+    .slice(-limit)
+    .filter((line, index, array) => array.indexOf(line) === index);
+
+  return selected;
+}
+
+async function readLogSummary(logPath: string, header: string) {
+  if (!fs.existsSync(logPath)) {
+    return null;
+  }
+
+  const contents = await fsPromises.readFile(logPath, "utf8");
+  const lines = extractMeaningfulLogLines(contents);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  return [header, ...lines.map((line) => `  ${line}`)].join("\n");
+}
+
+async function readMaestroFailureSummary(args: string[]) {
+  const debugOutputIndex = args.indexOf("--debug-output");
+  const debugOutputPath =
+    debugOutputIndex === -1 ? undefined : args[debugOutputIndex + 1];
+
+  if (!debugOutputPath) {
+    return null;
+  }
+
+  const debugLogPath = path.join(debugOutputPath, "maestro.log");
+  if (!fs.existsSync(debugLogPath)) {
+    return null;
+  }
+
+  const debugContents = await fsPromises.readFile(debugLogPath, "utf8");
+  const sections: string[] = [];
+  const maestroSummaryLines = extractMeaningfulLogLines(debugContents);
+
+  if (maestroSummaryLines.length > 0) {
+    sections.push(
+      [
+        "Maestro failure summary:",
+        ...maestroSummaryLines.map((line) => `  ${line}`),
+      ].join("\n"),
+    );
+  }
+
+  const resultsDir = path.dirname(debugOutputPath);
+  const serverLogSummary = await readLogSummary(
+    path.join(resultsDir, "server.log"),
+    `E2E server log: ${path.join(resultsDir, "server.log")}`,
+  );
+  if (serverLogSummary) {
+    sections.push(serverLogSummary);
+  }
+
+  const nestedLogPaths = Array.from(
+    new Set(
+      Array.from(debugContents.matchAll(/\bSee (\/\S+)/g), (match) => match[1]),
+    ),
+  );
+
+  for (const nestedLogPath of nestedLogPaths) {
+    const nestedSummary = await readLogSummary(
+      nestedLogPath,
+      `Underlying command log: ${nestedLogPath}`,
+    );
+    if (nestedSummary) {
+      sections.push(nestedSummary);
+      break;
+    }
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
+}
+
+async function formatCommandFailure(
+  command: string,
+  args: string[],
+  logPath: string,
+  exitCode: number | null,
+) {
+  const sections = [
+    `${command} ${args.join(" ")} failed with code ${exitCode}.`,
+  ];
+
+  if (path.basename(command) === "maestro") {
+    const maestroSummary = await readMaestroFailureSummary(args);
+    if (maestroSummary) {
+      sections.push(maestroSummary);
+    }
+  } else {
+    const logSummary = await readLogSummary(logPath, `Command log: ${logPath}`);
+    if (logSummary) {
+      sections.push(logSummary);
+    }
+  }
+
+  sections.push(`Full log: ${logPath}`);
+
+  return sections.join("\n\n");
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -183,11 +453,14 @@ async function runLogged(
     child.once("close", resolve);
   });
 
-  logStream.end();
+  await new Promise<void>((resolve, reject) => {
+    logStream.once("error", reject);
+    logStream.end(() => resolve());
+  });
 
   if (exitCode !== 0 && !options.allowFailure) {
     throw new Error(
-      `${command} ${args.join(" ")} failed with code ${exitCode}. See ${options.logPath}`,
+      await formatCommandFailure(command, args, options.logPath, exitCode),
     );
   }
 }
@@ -447,6 +720,31 @@ function getScenarioName(flowPath: string) {
   return path.basename(flowPath, path.extname(flowPath));
 }
 
+function formatRepoRelative(targetPath: string) {
+  return path.relative(REPO_DIR, targetPath) || targetPath;
+}
+
+function shouldReuseStoredPort(storedPort: number) {
+  if (!Number.isInteger(storedPort) || storedPort <= 0) {
+    return false;
+  }
+
+  const explicitlyConfiguredLegacyPort =
+    process.env.HOT_UPDATER_E2E_CONTROL_PORT ===
+      String(LEGACY_STANDALONE_SERVER_PORT) ||
+    process.env.HOT_UPDATER_SERVER_PORT ===
+      String(LEGACY_STANDALONE_SERVER_PORT);
+
+  if (
+    storedPort === LEGACY_STANDALONE_SERVER_PORT &&
+    !explicitlyConfiguredLegacyPort
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help || !options.platform) {
@@ -459,6 +757,8 @@ async function main() {
     throw new Error(`Unsupported platform: ${platform}`);
   }
 
+  const developerSetup = await validateDeveloperE2ESetup(platform);
+
   if (!fs.existsSync(options.flow)) {
     throw new Error(`Flow file does not exist: ${options.flow}`);
   }
@@ -466,23 +766,27 @@ async function main() {
   const scenarioName = getScenarioName(options.flow);
   const maestroBin = resolveMaestroBin();
   const resultsDir = path.join(RESULTS_ROOT, platform, scenarioName);
-  const runtimeDataDir = path.join(E2E_RUNTIME_DIR, "data");
-  const runtimeStorageDir = path.join(E2E_RUNTIME_DIR, "storage");
 
   await fsPromises.rm(resultsDir, { recursive: true, force: true });
   await fsPromises.mkdir(resultsDir, { recursive: true });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
 
-  const preferredPort =
+  const storedPort =
     options.reuseApp && fs.existsSync(PORT_STATE_PATH)
       ? Number((await fsPromises.readFile(PORT_STATE_PATH, "utf8")).trim())
-      : DEFAULT_SERVER_PORT;
+      : Number.NaN;
+  const preferredPort = shouldReuseStoredPort(storedPort)
+    ? storedPort
+    : DEFAULT_SERVER_PORT;
   const serverPort = await resolveServerPort(preferredPort, !options.reuseApp);
   await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
-  const publicBaseUrl =
-    platform === "android" ? `http://10.0.2.2:${serverPort}` : serverBaseUrl;
+
+  console.log(`[maestro] START ${platform}/${scenarioName}`);
+  console.log(`[maestro] Flow: ${formatRepoRelative(options.flow)}`);
+  console.log(`[maestro] Results: ${formatRepoRelative(resultsDir)}`);
+  console.log(`[maestro] Control server: ${serverBaseUrl}`);
 
   let deviceId = "";
   let appId = "";
@@ -498,6 +802,22 @@ async function main() {
     appId = IOS_APP_ID;
   } else {
     deviceId = resolveAndroidSerial();
+    const reversedPort = ensureAndroidReverse(
+      deviceId,
+      developerSetup.appBaseUrl,
+    );
+    const androidDeviceLogLines = [`Using Android device ${deviceId}`];
+    if (reversedPort !== null) {
+      const reverseMessage = `adb reverse tcp:${reversedPort} tcp:${reversedPort}`;
+      androidDeviceLogLines.push(reverseMessage);
+      console.log(
+        `[maestro] Android reverse: tcp:${reversedPort} -> host tcp:${reversedPort}`,
+      );
+    }
+    await fsPromises.writeFile(
+      path.join(resultsDir, "maestro-device.log"),
+      `${androidDeviceLogLines.join("\n")}\n`,
+    );
     appId = ANDROID_APP_ID;
   }
 
@@ -507,32 +827,6 @@ async function main() {
   });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
   await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
-  await fsPromises.mkdir(runtimeDataDir, { recursive: true });
-  await fsPromises.mkdir(runtimeStorageDir, { recursive: true });
-
-  await runLogged(
-    "pnpm",
-    [
-      "--dir",
-      SERVER_PACKAGE_DIR,
-      "exec",
-      "hot-updater",
-      "db",
-      "migrate",
-      "src/db.ts",
-      "--yes",
-    ],
-    {
-      cwd: REPO_DIR,
-      env: {
-        HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
-        HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
-        PORT: String(serverPort),
-        TEST_DB_PATH: path.join(runtimeDataDir, "hot-updater-e2e"),
-      },
-      logPath: path.join(resultsDir, "server-migrate.log"),
-    },
-  );
 
   const preferredConsolePort = resolveConsolePort();
   await terminateListenersOnPort(preferredConsolePort);
@@ -592,10 +886,7 @@ async function main() {
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
         HOT_UPDATER_E2E_SERVER_HOST: DEFAULT_SERVER_HOST,
-        HOT_UPDATER_E2E_STORAGE_DIR: runtimeStorageDir,
-        HOT_UPDATER_PUBLIC_BASE_URL: publicBaseUrl,
         PORT: String(serverPort),
-        TEST_DB_PATH: path.join(runtimeDataDir, "hot-updater-e2e"),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -627,7 +918,7 @@ async function main() {
 
   try {
     await waitForHttp(`${consoleBaseUrl}/ping`);
-    await waitForHttp(`${serverBaseUrl}/hot-updater/version`);
+    await waitForHttp(serverBaseUrl);
 
     await runLogged(
       maestroBin,
@@ -655,10 +946,21 @@ async function main() {
         logPath: path.join(resultsDir, "maestro.log"),
       },
     );
+    console.log(`[maestro] PASS ${platform}/${scenarioName}`);
+  } catch (error) {
+    console.error(`[maestro] FAIL ${platform}/${scenarioName}`);
+    throw error;
   } finally {
     await stopServer();
     await stopConsoleServer();
   }
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  const message =
+    error instanceof Error ? error.message : "Unknown run-flow error";
+  console.error(message);
+  process.exit(1);
+}

@@ -1,5 +1,10 @@
 appId: ${APP_ID}
 ---
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: ensureAppForeground
+      CONTROL_URL: ${CONTROL_URL}
 - scrollUntilVisible:
     element:
       text: Runtime Snapshot

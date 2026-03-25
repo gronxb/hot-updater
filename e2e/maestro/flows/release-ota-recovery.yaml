@@ -110,8 +110,10 @@ onFlowComplete:
 - runScript:
     file: ../scripts/control.js
     env:
-      ACTION: sleep
-      SECONDS: "8"
+      ACTION: waitForCrashRecovery
+      CONTROL_URL: ${CONTROL_URL}
+      CRASHED_BUNDLE_ID: ${output.crashBundleId}
+      STABLE_BUNDLE_ID: ${output.stableBundleId}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:

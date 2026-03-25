@@ -1,10 +1,16 @@
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneRepository,
+} from "@hot-updater/standalone";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
+
+const serverBaseUrl =
+  process.env.HOT_UPDATER_SERVER_BASE_URL ||
+  "http://localhost:3007/hot-updater";
 
 export default defineConfig({
   nativeBuild: {
@@ -47,7 +53,7 @@ export default defineConfig({
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3007/hot-updater",
+    baseUrl: serverBaseUrl,
   }),
   fingerprint: {
     debug: true,

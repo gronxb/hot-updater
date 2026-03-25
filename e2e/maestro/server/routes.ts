@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   getJob,
   handleAssertCrashHistory,
+  handleEnsureAppForeground,
   handleAssertLaunchReport,
   handleAssertMetadataActive,
   handleAssertMetadataReset,
@@ -9,6 +10,7 @@ import {
   handleCaptureState,
   handleCleanup,
   handleComputeRolloutSample,
+  handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
   startBootstrapJob,
@@ -17,6 +19,25 @@ import {
 } from "./controller.js";
 
 const app = new Hono();
+
+app.onError((error, c) => {
+  console.error(error);
+
+  const details =
+    typeof error === "object" && error && "details" in error
+      ? (error as { details?: unknown }).details
+      : undefined;
+  const message =
+    error instanceof Error ? error.message : "Unknown E2E server error";
+
+  return c.json(
+    {
+      details,
+      error: message,
+    },
+    500,
+  );
+});
 
 app.post("/e2e/jobs/bootstrap", async (c) => {
   return c.json({ jobId: startBootstrapJob() });
@@ -188,6 +209,30 @@ app.post("/e2e/assert-crash-history", async (c) => {
   }
 
   return c.json(await handleAssertCrashHistory(payload.bundleId));
+});
+
+app.post("/e2e/ensure-app-foreground", async (c) => {
+  return c.json(await handleEnsureAppForeground());
+});
+
+app.post("/e2e/wait-for-crash-recovery", async (c) => {
+  const payload = (await c.req.json()) as {
+    crashedBundleId?: string;
+    stableBundleId?: string;
+  };
+  if (!payload.stableBundleId || !payload.crashedBundleId) {
+    return c.json(
+      { error: "stableBundleId and crashedBundleId are required" },
+      400,
+    );
+  }
+
+  return c.json(
+    await handleWaitForCrashRecovery(
+      payload.stableBundleId,
+      payload.crashedBundleId,
+    ),
+  );
 });
 
 app.post("/e2e/write-summary", async (c) => {

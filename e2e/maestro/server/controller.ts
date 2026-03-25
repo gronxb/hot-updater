@@ -40,8 +40,6 @@ type SessionState = {
   builtInBundleId: string | null;
   consoleApiBaseUrl: string;
   deployedBundles: DeployedBundleRecord[];
-  envBackupPath: string | null;
-  envFile: string;
   exampleDir: string;
   initialMarker: string;
   iosDerivedDataPath: string;
@@ -49,7 +47,6 @@ type SessionState = {
   resultsDir: string;
   reuseApp: boolean;
   storePath: string | null;
-  writeExampleEnv: () => Promise<void>;
 };
 
 type DeployBundleRequest = {
@@ -73,17 +70,42 @@ type PatchBundleRequest = {
   targetCohorts?: string[] | null;
 };
 
+type BundleListEntry = {
+  channel?: string;
+  enabled?: boolean;
+  id: string;
+  platform?: Platform;
+  rolloutCohortCount?: number | null;
+  shouldForceUpdate?: boolean;
+  targetCohorts?: string[] | null;
+};
+
+type BundleListPage = {
+  data: BundleListEntry[];
+  pagination: {
+    limit: number | null;
+    offset: number | null;
+    total: number | null;
+  };
+};
+
 type LaunchReportAssertion = {
   crashedBundleId?: string;
   optional: boolean;
   status: string;
 };
 
+type JsonSnapshot = {
+  exists: boolean;
+  path: string;
+  readError: string | null;
+  value: Record<string, unknown> | null;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
-const ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -93,49 +115,39 @@ const CRASH_GUARD_END = "/* E2E_CRASH_GUARD_END */";
 const CRASH_GUARD_PATTERN =
   /\/\* E2E_CRASH_GUARD_START \*\/[\s\S]*?\/\* E2E_CRASH_GUARD_END \*\//;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
+const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
+const LOG_PREFIX = "[maestro-e2e]";
 
-function mergeEnvSource(
-  source: string,
-  overrides: Record<string, string>,
-): string {
-  const remaining = new Map(Object.entries(overrides));
-  const lines = source.length > 0 ? source.split(/\r?\n/) : [];
-  const nextLines = lines.map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      return line;
-    }
-
-    const separatorIndex = line.indexOf("=");
-    if (separatorIndex === -1) {
-      return line;
-    }
-
-    const key = line.slice(0, separatorIndex).trim();
-    const override = remaining.get(key);
-    if (override === undefined) {
-      return line;
-    }
-
-    remaining.delete(key);
-    return `${key}=${override}`;
-  });
-
-  for (const [key, value] of remaining) {
-    nextLines.push(`${key}=${value}`);
+function truncateForLog(value: string, maxLength = 400) {
+  if (value.length <= maxLength) {
+    return value;
   }
 
-  return `${nextLines.join("\n").replace(/\n*$/, "")}\n`;
+  return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function formatLogValue(value: unknown) {
+  if (typeof value === "string") {
+    return truncateForLog(value);
+  }
+
+  try {
+    return truncateForLog(JSON.stringify(value));
+  } catch {
+    return truncateForLog(String(value));
+  }
+}
+
+function logE2e(event: string, details?: unknown) {
+  const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
+  console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
 const consoleBaseUrl = process.env.HOT_UPDATER_E2E_CONSOLE_BASE_URL;
 const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
-const e2eStorageMode = process.env.HOT_UPDATER_E2E_STORAGE_MODE;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
-const serverBaseUrl = process.env.HOT_UPDATER_E2E_SERVER_BASE_URL;
-const appBaseUrl = process.env.HOT_UPDATER_E2E_APP_BASE_URL;
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
   throw new Error("HOT_UPDATER_E2E_PLATFORM must be ios or android");
@@ -171,8 +183,6 @@ const session: SessionState = {
   builtInBundleId: null,
   consoleApiBaseUrl: consoleBaseUrl,
   deployedBundles: [],
-  envBackupPath: null,
-  envFile: ENV_FILE,
   exampleDir: EXAMPLE_DIR,
   initialMarker:
     platform === "ios" ? "builtin-ios-maestro" : "builtin-android-maestro",
@@ -183,28 +193,6 @@ const session: SessionState = {
   resultsDir,
   reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
   storePath: null,
-  writeExampleEnv: async () => {
-    const overrides = Object.fromEntries(
-      Object.entries({
-        HOT_UPDATER_APP_BASE_URL: appBaseUrl,
-        HOT_UPDATER_SERVER_BASE_URL: serverBaseUrl,
-        HOT_UPDATER_STORAGE_MODE: e2eStorageMode,
-      }).filter(([, value]) => typeof value === "string" && value.length > 0),
-    );
-
-    if (Object.keys(overrides).length === 0) {
-      return;
-    }
-
-    const baseSource = session.envBackupPath
-      ? await fsPromises.readFile(session.envBackupPath, "utf8")
-      : fs.existsSync(ENV_FILE)
-        ? await fsPromises.readFile(ENV_FILE, "utf8")
-        : "";
-    const source = mergeEnvSource(baseSource, overrides);
-
-    await fsPromises.writeFile(ENV_FILE, source);
-  },
 };
 
 const jobs = new Map<string, JobState>();
@@ -326,9 +314,13 @@ async function applyAppScenario({
       ? [
           CRASH_GUARD_START,
           `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
+          `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
           "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();",
+          "  const E2E_IS_BUILT_IN_BUNDLE =",
+          '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
+          "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
           "",
-          "  if (!E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
+          "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
           '    throw new Error("hot-updater e2e crash bundle");',
           "  }",
           `  ${CRASH_GUARD_END}`,
@@ -343,6 +335,12 @@ async function applyAppScenario({
     .replace(CRASH_GUARD_PATTERN, crashGuardSource);
 
   await fsPromises.writeFile(session.appSourceFile, nextSource);
+  logE2e("app scenario applied", {
+    marker,
+    mode,
+    safeBundleIds,
+    sourceFile: path.relative(REPO_DIR, session.appSourceFile),
+  });
 }
 
 async function waitForFile(filePath: string, attempts = 90) {
@@ -356,26 +354,157 @@ async function waitForFile(filePath: string, attempts = 90) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-async function fetchLatestBundle(args: { channel?: string }) {
+async function readResponseBody(response: Response) {
+  return truncateForLog(await response.text());
+}
+
+async function parseJsonResponse<T>(
+  response: Response,
+  context: string,
+): Promise<T> {
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `${context}: ${response.status} ${response.statusText}${body ? `\n${truncateForLog(body)}` : ""}`,
+    );
+  }
+
+  return JSON.parse(body) as T;
+}
+
+function normalizeBundleListEntries(value: unknown): BundleListEntry[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+
+    const bundleId = (entry as { id?: unknown }).id;
+    if (typeof bundleId !== "string" || bundleId.length === 0) {
+      return [];
+    }
+
+    const bundle = entry as Partial<BundleListEntry> & { id: string };
+
+    return [
+      {
+        channel:
+          typeof bundle.channel === "string" ? bundle.channel : undefined,
+        enabled:
+          typeof bundle.enabled === "boolean" ? bundle.enabled : undefined,
+        id: bundle.id,
+        platform:
+          bundle.platform === "ios" || bundle.platform === "android"
+            ? bundle.platform
+            : undefined,
+        rolloutCohortCount:
+          typeof bundle.rolloutCohortCount === "number" ||
+          bundle.rolloutCohortCount === null
+            ? bundle.rolloutCohortCount
+            : undefined,
+        shouldForceUpdate:
+          typeof bundle.shouldForceUpdate === "boolean"
+            ? bundle.shouldForceUpdate
+            : undefined,
+        targetCohorts: Array.isArray(bundle.targetCohorts)
+          ? bundle.targetCohorts.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : undefined,
+      },
+    ];
+  });
+}
+
+function normalizeBundleListResponse(payload: unknown): BundleListPage {
+  if (Array.isArray(payload)) {
+    return {
+      data: normalizeBundleListEntries(payload),
+      pagination: {
+        limit: null,
+        offset: null,
+        total: null,
+      },
+    };
+  }
+
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Unexpected bundle list response from console API");
+  }
+
+  const response = payload as {
+    data?: unknown;
+    pagination?: {
+      limit?: unknown;
+      offset?: unknown;
+      total?: unknown;
+    };
+  };
+
+  return {
+    data: normalizeBundleListEntries(response.data),
+    pagination: {
+      limit:
+        typeof response.pagination?.limit === "number"
+          ? response.pagination.limit
+          : null,
+      offset:
+        typeof response.pagination?.offset === "number"
+          ? response.pagination.offset
+          : null,
+      total:
+        typeof response.pagination?.total === "number"
+          ? response.pagination.total
+          : null,
+    },
+  };
+}
+
+async function fetchBundlesPage(args: {
+  channel?: string;
+  limit: number;
+  offset: number;
+}) {
   const url = new URL(`${session.consoleApiBaseUrl}/api/bundles`);
   url.searchParams.set("platform", session.platform);
   if (args.channel) {
     url.searchParams.set("channel", args.channel);
   }
-  url.searchParams.set("limit", "1");
-  url.searchParams.set("offset", "0");
+  url.searchParams.set("limit", String(args.limit));
+  url.searchParams.set("offset", String(args.offset));
 
+  logE2e("console-api request", {
+    method: "GET",
+    url: url.toString(),
+  });
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch bundles: ${response.status} ${response.statusText}`,
-    );
-  }
+  const bundles = normalizeBundleListResponse(
+    await parseJsonResponse<unknown>(response, "Failed to fetch bundles"),
+  );
+  logE2e("console-api response", {
+    count: bundles.data.length,
+    limit: args.limit,
+    method: "GET",
+    offset: args.offset,
+    status: response.status,
+    total: bundles.pagination.total,
+    url: url.toString(),
+  });
 
-  const bundles = (await response.json()) as {
-    data?: Array<{ id: string }>;
-  };
-  const latestBundle = bundles.data?.[0];
+  return bundles;
+}
+
+async function fetchLatestBundle(args: { channel?: string }) {
+  const bundles = await fetchBundlesPage({
+    channel: args.channel,
+    limit: 1,
+    offset: 0,
+  });
+  const latestBundle = bundles.data[0];
 
   if (!latestBundle?.id) {
     throw new Error(`No bundles found for platform ${session.platform}`);
@@ -385,24 +514,32 @@ async function fetchLatestBundle(args: { channel?: string }) {
 }
 
 async function fetchBundleById(bundleId: string) {
-  const response = await fetch(
-    `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`,
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch bundle ${bundleId}: ${response.status} ${response.statusText}`,
-    );
-  }
-
-  return (await response.json()) as {
+  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
+  logE2e("console-api request", {
+    bundleId,
+    method: "GET",
+    url,
+  });
+  const response = await fetch(url);
+  const bundle = await parseJsonResponse<{
     channel: string;
     enabled: boolean;
     id: string;
     rolloutCohortCount?: number | null;
     shouldForceUpdate?: boolean;
     targetCohorts?: string[] | null;
-  };
+  }>(response, `Failed to fetch bundle ${bundleId}`);
+  logE2e("console-api response", {
+    bundleId: bundle.id,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    method: "GET",
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+    status: response.status,
+    url,
+  });
+
+  return bundle;
 }
 
 async function patchBundle(
@@ -414,22 +551,103 @@ async function patchBundle(
     targetCohorts?: string[] | null;
   },
 ) {
-  const response = await fetch(
-    `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`,
-    {
-      body: JSON.stringify({ bundle: patch }),
-      headers: {
-        "Content-Type": "application/json",
-      },
-      method: "PATCH",
+  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
+  const body = JSON.stringify({ bundle: patch });
+  logE2e("console-api request", {
+    body: { bundle: patch },
+    bundleId,
+    method: "PATCH",
+    url,
+  });
+  const response = await fetch(url, {
+    body,
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    method: "PATCH",
+  });
 
   if (!response.ok) {
+    const responseBody = await readResponseBody(response);
     throw new Error(
-      `Failed to patch bundle ${bundleId}: ${response.status} ${response.statusText}`,
+      `Failed to patch bundle ${bundleId}: ${response.status} ${response.statusText}${responseBody ? `\n${responseBody}` : ""}`,
     );
   }
+
+  logE2e("console-api response", {
+    bundleId,
+    method: "PATCH",
+    status: response.status,
+    url,
+  });
+}
+
+async function deleteBundle(bundleId: string) {
+  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
+  logE2e("console-api request", {
+    bundleId,
+    method: "DELETE",
+    url,
+  });
+  const response = await fetch(url, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const responseBody = await readResponseBody(response);
+    throw new Error(
+      `Failed to delete bundle ${bundleId}: ${response.status} ${response.statusText}${responseBody ? `\n${responseBody}` : ""}`,
+    );
+  }
+
+  logE2e("console-api response", {
+    bundleId,
+    method: "DELETE",
+    status: response.status,
+    url,
+  });
+}
+
+async function clearRemoteBundles() {
+  const deletedBundleIds: string[] = [];
+  const deletedIds = new Set<string>();
+
+  while (true) {
+    const bundles = await fetchBundlesPage({
+      limit: 100,
+      offset: 0,
+    });
+    const nextBatch = bundles.data.filter(
+      (bundle) => !deletedIds.has(bundle.id),
+    );
+
+    if (nextBatch.length === 0) {
+      break;
+    }
+
+    for (const bundle of nextBatch) {
+      await deleteBundle(bundle.id);
+      deletedIds.add(bundle.id);
+      deletedBundleIds.push(bundle.id);
+    }
+  }
+
+  const remainingBundles = await fetchBundlesPage({
+    limit: 1,
+    offset: 0,
+  });
+
+  if (remainingBundles.data.length > 0) {
+    throw new Error(
+      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingBundles.data[0].id} is still visible after reset`,
+    );
+  }
+
+  logE2e("remote-bundles reset", {
+    deletedBundleIds,
+    deletedCount: deletedBundleIds.length,
+    platform: session.platform,
+  });
 }
 
 function updateTrackedBundleRecord(
@@ -802,26 +1020,328 @@ function assertCrashHistoryContains(filePath: string, bundleId: string) {
   }
 }
 
+function createEndpointError(message: string, details?: unknown) {
+  return Object.assign(new Error(message), { details });
+}
+
+function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
+  if (!fs.existsSync(filePath)) {
+    return {
+      exists: false,
+      path: filePath,
+      readError: null,
+      value: null,
+    };
+  }
+
+  try {
+    return {
+      exists: true,
+      path: filePath,
+      readError: null,
+      value: readJson(filePath),
+    };
+  } catch (error) {
+    return {
+      exists: true,
+      path: filePath,
+      readError: error instanceof Error ? error.message : String(error),
+      value: null,
+    };
+  }
+}
+
+function getMetadataState(metadata: Record<string, unknown> | null) {
+  return {
+    stableBundleId:
+      (metadata?.stableBundleId as string | undefined) ??
+      (metadata?.stable_bundle_id as string | undefined) ??
+      null,
+    stagingBundleId:
+      (metadata?.stagingBundleId as string | undefined) ??
+      (metadata?.staging_bundle_id as string | undefined) ??
+      null,
+    verificationPending:
+      (metadata?.verificationPending as boolean | undefined) ??
+      (metadata?.verification_pending as boolean | undefined) ??
+      null,
+  };
+}
+
+function formatObservedMetadataState(details: {
+  stagingBundleId: string | null;
+  verificationPending: boolean | null;
+}) {
+  return [
+    `Observed stagingBundleId=${String(details.stagingBundleId)}`,
+    `verificationPending=${String(details.verificationPending)}`,
+  ].join(" and ");
+}
+
+function createWaitForMetadataTimeoutError(args: {
+  attempts: number;
+  bundleId: string;
+  crashHistory: JsonSnapshot;
+  launchReport: JsonSnapshot;
+  metadata: JsonSnapshot;
+  verificationPending: boolean;
+}) {
+  const observedState = getMetadataState(args.metadata.value);
+  const message = [
+    "Timed out waiting for metadata state.",
+    `Expected stagingBundleId=${args.bundleId} and verificationPending=${String(args.verificationPending)}.`,
+    `${formatObservedMetadataState(observedState)}.`,
+    `Metadata path: ${args.metadata.path}`,
+  ].join("\n");
+
+  return createEndpointError(message, {
+    attempts: args.attempts,
+    expected: {
+      bundleId: args.bundleId,
+      verificationPending: args.verificationPending,
+    },
+    observed: {
+      crashHistory: args.crashHistory,
+      launchReport: args.launchReport,
+      metadata: args.metadata,
+      metadataState: observedState,
+    },
+    platform: session.platform,
+  });
+}
+
+function readIosWaitForMetadataDiagnostics() {
+  const storePath = ensureStorePath();
+  return {
+    crashHistory: readOptionalJsonSnapshot(
+      path.join(storePath, "crashed-history.json"),
+    ),
+    launchReport: readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
+    metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
+  };
+}
+
+function readAndroidStoreSnapshot(remoteFileName: string, localFileName: string) {
+  const storePath = ensureStorePath();
+  const remotePath = `${storePath}/${remoteFileName}`;
+  const localPath = path.join(session.resultsDir, localFileName);
+
+  if (!copyAndroidFileIfExists(remotePath, localPath)) {
+    return {
+      exists: false,
+      path: remotePath,
+      readError: null,
+      value: null,
+    } satisfies JsonSnapshot;
+  }
+
+  const localSnapshot = readOptionalJsonSnapshot(localPath);
+  return {
+    ...localSnapshot,
+    path: remotePath,
+  };
+}
+
+function readAndroidWaitForMetadataDiagnostics() {
+  return {
+    crashHistory: readAndroidStoreSnapshot(
+      "crashed-history.json",
+      "wait-for-metadata-crashed-history.json",
+    ),
+    launchReport: readAndroidStoreSnapshot(
+      "launch-report.json",
+      "wait-for-metadata-launch-report.json",
+    ),
+    metadata: readAndroidStoreSnapshot(
+      "metadata.json",
+      "wait-for-metadata-metadata.json",
+    ),
+  };
+}
+
+function getLaunchReportState(report: Record<string, unknown> | null) {
+  return {
+    crashedBundleId:
+      (report?.crashedBundleId as string | undefined) ??
+      (report?.crashed_bundle_id as string | undefined) ??
+      null,
+    status: (report?.status as string | undefined) ?? null,
+  };
+}
+
+function createWaitForRecoveryTimeoutError(args: {
+  attempts: number;
+  crashedBundleId: string;
+  crashHistory: JsonSnapshot;
+  crashMarker: JsonSnapshot;
+  launchReport: JsonSnapshot;
+  metadata: JsonSnapshot;
+  stableBundleId: string;
+}) {
+  const metadataState = getMetadataState(args.metadata.value);
+  const launchReportState = getLaunchReportState(args.launchReport.value);
+  const message = [
+    "Timed out waiting for crash recovery state.",
+    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, crashedBundleId=${args.crashedBundleId}.`,
+    `${formatObservedMetadataState(metadataState)}.`,
+    `Observed launchReport.status=${String(launchReportState.status)} and crashedBundleId=${String(launchReportState.crashedBundleId)}.`,
+    `Metadata path: ${args.metadata.path}`,
+  ].join("\n");
+
+  return createEndpointError(message, {
+    attempts: args.attempts,
+    expected: {
+      crashedBundleId: args.crashedBundleId,
+      stableBundleId: args.stableBundleId,
+      status: "RECOVERED",
+      verificationPending: false,
+    },
+    observed: {
+      crashHistory: args.crashHistory,
+      crashMarker: args.crashMarker,
+      launchReport: args.launchReport,
+      launchReportState,
+      metadata: args.metadata,
+      metadataState,
+    },
+    platform: session.platform,
+  });
+}
+
+function readIosRecoveryDiagnostics() {
+  const storePath = ensureStorePath();
+  return {
+    crashHistory: readOptionalJsonSnapshot(
+      path.join(storePath, "crashed-history.json"),
+    ),
+    crashMarker: readOptionalJsonSnapshot(
+      path.join(storePath, "recovery-crash-marker.json"),
+    ),
+    launchReport: readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
+    metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
+  };
+}
+
+function readAndroidRecoveryDiagnostics() {
+  return {
+    crashHistory: readAndroidStoreSnapshot(
+      "crashed-history.json",
+      "recovery-crash-history.json",
+    ),
+    crashMarker: readAndroidStoreSnapshot(
+      "recovery-crash-marker.json",
+      "recovery-crash-marker.json",
+    ),
+    launchReport: readAndroidStoreSnapshot(
+      "launch-report.json",
+      "recovery-launch-report.json",
+    ),
+    metadata: readAndroidStoreSnapshot("metadata.json", "recovery-metadata.json"),
+  };
+}
+
+function launchAndroidApp() {
+  const component = runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "cmd",
+    "package",
+    "resolve-activity",
+    "--brief",
+    "--components",
+    session.appId,
+  ])
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+
+  if (!component) {
+    throw new Error(`Failed to resolve launch activity for ${session.appId}`);
+  }
+
+  logE2e("android recovery relaunch", {
+    appId: session.appId,
+    component,
+    deviceId,
+  });
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "start",
+      "-W",
+      "-n",
+      component,
+    ],
+    {
+      cwd: REPO_DIR,
+    },
+  );
+}
+
+function getAndroidFocusedPackage() {
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "uiautomator",
+      "dump",
+      "/sdcard/window_dump.xml",
+    ],
+    { allowFailure: true },
+  );
+  const xml = runCapture(
+    "adb",
+    ["-s", deviceId as string, "exec-out", "cat", "/sdcard/window_dump.xml"],
+    { allowFailure: true },
+  );
+  const rootPackageMatch = xml.match(/package="([A-Za-z0-9._]+)"/);
+  if (rootPackageMatch?.[1]) {
+    return rootPackageMatch[1];
+  }
+
+  const output = runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "dumpsys",
+    "window",
+    "windows",
+  ]);
+
+  const currentFocusMatch = output.match(
+    /mCurrentFocus=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+  );
+  if (currentFocusMatch?.[1]) {
+    return currentFocusMatch[1];
+  }
+
+  const focusedAppMatch = output.match(
+    /mFocusedApp=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+  );
+  return focusedAppMatch?.[1] ?? null;
+}
+
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
   attempts = 90,
 ) {
-  const metadataPath = path.join(ensureStorePath(), "metadata.json");
-
   for (let index = 0; index < attempts; index += 1) {
-    if (fs.existsSync(metadataPath)) {
-      const metadata = readJson(metadataPath);
-      const stagingBundleId =
-        (metadata.stagingBundleId as string | undefined) ??
-        (metadata.staging_bundle_id as string | undefined);
-      const currentPending =
-        (metadata.verificationPending as boolean | undefined) ??
-        (metadata.verification_pending as boolean | undefined);
+    const diagnostics = readIosWaitForMetadataDiagnostics();
+    if (diagnostics.metadata.value) {
+      const metadataState = getMetadataState(diagnostics.metadata.value);
 
       if (
-        stagingBundleId === bundleId &&
-        currentPending === verificationPending
+        metadataState.stagingBundleId === bundleId &&
+        metadataState.verificationPending === verificationPending
       ) {
         return;
       }
@@ -829,7 +1349,12 @@ async function waitForIosMetadataState(
     await sleep(1000);
   }
 
-  throw new Error(`Timed out waiting for metadata state in ${metadataPath}`);
+  throw createWaitForMetadataTimeoutError({
+    attempts,
+    bundleId,
+    ...readIosWaitForMetadataDiagnostics(),
+    verificationPending,
+  });
 }
 
 async function waitForAndroidMetadataState(
@@ -837,12 +1362,10 @@ async function waitForAndroidMetadataState(
   verificationPending: boolean,
   attempts = 90,
 ) {
-  const probePath = path.join(session.resultsDir, "metadata-probe.json");
-  const metadataPath = `${ensureStorePath()}/metadata.json`;
-
   for (let index = 0; index < attempts; index += 1) {
-    if (copyAndroidFileIfExists(metadataPath, probePath)) {
-      const metadata = readJson(probePath);
+    const diagnostics = readAndroidWaitForMetadataDiagnostics();
+    if (diagnostics.metadata.value) {
+      const metadata = diagnostics.metadata.value;
       if (
         metadata.stagingBundleId === bundleId &&
         metadata.verificationPending === verificationPending
@@ -853,28 +1376,106 @@ async function waitForAndroidMetadataState(
     await sleep(1000);
   }
 
-  throw new Error(`Timed out waiting for metadata state in ${metadataPath}`);
+  throw createWaitForMetadataTimeoutError({
+    attempts,
+    bundleId,
+    ...readAndroidWaitForMetadataDiagnostics(),
+    verificationPending,
+  });
+}
+
+async function waitForCrashRecovery(
+  stableBundleId: string,
+  crashedBundleId: string,
+  attempts = 90,
+) {
+  let androidRelaunchAttempts = 0;
+
+  for (let index = 0; index < attempts; index += 1) {
+    const diagnostics =
+      session.platform === "ios"
+        ? readIosRecoveryDiagnostics()
+        : readAndroidRecoveryDiagnostics();
+    const metadataState = getMetadataState(diagnostics.metadata.value);
+    const launchReportState = getLaunchReportState(diagnostics.launchReport.value);
+
+    if (
+      metadataState.stagingBundleId === stableBundleId &&
+      metadataState.verificationPending === false &&
+      launchReportState.status === "RECOVERED" &&
+      launchReportState.crashedBundleId === crashedBundleId
+    ) {
+      return {};
+    }
+
+    if (
+      session.platform === "android" &&
+      diagnostics.crashMarker.exists &&
+      androidRelaunchAttempts < 3
+    ) {
+      launchAndroidApp();
+      androidRelaunchAttempts += 1;
+      await sleep(2000);
+      continue;
+    }
+
+    await sleep(1000);
+  }
+
+  const diagnostics =
+    session.platform === "ios"
+      ? readIosRecoveryDiagnostics()
+      : readAndroidRecoveryDiagnostics();
+  throw createWaitForRecoveryTimeoutError({
+    attempts,
+    crashedBundleId,
+    ...diagnostics,
+    stableBundleId,
+  });
+}
+
+async function ensureAppForeground() {
+  if (session.platform !== "android") {
+    return {};
+  }
+
+  let focusedPackage = getAndroidFocusedPackage();
+  if (focusedPackage === session.appId) {
+    return {};
+  }
+
+  logE2e("android ensure foreground", {
+    focusedPackage,
+    targetAppId: session.appId,
+  });
+
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "input", "keyevent", "KEYCODE_BACK"],
+    { allowFailure: true },
+  );
+  await sleep(500);
+
+  focusedPackage = getAndroidFocusedPackage();
+  if (focusedPackage === session.appId) {
+    return {};
+  }
+
+  launchAndroidApp();
+  await sleep(1500);
+  return {};
 }
 
 async function bootstrap() {
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
-  const shouldOverrideEnv =
-    typeof appBaseUrl === "string" ||
-    typeof serverBaseUrl === "string" ||
-    typeof e2eStorageMode === "string";
-  if (shouldOverrideEnv && !session.envBackupPath) {
-    session.envBackupPath = await backupFile(session.envFile);
-  }
 
   session.builtInBundleId = null;
   session.deployedBundles = [];
   session.storePath = null;
 
-  if (shouldOverrideEnv) {
-    await session.writeExampleEnv();
-  }
+  await clearRemoteBundles();
   await applyAppScenario({
     marker: session.initialMarker,
     mode: "reset",
@@ -894,15 +1495,7 @@ async function bootstrap() {
 }
 
 async function captureBuiltInBundleId() {
-  const builtInBundleId =
-    session.platform === "ios"
-      ? await readCurrentBundleIdFromMetadata(
-          path.join(session.resultsDir, "initial-metadata.json"),
-        )
-      : await readBundleIdFromUiDump(
-          session.initialMarker,
-          path.join(session.resultsDir, "initial-ui.xml"),
-        );
+  const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;
 
   session.builtInBundleId = builtInBundleId;
 
@@ -943,12 +1536,29 @@ async function deployBundle(request: DeployBundleRequest) {
     args.push("-m", request.message);
   }
 
+  const deployLogPath = path.join(
+    session.resultsDir,
+    `deploy-${request.channel}-${request.marker}.log`,
+  );
+  logE2e("deploy start", {
+    channel: request.channel,
+    command: `pnpm ${args.join(" ")}`,
+    logPath: path.relative(REPO_DIR, deployLogPath),
+    marker: request.marker,
+    mode: request.mode,
+    platform: session.platform,
+    targetAppVersion: request.targetAppVersion,
+  });
   await runLogged("pnpm", args, {
     cwd: session.exampleDir,
-    logPath: path.join(
-      session.resultsDir,
-      `deploy-${request.channel}-${request.marker}.log`,
-    ),
+    logPath: deployLogPath,
+  });
+  logE2e("deploy done", {
+    channel: request.channel,
+    logPath: path.relative(REPO_DIR, deployLogPath),
+    marker: request.marker,
+    mode: request.mode,
+    platform: session.platform,
   });
 
   const bundleId = await fetchLatestBundle({
@@ -1222,15 +1832,15 @@ async function writeSummary({
 }
 
 async function cleanup() {
-  if (!session.appBackupPath && !session.envBackupPath) {
+  if (!session.appBackupPath) {
     return {};
   }
 
-  await restoreFile(session.appBackupPath, session.appSourceFile);
-  await restoreFile(session.envBackupPath, session.envFile);
+  if (session.appBackupPath) {
+    await restoreFile(session.appBackupPath, session.appSourceFile);
+  }
 
   session.appBackupPath = null;
-  session.envBackupPath = null;
   return {};
 }
 
@@ -1302,6 +1912,17 @@ export async function handleAssertLaunchReport(
 
 export async function handleAssertCrashHistory(bundleId: string) {
   return assertCrashHistory(bundleId);
+}
+
+export async function handleWaitForCrashRecovery(
+  stableBundleId: string,
+  crashedBundleId: string,
+) {
+  return waitForCrashRecovery(stableBundleId, crashedBundleId);
+}
+
+export async function handleEnsureAppForeground() {
+  return ensureAppForeground();
 }
 
 export async function handleWriteSummary(args: {
