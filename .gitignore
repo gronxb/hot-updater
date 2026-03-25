@@ -99,3 +99,6 @@ e2e/results/
 
 # Claude Code settings
 .claude
+
+
+.codex/

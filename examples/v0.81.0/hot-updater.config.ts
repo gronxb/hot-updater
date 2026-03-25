@@ -6,25 +6,6 @@ import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
 
-const serverBaseUrl = (
-  process.env.HOT_UPDATER_SERVER_BASE_URL ?? "http://localhost:3007"
-).replace(/\/$/, "");
-
-const storage =
-  process.env.HOT_UPDATER_STORAGE_MODE === "standalone"
-    ? standaloneStorage({
-        baseUrl: serverBaseUrl,
-      })
-    : s3Storage({
-        region: "auto",
-        endpoint: process.env.R2_ENDPOINT,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-        bucketName: process.env.R2_BUCKET_NAME!,
-      });
-
 export default defineConfig({
   nativeBuild: {
     android: {
@@ -56,9 +37,17 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true }),
-  storage,
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
   database: standaloneRepository({
-    baseUrl: `${serverBaseUrl}/hot-updater`,
+    baseUrl: "http://localhost:3007",
   }),
   fingerprint: {
     debug: true,
