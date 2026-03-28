@@ -52,7 +52,7 @@ const SERVER_PACKAGE_DIR = path.join(
 );
 const CLI_TOOLS_DIST_PATH = path.join(
   REPO_DIR,
-  "packages/cli-tools/dist/index.js",
+  "packages/cli-tools/dist/index.mjs",
 );
 const CONSOLE_API_SERVER_SCRIPT_PATH = path.join(
   REPO_DIR,
