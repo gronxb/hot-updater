@@ -391,6 +391,7 @@ function App(): React.JSX.Element {
         </Section>
 
         <Section title="Runtime Details">
+          <InfoRow label="Base URL" value={HOT_UPDATER_BASE_URL} />
           <InfoRow label="Channel" value={runtimeSnapshot.channel} />
           <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
           <InfoRow label="Channel Summary" value={channelSummary} />
