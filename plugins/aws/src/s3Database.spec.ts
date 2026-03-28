@@ -122,9 +122,9 @@ vi.mock("@aws-sdk/client-cloudfront", async () => {
           }
 
           const invalidationId = command.input.Id ?? "";
-          const statuses = cloudfrontInvalidationStatuses.get(invalidationId) ?? [
-            "Completed",
-          ];
+          const statuses = cloudfrontInvalidationStatuses.get(
+            invalidationId,
+          ) ?? ["Completed"];
           const status = statuses[0] ?? "Completed";
 
           if (statuses.length > 1) {

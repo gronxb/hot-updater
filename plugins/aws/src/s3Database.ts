@@ -40,8 +40,7 @@ export interface S3DatabaseConfig extends S3ClientConfig {
 const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
 
-const sleep = (ms: number) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Loads JSON data from S3.
