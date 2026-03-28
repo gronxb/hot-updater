@@ -13,19 +13,23 @@ export default defineConfig([
     format: ["cjs"],
     outDir: "dist/lambda",
     failOnWarn: true,
-    noExternal: [
-      "@hot-updater/server/runtime",
-      "@hot-updater/plugin-core",
-      "hono/lambda-edge",
-      "hono",
-    ],
+    deps: {
+      alwaysBundle: [
+        "@hot-updater/server/runtime",
+        "@hot-updater/plugin-core",
+        "hono/lambda-edge",
+        "hono",
+      ],
+    },
   },
   {
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/iac",
-    external: ["@hot-updater/aws"],
+    deps: {
+      neverBundle: ["@hot-updater/aws"],
+    },
     failOnWarn: true,
   },
 ]);

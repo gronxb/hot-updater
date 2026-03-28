@@ -50,7 +50,7 @@
     "hono": "catalog:hono",
     "nx": "22.6.3",
     "rimraf": "^5.0.7",
-    "tsdown": "^0.15.9",
+    "tsdown": "catalog:tools",
     "typescript": "^5.8.3",
     "vitest": "catalog:"
   },

@@ -77,7 +77,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "jsdom": "^29.0.0",
     "react-grab": "^0.1.28",
-    "tsdown": "^0.21.2",
+    "tsdown": "catalog:tools",
     "typescript": "^5.7.2",
     "vite": "^8.0.0",
     "vitest": "catalog:",

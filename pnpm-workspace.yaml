@@ -8,9 +8,9 @@ packages:
 catalog:
   '@types/node': ^20
   vitest: 4.1.0
-
 catalogs:
   tools:
+   tsdown: 0.21.6
    '@clack/prompts': 1.0.1
    'execa': 9.5.2
   hono:

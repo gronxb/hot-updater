@@ -8,7 +8,6 @@ export default defineConfig([
     dts: true,
     exports: true,
     unbundle: true,
-    noExternal: ["mime"],
     failOnWarn: true,
   },
 ]);

@@ -6,15 +6,15 @@
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./node": {
-      "import": "./dist/node.js",
+      "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"
     },
     "./package.json": "./package.json"

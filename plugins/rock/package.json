@@ -4,7 +4,7 @@
   "version": "0.28.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
@@ -35,9 +35,36 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
+  },
+  "inlinedDependencies": {
+    "@sec-ant/readable-stream": "0.4.1",
+    "@sindresorhus/merge-streams": "4.0.0",
+    "cross-spawn": "7.0.6",
+    "execa": "9.5.2",
+    "figures": "6.1.0",
+    "get-stream": "9.0.1",
+    "human-signals": "8.0.1",
+    "is-plain-obj": "4.1.0",
+    "is-stream": "4.0.1",
+    "is-unicode-supported": "2.1.0",
+    "isexe": "2.0.0",
+    "npm-run-path": "6.0.0",
+    "parse-ms": "4.0.0",
+    "path-key": [
+      "3.1.1",
+      "4.0.0"
+    ],
+    "pretty-ms": "9.2.0",
+    "shebang-command": "2.0.0",
+    "shebang-regex": "3.0.0",
+    "signal-exit": "4.1.0",
+    "strip-final-newline": "4.0.0",
+    "unicorn-magic": "0.3.0",
+    "which": "2.0.2",
+    "yoctocolors": "2.1.1"
   }
 }
