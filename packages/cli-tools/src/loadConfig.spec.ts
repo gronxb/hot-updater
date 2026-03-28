@@ -64,7 +64,15 @@ describe("loadConfig", () => {
       "ios/HotUpdaterExample/Info.plist",
     ]);
     expect(config.platform.android.stringResourcePaths).toEqual([
-      path.join("android", "app", "src", "main", "res", "values", "strings.xml"),
+      path.join(
+        "android",
+        "app",
+        "src",
+        "main",
+        "res",
+        "values",
+        "strings.xml",
+      ),
     ]);
   });
 

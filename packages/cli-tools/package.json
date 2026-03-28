@@ -46,7 +46,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "oxc-transform": "0.121.0",
-    "c12": "4.0.0-beta.4"
+    "unconfig": "7.5.0"
   },
   "devDependencies": {
     "@clack/prompts": "catalog:tools",
