@@ -6,9 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@hono/node-server':
-      specifier: 1.19.11
-      version: 1.19.11
     '@types/node':
       specifier: ^20
       version: 20.19.11
@@ -19,6 +16,9 @@ catalogs:
       specifier: 4.1.0
       version: 4.1.0
   hono:
+    '@hono/node-server':
+      specifier: 1.19.11
+      version: 1.19.11
     hono:
       specifier: 4.12.9
       version: 4.12.9
@@ -37,7 +37,7 @@ importers:
         specifier: 0.13.0
         version: 0.13.0(@cloudflare/workers-types@4.20260313.1)(@vitest/runner@4.1.0)(@vitest/snapshot@4.1.0)(vitest@4.1.0(@opentelemetry/api@1.9.0)(@types/node@25.5.0)(jsdom@29.0.0(@noble/hashes@1.8.0))(msw@2.12.10(@types/node@25.5.0)(typescript@5.8.3))(vite@8.0.0(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1)))
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@nx/js':
         specifier: 22.6.3
@@ -271,7 +271,7 @@ importers:
         specifier: ^0.2.17
         version: 0.2.17
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -323,7 +323,7 @@ importers:
         specifier: ^0.2.17
         version: 0.2.17
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/server':
         specifier: workspace:*
@@ -357,7 +357,7 @@ importers:
   examples-server/hono-kysely-mysql:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -409,7 +409,7 @@ importers:
         specifier: ^0.2.17
         version: 0.2.17
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -458,7 +458,7 @@ importers:
   examples-server/hono-mongodb:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -516,7 +516,7 @@ importers:
   examples-server/hono-prisma-postgres:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -565,7 +565,7 @@ importers:
   examples-server/hono-s3:
     dependencies:
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
@@ -1452,7 +1452,7 @@ importers:
         specifier: ^2.4.7
         version: 2.4.7
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hono/typia-validator':
         specifier: ^0.1.2
@@ -1564,7 +1564,7 @@ importers:
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.0)
       '@hono/node-server':
-        specifier: 'catalog:'
+        specifier: catalog:hono
         version: 1.19.11(hono@4.12.9)
       '@hot-updater/aws':
         specifier: workspace:*
