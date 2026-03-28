@@ -1,6 +1,6 @@
 import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { createJiti } from "jiti";
 import path from "path";
 
@@ -19,17 +19,77 @@ export interface LoadHotUpdaterResult {
   absoluteConfigPath: string;
 }
 
+const SUPPORTED_CONFIG_EXTENSIONS = [
+  "ts",
+  "cts",
+  "mts",
+  "js",
+  "cjs",
+  "mjs",
+] as const;
+
+const DEFAULT_CONFIG_BASENAMES = [
+  "hot-updater.config",
+  path.join("src", "hotUpdater"),
+  path.join("src", "db"),
+] as const;
+
+const findDefaultConfigPath = () => {
+  for (const basename of DEFAULT_CONFIG_BASENAMES) {
+    for (const ext of SUPPORTED_CONFIG_EXTENSIONS) {
+      const candidate = path.resolve(process.cwd(), `${basename}.${ext}`);
+      if (existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+};
+
+const resolveConfigPath = (configPath: string) => {
+  const trimmedConfigPath = configPath.trim();
+  if (trimmedConfigPath) {
+    return path.resolve(process.cwd(), trimmedConfigPath);
+  }
+
+  const defaultConfigPath = findDefaultConfigPath();
+  if (defaultConfigPath) {
+    return defaultConfigPath;
+  }
+
+  p.log.error(
+    "Could not find a Hot Updater config file.\n\n" +
+      "Pass the file that exports `hotUpdater`, for example:\n" +
+      "  hot-updater db generate src/db.ts\n" +
+      "  hot-updater db migrate src/db.ts\n\n" +
+      "Automatic lookup supports:\n" +
+      "  • hot-updater.config.{ts,js,mjs,cjs,mts,cts}\n" +
+      "  • src/hotUpdater.{ts,js,mjs,cjs,mts,cts}\n" +
+      "  • src/db.{ts,js,mjs,cjs,mts,cts}\n\n" +
+      "Or use `hot-updater db generate --sql` for standalone SQL export.",
+  );
+  process.exit(1);
+};
+
 /**
  * Load and validate hotUpdater instance from config file
  */
 export async function loadHotUpdater(
   configPath: string,
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = path.resolve(process.cwd(), configPath);
+  const absoluteConfigPath = resolveConfigPath(configPath);
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {
     p.log.error(`Config file not found: ${absoluteConfigPath}`);
+    process.exit(1);
+  }
+
+  if (statSync(absoluteConfigPath).isDirectory()) {
+    p.log.error(
+      `Config path must be a file that exports \`hotUpdater\`: ${absoluteConfigPath}`,
+    );
     process.exit(1);
   }
 

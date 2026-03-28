@@ -55,19 +55,19 @@ const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
     command: "pnpm --filter @hot-updater/core build",
-    path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.js"),
+    path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/server build",
-    path: path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.js"),
+    path: path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/plugin-core build",
-    path: path.join(WORKSPACE_ROOT, "plugins/plugin-core/dist/index.js"),
+    path: path.join(WORKSPACE_ROOT, "plugins/plugin-core/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/supabase build",
-    path: path.join(WORKSPACE_ROOT, "plugins/supabase/dist/index.js"),
+    path: path.join(WORKSPACE_ROOT, "plugins/supabase/dist/index.mjs"),
   },
 ] as const;
 
@@ -773,7 +773,7 @@ const writeSupabaseRuntimeFiles = async ({
   const importMap = {
     imports: {
       "npm:@hot-updater/server/runtime": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.js"),
+        path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
       ).href,
       "npm:@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),

@@ -47,21 +47,21 @@ const REQUIRED_BUILD_ARTIFACTS = [
     command: "pnpm --filter @hot-updater/firebase... build",
     path: path.join(
       WORKSPACE_ROOT,
-      "plugins/firebase/dist/firebase/firebase.json",
+      "plugins/firebase/dist/firebase/public/firebase.json",
     ),
   },
   {
     command: "pnpm --filter @hot-updater/firebase... build",
     path: path.join(
       WORKSPACE_ROOT,
-      "plugins/firebase/dist/firebase/firestore.indexes.json",
+      "plugins/firebase/dist/firebase/public/firestore.indexes.json",
     ),
   },
   {
     command: "pnpm --filter @hot-updater/firebase... build",
     path: path.join(
       WORKSPACE_ROOT,
-      "plugins/firebase/dist/firebase/functions/_package.json",
+      "plugins/firebase/dist/firebase/public/functions/_package.json",
     ),
   },
   {
@@ -160,7 +160,7 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
       await readFile(
         path.join(
           WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/firebase.json",
+          "plugins/firebase/dist/firebase/public/firebase.json",
         ),
         "utf8",
       ),
@@ -182,7 +182,7 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
       await readFile(
         path.join(
           WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/firestore.indexes.json",
+          "plugins/firebase/dist/firebase/public/firestore.indexes.json",
         ),
         "utf8",
       ),
@@ -195,7 +195,7 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
       await readFile(
         path.join(
           WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/functions/_package.json",
+          "plugins/firebase/dist/firebase/public/functions/_package.json",
         ),
         "utf8",
       ),

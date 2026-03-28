@@ -35,9 +35,21 @@ const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
 type Bindings = {
   callback: Callback;
   request: CloudFrontRequest;
+  config: {
+    distributionDomainName: string;
+  };
 };
 
-const resolveRequestOrigin = (context?: { request?: Request }) => {
+type SignedUrlContext = {
+  request?: Request;
+  distributionDomainName?: string;
+};
+
+const resolveRequestOrigin = (context?: SignedUrlContext) => {
+  if (context?.distributionDomainName) {
+    return `https://${context.distributionDomainName}`;
+  }
+
   if (!context?.request) {
     throw new Error(
       "CloudFront signed URL resolution requires a request context.",
@@ -47,7 +59,7 @@ const resolveRequestOrigin = (context?: { request?: Request }) => {
   return new URL(context.request.url).origin;
 };
 
-const hotUpdater = createHotUpdater({
+const hotUpdater = createHotUpdater<SignedUrlContext>({
   database: s3Database({
     bucketName: S3_BUCKET_NAME,
     region: SSM_REGION,
@@ -103,6 +115,7 @@ app.get(HOT_UPDATER_BASE_PATH, async (c) => {
 
   const response = await hotUpdater.handler(rewrittenRequest, {
     request: rewrittenRequest,
+    distributionDomainName: c.env.config.distributionDomainName,
   });
   response.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
   return response;
@@ -114,6 +127,7 @@ app.on(
   async (c) => {
     const response = await hotUpdater.handler(c.req.raw, {
       request: c.req.raw,
+      distributionDomainName: c.env.config.distributionDomainName,
     });
 
     if (
