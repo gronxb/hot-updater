@@ -81,6 +81,31 @@ const createCloudFrontRequest = (uri: string): CloudFrontRequestEvent => ({
   ],
 });
 
+const parseResponseBody = (
+  body:
+    | string
+    | {
+        data: string;
+        encoding: "base64" | "text";
+      }
+    | undefined,
+) => {
+  if (!body) {
+    return null;
+  }
+
+  if (typeof body === "string") {
+    return JSON.parse(body);
+  }
+
+  const responseBody =
+    body.encoding === "base64"
+      ? Buffer.from(body.data, "base64").toString("utf8")
+      : body.data;
+
+  return JSON.parse(responseBody);
+};
+
 describe("aws lambda entrypoint", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -111,7 +136,7 @@ describe("aws lambda entrypoint", () => {
     expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
       SHARED_EDGE_CACHE_CONTROL,
     );
-    expect(JSON.parse(response?.body ?? "null")).toEqual({ ok: true });
+    expect(parseResponseBody(response?.body)).toEqual({ ok: true });
   });
 
   it("serves canonical app-version routes with a cohort segment for origin-request events", async () => {
@@ -132,6 +157,6 @@ describe("aws lambda entrypoint", () => {
     expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
       SHARED_EDGE_CACHE_CONTROL,
     );
-    expect(JSON.parse(response?.body ?? "null")).toEqual({ ok: true });
+    expect(parseResponseBody(response?.body)).toEqual({ ok: true });
   });
 });
