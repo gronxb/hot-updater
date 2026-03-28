@@ -60,6 +60,7 @@ const createBundleJsonFingerprint = (
 let fakeStore: Record<string, string> = {};
 // 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
+let cloudfrontInvalidationError: Error | null = null;
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -85,6 +86,11 @@ vi.mock("@aws-sdk/client-cloudfront", async () => {
     CloudFrontClient: class {
       send(command: any) {
         if (command instanceof CreateInvalidationCommand) {
+          if (cloudfrontInvalidationError) {
+            const error = cloudfrontInvalidationError;
+            cloudfrontInvalidationError = null;
+            return Promise.reject(error);
+          }
           cloudfrontInvalidations.push({
             paths: command.input.InvalidationBatch?.Paths?.Items ?? [],
             distributionId: command.input.DistributionId ?? "",
@@ -106,6 +112,7 @@ vi.mock("@aws-sdk/client-cloudfront", async () => {
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
+  cloudfrontInvalidationError = null;
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -1075,6 +1082,30 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(cloudfrontInvalidations.length).toBe(0);
+  });
+
+  it("should warn and continue when CloudFront invalidation fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-warning-test",
+    );
+
+    cloudfrontInvalidationError = new Error("TooManyInvalidationsInProgress");
+
+    await plugin.appendBundle(newBundle);
+    await expect(plugin.commitBundle()).resolves.toBeUndefined();
+
+    expect(JSON.parse(fakeStore[bundleKey])).toStrictEqual([newBundle]);
+    expect(JSON.parse(fakeStore[targetVersionsKey])).toContain("1.0.0");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain(
+      "CloudFront invalidation failed",
+    );
   });
 
   it("should trigger CloudFront invalidation for fingerprint path when bundle is updated", async () => {

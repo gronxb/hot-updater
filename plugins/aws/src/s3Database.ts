@@ -126,18 +126,30 @@ async function invalidateCloudFront(
   }
 
   const timestamp = Date.now();
-  await client.send(
-    new CreateInvalidationCommand({
-      DistributionId: distributionId,
-      InvalidationBatch: {
-        CallerReference: `invalidation-${timestamp}`,
-        Paths: {
-          Quantity: paths.length,
-          Items: paths,
+  try {
+    await client.send(
+      new CreateInvalidationCommand({
+        DistributionId: distributionId,
+        InvalidationBatch: {
+          CallerReference: `invalidation-${timestamp}`,
+          Paths: {
+            Quantity: paths.length,
+            Items: paths,
+          },
         },
+      }),
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown invalidation error";
+    console.warn(
+      `[hot-updater/aws] CloudFront invalidation failed for distribution ${distributionId}; continuing without cache invalidation.`,
+      {
+        error: message,
+        paths,
       },
-    }),
-  );
+    );
+  }
 }
 
 export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({

@@ -83,3 +83,5 @@ keys
 # hot-updater
 keys/
 .maestro/results/
+# hot-updater
+.hot-updater/log
