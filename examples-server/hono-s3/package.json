@@ -25,7 +25,7 @@
     "@aws-sdk/client-s3": "3.1008.0",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "hot-updater": "workspace:*",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",

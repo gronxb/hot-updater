@@ -46,7 +46,7 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "execa": "catalog:"
+    "execa": "catalog:tools"
   },
   "devDependencies": {
     "@types/node": "catalog:"

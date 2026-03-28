@@ -7,10 +7,12 @@ packages:
 
 catalog:
   '@types/node': ^20
-  execa: 9.5.2
   vitest: 4.1.0
 
 catalogs:
+  tools:
+   '@clack/prompts': 1.0.1
+   'execa': 9.5.2
   hono:
     hono: 4.12.9
     '@hono/node-server': 1.19.11

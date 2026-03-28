@@ -46,7 +46,7 @@
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@nx/js": "22.6.3",
     "@swc/helpers": "^0.5.17",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
     "hono": "catalog:hono",
     "nx": "22.6.3",
     "rimraf": "^5.0.7",

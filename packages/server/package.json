@@ -67,7 +67,7 @@
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "kysely": "^0.28.9",
     "kysely-pglite-dialect": "^1.2.0",
     "msw": "^2.7.0",

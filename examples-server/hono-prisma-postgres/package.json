@@ -27,7 +27,7 @@
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "hot-updater": "workspace:*",
     "prisma": "^6.4.1",
     "tsx": "^4.20.6",

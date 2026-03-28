@@ -48,7 +48,7 @@
     "@types/node": "catalog:",
     "aws-sdk-client-mock": "^4.1.0",
     "es-toolkit": "^1.32.0",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
     "mime": "^4.0.4"
   },
   "dependencies": {

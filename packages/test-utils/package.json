@@ -39,13 +39,13 @@
   },
   "peerDependencies": {
     "@hot-updater/core": "workspace:*",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
     "vitest": "*"
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
     "vitest": "catalog:"
   }
 }

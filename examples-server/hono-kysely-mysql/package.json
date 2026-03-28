@@ -26,7 +26,7 @@
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "hot-updater": "workspace:*",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"
