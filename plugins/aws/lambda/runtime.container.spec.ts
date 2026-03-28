@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { access, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -45,6 +45,7 @@ const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const NO_STORE_CACHE_CONTROL = "no-store";
 const SHARED_EDGE_CACHE_CONTROL =
   "public, max-age=0, s-maxage=31536000, must-revalidate";
+const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
 const hasDocker = hasDockerDaemon();
 const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 const REQUIRED_BUILD_ARTIFACTS = [
@@ -70,7 +71,6 @@ const ensureBuiltArtifacts = async (
 
 const createLegacyHeaders = (args: GetBundlesArgs) => {
   const headers = new Headers({
-    host: new URL(PUBLIC_BASE_URL).host,
     "x-app-platform": args.platform,
     "x-bundle-id": args.bundleId,
   });
@@ -128,6 +128,11 @@ const createCloudFrontEvent = ({
   path: string;
   headers: Headers;
 }) => {
+  const requestHeaders = new Headers(headers);
+  if (!requestHeaders.has("host")) {
+    requestHeaders.set("host", ORIGIN_HOST);
+  }
+
   return {
     Records: [
       {
@@ -135,13 +140,25 @@ const createCloudFrontEvent = ({
           config: {
             distributionDomainName: new URL(PUBLIC_BASE_URL).host,
             distributionId: "dist-id",
-            eventType: "viewer-request",
+            eventType: "origin-request",
             requestId: "request-id",
           },
           request: {
             clientIp: "127.0.0.1",
-            headers: toCloudFrontHeaders(headers),
+            headers: toCloudFrontHeaders(requestHeaders),
             method: "GET",
+            origin: {
+              custom: {
+                customHeaders: {},
+                domainName: ORIGIN_HOST,
+                keepaliveTimeout: 5,
+                path: "",
+                port: 443,
+                protocol: "https",
+                readTimeout: 30,
+                sslProtocols: ["TLSv1.2"],
+              },
+            },
             querystring: "",
             uri: requestPath,
           },
@@ -283,10 +300,6 @@ describeIfDocker("aws lambda runtime acceptance", () => {
     runtimeDir = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-"),
     );
-    await symlink(
-      path.join(WORKSPACE_ROOT, "plugins/aws/node_modules"),
-      path.join(runtimeDir, "node_modules"),
-    );
 
     const transformedCode = transformEnv(
       path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
@@ -418,9 +431,7 @@ describeIfDocker("aws lambda runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         }),
-        headers: new Headers({
-          host: new URL(PUBLIC_BASE_URL).host,
-        }),
+        headers: new Headers(),
       }),
     );
     const payload = (await response.json()) as {
@@ -431,10 +442,20 @@ describeIfDocker("aws lambda runtime acceptance", () => {
     expect(payload.headers?.["cache-control"]?.[0]?.value).toBe(
       SHARED_EDGE_CACHE_CONTROL,
     );
-    await expect(readLambdaJson(payload)).resolves.toMatchObject({
+    const body = (await readLambdaJson(payload)) as {
+      fileUrl?: string;
+      id?: string;
+      status?: string;
+    } | null;
+
+    expect(body).toMatchObject({
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+    expect(body?.fileUrl).toBeTypeOf("string");
+    expect(new URL(body?.fileUrl ?? "").host).toBe(
+      new URL(PUBLIC_BASE_URL).host,
+    );
   });
 
   it("marks legacy exact responses as non-cacheable in the packaged lambda entrypoint", async () => {
@@ -443,7 +464,6 @@ describeIfDocker("aws lambda runtime acceptance", () => {
       createCloudFrontEvent({
         path: HOT_UPDATER_BASE_PATH,
         headers: new Headers({
-          host: new URL(PUBLIC_BASE_URL).host,
           "x-app-platform": "ios",
           "x-app-version": "1.0.0",
         }),
@@ -467,9 +487,7 @@ describeIfDocker("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: `${HOT_UPDATER_BASE_PATH}/api/bundles`,
-        headers: new Headers({
-          host: new URL(PUBLIC_BASE_URL).host,
-        }),
+        headers: new Headers(),
       }),
     );
     const payload = (await response.json()) as {
@@ -540,7 +558,6 @@ const waitForLambdaReady = async ({
   const warmupEvent = createCloudFrontEvent({
     path: HOT_UPDATER_BASE_PATH,
     headers: new Headers({
-      host: new URL(PUBLIC_BASE_URL).host,
       "x-app-platform": "ios",
       "x-app-version": "1.0.0",
     }),
