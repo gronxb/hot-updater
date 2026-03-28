@@ -5,6 +5,5 @@ appId: ${APP_ID}
       id: ${BUTTON_ID}
     direction: DOWN
     timeout: 20000
-    centerElement: true
 - tapOn:
     id: ${BUTTON_ID}

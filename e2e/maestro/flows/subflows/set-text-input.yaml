@@ -1,12 +1,12 @@
 appId: ${APP_ID}
 ---
 - scrollUntilVisible:
-    element: ${FIELD_LABEL}
+    element:
+      id: ${FIELD_ID}
     direction: DOWN
     timeout: 20000
-    centerElement: true
 - tapOn:
-    below: ${FIELD_LABEL}
+    id: ${FIELD_ID}
 - eraseText
 - inputText: ${FIELD_VALUE}
 - pressKey: Enter

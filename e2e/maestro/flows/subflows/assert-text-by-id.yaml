@@ -1,10 +1,10 @@
 appId: ${APP_ID}
 ---
 - scrollUntilVisible:
-    element: ${ANCHOR_TEXT}
+    element:
+      id: ${TARGET_ID}
     direction: DOWN
     timeout: 20000
-    centerElement: true
 - extendedWaitUntil:
     visible: ${EXPECTED_TEXT}
     timeout: 10000

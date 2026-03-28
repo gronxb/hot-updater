@@ -3,7 +3,6 @@ appId: ${APP_ID}
 - runFlow:
     file: assert-text-by-id.yaml
     env:
-      ANCHOR_TEXT: "Restore Initial Cohort"
       APP_ID: ${APP_ID}
       ASSERTION_LABEL: Channel action result matches expected value
       EXPECTED_TEXT: ${EXPECTED_CHANNEL_ACTION_RESULT}

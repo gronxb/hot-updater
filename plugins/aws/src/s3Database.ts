@@ -1,6 +1,7 @@
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
+  GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import {
   DeleteObjectCommand,
@@ -26,8 +27,21 @@ export interface S3DatabaseConfig extends S3ClientConfig {
    * where CloudFront is not available.
    */
   cloudfrontDistributionId?: string;
+  /**
+   * Wait for CloudFront invalidations to reach `Completed` before finishing.
+   *
+   * When enabled, invalidation failures and timeouts are surfaced to callers
+   * instead of being logged and ignored.
+   */
+  shouldWaitForInvalidation?: boolean;
   apiBasePath?: string;
 }
+
+const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
+const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Loads JSON data from S3.
@@ -120,6 +134,9 @@ async function invalidateCloudFront(
   client: CloudFrontClient,
   distributionId: string,
   paths: string[],
+  options?: {
+    shouldWaitForInvalidation?: boolean;
+  },
 ) {
   if (paths.length === 0) {
     return;
@@ -127,7 +144,7 @@ async function invalidateCloudFront(
 
   const timestamp = Date.now();
   try {
-    await client.send(
+    const response = await client.send(
       new CreateInvalidationCommand({
         DistributionId: distributionId,
         InvalidationBatch: {
@@ -139,7 +156,49 @@ async function invalidateCloudFront(
         },
       }),
     );
+
+    if (!options?.shouldWaitForInvalidation) {
+      return;
+    }
+
+    const invalidationId = response.Invalidation?.Id;
+    if (!invalidationId) {
+      throw new Error(
+        "CloudFront invalidation response is missing Invalidation.Id",
+      );
+    }
+
+    if (response.Invalidation?.Status === "Completed") {
+      return;
+    }
+
+    const timeoutMs = DEFAULT_INVALIDATION_TIMEOUT_MS;
+    const pollIntervalMs = DEFAULT_INVALIDATION_POLL_INTERVAL_MS;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      await sleep(pollIntervalMs);
+
+      const statusResponse = await client.send(
+        new GetInvalidationCommand({
+          DistributionId: distributionId,
+          Id: invalidationId,
+        }),
+      );
+
+      if (statusResponse.Invalidation?.Status === "Completed") {
+        return;
+      }
+    }
+
+    throw new Error(
+      `Timed out waiting for CloudFront invalidation ${invalidationId} to complete after ${timeoutMs}ms`,
+    );
   } catch (error) {
+    if (options?.shouldWaitForInvalidation) {
+      throw error;
+    }
+
     const message =
       error instanceof Error ? error.message : "Unknown invalidation error";
     console.warn(
@@ -159,6 +218,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
       bucketName,
       cloudfrontDistributionId,
       apiBasePath = "/api/check-update",
+      shouldWaitForInvalidation = false,
       ...s3Config
     } = config;
 
@@ -188,6 +248,9 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
             cloudfrontClient,
             cloudfrontDistributionId,
             pathsToInvalidate,
+            {
+              shouldWaitForInvalidation,
+            },
           );
         }
         return Promise.resolve();
