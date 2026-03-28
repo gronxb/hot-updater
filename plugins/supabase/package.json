@@ -50,7 +50,7 @@
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@supabase/supabase-js": "^2.76.1",
-    "hono": "^4.6.3",
+    "hono": "catalog:hono",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {

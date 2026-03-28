@@ -12,14 +12,14 @@
     "docker:down": "docker compose down -v"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.5",
+    "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "dotenv": "^16.6.1",
-    "hono": "^4.9.12"
+    "hono": "catalog:hono"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1008.0",

@@ -40,14 +40,14 @@
     "changeset": "changeset"
   },
   "devDependencies": {
-    "@hono/node-server": "^1.19.5",
+    "@hono/node-server": "catalog:hono",
     "@biomejs/biome": "^2.3.2",
     "@changesets/cli": "^2.29.8",
     "@cloudflare/vitest-pool-workers": "0.13.0",
     "@nx/js": "22.6.3",
     "@swc/helpers": "^0.5.17",
     "execa": "catalog:",
-    "hono": "^4.9.12",
+    "hono": "catalog:hono",
     "nx": "22.6.3",
     "rimraf": "^5.0.7",
     "tsdown": "^0.15.9",

@@ -68,7 +68,7 @@
     "@bacons/xcode": "1.0.0-alpha.24",
     "@commander-js/extra-typings": "^14.0.0",
     "commander": "^14.0.0",
-    "@hono/node-server": "^1.13.4",
+    "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",

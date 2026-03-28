@@ -52,7 +52,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",
-    "hono": "^4.6.3",
+    "hono": "catalog:hono",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {

@@ -65,7 +65,7 @@
     "@aws-sdk/lib-storage": "3.1008.0",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "hono": "^4.6.3",
+    "hono": "catalog:hono",
     "aws-lambda": "1.0.7"
   }
 }
