@@ -33,11 +33,6 @@ type ParsedEnvFile = Record<string, string>;
 
 type DeveloperE2ESetup = {
   appBaseUrl: URL;
-  appBaseUrlRaw: string;
-  envPath: string;
-  parsedEnv: ParsedEnvFile;
-  serverBaseUrl: URL;
-  serverBaseUrlRaw: string;
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -71,6 +66,8 @@ const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
+// biome-ignore lint/complexity/useRegexLiterals: The literal form trips noControlCharactersInRegex for ESC.
+const ANSI_ESCAPE_PATTERN = new RegExp("\\x1B\\[[0-?]*[ -/]*[@-~]", "g");
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -217,8 +214,6 @@ async function validateDeveloperE2ESetup(
   const parsedEnv = parseEnvFile(envSource);
   const appBaseUrlRaw =
     parsedEnv.HOT_UPDATER_APP_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
-  const serverBaseUrlRaw =
-    parsedEnv.HOT_UPDATER_SERVER_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
   const relativeEnvPath = path.relative(REPO_DIR, envPath);
   const appBaseUrl = parseConfiguredUrl(
     "HOT_UPDATER_APP_BASE_URL",
@@ -226,15 +221,8 @@ async function validateDeveloperE2ESetup(
     relativeEnvPath,
     DEFAULT_UPDATE_SERVER_BASE_URL,
   );
-  const serverBaseUrl = parseConfiguredUrl(
-    "HOT_UPDATER_SERVER_BASE_URL",
-    serverBaseUrlRaw,
-    relativeEnvPath,
-    DEFAULT_UPDATE_SERVER_BASE_URL,
-  );
   const controlPort = DEFAULT_SERVER_PORT;
   const appBaseUrlPort = getUrlPort(appBaseUrl);
-  const serverBaseUrlPort = getUrlPort(serverBaseUrl);
 
   if (appBaseUrlPort === controlPort) {
     throw new Error(
@@ -242,16 +230,6 @@ async function validateDeveloperE2ESetup(
         `HOT_UPDATER_APP_BASE_URL=${appBaseUrlRaw} points at the Maestro control server port ${controlPort}.`,
         "Point the app at the standalone update server instead.",
         `Use a URL such as http://localhost:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater.`,
-      ].join("\n"),
-    );
-  }
-
-  if (serverBaseUrlPort === controlPort) {
-    throw new Error(
-      [
-        `HOT_UPDATER_SERVER_BASE_URL=${serverBaseUrlRaw} points at the Maestro control server port ${controlPort}.`,
-        "hot-updater deploy must target the standalone update server instead.",
-        `Use a URL such as http://127.0.0.1:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater.`,
       ].join("\n"),
     );
   }
@@ -271,11 +249,6 @@ async function validateDeveloperE2ESetup(
 
   return {
     appBaseUrl,
-    appBaseUrlRaw,
-    envPath,
-    parsedEnv,
-    serverBaseUrl,
-    serverBaseUrlRaw,
   };
 }
 
@@ -312,7 +285,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}) {
 }
 
 function stripAnsi(value: string) {
-  return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
 }
 
 function extractMeaningfulLogLines(contents: string, limit = 8) {
