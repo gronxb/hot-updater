@@ -209,10 +209,7 @@ const dbCommand = program
 dbCommand
   .command("migrate")
   .description("Run database migration (creates tables directly in database)")
-  .argument(
-    "[configPath]",
-    "path to the config file that exports hotUpdater",
-  )
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
   .option("-y, --yes", "skip confirmation prompt", false)
   .action(async (configPath: string | undefined, options: { yes: boolean }) => {
     await migrate({ configPath: configPath || "", skipConfirm: options.yes });
