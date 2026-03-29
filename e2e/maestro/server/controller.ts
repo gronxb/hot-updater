@@ -733,6 +733,11 @@ async function prepareIosRelease() {
     return;
   }
 
+  await fsPromises.rm(session.iosDerivedDataPath, {
+    force: true,
+    recursive: true,
+  });
+
   await runLogged("bundle", ["install"], {
     cwd: path.join(session.exampleDir, "ios"),
     logPath: path.join(session.resultsDir, "bundle-install.log"),
