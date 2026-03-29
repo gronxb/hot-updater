@@ -7,7 +7,14 @@ appId: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - scrollUntilVisible:
     element:
-      text: Runtime Snapshot
+      id: runtime-scenario-marker
     direction: UP
     timeout: 120000
-- assertVisible: ${EXPECTED_MARKER}
+- extendedWaitUntil:
+    visible: ${EXPECTED_MARKER}
+    timeout: 10000
+- copyTextFrom:
+    id: runtime-scenario-marker
+- assertTrue:
+    condition: ${maestro.copiedText.includes(EXPECTED_MARKER)}
+    label: Runtime scenario marker matches expected value

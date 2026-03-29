@@ -131,11 +131,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
-- runFlow:
-    file: subflows/assert-update-action-result.yaml
+- runScript:
+    file: ../scripts/control.js
     env:
-      APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed 00000000-0000-0000-0000-000000000000 (ROLLBACK)"
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:

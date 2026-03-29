@@ -1115,6 +1115,37 @@ function createWaitForMetadataTimeoutError(args: {
   });
 }
 
+function createWaitForMetadataResetTimeoutError(args: {
+  attempts: number;
+  crashHistory: JsonSnapshot;
+  launchReport: JsonSnapshot;
+  metadata: JsonSnapshot;
+}) {
+  const observedState = getMetadataState(args.metadata.value);
+  const message = [
+    "Timed out waiting for metadata reset state.",
+    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false.",
+    `Observed stableBundleId=${String(observedState.stableBundleId)} and ${formatObservedMetadataState(observedState)}.`,
+    `Metadata path: ${args.metadata.path}`,
+  ].join("\n");
+
+  return createEndpointError(message, {
+    attempts: args.attempts,
+    expected: {
+      stableBundleId: null,
+      stagingBundleId: null,
+      verificationPending: false,
+    },
+    observed: {
+      crashHistory: args.crashHistory,
+      launchReport: args.launchReport,
+      metadata: args.metadata,
+      metadataState: observedState,
+    },
+    platform: session.platform,
+  });
+}
+
 function readIosWaitForMetadataDiagnostics() {
   const storePath = ensureStorePath();
   return {
@@ -1744,20 +1775,32 @@ async function assertMetadataActive(bundleId: string) {
 }
 
 async function assertMetadataResetState() {
-  const metadata =
-    session.platform === "ios"
-      ? readJson(path.join(ensureStorePath(), "metadata.json"))
-      : (() => {
-          const probePath = path.join(
-            session.resultsDir,
-            "metadata-reset-assert.json",
-          );
-          copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
-          return readJson(probePath);
-        })();
+  const attempts = 30;
 
-  assertMetadataReset(metadata);
-  return {};
+  for (let index = 0; index < attempts; index += 1) {
+    const diagnostics =
+      session.platform === "ios"
+        ? readIosWaitForMetadataDiagnostics()
+        : readAndroidWaitForMetadataDiagnostics();
+
+    if (diagnostics.metadata.value) {
+      try {
+        assertMetadataReset(diagnostics.metadata.value);
+        return {};
+      } catch {}
+    }
+
+    await sleep(1000);
+  }
+
+  const diagnostics =
+    session.platform === "ios"
+      ? readIosWaitForMetadataDiagnostics()
+      : readAndroidWaitForMetadataDiagnostics();
+  throw createWaitForMetadataResetTimeoutError({
+    attempts,
+    ...diagnostics,
+  });
 }
 
 async function assertLaunchReportState({

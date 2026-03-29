@@ -10,3 +10,8 @@ appId: ${APP_ID}
 - eraseText
 - inputText: ${FIELD_VALUE}
 - pressKey: Enter
+- copyTextFrom:
+    id: ${FIELD_ID}
+- assertTrue:
+    condition: ${maestro.copiedText == FIELD_VALUE}
+    label: ${FIELD_LABEL} matches expected value

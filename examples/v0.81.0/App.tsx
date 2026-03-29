@@ -437,6 +437,12 @@ function App(): React.JSX.Element {
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setRuntimeChannelInput}
+              onEndEditing={(event) =>
+                setRuntimeChannelInput(event.nativeEvent.text)
+              }
+              onSubmitEditing={(event) =>
+                setRuntimeChannelInput(event.nativeEvent.text)
+              }
               placeholder="beta"
               placeholderTextColor="#94a3b8"
               style={styles.inputField}
@@ -452,6 +458,10 @@ function App(): React.JSX.Element {
               autoCorrect={false}
               keyboardType="default"
               onChangeText={setCohortInput}
+              onEndEditing={(event) => setCohortInput(event.nativeEvent.text)}
+              onSubmitEditing={(event) =>
+                setCohortInput(event.nativeEvent.text)
+              }
               placeholder={initialCohort}
               placeholderTextColor="#94a3b8"
               style={styles.inputField}
