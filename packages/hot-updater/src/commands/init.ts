@@ -91,21 +91,18 @@ export const init = async () => {
   }
 
   try {
-    await ensureInstallPackages(
-      {
-        dependencies: [
-          ...buildPluginPackage.dependencies,
-          ...REQUIRED_PACKAGES.dependencies,
-          ...PACKAGE_MAP[provider].dependencies,
-        ],
-        devDependencies: [
-          ...buildPluginPackage.devDependencies,
-          ...REQUIRED_PACKAGES.devDependencies,
-          ...PACKAGE_MAP[provider].devDependencies,
-        ],
-      },
-      { provider },
-    );
+    await ensureInstallPackages({
+      dependencies: [
+        ...buildPluginPackage.dependencies,
+        ...REQUIRED_PACKAGES.dependencies,
+        ...PACKAGE_MAP[provider].dependencies,
+      ],
+      devDependencies: [
+        ...buildPluginPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
+        ...PACKAGE_MAP[provider].devDependencies,
+      ],
+    });
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(e.stderr ?? e.message);
