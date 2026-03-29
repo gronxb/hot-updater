@@ -12,8 +12,13 @@
       "require": "./dist/index.cjs"
     },
     "./worker": {
-      "default": "./worker/wrangler.json"
+      "types": "./dist/worker/index.d.cts",
+      "import": "./dist/worker/index.mjs",
+      "require": "./dist/worker/index.cjs",
+      "default": "./dist/worker/index.mjs"
     },
+    "./worker/config": "./worker/wrangler.json",
+    "./worker/wrangler.json": "./worker/wrangler.json",
     "./iac": {
       "types": "./dist/iac/index.d.cts",
       "import": "./dist/iac/index.mjs",
@@ -34,8 +39,10 @@
   "files": [
     "dist",
     "sql",
+    "src",
     "worker/dist",
     "worker/migrations",
+    "worker/src",
     "worker/wrangler.json",
     "package.json"
   ],

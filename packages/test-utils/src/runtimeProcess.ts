@@ -66,6 +66,50 @@ export const hasDockerCompose = () => {
   );
 };
 
+export const assertCommandAvailable = (
+  command: string,
+  args: string[],
+  message?: string,
+) => {
+  if (hasCommand(command, args)) {
+    return;
+  }
+
+  throw new Error(
+    message ?? `Required command is unavailable: ${command} ${args.join(" ")}`,
+  );
+};
+
+export const assertDockerDaemonAvailable = (message?: string) => {
+  if (hasDockerDaemon()) {
+    return;
+  }
+
+  throw new Error(
+    message ??
+      "A running Docker daemon is required for this test, but it is unavailable.",
+  );
+};
+
+export const assertDockerComposeAvailable = (message?: string) => {
+  if (!hasCommand("docker", ["compose", "version", "--short"])) {
+    throw new Error(
+      message ??
+        "Docker Compose is required for this test, but it is unavailable.",
+    );
+  }
+
+  assertDockerDaemonAvailable(message);
+};
+
+export const assertEnvFlagEnabled = (name: string, message?: string) => {
+  if (process.env[name] === "1") {
+    return;
+  }
+
+  throw new Error(message ?? `Set ${name}=1 to enable this test suite.`);
+};
+
 export const findOpenPort = async (): Promise<number> => {
   return await new Promise((resolve, reject) => {
     const server = net.createServer();

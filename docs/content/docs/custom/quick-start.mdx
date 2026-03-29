@@ -77,14 +77,16 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.on(["GET", "POST", "PATCH", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
-  return hotUpdater.handler(c.req.raw); // [!code ++]
-}); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
 });
 ```
+
+<Callout type="warn">
+With Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for React Native clients. If `routes.bundles` is enabled, protect `/hot-updater/version` and `/hot-updater/api/*` with authentication.
+</Callout>
 
 ## Schema Generation
 

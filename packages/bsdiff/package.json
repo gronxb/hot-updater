@@ -52,7 +52,7 @@
     "test:type": "tsc --noEmit",
     "test:watch": "vitest",
     "test:runtime:node": "vitest run tests/runtime.node.test.ts",
-    "test:runtime:endpoints": "vitest run tests/runtime.endpoints.test.ts"
+    "test:runtime:endpoints": "vitest run tests/runtime.endpoints.integration.spec.ts"
   },
   "keywords": [
     "hermes",

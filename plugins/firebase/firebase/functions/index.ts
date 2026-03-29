@@ -1,8 +1,4 @@
-import {
-  createHotUpdater,
-  rewriteLegacyExactRequestToCanonical,
-  wildcardPattern,
-} from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import * as admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
@@ -15,7 +11,6 @@ declare global {
   };
 }
 
-export const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
 if (!admin.apps.length) {
@@ -54,26 +49,7 @@ app.get("/ping", (c) => {
   return c.text("pong");
 });
 
-app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-    basePath: hotUpdater.basePath,
-    request: c.req.raw,
-  });
-
-  if (rewrittenRequest instanceof Response) {
-    return rewrittenRequest;
-  }
-
-  return hotUpdater.handler(rewrittenRequest);
-});
-
-app.on(
-  HOT_UPDATER_METHODS,
-  wildcardPattern(HOT_UPDATER_BASE_PATH),
-  async (c) => {
-    return hotUpdater.handler(c.req.raw);
-  },
-);
+app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
 
 export const handler = onRequest(
   {

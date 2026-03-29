@@ -1,7 +1,10 @@
 import {
   type BuildType,
+  HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   p,
+  resolveHotUpdaterServerVersion,
+  resolvePackageVersion,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
@@ -50,6 +53,48 @@ const REGIONS = [
     label: "Australia Southeast (Sydney)",
   },
 ];
+
+const getFirebaseRuntimePackageInfo = () => {
+  const firebasePackageRoot = path.dirname(
+    require.resolve("@hot-updater/firebase/package.json"),
+  );
+  const currentPackageVersion = resolvePackageVersion("@hot-updater/firebase");
+  const serverPackageVersion = resolveHotUpdaterServerVersion(
+    "@hot-updater/firebase",
+  );
+  const honoVersion = resolvePackageVersion("hono", {
+    searchFrom: firebasePackageRoot,
+  });
+
+  return {
+    currentPackageVersion,
+    serverPackageVersion,
+    honoVersion,
+  };
+};
+
+const syncFunctionsPackageJson = async (functionsDir: string) => {
+  const runtimePackageInfo = getFirebaseRuntimePackageInfo();
+  const packageJsonPath = path.join(functionsDir, "package.json");
+  const packageJson = JSON.parse(
+    await fs.promises.readFile(packageJsonPath, "utf-8"),
+  ) as {
+    dependencies?: Record<string, string>;
+  };
+
+  packageJson.dependencies = {
+    ...(packageJson.dependencies ?? {}),
+    "@hot-updater/server": runtimePackageInfo.serverPackageVersion,
+    hono: runtimePackageInfo.honoVersion,
+  };
+
+  await fs.promises.writeFile(
+    packageJsonPath,
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
+
+  return runtimePackageInfo;
+};
 
 interface FirebaseFunction {
   platform: string;
@@ -258,6 +303,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const { tmpDir, removeTmpDir, functionsDir } =
     await prepareFirebaseTemplate(firebaseRootDir);
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
+  const runtimePackageInfo = await syncFunctionsPackageJson(functionsDir);
 
   const initializeVariable = await initFirebaseUser(tmpDir);
 
@@ -268,6 +314,15 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     storageBucket: initializeVariable.storageBucket,
     build,
   });
+
+  if (
+    runtimePackageInfo.serverPackageVersion !==
+    runtimePackageInfo.currentPackageVersion
+  ) {
+    p.note(
+      `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${runtimePackageInfo.serverPackageVersion} for Firebase functions deploy.`,
+    );
+  }
 
   await p.tasks([
     {

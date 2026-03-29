@@ -19,11 +19,28 @@ type EndpointExpectation = {
 
 type RuntimeChild = ChildProcessByStdio<null, Readable, Readable>;
 
-const hasNode = hasCommand("node", ["--version"]);
-const hasBun = hasCommand("bun", ["--version"]);
-const hasDeno = hasCommand("deno", ["--version"]);
-const hasWrangler = hasCommand("pnpm", ["exec", "wrangler", "--version"]);
 const CLOUDFLARE_ENDPOINT_TIMEOUT_MS = 60_000;
+
+assertCommandAvailable(
+  "node",
+  ["--version"],
+  "Node.js is required to run the runtime endpoint integration tests.",
+);
+assertCommandAvailable(
+  "bun",
+  ["--version"],
+  "Bun is required to run the runtime endpoint integration tests.",
+);
+assertCommandAvailable(
+  "deno",
+  ["--version"],
+  "Deno is required to run the runtime endpoint integration tests.",
+);
+assertCommandAvailable(
+  "pnpm",
+  ["exec", "wrangler", "--version"],
+  "Wrangler is required to run the cloudflare runtime endpoint integration test.",
+);
 
 let expected: EndpointExpectation;
 
@@ -43,7 +60,7 @@ beforeAll(async () => {
 });
 
 describe.sequential("runtime endpoint integration", () => {
-  it.skipIf(!hasNode)("node endpoint returns valid patch", async () => {
+  it("node endpoint returns valid patch", async () => {
     await assertEndpointRuntime({
       runtime: "node",
       command: "node",
@@ -52,7 +69,7 @@ describe.sequential("runtime endpoint integration", () => {
     });
   });
 
-  it.skipIf(!hasBun)("bun endpoint returns valid patch", async () => {
+  it("bun endpoint returns valid patch", async () => {
     await assertEndpointRuntime({
       runtime: "bun",
       command: "bun",
@@ -61,7 +78,7 @@ describe.sequential("runtime endpoint integration", () => {
     });
   });
 
-  it.skipIf(!hasDeno)("deno endpoint returns valid patch", async () => {
+  it("deno endpoint returns valid patch", async () => {
     await assertEndpointRuntime({
       runtime: "deno",
       command: "deno",
@@ -75,7 +92,7 @@ describe.sequential("runtime endpoint integration", () => {
     });
   });
 
-  it.skipIf(!hasWrangler)(
+  it(
     "cloudflare worker endpoint returns valid patch",
     async () => {
       await assertEndpointRuntime({
@@ -271,6 +288,18 @@ function hasCommand(command: string, args: string[]): boolean {
     encoding: "utf8",
   });
   return result.status === 0;
+}
+
+function assertCommandAvailable(
+  command: string,
+  args: string[],
+  message: string,
+): void {
+  if (hasCommand(command, args)) {
+    return;
+  }
+
+  throw new Error(message);
 }
 
 async function findOpenPort(): Promise<number> {

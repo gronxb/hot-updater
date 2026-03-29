@@ -17,9 +17,9 @@ import { createHotUpdater } from "@hot-updater/server/runtime";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  assertDockerDaemonAvailable,
   findOpenPort,
   formatRuntimeLogs,
-  hasDockerDaemon,
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
@@ -42,18 +42,19 @@ const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
-const NO_STORE_CACHE_CONTROL = "no-store";
 const SHARED_EDGE_CACHE_CONTROL =
   "public, max-age=0, s-maxage=31536000, must-revalidate";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
-const hasDocker = hasDockerDaemon();
-const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
     command: "pnpm --filter @hot-updater/aws build",
     path: path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
   },
 ] as const;
+
+assertDockerDaemonAvailable(
+  "aws lambda runtime acceptance requires a running Docker daemon.",
+);
 
 const ensureBuiltArtifacts = async (
   artifacts: ReadonlyArray<{ command: string; path: string }>,
@@ -67,33 +68,6 @@ const ensureBuiltArtifacts = async (
       );
     }
   }
-};
-
-const createLegacyHeaders = (args: GetBundlesArgs) => {
-  const headers = new Headers({
-    "x-app-platform": args.platform,
-    "x-bundle-id": args.bundleId,
-  });
-
-  if (args.channel) {
-    headers.set("x-channel", args.channel);
-  }
-
-  if (args.minBundleId) {
-    headers.set("x-min-bundle-id", args.minBundleId);
-  }
-
-  if (args.cohort) {
-    headers.set("x-cohort", args.cohort);
-  }
-
-  if (args._updateStrategy === "appVersion") {
-    headers.set("x-app-version", args.appVersion);
-  } else {
-    headers.set("x-fingerprint-hash", args.fingerprintHash);
-  }
-
-  return headers;
 };
 
 const createCanonicalPath = (args: GetBundlesArgs) => {
@@ -199,7 +173,7 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
-describeIfDocker("aws lambda runtime acceptance", () => {
+describe.sequential("aws lambda runtime acceptance", () => {
   let localstackPort = 0;
   let lambdaPort = 0;
   let localstackRuntime: ReturnType<typeof spawnRuntime> | undefined;
@@ -389,8 +363,8 @@ describeIfDocker("aws lambda runtime acceptance", () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: HOT_UPDATER_BASE_PATH,
-        headers: createLegacyHeaders(args),
+        path: createCanonicalPath(args),
+        headers: new Headers(),
       }),
     );
     expect(response.ok).toBe(true);
@@ -458,28 +432,21 @@ describeIfDocker("aws lambda runtime acceptance", () => {
     );
   });
 
-  it("marks legacy exact responses as non-cacheable in the packaged lambda entrypoint", async () => {
+  it("does not support the legacy exact path", async () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
         path: HOT_UPDATER_BASE_PATH,
-        headers: new Headers({
-          "x-app-platform": "ios",
-          "x-app-version": "1.0.0",
-        }),
+        headers: new Headers(),
       }),
     );
     const payload = (await response.json()) as {
       body?: string;
       headers?: Record<string, { key: string; value: string }[]>;
+      status?: string;
     };
 
-    expect(payload.headers?.["cache-control"]?.[0]?.value).toBe(
-      NO_STORE_CACHE_CONTROL,
-    );
-    await expect(readLambdaJson(payload)).resolves.toEqual({
-      error: "Missing required headers (x-app-platform, x-bundle-id).",
-    });
+    expect(payload.status).toBe("404");
   });
 
   it("does not expose management routes from the packaged lambda entrypoint", async () => {

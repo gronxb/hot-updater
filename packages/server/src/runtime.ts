@@ -11,12 +11,7 @@ import {
   type StoragePluginFactory,
 } from "./db/types";
 import { createHandler, type HandlerRoutes } from "./handler";
-import { rewriteLegacyExactRequestToCanonical } from "./legacyExactRequest";
-import {
-  isCanonicalUpdateRoute,
-  normalizeBasePath,
-  wildcardPattern,
-} from "./route";
+import { normalizeBasePath } from "./route";
 
 export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   basePath: string;
@@ -101,17 +96,26 @@ export function createHotUpdater<TContext = unknown>(
     adapterName: core.adapterName,
   };
 
+  // Some framework adapters strip the mounted base path or pass extra
+  // bindings/execution context arguments. Ignore those extras here so the
+  // handler can still be mounted directly as a plain Request handler.
+  const handler: HotUpdaterAPI<TContext>["handler"] = (
+    request,
+    context,
+    ...extraArgs: unknown[]
+  ) => {
+    if (extraArgs.length > 0) {
+      return api.handler(request);
+    }
+
+    return api.handler(request, context);
+  };
+
   return {
     ...api,
     basePath,
-    handler: api.handler,
+    handler,
   };
 }
 
-export {
-  createHandler,
-  isCanonicalUpdateRoute,
-  normalizeBasePath,
-  rewriteLegacyExactRequestToCanonical,
-  wildcardPattern,
-};
+export { createHandler };

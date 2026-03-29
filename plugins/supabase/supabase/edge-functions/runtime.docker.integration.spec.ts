@@ -19,9 +19,8 @@ import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  assertDockerComposeAvailable,
   findOpenPort,
-  hasCommand,
-  hasDockerCompose,
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
@@ -36,6 +35,8 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const SERVER_RUNTIME_SPECIFIER = "npm:@hot-updater/server/runtime";
+const SUPABASE_SPECIFIER = "npm:@hot-updater/supabase";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -50,8 +51,6 @@ const JWT_SECRET = "super-secret-jwt-token-with-at-least-32-chars";
 const JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 365;
 const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
-const hasDocker = hasCommand("git", ["--version"]) && hasDockerCompose();
-const describeIfDocker = hasDocker ? describe.sequential : describe.skip;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
     command: "pnpm --filter @hot-updater/core build",
@@ -71,6 +70,10 @@ const REQUIRED_BUILD_ARTIFACTS = [
   },
 ] as const;
 
+assertDockerComposeAvailable(
+  "supabase edge runtime acceptance requires Docker Compose and a running Docker daemon.",
+);
+
 const ensureBuiltArtifacts = async (
   artifacts: ReadonlyArray<{ command: string; path: string }>,
 ) => {
@@ -83,33 +86,6 @@ const ensureBuiltArtifacts = async (
       );
     }
   }
-};
-
-const createLegacyHeaders = (args: GetBundlesArgs) => {
-  const headers = new Headers({
-    "x-app-platform": args.platform,
-    "x-bundle-id": args.bundleId,
-  });
-
-  if (args.channel) {
-    headers.set("x-channel", args.channel);
-  }
-
-  if (args.minBundleId) {
-    headers.set("x-min-bundle-id", args.minBundleId);
-  }
-
-  if (args.cohort) {
-    headers.set("x-cohort", args.cohort);
-  }
-
-  if (args._updateStrategy === "appVersion") {
-    headers.set("x-app-version", args.appVersion);
-  } else {
-    headers.set("x-fingerprint-hash", args.fingerprintHash);
-  }
-
-  return headers;
 };
 
 const createCanonicalPath = (args: GetBundlesArgs) => {
@@ -133,7 +109,7 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
-describeIfDocker("supabase edge runtime acceptance", () => {
+describe.sequential("supabase edge runtime acceptance", () => {
   let runtimeRoot: string | undefined;
   let storageRepoPath = "";
   let composeFilePath = "";
@@ -354,10 +330,7 @@ describeIfDocker("supabase edge runtime acceptance", () => {
     }
 
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${HOT_UPDATER_BASE_PATH}`,
-      {
-        headers: createLegacyHeaders(args),
-      },
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
 
     return (await response.json()) as any;
@@ -399,21 +372,12 @@ describeIfDocker("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("returns rewrite validation errors from the edge function entrypoint", async () => {
+  it("does not support the legacy exact path", async () => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${HOT_UPDATER_BASE_PATH}`,
-      {
-        headers: {
-          "x-app-platform": "ios",
-          "x-app-version": "1.0.0",
-        },
-      },
     );
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Missing required headers (x-app-platform, x-bundle-id).",
-    });
+    expect(response.status).toBe(404);
   });
 
   it("does not expose management routes from the edge function entrypoint", async () => {
@@ -768,6 +732,8 @@ const writeSupabaseRuntimeFiles = async ({
     ),
     {
       FUNCTION_NAME,
+      SERVER_RUNTIME_SPECIFIER,
+      SUPABASE_SPECIFIER,
     },
   );
   const importMap = {

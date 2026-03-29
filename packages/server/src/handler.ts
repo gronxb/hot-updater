@@ -349,8 +349,8 @@ const routes: Record<string, RouteHandler<any>> = {
 
 /**
  * Creates a Web Standard Request handler for Hot Updater API
- * This handler is framework-agnostic and works with any framework
- * that supports Web Standard Request/Response (Hono, Elysia, etc.)
+ * This handler is framework-agnostic and works with any runtime that
+ * supports standard Request/Response objects.
  */
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,

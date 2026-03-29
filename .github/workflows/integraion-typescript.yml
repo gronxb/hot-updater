@@ -29,3 +29,5 @@ jobs:
         run: pnpm lint
       - name: Unit test
         run: pnpm test
+      - name: Integration test
+        run: pnpm test:integration

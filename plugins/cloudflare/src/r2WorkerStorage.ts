@@ -36,7 +36,7 @@ const resolveJwtSecretFromContext = (
 
   if (!jwtSecret) {
     throw new Error(
-      "cloudflareWorkerStorage requires env.JWT_SECRET in the hot updater context.",
+      "r2WorkerStorage requires env.JWT_SECRET in the hot updater context.",
     );
   }
 
@@ -51,16 +51,16 @@ export const r2WorkerStorage = <
 ) => {
   return (): StoragePlugin<TContext> => {
     return {
-      name: "cloudflareWorkerStorage",
+      name: "r2WorkerStorage",
       supportedProtocol: "r2",
       async upload() {
         throw new Error(
-          "cloudflareWorkerStorage does not support upload() in the worker runtime.",
+          "r2WorkerStorage does not support upload() in the worker runtime.",
         );
       },
       async delete() {
         throw new Error(
-          "cloudflareWorkerStorage does not support delete() in the worker runtime.",
+          "r2WorkerStorage does not support delete() in the worker runtime.",
         );
       },
       async getDownloadUrl(storageUri, context) {

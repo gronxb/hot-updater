@@ -16,8 +16,8 @@ import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import admin from "firebase-admin";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  assertCommandAvailable,
   findOpenPort,
-  hasCommand,
   spawnRuntime,
   stopRuntime,
   waitForHttpOk,
@@ -32,16 +32,13 @@ const REGION = "us-central1";
 const FUNCTION_NAME = "handler";
 const CDN_URL = "https://cdn.example.com";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
-const hasFirebaseCli = hasCommand("pnpm", [
+const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
   "exec",
   "firebase",
   "--version",
-]);
-const describeIfFirebaseCli = hasFirebaseCli
-  ? describe.sequential
-  : describe.skip;
+] as const;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
     command: "pnpm --filter @hot-updater/firebase... build",
@@ -73,6 +70,12 @@ const REQUIRED_BUILD_ARTIFACTS = [
   },
 ] as const;
 
+assertCommandAvailable(
+  "pnpm",
+  [...FIREBASE_CLI_VERSION_ARGS],
+  "firebase functions runtime acceptance requires the Firebase CLI in the @hot-updater/firebase workspace.",
+);
+
 const ensureBuiltArtifacts = async (
   artifacts: ReadonlyArray<{ command: string; path: string }>,
 ) => {
@@ -85,33 +88,6 @@ const ensureBuiltArtifacts = async (
       );
     }
   }
-};
-
-const createLegacyHeaders = (args: GetBundlesArgs) => {
-  const headers = new Headers({
-    "x-app-platform": args.platform,
-    "x-bundle-id": args.bundleId,
-  });
-
-  if (args.channel) {
-    headers.set("x-channel", args.channel);
-  }
-
-  if (args.minBundleId) {
-    headers.set("x-min-bundle-id", args.minBundleId);
-  }
-
-  if (args.cohort) {
-    headers.set("x-cohort", args.cohort);
-  }
-
-  if (args._updateStrategy === "appVersion") {
-    headers.set("x-app-version", args.appVersion);
-  } else {
-    headers.set("x-fingerprint-hash", args.fingerprintHash);
-  }
-
-  return headers;
 };
 
 const createCanonicalPath = (args: GetBundlesArgs) => {
@@ -135,7 +111,7 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
-describeIfFirebaseCli("firebase functions runtime acceptance", () => {
+describe.sequential("firebase functions runtime acceptance", () => {
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
@@ -301,10 +277,7 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
       await seedHotUpdater.insertBundle(bundle);
     }
 
-    const response = await invokeHandler(
-      HOT_UPDATER_BASE_PATH,
-      createLegacyHeaders(args),
-    );
+    const response = await invokeHandler(createCanonicalPath(args));
 
     return (await response.json()) as any;
   };
@@ -343,16 +316,10 @@ describeIfFirebaseCli("firebase functions runtime acceptance", () => {
     });
   });
 
-  it("returns rewrite validation errors from the emulator entrypoint", async () => {
-    const response = await invokeHandler(HOT_UPDATER_BASE_PATH, {
-      "x-app-platform": "ios",
-      "x-app-version": "1.0.0",
-    });
+  it("does not support the legacy exact path", async () => {
+    const response = await invokeHandler(HOT_UPDATER_BASE_PATH);
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Missing required headers (x-app-platform, x-bundle-id).",
-    });
+    expect(response.status).toBe(404);
   });
 
   it("does not expose management routes from the emulator entrypoint", async () => {

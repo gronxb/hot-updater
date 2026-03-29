@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: run_fixci.sh <all|build|test:type|type|typecheck|lint|test> [log_root]
+Usage: run_fixci.sh <all|build|test:type|type|typecheck|lint|test|test:integration|integration> [log_root]
 
 Run the FixCI command sequence from the current repository.
 Logs are written to <log_root>/<timestamp>/.
@@ -13,7 +13,7 @@ EOF
 
 normalize_step() {
   case "${1:-all}" in
-    all | build | lint | test)
+    all | build | lint | test | test:integration | integration)
       printf '%s\n' "$1"
       ;;
     test:type | type | typecheck)
@@ -72,6 +72,9 @@ run_step() {
     test)
       run_named_step "04" "test" pnpm -w test
       ;;
+    test:integration | integration)
+      run_named_step "05" "test:integration" pnpm -w test:integration
+      ;;
     *)
       printf 'Unsupported canonical step: %s\n' "$1" >&2
       exit 2
@@ -109,7 +112,7 @@ mkdir -p "$LOG_DIR"
 printf 'log directory: %s\n' "$LOG_DIR"
 
 if [[ "$STEP" == "all" ]]; then
-  for current_step in build "test:type" lint test; do
+  for current_step in build "test:type" lint test "test:integration"; do
     run_step "$current_step"
   done
   printf '\n[GREEN] Full FixCI sequence passed.\n'

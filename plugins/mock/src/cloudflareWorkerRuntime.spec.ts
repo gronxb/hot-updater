@@ -1,7 +1,6 @@
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 import { createHotUpdater } from "../../../packages/server/src/db";
-import { rewriteLegacyExactRequestToCanonical } from "../../../packages/server/src/legacyExactRequest";
 import { setupGetUpdateInfoTestSuite } from "../../../packages/test-utils/src/index";
 import { mockDatabase, mockStorage } from "./index";
 
@@ -29,33 +28,6 @@ const seedBundles = async (
   }
 };
 
-const createLegacyHeaders = (args: GetBundlesArgs) => {
-  const headers = new Headers({
-    "x-app-platform": args.platform,
-    "x-bundle-id": args.bundleId,
-  });
-
-  if (args.channel) {
-    headers.set("x-channel", args.channel);
-  }
-
-  if (args.minBundleId) {
-    headers.set("x-min-bundle-id", args.minBundleId);
-  }
-
-  if (args.cohort) {
-    headers.set("x-cohort", args.cohort);
-  }
-
-  if (args._updateStrategy === "appVersion") {
-    headers.set("x-app-version", args.appVersion);
-  } else {
-    headers.set("x-fingerprint-hash", args.fingerprintHash);
-  }
-
-  return headers;
-};
-
 const createCanonicalPath = (args: GetBundlesArgs) => {
   const channel = args.channel ?? "production";
   const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -76,23 +48,7 @@ describe("cloudflare worker runtime integration", () => {
   const fetchApp = async (request: Request) => {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === HOT_UPDATER_BASE_PATH) {
-      const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-        basePath: HOT_UPDATER_BASE_PATH,
-        request,
-      });
-
-      if (rewrittenRequest instanceof Response) {
-        return rewrittenRequest;
-      }
-
-      return currentHotUpdater.handler(rewrittenRequest);
-    }
-
-    if (
-      url.pathname === HOT_UPDATER_BASE_PATH ||
-      url.pathname.startsWith(`${HOT_UPDATER_BASE_PATH}/`)
-    ) {
+    if (url.pathname.startsWith(`${HOT_UPDATER_BASE_PATH}/`)) {
       return currentHotUpdater.handler(request);
     }
 
@@ -109,9 +65,7 @@ describe("cloudflare worker runtime integration", () => {
     await seedBundles(currentHotUpdater, bundles);
 
     const response = await fetchApp(
-      new Request(`https://example.com${HOT_UPDATER_BASE_PATH}`, {
-        headers: createLegacyHeaders(args),
-      }),
+      new Request(`https://example.com${createCanonicalPath(args)}`),
     );
 
     return (await response.json()) as any;
@@ -154,21 +108,16 @@ describe("cloudflare worker runtime integration", () => {
     });
   });
 
-  it("returns rewrite validation errors on the exact path", async () => {
+  it("does not support the legacy exact path", async () => {
     currentHotUpdater = createTestHotUpdater();
 
     const response = await fetchApp(
-      new Request(`https://example.com${HOT_UPDATER_BASE_PATH}`, {
-        headers: {
-          "x-app-platform": "ios",
-          "x-app-version": "1.0.0",
-        },
-      }),
+      new Request(`https://example.com${HOT_UPDATER_BASE_PATH}`),
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
-      error: "Missing required headers (x-app-platform, x-bundle-id).",
+      error: "Not found",
     });
   });
 

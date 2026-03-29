@@ -4,8 +4,6 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
-  HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
@@ -15,7 +13,6 @@ const baseOptions = {
   functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
   keyGroupId: "key-group-id",
   oacId: "origin-access-control-id",
-  legacyCachePolicyId: "legacy-cache-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
 };
 
@@ -37,28 +34,11 @@ describe("buildDistributionConfigOverrides", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
     const behaviorItems = overrides.CacheBehaviors.Items ?? [];
-    const [legacyEndpointBehavior, cachedEndpointBehavior] = behaviorItems;
+    const [cachedEndpointBehavior] = behaviorItems;
 
-    if (!legacyEndpointBehavior || !cachedEndpointBehavior) {
+    if (!cachedEndpointBehavior) {
       throw new Error("Expected cache behaviors to be generated");
     }
-
-    expect(HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG).toMatchObject({
-      DefaultTTL: 0,
-      MaxTTL: 1,
-      MinTTL: 0,
-      ParametersInCacheKeyAndForwardedToOrigin: {
-        HeadersConfig: {
-          HeaderBehavior: "whitelist",
-          Headers: {
-            Quantity: HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS.length,
-            Items: [...HOT_UPDATER_LEGACY_CHECK_UPDATE_HEADERS],
-          },
-        },
-        CookiesConfig: { CookieBehavior: "none" },
-        QueryStringsConfig: { QueryStringBehavior: "none" },
-      },
-    });
 
     expect(defaultBehavior.CachePolicyId).toBe(baseOptions.sharedCachePolicyId);
     expect(overrides.Origins.Items?.[0]?.CustomHeaders).toEqual({
@@ -74,21 +54,6 @@ describe("buildDistributionConfigOverrides", () => {
     expect("MinTTL" in defaultBehavior).toBe(false);
     expect("DefaultTTL" in defaultBehavior).toBe(false);
     expect("MaxTTL" in defaultBehavior).toBe(false);
-
-    expect(legacyEndpointBehavior.PathPattern).toBe("/api/check-update");
-    expect(legacyEndpointBehavior.CachePolicyId).toBe(
-      baseOptions.legacyCachePolicyId,
-    );
-    expect(legacyEndpointBehavior.FunctionAssociations).toEqual({
-      Quantity: 0,
-    });
-    expect(
-      legacyEndpointBehavior.LambdaFunctionAssociations?.Items?.[0]?.EventType,
-    ).toBe("origin-request");
-    expect("ForwardedValues" in legacyEndpointBehavior).toBe(false);
-    expect("MinTTL" in legacyEndpointBehavior).toBe(false);
-    expect("DefaultTTL" in legacyEndpointBehavior).toBe(false);
-    expect("MaxTTL" in legacyEndpointBehavior).toBe(false);
 
     expect(cachedEndpointBehavior.PathPattern).toBe("/api/check-update/*");
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
@@ -110,9 +75,9 @@ describe("buildDistributionConfigOverrides", () => {
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const defaultBehavior = overrides.DefaultCacheBehavior;
     const behaviorItems = overrides.CacheBehaviors.Items ?? [];
-    const [legacyEndpointBehavior, cachedEndpointBehavior] = behaviorItems;
+    const [cachedEndpointBehavior] = behaviorItems;
 
-    if (!legacyEndpointBehavior || !cachedEndpointBehavior) {
+    if (!cachedEndpointBehavior) {
       throw new Error("Expected cache behaviors to be generated");
     }
 
@@ -137,18 +102,8 @@ describe("buildDistributionConfigOverrides", () => {
         },
       },
       CacheBehaviors: {
-        Quantity: 2,
+        Quantity: 1,
         Items: [
-          {
-            ...legacyEndpointBehavior,
-            ForwardedValues: {
-              QueryString: false,
-              Cookies: { Forward: "none" },
-            },
-            MinTTL: 0,
-            DefaultTTL: 0,
-            MaxTTL: 0,
-          },
           {
             ...cachedEndpointBehavior,
             ForwardedValues: {
@@ -207,16 +162,12 @@ describe("buildDistributionConfigOverrides", () => {
     expect("ForwardedValues" in updatedDefaultBehavior).toBe(false);
     expect("MinTTL" in updatedDefaultBehavior).toBe(false);
 
-    expect(updatedBehaviorItems[0]).toEqual(legacyEndpointBehavior);
-    expect(updatedBehaviorItems[1]).toEqual(cachedEndpointBehavior);
+    expect(updatedBehaviorItems[0]).toEqual(cachedEndpointBehavior);
     expect("ForwardedValues" in (updatedBehaviorItems[0] as object)).toBe(
       false,
     );
-    expect("ForwardedValues" in (updatedBehaviorItems[1] as object)).toBe(
-      false,
-    );
     expect("MinTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
-    expect("DefaultTTL" in (updatedBehaviorItems[1] as object)).toBe(false);
-    expect("MaxTTL" in (updatedBehaviorItems[1] as object)).toBe(false);
+    expect("DefaultTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
+    expect("MaxTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
   });
 });

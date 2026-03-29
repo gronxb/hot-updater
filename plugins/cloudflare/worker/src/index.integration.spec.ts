@@ -74,33 +74,6 @@ const seedBundles = async (bundles: Bundle[]) => {
   }
 };
 
-const createLegacyHeaders = (args: GetBundlesArgs) => {
-  const headers = new Headers({
-    "x-app-platform": args.platform,
-    "x-bundle-id": args.bundleId,
-  });
-
-  if (args.channel) {
-    headers.set("x-channel", args.channel);
-  }
-
-  if (args.minBundleId) {
-    headers.set("x-min-bundle-id", args.minBundleId);
-  }
-
-  if (args.cohort) {
-    headers.set("x-cohort", args.cohort);
-  }
-
-  if (args._updateStrategy === "appVersion") {
-    headers.set("x-app-version", args.appVersion);
-  } else {
-    headers.set("x-fingerprint-hash", args.fingerprintHash);
-  }
-
-  return headers;
-};
-
 const createCanonicalPath = (args: GetBundlesArgs) => {
   const channel = args.channel ?? "production";
   const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -128,9 +101,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await seedBundles(bundles);
 
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`, {
-        headers: createLegacyHeaders(args),
-      }),
+      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
       env,
     );
 
@@ -174,20 +145,15 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("returns rewrite validation errors from the worker entrypoint", async () => {
+  it("does not support the legacy exact path", async () => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`, {
-        headers: {
-          "x-app-platform": "ios",
-          "x-app-version": "1.0.0",
-        },
-      }),
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`),
       env,
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({
-      error: "Missing required headers (x-app-platform, x-bundle-id).",
+      error: "Not found",
     });
   });
 

@@ -1,3 +1,4 @@
+-- HotUpdater.is_cohort_eligible
 -- Cohort eligibility helpers matching @hot-updater/core rollout.ts
 
 CREATE OR REPLACE FUNCTION positive_mod(

@@ -21,7 +21,7 @@ import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { hasDockerCompose } from "../../../packages/test-utils/src/runtimeProcess";
+import { assertDockerComposeAvailable } from "../../../packages/test-utils/src/runtimeProcess";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -33,7 +33,10 @@ const REGION = "us-east-1";
 const ACCESS_KEY_ID = "test";
 const SECRET_ACCESS_KEY = "test";
 const METADATA_BUCKET = "hot-updater-metadata";
-const describeIfDocker = hasDockerCompose() ? describe : describe.skip;
+
+assertDockerComposeAvailable(
+  "Hono + S3 integration tests require Docker Compose and a running Docker daemon.",
+);
 
 async function ensureBucketExists(bucketName: string) {
   const client = new S3Client({
@@ -53,7 +56,7 @@ async function ensureBucketExists(bucketName: string) {
   }
 }
 
-describeIfDocker("Hot Updater Handler Integration Tests (Hono + S3)", () => {
+describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;

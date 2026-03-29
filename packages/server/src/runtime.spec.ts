@@ -203,4 +203,75 @@ describe("runtime createHotUpdater", () => {
       },
     });
   });
+
+  it("supports stripped base-path requests and ignores extra framework args", async () => {
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
+      async () => {
+        return {
+          data: [bundle],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 1,
+          },
+        };
+      },
+    );
+
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        return id === bundle.id ? bundle : null;
+      },
+      getBundles,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage: StoragePlugin<TestContext> = {
+      name: "testStorage",
+      supportedProtocol: "s3",
+      async upload(key) {
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
+      async delete() {},
+      async getDownloadUrl() {
+        return { fileUrl: "https://assets.example.com/bundle.zip" };
+      },
+    };
+
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [storage],
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: true,
+        bundles: false,
+      },
+    });
+
+    const mountStyleHandler = hotUpdater.handler as (
+      request: Request,
+      context?: unknown,
+      executionCtx?: unknown,
+    ) => Promise<Response>;
+    const response = await mountStyleHandler(
+      new Request(
+        "https://updates.example.com/app-version/ios/1.0.0/production/" +
+          `${NIL_UUID}/${NIL_UUID}`,
+      ),
+      { someBinding: "ignored" },
+      { waitUntil: () => undefined },
+    );
+
+    expect(response.status).toBe(200);
+    expect(getBundles).toHaveBeenCalledWith(expect.any(Object), undefined);
+  });
 });

@@ -15,15 +15,17 @@ import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe } from "vitest";
-import { hasDockerCompose } from "../../../packages/test-utils/src/runtimeProcess";
+import { assertDockerComposeAvailable } from "../../../packages/test-utils/src/runtimeProcess";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const describeIfDocker = hasDockerCompose() ? describe : describe.skip;
+assertDockerComposeAvailable(
+  "Hono + MongoDB integration tests require Docker Compose and a running Docker daemon.",
+);
 
-describeIfDocker(
+describe(
   "Hot Updater Handler Integration Tests (Hono + MongoDB)",
   () => {
     let serverProcess: ReturnType<typeof execa> | null = null;

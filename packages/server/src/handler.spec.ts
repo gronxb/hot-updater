@@ -28,7 +28,7 @@ const createApi = (): HandlerAPI<TestContext> => ({
 });
 
 describe("createHandler", () => {
-  it("keeps the legacy app-version route without a cohort segment", async () => {
+  it("supports the app-version route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
 
@@ -62,7 +62,7 @@ describe("createHandler", () => {
     );
   });
 
-  it("keeps the legacy fingerprint route without a cohort segment", async () => {
+  it("supports the fingerprint route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
 

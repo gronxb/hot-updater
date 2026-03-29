@@ -1,9 +1,4 @@
-import {
-  createHotUpdater,
-  isCanonicalUpdateRoute,
-  rewriteLegacyExactRequestToCanonical,
-  wildcardPattern,
-} from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -22,10 +17,17 @@ declare global {
 }
 
 export const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
-export const NO_STORE_CACHE_CONTROL = "no-store";
 export const SHARED_EDGE_CACHE_CONTROL = `public, max-age=0, s-maxage=${ONE_YEAR_IN_SECONDS}, must-revalidate`;
-export const HOT_UPDATER_METHODS = ["GET", "POST", "PATCH", "DELETE"];
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+
+const isCanonicalUpdateRoute = (path: string) => {
+  return (
+    path.startsWith("/app-version/") ||
+    path.startsWith("/fingerprint/") ||
+    path.startsWith(`${HOT_UPDATER_BASE_PATH}/app-version/`) ||
+    path.startsWith(`${HOT_UPDATER_BASE_PATH}/fingerprint/`)
+  );
+};
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
@@ -85,59 +87,27 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
   },
 });
 
-const cloudFrontHeadersToHeaders = (
-  headers: CloudFrontRequest["headers"],
-): Headers => {
-  const normalizedHeaders = new Headers();
-
-  for (const [key, values] of Object.entries(headers)) {
-    for (const value of values) {
-      normalizedHeaders.append(key, value.value);
-    }
-  }
-
-  return normalizedHeaders;
-};
-
 const app = new Hono<{ Bindings: Bindings }>();
 
-app.get(HOT_UPDATER_BASE_PATH, async (c) => {
-  const rewrittenRequest = rewriteLegacyExactRequestToCanonical({
-    basePath: hotUpdater.basePath,
-    request: c.req.raw,
-    headers: cloudFrontHeadersToHeaders(c.env.request.headers),
-  });
-
-  if (rewrittenRequest instanceof Response) {
-    rewrittenRequest.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
-    return rewrittenRequest;
-  }
-
-  const response = await hotUpdater.handler(rewrittenRequest, {
-    request: rewrittenRequest,
-    distributionDomainName: c.env.config.distributionDomainName,
-  });
-  response.headers.set("Cache-Control", NO_STORE_CACHE_CONTROL);
-  return response;
-});
-
-app.on(
-  HOT_UPDATER_METHODS,
-  wildcardPattern(HOT_UPDATER_BASE_PATH),
-  async (c) => {
-    const response = await hotUpdater.handler(c.req.raw, {
-      request: c.req.raw,
-      distributionDomainName: c.env.config.distributionDomainName,
+app.mount(
+  HOT_UPDATER_BASE_PATH,
+  async (request: Request, distributionDomainName: string) => {
+    const response = await hotUpdater.handler(request, {
+      request,
+      distributionDomainName,
     });
 
     if (
-      c.req.method === "GET" &&
-      isCanonicalUpdateRoute(hotUpdater.basePath, new URL(c.req.url).pathname)
+      request.method === "GET" &&
+      isCanonicalUpdateRoute(new URL(request.url).pathname)
     ) {
       response.headers.set("Cache-Control", SHARED_EDGE_CACHE_CONTROL);
     }
 
     return response;
+  },
+  {
+    optionHandler: (c) => [c.env.config.distributionDomainName],
   },
 );
 

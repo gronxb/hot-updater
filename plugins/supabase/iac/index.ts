@@ -2,10 +2,13 @@ import {
   type BuildType,
   ConfigBuilder,
   copyDirToTmp,
+  HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   makeEnv,
   type ProviderConfig,
   p,
+  resolveHotUpdaterServerVersion,
+  resolvePackageVersion,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
@@ -58,6 +61,20 @@ project_id = "%%projectId%%"
 [db.seed]
 enabled = false
 `;
+
+const getEdgeFunctionImportSpecifiers = () => {
+  const currentPackageVersion = resolvePackageVersion("@hot-updater/supabase");
+  const serverPackageVersion = resolveHotUpdaterServerVersion(
+    "@hot-updater/supabase",
+  );
+
+  return {
+    currentPackageVersion,
+    serverPackageVersion,
+    serverRuntimeSpecifier: `npm:@hot-updater/server@${serverPackageVersion}/runtime`,
+    supabaseSpecifier: `npm:@hot-updater/supabase@${currentPackageVersion}`,
+  };
+};
 
 export const selectProject = async (): Promise<{
   id: string;
@@ -311,10 +328,18 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   if (p.isCancel(functionName)) {
     process.exit(0);
   }
+  const {
+    currentPackageVersion,
+    serverPackageVersion,
+    serverRuntimeSpecifier,
+    supabaseSpecifier,
+  } = getEdgeFunctionImportSpecifiers();
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
     FUNCTION_NAME: functionName,
+    SERVER_RUNTIME_SPECIFIER: serverRuntimeSpecifier,
+    SUPABASE_SPECIFIER: supabaseSpecifier,
   });
 
   const targetDir = path.join(workdir, "supabase", "functions", functionName);
@@ -322,6 +347,16 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
 
   const targetPath = path.join(targetDir, "index.ts");
   await fs.writeFile(targetPath, edgeFunctionsCode);
+
+  if (serverPackageVersion !== currentPackageVersion) {
+    p.note(
+      [
+        `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${serverPackageVersion} for Supabase edge deploy.`,
+        `- server runtime: ${serverRuntimeSpecifier}`,
+        `- supabase package: ${supabaseSpecifier}`,
+      ].join("\n"),
+    );
+  }
 
   await p.tasks([
     {

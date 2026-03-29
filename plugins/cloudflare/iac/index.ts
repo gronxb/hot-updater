@@ -3,10 +3,13 @@ import {
   ConfigBuilder,
   copyDirToTmp,
   getCwd,
+  HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   makeEnv,
   type ProviderConfig,
   p,
+  resolveHotUpdaterServerVersion,
+  resolvePackageVersion,
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";
@@ -56,6 +59,52 @@ export default HotUpdater.wrap({
   updateMode: "auto",
 })(App);`;
 
+const getCloudflareRuntimePackageInfo = (cloudflarePackageRoot: string) => {
+  const currentPackageVersion = resolvePackageVersion(
+    "@hot-updater/cloudflare",
+  );
+  const serverPackageVersion = resolveHotUpdaterServerVersion(
+    "@hot-updater/cloudflare",
+  );
+  const honoVersion = resolvePackageVersion("hono", {
+    searchFrom: cloudflarePackageRoot,
+  });
+
+  return {
+    currentPackageVersion,
+    serverPackageVersion,
+    honoVersion,
+  };
+};
+
+const writeCloudflareRuntimePackageJson = async (
+  runtimeRoot: string,
+  cloudflarePackageRoot: string,
+) => {
+  const runtimePackageInfo = getCloudflareRuntimePackageInfo(
+    cloudflarePackageRoot,
+  );
+  const packageJson = {
+    name: "hot-updater-cloudflare-runtime",
+    private: true,
+    type: "module",
+    dependencies: {
+      "@hot-updater/core": runtimePackageInfo.currentPackageVersion,
+      "@hot-updater/js": runtimePackageInfo.currentPackageVersion,
+      "@hot-updater/plugin-core": runtimePackageInfo.currentPackageVersion,
+      "@hot-updater/server": runtimePackageInfo.serverPackageVersion,
+      hono: runtimePackageInfo.honoVersion,
+    },
+  };
+
+  await fs.writeFile(
+    path.join(runtimeRoot, "package.json"),
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+  );
+
+  return runtimePackageInfo;
+};
+
 const deployWorker = async (
   oauth_token: string,
   accountId: string,
@@ -66,16 +115,25 @@ const deployWorker = async (
   }: { d1DatabaseId: string; d1DatabaseName: string; r2BucketName: string },
 ) => {
   const cwd = getCwd();
-  const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
-    paths: [cwd],
-  });
-  const wranglerTemplateDir = path.dirname(workerPath);
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(wranglerTemplateDir);
+  const cloudflarePackagePath = require.resolve(
+    "@hot-updater/cloudflare/package.json",
+    {
+      paths: [cwd],
+    },
+  );
+  const cloudflarePackageRoot = path.dirname(cloudflarePackagePath);
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(cloudflarePackageRoot);
+  const workerRoot = path.join(tmpDir, "worker");
+  const runtimePackageInfo = await writeCloudflareRuntimePackageJson(
+    tmpDir,
+    cloudflarePackageRoot,
+  );
 
   try {
     const wranglerConfig = JSON.parse(
-      await fs.readFile(path.join(tmpDir, "wrangler.json"), "utf-8"),
+      await fs.readFile(path.join(workerRoot, "wrangler.json"), "utf-8"),
     );
+    wranglerConfig.main = "./src/index.ts";
 
     wranglerConfig.d1_databases = [
       {
@@ -99,18 +157,33 @@ const deployWorker = async (
     };
 
     await fs.writeFile(
-      path.join(tmpDir, "wrangler.json"),
+      path.join(workerRoot, "wrangler.json"),
       JSON.stringify(wranglerConfig, null, 2),
     );
+
+    await execa("npm", ["install"], {
+      cwd: tmpDir,
+      stdio: "inherit",
+      shell: true,
+    });
+
+    if (
+      runtimePackageInfo.serverPackageVersion !==
+      runtimePackageInfo.currentPackageVersion
+    ) {
+      p.note(
+        `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${runtimePackageInfo.serverPackageVersion} for Cloudflare worker deploy.`,
+      );
+    }
 
     const wrangler = await createWrangler({
       stdio: "inherit",
       cloudflareApiToken: oauth_token,
-      cwd: tmpDir,
+      cwd: workerRoot,
       accountId: accountId,
     });
 
-    const migrationPath = await path.join(tmpDir, "migrations");
+    const migrationPath = await path.join(workerRoot, "migrations");
     const migrationFiles = await fs.readdir(migrationPath);
     for (const file of migrationFiles) {
       if (file.endsWith(".sql")) {

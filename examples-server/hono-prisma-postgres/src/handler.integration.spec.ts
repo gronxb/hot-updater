@@ -16,16 +16,19 @@ import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe } from "vitest";
-import { hasDockerCompose } from "../../../packages/test-utils/src/runtimeProcess";
+import {
+  assertDockerComposeAvailable,
+} from "../../../packages/test-utils/src/runtimeProcess";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const runPrismaPostgresIntegration =
-  process.env["RUN_PRISMA_POSTGRES_INTEGRATION"] === "1" && hasDockerCompose();
+assertDockerComposeAvailable(
+  "Hono + Prisma + PostgreSQL integration tests require Docker Compose and a running Docker daemon.",
+);
 
-describe.runIf(runPrismaPostgresIntegration)(
+describe(
   "Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)",
   () => {
     let serverProcess: ReturnType<typeof execa> | null = null;
