@@ -27,7 +27,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
     });
   });
 
-  it("writes esm.sh PR imports when pkg.pr.new override is set", async () => {
+  it("writes pkg.pr.new imports when pkg.pr.new override is set", async () => {
     process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION =
       "https://pkg.pr.new/@hot-updater/supabase@888";
 
@@ -36,9 +36,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
     expect(result).toEqual({
       imports: {
         "@hot-updater/server/runtime":
-          "https://esm.sh/pr/gronxb/hot-updater/@hot-updater/server@888/runtime?target=deno",
+          "https://pkg.pr.new/@hot-updater/server@888/runtime",
         "@hot-updater/supabase":
-          "https://esm.sh/pr/gronxb/hot-updater/@hot-updater/supabase@888?target=deno",
+          "https://pkg.pr.new/@hot-updater/supabase@888",
       },
     });
   });

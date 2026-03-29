@@ -84,51 +84,20 @@ const parsePkgPrNewTarget = (value: string) => {
   }
 };
 
-const resolveGitHubRepository = async (packageName: string) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
-  const packageJson = JSON.parse(
-    await fs.readFile(packageJsonPath, "utf-8"),
-  ) as {
-    repository?: string | { url?: string };
-  };
-  const repository =
-    typeof packageJson.repository === "string"
-      ? packageJson.repository
-      : packageJson.repository?.url;
-
-  if (!repository) {
-    throw new Error(`Repository metadata is missing for ${packageName}`);
-  }
-
-  const normalizedRepository = repository
-    .replace(/^git\+/, "")
-    .replace(/\.git$/, "")
-    .replace(/\/+$/, "");
-  const match =
-    normalizedRepository.match(/github\.com\/([^/]+)\/([^/]+)$/) ??
-    normalizedRepository.match(/^([^/]+)\/([^/]+)$/);
-
-  if (!match) {
-    throw new Error(
-      `Unsupported repository format for ${packageName}: ${repository}`,
-    );
-  }
-
-  return {
-    owner: match[1],
-    repo: match[2],
-  };
-};
-
-const createEsmShPrSpecifier = async (
+const createPkgPrNewSpecifier = (
+  override: string,
+  overridePackageName: string,
   packageName: string,
   prNumber: string,
   subpath?: string,
 ) => {
-  const { owner, repo } = await resolveGitHubRepository(packageName);
+  const baseSpecifier =
+    overridePackageName === packageName
+      ? override.replace(/\/+$/, "")
+      : `https://pkg.pr.new/${packageName}@${prNumber}`;
   const normalizedSubpath = subpath ? `/${subpath.replace(/^\/+/, "")}` : "";
 
-  return `https://esm.sh/pr/${owner}/${repo}/${packageName}@${prNumber}${normalizedSubpath}?target=deno`;
+  return `${baseSpecifier}${normalizedSubpath}`;
 };
 
 export const resolveEdgeFunctionDenoConfig = async () => {
@@ -163,12 +132,16 @@ export const resolveEdgeFunctionDenoConfig = async () => {
 
   return {
     imports: {
-      "@hot-updater/server/runtime": await createEsmShPrSpecifier(
+      "@hot-updater/server/runtime": createPkgPrNewSpecifier(
+        override,
+        pkgPrNewTarget.packageName,
         "@hot-updater/server",
         pkgPrNewTarget.prNumber,
         "runtime",
       ),
-      "@hot-updater/supabase": await createEsmShPrSpecifier(
+      "@hot-updater/supabase": createPkgPrNewSpecifier(
+        override,
+        pkgPrNewTarget.packageName,
         "@hot-updater/supabase",
         pkgPrNewTarget.prNumber,
       ),
