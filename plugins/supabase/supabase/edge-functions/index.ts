@@ -16,7 +16,7 @@ const functionName = HotUpdater.FUNCTION_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const functionBasePath = `/${functionName}`;
-const hotUpdaterBasePath = "/api/check-update";
+const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
   database: supabaseEdgeFunctionDatabase({

@@ -34,7 +34,8 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
-const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const HOT_UPDATER_BASE_PATH = "/";
+const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -92,12 +93,20 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
   const cohortSegment = args.cohort
     ? `/${encodeURIComponent(args.cohort)}`
     : "";
+  const joinHotUpdaterPath = (routePath: string) =>
+    HOT_UPDATER_BASE_PATH === "/"
+      ? routePath
+      : `${HOT_UPDATER_BASE_PATH}${routePath}`;
 
   if (args._updateStrategy === "appVersion") {
-    return `${HOT_UPDATER_BASE_PATH}/app-version/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.appVersion)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
+    return joinHotUpdaterPath(
+      `/app-version/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.appVersion)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`,
+    );
   }
 
-  return `${HOT_UPDATER_BASE_PATH}/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
+  return joinHotUpdaterPath(
+    `/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`,
+  );
 };
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
@@ -372,7 +381,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("does not support the legacy exact path", async () => {
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${HOT_UPDATER_BASE_PATH}`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${LEGACY_HOT_UPDATER_BASE_PATH}`,
     );
 
     expect(response.status).toBe(404);
@@ -380,7 +389,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   it("does not expose management routes from the edge function entrypoint", async () => {
     const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${HOT_UPDATER_BASE_PATH}/api/bundles`,
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/bundles`,
     );
 
     expect(response.status).toBe(404);
