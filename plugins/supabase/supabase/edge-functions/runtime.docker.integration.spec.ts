@@ -35,8 +35,6 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
-const SERVER_RUNTIME_SPECIFIER = "npm:@hot-updater/server/runtime";
-const SUPABASE_SPECIFIER = "npm:@hot-updater/supabase";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -732,16 +730,14 @@ const writeSupabaseRuntimeFiles = async ({
     ),
     {
       FUNCTION_NAME,
-      SERVER_RUNTIME_SPECIFIER,
-      SUPABASE_SPECIFIER,
     },
   );
   const importMap = {
     imports: {
-      "npm:@hot-updater/server/runtime": pathToFileURL(
+      "@hot-updater/server/runtime": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
       ).href,
-      "npm:@hot-updater/supabase": pathToFileURL(
+      "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
     },

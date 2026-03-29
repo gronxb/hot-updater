@@ -1,17 +1,16 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import { Hono } from "npm:hono";
+import {
+  supabaseEdgeFunctionDatabase,
+  supabaseEdgeFunctionStorage,
+} from "@hot-updater/supabase";
 
 declare global {
   var HotUpdater: {
     FUNCTION_NAME: string;
-    SERVER_RUNTIME_SPECIFIER: string;
-    SUPABASE_SPECIFIER: string;
   };
 }
-
-const { createHotUpdater } = await import(HotUpdater.SERVER_RUNTIME_SPECIFIER);
-const { supabaseEdgeFunctionDatabase, supabaseEdgeFunctionStorage } =
-  await import(HotUpdater.SUPABASE_SPECIFIER);
 
 const functionName = HotUpdater.FUNCTION_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";

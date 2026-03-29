@@ -7,7 +7,6 @@ import {
   makeEnv,
   type ProviderConfig,
   p,
-  resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
@@ -62,17 +61,118 @@ project_id = "%%projectId%%"
 enabled = false
 `;
 
-const getEdgeFunctionImportSpecifiers = () => {
-  const currentPackageVersion = resolvePackageVersion("@hot-updater/supabase");
-  const serverPackageVersion = resolveHotUpdaterServerVersion(
-    "@hot-updater/supabase",
-  );
+const parsePkgPrNewTarget = (value: string) => {
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "pkg.pr.new") {
+      return null;
+    }
+
+    const packageRef = url.pathname.replace(/^\/+/, "");
+    const separatorIndex = packageRef.lastIndexOf("@");
+
+    if (separatorIndex <= 0) {
+      return null;
+    }
+
+    return {
+      packageName: packageRef.slice(0, separatorIndex),
+      prNumber: packageRef.slice(separatorIndex + 1),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const resolveGitHubRepository = async (packageName: string) => {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJson = JSON.parse(
+    await fs.readFile(packageJsonPath, "utf-8"),
+  ) as {
+    repository?: string | { url?: string };
+  };
+  const repository =
+    typeof packageJson.repository === "string"
+      ? packageJson.repository
+      : packageJson.repository?.url;
+
+  if (!repository) {
+    throw new Error(`Repository metadata is missing for ${packageName}`);
+  }
+
+  const normalizedRepository = repository
+    .replace(/^git\+/, "")
+    .replace(/\.git$/, "")
+    .replace(/\/+$/, "");
+  const match =
+    normalizedRepository.match(/github\.com\/([^/]+)\/([^/]+)$/) ??
+    normalizedRepository.match(/^([^/]+)\/([^/]+)$/);
+
+  if (!match) {
+    throw new Error(
+      `Unsupported repository format for ${packageName}: ${repository}`,
+    );
+  }
 
   return {
-    currentPackageVersion,
-    serverPackageVersion,
-    serverRuntimeSpecifier: `npm:@hot-updater/server@${serverPackageVersion}/runtime`,
-    supabaseSpecifier: `npm:@hot-updater/supabase@${currentPackageVersion}`,
+    owner: match[1],
+    repo: match[2],
+  };
+};
+
+const createEsmShPrSpecifier = async (
+  packageName: string,
+  prNumber: string,
+  subpath?: string,
+) => {
+  const { owner, repo } = await resolveGitHubRepository(packageName);
+  const normalizedSubpath = subpath ? `/${subpath.replace(/^\/+/, "")}` : "";
+
+  return `https://esm.sh/pr/${owner}/${repo}/${packageName}@${prNumber}${normalizedSubpath}?target=deno`;
+};
+
+export const resolveEdgeFunctionDenoConfig = async () => {
+  const override = process.env[HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV]?.trim();
+
+  if (!override) {
+    return {
+      imports: {
+        "@hot-updater/server/runtime": `npm:@hot-updater/server@${resolvePackageVersion("@hot-updater/server")}/runtime`,
+        "@hot-updater/supabase": `npm:@hot-updater/supabase@${resolvePackageVersion("@hot-updater/supabase")}`,
+      },
+    };
+  }
+
+  try {
+    new URL(override);
+  } catch {
+    return {
+      imports: {
+        "@hot-updater/server/runtime": `npm:@hot-updater/server@${override}/runtime`,
+        "@hot-updater/supabase": `npm:@hot-updater/supabase@${override}`,
+      },
+    };
+  }
+
+  const pkgPrNewTarget = parsePkgPrNewTarget(override);
+  if (!pkgPrNewTarget) {
+    throw new Error(
+      `${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV} must be a pkg.pr.new URL when using a URL override for Supabase init.`,
+    );
+  }
+
+  return {
+    imports: {
+      "@hot-updater/server/runtime": await createEsmShPrSpecifier(
+        "@hot-updater/server",
+        pkgPrNewTarget.prNumber,
+        "runtime",
+      ),
+      "@hot-updater/supabase": await createEsmShPrSpecifier(
+        "@hot-updater/supabase",
+        pkgPrNewTarget.prNumber,
+      ),
+    },
   };
 };
 
@@ -328,18 +428,12 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   if (p.isCancel(functionName)) {
     process.exit(0);
   }
-  const {
-    currentPackageVersion,
-    serverPackageVersion,
-    serverRuntimeSpecifier,
-    supabaseSpecifier,
-  } = getEdgeFunctionImportSpecifiers();
+  const denoConfig = await resolveEdgeFunctionDenoConfig();
+  const override = process.env[HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV]?.trim();
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
     FUNCTION_NAME: functionName,
-    SERVER_RUNTIME_SPECIFIER: serverRuntimeSpecifier,
-    SUPABASE_SPECIFIER: supabaseSpecifier,
   });
 
   const targetDir = path.join(workdir, "supabase", "functions", functionName);
@@ -347,13 +441,17 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
 
   const targetPath = path.join(targetDir, "index.ts");
   await fs.writeFile(targetPath, edgeFunctionsCode);
+  await fs.writeFile(
+    path.join(targetDir, "deno.json"),
+    `${JSON.stringify(denoConfig, null, 2)}\n`,
+  );
 
-  if (serverPackageVersion !== currentPackageVersion) {
+  if (override) {
     p.note(
       [
-        `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${serverPackageVersion} for Supabase edge deploy.`,
-        `- server runtime: ${serverRuntimeSpecifier}`,
-        `- supabase package: ${supabaseSpecifier}`,
+        `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${override} for Supabase edge deploy.`,
+        `- @hot-updater/server/runtime: ${denoConfig.imports["@hot-updater/server/runtime"]}`,
+        `- @hot-updater/supabase: ${denoConfig.imports["@hot-updater/supabase"]}`,
       ].join("\n"),
     );
   }
