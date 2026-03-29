@@ -10,6 +10,7 @@ import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import fs from "fs";
 import path from "path";
+import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -251,18 +252,13 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     process.exit(1);
   }
 
-  const firebaseDir = path.dirname(
+  const firebaseRootDir = path.dirname(
     path.dirname(require.resolve("@hot-updater/firebase/functions")),
   );
 
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(firebaseDir);
-
-  const functionsDir = path.join(tmpDir, "functions");
+  const { tmpDir, removeTmpDir, functionsDir } =
+    await prepareFirebaseTemplate(firebaseRootDir);
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
-  await fs.promises.rename(
-    path.join(functionsDir, "_package.json"),
-    path.join(functionsDir, "package.json"),
-  );
 
   const initializeVariable = await initFirebaseUser(tmpDir);
 
