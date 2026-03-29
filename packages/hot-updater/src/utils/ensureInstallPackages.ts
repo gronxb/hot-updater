@@ -1,6 +1,6 @@
 import {
   ensureInstallPackages as ensureInstall,
-  HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
+  HOT_UPDATER_PROVIDER_PACKAGE_VERSION_ENV,
 } from "@hot-updater/cli-tools";
 import { version } from "@/packageJson";
 
@@ -23,7 +23,8 @@ const isUrlLike = (value: string) => {
 };
 
 const ensurePackageVersion = (pkg: string, provider?: ProviderName) => {
-  const override = process.env[HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV]?.trim();
+  const override =
+    process.env[HOT_UPDATER_PROVIDER_PACKAGE_VERSION_ENV]?.trim();
   const providerPackage = provider ? PROVIDER_PACKAGES[provider] : undefined;
 
   if (override && providerPackage === pkg) {

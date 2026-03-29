@@ -1,13 +1,13 @@
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import {
   type BuildType,
   ConfigBuilder,
   copyDirToTmp,
-  HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   makeEnv,
   type ProviderConfig,
   p,
-  resolvePackageVersion,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
@@ -16,6 +16,8 @@ import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+
+const require = createRequire(import.meta.url);
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
@@ -61,89 +63,52 @@ project_id = "%%projectId%%"
 enabled = false
 `;
 
-const parsePkgPrNewTarget = (value: string) => {
-  try {
-    const url = new URL(value);
-    if (url.hostname !== "pkg.pr.new") {
-      return null;
-    }
-
-    const packageRef = url.pathname.replace(/^\/+/, "");
-    const separatorIndex = packageRef.lastIndexOf("@");
-
-    if (separatorIndex <= 0) {
-      return null;
-    }
-
-    return {
-      packageName: packageRef.slice(0, separatorIndex),
-      prNumber: packageRef.slice(separatorIndex + 1),
-    };
-  } catch {
-    return null;
-  }
-};
-
-const createPkgPrNewSpecifier = (
-  override: string,
-  overridePackageName: string,
+const resolvePackageImportTarget = async (
   packageName: string,
-  prNumber: string,
-  subpath?: string,
+  exportName: "." | "./runtime" | "./edge",
 ) => {
-  const baseSpecifier =
-    overridePackageName === packageName
-      ? override.replace(/\/+$/, "")
-      : `https://pkg.pr.new/${packageName}@${prNumber}`;
-  const normalizedSubpath = subpath ? `/${subpath.replace(/^\/+/, "")}` : "";
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJson = JSON.parse(
+    await fs.readFile(packageJsonPath, "utf-8"),
+  ) as {
+    exports?: Record<
+      string,
+      | string
+      | {
+          import?: string;
+          require?: string;
+          default?: string;
+        }
+    >;
+  };
+  const exportTarget = packageJson.exports?.[exportName];
+  const relativePath =
+    typeof exportTarget === "string"
+      ? exportTarget
+      : (exportTarget?.import ??
+        exportTarget?.default ??
+        exportTarget?.require);
 
-  return `${baseSpecifier}${normalizedSubpath}`;
-};
-
-export const resolveEdgeFunctionDenoConfig = async () => {
-  const override = process.env[HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV]?.trim();
-
-  if (!override) {
-    return {
-      imports: {
-        "@hot-updater/server/runtime": `npm:@hot-updater/server@${resolvePackageVersion("@hot-updater/server")}/runtime`,
-        "@hot-updater/supabase": `npm:@hot-updater/supabase@${resolvePackageVersion("@hot-updater/supabase")}`,
-      },
-    };
-  }
-
-  try {
-    new URL(override);
-  } catch {
-    return {
-      imports: {
-        "@hot-updater/server/runtime": `npm:@hot-updater/server@${override}/runtime`,
-        "@hot-updater/supabase": `npm:@hot-updater/supabase@${override}`,
-      },
-    };
-  }
-
-  const pkgPrNewTarget = parsePkgPrNewTarget(override);
-  if (!pkgPrNewTarget) {
+  if (!relativePath) {
     throw new Error(
-      `${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV} must be a pkg.pr.new URL when using a URL override for Supabase init.`,
+      `Could not resolve ${exportName} export for package ${packageName}`,
     );
   }
 
+  return pathToFileURL(path.join(path.dirname(packageJsonPath), relativePath))
+    .href;
+};
+
+export const resolveEdgeFunctionDenoConfig = async () => {
   return {
     imports: {
-      "@hot-updater/server/runtime": createPkgPrNewSpecifier(
-        override,
-        pkgPrNewTarget.packageName,
+      "@hot-updater/server/runtime": await resolvePackageImportTarget(
         "@hot-updater/server",
-        pkgPrNewTarget.prNumber,
-        "runtime",
+        "./runtime",
       ),
-      "@hot-updater/supabase": createPkgPrNewSpecifier(
-        override,
-        pkgPrNewTarget.packageName,
+      "@hot-updater/supabase": await resolvePackageImportTarget(
         "@hot-updater/supabase",
-        pkgPrNewTarget.prNumber,
+        "./edge",
       ),
     },
   };
@@ -402,7 +367,6 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
     process.exit(0);
   }
   const denoConfig = await resolveEdgeFunctionDenoConfig();
-  const override = process.env[HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV]?.trim();
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
@@ -419,15 +383,13 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
     `${JSON.stringify(denoConfig, null, 2)}\n`,
   );
 
-  if (override) {
-    p.note(
-      [
-        `Using ${HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV}=${override} for Supabase edge deploy.`,
-        `- @hot-updater/server/runtime: ${denoConfig.imports["@hot-updater/server/runtime"]}`,
-        `- @hot-updater/supabase: ${denoConfig.imports["@hot-updater/supabase"]}`,
-      ].join("\n"),
-    );
-  }
+  p.note(
+    [
+      "Resolved Supabase edge runtime imports from the current package installation.",
+      `- @hot-updater/server/runtime: ${denoConfig.imports["@hot-updater/server/runtime"]}`,
+      `- @hot-updater/supabase: ${denoConfig.imports["@hot-updater/supabase"]}`,
+    ].join("\n"),
+  );
 
   await p.tasks([
     {

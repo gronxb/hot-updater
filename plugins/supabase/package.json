@@ -11,6 +11,10 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./edge": {
+      "import": "./dist/edge.mjs",
+      "require": "./dist/edge.cjs"
+    },
     "./scaffold": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"

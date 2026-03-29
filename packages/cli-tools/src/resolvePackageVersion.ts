@@ -8,6 +8,9 @@ const require = createRequire(import.meta.url);
 export const HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV =
   "HOT_UPDATER_SERVER_PACKAGE_VERSION";
 
+export const HOT_UPDATER_PROVIDER_PACKAGE_VERSION_ENV =
+  "HOT_UPDATER_PROVIDER_PACKAGE_VERSION";
+
 export const resolvePackageVersion = (
   packageName: string,
   options?: {

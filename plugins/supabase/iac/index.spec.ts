@@ -1,44 +1,32 @@
-import { resolvePackageVersion } from "@hot-updater/cli-tools";
-import { afterEach, describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { describe, expect, it } from "vitest";
 import { resolveEdgeFunctionDenoConfig } from "./index";
 
-const originalOverride = process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION;
+const require = createRequire(import.meta.url);
 
-afterEach(() => {
-  if (originalOverride === undefined) {
-    delete process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION;
-    return;
-  }
+const resolveFileUrl = (packageName: string, relativePath: string) => {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
 
-  process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION = originalOverride;
-});
+  return pathToFileURL(path.join(path.dirname(packageJsonPath), relativePath))
+    .href;
+};
 
 describe("resolveEdgeFunctionDenoConfig", () => {
-  it("pins released npm specifiers when no override is set", async () => {
-    delete process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION;
-
+  it("resolves imports from the currently installed package exports", async () => {
     const result = await resolveEdgeFunctionDenoConfig();
 
     expect(result).toEqual({
       imports: {
-        "@hot-updater/server/runtime": `npm:@hot-updater/server@${resolvePackageVersion("@hot-updater/server")}/runtime`,
-        "@hot-updater/supabase": `npm:@hot-updater/supabase@${resolvePackageVersion("@hot-updater/supabase")}`,
-      },
-    });
-  });
-
-  it("writes pkg.pr.new imports when pkg.pr.new override is set", async () => {
-    process.env.HOT_UPDATER_SERVER_PACKAGE_VERSION =
-      "https://pkg.pr.new/@hot-updater/supabase@888";
-
-    const result = await resolveEdgeFunctionDenoConfig();
-
-    expect(result).toEqual({
-      imports: {
-        "@hot-updater/server/runtime":
-          "https://pkg.pr.new/@hot-updater/server@888/runtime",
-        "@hot-updater/supabase":
-          "https://pkg.pr.new/@hot-updater/supabase@888",
+        "@hot-updater/server/runtime": resolveFileUrl(
+          "@hot-updater/server",
+          "dist/runtime.mjs",
+        ),
+        "@hot-updater/supabase": resolveFileUrl(
+          "@hot-updater/supabase",
+          "dist/edge.mjs",
+        ),
       },
     });
   });
