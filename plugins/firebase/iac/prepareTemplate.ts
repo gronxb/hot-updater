@@ -1,6 +1,6 @@
-import { copyDirToTmp } from "@hot-updater/cli-tools";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { copyDirToTmp } from "@hot-updater/cli-tools";
 
 const ensureExists = async (targetPath: string, description: string) => {
   try {

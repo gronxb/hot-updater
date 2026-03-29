@@ -1,6 +1,5 @@
 import {
   type BuildType,
-  copyDirToTmp,
   link,
   p,
   transformEnv,

@@ -18,12 +18,16 @@ describe("prepareFirebaseTemplate", () => {
     copyDirToTmpMock.mockReset();
 
     await Promise.all(
-      tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+      tempDirs
+        .splice(0)
+        .map((dir) => rm(dir, { recursive: true, force: true })),
     );
   });
 
   it("stages firebase public files and built functions into the init directory", async () => {
-    const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), "firebase-template-"));
+    const fixtureRoot = await mkdtemp(
+      path.join(os.tmpdir(), "firebase-template-"),
+    );
     tempDirs.push(fixtureRoot);
 
     const outputDir = path.join(fixtureRoot, "output");
