@@ -18,14 +18,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - name: Setup mise
+        uses: jdx/mise-action@v4
         with:
-          bun-version: "1.x"
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: "2.x"
+          install_args: "bun deno"
       - run: pnpm install
       - name: Build
         run: pnpm build
