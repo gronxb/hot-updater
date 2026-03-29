@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createHotUpdater } from "@hot-updater/server/runtime";
 import { Hono } from "npm:hono";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import {
   supabaseEdgeFunctionDatabase,
   supabaseEdgeFunctionStorage,
