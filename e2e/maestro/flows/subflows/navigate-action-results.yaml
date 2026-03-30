@@ -1,0 +1,4 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    id: e2e-nav-action-results

@@ -81,10 +81,10 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
-- scrollUntilVisible:
-    element: ${output.emptyCrashHistoryText}
-    direction: DOWN
-    timeout: 20000
+- runFlow:
+    file: subflows/navigate-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - assertVisible: ${output.emptyCrashHistoryText}
 - runScript:
     file: ../scripts/control.js

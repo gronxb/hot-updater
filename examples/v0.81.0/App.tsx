@@ -7,10 +7,11 @@
 
 import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  type LayoutChangeEvent,
   Modal,
   Pressable,
   SafeAreaView,
@@ -61,6 +62,8 @@ type RuntimeSnapshot = {
   minBundleId: string;
 };
 
+type ScrollTarget = "actionResults" | "actions" | "crashHistory";
+
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
   baseURL: getGlobalBaseUrl(),
@@ -99,12 +102,14 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 
 const Section = ({
   children,
+  onLayout,
   title,
 }: {
   children: React.ReactNode;
+  onLayout?: (event: LayoutChangeEvent) => void;
   title: string;
 }) => (
-  <View style={styles.section}>
+  <View onLayout={onLayout} style={styles.section}>
     <Text style={styles.sectionTitle}>{title}</Text>
     {children}
   </View>
@@ -150,9 +155,38 @@ const ActionButton = ({
   </Pressable>
 );
 
+const E2ENavButton = ({
+  onPress,
+  testID,
+  title,
+}: {
+  onPress: () => void;
+  testID: string;
+  title: string;
+}) => (
+  <Pressable
+    accessibilityLabel={title}
+    accessibilityRole="button"
+    onPress={onPress}
+    style={({ pressed }) => [
+      styles.e2eNavButton,
+      pressed ? styles.e2eNavButtonPressed : null,
+    ]}
+    testID={testID}
+  >
+    <Text style={styles.e2eNavButtonText}>{title}</Text>
+  </Pressable>
+);
+
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const sectionOffsets = useRef<Record<ScrollTarget, number>>({
+    actionResults: 0,
+    actions: 0,
+    crashHistory: 0,
+  });
   const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
   const [cohortInput, setCohortInput] = useState(() => initialCohort);
@@ -184,6 +218,22 @@ function App(): React.JSX.Element {
 
   const refreshRuntimeSnapshot = () => {
     setRuntimeSnapshot(readRuntimeSnapshot());
+  };
+
+  const recordSectionOffset =
+    (target: ScrollTarget) => (event: LayoutChangeEvent) => {
+      sectionOffsets.current[target] = event.nativeEvent.layout.y;
+    };
+
+  const scrollToTop = () => {
+    scrollViewRef.current?.scrollTo({ animated: false, y: 0 });
+  };
+
+  const scrollToSection = (target: ScrollTarget) => {
+    scrollViewRef.current?.scrollTo({
+      animated: false,
+      y: Math.max(sectionOffsets.current[target] - 12, 0),
+    });
   };
 
   const clearCrashHistory = () => {
@@ -296,7 +346,30 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <View style={styles.e2eNavBar}>
+        <E2ENavButton
+          onPress={scrollToTop}
+          testID="e2e-nav-top"
+          title="Jump to Top"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("crashHistory")}
+          testID="e2e-nav-crash-history"
+          title="Jump to Crash History"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("actions")}
+          testID="e2e-nav-actions"
+          title="Jump to Actions"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("actionResults")}
+          testID="e2e-nav-action-results"
+          title="Jump to Results"
+        />
+      </View>
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -328,7 +401,11 @@ function App(): React.JSX.Element {
             label="Download Progress"
             value={`${Math.round(progress * 100)}%`}
           />
-          <Text selectable style={styles.actionResult} testID="launch-status-result">
+          <Text
+            selectable
+            style={styles.actionResult}
+            testID="launch-status-result"
+          >
             {launchStatusText}
           </Text>
           <Text
@@ -344,6 +421,7 @@ function App(): React.JSX.Element {
         </Section>
 
         <Section
+          onLayout={recordSectionOffset("crashHistory")}
           title={`Crash History (${runtimeSnapshot.crashHistory.length})`}
         >
           {runtimeSnapshot.crashHistory.length === 0 ? (
@@ -415,7 +493,7 @@ function App(): React.JSX.Element {
           <InfoRow label="Base URL" value={runtimeSnapshot.baseURL ?? "null"} />
         </Section>
 
-        <Section title="Actions">
+        <Section onLayout={recordSectionOffset("actions")} title="Actions">
           <Text
             selectable
             style={styles.actionResult}
@@ -532,6 +610,12 @@ function App(): React.JSX.Element {
               testID="action-restore-initial-cohort"
             />
           </View>
+        </Section>
+
+        <Section
+          onLayout={recordSectionOffset("actionResults")}
+          title="Action Results"
+        >
           <Text
             selectable
             style={styles.actionResult}
@@ -643,6 +727,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginTop: 8,
+  },
+  e2eNavBar: {
+    backgroundColor: "#e2e8f0",
+    borderBottomColor: "#cbd5e1",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  e2eNavButton: {
+    alignItems: "center",
+    backgroundColor: "#dbeafe",
+    borderRadius: 999,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+  },
+  e2eNavButtonPressed: {
+    backgroundColor: "#bfdbfe",
+  },
+  e2eNavButtonText: {
+    color: "#1e3a8a",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
   },
   emptyState: {
     color: "#6b7280",

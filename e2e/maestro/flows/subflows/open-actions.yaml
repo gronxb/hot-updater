@@ -1,7 +1,7 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element: Install Current Channel Update
-    direction: DOWN
-    timeout: 20000
+- runFlow:
+    file: navigate-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
 - assertVisible: Install Current Channel Update

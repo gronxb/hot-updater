@@ -1,6 +1,10 @@
 appId: ${APP_ID}
 ---
 - runFlow:
+    file: navigate-action-results.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
     file: assert-text-by-id.yaml
     env:
       APP_ID: ${APP_ID}

@@ -1,13 +1,5 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element:
-      id: ${TARGET_ID}
-    direction: DOWN
-    timeout: 20000
-- extendedWaitUntil:
-    visible: ${EXPECTED_TEXT}
-    timeout: 10000
 - copyTextFrom:
     id: ${TARGET_ID}
 - assertTrue:

@@ -54,10 +54,10 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
-- scrollUntilVisible:
-    element: ${output.emptyCrashHistoryText}
-    direction: DOWN
-    timeout: 20000
+- runFlow:
+    file: subflows/navigate-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - assertVisible: ${output.emptyCrashHistoryText}
 - runScript:
     file: ../scripts/control.js

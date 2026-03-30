@@ -1,10 +1,9 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element:
-      id: current-cohort-summary
-    direction: UP
-    timeout: 20000
+- runFlow:
+    file: navigate-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
 - copyTextFrom:
     id: current-cohort-summary
 - assertTrue:

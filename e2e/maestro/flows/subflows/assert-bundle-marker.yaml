@@ -5,11 +5,10 @@ appId: ${APP_ID}
     env:
       ACTION: ensureAppForeground
       CONTROL_URL: ${CONTROL_URL}
-- scrollUntilVisible:
-    element:
-      id: runtime-scenario-marker
-    direction: UP
-    timeout: 120000
+- runFlow:
+    file: navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
 - extendedWaitUntil:
     visible: ${EXPECTED_MARKER}
     timeout: 10000

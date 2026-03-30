@@ -1,9 +1,8 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element:
-      id: ${BUTTON_ID}
-    direction: DOWN
-    timeout: 20000
+- runFlow:
+    file: navigate-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
 - tapOn:
     id: ${BUTTON_ID}
