@@ -3,36 +3,34 @@
   "type": "module",
   "version": "0.28.0",
   "files": [
-    "dist",
     ".output",
     "package.json"
   ],
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.cts",
   "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build && node copy-assets.mjs && tsdown",
+    "build": "vite build && node copy-assets.mjs",
     "check": "biome check --write",
     "format": "biome format --write",
     "preview": "vite preview",
     "test": "vitest run",
     "test:type": "tsc --noEmit"
   },
-  "dependencies": {
+  "peerDependencies": {
+    "@hot-updater/cli-tools": "workspace:*"
+  },
+  "devDependencies": {
+    "tslib": "^2.8.1",
     "@base-ui/react": "^1.3.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
+    "@tanstack/devtools-vite": "^0.6.0",
     "@tanstack/react-devtools": "^0.10.0",
     "@tanstack/react-form": "^1.28.5",
     "@tanstack/react-query": "^5.90.21",
@@ -45,7 +43,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.20",
-    "hono": "catalog:hono",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "next-themes": "^0.4.6",
     "nitro": "latest",
@@ -55,31 +53,22 @@
     "semver": "^7.7.4",
     "shadcn": "^4.0.8",
     "sonner": "^2.0.7",
+    "tar": "^7.5.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.4.0",
-    "typia": "^12.0.1",
-    "vite-tsconfig-paths": "^6.1.1"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.7",
-    "@hono/node-server": "catalog:hono",
-    "@hono/typia-validator": "^0.1.2",
-    "@hot-updater/mock": "workspace:*",
-    "@tanstack/devtools-vite": "^0.6.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.0",
     "@types/semver": "^7.7.1",
-    "@typia/unplugin": "^12.0.1",
     "@vitejs/plugin-react": "^6.0.1",
     "jsdom": "^29.0.0",
     "react-grab": "^0.1.28",
-    "tsdown": "catalog:tools",
     "typescript": "^5.7.2",
     "vite": "^8.0.0",
+    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "catalog:",
     "web-vitals": "^5.1.0"
   },
@@ -92,7 +81,25 @@
   },
   "homepage": "https://github.com/gronxb/hot-updater#readme",
   "inlinedDependencies": {
-    "@hono/node-server": "1.19.11",
-    "@hono/typia-validator": "0.1.2"
+    "@isaacs/fs-minipass": "4.0.1",
+    "chownr": "3.0.0",
+    "core-util-is": "1.0.3",
+    "immediate": "3.0.6",
+    "inherits": "2.0.4",
+    "isarray": "1.0.0",
+    "jszip": "3.10.1",
+    "lie": "3.3.0",
+    "mime": "4.0.4",
+    "minipass": "7.1.3",
+    "minizlib": "3.1.0",
+    "pako": "1.0.11",
+    "process-nextick-args": "2.0.1",
+    "readable-stream": "2.3.8",
+    "safe-buffer": "5.1.2",
+    "setimmediate": "1.0.5",
+    "string_decoder": "1.1.1",
+    "tar": "7.5.1",
+    "util-deprecate": "1.0.2",
+    "yallist": "5.0.0"
   }
 }

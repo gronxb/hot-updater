@@ -6,11 +6,7 @@ export const extractTimestampFromUUIDv7 = (uuid: string) => {
   return timestamp;
 };
 
-export const createUUIDv7WithSameTimestamp = (originalUuid: string) => {
-  // Extract timestamp (first 48 bits / 12 hex chars) from original UUID
-  const cleanUuid = originalUuid.split("-").join("");
-  const timestampHex = cleanUuid.slice(0, 12);
-
+function createUUIDv7FromTimestampHex(timestampHex: string) {
   // Generate new random data for rand_a (12 bits) and rand_b (62 bits)
   const randomBytes = new Uint8Array(10); // Need 74 bits total (12 + 62), use 10 bytes
   crypto.getRandomValues(randomBytes);
@@ -49,4 +45,14 @@ export const createUUIDv7WithSameTimestamp = (originalUuid: string) => {
   ].join("-");
 
   return newUuid;
+}
+
+export const createUUIDv7 = () =>
+  createUUIDv7FromTimestampHex(Date.now().toString(16).padStart(12, "0"));
+
+export const createUUIDv7WithSameTimestamp = (originalUuid: string) => {
+  const cleanUuid = originalUuid.split("-").join("");
+  const timestampHex = cleanUuid.slice(0, 12);
+
+  return createUUIDv7FromTimestampHex(timestampHex);
 };
