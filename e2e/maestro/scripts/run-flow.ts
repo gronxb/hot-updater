@@ -49,9 +49,9 @@ const CLI_TOOLS_DIST_PATH = path.join(
   REPO_DIR,
   "packages/cli-tools/dist/index.mjs",
 );
-const CONSOLE_API_SERVER_SCRIPT_PATH = path.join(
+const CONSOLE_SERVER_SCRIPT_PATH = path.join(
   REPO_DIR,
-  "e2e/maestro/server/console-api-server.mjs",
+  "packages/console/.output/server/index.mjs",
 );
 const RESULTS_ROOT = path.join(E2E_DIR, "results");
 const LEGACY_STANDALONE_SERVER_PORT = 3007;
@@ -807,7 +807,7 @@ async function main() {
   const consoleBaseUrl = `http://${DEFAULT_SERVER_HOST}:${consolePort}`;
   const consoleLogPath = path.join(resultsDir, "console-api.log");
   const consoleLogStream = fs.createWriteStream(consoleLogPath, { flags: "w" });
-  const consoleProcess = spawn("node", [CONSOLE_API_SERVER_SCRIPT_PATH], {
+  const consoleProcess = spawn("node", [CONSOLE_SERVER_SCRIPT_PATH], {
     cwd: EXAMPLE_DIR,
     env: {
       ...process.env,

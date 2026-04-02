@@ -62,7 +62,6 @@
   "devDependencies": {
     "@bacons/xcode": "1.0.0-alpha.24",
     "@commander-js/extra-typings": "^14.0.0",
-    "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
