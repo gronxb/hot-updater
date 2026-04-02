@@ -74,4 +74,8 @@ const handler = onRequest(
   },
 );
 
-export { handler as "hot-updater" };
+// Firebase encodes hyphenated function names as nested entry points,
+// e.g. "hot-updater" -> "hot.updater".
+export const hot = {
+  updater: handler,
+};
