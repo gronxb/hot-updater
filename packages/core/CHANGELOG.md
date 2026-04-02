@@ -1,6 +1,6 @@
 # @hot-updater/core
 
-## 1.0.0
+## 0.29.0
 
 ### Minor Changes
 

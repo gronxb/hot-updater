@@ -1,6 +1,6 @@
 # @hot-updater/bsdiff
 
-## 1.0.0
+## 0.29.0
 
 ### Patch Changes
 
