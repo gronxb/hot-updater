@@ -12,13 +12,13 @@
 - Updated dependencies [a935992]
 - Updated dependencies [d0fe908]
 - Updated dependencies [a935992]
-  - @hot-updater/plugin-core@1.0.0
-  - @hot-updater/cli-tools@1.0.0
-  - @hot-updater/console@1.0.0
-  - @hot-updater/server@1.0.0
-  - @hot-updater/core@1.0.0
-  - @hot-updater/android-helper@1.0.0
-  - @hot-updater/apple-helper@1.0.0
+  - @hot-updater/plugin-core@0.29.0
+  - @hot-updater/cli-tools@0.29.0
+  - @hot-updater/console@0.29.0
+  - @hot-updater/server@0.29.0
+  - @hot-updater/core@0.29.0
+  - @hot-updater/android-helper@0.29.0
+  - @hot-updater/apple-helper@0.29.0
 
 ## 0.28.0
 
