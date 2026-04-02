@@ -158,6 +158,7 @@ describe("PromoteChannelDialog", () => {
   const copiedBundleId = "0195a409-0111-7654-8abc-def012345678";
 
   beforeEach(() => {
+    vi.stubEnv("VITE_HOT_UPDATER_SDK_VERSION", "0.29.0");
     mockCreateUUIDv7.mockReset();
     mockCreateUUIDv7.mockReturnValue(copiedBundleId);
     mockSetBundleId.mockReset();
@@ -169,6 +170,7 @@ describe("PromoteChannelDialog", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     cleanup();
   });
 
@@ -328,5 +330,30 @@ describe("PromoteChannelDialog", () => {
         "Legacy bundle without manifest.json",
       );
     });
+  });
+
+  it("disables copy when the injected sdk version is below 0.29.0", () => {
+    vi.stubEnv("VITE_HOT_UPDATER_SDK_VERSION", "0.28.0");
+
+    render(
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={() => {}}
+        onSuccess={mockOnSuccess}
+      />,
+    );
+
+    const [actionSelect] = screen.getAllByRole("combobox");
+    fireEvent.change(actionSelect, { target: { value: "copy" } });
+
+    expect(
+      screen.getByText(
+        "Copy bundle with metadata.json rewrite is only available for hot-updater SDK version 0.29.0 or later.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Copy" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

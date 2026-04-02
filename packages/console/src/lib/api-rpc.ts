@@ -231,13 +231,16 @@ export const deleteBundle = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { databasePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data.bundleId);
-      if (!bundle) {
-        throw new Error("Bundle not found");
-      }
-      await databasePlugin.deleteBundle(bundle);
-      await databasePlugin.commitBundle();
+      const { deleteBundle: deleteBundleWithStorage } = await import(
+        "./server/deleteBundle"
+      );
+      const { databasePlugin, storagePlugin } = await prepareConfig();
+
+      await deleteBundleWithStorage(data, {
+        databasePlugin,
+        storagePlugin,
+      });
+
       return { success: true };
     } catch (error) {
       console.error("Error during bundle deletion:", error);

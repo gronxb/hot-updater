@@ -4,7 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
-import type { Bundle, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,8 +28,8 @@ const baseBundle: Bundle = {
   message: "Initial message",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
-  rolloutPercentage: 100,
-  targetDeviceIds: [],
+  rolloutCohortCount: 1000,
+  targetCohorts: [],
 };
 
 const config = {

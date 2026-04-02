@@ -37,5 +37,4 @@ onlyBuiltDependencies:
   - re2
   - sharp
   - ssh2
-  - typia
   - workerd
