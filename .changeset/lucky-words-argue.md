@@ -19,7 +19,6 @@
 "@hot-updater/firebase": minor
 "@hot-updater/mock": minor
 "@hot-updater/postgres": minor
-"@hot-updater/repack": minor
 "@hot-updater/rock": minor
 "@hot-updater/sentry-plugin": minor
 "@hot-updater/standalone": minor

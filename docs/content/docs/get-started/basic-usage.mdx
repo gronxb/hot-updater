@@ -28,7 +28,7 @@ npx hot-updater init
 
 This interactive CLI will guide you through:
 
-1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Re.Pack, or Expo)
+1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Rock, or Expo)
 2. **Provider Selection**: Select from available providers:
    - [Supabase](/docs/managed/supabase)
    - [Firebase](/docs/managed/firebase)
@@ -51,6 +51,8 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 ```
 
 **`hot-updater.config.ts`** - Contains provider integration settings:
+
+The example below uses the Bare (React Native CLI) build plugin. If you selected Rock or Expo, only the `build` field changes as shown in the build configuration section below.
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
@@ -132,51 +134,62 @@ export default HotUpdater.wrap({
 The update server URL will be provided after running `npx hot-updater init`. Check your terminal output or provider console for the correct URL.
 </Callout>
 
-## Plugin Configuration
+## Build Configuration
 
-Configure the build plugin to set the bundle ID at build time. This is necessary for integrating the `hot-updater` plugin into your project.
+Hot Updater now configures bundling through the `build` field in `hot-updater.config.ts`. The old `hot-updater/babel-plugin` and `@hot-updater/repack` setup is no longer used.
 
-<Tabs items={['Bare (Babel)', 'Re.Pack', 'Expo']}>
-  <Tab value="Bare (Babel)">
+<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+  <Tab value="Bare (React Native CLI)">
 
-Add the following to your `babel.config.js` file:
+Use the Bare build plugin for standard React Native CLI projects:
 
-```js title="babel.config.js"
-module.exports = {
-  presets: ['module:@react-native/babel-preset'],
-  plugins: [
-    'hot-updater/babel-plugin', // [!code ++]
-  ],
-};
+```ts title="hot-updater.config.ts"
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+  }),
+  // ... storage and database
+});
 ```
+
+No additional Babel plugin setup is required.
 
   </Tab>
-  <Tab value="Re.Pack">
+  <Tab value="Rock">
 
-First, install the Re.Pack plugin:
+Use the Rock build plugin for Rock projects:
 
-```package-install
-npm install @hot-updater/repack --save-dev
+```ts title="hot-updater.config.ts"
+import { rock } from "@hot-updater/rock";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: rock(),
+  // ... storage and database
+});
 ```
 
-Then add the following to your `rspack.config.mjs` file:
-
-```js title="rspack.config.mjs"
-import { HotUpdaterPlugin } from "@hot-updater/repack";
-
-export default {
-  // ...
-  plugins: [
-    new Repack.RepackPlugin(),
-    new HotUpdaterPlugin() // [!code ++]
-  ],
-};
-```
+No additional Babel plugin setup is required.
 
   </Tab>
   <Tab value="Expo">
 
-Add the plugin to your `app.json` file as shown below:
+Use the Expo build plugin in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { expo } from "@hot-updater/expo";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: expo(),
+  // ... storage and database
+});
+```
+
+Then add the config plugin to your `app.json`:
 
 ```json title="app.json"
 {
@@ -193,31 +206,18 @@ Add the plugin to your `app.json` file as shown below:
 }
 ```
 
-Run prebuild to apply the changes:
+Run prebuild to apply the native changes:
 
 ```package-install
 npx expo prebuild
 ```
 
-Run the following command to customize your Babel configuration:
-
-```package-install
-npx expo customize babel.config.js
-```
-
-Add the following to your `babel.config.js` file:
-
-```js title="babel.config.js"
-module.exports = {
-  presets: ['module:@react-native/babel-preset'],
-  plugins: [
-    'hot-updater/babel-plugin', // [!code ++]
-  ],
-};
-```
-
 <Callout>
-For Expo projects, the plugin automatically generates the native code configuration described in the next section.
+For Expo projects, the config plugin automatically generates the native code configuration described in the next section.
+</Callout>
+
+<Callout type="info">
+If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the additional Babel plugin setup.
 </Callout>
 
   </Tab>
