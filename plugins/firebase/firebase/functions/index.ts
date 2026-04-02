@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 import { firebaseDatabase } from "../../src/firebaseDatabase";

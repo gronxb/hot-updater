@@ -11,7 +11,7 @@ import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 
 type FirestoreData = admin.firestore.DocumentData;
 
