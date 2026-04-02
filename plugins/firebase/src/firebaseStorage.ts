@@ -4,7 +4,7 @@ import {
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import fs from "fs/promises";
 import path from "path";
 

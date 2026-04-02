@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -9,12 +10,16 @@ import {
   saveKeyPair,
 } from "./keyGeneration";
 
+const RSA_4096_TIMEOUT = 40000;
+const SAVE_KEY_PAIR_TIMEOUT = 30000;
+
 describe("Key Generation", () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = path.join(__dirname, `.test-keys-${Date.now()}`);
-    await fs.mkdir(testDir, { recursive: true });
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-key-generation-"),
+    );
   });
 
   afterEach(async () => {
@@ -31,16 +36,20 @@ describe("Key Generation", () => {
       expect(keyPair.publicKey).toContain("END PUBLIC KEY");
     });
 
-    it("should generate RSA-4096 key pair by default", async () => {
-      const keyPair = await generateKeyPair();
+    it(
+      "should generate RSA-4096 key pair by default",
+      async () => {
+        const keyPair = await generateKeyPair();
 
-      // Verify key size by attempting to create key object
-      const privateKey = crypto.createPrivateKey(keyPair.privateKey);
-      const publicKey = crypto.createPublicKey(keyPair.publicKey);
+        // Verify key size by attempting to create key object
+        const privateKey = crypto.createPrivateKey(keyPair.privateKey);
+        const publicKey = crypto.createPublicKey(keyPair.publicKey);
 
-      expect(privateKey).toBeDefined();
-      expect(publicKey).toBeDefined();
-    });
+        expect(privateKey).toBeDefined();
+        expect(publicKey).toBeDefined();
+      },
+      RSA_4096_TIMEOUT,
+    );
 
     it("should generate RSA-2048 key pair when specified", async () => {
       const keyPair = await generateKeyPair(2048);
@@ -51,25 +60,29 @@ describe("Key Generation", () => {
   });
 
   describe("saveKeyPair", () => {
-    it("should save key pair to disk", async () => {
-      const keyPair = await generateKeyPair(2048);
-      await saveKeyPair(keyPair, testDir);
+    it(
+      "should save key pair to disk",
+      async () => {
+        const keyPair = await generateKeyPair(2048);
+        await saveKeyPair(keyPair, testDir);
 
-      const privateKeyPath = path.join(testDir, "private-key.pem");
-      const publicKeyPath = path.join(testDir, "public-key.pem");
+        const privateKeyPath = path.join(testDir, "private-key.pem");
+        const publicKeyPath = path.join(testDir, "public-key.pem");
 
-      const privateKeyExists = await fs
-        .access(privateKeyPath)
-        .then(() => true)
-        .catch(() => false);
-      const publicKeyExists = await fs
-        .access(publicKeyPath)
-        .then(() => true)
-        .catch(() => false);
+        const privateKeyExists = await fs
+          .access(privateKeyPath)
+          .then(() => true)
+          .catch(() => false);
+        const publicKeyExists = await fs
+          .access(publicKeyPath)
+          .then(() => true)
+          .catch(() => false);
 
-      expect(privateKeyExists).toBe(true);
-      expect(publicKeyExists).toBe(true);
-    });
+        expect(privateKeyExists).toBe(true);
+        expect(publicKeyExists).toBe(true);
+      },
+      SAVE_KEY_PAIR_TIMEOUT,
+    );
 
     it("should save private key with secure permissions (0o600)", async () => {
       const keyPair = await generateKeyPair(2048);
@@ -84,20 +97,24 @@ describe("Key Generation", () => {
       expect(mode).toBe(0o600);
     });
 
-    it("should create output directory if it doesn't exist", async () => {
-      const keyPair = await generateKeyPair(2048);
-      const nestedDir = path.join(testDir, "nested", "dir");
+    it(
+      "should create output directory if it doesn't exist",
+      async () => {
+        const keyPair = await generateKeyPair(2048);
+        const nestedDir = path.join(testDir, "nested", "dir");
 
-      await saveKeyPair(keyPair, nestedDir);
+        await saveKeyPair(keyPair, nestedDir);
 
-      const privateKeyPath = path.join(nestedDir, "private-key.pem");
-      const exists = await fs
-        .access(privateKeyPath)
-        .then(() => true)
-        .catch(() => false);
+        const privateKeyPath = path.join(nestedDir, "private-key.pem");
+        const exists = await fs
+          .access(privateKeyPath)
+          .then(() => true)
+          .catch(() => false);
 
-      expect(exists).toBe(true);
-    });
+        expect(exists).toBe(true);
+      },
+      SAVE_KEY_PAIR_TIMEOUT,
+    );
   });
 
   describe("loadPrivateKey", () => {

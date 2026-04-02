@@ -1,0 +1,168 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: numeric-cohort-rollout
+  ROLLOUT_CHANNEL: production
+  ROLLOUT_MARKER: numeric-rollout-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+# Verify the built-in bundle before cohort rollout deployment.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${ROLLOUT_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${ROLLOUT_MARKER}
+      MESSAGE: Maestro numeric rollout bundle
+      MODE: reset
+      OUTPUT_KEY: rolloutBundleId
+      ROLLOUT: "10"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: computeRolloutSample
+      BUNDLE_ID: ${output.rolloutBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      OUTPUT_PREFIX: rollout
+# Included cohort should install the rollout bundle.
+- runFlow:
+    file: subflows/set-text-input.yaml
+    env:
+      APP_ID: ${APP_ID}
+      FIELD_ID: cohort-input
+      FIELD_LABEL: Cohort Override Input
+      FIELD_VALUE: ${output.rolloutIncludedCohort}
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.rolloutIncludedCohort}"
+- runFlow:
+    file: subflows/assert-current-cohort.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.rolloutIncludedCohort}"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.rolloutBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.rolloutBundleId} (UPDATE)"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.rolloutBundleId}
+      EXPECTED_MARKER: ${ROLLOUT_MARKER}
+- runFlow:
+    file: subflows/assert-channel-summary.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+# Excluded cohort should unwind the ineligible rollout back to the built-in state.
+- runFlow:
+    file: subflows/set-text-input.yaml
+    env:
+      APP_ID: ${APP_ID}
+      FIELD_ID: cohort-input
+      FIELD_LABEL: Cohort Override Input
+      FIELD_VALUE: ${output.rolloutExcludedCohort}
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.rolloutExcludedCohort}"
+- runFlow:
+    file: subflows/assert-current-cohort.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.rolloutExcludedCohort}"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+# The intermediate action string differs by platform, so verify the reset outcome directly.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: subflows/assert-channel-summary.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: PASSED

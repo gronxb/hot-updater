@@ -17,5 +17,6 @@ export * from "./loadConfig";
 export * from "./log";
 export * from "./makeEnv";
 export * from "./prompts";
+export * from "./resolvePackageVersion";
 export * from "./transformEnv";
 export * from "./transformTemplate";

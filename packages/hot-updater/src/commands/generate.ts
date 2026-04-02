@@ -1,6 +1,5 @@
 import { p } from "@hot-updater/cli-tools";
-import { HotUpdaterDB, type Migrator } from "@hot-updater/server";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
 import {
@@ -480,6 +479,10 @@ async function generateStandaloneSQL(options: {
     // Create Kysely instance with appropriate dialect
     // The dummy connection won't be used for SQL generation in from-schema mode
     const db = new Kysely({ dialect: createDialect(dbType) });
+    const [{ HotUpdaterDB }, { kyselyAdapter }] = await Promise.all([
+      import("@hot-updater/server"),
+      import("@hot-updater/server/adapters/kysely"),
+    ]);
 
     // Create the adapter with selected provider
     const adapter = kyselyAdapter({

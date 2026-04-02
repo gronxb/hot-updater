@@ -1,4 +1,4 @@
-import UnpluginTypiaRolldownPlugin from "@ryoppippi/unplugin-typia/rolldown";
+import UnpluginTypia from "@typia/unplugin/rolldown";
 import { defineConfig } from "tsdown";
 
 export default defineConfig([
@@ -14,6 +14,6 @@ export default defineConfig([
       PROD: true,
     },
     clean: false,
-    plugins: [UnpluginTypiaRolldownPlugin()],
+    plugins: [UnpluginTypia()],
   },
 ]);

@@ -1,6 +1,6 @@
 ---
 title: "Cloudflare"
-description: Deploy Hot Updater server to Cloudflare Workers with D1 and R2.
+description: Deploy Hot Updater update checks to Cloudflare Workers with D1 and R2 bindings.
 icon: cloudflare
 version: "v0.22.0"
 ---
@@ -9,23 +9,31 @@ version: "v0.22.0"
 
 - Cloudflare account at [cloudflare.com](https://cloudflare.com)
 - Node.js 20+ installed locally
+- An existing React Native app that already uses the Hot Updater CLI
 
 ## Installation
 
-Install required dependencies.
+Install the Worker runtime dependencies.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws hono
+npm install @hot-updater/server @hot-updater/cloudflare hono
 ```
 
-Install Drizzle ORM with D1 adapter.
+Install Wrangler and Cloudflare types.
 
 ```package-install
-npm install drizzle-orm
+npm install -D wrangler @cloudflare/workers-types
 ```
 
-```package-install
-npm install -D wrangler drizzle-kit @cloudflare/workers-types
+If your TypeScript config does not already include Worker globals, add
+`@cloudflare/workers-types` to `compilerOptions.types`.
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types"]
+  }
+}
 ```
 
 ## Cloudflare Resources
@@ -44,100 +52,174 @@ npx wrangler r2 bucket create hot-updater-bundles
 
 ## Wrangler Configuration
 
-Create `wrangler.toml` with D1 binding.
+Create `wrangler.toml` and bind D1 and R2 to the Worker.
 
-```toml
-name = "hot-updater-server"
+```toml title="wrangler.toml"
+name = "hot-updater-worker"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-03-01"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "hot-updater-db"
 database_id = "your-database-id-here"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "hot-updater-bundles"
 ```
 
-Replace `database_id` with the ID from D1 creation output.
+Replace `database_id` with the value returned by `wrangler d1 create`.
 
-## Environment Variables
+## Worker Secret
 
-Set R2 credentials as secrets using Wrangler.
+Create a secret used to sign bundle download URLs.
 
 ```bash
-npx wrangler secret put R2_ACCOUNT_ID
-npx wrangler secret put R2_ACCESS_KEY_ID
-npx wrangler secret put R2_SECRET_ACCESS_KEY
+npx wrangler secret put JWT_SECRET
 ```
 
-Generate R2 API tokens from Cloudflare dashboard → R2 → Manage R2 API Tokens.
+## Worker Runtime Plugins
 
-## Database Setup
+Use the Worker-specific subpath exports for the runtime:
 
-Create the database connection file.
+- `@hot-updater/cloudflare` for the CLI provider in `hot-updater.config.ts`
+- `@hot-updater/cloudflare/worker` for the Worker runtime in `src/hotUpdater.ts`
 
-```typescript title="src/drizzle.ts"
-import { drizzle } from "drizzle-orm/d1";
-
-export interface Env {
-  DB: D1Database;
-  R2_ACCOUNT_ID: string;
-  R2_ACCESS_KEY_ID: string;
-  R2_SECRET_ACCESS_KEY: string;
-}
-
-export const getDb = (env: Env) => drizzle(env.DB);
-```
+The Worker subpath exposes `d1Database` and `r2Storage` with the same names as
+the CLI-side plugins, and also exports `verifyJwtSignedUrl` for signed bundle
+downloads. These runtime exports read D1, R2, and `JWT_SECRET` from the request
+context instead of calling the Cloudflare API directly.
 
 ## Hot Updater Configuration
 
-Create the Hot Updater instance.
+Create the Hot Updater instance at module scope and keep the Worker env type
+alongside it.
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { s3Storage } from "@hot-updater/aws";
-import { Env, getDb } from "./drizzle";
+import {
+  d1Database,
+  r2Storage,
+  type RequestEnvContext,
+} from "@hot-updater/cloudflare/worker";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 
-export const getHotUpdater = (env: Env) =>
-  createHotUpdater({
-    database: drizzleAdapter({ db: getDb(env), provider: "sqlite" }),
-    storages: [
-      s3Storage({
-        region: "auto",
-        endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: env.R2_ACCESS_KEY_ID,
-          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-        },
-        bucketName: "hot-updater-bundles",
-      }),
-    ],
-    basePath: "/hot-updater",
-  });
+export type CloudflareWorkerEnv = {
+  DB: {
+    prepare: D1Database["prepare"];
+  };
+  BUCKET: R2Bucket;
+  JWT_SECRET: string;
+};
+
+export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+
+const resolveRequestOrigin = (context?: RequestEnvContext) => {
+  const request = context?.request;
+
+  if (!request) {
+    throw new Error(
+      "r2WorkerStorage requires a request to resolve publicBaseUrl.",
+    );
+  }
+
+  return new URL(request.url).origin;
+};
+
+export const hotUpdater = createHotUpdater({
+  database: d1Database(),
+  storages: [
+    r2Storage({
+      publicBaseUrl: resolveRequestOrigin,
+    }),
+  ],
+  basePath: HOT_UPDATER_BASE_PATH,
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
 ```
 
 ## Worker Entry Point
 
-Create the Cloudflare Worker with Hono.
+Mount the update-check handler at the top level and pass `request` and `env`
+into `hotUpdater.handler()`.
 
 ```typescript title="src/index.ts"
+import { verifyJwtSignedUrl } from "@hot-updater/cloudflare/worker";
 import { Hono } from "hono";
-import { Env } from "./drizzle";
-import { getHotUpdater } from "./hotUpdater";
+import {
+  HOT_UPDATER_BASE_PATH,
+  hotUpdater,
+  type CloudflareWorkerEnv,
+} from "./hotUpdater";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => {
-  const hotUpdater = getHotUpdater(c.env);
-  return hotUpdater.handler(c.req.raw);
+app.mount(
+  HOT_UPDATER_BASE_PATH,
+  (request: Request, env: CloudflareWorkerEnv) => {
+    return hotUpdater.handler(request, {
+      request,
+      env,
+    });
+  },
+  {
+    optionHandler: (c) => [c.env],
+  },
+);
+
+app.get("*", async (c) => {
+  const result = await verifyJwtSignedUrl({
+    path: c.req.path,
+    token: c.req.query("token"),
+    jwtSecret: c.env.JWT_SECRET,
+    handler: async (storageUri) => {
+      const [, ...key] = storageUri.split("/");
+      const object = await c.env.BUCKET.get(key.join("/"));
+
+      if (!object) {
+        return null;
+      }
+
+      return {
+        body: object.body,
+        contentType: object.httpMetadata?.contentType,
+      };
+    },
+  });
+
+  if (result.status !== 200) {
+    return c.json({ error: result.error }, result.status);
+  }
+
+  return c.body(result.responseBody, 200, result.responseHeaders);
 });
 
 export default app;
 ```
 
+## Security
+
+<Callout type="warn">
+With Hono `mount()`, keep `/api/check-update/app-version/*` and
+`/api/check-update/fingerprint/*` public for React Native clients.
+
+This example uses `routes: { updateCheck: true, bundles: false }`, so
+`/api/check-update/version` and `/api/check-update/api/*` are not mounted.
+
+If you enable bundle routes later, protect `/api/check-update/version` and
+`/api/check-update/api/*` with Hono middleware, but keep the update-check routes
+public.
+
+The catch-all download route stays reachable, but each bundle download is still
+guarded by the signed `token` verified with `JWT_SECRET`.
+</Callout>
+
 ## Schema Generation
 
-Generate the Drizzle schema for Hot Updater tables.
+Generate the Hot Updater schema from the top-level configuration module.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
@@ -145,29 +227,22 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 
 ## Database Migration
 
-Apply migrations to D1 database.
+Apply the generated migrations to D1.
 
 ```bash
 npx wrangler d1 migrations apply hot-updater-db
 ```
 
-## R2 Public Access
-
-Configure R2 custom domain for public bundle access:
-
-1. Go to Cloudflare dashboard → R2 → your bucket → Settings
-2. Add a custom domain (e.g., `bundles.yourdomain.com`)
-3. R2 bundles are publicly accessible via the S3-compatible API
-
 ## Development
 
-Run the development server locally.
+Run the Worker locally.
 
 ```bash
 npx wrangler dev
 ```
 
-Server runs at `http://localhost:8787`.
+The update-check endpoint is available at
+`http://localhost:8787/api/check-update`.
 
 ## Deploy
 
@@ -177,45 +252,45 @@ Deploy to Cloudflare Workers.
 npx wrangler deploy
 ```
 
-Your Hot Updater server will be available at `https://hot-updater-server.your-subdomain.workers.dev/hot-updater`.
+Your public update-check runtime will be available at
+`https://hot-updater-worker.your-subdomain.workers.dev/api/check-update`.
 
 ## CLI Configuration
 
-Configure your CLI to use this deployed server.
+Configure the CLI to upload bundles to the same R2 bucket and write metadata to
+the same D1 database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
-import { standaloneRepository } from "@hot-updater/standalone";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
+import { config } from "dotenv";
+
+config({ path: ".env.hotupdater" });
 
 export default defineConfig({
   build: bare(),
   storage: r2Storage({
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-    bucketName: "hot-updater-bundles",
-    publicUrl: "https://bundles.yourdomain.com",
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  database: standaloneRepository({
-    baseUrl: "https://hot-updater-server.your-subdomain.workers.dev/hot-updater",
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
 });
 ```
 
-<Callout type="warn">
-**R2 Storage Configuration**
-
-The server uses `s3Storage` from `@hot-updater/aws` because `r2Storage` does not support `getDownloadUrl()`, which is required for generating presigned download URLs.
-
-The CLI uses `r2Storage` from `@hot-updater/cloudflare` (via Wrangler CLI) for deployment, while the server uses `s3Storage` (via S3-compatible API) for serving bundles. Both access the same R2 bucket.
-
-Make sure both configurations point to the same R2 bucket name.
+<Callout type="info">
+In this Cloudflare Worker setup, bundle management happens through the CLI's
+Cloudflare provider plugins. The Worker only serves update checks and signed
+bundle downloads.
 </Callout>
 
 ## Next Steps
 
-- Set up [custom domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) for Workers
-- Enable [analytics](https://developers.cloudflare.com/workers/observability/analytics/) for monitoring
-- Configure [R2 caching](https://developers.cloudflare.com/r2/buckets/public-buckets/) for performance
+- Add authentication only if you later enable bundle management routes on the Worker
+- Set up a custom domain for the Worker if you do not want to use `workers.dev`
+- Review the [managed Cloudflare guide](/docs/managed/cloudflare) if you want the generated provider setup instead

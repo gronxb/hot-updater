@@ -1,0 +1,28 @@
+appId: ${APP_ID}
+---
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: ensureAppForeground
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
+- retry:
+    maxRetries: 3
+    commands:
+      - assertVisible:
+          id: runtime-bundle-id
+      - copyTextFrom:
+          id: runtime-bundle-id
+      - assertTrue:
+          condition: ${maestro.copiedText == EXPECTED_BUNDLE_ID || maestro.copiedText.endsWith(EXPECTED_BUNDLE_ID)}
+          label: Runtime bundle id matches expected value
+      - assertVisible:
+          id: runtime-scenario-marker
+      - copyTextFrom:
+          id: runtime-scenario-marker
+      - assertTrue:
+          condition: ${maestro.copiedText == EXPECTED_MARKER}
+          label: Runtime scenario marker matches expected value

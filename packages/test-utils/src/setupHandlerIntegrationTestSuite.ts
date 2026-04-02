@@ -50,17 +50,16 @@ export function createGetUpdateInfo(
       // Step 3: Construct GET URL based on updateStrategy
       const channel = options.channel || "production";
       const minBundleId = options.minBundleId || NIL_UUID;
+      const cohort = encodeURIComponent(options.cohort ?? "1");
 
       let url: string;
       if (options._updateStrategy === "appVersion") {
-        const appVersion = (options as any).appVersion;
         url = buildUrl(
-          `/app-version/${options.platform}/${appVersion}/${channel}/${minBundleId}/${options.bundleId}`,
+          `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`,
         );
       } else {
-        const fingerprintHash = (options as any).fingerprintHash;
         url = buildUrl(
-          `/fingerprint/${options.platform}/${fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}`,
+          `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`,
         );
       }
 

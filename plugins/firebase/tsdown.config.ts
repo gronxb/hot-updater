@@ -17,16 +17,25 @@ export default defineConfig([
       to: "dist/firebase",
     },
     outDir: "dist/firebase/functions",
-    external: ["firebase-functions", "firebase-admin"],
+    deps: {
+      neverBundle: ["firebase-functions", "firebase-admin"],
+      alwaysBundle: [
+        "@hot-updater/core",
+        "@hot-updater/js",
+        "@hot-updater/plugin-core",
+        "@hot-updater/server",
+      ],
+    },
     failOnWarn: true,
-    noExternal: ["@hot-updater/core", "@hot-updater/js"],
   },
   {
     entry: ["iac/index.ts"],
     format: ["cjs", "esm"],
     dts: true,
     outDir: "dist/iac",
-    external: ["@hot-updater/firebase"],
+    deps: {
+      neverBundle: ["@hot-updater/firebase"],
+    },
     failOnWarn: true,
   },
 ]);

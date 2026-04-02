@@ -1,0 +1,29 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
+- extendedWaitUntil:
+    visible:
+      id: ${FIELD_ID}
+    timeout: 10000
+- tapOn:
+    id: ${FIELD_ID}
+    retryTapIfNoChange: true
+    waitToSettleTimeoutMs: 2000
+- eraseText
+- inputText: ${FIELD_VALUE}
+- pressKey: Enter
+- waitForAnimationToEnd:
+    timeout: 1000
+- retry:
+    maxRetries: 3
+    commands:
+      - assertVisible:
+          id: ${FIELD_ID}
+      - copyTextFrom:
+          id: ${FIELD_ID}
+      - assertTrue:
+          condition: ${maestro.copiedText == FIELD_VALUE}
+          label: ${FIELD_LABEL} matches expected value

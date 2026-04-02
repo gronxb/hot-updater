@@ -74,8 +74,12 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: "https://api.example.com",
   routes: {
-    upsert: () => ({
+    create: () => ({
       path: "/v1/hot-updater/api/bundles",
+      headers: { "X-Custom-Header": "value" }
+    }),
+    update: (bundleId) => ({
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
       headers: { "X-Custom-Header": "value" }
     }),
     list: () => ({

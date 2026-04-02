@@ -12,10 +12,12 @@ export const bundles = sqliteTable("bundles", {
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
-  metadata: blob("metadata", { mode: "json" }).notNull()
+  metadata: blob("metadata", { mode: "json" }).notNull(),
+  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
+  target_cohorts: blob("target_cohorts", { mode: "json" })
 })
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("0.21.0")
+  version: text("version", { length: 255 }).notNull().default("0.29.0")
 })

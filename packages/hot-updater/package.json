@@ -3,17 +3,17 @@
   "type": "module",
   "version": "0.28.0",
   "bin": {
-    "hot-updater": "./dist/index.js"
+    "hot-updater": "./dist/index.cjs"
   },
   "main": "dist/config.cjs",
-  "module": "dist/config.js",
-  "types": "dist/config.d.ts",
+  "module": "dist/config.mjs",
+  "types": "dist/config.d.cts",
   "exports": {
     ".": {
       "node": "./dist/config.cjs",
-      "import": "./dist/config.js",
+      "import": "./dist/config.mjs",
       "require": "./dist/config.cjs",
-      "types": "./dist/config.d.ts"
+      "types": "./dist/config.d.cts"
     },
     "./package.json": "./package.json"
   },
@@ -55,37 +55,34 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "cosmiconfig": "9.0.0",
     "jiti": "2.6.1",
     "kysely": "0.28.9",
-    "sql-formatter": "15.6.10",
-    "cosmiconfig-typescript-loader": "5.0.0"
+    "sql-formatter": "15.6.10"
   },
   "devDependencies": {
-    "semver": "^7.6.3",
-    "fast-xml-parser": "5.4.1",
-    "fast-glob": "3.3.3",
     "@bacons/xcode": "1.0.0-alpha.24",
     "@commander-js/extra-typings": "^14.0.0",
-    "commander": "^14.0.0",
-    "@hono/node-server": "^1.13.4",
+    "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
-    "@hot-updater/server": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
+    "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/connect": "^3.4.38",
-    "@types/cosmiconfig": "^6.0.0",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
     "@types/semver": "^7.5.8",
+    "commander": "^14.0.0",
     "es-toolkit": "^1.32.0",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
+    "fast-glob": "3.3.3",
+    "fast-xml-parser": "5.4.1",
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "read-package-up": "^11.0.0"
+    "read-package-up": "^11.0.0",
+    "semver": "^7.6.3"
   },
   "peerDependencies": {
     "@hot-updater/aws": "*",

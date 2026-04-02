@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
+- retry:
+    maxRetries: 3
+    commands:
+      - assertVisible:
+          id: current-cohort-summary
+      - copyTextFrom:
+          id: current-cohort-summary
+      - assertTrue:
+          condition: ${maestro.copiedText.startsWith(EXPECTED_COHORT_TEXT)}
+          label: Current cohort summary matches expected value

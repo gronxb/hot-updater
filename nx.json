@@ -1,7 +1,10 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "release": {
-    "projects": ["*", "!@hot-updater/docs"],
+    "projects": [
+      "*",
+      "!@hot-updater/docs"
+    ],
     "git": {
       "tag": false
     },
@@ -13,16 +16,25 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": ["{projectRoot}/dist"],
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "{projectRoot}/dist"
+      ],
       "cache": true
     },
     "test": {
-      "dependsOn": ["^test"]
+      "dependsOn": [
+        "^test"
+      ]
     },
     "test:type": {
-      "dependsOn": ["^test:type"]
+      "dependsOn": [
+        "^test:type"
+      ]
     }
   },
-  "defaultBase": "main"
+  "defaultBase": "main",
+  "analytics": false
 }

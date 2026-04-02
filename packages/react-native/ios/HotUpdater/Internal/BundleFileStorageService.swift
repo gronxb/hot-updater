@@ -56,9 +56,9 @@ public enum BundleStorageError: Error, CustomNSError {
             userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The download was interrupted. Check network connection and try again"
 
         case .extractionFormatError(let underlyingError):
-            userInfo[NSLocalizedDescriptionKey] = "Invalid or corrupted bundle archive format"
+            userInfo[NSLocalizedDescriptionKey] = "The downloaded bundle file is not a valid compressed archive"
             userInfo[NSUnderlyingErrorKey] = underlyingError
-            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The bundle archive may be corrupted or in an unsupported format. Try downloading again"
+            userInfo[NSLocalizedRecoverySuggestionErrorKey] = "The downloaded file is not a supported bundle archive. Try downloading again"
 
         case .invalidBundle:
             userInfo[NSLocalizedDescriptionKey] = "Bundle missing required platform files (index.ios.bundle or main.jsbundle)"

@@ -3,11 +3,11 @@
   "version": "0.28.0",
   "type": "module",
   "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
@@ -30,7 +30,7 @@
   "dependencies": {
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "execa": "catalog:",
+    "execa": "catalog:tools",
     "fast-xml-parser": "5.4.1"
   },
   "devDependencies": {

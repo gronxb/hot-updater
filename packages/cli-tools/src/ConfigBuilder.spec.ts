@@ -303,7 +303,7 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 

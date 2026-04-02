@@ -3,6 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -26,9 +27,11 @@ model bundles {
   target_app_version String?
   fingerprint_hash String?
   metadata Json
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("0.21.0")
+  value String @default("0.29.0")
 }
 // --- END HOT-UPDATER MODELS ---

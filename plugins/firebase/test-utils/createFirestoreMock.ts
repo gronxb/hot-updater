@@ -1,4 +1,4 @@
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 
 export function createFirestoreMock(projectId: string) {
   if (!admin.apps.length) {

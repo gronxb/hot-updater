@@ -121,6 +121,22 @@ export interface Spec extends TurboModule {
    */
   getManifest: () => UnsafeObject;
 
+  /**
+   * Sets the persisted cohort used for rollout calculations.
+   *
+   * Native only derives a device-based cohort when nothing has been stored
+   * yet. Call `getCohort()` first if the app needs to save that initial value
+   * for a later restore.
+   */
+  setCohort: (cohort: string) => void;
+
+  /**
+   * Gets the persisted cohort used for rollout calculations.
+   * If none has been stored yet, native derives the initial value once and
+   * persists it before returning.
+   */
+  getCohort: () => string;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

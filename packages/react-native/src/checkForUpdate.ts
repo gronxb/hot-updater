@@ -5,6 +5,7 @@ import {
   getAppVersion,
   getBundleId,
   getChannel,
+  getCohort,
   getDefaultChannel,
   getFingerprintHash,
   getMinBundleId,
@@ -92,6 +93,8 @@ export async function checkForUpdate(
     ? minBundleId
     : currentBundleId;
 
+  const cohort = getCohort();
+
   if (!currentAppVersion) {
     options.onError?.(new HotUpdaterError("Failed to get app version"));
     return null;
@@ -122,6 +125,7 @@ export async function checkForUpdate(
       appVersion: currentAppVersion,
       bundleId: requestBundleId,
       minBundleId,
+      cohort,
       channel: targetChannel,
       updateStrategy: options.updateStrategy,
       fingerprintHash,

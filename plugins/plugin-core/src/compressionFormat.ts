@@ -1,5 +1,5 @@
+import path from "node:path";
 import mime from "mime";
-import path from "path";
 
 /**
  * Compression format type definition

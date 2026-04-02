@@ -1,0 +1,228 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: targeted-cohort-switchback
+  BASE_CHANNEL: production
+  NUMERIC_MARKER: targeted-numeric-rollout-maestro
+  QA_MARKER: targeted-qa-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+# Verify the built-in bundle before preparing cohort-targeted bundles.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${BASE_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${NUMERIC_MARKER}
+      MESSAGE: Maestro targeted numeric rollout bundle
+      MODE: reset
+      OUTPUT_KEY: numericBundleId
+      ROLLOUT: "10"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: computeRolloutSample
+      BUNDLE_ID: ${output.numericBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      OUTPUT_PREFIX: numeric
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${BASE_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${QA_MARKER}
+      MESSAGE: Maestro qa targeted bundle
+      MODE: reset
+      OUTPUT_KEY: qaBundleId
+      ROLLOUT: "0"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+      TARGET_COHORTS: qa
+# Numeric cohort should receive the rollout bundle first.
+- runFlow:
+    file: subflows/set-text-input.yaml
+    env:
+      APP_ID: ${APP_ID}
+      FIELD_ID: cohort-input
+      FIELD_LABEL: Cohort Override Input
+      FIELD_VALUE: ${output.numericIncludedCohort}
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
+- runFlow:
+    file: subflows/assert-current-cohort.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.numericBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.numericBundleId} (UPDATE)"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.numericBundleId}
+      EXPECTED_MARKER: ${NUMERIC_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+# Switching to qa should install the qa-targeted bundle.
+- runFlow:
+    file: subflows/tap-cohort-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-set-cohort-qa
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> qa"
+- runFlow:
+    file: subflows/assert-current-cohort.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=qa"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.qaBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.qaBundleId} (UPDATE)"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.qaBundleId}
+      EXPECTED_MARKER: ${QA_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+# Switching back to the numeric cohort should roll back to the numeric bundle.
+- runFlow:
+    file: subflows/set-text-input.yaml
+    env:
+      APP_ID: ${APP_ID}
+      FIELD_ID: cohort-input
+      FIELD_LABEL: Cohort Override Input
+      FIELD_VALUE: ${output.numericIncludedCohort}
+- runFlow:
+    file: subflows/assert-cohort-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
+- runFlow:
+    file: subflows/assert-current-cohort.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.numericBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+# The intermediate action string differs by platform, so verify the reloaded outcome.
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.numericBundleId}
+      EXPECTED_MARKER: ${NUMERIC_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: PASSED

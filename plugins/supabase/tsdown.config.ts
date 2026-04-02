@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts"],
+    entry: ["src/index.ts", "src/edge.ts"],
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
@@ -13,7 +13,9 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/iac",
-    external: ["@hot-updater/supabase"],
+    deps: {
+      neverBundle: ["@hot-updater/supabase"],
+    },
     failOnWarn: true,
   },
 ]);

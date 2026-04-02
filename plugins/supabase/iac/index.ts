@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import {
   type BuildType,
   ConfigBuilder,
@@ -6,6 +7,7 @@ import {
   makeEnv,
   type ProviderConfig,
   p,
+  resolvePackageVersion,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
@@ -14,6 +16,12 @@ import { ExecaError, execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+
+const require = createRequire(import.meta.url);
+const EDGE_VENDOR_DIR = "_hot-updater";
+const WORKSPACE_PACKAGE_PREFIX = "@hot-updater/";
+const IMPORT_SPECIFIER_PATTERN =
+  /from\s+["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {
@@ -58,6 +66,256 @@ project_id = "%%projectId%%"
 [db.seed]
 enabled = false
 `;
+
+const resolvePackageExportPath = async (
+  packageName: string,
+  exportName: "." | "./runtime" | "./edge",
+) => {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJson = JSON.parse(
+    await fs.readFile(packageJsonPath, "utf-8"),
+  ) as {
+    exports?: Record<
+      string,
+      | string
+      | {
+          import?: string;
+          require?: string;
+          default?: string;
+        }
+    >;
+  };
+  const exportTarget = packageJson.exports?.[exportName];
+  const relativePath =
+    typeof exportTarget === "string"
+      ? exportTarget
+      : (exportTarget?.import ??
+        exportTarget?.default ??
+        exportTarget?.require);
+
+  if (!relativePath) {
+    throw new Error(
+      `Could not resolve ${exportName} export for package ${packageName}`,
+    );
+  }
+
+  return path.resolve(path.dirname(packageJsonPath), relativePath);
+};
+
+const toImportMapPath = (fromDir: string, toPath: string) => {
+  const relativePath = path.relative(fromDir, toPath).split(path.sep).join("/");
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+};
+
+const pathExists = async (targetPath: string) => {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveLocalModulePath = async (fromFile: string, specifier: string) => {
+  const basePath = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [
+    basePath,
+    `${basePath}.mjs`,
+    `${basePath}.js`,
+    path.join(basePath, "index.mjs"),
+    path.join(basePath, "index.js"),
+  ];
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+const collectBareImportSpecifiers = async (entryPath: string) => {
+  const filesToVisit = [entryPath];
+  const visitedFiles = new Set<string>();
+  const specifiers = new Set<string>();
+
+  while (filesToVisit.length > 0) {
+    const currentFile = filesToVisit.pop();
+    if (!currentFile || visitedFiles.has(currentFile)) {
+      continue;
+    }
+
+    visitedFiles.add(currentFile);
+    const source = await fs.readFile(currentFile, "utf8");
+
+    for (const match of source.matchAll(IMPORT_SPECIFIER_PATTERN)) {
+      const specifier = match[1] ?? match[2];
+      if (!specifier) {
+        continue;
+      }
+
+      if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        const resolvedPath = await resolveLocalModulePath(
+          currentFile,
+          specifier,
+        );
+        if (resolvedPath) {
+          filesToVisit.push(resolvedPath);
+        }
+        continue;
+      }
+
+      if (
+        specifier.startsWith("node:") ||
+        specifier.startsWith("npm:") ||
+        specifier.startsWith("jsr:") ||
+        specifier.startsWith("http://") ||
+        specifier.startsWith("https://")
+      ) {
+        continue;
+      }
+
+      specifiers.add(specifier);
+    }
+  }
+
+  return specifiers;
+};
+
+const toVendorDirName = (packageName: string) =>
+  packageName.replace(/^@/, "").replaceAll("/", "-");
+
+const prepareVendoredPackageImport = async ({
+  targetDir,
+  packageName,
+  exportName,
+}: {
+  targetDir: string;
+  packageName: string;
+  exportName: "." | "./runtime" | "./edge";
+}) => {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageRoot = path.dirname(packageJsonPath);
+  const exportPath = await resolvePackageExportPath(packageName, exportName);
+  const relativeExportPath = path
+    .relative(packageRoot, exportPath)
+    .split(path.sep);
+
+  const [sourceRootDir, ...restPath] = relativeExportPath;
+  if (!sourceRootDir || restPath.length === 0) {
+    throw new Error(
+      `Could not determine vendored import layout for ${packageName}${exportName}`,
+    );
+  }
+
+  const vendorDirName = toVendorDirName(packageName);
+  const sourceRootPath = path.join(packageRoot, sourceRootDir);
+  const vendoredRootPath = path.join(
+    targetDir,
+    EDGE_VENDOR_DIR,
+    vendorDirName,
+    sourceRootDir,
+  );
+
+  await fs.rm(path.join(targetDir, EDGE_VENDOR_DIR, vendorDirName), {
+    recursive: true,
+    force: true,
+  });
+  await fs.mkdir(path.dirname(vendoredRootPath), { recursive: true });
+  await fs.cp(sourceRootPath, vendoredRootPath, {
+    recursive: true,
+    force: true,
+  });
+
+  const vendoredEntryPath = path.join(vendoredRootPath, ...restPath);
+
+  return {
+    importMapPath: toImportMapPath(targetDir, vendoredEntryPath),
+    packageRoot,
+    sourceEntryPath: exportPath,
+  };
+};
+
+const resolveBareSpecifierImportTarget = async (
+  specifier: string,
+  searchFrom: string,
+) => {
+  const version = resolvePackageVersion(specifier, { searchFrom });
+  return `npm:${specifier}@${version}`;
+};
+
+const buildEdgeFunctionImports = async (targetDir: string) => {
+  const imports: Record<string, string> = {};
+  const visitedWorkspacePackages = new Set<string>();
+
+  const addWorkspacePackage = async ({
+    importSpecifier,
+    packageName,
+    exportName,
+  }: {
+    importSpecifier: string;
+    packageName: string;
+    exportName: "." | "./runtime" | "./edge";
+  }) => {
+    const visitKey = `${packageName}:${exportName}`;
+    if (visitedWorkspacePackages.has(visitKey)) {
+      return;
+    }
+    visitedWorkspacePackages.add(visitKey);
+
+    const vendoredPackage = await prepareVendoredPackageImport({
+      targetDir,
+      packageName,
+      exportName,
+    });
+
+    imports[importSpecifier] = vendoredPackage.importMapPath;
+
+    const nestedSpecifiers = await collectBareImportSpecifiers(
+      vendoredPackage.sourceEntryPath,
+    );
+
+    for (const nestedSpecifier of nestedSpecifiers) {
+      if (imports[nestedSpecifier]) {
+        continue;
+      }
+
+      if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        await addWorkspacePackage({
+          importSpecifier: nestedSpecifier,
+          packageName: nestedSpecifier,
+          exportName: ".",
+        });
+        continue;
+      }
+
+      imports[nestedSpecifier] = await resolveBareSpecifierImportTarget(
+        nestedSpecifier,
+        vendoredPackage.packageRoot,
+      );
+    }
+  };
+
+  await addWorkspacePackage({
+    importSpecifier: "@hot-updater/server/runtime",
+    packageName: "@hot-updater/server",
+    exportName: "./runtime",
+  });
+  await addWorkspacePackage({
+    importSpecifier: "@hot-updater/supabase",
+    packageName: "@hot-updater/supabase",
+    exportName: "./edge",
+  });
+
+  return imports;
+};
+
+export const resolveEdgeFunctionDenoConfig = async (targetDir: string) => {
+  return {
+    imports: await buildEdgeFunctionImports(targetDir),
+  };
+};
 
 export const selectProject = async (): Promise<{
   id: string;
@@ -319,9 +577,14 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
 
   const targetDir = path.join(workdir, "supabase", "functions", functionName);
   await fs.mkdir(targetDir, { recursive: true });
+  const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
 
   const targetPath = path.join(targetDir, "index.ts");
   await fs.writeFile(targetPath, edgeFunctionsCode);
+  await fs.writeFile(
+    path.join(targetDir, "deno.json"),
+    `${JSON.stringify(denoConfig, null, 2)}\n`,
+  );
 
   await p.tasks([
     {

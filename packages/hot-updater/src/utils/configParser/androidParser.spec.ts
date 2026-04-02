@@ -6,23 +6,43 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AndroidConfigParser } from "./androidParser";
 
 // Mock modules
-vi.mock("fs", () => ({
-  default: {
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      promises: {
+        ...actual.promises,
+        readFile: vi.fn(),
+        writeFile: vi.fn(),
+      },
+    },
     existsSync: vi.fn(),
     promises: {
+      ...actual.promises,
       readFile: vi.fn(),
       writeFile: vi.fn(),
     },
-  },
-}));
+  };
+});
 
-vi.mock("path", () => ({
-  default: {
+vi.mock("path", async () => {
+  const actual = await vi.importActual<typeof import("path")>("path");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      join: vi.fn(),
+      relative: vi.fn(),
+      isAbsolute: vi.fn(),
+    },
     join: vi.fn(),
     relative: vi.fn(),
     isAbsolute: vi.fn(),
-  },
-}));
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(),
@@ -50,8 +70,12 @@ describe("AndroidConfigParser", () => {
       build: vi.fn(),
     };
 
-    vi.mocked(XMLParser).mockImplementation(() => mockParser);
-    vi.mocked(XMLBuilder).mockImplementation(() => mockBuilder);
+    vi.mocked(XMLParser).mockImplementation(function XMLParser() {
+      return mockParser;
+    });
+    vi.mocked(XMLBuilder).mockImplementation(function XMLBuilder() {
+      return mockBuilder;
+    });
 
     // Basic mock setup
     vi.mocked(getCwd).mockReturnValue("/mock/project");

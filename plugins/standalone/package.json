@@ -5,11 +5,11 @@
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
@@ -53,6 +53,9 @@
     "@types/semver": "^7.5.8",
     "msw": "^2.7.0",
     "semver": "^7.6.3",
-    "vitest": "^3.2.4"
+    "vitest": "catalog:"
+  },
+  "inlinedDependencies": {
+    "mime": "2.6.0"
   }
 }

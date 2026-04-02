@@ -1,15 +1,15 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
 import { closeDatabase } from "./db.js";
 import { client, ensureConnected } from "./mongodb.js";
+import { requestLogger } from "./requestLogger.js";
 import routes from "./routes.js";
 
 const app = new Hono();
 
 // Middleware
-app.use("*", logger());
+app.use("*", requestLogger());
 app.use("*", cors());
 
 // Health check

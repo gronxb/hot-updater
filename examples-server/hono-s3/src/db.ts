@@ -34,6 +34,7 @@ const options =
         bucketName: process.env.R2_BUCKET_NAME!,
       };
 
+
 export const hotUpdater = createHotUpdater({
   database: s3Database(options),
   storages: [mockStorage({}), s3Storage(options)],

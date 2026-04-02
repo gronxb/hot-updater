@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-cohort-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
+- extendedWaitUntil:
+    visible:
+      id: ${BUTTON_ID}
+    timeout: 10000
+- tapOn:
+    id: ${BUTTON_ID}
+    retryTapIfNoChange: true
+    waitToSettleTimeoutMs: 2000

@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Crash history is empty
+      EXPECTED_TEXT: No crashed bundles recorded.
+      TARGET_ID: crash-history-empty-state

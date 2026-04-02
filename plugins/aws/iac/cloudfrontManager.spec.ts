@@ -24,7 +24,9 @@ const mockPrompt = vi.hoisted(() => ({
 }));
 
 vi.mock("@aws-sdk/client-cloudfront", () => ({
-  CloudFront: vi.fn(() => mockCloudFront),
+  CloudFront: vi.fn(function CloudFront() {
+    return mockCloudFront;
+  }),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -40,7 +42,6 @@ describe("CloudFrontManager", () => {
     functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
     keyGroupId: "existing-key-group-id",
     oacId: "existing-oac-id",
-    legacyCachePolicyId: "existing-legacy-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
 
@@ -79,49 +80,20 @@ describe("CloudFrontManager", () => {
   });
 
   it("paginates cache policy lookups before attempting creation", async () => {
-    mockCloudFront.listCachePolicies
-      .mockResolvedValueOnce({
-        CachePolicyList: {
-          Items: [],
-          NextMarker: "legacy-cache-page-2",
-        },
-      })
-      .mockResolvedValueOnce({
-        CachePolicyList: {
-          Items: [
-            {
-              CachePolicy: {
-                Id: "legacy-cache-policy-id",
-                CachePolicyConfig: {
-                  Name: "HotUpdaterLegacyCheckUpdateNoCache",
-                },
+    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
+      CachePolicyList: {
+        Items: [
+          {
+            CachePolicy: {
+              Id: "shared-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterOriginCacheControl",
               },
             },
-          ],
-        },
-      });
-
-    mockCloudFront.listCachePolicies
-      .mockResolvedValueOnce({
-        CachePolicyList: {
-          Items: [],
-          NextMarker: "shared-cache-page-2",
-        },
-      })
-      .mockResolvedValueOnce({
-        CachePolicyList: {
-          Items: [
-            {
-              CachePolicy: {
-                Id: "shared-cache-policy-id",
-                CachePolicyConfig: {
-                  Name: "HotUpdaterOriginCacheControl",
-                },
-              },
-            },
-          ],
-        },
-      });
+          },
+        ],
+      },
+    });
 
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -138,17 +110,6 @@ describe("CloudFrontManager", () => {
     expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(1, {
       Type: "custom",
     });
-    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(2, {
-      Type: "custom",
-      Marker: "legacy-cache-page-2",
-    });
-    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(3, {
-      Type: "custom",
-    });
-    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(4, {
-      Type: "custom",
-      Marker: "shared-cache-page-2",
-    });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
 
     expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
@@ -161,17 +122,6 @@ describe("CloudFrontManager", () => {
           }),
           CacheBehaviors: expect.objectContaining({
             Items: expect.arrayContaining([
-              expect.objectContaining({
-                PathPattern: "/api/check-update",
-                CachePolicyId: "legacy-cache-policy-id",
-                LambdaFunctionAssociations: expect.objectContaining({
-                  Items: expect.arrayContaining([
-                    expect.objectContaining({
-                      EventType: "origin-request",
-                    }),
-                  ]),
-                }),
-              }),
               expect.objectContaining({
                 PathPattern: "/api/check-update/*",
                 CachePolicyId: "shared-cache-policy-id",

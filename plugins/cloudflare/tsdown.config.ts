@@ -2,9 +2,16 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
-    entry: ["src/index.ts", "src/utils/index.ts"],
+    entry: ["src/index.ts"],
     format: ["esm", "cjs"],
     dts: true,
+    failOnWarn: true,
+  },
+  {
+    entry: ["src/worker/index.ts"],
+    format: ["esm", "cjs"],
+    dts: true,
+    outDir: "dist/worker",
     failOnWarn: true,
   },
   {
@@ -12,7 +19,9 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/iac",
-    external: ["@hot-updater/cloudflare"],
+    deps: {
+      neverBundle: ["@hot-updater/cloudflare"],
+    },
     failOnWarn: true,
   },
 ]);

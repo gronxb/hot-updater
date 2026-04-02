@@ -55,7 +55,7 @@ interface CommonHotUpdaterOptions {
    *   updateMode: "manual",
    *   onNotifyAppReady: ({ status, crashedBundleId }) => {
    *     if (status === "RECOVERED") {
-   *       analytics.track('bundle_rollback', { crashedBundleId });
+   *       analytics.track("bundle_rollback", { crashedBundleId });
    *     }
    *   }
    * })(App);
