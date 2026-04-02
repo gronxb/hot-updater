@@ -57,12 +57,6 @@ export function CohortStatus() {
 }
 ```
 
-The `examples/v0.81.0` sample app exposes this value in the UI as:
-
-- `Runtime Details > Cohort`
-- `Runtime Details > Cohort Summary`
-- `Actions > Current Cohort Summary`
-
 Numeric values such as `17` or `900` participate in percentage rollout. Custom
 values such as `qa` or `dogfood` are useful when you want explicit targeting.
 
@@ -87,8 +81,7 @@ function assignQaCohort() {
 
 <Callout type="warn">
   If you need to restore the original value later, call `HotUpdater.getCohort()`
-  first and store it before overriding. The sample app does this so
-  `Restore Initial Cohort` can revert the change.
+  first and store it before overriding.
 </Callout>
 
 ## Target Specific Cohorts from the Console
