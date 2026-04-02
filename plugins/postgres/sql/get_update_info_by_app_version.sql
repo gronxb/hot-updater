@@ -1,4 +1,6 @@
--- HotUpdater.get_update_info
+-- HotUpdater.get_update_info_by_app_version
+
+DROP FUNCTION IF EXISTS get_update_info_by_app_version;
 
 CREATE OR REPLACE FUNCTION get_update_info_by_app_version (
     app_platform   platforms,

@@ -4,7 +4,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely, MysqlDialect } from "kysely";
-import { createPool } from "mysql2/promise";
+import { createPool } from "mysql2";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -28,13 +28,18 @@ const connectionConfig = {
 
 // Create MySQL connection pool
 const pool = createPool(connectionConfig);
+const dialectPool = pool as unknown as ConstructorParameters<
+  typeof MysqlDialect
+>[0]["pool"];
 
 // Initialize Kysely with MySQL dialect
 export const kysely = new Kysely({
   dialect: new MysqlDialect({
-    pool: pool,
+    pool: dialectPool,
   }),
 });
+
+let closeDatabasePromise: Promise<void> | null = null;
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
@@ -59,7 +64,9 @@ export const hotUpdater = createHotUpdater({
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {
-  await kysely.destroy();
-  // Close the connection pool
-  pool.end();
+  closeDatabasePromise ??= (async () => {
+    await kysely.destroy();
+  })();
+
+  await closeDatabasePromise;
 }

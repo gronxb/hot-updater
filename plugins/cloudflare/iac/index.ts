@@ -66,15 +66,19 @@ const deployWorker = async (
   }: { d1DatabaseId: string; d1DatabaseName: string; r2BucketName: string },
 ) => {
   const cwd = getCwd();
-  const workerPath = require.resolve("@hot-updater/cloudflare/worker", {
-    paths: [cwd],
-  });
-  const wranglerTemplateDir = path.dirname(workerPath);
-  const { tmpDir, removeTmpDir } = await copyDirToTmp(wranglerTemplateDir);
+  const cloudflarePackagePath = require.resolve(
+    "@hot-updater/cloudflare/package.json",
+    {
+      paths: [cwd],
+    },
+  );
+  const cloudflarePackageRoot = path.dirname(cloudflarePackagePath);
+  const { tmpDir, removeTmpDir } = await copyDirToTmp(cloudflarePackageRoot);
+  const workerRoot = path.join(tmpDir, "worker");
 
   try {
     const wranglerConfig = JSON.parse(
-      await fs.readFile(path.join(tmpDir, "wrangler.json"), "utf-8"),
+      await fs.readFile(path.join(workerRoot, "wrangler.json"), "utf-8"),
     );
 
     wranglerConfig.d1_databases = [
@@ -99,18 +103,18 @@ const deployWorker = async (
     };
 
     await fs.writeFile(
-      path.join(tmpDir, "wrangler.json"),
+      path.join(workerRoot, "wrangler.json"),
       JSON.stringify(wranglerConfig, null, 2),
     );
 
     const wrangler = await createWrangler({
       stdio: "inherit",
       cloudflareApiToken: oauth_token,
-      cwd: tmpDir,
+      cwd: workerRoot,
       accountId: accountId,
     });
 
-    const migrationPath = await path.join(tmpDir, "migrations");
+    const migrationPath = await path.join(workerRoot, "migrations");
     const migrationFiles = await fs.readdir(migrationPath);
     for (const file of migrationFiles) {
       if (file.endsWith(".sql")) {

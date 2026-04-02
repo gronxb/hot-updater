@@ -52,22 +52,35 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin {
-  getChannels: () => Promise<string[]>;
-  getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: DatabaseBundleQueryOptions) => Promise<{
+export interface DatabasePlugin<TContext = unknown> {
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  getBundleById: (
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<Bundle | null>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,
+    context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  appendBundle: (insertBundle: Bundle) => Promise<void>;
-  commitBundle: () => Promise<void>;
+  appendBundle: (
+    insertBundle: Bundle,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
+  commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
-  deleteBundle: (deleteBundle: Bundle) => Promise<void>;
+  deleteBundle: (
+    deleteBundle: Bundle,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
 }
 
 export interface DatabasePluginHooks {
@@ -282,7 +295,17 @@ export interface NativeBuildArgs {
   ios?: Record<string, NativeBuildIosScheme>;
 }
 
-export interface StoragePlugin {
+export interface RequestEnvContext<TEnv = unknown> {
+  request?: Request;
+  env?: TEnv;
+}
+
+export type HotUpdaterContext<TContext = unknown> = TContext;
+
+export type StorageResolveContext<TContext = unknown> =
+  HotUpdaterContext<TContext>;
+
+export interface StoragePlugin<TContext = unknown> {
   /**
    * Protocol this storage plugin can resolve.
    * @example "s3", "r2", "supabase-storage".
@@ -298,7 +321,10 @@ export interface StoragePlugin {
 
   delete: (storageUri: string) => Promise<void>;
 
-  getDownloadUrl: (storageUri: string) => Promise<{
+  getDownloadUrl: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<{
     fileUrl: string;
   }>;
   name: string;

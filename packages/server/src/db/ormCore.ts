@@ -15,6 +15,7 @@ import {
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
+  HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import { semverSatisfies } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
@@ -59,14 +60,17 @@ export type HotUpdaterClient = InferFumaDB<typeof HotUpdaterDB>;
 
 export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 
-export function createOrmDatabaseCore({
+export function createOrmDatabaseCore<TContext = unknown>({
   database,
   resolveFileUrl,
 }: {
   database: FumaDBAdapter;
-  resolveFileUrl: (storageUri: string | null) => Promise<string | null>;
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<string | null>;
 }): {
-  api: DatabaseAPI;
+  api: DatabaseAPI<TContext>;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
@@ -170,7 +174,7 @@ export function createOrmDatabaseCore({
     return conditions.length > 0 ? b.and(...conditions) : true;
   };
 
-  const api: DatabaseAPI = {
+  const api: DatabaseAPI<TContext> = {
     async getBundleById(id: string): Promise<Bundle | null> {
       const orm = await ensureORM();
       const result = await orm.findFirst("bundles", {
@@ -481,13 +485,14 @@ export function createOrmDatabaseCore({
 
     async getAppUpdateInfo(
       args: GetBundlesArgs,
+      context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) return null;
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null);
+      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
       return { ...rest, fileUrl };
     },
 

@@ -1,6 +1,7 @@
-// s3Database.spec.ts
-
-import { CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
+import {
+  CreateInvalidationCommand,
+  GetInvalidationCommand,
+} from "@aws-sdk/client-cloudfront";
 import {
   GetObjectCommand,
   ListObjectsV2Command,
@@ -58,8 +59,13 @@ const createBundleJsonFingerprint = (
 
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
-// 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
+let cloudfrontInvalidationError: Error | null = null;
+let cloudfrontGetInvalidationCalls: string[] = [];
+let cloudfrontGetInvalidationError: Error | null = null;
+let cloudfrontInvalidationCounter = 0;
+let nextCloudfrontInvalidationStatuses: string[] | null = null;
+let cloudfrontInvalidationStatuses = new Map<string, string[]>();
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -85,27 +91,74 @@ vi.mock("@aws-sdk/client-cloudfront", async () => {
     CloudFrontClient: class {
       send(command: any) {
         if (command instanceof CreateInvalidationCommand) {
+          if (cloudfrontInvalidationError) {
+            const error = cloudfrontInvalidationError;
+            cloudfrontInvalidationError = null;
+            return Promise.reject(error);
+          }
+          const invalidationId = `invalidation-${++cloudfrontInvalidationCounter}`;
+          const statuses = nextCloudfrontInvalidationStatuses
+            ? [...nextCloudfrontInvalidationStatuses]
+            : ["InProgress"];
+          nextCloudfrontInvalidationStatuses = null;
+          cloudfrontInvalidationStatuses.set(invalidationId, statuses);
           cloudfrontInvalidations.push({
             paths: command.input.InvalidationBatch?.Paths?.Items ?? [],
             distributionId: command.input.DistributionId ?? "",
           });
           return Promise.resolve({
             Invalidation: {
-              Id: `invalidation-${Date.now()}`,
-              Status: "InProgress",
+              Id: invalidationId,
+              Status: statuses[0] ?? "InProgress",
             },
           });
         }
+
+        if (command instanceof GetInvalidationCommand) {
+          if (cloudfrontGetInvalidationError) {
+            const error = cloudfrontGetInvalidationError;
+            cloudfrontGetInvalidationError = null;
+            return Promise.reject(error);
+          }
+
+          const invalidationId = command.input.Id ?? "";
+          const statuses = cloudfrontInvalidationStatuses.get(
+            invalidationId,
+          ) ?? ["Completed"];
+          const status = statuses[0] ?? "Completed";
+
+          if (statuses.length > 1) {
+            statuses.shift();
+            cloudfrontInvalidationStatuses.set(invalidationId, statuses);
+          }
+
+          cloudfrontGetInvalidationCalls.push(invalidationId);
+
+          return Promise.resolve({
+            Invalidation: {
+              Id: invalidationId,
+              Status: status,
+            },
+          });
+        }
+
         return Promise.resolve({});
       }
     },
     CreateInvalidationCommand: actual.CreateInvalidationCommand,
+    GetInvalidationCommand: actual.GetInvalidationCommand,
   };
 });
 
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
+  cloudfrontInvalidationError = null;
+  cloudfrontGetInvalidationCalls = [];
+  cloudfrontGetInvalidationError = null;
+  cloudfrontInvalidationCounter = 0;
+  nextCloudfrontInvalidationStatuses = null;
+  cloudfrontInvalidationStatuses = new Map();
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -141,6 +194,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -1075,6 +1129,80 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(cloudfrontInvalidations.length).toBe(0);
+  });
+
+  it("should warn and continue when CloudFront invalidation fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const targetVersionsKey = "production/ios/target-app-versions.json";
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-warning-test",
+    );
+
+    cloudfrontInvalidationError = new Error("TooManyInvalidationsInProgress");
+
+    await plugin.appendBundle(newBundle);
+    await expect(plugin.commitBundle()).resolves.toBeUndefined();
+
+    expect(JSON.parse(fakeStore[bundleKey])).toStrictEqual([newBundle]);
+    expect(JSON.parse(fakeStore[targetVersionsKey])).toContain("1.0.0");
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toContain(
+      "CloudFront invalidation failed",
+    );
+  });
+
+  it("should wait for CloudFront invalidation completion when enabled", async () => {
+    vi.useFakeTimers();
+    const waitingPlugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+      shouldWaitForInvalidation: true,
+    })();
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-wait-test",
+    );
+
+    nextCloudfrontInvalidationStatuses = ["InProgress", "Completed"];
+
+    await waitingPlugin.appendBundle(newBundle);
+    const commitPromise = waitingPlugin.commitBundle();
+    await vi.runAllTimersAsync();
+    await expect(commitPromise).resolves.toBeUndefined();
+    expect(cloudfrontGetInvalidationCalls).toContain("invalidation-1");
+  });
+
+  it("should fail when waiting for CloudFront invalidation times out", async () => {
+    vi.useFakeTimers();
+    const waitingPlugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+      shouldWaitForInvalidation: true,
+    })();
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "cloudfront-timeout-test",
+    );
+
+    nextCloudfrontInvalidationStatuses = ["InProgress"];
+
+    await waitingPlugin.appendBundle(newBundle);
+    const commitPromise = waitingPlugin.commitBundle();
+    const assertion = expect(commitPromise).rejects.toThrow(
+      "Timed out waiting for CloudFront invalidation invalidation-1 to complete",
+    );
+    await vi.runAllTimersAsync();
+    await assertion;
   });
 
   it("should trigger CloudFront invalidation for fingerprint path when bundle is updated", async () => {

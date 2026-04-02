@@ -4,7 +4,19 @@ import Module from "module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies
-vi.mock("fs");
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      readFileSync: vi.fn(),
+    },
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+  };
+});
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {

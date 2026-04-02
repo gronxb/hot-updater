@@ -44,7 +44,12 @@ const getS3Json = async <T>({
       }),
     );
 
-    const body = await response.Body?.transformToString();
+    const responseBody = response.Body;
+    if (!responseBody) {
+      return null;
+    }
+
+    const body = await responseBody.transformToString();
     if (!body) {
       return null;
     }

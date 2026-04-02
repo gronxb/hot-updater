@@ -331,7 +331,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
                     targetCohorts={targetCohorts}
                     triggerLabel="Preview Cohorts"
                     triggerVariant="outline"
-                    triggerSize="xs"
+                    triggerSize="sm"
                   />
                 </div>
               </div>

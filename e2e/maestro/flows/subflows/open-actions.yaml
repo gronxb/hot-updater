@@ -1,7 +1,0 @@
-appId: ${APP_ID}
----
-- scrollUntilVisible:
-    element: Install Current Channel Update
-    direction: DOWN
-    timeout: 20000
-- assertVisible: Install Current Channel Update

@@ -19,7 +19,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in bundle before preparing cohort-targeted bundles.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -63,6 +68,7 @@ onFlowComplete:
       ROLLOUT: "0"
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
       TARGET_COHORTS: qa
+# Numeric cohort should receive the rollout bundle first.
 - runFlow:
     file: subflows/set-text-input.yaml
     env:
@@ -71,25 +77,20 @@ onFlowComplete:
       FIELD_LABEL: Cohort Override Input
       FIELD_VALUE: ${output.numericIncludedCohort}
 - runFlow:
-    file: subflows/tap-action-button.yaml
+    file: subflows/assert-cohort-action-result.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
-- runFlow:
-    file: subflows/tap-action-button.yaml
-    env:
-      APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -102,7 +103,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.numericBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -110,29 +115,31 @@ onFlowComplete:
       EXPECTED_BUNDLE_ID: ${output.numericBundleId}
       EXPECTED_MARKER: ${NUMERIC_MARKER}
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/assert-launch-status.yaml
     env:
       APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+# Switching to qa should install the qa-targeted bundle.
 - runFlow:
-    file: subflows/tap-action-button.yaml
+    file: subflows/tap-cohort-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Set Cohort qa
+      BUTTON_ID: action-set-cohort-qa
 - runFlow:
-    file: subflows/tap-action-button.yaml
+    file: subflows/assert-cohort-action-result.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> qa"
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=qa"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -145,13 +152,23 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.qaBundleId} (UPDATE)"
-- tapOn: Reload App
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.qaBundleId}
       EXPECTED_MARKER: ${QA_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+# Switching back to the numeric cohort should roll back to the numeric bundle.
 - runFlow:
     file: subflows/set-text-input.yaml
     env:
@@ -160,25 +177,20 @@ onFlowComplete:
       FIELD_LABEL: Cohort Override Input
       FIELD_VALUE: ${output.numericIncludedCohort}
 - runFlow:
-    file: subflows/tap-action-button.yaml
+    file: subflows/assert-cohort-action-result.yaml
     env:
       APP_ID: ${APP_ID}
-      BUTTON_LABEL: Apply Cohort Input
-- runFlow:
-    file: subflows/tap-action-button.yaml
-    env:
-      APP_ID: ${APP_ID}
-      BUTTON_LABEL: Refresh Runtime Snapshot
+      EXPECTED_COHORT_ACTION_RESULT: "Cohort Action Result: set -> ${output.numericIncludedCohort}"
 - runFlow:
     file: subflows/assert-current-cohort.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_COHORT_TEXT: "Current Cohort Summary: current=${output.numericIncludedCohort}"
 - runFlow:
-    file: subflows/open-actions.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-- tapOn: Install Current Channel Update
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -186,18 +198,27 @@ onFlowComplete:
       BUNDLE_ID: ${output.numericBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+# The intermediate action string differs by platform, so verify the reloaded outcome.
 - runFlow:
-    file: subflows/assert-update-action-result.yaml
+    file: subflows/tap-action-button.yaml
     env:
       APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.numericBundleId} (ROLLBACK)"
-- tapOn: Reload App
+      BUTTON_ID: action-reload-app
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.numericBundleId}
       EXPECTED_MARKER: ${NUMERIC_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - runScript:
     file: ../scripts/control.js
     env:

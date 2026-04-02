@@ -83,6 +83,41 @@ export const hotUpdater = createHotUpdater({
 
 The server automatically uses the correct plugin to decode each `storageUri` based on its format.
 
+## Route Groups
+
+`createHotUpdater` mounts two route groups by default:
+
+- `updateCheck`: update-check endpoints used by React Native clients
+- `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin, plus `/version`
+
+```typescript title="src/hotUpdater.ts"
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storages: [s3Storage({ /* storage config */ })],
+  basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
+});
+```
+
+If you want to expose only update-check endpoints, disable the `bundles` group:
+
+```typescript title="src/hotUpdater.ts"
+export const hotUpdater = createHotUpdater({
+  database: kyselyAdapter({ db, provider: "sqlite" }),
+  storages: [s3Storage({ /* storage config */ })],
+  basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
+```
+
+This is useful for managed or public-facing runtimes that should only serve update checks.
+
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
 

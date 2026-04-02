@@ -1,5 +1,9 @@
-import type { StoragePlugin } from "@hot-updater/plugin-core";
-import { createHandler } from "../handler";
+import type {
+  HotUpdaterContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
+import { createHandler, type HandlerRoutes } from "../handler";
+import { normalizeBasePath } from "../route";
 import {
   createOrmDatabaseCore,
   type HotUpdaterClient,
@@ -17,41 +21,45 @@ import {
 export type { HotUpdaterClient, Migrator } from "./ormCore";
 export { HotUpdaterDB } from "./ormCore";
 
-type OrmCore = ReturnType<typeof createOrmDatabaseCore>;
-type PluginCore = ReturnType<typeof createPluginDatabaseCore>;
-type HotUpdaterCoreInternal = OrmCore | PluginCore;
-
-export type HotUpdaterAPI = DatabaseAPI & {
-  handler: (request: Request) => Promise<Response>;
+export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
+  basePath: string;
+  handler: (
+    request: Request,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<Response>;
   adapterName: string;
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
 };
 
-interface HotUpdaterOptions {
-  database: DatabaseAdapter;
+export interface CreateHotUpdaterOptions<TContext = unknown> {
+  database: DatabaseAdapter<TContext>;
   /**
    * Storage plugins for handling file uploads and downloads.
    */
-  storages?: (StoragePlugin | StoragePluginFactory)[];
+  storages?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
-  storagePlugins?: (StoragePlugin | StoragePluginFactory)[];
+  storagePlugins?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
   basePath?: string;
   cwd?: string;
+  routes?: HandlerRoutes;
 }
 
-export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
-  // Initialize storage plugins - call factories if they are functions
-  const storagePlugins = (
-    options?.storages ??
-    options?.storagePlugins ??
-    []
-  ).map((plugin) => (typeof plugin === "function" ? plugin() : plugin));
+export function createHotUpdater<TContext = unknown>(
+  options: CreateHotUpdaterOptions<TContext>,
+): HotUpdaterAPI<TContext> {
+  const basePath = normalizeBasePath(options.basePath ?? "/api");
 
-  const resolveFileUrl = async (
+  // Initialize storage plugins - call factories if they are functions
+  const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
+    (plugin) => (typeof plugin === "function" ? plugin() : plugin),
+  );
+
+  const resolveStoragePluginUrl = async (
     storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
   ): Promise<string | null> => {
     if (!storageUri) {
       return null;
@@ -66,35 +74,47 @@ export function createHotUpdater(options: HotUpdaterOptions): HotUpdaterAPI {
     if (!plugin) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri);
+    const { fileUrl } = await plugin.getDownloadUrl(storageUri, context);
     if (!fileUrl) {
       throw new Error("Storage plugin returned empty fileUrl");
     }
     return fileUrl;
   };
 
-  let core: HotUpdaterCoreInternal;
+  const resolveFileUrl = async (
+    storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => {
+    return resolveStoragePluginUrl(storageUri, context);
+  };
 
   const database = options.database;
 
-  if (isDatabasePluginFactory(database) || isDatabasePlugin(database)) {
-    const plugin = isDatabasePluginFactory(database) ? database() : database;
-    core = createPluginDatabaseCore(plugin, resolveFileUrl);
-  } else {
-    core = createOrmDatabaseCore({
-      database,
-      resolveFileUrl,
-    });
-  }
+  const core =
+    isDatabasePluginFactory(database) || isDatabasePlugin(database)
+      ? createPluginDatabaseCore<TContext>(
+          isDatabasePluginFactory(database) ? database() : database,
+          resolveFileUrl,
+        )
+      : createOrmDatabaseCore<TContext>({
+          database,
+          resolveFileUrl,
+        });
 
-  return {
+  const api = {
     ...core.api,
-    handler: createHandler(
-      core.api,
-      options?.basePath ? { basePath: options.basePath } : {},
-    ),
+    handler: createHandler(core.api, {
+      basePath,
+      routes: options.routes,
+    }),
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,
     generateSchema: core.generateSchema,
+  };
+
+  return {
+    ...api,
+    basePath,
+    handler: api.handler,
   };
 }

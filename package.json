@@ -8,7 +8,8 @@
     "lint:fix": "biome lint packages/** plugins/** docs --write --unsafe",
     "lint": "biome check packages/** plugins/** docs",
     "clear": "rimraf --glob **/dist .nx",
-    "test": "vitest",
+    "test": "vitest run --project=\"unit:*\"",
+    "test:integration": "vitest run --project=\"integration:*\"",
     "bench": "node ./scripts/bench.mjs",
     "bench:update-check": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts packages/server/src/db/ormUpdateCheck.bench.ts",
     "bench:update-check:plugin": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts",
@@ -40,19 +41,19 @@
     "changeset": "changeset"
   },
   "devDependencies": {
-    "@hono/node-server": "^1.19.5",
+    "@hono/node-server": "catalog:hono",
     "@biomejs/biome": "^2.3.2",
     "@changesets/cli": "^2.29.8",
     "@cloudflare/vitest-pool-workers": "0.13.0",
-    "@nx/js": "^21.0.1",
+    "@nx/js": "22.6.3",
     "@swc/helpers": "^0.5.17",
-    "execa": "catalog:",
-    "hono": "^4.9.12",
-    "nx": "^21.0.1",
+    "execa": "catalog:tools",
+    "hono": "catalog:hono",
+    "nx": "22.6.3",
     "rimraf": "^5.0.7",
-    "tsdown": "^0.15.9",
+    "tsdown": "catalog:tools",
     "typescript": "^5.8.3",
     "vitest": "catalog:"
   },
-  "packageManager": "pnpm@10.24.0"
+  "packageManager": "pnpm@10.33.0"
 }

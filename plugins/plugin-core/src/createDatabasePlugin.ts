@@ -4,36 +4,49 @@ import type {
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   DatabasePluginHooks,
+  HotUpdaterContext,
   PaginationInfo,
 } from "./types";
 
-export interface AbstractDatabasePlugin {
-  getBundleById: (bundleId: string) => Promise<Bundle | null>;
-  getBundles: (options: DatabaseBundleQueryOptions) => Promise<{
+export interface AbstractDatabasePlugin<TContext = unknown> {
+  getBundleById: (
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<Bundle | null>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<{
     data: Bundle[];
     pagination: PaginationInfo;
   }>;
-  getChannels: () => Promise<string[]>;
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   onUnmount?: () => Promise<void>;
-  commitBundle: (params: {
-    changedSets: {
-      operation: "insert" | "update" | "delete";
-      data: Bundle;
-    }[];
-  }) => Promise<void>;
+  commitBundle: (
+    params: {
+      changedSets: {
+        operation: "insert" | "update" | "delete";
+        data: Bundle;
+      }[];
+    },
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
 }
 
 /**
  * Database plugin methods without name
  */
-type DatabasePluginMethods = Omit<AbstractDatabasePlugin, never>;
+type DatabasePluginMethods<TContext = unknown> = Omit<
+  AbstractDatabasePlugin<TContext>,
+  never
+>;
 
 /**
  * Factory function that creates database plugin methods
  */
-type DatabasePluginFactory<TConfig> = (
+type DatabasePluginFactory<TConfig, TContext = unknown> = (
   config: TConfig,
-) => DatabasePluginMethods;
+) => DatabasePluginMethods<TContext>;
 
 const REPLACE_ON_UPDATE_KEYS = ["targetCohorts"] as const;
 
@@ -54,7 +67,7 @@ function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
 /**
  * Configuration options for creating a database plugin
  */
-export interface CreateDatabasePluginOptions<TConfig> {
+export interface CreateDatabasePluginOptions<TConfig, TContext = unknown> {
   /**
    * The name of the database plugin (e.g., "postgres", "d1Database")
    */
@@ -62,7 +75,7 @@ export interface CreateDatabasePluginOptions<TConfig> {
   /**
    * Function that creates the database plugin methods
    */
-  factory: DatabasePluginFactory<TConfig>;
+  factory: DatabasePluginFactory<TConfig, TContext>;
 }
 
 /**
@@ -91,16 +104,16 @@ export interface CreateDatabasePluginOptions<TConfig> {
  * });
  * ```
  */
-export function createDatabasePlugin<TConfig>(
-  options: CreateDatabasePluginOptions<TConfig>,
+export function createDatabasePlugin<TConfig, TContext = unknown>(
+  options: CreateDatabasePluginOptions<TConfig, TContext>,
 ) {
   return (
     config: TConfig,
     hooks?: DatabasePluginHooks,
-  ): (() => DatabasePlugin) => {
-    return (): DatabasePlugin => {
+  ): (() => DatabasePlugin<TContext>) => {
+    return (): DatabasePlugin<TContext> => {
       // Lazy initialization: factory is only called on first method invocation
-      let cachedMethods: DatabasePluginMethods | null = null;
+      let cachedMethods: DatabasePluginMethods<TContext> | null = null;
       const getMethods = () => {
         if (!cachedMethods) {
           cachedMethods = options.factory(config);
@@ -126,16 +139,28 @@ export function createDatabasePlugin<TConfig>(
       return {
         name: options.name,
 
-        async getBundleById(bundleId: string) {
-          return getMethods().getBundleById(bundleId);
+        async getBundleById(bundleId: string, context) {
+          if (context === undefined) {
+            return getMethods().getBundleById(bundleId);
+          }
+
+          return getMethods().getBundleById(bundleId, context);
         },
 
-        async getBundles(options) {
-          return getMethods().getBundles(options);
+        async getBundles(options, context) {
+          if (context === undefined) {
+            return getMethods().getBundles(options);
+          }
+
+          return getMethods().getBundles(options, context);
         },
 
-        async getChannels() {
-          return getMethods().getChannels();
+        async getChannels(context) {
+          if (context === undefined) {
+            return getMethods().getChannels();
+          }
+
+          return getMethods().getChannels(context);
         },
 
         async onUnmount() {
@@ -145,16 +170,27 @@ export function createDatabasePlugin<TConfig>(
           }
         },
 
-        async commitBundle() {
+        async commitBundle(context) {
           const methods = getMethods();
-          await methods.commitBundle({
+          const params = {
             changedSets: Array.from(changedMap.values()),
-          });
+          };
+
+          if (context === undefined) {
+            await methods.commitBundle(params);
+          } else {
+            await methods.commitBundle(params, context);
+          }
+
           await hooks?.onDatabaseUpdated?.();
           changedMap.clear();
         },
 
-        async updateBundle(targetBundleId: string, newBundle: Partial<Bundle>) {
+        async updateBundle(
+          targetBundleId: string,
+          newBundle: Partial<Bundle>,
+          context,
+        ) {
           const pendingChange = changedMap.get(targetBundleId);
           if (pendingChange) {
             const updatedData = mergeBundleUpdate(
@@ -169,7 +205,9 @@ export function createDatabasePlugin<TConfig>(
           }
 
           const currentBundle =
-            await getMethods().getBundleById(targetBundleId);
+            context === undefined
+              ? await getMethods().getBundleById(targetBundleId)
+              : await getMethods().getBundleById(targetBundleId, context);
           if (!currentBundle) {
             throw new Error("targetBundleId not found");
           }

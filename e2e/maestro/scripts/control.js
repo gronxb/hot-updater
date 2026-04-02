@@ -17,10 +17,38 @@ function request(method, pathname, body) {
   });
 }
 
+function formatErrorBody(body) {
+  if (!body) {
+    return "";
+  }
+
+  try {
+    const payload = json(body);
+    if (payload && typeof payload === "object") {
+      const lines = [];
+
+      if (typeof payload.error === "string" && payload.error.length > 0) {
+        lines.push(payload.error);
+      }
+
+      if (payload.details !== undefined) {
+        lines.push(JSON.stringify(payload.details, null, 2));
+      }
+
+      if (lines.length > 0) {
+        return lines.join("\n");
+      }
+    }
+  } catch {}
+
+  return String(body);
+}
+
 function expectOk(response, context) {
   if (!response.ok) {
+    const formattedBody = formatErrorBody(response.body);
     throw new Error(
-      `${context} failed: ${response.status} ${response.body}`,
+      `${context} failed: ${response.status}${formattedBody ? `\n${formattedBody}` : ""}`,
     );
   }
 
@@ -237,6 +265,21 @@ switch (ACTION) {
       bundleId: BUNDLE_ID,
     });
     expectOk(response, "assert crash history");
+    break;
+  }
+
+  case "ensureAppForeground": {
+    const response = request("POST", "/e2e/ensure-app-foreground", {});
+    expectOk(response, "ensure app foreground");
+    break;
+  }
+
+  case "waitForCrashRecovery": {
+    const response = request("POST", "/e2e/wait-for-crash-recovery", {
+      crashedBundleId: CRASHED_BUNDLE_ID,
+      stableBundleId: STABLE_BUNDLE_ID,
+    });
+    expectOk(response, "wait for crash recovery");
     break;
   }
 

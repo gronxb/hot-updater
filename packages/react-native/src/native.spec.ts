@@ -420,6 +420,17 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.setCohort).toHaveBeenCalledWith("qa-group");
   });
 
+  it("returns the most recently set cohort before native reads catch up", async () => {
+    nativeModuleMock.getCohort.mockReturnValue("123");
+
+    const { getCohort, setCohort } = await import("./native");
+
+    setCohort(" QA-Group ");
+
+    expect(getCohort()).toBe("qa-group");
+    expect(nativeModuleMock.getCohort).not.toHaveBeenCalled();
+  });
+
   it("throws when attempting to clear the cohort with an empty value", async () => {
     const { setCohort } = await import("./native");
 

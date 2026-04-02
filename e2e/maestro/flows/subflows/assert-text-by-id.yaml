@@ -1,12 +1,12 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element: ${ANCHOR_TEXT}
-    direction: DOWN
-    timeout: 20000
-    centerElement: true
-- copyTextFrom:
-    id: ${TARGET_ID}
-- assertTrue:
-    condition: ${maestro.copiedText.includes(EXPECTED_TEXT)}
-    label: ${ASSERTION_LABEL}
+- retry:
+    maxRetries: 3
+    commands:
+      - assertVisible:
+          id: ${TARGET_ID}
+      - copyTextFrom:
+          id: ${TARGET_ID}
+      - assertTrue:
+          condition: ${maestro.copiedText.includes(EXPECTED_TEXT)}
+          label: ${ASSERTION_LABEL}

@@ -96,6 +96,14 @@ generated/
 .hot-updater/
 e2e/.runtime/
 e2e/results/
+plugins/aws/runtime-acceptance-*/
+plugins/firebase/runtime-acceptance-*/
+plugins/supabase/runtime-acceptance-*/
 
 # Claude Code settings
 .claude
+
+
+.codex/
+
+.env.hotupdater

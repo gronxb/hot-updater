@@ -6,7 +6,6 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
@@ -63,41 +62,6 @@ export class CloudFrontManager {
     const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
     if (!cachePolicyId) {
       throw new Error("Failed to create shared cache policy");
-    }
-    return cachePolicyId;
-  }
-
-  private async getOrCreateLegacyCheckUpdateCachePolicy(
-    cloudfrontClient: CloudFront,
-  ): Promise<string> {
-    const existingPolicy = await findInPaginatedCloudFrontList({
-      listPage: async (marker) => {
-        const listPoliciesResponse = await cloudfrontClient.listCachePolicies({
-          Type: "custom",
-          ...(marker ? { Marker: marker } : {}),
-        });
-
-        return {
-          items: listPoliciesResponse.CachePolicyList?.Items ?? [],
-          nextMarker: listPoliciesResponse.CachePolicyList?.NextMarker,
-        };
-      },
-      matches: (policy) =>
-        policy.CachePolicy?.CachePolicyConfig?.Name ===
-        HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG.Name,
-    });
-    const existingPolicyId = existingPolicy?.CachePolicy?.Id;
-
-    if (existingPolicyId) {
-      return existingPolicyId;
-    }
-
-    const createPolicyResponse = await cloudfrontClient.createCachePolicy({
-      CachePolicyConfig: HOT_UPDATER_LEGACY_CHECK_UPDATE_CACHE_POLICY_CONFIG,
-    });
-    const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
-    if (!cachePolicyId) {
-      throw new Error("Failed to create legacy check-update cache policy");
     }
     return cachePolicyId;
   }
@@ -206,18 +170,7 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
-    let legacyCachePolicyId: string;
     let sharedCachePolicyId: string;
-    try {
-      legacyCachePolicyId =
-        await this.getOrCreateLegacyCheckUpdateCachePolicy(cloudfrontClient);
-    } catch (error) {
-      throw new Error(
-        `Failed to get or create legacy check-update cache policy: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
     try {
       sharedCachePolicyId =
         await this.getOrCreateSharedCachePolicy(cloudfrontClient);
@@ -266,7 +219,6 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      legacyCachePolicyId,
       sharedCachePolicyId,
     });
 
@@ -321,7 +273,6 @@ export class CloudFrontManager {
       functionArn: options.functionArn,
       keyGroupId: options.keyGroupId,
       oacId,
-      legacyCachePolicyId,
       sharedCachePolicyId,
     });
 

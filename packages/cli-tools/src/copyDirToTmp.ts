@@ -1,4 +1,4 @@
-import { HotUpdateDirUtil } from "@hot-updater/core/hotUpdateDirUtil";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import fs from "fs/promises";
 import path from "path";
 import { getCwd } from "./cwd";

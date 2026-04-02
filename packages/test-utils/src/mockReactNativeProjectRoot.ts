@@ -1,4 +1,4 @@
-import { HotUpdateDirUtil } from "@hot-updater/core/hotUpdateDirUtil";
+import { HotUpdateDirUtil } from "@hot-updater/core";
 import { randomUUID } from "crypto";
 import fs from "fs";
 import os from "os";

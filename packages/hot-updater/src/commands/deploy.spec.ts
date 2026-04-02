@@ -63,17 +63,31 @@ vi.mock("@hot-updater/cli-tools", () => ({
   p: mockCli.p,
 }));
 
-vi.mock("fs", () => ({
-  default: {
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      promises: {
+        ...actual.promises,
+        mkdir: vi.fn(),
+        readdir: vi.fn(),
+        rm: vi.fn(),
+      },
+      statSync: vi.fn(),
+    },
     existsSync: vi.fn(),
     promises: {
+      ...actual.promises,
       mkdir: vi.fn(),
       readdir: vi.fn(),
       rm: vi.fn(),
     },
     statSync: vi.fn(),
-  },
-}));
+  };
+});
 
 vi.mock("is-port-reachable", () => ({
   default: vi.fn(),

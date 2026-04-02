@@ -12,10 +12,13 @@ export const prepareConfig = async () => {
     configPromise = (async () => {
       try {
         const config = await loadConfig(null);
-        const databasePlugin = (await config?.database()) ?? null;
-        const storagePlugin = (await config?.storage()) ?? null;
+        const databasePlugin = await config.database();
+        const storagePlugin = await config.storage();
         if (!databasePlugin) {
           throw new Error("Database plugin initialization failed");
+        }
+        if (!storagePlugin) {
+          throw new Error("Storage plugin initialization failed");
         }
         return { config, databasePlugin, storagePlugin };
       } catch (error) {

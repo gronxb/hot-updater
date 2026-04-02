@@ -7,23 +7,43 @@ import { IosConfigParser } from "./iosParser";
 import { parsePlist } from "./plistUtils";
 
 // Mock modules
-vi.mock("fs", () => ({
-  default: {
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: vi.fn(),
+      promises: {
+        ...actual.promises,
+        readFile: vi.fn(),
+        writeFile: vi.fn(),
+      },
+    },
     existsSync: vi.fn(),
     promises: {
+      ...actual.promises,
       readFile: vi.fn(),
       writeFile: vi.fn(),
     },
-  },
-}));
+  };
+});
 
-vi.mock("path", () => ({
-  default: {
+vi.mock("path", async () => {
+  const actual = await vi.importActual<typeof import("path")>("path");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      join: vi.fn(),
+      relative: vi.fn(),
+      isAbsolute: vi.fn(),
+    },
     join: vi.fn(),
     relative: vi.fn(),
     isAbsolute: vi.fn(),
-  },
-}));
+  };
+});
 
 vi.mock("plist", () => ({
   default: {

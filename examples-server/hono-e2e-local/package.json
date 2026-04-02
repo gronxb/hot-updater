@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@hono/node-server": "^1.19.5",
+    "@hono/node-server": "catalog:hono",
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.4.7",
-    "hono": "^4.9.12",
+    "hono": "catalog:hono",
     "kysely": "0.28.9",
     "kysely-pglite-dialect": "^1.2.0"
   },

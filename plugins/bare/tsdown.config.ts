@@ -7,7 +7,9 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     exports: true,
-    external: ["react-native"],
+    deps: {
+      neverBundle: ["react-native"],
+    },
     failOnWarn: true,
   },
 ]);

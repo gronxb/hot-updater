@@ -1,4 +1,6 @@
--- HotUpdater.get_update_info
+-- HotUpdater.get_update_info_by_fingerprint_hash
+
+DROP FUNCTION IF EXISTS get_update_info_by_fingerprint_hash;
 
 CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
     app_platform   platforms,

@@ -162,7 +162,7 @@ export class ConfigBuilder implements IConfigBuilder {
     if (storageConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
       this.addImport({
         pkg: "firebase-admin",
-        defaultOrNamespace: "* as admin",
+        defaultOrNamespace: "admin",
       });
     }
     return this;
@@ -175,7 +175,7 @@ export class ConfigBuilder implements IConfigBuilder {
     if (databaseConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
       this.addImport({
         pkg: "firebase-admin",
-        defaultOrNamespace: "* as admin",
+        defaultOrNamespace: "admin",
       });
     }
     return this;

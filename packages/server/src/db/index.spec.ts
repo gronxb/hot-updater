@@ -1,10 +1,10 @@
 import { PGlite } from "@electric-sql/pglite";
-import { s3Storage } from "@hot-updater/aws";
-import { r2Storage } from "@hot-updater/cloudflare";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { firebaseStorage } from "@hot-updater/firebase";
-import { supabaseStorage } from "@hot-updater/supabase";
+import type {
+  StoragePlugin,
+  StorageResolveContext,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -24,6 +24,28 @@ import {
 import { kyselyAdapter } from "../adapters/kysely";
 import { createHotUpdater } from "./index";
 
+function createTestStoragePlugin(
+  protocol: string,
+  resolveFileUrl: (
+    storageUri: string,
+    context?: StorageResolveContext,
+  ) => string,
+): StoragePlugin {
+  return {
+    name: `${protocol}TestStorage`,
+    supportedProtocol: protocol,
+    async upload(key) {
+      return {
+        storageUri: `${protocol}://test-bucket/${key}`,
+      };
+    },
+    async delete() {},
+    async getDownloadUrl(storageUri, context) {
+      return { fileUrl: resolveFileUrl(storageUri, context) };
+    },
+  };
+}
+
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
@@ -35,27 +57,29 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       provider: "postgresql",
     }),
     storages: [
-      s3Storage({
-        region: "us-east-1",
-        credentials: {
-          accessKeyId: "test-access-key",
-          secretAccessKey: "test-secret-key",
-        },
-        bucketName: "test-bucket",
-      }),
-      r2Storage({
-        cloudflareApiToken: "test-token",
-        accountId: "test-account-id",
-        bucketName: "test-bucket",
-      }),
-      supabaseStorage({
-        supabaseUrl: "https://test.supabase.co",
-        supabaseAnonKey: "test-anon-key",
-        bucketName: "test-bucket",
-      }),
-      firebaseStorage({
-        storageBucket: "test-bucket.appspot.com",
-      }),
+      createTestStoragePlugin("s3", (storageUri) =>
+        storageUri
+          .replace("s3://", "https://s3.example.com/")
+          .replace(/([^:]\/)\/+/g, "$1"),
+      ),
+      createTestStoragePlugin("r2", (storageUri) =>
+        storageUri
+          .replace("r2://", "https://r2.example.com/")
+          .replace(/([^:]\/)\/+/g, "$1"),
+      ),
+      createTestStoragePlugin("supabase-storage", (storageUri) =>
+        storageUri
+          .replace(
+            "supabase-storage://",
+            "https://supabase.example.com/storage/v1/object/sign/",
+          )
+          .replace(/([^:]\/)\/+/g, "$1"),
+      ),
+      createTestStoragePlugin("gs", (storageUri) =>
+        storageUri
+          .replace("gs://", "https://firebase.example.com/")
+          .replace(/([^:]\/)\/+/g, "$1"),
+      ),
     ],
   });
 
@@ -234,7 +258,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/bundles/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=4fa782e86a842ce2eacbfa6534d1f5d5145d733092959cf6ad755cc306bbe98e&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+        "https://s3.example.com/test-bucket/bundles/bundle.zip",
       );
     });
 
@@ -264,7 +288,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe(
-        "https://bundle.s3.us-east-1.amazonaws.com/bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=b83d9cfc9bd23275e5eb3baf792776fd7b49730f3aa2f5172d067c9dfb10cd94&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+        "https://s3.example.com/bundle/bundle.zip",
       );
     });
 
@@ -333,7 +357,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(updateInfo).not.toBeNull();
       expect(updateInfo?.fileUrl).toBe(
-        "https://test-bucket.s3.us-east-1.amazonaws.com/fp-bundle.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=test-access-key%2F20251015%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251015T122100Z&X-Amz-Expires=3600&X-Amz-Signature=d70e9b699dccbb51cf32f3e5b7912f2567d38f7e508b1f30091a8fee0d0abb65&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+        "https://s3.example.com/test-bucket/fp-bundle.zip",
       );
     });
   });

@@ -23,13 +23,9 @@ const config = defineConfig({
     exclude: ["oxc-transform", "@oxc-transform/binding-darwin-arm64"],
   },
   ssr: {
-    noExternal: [
-      "@hot-updater/cli-tools",
-      "@hot-updater/plugin-core",
-      "@hot-updater/core",
-      "@hot-updater/mock",
-    ],
+    noExternal: ["@hot-updater/core", "@hot-updater/mock"],
     external: [
+      "@hot-updater/cli-tools",
       "oxc-transform",
       "@oxc-transform/binding-darwin-arm64",
       "@oxc-transform/binding-wasm32-wasi",
@@ -38,6 +34,7 @@ const config = defineConfig({
   build: {
     rollupOptions: {
       external: [
+        "@hot-updater/cli-tools",
         "oxc-transform",
         "@oxc-transform/binding-darwin-arm64",
         "@oxc-transform/binding-wasm32-wasi",

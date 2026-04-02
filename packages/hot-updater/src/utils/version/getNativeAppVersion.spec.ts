@@ -9,10 +9,36 @@ import plist from "plist";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { getNativeAppVersion } from "./getNativeAppVersion";
 
-vi.mock("fs/promises");
-vi.mock("path");
+vi.mock("fs/promises", async () => {
+  const actual =
+    await vi.importActual<typeof import("fs/promises")>("fs/promises");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      access: vi.fn(),
+      readFile: vi.fn(),
+    },
+    access: vi.fn(),
+    readFile: vi.fn(),
+  };
+});
+
+vi.mock("path", async () => {
+  const actual = await vi.importActual<typeof import("path")>("path");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      join: vi.fn(),
+    },
+    join: vi.fn(),
+  };
+});
 vi.mock("@bacons/xcode");
-vi.mock("@hot-updater/cli-tools");
+vi.mock("@hot-updater/cli-tools", () => ({
+  getCwd: vi.fn(),
+}));
 
 vi.mock("fast-glob", () => ({
   default: {

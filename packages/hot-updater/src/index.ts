@@ -2,7 +2,7 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, colors, log, p } from "@hot-updater/cli-tools";
+import { banner, log, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
@@ -186,13 +186,7 @@ program
 
     const port = await getConsolePort();
 
-    await openConsole(port, (info) => {
-      console.log(
-        `Server running on ${colors.magenta(
-          colors.underline(`http://localhost:${info.port}`),
-        )}`,
-      );
-    });
+    await openConsole(port);
   });
 
 program
@@ -215,10 +209,10 @@ const dbCommand = program
 dbCommand
   .command("migrate")
   .description("Run database migration (creates tables directly in database)")
-  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
   .option("-y, --yes", "skip confirmation prompt", false)
-  .action(async (configPath: string, options: { yes: boolean }) => {
-    await migrate({ configPath, skipConfirm: options.yes });
+  .action(async (configPath: string | undefined, options: { yes: boolean }) => {
+    await migrate({ configPath: configPath || "", skipConfirm: options.yes });
   });
 
 // db generate - SQL generation command
