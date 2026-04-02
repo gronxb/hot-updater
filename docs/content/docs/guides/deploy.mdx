@@ -84,7 +84,8 @@ For more details about default channels, refer to
 
 ### Rollout
 
-The `-r` (or `--rollout`) flag sets the rollout percentage for the deployed bundle.
+The `-r` (or `--rollout`) flag sets the rollout percentage for the deployed
+bundle.
 
 Run the following command:
 
@@ -92,7 +93,19 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -r 25
 ```
 
-The default value is `100`, which deploys to the entire audience immediately.
+Use `1` to `99` for gradual rollout, `100` for a full rollout, and `0` when
+you want to keep the bundle deployed but unavailable to numeric rollout until
+you edit it later in the console.
+
+Hot Updater maps rollout percentages to `1..1000` numeric cohorts internally.
+For example, `-r 25` means 250 of 1000 numeric cohorts are eligible for that
+bundle.
+
+If you omit `-r`, the default value is `100`, so the bundle is deployed to the
+entire audience immediately.
+
+For more on gradual rollout, current device cohorts, and cohort targeting from
+the console, see [Rollout & Cohorts](/docs/guides/rollout-cohorts).
 
 ### Message
 

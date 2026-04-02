@@ -9,6 +9,8 @@
     "setReloadBehavior",
     "getChannel",
     "getDefaultChannel",
+    "getCohort",
+    "setCohort",
     "isChannelSwitched",
     "resetChannel",
     "getAppVersion",

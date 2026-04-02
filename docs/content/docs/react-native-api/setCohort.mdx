@@ -1,0 +1,40 @@
+---
+title: "setCohort"
+description: "The `HotUpdater.setCohort()` function overrides the persisted cohort used for rollout decisions."
+icon: Pencil
+---
+
+## Usage
+
+Use `HotUpdater.setCohort()` when you want to move a device into a specific
+numeric or custom cohort.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function assignQaCohort() {
+  HotUpdater.setCohort("qa");
+  console.log(HotUpdater.getCohort()); // "qa"
+}
+```
+
+## Behavior
+
+- Persists the cohort on the device for future update checks.
+- Accepts numeric cohorts in the range `1..1000`.
+- Accepts lowercase slug-style custom cohorts such as `qa` and `vip-testers`.
+- Normalizes the value before storing it.
+- Throws an error when the value is invalid.
+
+## Important Notes
+
+- Call `HotUpdater.getCohort()` first if you need to restore the previous value
+  later.
+- Percentage rollout applies only to numeric cohorts.
+- To target a custom cohort such as `qa`, add that value to
+  `Target Cohorts` in the console.
+
+## Related APIs
+
+- [`HotUpdater.getCohort()`](/docs/react-native-api/getCohort)
+- [Rollout & Cohorts](/docs/guides/rollout-cohorts)

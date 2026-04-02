@@ -1,0 +1,142 @@
+---
+title: "Rollout & Cohorts"
+description: "Gradually roll out bundles from 1% to 100%, inspect the active cohort on device, and target specific cohorts from the console."
+icon: Users
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+Hot Updater uses cohorts to decide whether a device is eligible for a bundle.
+
+- Every install gets a persisted numeric cohort from `1` to `1000`.
+- `npx hot-updater deploy -r <percentage>` maps `1..100` to those numeric
+  cohorts.
+- Omitting `-r` uses `100`, which is a full rollout.
+- `-r 0` is also valid when you want to deploy a bundle without exposing it to
+  numeric rollout yet.
+- Custom cohorts such as `qa`, `dogfood`, or `vip-testers` can be assigned
+  directly on the device.
+
+<Callout type="info">
+  Percentage rollout applies only to numeric cohorts. Custom cohorts do not
+  participate in partial numeric rollout unless you add them to
+  `Target Cohorts`.
+</Callout>
+
+## Gradually Roll Out a Bundle
+
+Use `-r` during deploy:
+
+```package-install
+npx hot-updater deploy -p ios -r 10
+npx hot-updater deploy -p ios -r 25
+npx hot-updater deploy -p ios -r 100
+```
+
+- `-r 10` targets 100 of 1000 numeric cohorts.
+- `-r 25` targets 250 of 1000 numeric cohorts.
+- `-r 100`, or omitting `-r`, targets the full audience.
+
+Hot Updater keeps the selected numeric cohort set stable per bundle. That means
+increasing a bundle from `10%` to `25%` expands the same bundle's eligible set
+instead of reshuffling everyone.
+
+## See the Current Cohort on Device
+
+Every device already has a cohort, even if you never call `setCohort()`. You
+can read it at runtime with `HotUpdater.getCohort()`:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text } from "react-native";
+
+export function CohortStatus() {
+  return <Text>Current cohort: {HotUpdater.getCohort()}</Text>;
+}
+```
+
+The `examples/v0.81.0` sample app exposes this value in the UI as:
+
+- `Runtime Details > Cohort`
+- `Runtime Details > Cohort Summary`
+- `Actions > Current Cohort Summary`
+
+Numeric values such as `17` or `900` participate in percentage rollout. Custom
+values such as `qa` or `dogfood` are useful when you want explicit targeting.
+
+## Assign a Custom Cohort on a Device
+
+Use `HotUpdater.setCohort()` when you want to place a device in a named group:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function assignQaCohort() {
+  HotUpdater.setCohort("qa");
+  console.log("Active cohort:", HotUpdater.getCohort());
+}
+```
+
+- Valid values are numeric `1..1000` or lowercase slugs such as `qa` and
+  `vip-testers`.
+- Hot Updater normalizes the value before storing it.
+- The assigned cohort is persisted on the device until you change it again or
+  clear app data.
+
+<Callout type="warn">
+  If you need to restore the original value later, call `HotUpdater.getCohort()`
+  first and store it before overriding. The sample app does this so
+  `Restore Initial Cohort` can revert the change.
+</Callout>
+
+## Target Specific Cohorts from the Console
+
+If you want to ship a bundle to a known set of devices, deploy the bundle first,
+then edit it in the console:
+
+```package-install
+npx hot-updater deploy -p ios -r 0
+npx hot-updater console
+```
+
+In the bundle editor:
+
+1. Open the deployed bundle.
+2. Set `Rollout Percentage` if you want numeric rollout.
+3. Add one or more values under `Target Cohorts (optional)`.
+4. Click `Save Changes`.
+
+`Target Cohorts` accepts both numeric cohorts like `17` and custom cohorts like
+`qa`.
+
+<Callout type="warn">
+  `Target Cohorts` overrides percentage rollout. When at least one target cohort
+  is set, only matching cohorts receive the update, even if the rollout slider
+  is `0%` or would normally exclude that device.
+</Callout>
+
+Example:
+
+```text
+Device cohort: qa
+Bundle rollout: 0.0%
+Target Cohorts: qa
+Result: only devices in the qa cohort receive the bundle
+```
+
+## Recommended QA Flow
+
+1. Read the current cohort on the tester device with `HotUpdater.getCohort()`.
+2. If needed, assign a known cohort such as `qa` with `HotUpdater.setCohort()`.
+3. Deploy the bundle with `hot-updater deploy -r <percentage>`.
+4. Open the console and add that value to `Target Cohorts`.
+5. Save the bundle and check for updates on the device.
+
+## Related APIs
+
+- [`HotUpdater.getCohort()`](/docs/react-native-api/getCohort)
+- [`HotUpdater.setCohort()`](/docs/react-native-api/setCohort)
+- [Deploy](/docs/guides/deploy)
+- [Console](/docs/guides/console)

@@ -4,6 +4,7 @@
   "icon": "BookOpenCheck",
   "pages": [
     "deploy",
+    "rollout-cohorts",
     "console",
     "simulator-test",
     "channel-management",
