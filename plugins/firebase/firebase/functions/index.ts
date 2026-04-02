@@ -51,7 +51,7 @@ app.get("/ping", (c) => {
 
 app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
 
-export const handler = onRequest(
+const handler = onRequest(
   {
     region: HotUpdater.REGION,
   },
@@ -73,3 +73,5 @@ export const handler = onRequest(
     res.send(await honoResponse.text());
   },
 );
+
+export { handler as "hot-updater" };
