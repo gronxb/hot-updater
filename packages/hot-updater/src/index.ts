@@ -2,7 +2,7 @@
 import { Command, Option } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, colors, log, p } from "@hot-updater/cli-tools";
+import { banner, log, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 import {
@@ -16,7 +16,11 @@ import {
 } from "@/commandOptions";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
-import { type DeployOptions, deploy } from "@/commands/deploy";
+import {
+  type DeployOptions,
+  deploy,
+  normalizeRolloutPercentage,
+} from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
@@ -142,6 +146,21 @@ program
       "the path where the bundle.zip will be generated",
     ),
   )
+  .addOption(
+    new Option(
+      "-r, --rollout <percentage>",
+      "specify the rollout percentage for the deployed bundle (0-100)",
+    )
+      .argParser((value) => {
+        try {
+          return normalizeRolloutPercentage(value);
+        } catch (error) {
+          p.log.error((error as Error).message);
+          process.exit(1);
+        }
+      })
+      .default(100),
+  )
   .addOption(interactiveCommandOption)
   .addOption(
     new Option(
@@ -167,13 +186,7 @@ program
 
     const port = await getConsolePort();
 
-    await openConsole(port, (info) => {
-      console.log(
-        `Server running on ${colors.magenta(
-          colors.underline(`http://localhost:${info.port}`),
-        )}`,
-      );
-    });
+    await openConsole(port);
   });
 
 program
@@ -196,10 +209,10 @@ const dbCommand = program
 dbCommand
   .command("migrate")
   .description("Run database migration (creates tables directly in database)")
-  .argument("<configPath>", "path to the config file that exports hotUpdater")
+  .argument("[configPath]", "path to the config file that exports hotUpdater")
   .option("-y, --yes", "skip confirmation prompt", false)
-  .action(async (configPath: string, options: { yes: boolean }) => {
-    await migrate({ configPath, skipConfirm: options.yes });
+  .action(async (configPath: string | undefined, options: { yes: boolean }) => {
+    await migrate({ configPath: configPath || "", skipConfirm: options.yes });
   });
 
 // db generate - SQL generation command

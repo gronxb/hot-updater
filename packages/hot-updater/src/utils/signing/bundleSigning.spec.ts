@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { signBundle, verifySignature } from "./bundleSigning";
 import { generateKeyPair, saveKeyPair } from "./keyGeneration";
 
@@ -10,9 +11,10 @@ describe("Bundle Signing", () => {
   let privateKeyPath: string;
   let publicKeyPEM: string;
 
-  beforeEach(async () => {
-    testDir = path.join(__dirname, `.test-keys-${Date.now()}`);
-    await fs.mkdir(testDir, { recursive: true });
+  beforeAll(async () => {
+    testDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-bundle-signing-"),
+    );
 
     // Generate test key pair (2048 for faster tests)
     const keyPair = await generateKeyPair(2048);
@@ -22,7 +24,7 @@ describe("Bundle Signing", () => {
     publicKeyPEM = keyPair.publicKey;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await fs.rm(testDir, { recursive: true, force: true });
   });
 

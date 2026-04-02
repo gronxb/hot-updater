@@ -5,10 +5,10 @@
   "version": "0.28.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./package.json": "./package.json"
@@ -36,6 +36,7 @@
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
   }
 }

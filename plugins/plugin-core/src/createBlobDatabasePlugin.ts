@@ -2,6 +2,7 @@ import { orderBy } from "es-toolkit";
 import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
+import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
 import type { Bundle, DatabasePluginHooks } from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
@@ -331,22 +332,20 @@ export const createBlobDatabasePlugin = <TConfig>({
         async getBundles(options) {
           // Always load the latest data from S3.
           let allBundles = await reloadBundles();
-          const { where, limit, offset } = options;
+          const { where, limit, offset, orderBy } = options;
 
           // Apply filtering conditions first to get the total count after filtering
           if (where) {
-            allBundles = allBundles.filter((bundle) => {
-              return Object.entries(where).every(
-                ([key, value]) =>
-                  value === undefined ||
-                  value === null ||
-                  bundle[key as keyof Bundle] === value,
-              );
-            });
+            allBundles = allBundles.filter((bundle) =>
+              bundleMatchesQueryWhere(bundle, where),
+            );
           }
 
-          const total = allBundles.length;
-          const cleanBundles = allBundles.map(removeBundleInternalKeys);
+          const cleanBundles = sortBundles(
+            allBundles.map(removeBundleInternalKeys),
+            orderBy,
+          );
+          const total = cleanBundles.length;
 
           // Apply pagination to data
           let paginatedData = cleanBundles;

@@ -31,6 +31,11 @@ export interface ResolverCheckUpdateParams {
   channel: string;
 
   /**
+   * Cohort identifier used for server-side rollout decisions.
+   */
+  cohort: string;
+
+  /**
    * Update strategy being used
    */
   updateStrategy: "fingerprint" | "appVersion";

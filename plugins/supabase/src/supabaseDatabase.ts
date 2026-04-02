@@ -1,3 +1,4 @@
+import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -24,7 +25,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         const { data, error } = await supabase
           .from("bundles")
           .select(
-            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata",
+            "channel, enabled, should_force_update, file_hash, git_commit_hash, id, message, platform, target_app_version, fingerprint_hash, storage_uri, metadata, rollout_cohort_count, target_cohorts",
           )
           .eq("id", bundleId)
           .single();
@@ -45,11 +46,25 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
           metadata: data.metadata ?? {},
+          rolloutCohortCount:
+            data.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+          targetCohorts: data.target_cohorts ?? null,
         } as Bundle;
       },
 
       async getBundles(options) {
-        const { where, limit, offset } = options ?? {};
+        const { where, limit, offset, orderBy } = options ?? {};
+
+        if (
+          (where?.targetAppVersionIn &&
+            where.targetAppVersionIn.length === 0) ||
+          (where?.id?.in && where.id.in.length === 0)
+        ) {
+          return {
+            data: [],
+            pagination: calculatePagination(0, { limit, offset }),
+          };
+        }
 
         let countQuery = supabase
           .from("bundles")
@@ -61,15 +76,57 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         if (where?.platform) {
           countQuery = countQuery.eq("platform", where.platform as Platform);
         }
+        if (where?.enabled !== undefined) {
+          countQuery = countQuery.eq("enabled", where.enabled);
+        }
+        if (where?.fingerprintHash !== undefined) {
+          countQuery =
+            where.fingerprintHash === null
+              ? countQuery.is("fingerprint_hash", null)
+              : countQuery.eq("fingerprint_hash", where.fingerprintHash);
+        }
+        if (where?.targetAppVersion !== undefined) {
+          countQuery =
+            where.targetAppVersion === null
+              ? countQuery.is("target_app_version", null)
+              : countQuery.eq("target_app_version", where.targetAppVersion);
+        }
+        if (where?.targetAppVersionIn) {
+          countQuery = countQuery.in(
+            "target_app_version",
+            where.targetAppVersionIn,
+          );
+        }
+        if (where?.targetAppVersionNotNull) {
+          countQuery = countQuery.not("target_app_version", "is", null);
+        }
+        if (where?.id?.eq) {
+          countQuery = countQuery.eq("id", where.id.eq);
+        }
+        if (where?.id?.gt) {
+          countQuery = countQuery.gt("id", where.id.gt);
+        }
+        if (where?.id?.gte) {
+          countQuery = countQuery.gte("id", where.id.gte);
+        }
+        if (where?.id?.lt) {
+          countQuery = countQuery.lt("id", where.id.lt);
+        }
+        if (where?.id?.lte) {
+          countQuery = countQuery.lte("id", where.id.lte);
+        }
+        if (where?.id?.in) {
+          countQuery = countQuery.in("id", where.id.in);
+        }
 
         const { count: total = 0 } = await countQuery;
 
         let query = supabase
           .from("bundles")
           .select(
-            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata",
+            "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, rollout_cohort_count, target_cohorts",
           )
-          .order("id", { ascending: false });
+          .order("id", { ascending: orderBy?.direction === "asc" });
 
         if (where?.channel) {
           query = query.eq("channel", where.channel);
@@ -77,6 +134,45 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
         if (where?.platform) {
           query = query.eq("platform", where.platform as Platform);
+        }
+        if (where?.enabled !== undefined) {
+          query = query.eq("enabled", where.enabled);
+        }
+        if (where?.fingerprintHash !== undefined) {
+          query =
+            where.fingerprintHash === null
+              ? query.is("fingerprint_hash", null)
+              : query.eq("fingerprint_hash", where.fingerprintHash);
+        }
+        if (where?.targetAppVersion !== undefined) {
+          query =
+            where.targetAppVersion === null
+              ? query.is("target_app_version", null)
+              : query.eq("target_app_version", where.targetAppVersion);
+        }
+        if (where?.targetAppVersionIn) {
+          query = query.in("target_app_version", where.targetAppVersionIn);
+        }
+        if (where?.targetAppVersionNotNull) {
+          query = query.not("target_app_version", "is", null);
+        }
+        if (where?.id?.eq) {
+          query = query.eq("id", where.id.eq);
+        }
+        if (where?.id?.gt) {
+          query = query.gt("id", where.id.gt);
+        }
+        if (where?.id?.gte) {
+          query = query.gte("id", where.id.gte);
+        }
+        if (where?.id?.lt) {
+          query = query.lt("id", where.id.lt);
+        }
+        if (where?.id?.lte) {
+          query = query.lte("id", where.id.lte);
+        }
+        if (where?.id?.in) {
+          query = query.in("id", where.id.in);
         }
 
         if (limit) {
@@ -103,6 +199,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
               metadata: bundle.metadata ?? {},
+              rolloutCohortCount:
+                bundle.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+              targetCohorts: bundle.target_cohorts ?? null,
             }))
           : [];
 
@@ -156,6 +255,9 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
                 fingerprint_hash: bundle.fingerprintHash,
                 storage_uri: bundle.storageUri,
                 metadata: bundle.metadata,
+                rollout_cohort_count:
+                  bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                target_cohorts: bundle.targetCohorts ?? null,
               },
               { onConflict: "id" },
             );

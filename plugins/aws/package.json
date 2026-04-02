@@ -4,8 +4,8 @@
   "version": "0.28.0",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
   "license": "MIT",
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
@@ -18,12 +18,12 @@
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./iac": {
-      "types": "./dist/iac/index.d.ts",
-      "import": "./dist/iac/index.js",
+      "types": "./dist/iac/index.d.cts",
+      "import": "./dist/iac/index.mjs",
       "require": "./dist/iac/index.cjs"
     },
     "./lambda": {
@@ -40,16 +40,15 @@
     "test:type": "tsc --noEmit"
   },
   "devDependencies": {
-    "@aws-sdk/cloudfront-signer": "3.1005.0",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "catalog:",
     "aws-sdk-client-mock": "^4.1.0",
     "es-toolkit": "^1.32.0",
-    "execa": "catalog:",
-    "hono": "^4.6.3",
+    "execa": "catalog:tools",
     "mime": "^4.0.4"
   },
   "dependencies": {
@@ -58,12 +57,15 @@
     "@aws-sdk/client-iam": "3.1008.0",
     "@aws-sdk/client-lambda": "3.1008.0",
     "@aws-sdk/client-s3": "3.1008.0",
+    "@aws-sdk/cloudfront-signer": "3.1005.0",
     "@aws-sdk/s3-request-presigner": "3.1008.0",
     "@aws-sdk/client-ssm": "3.1008.0",
     "@aws-sdk/client-sts": "3.1008.0",
     "@aws-sdk/credential-providers": "3.1008.0",
     "@aws-sdk/lib-storage": "3.1008.0",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "hono": "catalog:hono",
     "aws-lambda": "1.0.7"
   }
 }

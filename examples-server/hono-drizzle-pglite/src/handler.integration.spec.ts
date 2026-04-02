@@ -45,7 +45,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
     const hotUpdaterCli = path.join(
       path.dirname(hotUpdaterPkgPath),
-      "dist/index.js",
+      "dist/index.cjs",
     );
 
     // Generate Drizzle schema from hotUpdater instance

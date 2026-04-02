@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { standaloneRepository } from "@hot-updater/standalone";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -19,7 +20,8 @@ import {
 import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assertDockerComposeAvailable } from "../../../packages/test-utils/src/runtimeProcess";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -31,6 +33,10 @@ const REGION = "us-east-1";
 const ACCESS_KEY_ID = "test";
 const SECRET_ACCESS_KEY = "test";
 const METADATA_BUCKET = "hot-updater-metadata";
+
+assertDockerComposeAvailable(
+  "Hono + S3 integration tests require Docker Compose and a running Docker daemon.",
+);
 
 async function ensureBucketExists(bucketName: string) {
   const client = new S3Client({
@@ -133,5 +139,39 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("updates targetAppVersion through standaloneRepository", async () => {
+    const repo = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater`,
+    })();
+
+    const bundleId = "hono-s3-update-target-app-version";
+
+    await repo.appendBundle({
+      id: bundleId,
+      platform: "ios",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hono-s3-update-target-app-version-hash",
+      gitCommitHash: null,
+      message: null,
+      channel: "production",
+      targetAppVersion: "1.x.x",
+      storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
+      fingerprintHash: null,
+      rolloutCohortCount: 1000,
+    });
+    await repo.commitBundle();
+
+    await repo.updateBundle(bundleId, {
+      targetAppVersion: "1.0.2",
+    });
+    await repo.commitBundle();
+
+    expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
+      id: bundleId,
+      targetAppVersion: "1.0.2",
+    });
   });
 });

@@ -12,23 +12,43 @@ import { afterAll, beforeEach, describe } from "vitest";
 import { prepareSql } from "./prepareSql";
 
 const createInsertBundleQuery = (bundle: Bundle) => {
+  const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
+  const targetCohorts = bundle.targetCohorts
+    ? `ARRAY[${bundle.targetCohorts.map((id) => `'${id}'`).join(",")}]::TEXT[]`
+    : "NULL";
+
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash
+      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash,
+      rollout_cohort_count, target_cohorts
     ) VALUES (
       '${bundle.id}',
       '${bundle.fileHash}',
       '${bundle.platform}',
-      '${bundle.targetAppVersion}',
+      ${bundle.targetAppVersion ? `'${bundle.targetAppVersion}'` : "null"},
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
       ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
       ${bundle.message ? `'${bundle.message}'` : "null"},
       '${bundle.channel}',
       '${bundle.storageUri}',
-      '${bundle.fingerprintHash}'
-    );
+      ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"},
+      ${rolloutCohortCount},
+      ${targetCohorts}
+    ) ON CONFLICT (id) DO UPDATE SET
+      file_hash = EXCLUDED.file_hash,
+      platform = EXCLUDED.platform,
+      target_app_version = EXCLUDED.target_app_version,
+      should_force_update = EXCLUDED.should_force_update,
+      enabled = EXCLUDED.enabled,
+      git_commit_hash = EXCLUDED.git_commit_hash,
+      message = EXCLUDED.message,
+      channel = EXCLUDED.channel,
+      storage_uri = EXCLUDED.storage_uri,
+      fingerprint_hash = EXCLUDED.fingerprint_hash,
+      rollout_cohort_count = EXCLUDED.rollout_cohort_count,
+      target_cohorts = EXCLUDED.target_cohorts;
   `;
 };
 
@@ -49,11 +69,15 @@ const createGetUpdateInfo =
 
     if (_updateStrategy === "fingerprint") {
       const fingerprintHash = args.fingerprintHash;
+      const cohort = args.cohort;
+      const cohortSql = cohort ? `'${cohort}'` : "NULL";
       const result = await db.query<{
         id: string;
         should_force_update: boolean;
         message: string;
         status: string;
+        storage_uri: string | null;
+        file_hash: string | null;
       }>(
         `
       SELECT * FROM get_update_info_by_fingerprint_hash(
@@ -61,14 +85,18 @@ const createGetUpdateInfo =
         '${bundleId}',
         '${minBundleId}',
         '${channel}',
-        '${fingerprintHash}'
+        '${fingerprintHash}',
+        ${cohortSql}
       );
       `,
       );
 
-      return result.rows[0]
-        ? (camelcaseKeys(result.rows[0]) as UpdateInfo)
-        : null;
+      if (!result.rows[0]) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      return camelcaseKeys(row) as UpdateInfo;
     }
 
     const appVersion = args.appVersion;
@@ -85,11 +113,15 @@ const createGetUpdateInfo =
       appVersion,
     );
 
+    const cohort = args.cohort;
+    const cohortSql = cohort ? `'${cohort}'` : "NULL";
     const result = await db.query<{
       id: string;
       should_force_update: boolean;
       message: string;
       status: string;
+      storage_uri: string | null;
+      file_hash: string | null;
     }>(
       `
       SELECT * FROM get_update_info_by_app_version(
@@ -98,14 +130,18 @@ const createGetUpdateInfo =
         '${bundleId}',
         '${minBundleId ?? NIL_UUID}',
         '${channel}',
-        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[]
+        ARRAY[${targetAppVersionList.map((v) => `'${v}'`).join(",")}]::text[],
+        ${cohortSql}
       );
       `,
     );
 
-    return result.rows[0]
-      ? (camelcaseKeys(result.rows[0]) as UpdateInfo)
-      : null;
+    if (!result.rows[0]) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    return camelcaseKeys(row) as UpdateInfo;
   };
 
 const createInsertBundleQuerys = (bundles: Bundle[]) => {

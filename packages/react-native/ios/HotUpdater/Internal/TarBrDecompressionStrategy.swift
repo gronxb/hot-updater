@@ -25,15 +25,22 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
             return false
         }
 
-        // Brotli has no standard magic bytes, check file extension
-        let lowercasedPath = file.lowercased()
-        let isBrotli = lowercasedPath.hasSuffix(".tar.br") || lowercasedPath.hasSuffix(".br")
-
-        if !isBrotli {
-            NSLog("[TarBrStrategy] Invalid file: not a .tar.br or .br file")
+        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+            NSLog("[TarBrStrategy] Invalid file: cannot read file data")
+            return false
         }
 
-        return isBrotli
+        do {
+            let tarEntries = try readTarEntries(from: compressedData)
+            if tarEntries.isEmpty {
+                NSLog("[TarBrStrategy] Invalid file: tar archive has no entries")
+                return false
+            }
+            return true
+        } catch {
+            NSLog("[TarBrStrategy] Invalid file: Brotli/TAR validation failed - \(error.localizedDescription)")
+            return false
+        }
     }
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
@@ -63,7 +70,7 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
 
         let tarEntries: [TarEntry]
         do {
-            tarEntries = try TarContainer.open(container: decompressedData)
+            tarEntries = try readTarEntries(fromDecompressedData: decompressedData)
             NSLog("[TarBrStrategy] Tar extraction successful, found \(tarEntries.count) entries")
         } catch {
             throw NSError(
@@ -92,6 +99,15 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
         }
 
         NSLog("[TarBrStrategy] Successfully extracted all entries")
+    }
+
+    private func readTarEntries(from compressedData: Data) throws -> [TarEntry] {
+        let decompressedData = try decompressBrotli(compressedData)
+        return try readTarEntries(fromDecompressedData: decompressedData)
+    }
+
+    private func readTarEntries(fromDecompressedData decompressedData: Data) throws -> [TarEntry] {
+        return try TarContainer.open(container: decompressedData)
     }
 
     private func decompressBrotli(_ data: Data) throws -> Data {

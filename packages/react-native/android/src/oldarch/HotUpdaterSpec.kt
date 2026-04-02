@@ -27,6 +27,10 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getBaseURL(): String
 
+    abstract fun setCohort(customId: String)
+
+    abstract fun getCohort(): String
+
     abstract fun getBundleId(): String?
 
     abstract fun getManifest(): WritableMap

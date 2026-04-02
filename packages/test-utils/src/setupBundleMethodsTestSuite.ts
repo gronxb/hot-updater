@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 interface PaginationInfo {
@@ -8,6 +8,48 @@ interface PaginationInfo {
   currentPage: number;
   totalPages: number;
 }
+
+interface DatabaseBundleQueryOptions {
+  where?: {
+    channel?: string;
+    platform?: Platform;
+    enabled?: boolean;
+    id?: {
+      eq?: string;
+      gt?: string;
+      gte?: string;
+      lt?: string;
+      lte?: string;
+      in?: string[];
+    };
+    targetAppVersion?: string | null;
+    targetAppVersionIn?: string[];
+    targetAppVersionNotNull?: boolean;
+    fingerprintHash?: string | null;
+  };
+  limit: number;
+  offset: number;
+  orderBy?: {
+    field: "id";
+    direction: "asc" | "desc";
+  };
+}
+
+const DEFAULT_ROLLOUT_BUNDLE: Bundle = {
+  id: "00000000-0000-0000-0000-000000000060",
+  platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: "hash-rollout",
+  gitCommitHash: null,
+  message: "Rollout bundle",
+  channel: "production",
+  storageUri: "mock://test/rollout.zip",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+  rolloutCohortCount: 250,
+  targetCohorts: ["17", "qa-group"],
+};
 
 export const setupBundleMethodsTestSuite = ({
   getBundleById,
@@ -20,11 +62,9 @@ export const setupBundleMethodsTestSuite = ({
   getBundleById: (id: string) => Promise<Bundle | null>;
   getChannels: () => Promise<string[]>;
   insertBundle: (bundle: Bundle) => Promise<void>;
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
   updateBundleById: (
     bundleId: string,
     newBundle: Partial<Bundle>,
@@ -65,6 +105,16 @@ export const setupBundleMethodsTestSuite = ({
       );
 
       expect(retrieved).toBeNull();
+    });
+
+    it("should preserve rollout cohort fields", async () => {
+      await insertBundle(DEFAULT_ROLLOUT_BUNDLE);
+
+      const retrieved = await getBundleById(DEFAULT_ROLLOUT_BUNDLE.id);
+
+      expect(retrieved).not.toBeNull();
+      expect(retrieved?.rolloutCohortCount).toBe(250);
+      expect(retrieved?.targetCohorts).toEqual(["17", "qa-group"]);
     });
   });
 
@@ -312,6 +362,22 @@ export const setupBundleMethodsTestSuite = ({
       expect(page1.data[0].id).not.toBe(page2.data[0].id);
     });
 
+    it("should include rollout cohort fields in list results", async () => {
+      await insertBundle(DEFAULT_ROLLOUT_BUNDLE);
+
+      const result = await getBundles({
+        limit: 10,
+        offset: 0,
+      });
+
+      const found = result.data.find(
+        (bundle) => bundle.id === DEFAULT_ROLLOUT_BUNDLE.id,
+      );
+      expect(found).toBeDefined();
+      expect(found?.rolloutCohortCount).toBe(250);
+      expect(found?.targetCohorts).toEqual(["17", "qa-group"]);
+    });
+
     it("should handle concurrent getBundles calls without errors", async () => {
       // Test for fumadb getSchemaVersion bug fix
       // Previously, concurrent calls would cause unique constraint violations
@@ -414,6 +480,33 @@ export const setupBundleMethodsTestSuite = ({
       expect(updated?.enabled).toBe(false);
       expect(updated?.message).toBe("Updated message");
       expect(updated?.shouldForceUpdate).toBe(true);
+    });
+
+    it("should update rollout cohort fields", async () => {
+      await insertBundle(DEFAULT_ROLLOUT_BUNDLE);
+
+      await updateBundleById(DEFAULT_ROLLOUT_BUNDLE.id, {
+        rolloutCohortCount: 500,
+        targetCohorts: ["31", "dogfood"],
+      });
+
+      const updated = await getBundleById(DEFAULT_ROLLOUT_BUNDLE.id);
+      expect(updated).not.toBeNull();
+      expect(updated?.rolloutCohortCount).toBe(500);
+      expect(updated?.targetCohorts).toEqual(["31", "dogfood"]);
+    });
+
+    it("should clear target cohorts without affecting rollout count", async () => {
+      await insertBundle(DEFAULT_ROLLOUT_BUNDLE);
+
+      await updateBundleById(DEFAULT_ROLLOUT_BUNDLE.id, {
+        targetCohorts: null,
+      });
+
+      const updated = await getBundleById(DEFAULT_ROLLOUT_BUNDLE.id);
+      expect(updated).not.toBeNull();
+      expect(updated?.rolloutCohortCount).toBe(250);
+      expect(updated?.targetCohorts).toBeNull();
     });
   });
 

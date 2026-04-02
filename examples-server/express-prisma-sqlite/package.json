@@ -27,7 +27,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^20.11.17",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "hot-updater": "workspace:*",
     "prisma": "^6.4.1",
     "tsx": "^4.20.6",

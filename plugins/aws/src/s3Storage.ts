@@ -15,6 +15,7 @@ import {
 } from "@hot-updater/plugin-core";
 import fs from "fs/promises";
 import path from "path";
+import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 
 export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
@@ -29,7 +30,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
   supportedProtocol: "s3",
   factory: (config) => {
     const { bucketName, ...s3Config } = config;
-    const client = new S3Client(s3Config);
+    const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
@@ -106,7 +107,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
         }
         try {
           const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-          const signedUrl = await getSignedUrl(client as any, command as any, {
+          const signedUrl = await getSignedUrl(client, command, {
             expiresIn: 3600,
           });
           if (!signedUrl) throw new Error("Failed to presign S3 URL");

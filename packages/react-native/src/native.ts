@@ -1,4 +1,9 @@
-import type { UpdateStatus } from "@hot-updater/core";
+import {
+  INVALID_COHORT_ERROR_MESSAGE,
+  isValidCohort,
+  normalizeCohortValue,
+  type UpdateStatus,
+} from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
@@ -8,6 +13,13 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const normalizeAndValidateCohort = (cohort: string): string => {
+  const normalized = normalizeCohortValue(cohort);
+  if (!isValidCohort(normalized)) {
+    throw new Error(INVALID_COHORT_ERROR_MESSAGE);
+  }
+  return normalized;
+};
 
 export interface ManifestAsset {
   fileHash: string;
@@ -54,6 +66,7 @@ export type ReloadBehaviorSetting = ReloadBehavior | "custom";
 class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
+  private cachedCohort: string | undefined;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
@@ -133,6 +146,14 @@ class HotUpdaterSessionState {
 
   cacheBaseURL(baseURL: string | null) {
     this.setActiveBundleSnapshotValue("baseURL", baseURL);
+  }
+
+  getCachedCohort(): string | undefined {
+    return this.cachedCohort;
+  }
+
+  cacheCohort(cohort: string) {
+    this.cachedCohort = cohort;
   }
 
   private clearActiveBundleSnapshotCache() {
@@ -513,8 +534,10 @@ export type NotifyAppReadyResult = {
  * const result = HotUpdater.notifyAppReady();
  *
  * if (result.status === "RECOVERED") {
- *     // Send ROLLBACK analytics event
- *     analytics.track('bundle_rollback', { crashedBundleId: result.crashedBundleId });
+ *   // Send ROLLBACK analytics event
+ *   analytics.track("bundle_rollback", {
+ *     crashedBundleId: result.crashedBundleId,
+ *   });
  * }
  * ```
  */
@@ -664,4 +687,33 @@ export const resetChannel = async (): Promise<boolean> => {
     sessionState.resetChannelState();
   }
   return ok;
+};
+
+/**
+ * Sets the persisted cohort used for update checks.
+ *
+ * HotUpdater only derives a device-based cohort when nothing has been stored
+ * yet. If you need to restore that initial value later, read it with
+ * `getCohort()` before calling `setCohort()`, then store it yourself.
+ */
+export const setCohort = (cohort: string): void => {
+  const normalized = normalizeAndValidateCohort(cohort);
+  HotUpdaterNative.setCohort(normalized);
+  sessionState.cacheCohort(normalized);
+};
+
+/**
+ * Gets the persisted cohort used for rollout calculations.
+ * If none has been stored yet, native derives the initial value once and
+ * persists it before returning.
+ */
+export const getCohort = (): string => {
+  const cachedCohort = sessionState.getCachedCohort();
+  if (cachedCohort !== undefined) {
+    return cachedCohort;
+  }
+
+  const cohort = normalizeAndValidateCohort(HotUpdaterNative.getCohort());
+  sessionState.cacheCohort(cohort);
+  return cohort;
 };

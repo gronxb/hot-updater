@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Launch status summary matches expected value
+      EXPECTED_TEXT: ${EXPECTED_LAUNCH_STATUS}
+      TARGET_ID: launch-status-result

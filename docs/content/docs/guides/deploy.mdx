@@ -21,6 +21,7 @@ Options:
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -f, --force-update                           force update the app (default: false)
   -o, --bundle-output-path <bundleOutputPath>  the path where the bundle.zip will be generated
+  -r, --rollout <percentage>                   specify the rollout percentage for the deployed bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
   -m, --message <message>                      Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message
@@ -80,6 +81,18 @@ The `-c` (or `--channel`) flag specifies the release channel. The default value 
 
 For more details about default channels, refer to
 [Default Channel Setup](/docs/guides/channel-management).
+
+### Rollout
+
+The `-r` (or `--rollout`) flag sets the rollout percentage for the deployed bundle.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy -p <"ios" | "android"> -r 25
+```
+
+The default value is `100`, which deploys to the entire audience immediately.
 
 ### Message
 

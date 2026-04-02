@@ -44,7 +44,12 @@ const getS3Json = async <T>({
       }),
     );
 
-    const body = await response.Body?.transformToString();
+    const responseBody = response.Body;
+    if (!responseBody) {
+      return null;
+    }
+
+    const body = await responseBody.transformToString();
     if (!body) {
       return null;
     }
@@ -109,6 +114,7 @@ const appVersionStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    cohort,
   }: AppVersionGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const targetAppVersions = await readManifestJson<string[]>(
@@ -140,6 +146,7 @@ const appVersionStrategy = async (
     appVersion,
     minBundleId,
     channel,
+    cohort,
     _updateStrategy: "appVersion",
   });
 };
@@ -156,6 +163,7 @@ const fingerprintStrategy = async (
     bundleId,
     minBundleId = NIL_UUID,
     channel = "production",
+    cohort,
   }: FingerprintGetBundlesArgs,
 ): Promise<UpdateInfo | null> => {
   const result = await readManifestJson<Bundle[]>(
@@ -168,6 +176,7 @@ const fingerprintStrategy = async (
     fingerprintHash,
     minBundleId,
     channel,
+    cohort,
     _updateStrategy: "fingerprint",
   });
 };

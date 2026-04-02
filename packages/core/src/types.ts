@@ -65,20 +65,47 @@ export interface Bundle {
    * The metadata of the bundle.
    */
   metadata?: BundleMetadata;
+
+  /**
+   * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
+   * - 0: No cohorts receive this update
+   * - 250: 25.0% of numeric cohorts receive this update
+   * - 1000 or null: All numeric cohorts receive this update (full rollout)
+   *
+   * @default 1000
+   */
+  rolloutCohortCount?: number | null;
+
+  /**
+   * Target specific cohorts for this update.
+   * If provided, only these cohorts will receive the update.
+   * If empty/null, rolloutCohortCount-based rollout is used.
+   *
+   * NOTE: This field is stored in database but should NOT be returned to
+   * update-check clients for security reasons. Server uses it for rollout
+   * decisions only.
+   */
+  targetCohorts?: string[] | null;
 }
 
 type SnakeCase<S extends string> = S extends `${infer T}${infer U}`
-  ? `${T extends Capitalize<T> ? "_" : ""}${Lowercase<T>}${SnakeCase<U>}`
+  ? T extends "_"
+    ? `_${SnakeCase<U>}`
+    : T extends "-"
+      ? `-${SnakeCase<U>}`
+      : T extends Lowercase<T>
+        ? `${T}${SnakeCase<U>}`
+        : `_${Lowercase<T>}${SnakeCase<U>}`
   : S;
 
 // Utility type to recursively map object keys to snake_case
-type SnakeKeyObject<T> = T extends Record<string, any>
-  ? {
-      [K in keyof T as SnakeCase<Extract<K, string>>]: T[K] extends object
-        ? SnakeKeyObject<T[K]>
-        : T[K];
-    }
-  : T;
+type SnakeKeyObject<T> = T extends readonly (infer U)[]
+  ? SnakeKeyObject<U>[]
+  : T extends Record<string, any>
+    ? {
+        [K in keyof T as SnakeCase<Extract<K, string>>]: SnakeKeyObject<T[K]>;
+      }
+    : T;
 
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
@@ -95,6 +122,15 @@ export interface UpdateInfo {
   status: UpdateStatus;
   storageUri: string | null;
   fileHash: string | null;
+  /**
+   * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
+   */
+  rolloutCohortCount?: number | null;
+  /**
+   * Target specific cohorts for this update.
+   * Used internally for rollout decisions.
+   */
+  targetCohorts?: string[] | null;
 }
 
 /**
@@ -141,6 +177,10 @@ export type FingerprintGetBundlesArgs = {
    */
   channel?: string;
   /**
+   * Cohort identifier used for server-side rollout decisions.
+   */
+  cohort?: string;
+  /**
    * The fingerprint hash of the bundle.
    */
   fingerprintHash: string;
@@ -172,6 +212,10 @@ export type AppVersionGetBundlesArgs = {
    * - app-name: Channel for specific app instances (e.g., my-app, app-test)
    */
   channel?: string;
+  /**
+   * Cohort identifier used for server-side rollout decisions.
+   */
+  cohort?: string;
   /**
    * The current app version.
    */

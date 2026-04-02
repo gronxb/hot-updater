@@ -25,9 +25,7 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.on(["POST", "GET", "DELETE"], "/hot-updater/*", async (c) => { // [!code ++]
-  return hotUpdater.handler(c.req.raw); // [!code ++]
-}); // [!code ++]
+app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 export default app;
 ```
@@ -43,7 +41,8 @@ The server automatically creates these endpoints:
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, offset) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create or update bundles |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
 
@@ -53,7 +52,17 @@ The Hot Updater handler does not include built-in authentication. Protect admin 
 
 ### Protecting Endpoints
 
-Update endpoints are public for React Native clients. Bundle management endpoints (`/api/*`) require protection.
+Update-check routes must stay public for React Native clients:
+
+- `/hot-updater/app-version/*`
+- `/hot-updater/fingerprint/*`
+
+If `routes.bundles` is enabled, protect these admin routes:
+
+- `/hot-updater/version`
+- `/hot-updater/api/*`
+
+`/hot-updater/version` is used by the CLI `standaloneRepository` plugin, so it should be protected alongside bundle management endpoints.
 
 ```typescript
 import { Hono } from "hono";
@@ -65,12 +74,12 @@ const app = new Hono();
 // Protect /api/* endpoints // [!code ++]
 app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
 
-app.on(["GET", "POST", "DELETE"], "/hot-updater/*", (c) => {
-  return hotUpdater.handler(c.req.raw);
-});
+app.mount("/hot-updater", hotUpdater.handler);
 
 export default app;
 ```
+
+If you set `routes: { updateCheck: true, bundles: false }`, `/hot-updater/version` and `/hot-updater/api/*` are not mounted, so only the public update-check routes remain.
 
 Set your API key in environment variables:
 

@@ -4,26 +4,32 @@ import type {
   GetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleQueryOptions,
+  DatabasePlugin,
+  HotUpdaterContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
 import type { PaginationInfo } from "../types";
 
-export type DatabasePluginFactory = () => DatabasePlugin;
+export type DatabasePluginFactory<TContext = unknown> =
+  () => DatabasePlugin<TContext>;
 
-export type DatabaseAdapter =
+export type DatabaseAdapter<TContext = unknown> =
   | FumaDBAdapter
-  | DatabasePlugin
-  | DatabasePluginFactory;
+  | DatabasePlugin<TContext>
+  | DatabasePluginFactory<TContext>;
 
-export function isDatabasePluginFactory(
-  adapter: DatabaseAdapter,
-): adapter is DatabasePluginFactory {
+export function isDatabasePluginFactory<TContext = unknown>(
+  adapter: DatabaseAdapter<TContext>,
+): adapter is DatabasePluginFactory<TContext> {
   return typeof adapter === "function";
 }
 
-export function isDatabasePlugin(
-  adapter: DatabaseAdapter,
-): adapter is DatabasePlugin {
+export function isDatabasePlugin<TContext = unknown>(
+  adapter: DatabaseAdapter<TContext>,
+): adapter is DatabasePlugin<TContext> {
   return (
     typeof adapter === "object" &&
     adapter !== null &&
@@ -33,25 +39,44 @@ export function isDatabasePlugin(
   );
 }
 
-export function isFumaAdapter(
-  adapter: DatabaseAdapter,
+export function isFumaAdapter<TContext = unknown>(
+  adapter: DatabaseAdapter<TContext>,
 ): adapter is FumaDBAdapter {
   return !isDatabasePluginFactory(adapter) && !isDatabasePlugin(adapter);
 }
 
-export interface DatabaseAPI {
-  getBundleById(id: string): Promise<Bundle | null>;
-  getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
-  getAppUpdateInfo(args: GetBundlesArgs): Promise<AppUpdateInfo | null>;
-  getChannels(): Promise<string[]>;
-  getBundles(options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    offset: number;
-  }): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
-  insertBundle(bundle: Bundle): Promise<void>;
-  updateBundleById(bundleId: string, newBundle: Partial<Bundle>): Promise<void>;
-  deleteBundleById(bundleId: string): Promise<void>;
+export interface DatabaseAPI<TContext = unknown> {
+  getBundleById(
+    id: string,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<Bundle | null>;
+  getUpdateInfo(
+    args: GetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<UpdateInfo | null>;
+  getAppUpdateInfo(
+    args: GetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<AppUpdateInfo | null>;
+  getChannels(context?: HotUpdaterContext<TContext>): Promise<string[]>;
+  getBundles(
+    options: DatabaseBundleQueryOptions,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  insertBundle(
+    bundle: Bundle,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  updateBundleById(
+    bundleId: string,
+    newBundle: Partial<Bundle>,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  deleteBundleById(
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
 }
 
-export type StoragePluginFactory = () => StoragePlugin;
+export type StoragePluginFactory<TContext = unknown> =
+  () => StoragePlugin<TContext>;

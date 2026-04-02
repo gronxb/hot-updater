@@ -2,8 +2,70 @@ import {
   type Bundle,
   calculatePagination,
   createDatabasePlugin,
+  type DatabaseBundleQueryOrder,
+  type DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
 import { minMax, sleep } from "./util/utils";
+
+const bundleMatchesQueryWhere = (
+  bundle: Bundle,
+  where: DatabaseBundleQueryWhere | undefined,
+) => {
+  if (!where) return true;
+  if (where.channel !== undefined && bundle.channel !== where.channel)
+    return false;
+  if (where.platform !== undefined && bundle.platform !== where.platform)
+    return false;
+  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
+    return false;
+  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
+  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
+    return false;
+  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
+    return false;
+  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
+    return false;
+  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
+    return false;
+  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
+  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
+    return false;
+  }
+  if (
+    where.targetAppVersion !== undefined &&
+    bundle.targetAppVersion !== where.targetAppVersion
+  ) {
+    return false;
+  }
+  if (
+    where.targetAppVersionIn &&
+    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
+  ) {
+    return false;
+  }
+  if (
+    where.fingerprintHash !== undefined &&
+    bundle.fingerprintHash !== where.fingerprintHash
+  ) {
+    return false;
+  }
+  return true;
+};
+
+const sortBundles = (
+  bundles: Bundle[],
+  orderBy: DatabaseBundleQueryOrder | undefined,
+) => {
+  if (!orderBy) {
+    return bundles;
+  }
+
+  const direction = orderBy?.direction ?? "desc";
+  return bundles.slice().sort((a, b) => {
+    const result = a.id.localeCompare(b.id);
+    return direction === "asc" ? result : -result;
+  });
+};
 
 export interface MockDatabaseConfig {
   latency: { min: number; max: number };
@@ -22,18 +84,13 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset } = options ?? {};
+        const { where, limit, offset, orderBy } = options ?? {};
         await sleep(minMax(config.latency.min, config.latency.max));
 
-        const filteredBundles = bundles.filter((b) => {
-          if (where?.channel && b.channel !== where.channel) {
-            return false;
-          }
-          if (where?.platform && b.platform !== where.platform) {
-            return false;
-          }
-          return true;
-        });
+        const filteredBundles = sortBundles(
+          bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+          orderBy,
+        );
 
         const total = filteredBundles.length;
         const data = limit
@@ -61,7 +118,6 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
 
         await sleep(minMax(config.latency.min, config.latency.max));
 
-        // Process each operation sequentially
         for (const op of changedSets) {
           if (op.operation === "delete") {
             const targetIndex = bundles.findIndex((b) => b.id === op.data.id);

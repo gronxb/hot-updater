@@ -47,7 +47,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset } = options ?? {};
+        const { where, limit, offset, orderBy } = options ?? {};
 
         let countQuery = db.selectFrom("bundles");
         if (where?.channel) {
@@ -60,19 +60,115 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             where.platform as Platform,
           );
         }
+        if (where?.enabled !== undefined) {
+          countQuery = countQuery.where("enabled", "=", where.enabled);
+        }
+        if (where?.fingerprintHash !== undefined) {
+          countQuery =
+            where.fingerprintHash === null
+              ? countQuery.where("fingerprint_hash", "is", null)
+              : countQuery.where(
+                  "fingerprint_hash",
+                  "=",
+                  where.fingerprintHash,
+                );
+        }
+        if (where?.targetAppVersion !== undefined) {
+          countQuery =
+            where.targetAppVersion === null
+              ? countQuery.where("target_app_version", "is", null)
+              : countQuery.where(
+                  "target_app_version",
+                  "=",
+                  where.targetAppVersion,
+                );
+        }
+        if (where?.targetAppVersionIn) {
+          countQuery = countQuery.where(
+            "target_app_version",
+            "in",
+            where.targetAppVersionIn,
+          );
+        }
+        if (where?.targetAppVersionNotNull) {
+          countQuery = countQuery.where("target_app_version", "is not", null);
+        }
+        if (where?.id?.eq) {
+          countQuery = countQuery.where("id", "=", where.id.eq);
+        }
+        if (where?.id?.gt) {
+          countQuery = countQuery.where("id", ">", where.id.gt);
+        }
+        if (where?.id?.gte) {
+          countQuery = countQuery.where("id", ">=", where.id.gte);
+        }
+        if (where?.id?.lt) {
+          countQuery = countQuery.where("id", "<", where.id.lt);
+        }
+        if (where?.id?.lte) {
+          countQuery = countQuery.where("id", "<=", where.id.lte);
+        }
+        if (where?.id?.in) {
+          countQuery = countQuery.where("id", "in", where.id.in);
+        }
 
         const countResult = await countQuery
           .select(db.fn.count<number>("id").as("total"))
           .executeTakeFirst();
         const total = countResult?.total || 0;
 
-        let query = db.selectFrom("bundles").orderBy("id", "desc");
+        let query = db
+          .selectFrom("bundles")
+          .orderBy("id", orderBy?.direction === "asc" ? "asc" : "desc");
         if (where?.channel) {
           query = query.where("channel", "=", where.channel);
         }
 
         if (where?.platform) {
           query = query.where("platform", "=", where.platform as Platform);
+        }
+        if (where?.enabled !== undefined) {
+          query = query.where("enabled", "=", where.enabled);
+        }
+        if (where?.fingerprintHash !== undefined) {
+          query =
+            where.fingerprintHash === null
+              ? query.where("fingerprint_hash", "is", null)
+              : query.where("fingerprint_hash", "=", where.fingerprintHash);
+        }
+        if (where?.targetAppVersion !== undefined) {
+          query =
+            where.targetAppVersion === null
+              ? query.where("target_app_version", "is", null)
+              : query.where("target_app_version", "=", where.targetAppVersion);
+        }
+        if (where?.targetAppVersionIn) {
+          query = query.where(
+            "target_app_version",
+            "in",
+            where.targetAppVersionIn,
+          );
+        }
+        if (where?.targetAppVersionNotNull) {
+          query = query.where("target_app_version", "is not", null);
+        }
+        if (where?.id?.eq) {
+          query = query.where("id", "=", where.id.eq);
+        }
+        if (where?.id?.gt) {
+          query = query.where("id", ">", where.id.gt);
+        }
+        if (where?.id?.gte) {
+          query = query.where("id", ">=", where.id.gte);
+        }
+        if (where?.id?.lt) {
+          query = query.where("id", "<", where.id.lt);
+        }
+        if (where?.id?.lte) {
+          query = query.where("id", "<=", where.id.lte);
+        }
+        if (where?.id?.in) {
+          query = query.where("id", "in", where.id.in);
         }
 
         if (limit) {

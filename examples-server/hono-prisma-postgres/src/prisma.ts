@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "./generated/prisma";
 import { config } from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";

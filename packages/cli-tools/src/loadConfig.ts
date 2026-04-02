@@ -3,15 +3,10 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import {
-  type CosmiconfigResult,
-  cosmiconfig,
-  cosmiconfigSync,
-} from "cosmiconfig";
-import { TypeScriptLoader } from "cosmiconfig-typescript-loader";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import path from "path";
+import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 import { getCwd } from "./cwd.js";
 
 export type HotUpdaterConfigOptions = {
@@ -100,49 +95,46 @@ const getDefaultConfig = (): ConfigInput => {
 
 export type ConfigResponse = RequiredDeep<ConfigInput>;
 
-const configOptions = {
-  stopDir: getCwd(),
-  searchPlaces: [
-    "hot-updater.config.js",
-    "hot-updater.config.cjs",
-    "hot-updater.config.ts",
-    "hot-updater.config.cts",
-    "hot-updater.config.mjs",
-    "hot-updater.config.mts",
-  ],
-  ignoreEmptySearchPlaces: false,
-  loaders: {
-    ".ts": TypeScriptLoader(),
-    ".mts": TypeScriptLoader(),
-    ".cts": TypeScriptLoader(),
-  },
+const mergeConfigSources = (
+  ...sources: Array<ConfigInput | null | undefined>
+) => {
+  return sources.reduceRight<ConfigInput>(
+    (mergedConfig, source) => merge(mergedConfig, source ?? {}),
+    {} as ConfigInput,
+  );
 };
 
-const ensureConfig = (
-  result: CosmiconfigResult,
+const getConfigLoaderOptions = (
   options: HotUpdaterConfigOptions,
-) => {
-  const config =
-    typeof result?.config === "function"
-      ? result.config(options)
-      : (result?.config as ConfigInput);
+): LoadConfigOptions<ConfigInput> => {
+  const cwd = getCwd();
 
-  const defaultConfig = getDefaultConfig();
-
-  return merge(defaultConfig, config ?? {});
+  return {
+    cwd,
+    stopAt: path.dirname(cwd),
+    merge: false,
+    sources: [
+      {
+        files: "hot-updater.config",
+        extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
+        rewrite: async (config: unknown) => {
+          return typeof config === "function"
+            ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
+                options,
+              )
+            : (config as ConfigInput);
+        },
+      },
+    ],
+  };
 };
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
 ): Promise<ConfigResponse> => {
-  const result = await cosmiconfig("hot-updater", configOptions).search();
+  const { config } = await loadUnconfig<ConfigInput>(
+    getConfigLoaderOptions(options),
+  );
 
-  return ensureConfig(result, options);
-};
-
-export const loadConfigSync = (
-  options: HotUpdaterConfigOptions,
-): ConfigResponse => {
-  const result = cosmiconfigSync("hot-updater", configOptions).search();
-  return ensureConfig(result, options);
+  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
 };

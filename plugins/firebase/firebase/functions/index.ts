@@ -1,12 +1,9 @@
-import {
-  type GetBundlesArgs,
-  NIL_UUID,
-  type Platform,
-} from "@hot-updater/core";
-import * as admin from "firebase-admin";
+import { createHotUpdater } from "@hot-updater/server/runtime";
+import admin from "firebase-admin";
+import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
-import { createFirebaseApp } from "./createFirebaseApp";
-import { getUpdateInfo } from "./getUpdateInfo";
+import { firebaseDatabase } from "../../src/firebaseDatabase";
+import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 
 declare global {
   var HotUpdater: {
@@ -14,9 +11,37 @@ declare global {
   };
 }
 
+export const HOT_UPDATER_BASE_PATH = "/api/check-update";
+
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+
+const adminOptions = admin.app().options;
+const storageBucket = adminOptions.storageBucket;
+const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
+
+if (!storageBucket && !cdnUrl) {
+  throw new Error(
+    "Firebase runtime requires storageBucket or HOT_UPDATER_CDN_URL to resolve bundle URLs.",
+  );
+}
+
+const hotUpdater = createHotUpdater({
+  database: firebaseDatabase(adminOptions),
+  storages: [
+    firebaseFunctionsStorage({
+      ...adminOptions,
+      storageBucket,
+      cdnUrl,
+    }),
+  ],
+  basePath: HOT_UPDATER_BASE_PATH,
+  routes: {
+    updateCheck: true,
+    bundles: false,
+  },
+});
 
 const app = new Hono();
 
@@ -24,224 +49,33 @@ app.get("/ping", (c) => {
   return c.text("pong");
 });
 
-const handleUpdateRequest = async (
-  db: FirebaseFirestore.Firestore,
-  updateConfig: GetBundlesArgs,
-) => {
-  const updateInfo = await getUpdateInfo(db, updateConfig);
+app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
 
-  if (!updateInfo) {
-    return null;
-  }
-
-  const { storageUri, ...rest } = updateInfo;
-
-  if (rest.id === NIL_UUID) {
-    return {
-      ...rest,
-      fileUrl: null,
-    };
-  }
-
-  const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
-
-  if (cdnUrl) {
-    let storagePath: string;
-    if (!storageUri) {
-      storagePath = [rest.id, "bundle.zip"].join("/");
-    } else {
-      const storageUrl = new URL(storageUri);
-      storagePath = storageUrl.pathname.slice(1);
+const handler = onRequest(
+  {
+    region: HotUpdater.REGION,
+  },
+  async (req, res) => {
+    const host = req.hostname;
+    const requestPath = req.originalUrl || req.url;
+    const fullUrl = new URL(requestPath, `https://${host}`).toString();
+    const request = new Request(fullUrl, {
+      method: req.method,
+      headers: req.headers as Record<string, string>,
+      body:
+        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+    });
+    const honoResponse = await app.fetch(request);
+    res.status(honoResponse.status);
+    for (const [key, value] of honoResponse.headers.entries()) {
+      res.setHeader(key, value);
     }
-
-    const baseUrl = cdnUrl.endsWith("/") ? cdnUrl.slice(0, -1) : cdnUrl;
-    return {
-      ...rest,
-      fileUrl: `${baseUrl}/${storagePath}`,
-    };
-  }
-
-  let signedUrl: string | null = null;
-  if (!storageUri) {
-    const [_signedUrl] = await admin
-      .storage()
-      .bucket(admin.app().options.storageBucket)
-      .file([rest.id, "bundle.zip"].join("/"))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
-    signedUrl = _signedUrl;
-  } else {
-    const storageUrl = new URL(storageUri);
-    const [_signedUrl] = await admin
-      .storage()
-      .bucket(storageUrl.host)
-      .file(storageUrl.pathname.slice(1))
-      .getSignedUrl({
-        action: "read",
-        expires: Date.now() + 60 * 1000,
-      });
-    signedUrl = _signedUrl;
-  }
-
-  return {
-    ...rest,
-    fileUrl: signedUrl,
-  };
-};
-
-app.get("/api/check-update", async (c) => {
-  try {
-    const platform = c.req.header("x-app-platform");
-    const appVersion = c.req.header("x-app-version");
-    const bundleId = c.req.header("x-bundle-id");
-    const minBundleId = c.req.header("x-min-bundle-id");
-    const channel = c.req.header("x-channel");
-    const fingerprintHash = c.req.header("x-fingerprint-hash");
-
-    if (!bundleId || !platform) {
-      return c.json(
-        { error: "Missing required headers (x-app-platform, x-bundle-id)." },
-        400,
-      );
-    }
-    if (!appVersion && !fingerprintHash) {
-      return c.json(
-        {
-          error:
-            "Missing required headers (x-app-version or x-fingerprint-hash).",
-        },
-        400,
-      );
-    }
-
-    const db = admin.firestore();
-
-    const updateConfig = fingerprintHash
-      ? ({
-          platform: platform as Platform,
-          fingerprintHash,
-          bundleId,
-          minBundleId: minBundleId || NIL_UUID,
-          channel: channel || "production",
-          _updateStrategy: "fingerprint" as const,
-        } satisfies GetBundlesArgs)
-      : ({
-          platform: platform as Platform,
-          appVersion: appVersion!,
-          bundleId,
-          minBundleId: minBundleId || NIL_UUID,
-          channel: channel || "production",
-          _updateStrategy: "appVersion" as const,
-        } satisfies GetBundlesArgs);
-
-    const result = await handleUpdateRequest(db, updateConfig);
-    return c.json(result, result ? 200 : 200);
-  } catch (error) {
-    if (error instanceof Error) {
-      return c.json(
-        {
-          error: error.message,
-        },
-        500,
-      );
-    }
-    return c.json({ error: "Internal server error" }, 500);
-  }
-});
-
-app.get(
-  "/api/check-update/app-version/:platform/:app-version/:channel/:minBundleId/:bundleId",
-  async (c) => {
-    try {
-      const {
-        platform,
-        "app-version": appVersion,
-        channel,
-        minBundleId,
-        bundleId,
-      } = c.req.param();
-
-      if (!bundleId || !platform) {
-        return c.json(
-          { error: "Missing required parameters (platform, bundleId)." },
-          400,
-        );
-      }
-
-      const db = admin.firestore();
-
-      const updateConfig = {
-        platform: platform as Platform,
-        appVersion,
-        bundleId,
-        minBundleId: minBundleId || NIL_UUID,
-        channel: channel || "production",
-        _updateStrategy: "appVersion" as const,
-      } satisfies GetBundlesArgs;
-
-      const result = await handleUpdateRequest(db, updateConfig);
-      return c.json(result, result ? 200 : 200);
-    } catch (error) {
-      if (error instanceof Error) {
-        return c.json(
-          {
-            error: error.message,
-          },
-          500,
-        );
-      }
-      return c.json({ error: "Internal server error" }, 500);
-    }
+    res.send(await honoResponse.text());
   },
 );
 
-app.get(
-  "/api/check-update/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-  async (c) => {
-    try {
-      const { platform, fingerprintHash, channel, minBundleId, bundleId } =
-        c.req.param();
-
-      if (!bundleId || !platform) {
-        return c.json(
-          { error: "Missing required parameters (platform, bundleId)." },
-          400,
-        );
-      }
-
-      const db = admin.firestore();
-
-      const updateConfig = {
-        platform: platform as Platform,
-        fingerprintHash,
-        bundleId,
-        minBundleId: minBundleId || NIL_UUID,
-        channel: channel || "production",
-        _updateStrategy: "fingerprint" as const,
-      } satisfies GetBundlesArgs;
-
-      const result = await handleUpdateRequest(db, updateConfig);
-      return c.json(result, result ? 200 : 200);
-    } catch (error) {
-      if (error instanceof Error) {
-        return c.json(
-          {
-            error: error.message,
-          },
-          500,
-        );
-      }
-      return c.json({ error: "Internal server error" }, 500);
-    }
-  },
-);
-
-const hotUpdaterFunction = createFirebaseApp({
-  region: HotUpdater.REGION,
-})(app);
-
+// Firebase encodes hyphenated function names as nested entry points,
+// e.g. "hot-updater" -> "hot.updater".
 export const hot = {
-  updater: hotUpdaterFunction,
+  updater: handler,
 };

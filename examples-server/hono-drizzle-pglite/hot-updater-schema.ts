@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, boolean, json, varchar } from "drizzle-orm/pg-core"
+import { pgTable, uuid, text, boolean, json, integer, varchar } from "drizzle-orm/pg-core"
 
 export const bundles = pgTable("bundles", {
   id: uuid("id").primaryKey().notNull(),
@@ -12,10 +12,12 @@ export const bundles = pgTable("bundles", {
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
-  metadata: json("metadata").notNull()
+  metadata: json("metadata").notNull(),
+  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
+  target_cohorts: json("target_cohorts")
 })
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.21.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.29.0")
 })

@@ -1,5 +1,5 @@
 import fs from "fs";
-import { transform } from "oxc-transform";
+import { transformSync } from "oxc-transform";
 
 export const transformEnv = <T extends Record<string, string>>(
   filename: string,
@@ -7,7 +7,7 @@ export const transformEnv = <T extends Record<string, string>>(
 ) => {
   const code = fs.readFileSync(filename, "utf-8");
   return (
-    transform(filename, code, {
+    transformSync(filename, code, {
       define: Object.fromEntries(
         Object.entries(env).map(([key, value]) => [
           `HotUpdater.${key}`,

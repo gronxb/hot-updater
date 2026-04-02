@@ -1,0 +1,16 @@
+appId: ${APP_ID}
+---
+- extendedWaitUntil:
+    visible:
+      id: e2e-nav-cohort-actions
+    timeout: 10000
+- tapOn:
+    id: e2e-nav-cohort-actions
+    retryTapIfNoChange: true
+    waitToSettleTimeoutMs: 2000
+- waitForAnimationToEnd:
+    timeout: 2000
+- extendedWaitUntil:
+    visible:
+      id: section-cohort-actions
+    timeout: 10000

@@ -318,14 +318,15 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
           return HttpResponse.error();
         },
       ),
-      http.post(
-        "http://localhost/hot-updater/api/bundles",
-        async ({ request }) => {
+      http.patch(
+        "http://localhost/hot-updater/api/bundles/:bundleId",
+        async ({ params, request }) => {
           postCalled = true;
-          const body = (await request.json()) as Bundle[];
-          expect(Array.isArray(body)).toBe(true);
-          expect(body[0].id).toBe("00000000-0000-0000-0000-000000000001");
-          expect(body[0].enabled).toBe(false);
+          expect(params.bundleId).toBe("00000000-0000-0000-0000-000000000001");
+          const body = (await request.json()) as Bundle;
+          expect(Array.isArray(body)).toBe(false);
+          expect(body.id).toBe("00000000-0000-0000-0000-000000000001");
+          expect(body.enabled).toBe(false);
           return HttpResponse.json({ success: true });
         },
       ),
@@ -403,7 +404,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
         return HttpResponse.json(testBundles[0]);
       }),
-      http.post("http://localhost/hot-updater/api/bundles", () => {
+      http.patch("http://localhost/hot-updater/api/bundles/:bundleId", () => {
         return new HttpResponse(null, {
           status: 500,
           statusText: "Internal Server Error",
@@ -481,9 +482,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       baseUrl: "http://localhost/api",
       commonHeaders: { Authorization: "Bearer token" },
       routes: {
-        upsert: () => ({
+        create: () => ({
           path: "/custom/bundles",
-          headers: { "X-Custom": "upsert" },
+          headers: { "X-Custom": "create" },
+        }),
+        update: (bundleId: string) => ({
+          path: `/custom/bundles/${bundleId}`,
+          headers: { "X-Custom": "update" },
         }),
         list: () => ({
           path: "/custom/bundles",
@@ -563,7 +568,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       await customRepo.commitBundle();
     });
 
-    it("commitBundle: INSERT/UPDATE operations use custom upsert route and headers", async () => {
+    it("commitBundle: INSERT operations use custom create route and headers", async () => {
       server.use(
         http.post(
           "http://localhost/api/custom/bundles",
@@ -571,7 +576,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
             expect(request.headers.get("Authorization")).toEqual(
               "Bearer token",
             );
-            expect(request.headers.get("X-Custom")).toEqual("upsert");
+            expect(request.headers.get("X-Custom")).toEqual("create");
             const body = (await request.json()) as Bundle[];
             expect(body).toHaveLength(1);
             expect(body[0]).toEqual(testBundles[0]);
@@ -581,6 +586,40 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       );
 
       await customRepo.appendBundle(testBundles[0]);
+      await customRepo.commitBundle();
+    });
+
+    it("commitBundle: UPDATE operations use custom update route and headers", async () => {
+      server.use(
+        http.get("http://localhost/api/custom/bundles", () => {
+          return HttpResponse.json(testBundles);
+        }),
+        http.get(
+          "http://localhost/api/custom/bundles/:bundleId",
+          ({ params }) => {
+            if (params.bundleId === testBundles[0].id) {
+              return HttpResponse.json(testBundles[0]);
+            }
+            return HttpResponse.error();
+          },
+        ),
+        http.patch(
+          "http://localhost/api/custom/bundles/:bundleId",
+          async ({ params, request }) => {
+            expect(params.bundleId).toBe(testBundles[0].id);
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("X-Custom")).toEqual("update");
+            const body = (await request.json()) as Bundle;
+            expect(body.id).toBe(testBundles[0].id);
+            expect(body.enabled).toBe(false);
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await customRepo.updateBundle(testBundles[0].id, { enabled: false });
       await customRepo.commitBundle();
     });
 
@@ -618,6 +657,87 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
       const channels = await customRepo.getChannels();
       expect(channels).toEqual(["production", "qa"]);
+    });
+  });
+
+  describe("Standalone Repository Plugin (Legacy Upsert Routes)", () => {
+    let legacyRepo: DatabasePlugin;
+    const legacyConfig: StandaloneRepositoryConfig = {
+      baseUrl: "http://localhost/api",
+      commonHeaders: { Authorization: "Bearer token" },
+      routes: {
+        upsert: () => ({
+          path: "/legacy/bundles",
+          headers: { "X-Custom": "legacy-upsert" },
+        }),
+        list: () => ({
+          path: "/legacy/bundles",
+        }),
+        retrieve: (bundleId: string) => ({
+          path: `/legacy/bundles/${bundleId}`,
+        }),
+        delete: (bundleId: string) => ({
+          path: `/legacy/bundles/${bundleId}`,
+        }),
+      },
+    };
+
+    beforeEach(() => {
+      legacyRepo = standaloneRepository(legacyConfig)();
+    });
+
+    it("commitBundle: INSERT operations still honor the deprecated upsert route", async () => {
+      server.use(
+        http.post(
+          "http://localhost/api/legacy/bundles",
+          async ({ request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("X-Custom")).toEqual("legacy-upsert");
+            const body = (await request.json()) as Bundle[];
+            expect(body).toHaveLength(1);
+            expect(body[0]).toEqual(testBundles[0]);
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await legacyRepo.appendBundle(testBundles[0]);
+      await legacyRepo.commitBundle();
+    });
+
+    it("commitBundle: UPDATE operations still POST to the deprecated upsert route when no custom update route exists", async () => {
+      server.use(
+        http.get(
+          "http://localhost/api/legacy/bundles/:bundleId",
+          ({ params }) => {
+            if (params.bundleId === testBundles[0].id) {
+              return HttpResponse.json(testBundles[0]);
+            }
+            return HttpResponse.error();
+          },
+        ),
+        http.post(
+          "http://localhost/api/legacy/bundles",
+          async ({ request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("X-Custom")).toEqual("legacy-upsert");
+            const body = (await request.json()) as Bundle[];
+            expect(body).toHaveLength(1);
+            expect(body[0]).toEqual({
+              ...testBundles[0],
+              enabled: false,
+            });
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await legacyRepo.updateBundle(testBundles[0].id, { enabled: false });
+      await legacyRepo.commitBundle();
     });
   });
 });

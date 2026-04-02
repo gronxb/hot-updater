@@ -1,0 +1,13 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Crashed bundle summary matches expected value
+      EXPECTED_TEXT: ${EXPECTED_CRASHED_BUNDLE_RESULT}
+      TARGET_ID: launch-crashed-bundle-result

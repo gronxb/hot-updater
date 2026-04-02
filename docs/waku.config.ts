@@ -23,6 +23,6 @@ export default defineConfig({
         exclude: [/^https?:\/\//, /^#/, /^mailto:/],
         checkOnDev: true,
       }),
-    ] as any,
+    ],
   },
 });

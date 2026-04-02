@@ -52,7 +52,7 @@
     "test:type": "tsc --noEmit",
     "test:watch": "vitest",
     "test:runtime:node": "vitest run tests/runtime.node.test.ts",
-    "test:runtime:endpoints": "vitest run tests/runtime.endpoints.test.ts"
+    "test:runtime:endpoints": "vitest run tests/runtime.endpoints.integration.spec.ts"
   },
   "keywords": [
     "hermes",
@@ -64,9 +64,9 @@
   "repository": "https://github.com/gronxb/hot-updater",
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "tsdown": "0.21.0-beta.2",
+    "tsdown": "catalog:tools",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18",
+    "vitest": "catalog:",
     "wrangler": "^4.69.0"
   },
   "publishConfig": {

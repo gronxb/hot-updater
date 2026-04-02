@@ -5,32 +5,36 @@
   "description": "React Native OTA solution for self-hosted",
   "sideEffects": false,
   "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
     "./adapters/drizzle": {
-      "import": "./dist/adapters/drizzle.js",
+      "import": "./dist/adapters/drizzle.mjs",
       "require": "./dist/adapters/drizzle.cjs"
     },
     "./adapters/kysely": {
-      "import": "./dist/adapters/kysely.js",
+      "import": "./dist/adapters/kysely.mjs",
       "require": "./dist/adapters/kysely.cjs"
     },
     "./adapters/mongodb": {
-      "import": "./dist/adapters/mongodb.js",
+      "import": "./dist/adapters/mongodb.mjs",
       "require": "./dist/adapters/mongodb.cjs"
     },
     "./adapters/prisma": {
-      "import": "./dist/adapters/prisma.js",
+      "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
     "./node": {
-      "import": "./dist/node.js",
+      "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"
+    },
+    "./runtime": {
+      "import": "./dist/runtime.mjs",
+      "require": "./dist/runtime.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -59,15 +63,11 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@hot-updater/aws": "workspace:*",
-    "@hot-updater/cloudflare": "workspace:*",
-    "@hot-updater/firebase": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
-    "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
-    "execa": "^9.5.2",
+    "execa": "catalog:tools",
     "kysely": "^0.28.9",
     "kysely-pglite-dialect": "^1.2.0",
     "msw": "^2.7.0",

@@ -18,6 +18,10 @@ jobs:
         with:
           node-version-file: .node-version
           cache: "pnpm"
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+        with:
+          install_args: "bun deno"
       - run: pnpm install
       - name: Build
         run: pnpm build
@@ -29,3 +33,5 @@ jobs:
         run: pnpm lint
       - name: Unit test
         run: pnpm test
+      - name: Integration test
+        run: pnpm test:integration
