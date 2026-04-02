@@ -1,7 +1,0 @@
-appId: ${APP_ID}
----
-- runFlow:
-    file: navigate-actions.yaml
-    env:
-      APP_ID: ${APP_ID}
-- assertVisible: Install Current Channel Update

@@ -4,8 +4,13 @@ appId: ${APP_ID}
     file: navigate-actions.yaml
     env:
       APP_ID: ${APP_ID}
-- copyTextFrom:
-    id: current-channel-summary
-- assertTrue:
-    condition: ${maestro.copiedText.includes(EXPECTED_CHANNEL_SUMMARY)}
-    label: Current channel summary matches expected value
+- retry:
+    maxRetries: 3
+    commands:
+      - assertVisible:
+          id: current-channel-summary
+      - copyTextFrom:
+          id: current-channel-summary
+      - assertTrue:
+          condition: ${maestro.copiedText.includes(EXPECTED_CHANNEL_SUMMARY)}
+          label: Current channel summary matches expected value

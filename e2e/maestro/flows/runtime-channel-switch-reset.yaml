@@ -18,7 +18,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in channel state before switching to a runtime channel.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -66,10 +71,11 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
 - runFlow:
-    file: subflows/assert-update-action-result.yaml
+    file: subflows/assert-channel-action-result.yaml
     env:
       APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: runtime-channel:${RUNTIME_CHANNEL} -> installed ${output.runtimeBundleId} (UPDATE)"
+      EXPECTED_CHANNEL_ACTION_RESULT: "Channel Action Result: runtime-channel -> ${RUNTIME_CHANNEL}"
+# The intermediate action string differs by platform, so verify the reloaded beta state.
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
@@ -82,10 +88,16 @@ onFlowComplete:
       EXPECTED_BUNDLE_ID: ${output.runtimeBundleId}
       EXPECTED_MARKER: ${RUNTIME_MARKER}
 - runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
     file: subflows/assert-channel-summary.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=beta default=production switched=true"
+# Reset the runtime channel and confirm the app returns to the built-in bundle.
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
@@ -108,10 +120,19 @@ onFlowComplete:
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
 - runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
     file: subflows/assert-channel-summary.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - runScript:
     file: ../scripts/control.js
     env:

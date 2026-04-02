@@ -19,7 +19,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in bundle before installing previous and current OTAs.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -31,6 +36,7 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+# Install the previous OTA that should remain after current is disabled.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -42,7 +48,11 @@ onFlowComplete:
       MODE: reset
       OUTPUT_KEY: previousBundleId
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -50,7 +60,11 @@ onFlowComplete:
       BUNDLE_ID: ${output.previousBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -68,6 +82,7 @@ onFlowComplete:
       ACTION: assertMetadataActive
       BUNDLE_ID: ${output.previousBundleId}
       CONTROL_URL: ${CONTROL_URL}
+# Install the current OTA, then disable it to confirm rollback to previous OTA.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -79,7 +94,11 @@ onFlowComplete:
       MODE: reset
       OUTPUT_KEY: currentBundleId
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -87,7 +106,11 @@ onFlowComplete:
       BUNDLE_ID: ${output.currentBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -112,13 +135,31 @@ onFlowComplete:
       BUNDLE_ID: ${output.currentBundleId}
       CONTROL_URL: ${CONTROL_URL}
       ENABLED: "false"
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.previousBundleId}
       EXPECTED_MARKER: ${PREVIOUS_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - runScript:
     file: ../scripts/control.js
     env:

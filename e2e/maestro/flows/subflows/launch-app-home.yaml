@@ -1,0 +1,22 @@
+appId: ${APP_ID}
+---
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 3000
+- retry:
+    maxRetries: 3
+    commands:
+      - runScript:
+          file: ../../scripts/control.js
+          env:
+            ACTION: ensureAppForeground
+            CONTROL_URL: ${CONTROL_URL}
+      - tapOn:
+          id: android:id/aerr_wait
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - extendedWaitUntil:
+          visible:
+            id: e2e-nav-top
+          timeout: 6000

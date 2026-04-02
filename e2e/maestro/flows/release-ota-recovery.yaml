@@ -19,7 +19,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in bundle before any remote deployment.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -31,6 +36,7 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+# Deploy a stable OTA and confirm it becomes the active bundle.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -42,7 +48,11 @@ onFlowComplete:
       MODE: reset
       OUTPUT_KEY: stableBundleId
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -50,7 +60,11 @@ onFlowComplete:
       BUNDLE_ID: ${output.stableBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -63,10 +77,9 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
 - runFlow:
-    file: subflows/navigate-crash-history.yaml
+    file: subflows/assert-empty-crash-history.yaml
     env:
       APP_ID: ${APP_ID}
-- assertVisible: ${output.emptyCrashHistoryText}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -86,6 +99,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       OPTIONAL: "true"
       STATUS: STABLE
+# Deploy a crash bundle, then verify automatic recovery back to stable.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -98,7 +112,11 @@ onFlowComplete:
       OUTPUT_KEY: crashBundleId
       SAFE_BUNDLE_IDS: ${output.builtInBundleId},${output.stableBundleId}
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -106,7 +124,11 @@ onFlowComplete:
       BUNDLE_ID: ${output.crashBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- launchApp
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -120,6 +142,16 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.stableBundleId}
       EXPECTED_MARKER: ${STABLE_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: RECOVERED"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: ${output.crashBundleId}"
 - runScript:
     file: ../scripts/control.js
     env:

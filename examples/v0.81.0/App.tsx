@@ -31,7 +31,7 @@ const notify = proxy<{
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
-const E2E_SCENARIO_MARKER = "runtime-channel-beta-maestro";
+const E2E_SCENARIO_MARKER = "builtin-ios-maestro";
 
 function maybeCrashForE2E() {
   /* E2E_CRASH_GUARD_START */
@@ -62,7 +62,11 @@ type RuntimeSnapshot = {
   minBundleId: string;
 };
 
-type ScrollTarget = "actionResults" | "actions" | "crashHistory";
+type ScrollTarget =
+  | "actionResults"
+  | "actions"
+  | "cohortActions"
+  | "crashHistory";
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
@@ -104,13 +108,17 @@ const Section = ({
   children,
   onLayout,
   title,
+  titleTestID,
 }: {
   children: React.ReactNode;
   onLayout?: (event: LayoutChangeEvent) => void;
   title: string;
+  titleTestID?: string;
 }) => (
   <View onLayout={onLayout} style={styles.section}>
-    <Text style={styles.sectionTitle}>{title}</Text>
+    <Text style={styles.sectionTitle} testID={titleTestID}>
+      {title}
+    </Text>
     {children}
   </View>
 );
@@ -185,11 +193,13 @@ function App(): React.JSX.Element {
   const sectionOffsets = useRef<Record<ScrollTarget, number>>({
     actionResults: 0,
     actions: 0,
+    cohortActions: 0,
     crashHistory: 0,
   });
   const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
   const [cohortInput, setCohortInput] = useState(() => initialCohort);
+  const cohortInputRef = useRef(initialCohort);
   const [channelActionResult, setChannelActionResult] = useState("idle");
   const [cohortActionResult, setCohortActionResult] = useState("idle");
   const [updateActionResult, setUpdateActionResult] = useState("idle");
@@ -320,14 +330,33 @@ function App(): React.JSX.Element {
 
   const applyCohortValue = (nextCohort: string) => {
     HotUpdater.setCohort(nextCohort);
-    setCohortInput(HotUpdater.getCohort());
+    const appliedCohort = HotUpdater.getCohort();
+    cohortInputRef.current = appliedCohort;
+    setCohortInput(appliedCohort);
     refreshRuntimeSnapshot();
-    setCohortActionResult(`set -> ${HotUpdater.getCohort()}`);
+    setCohortActionResult(`set -> ${appliedCohort}`);
   };
 
   const applyCohortInput = () => {
     try {
-      applyCohortValue(cohortInput);
+      applyCohortValue(cohortInputRef.current);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to set cohort";
+      setCohortActionResult(`set -> error ${message}`);
+    }
+  };
+
+  const updateCohortInput = (nextCohort: string) => {
+    cohortInputRef.current = nextCohort;
+    setCohortInput(nextCohort);
+  };
+
+  const submitCohortInput = (nextCohort: string) => {
+    updateCohortInput(nextCohort);
+
+    try {
+      applyCohortValue(nextCohort);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to set cohort";
@@ -363,6 +392,11 @@ function App(): React.JSX.Element {
           title="Jump to Actions"
         />
         <E2ENavButton
+          onPress={() => scrollToSection("cohortActions")}
+          testID="e2e-nav-cohort-actions"
+          title="Jump to Cohorts"
+        />
+        <E2ENavButton
           onPress={() => scrollToSection("actionResults")}
           testID="e2e-nav-action-results"
           title="Jump to Results"
@@ -371,10 +405,13 @@ function App(): React.JSX.Element {
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
       >
-        <Section title="Runtime Snapshot">
+        <Section
+          title="Runtime Snapshot"
+          titleTestID="section-runtime-snapshot"
+        >
           <InfoRow
             label="Bundle ID"
             value={runtimeSnapshot.bundleId}
@@ -396,7 +433,7 @@ function App(): React.JSX.Element {
           />
         </Section>
 
-        <Section title="Launch Status">
+        <Section title="Launch Status" titleTestID="section-launch-status">
           <InfoRow
             label="Download Progress"
             value={`${Math.round(progress * 100)}%`}
@@ -422,10 +459,16 @@ function App(): React.JSX.Element {
 
         <Section
           onLayout={recordSectionOffset("crashHistory")}
+          titleTestID="section-crash-history"
           title={`Crash History (${runtimeSnapshot.crashHistory.length})`}
         >
           {runtimeSnapshot.crashHistory.length === 0 ? (
-            <Text style={styles.emptyState}>No crashed bundles recorded.</Text>
+            <Text
+              style={styles.emptyState}
+              testID="crash-history-empty-state"
+            >
+              No crashed bundles recorded.
+            </Text>
           ) : (
             runtimeSnapshot.crashHistory.map((crash) => (
               <Text key={crash} selectable style={styles.crashItem}>
@@ -435,7 +478,10 @@ function App(): React.JSX.Element {
           )}
         </Section>
 
-        <Section title="OTA Asset Preview">
+        <Section
+          title="OTA Asset Preview"
+          titleTestID="section-ota-asset-preview"
+        >
           <Text style={styles.bodyText}>
             The preview image stays in the scroll flow so snapshot-based checks
             can compare the visual asset and the file hashes below.
@@ -448,7 +494,10 @@ function App(): React.JSX.Element {
           </View>
         </Section>
 
-        <Section title={`Manifest Assets (${manifestAssetEntries.length})`}>
+        <Section
+          title={`Manifest Assets (${manifestAssetEntries.length})`}
+          titleTestID="section-manifest-assets"
+        >
           {manifestAssetEntries.length === 0 ? (
             <Text style={styles.emptyState}>
               No manifest assets were found for the active bundle.
@@ -468,7 +517,7 @@ function App(): React.JSX.Element {
           )}
         </Section>
 
-        <Section title="Runtime Details">
+        <Section title="Runtime Details" titleTestID="section-runtime-details">
           <InfoRow label="Base URL" value={HOT_UPDATER_BASE_URL} />
           <InfoRow label="Channel" value={runtimeSnapshot.channel} />
           <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
@@ -493,7 +542,11 @@ function App(): React.JSX.Element {
           <InfoRow label="Base URL" value={runtimeSnapshot.baseURL ?? "null"} />
         </Section>
 
-        <Section onLayout={recordSectionOffset("actions")} title="Actions">
+        <Section
+          onLayout={recordSectionOffset("actions")}
+          title="Actions"
+          titleTestID="section-actions"
+        >
           <Text
             selectable
             style={styles.actionResult}
@@ -535,10 +588,12 @@ function App(): React.JSX.Element {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="default"
-              onChangeText={setCohortInput}
-              onEndEditing={(event) => setCohortInput(event.nativeEvent.text)}
+              onChangeText={updateCohortInput}
+              onEndEditing={(event) =>
+                updateCohortInput(event.nativeEvent.text)
+              }
               onSubmitEditing={(event) =>
-                setCohortInput(event.nativeEvent.text)
+                submitCohortInput(event.nativeEvent.text)
               }
               placeholder={initialCohort}
               placeholderTextColor="#94a3b8"
@@ -596,6 +651,13 @@ function App(): React.JSX.Element {
               testID="action-apply-cohort-input"
             />
           </View>
+        </Section>
+
+        <Section
+          onLayout={recordSectionOffset("cohortActions")}
+          title="Cohort Actions"
+          titleTestID="section-cohort-actions"
+        >
           <View style={styles.buttonBlock}>
             <ActionButton
               title="Set Cohort qa"
@@ -615,6 +677,7 @@ function App(): React.JSX.Element {
         <Section
           onLayout={recordSectionOffset("actionResults")}
           title="Action Results"
+          titleTestID="section-action-results"
         >
           <Text
             selectable

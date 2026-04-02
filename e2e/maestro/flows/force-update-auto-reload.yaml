@@ -18,7 +18,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in bundle before force-update deployment.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -42,7 +47,12 @@ onFlowComplete:
       MODE: reset
       OUTPUT_KEY: forceBundleId
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- launchApp
+# Launch again and confirm the force update auto-reloaded into place.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -55,10 +65,9 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
 - runFlow:
-    file: subflows/navigate-crash-history.yaml
+    file: subflows/assert-empty-crash-history.yaml
     env:
       APP_ID: ${APP_ID}
-- assertVisible: ${output.emptyCrashHistoryText}
 - runScript:
     file: ../scripts/control.js
     env:

@@ -8,6 +8,6 @@ appId: ${APP_ID}
     file: assert-text-by-id.yaml
     env:
       APP_ID: ${APP_ID}
-      ASSERTION_LABEL: Crashed bundle summary includes expected bundle id
-      EXPECTED_TEXT: ${EXPECTED_CRASHED_BUNDLE_ID}
+      ASSERTION_LABEL: Crashed bundle summary matches expected value
+      EXPECTED_TEXT: ${EXPECTED_CRASHED_BUNDLE_RESULT}
       TARGET_ID: launch-crashed-bundle-result

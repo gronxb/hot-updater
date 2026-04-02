@@ -1320,49 +1320,67 @@ function launchAndroidApp() {
   );
 }
 
+function parseAndroidFocusedPackage(output: string) {
+  const patterns = [
+    /mCurrentFocus=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+    /mFocusedApp=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+    /topResumedActivity=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+    /mResumedActivity:.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = output.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
 function getAndroidFocusedPackage() {
-  runCapture(
+  const windowOutput = runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
+    { allowFailure: true },
+  );
+  const focusedWindowPackage = parseAndroidFocusedPackage(windowOutput);
+  if (focusedWindowPackage) {
+    return focusedWindowPackage;
+  }
+
+  const activityOutput = runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "activity", "activities"],
+    { allowFailure: true },
+  );
+  return parseAndroidFocusedPackage(activityOutput);
+}
+
+function getAndroidHomePackage() {
+  const resolvedActivity = runCapture(
     "adb",
     [
       "-s",
       deviceId as string,
       "shell",
-      "uiautomator",
-      "dump",
-      "/sdcard/window_dump.xml",
+      "cmd",
+      "package",
+      "resolve-activity",
+      "--brief",
+      "-a",
+      "android.intent.action.MAIN",
+      "-c",
+      "android.intent.category.HOME",
     ],
     { allowFailure: true },
-  );
-  const xml = runCapture(
-    "adb",
-    ["-s", deviceId as string, "exec-out", "cat", "/sdcard/window_dump.xml"],
-    { allowFailure: true },
-  );
-  const rootPackageMatch = xml.match(/package="([A-Za-z0-9._]+)"/);
-  if (rootPackageMatch?.[1]) {
-    return rootPackageMatch[1];
-  }
+  )
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
 
-  const output = runCapture("adb", [
-    "-s",
-    deviceId as string,
-    "shell",
-    "dumpsys",
-    "window",
-    "windows",
-  ]);
-
-  const currentFocusMatch = output.match(
-    /mCurrentFocus=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
-  );
-  if (currentFocusMatch?.[1]) {
-    return currentFocusMatch[1];
-  }
-
-  const focusedAppMatch = output.match(
-    /mFocusedApp=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
-  );
-  return focusedAppMatch?.[1] ?? null;
+  return resolvedActivity?.split("/")[0] ?? null;
 }
 
 async function waitForIosMetadataState(
@@ -1476,6 +1494,7 @@ async function ensureAppForeground() {
   }
 
   let focusedPackage = getAndroidFocusedPackage();
+  const homePackage = getAndroidHomePackage();
   if (focusedPackage === session.appId) {
     return {};
   }
@@ -1485,21 +1504,86 @@ async function ensureAppForeground() {
     targetAppId: session.appId,
   });
 
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "input", "keyevent", "KEYCODE_BACK"],
-    { allowFailure: true },
-  );
-  await sleep(500);
+  const recoverySteps: Array<{
+    delayMs: number;
+    label: string;
+    run: () => Promise<void>;
+  }> = [];
 
-  focusedPackage = getAndroidFocusedPackage();
-  if (focusedPackage === session.appId) {
-    return {};
+  if (focusedPackage && focusedPackage !== homePackage) {
+    recoverySteps.push({
+      delayMs: 750,
+      label: "dismiss-dialog",
+      run: async () => {
+        runCapture(
+          "adb",
+          [
+            "-s",
+            deviceId as string,
+            "shell",
+            "input",
+            "keyevent",
+            "KEYCODE_BACK",
+          ],
+          { allowFailure: true },
+        );
+      },
+    });
   }
 
-  launchAndroidApp();
-  await sleep(1500);
-  return {};
+  recoverySteps.push(
+    {
+      delayMs: 1500,
+      label: "relaunch-app",
+      run: async () => {
+        launchAndroidApp();
+      },
+    },
+    {
+      delayMs: 2000,
+      label: "home-and-relaunch",
+      run: async () => {
+        runCapture(
+          "adb",
+          [
+            "-s",
+            deviceId as string,
+            "shell",
+            "input",
+            "keyevent",
+            "KEYCODE_HOME",
+          ],
+          { allowFailure: true },
+        );
+        await sleep(500);
+        launchAndroidApp();
+      },
+    },
+  );
+
+  for (const step of recoverySteps) {
+    await step.run();
+    await sleep(step.delayMs);
+    focusedPackage = getAndroidFocusedPackage();
+
+    if (focusedPackage === session.appId) {
+      logE2e("android ensure foreground recovered", {
+        recoveryStep: step.label,
+        targetAppId: session.appId,
+      });
+      return {};
+    }
+
+    logE2e("android ensure foreground retry", {
+      focusedPackage,
+      recoveryStep: step.label,
+      targetAppId: session.appId,
+    });
+  }
+
+  throw new Error(
+    `Failed to bring ${session.appId} to foreground (focused package: ${focusedPackage ?? "unknown"})`,
+  );
 }
 
 async function bootstrap() {

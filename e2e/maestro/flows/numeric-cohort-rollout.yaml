@@ -18,7 +18,12 @@ onFlowComplete:
         ACTION: cleanup
         CONTROL_URL: ${CONTROL_URL}
 ---
-- launchApp
+# Verify the built-in bundle before cohort rollout deployment.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -49,6 +54,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.rolloutBundleId}
       CONTROL_URL: ${CONTROL_URL}
       OUTPUT_PREFIX: rollout
+# Included cohort should install the rollout bundle.
 - runFlow:
     file: subflows/set-text-input.yaml
     env:
@@ -56,11 +62,6 @@ onFlowComplete:
       FIELD_ID: cohort-input
       FIELD_LABEL: Cohort Override Input
       FIELD_VALUE: ${output.rolloutIncludedCohort}
-- runFlow:
-    file: subflows/tap-action-button.yaml
-    env:
-      APP_ID: ${APP_ID}
-      BUTTON_ID: action-apply-cohort-input
 - runFlow:
     file: subflows/assert-cohort-action-result.yaml
     env:
@@ -104,6 +105,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_CHANNEL_SUMMARY: "Current Channel Summary: current=production default=production switched=false"
+# Excluded cohort should unwind the ineligible rollout back to the built-in state.
 - runFlow:
     file: subflows/set-text-input.yaml
     env:
@@ -111,11 +113,6 @@ onFlowComplete:
       FIELD_ID: cohort-input
       FIELD_LABEL: Cohort Override Input
       FIELD_VALUE: ${output.rolloutExcludedCohort}
-- runFlow:
-    file: subflows/tap-action-button.yaml
-    env:
-      APP_ID: ${APP_ID}
-      BUTTON_ID: action-apply-cohort-input
 - runFlow:
     file: subflows/assert-cohort-action-result.yaml
     env:
@@ -131,6 +128,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+# The intermediate action string differs by platform, so verify the reset outcome directly.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -147,6 +145,15 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 - runFlow:
     file: subflows/assert-channel-summary.yaml
     env:
