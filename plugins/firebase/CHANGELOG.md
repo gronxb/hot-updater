@@ -1,5 +1,25 @@
 # @hot-updater/firebase
 
+## 0.29.0
+
+### Minor Changes
+
+- a935992: feat: Rollout feature with control from 1% to 100%
+- a935992: Add provider-specific serverless plugins for `createHotUpdater()` and refactor
+  the managed runtimes to use `hotUpdater.handler` directly with a legacy exact-path
+  rewrite route.
+
+### Patch Changes
+
+- d0fe908: fix(console): rebuild copied bundles with fresh uuidv7 ids
+- Updated dependencies [a935992]
+- Updated dependencies [d0fe908]
+- Updated dependencies [a935992]
+  - @hot-updater/plugin-core@0.29.0
+  - @hot-updater/cli-tools@0.29.0
+  - @hot-updater/server@0.29.0
+  - @hot-updater/core@0.29.0
+
 ## 0.28.0
 
 ### Patch Changes

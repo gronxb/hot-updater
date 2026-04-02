@@ -1,5 +1,15 @@
 # @hot-updater/core
 
+## 0.29.0
+
+### Minor Changes
+
+- a935992: feat: Rollout feature with control from 1% to 100%
+
+### Patch Changes
+
+- d0fe908: fix(console): rebuild copied bundles with fresh uuidv7 ids
+
 ## 0.28.0
 
 ## 0.27.1
