@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useChannelsQuery, usePromoteBundleMutation } from "@/lib/api";
-import { canSdkVersion } from "@/lib/sdkVersionGuard";
 import { createUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 
 interface PromoteChannelDialogProps {
@@ -48,7 +47,6 @@ export function PromoteChannelDialog({
   const promoteBundleMutation = usePromoteBundleMutation();
 
   const availableChannels = channels.filter((c) => c !== bundle.channel);
-  const canCopy = canSdkVersion("0.29.0");
   const isCopy = action === "copy";
   const normalizedTargetChannel = targetChannel.trim();
   const isSameChannel = normalizedTargetChannel === bundle.channel;
@@ -87,13 +85,6 @@ export function PromoteChannelDialog({
 
     if (isSameChannel) {
       toast.error("Target channel must be different from the current channel");
-      return;
-    }
-
-    if (isCopy && !canCopy) {
-      toast.error(
-        "Copy bundle with metadata.json rewrite is only available for hot-updater SDK version 0.29.0 or later.",
-      );
       return;
     }
 
@@ -155,9 +146,7 @@ export function PromoteChannelDialog({
             </Select>
             <p className="text-xs text-muted-foreground">
               {isCopy
-                ? canCopy
-                  ? "Create a new bundle in the target channel and keep the original in the current channel."
-                  : "Copy bundle with metadata.json rewrite is only available for hot-updater SDK version 0.29.0 or later."
+                ? "Create a new bundle in the target channel and keep the original in the current channel."
                 : "Move the current bundle to the target channel without creating a new bundle ID."}
             </p>
           </div>
@@ -225,7 +214,6 @@ export function PromoteChannelDialog({
             onClick={handlePromote}
             disabled={
               !normalizedTargetChannel ||
-              (isCopy && !canCopy) ||
               (isCopy && !copyBundleId) ||
               isSameChannel ||
               promoteBundleMutation.isPending

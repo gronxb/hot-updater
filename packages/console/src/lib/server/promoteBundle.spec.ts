@@ -4,10 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
-import type {
-  Bundle,
-  StoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { Bundle, StoragePlugin } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
 import { afterEach, describe, expect, it, vi } from "vitest";
