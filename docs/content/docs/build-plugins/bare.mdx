@@ -17,6 +17,7 @@ interface BarePluginConfig {
   outDir?: string;           // Output directory (default: "dist")
   entryFile?: string;        // Entry file (default: "index.js")
   sourcemap?: boolean;       // Generate sourcemaps (default: false)
+  resetCache?: boolean;      // Reset Metro cache before bundling (default: true)
   enableHermes: boolean;     // Use Hermes compiler (required)
 }
 ```
