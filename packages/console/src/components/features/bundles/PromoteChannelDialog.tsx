@@ -1,7 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,7 +51,7 @@ export function PromoteChannelDialog({
   const normalizedTargetChannel = targetChannel.trim();
   const isSameChannel = normalizedTargetChannel === bundle.channel;
   const displayedCopyBundleId = copyBundleId || "Generating bundle ID...";
-
+  _displayedCopyBundleId;
   const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
 
@@ -137,10 +136,7 @@ export function PromoteChannelDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="promote-action">Action</Label>
-            <Select
-              value={action}
-              onValueChange={handleActionChange}
-            >
+            <Select value={action} onValueChange={handleActionChange}>
               <SelectTrigger id="promote-action">
                 <SelectValue placeholder="Select an action" />
               </SelectTrigger>
@@ -155,25 +151,6 @@ export function PromoteChannelDialog({
                 : "Move the current bundle to the target channel without creating a new bundle ID."}
             </p>
           </div>
-
-          {isCopy && (
-            <Alert>
-              <AlertTitle>Copy bundle ID</AlertTitle>
-              <AlertDescription className="space-y-2">
-                <p>
-                  Console will rebuild the copied archive with this new bundle
-                  ID.
-                </p>
-                <p className="break-all font-mono text-[11px]">
-                  {displayedCopyBundleId}
-                </p>
-                <p>
-                  Bundles created without <code>manifest.json</code> cannot be
-                  copied.
-                </p>
-              </AlertDescription>
-            </Alert>
-          )}
 
           <div className="space-y-2">
             <Label htmlFor="target-channel">Target Channel</Label>
