@@ -17,6 +17,7 @@ interface RunBundleArgs {
   platform: string;
   buildPath: string;
   sourcemap: boolean;
+  resetCache: boolean;
 }
 
 const isHermesEnabled = (cwd: string, platform: string): boolean => {
@@ -44,6 +45,7 @@ const runBundle = async ({
   platform,
   buildPath,
   sourcemap,
+  resetCache,
 }: RunBundleArgs) => {
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
@@ -64,7 +66,7 @@ const runBundle = async ({
     "--assets-dest",
     buildPath,
     ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
-    "--reset-cache",
+    ...(resetCache ? ["--reset-cache"] : []),
   ];
 
   log.normal("\n");
@@ -108,12 +110,17 @@ export interface ExpoPluginConfig extends BuildPluginConfig {
    * Whether to generate sourcemap for the bundle.
    */
   sourcemap?: boolean;
+  /**
+   * @default true
+   * Whether to reset the Metro cache before bundling.
+   */
+  resetCache?: boolean;
 }
 
 export const expo =
   (config: ExpoPluginConfig = { outDir: "dist", sourcemap: false }) =>
   ({ cwd }: BasePluginArgs): BuildPlugin => {
-    const { outDir = "dist", sourcemap = false } = config;
+    const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       nativeBuild: {
         prebuild: async ({ platform }) => {
@@ -131,6 +138,7 @@ export const expo =
           platform,
           buildPath,
           sourcemap,
+          resetCache,
         });
 
         return {

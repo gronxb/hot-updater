@@ -17,6 +17,7 @@ interface RunBundleArgs {
   buildPath: string;
   sourcemap: boolean;
   enableHermes: boolean;
+  resetCache: boolean;
 }
 
 const runBundle = async ({
@@ -26,6 +27,7 @@ const runBundle = async ({
   buildPath,
   sourcemap,
   enableHermes,
+  resetCache,
 }: RunBundleArgs) => {
   const reactNativePath = require.resolve("react-native/package.json", {
     paths: [cwd],
@@ -52,7 +54,7 @@ const runBundle = async ({
     "--minify",
     String(!enableHermes),
     ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
-    "--reset-cache",
+    ...(resetCache ? ["--reset-cache"] : []),
   ];
 
   log.normal("\n");
@@ -105,6 +107,11 @@ export interface BarePluginConfig extends BuildPluginConfig {
    * @recommended true
    */
   enableHermes: boolean;
+  /**
+   * @default true
+   * Whether to reset the Metro cache before bundling.
+   */
+  resetCache?: boolean;
 }
 
 export const bare =
@@ -115,6 +122,7 @@ export const bare =
       sourcemap = false,
       entryFile = "index.js",
       enableHermes,
+      resetCache = true,
     } = config;
     return {
       build: async ({ platform }) => {
@@ -130,6 +138,7 @@ export const bare =
           buildPath,
           sourcemap,
           enableHermes,
+          resetCache,
         });
 
         return {
