@@ -1,5 +1,13 @@
 # @hot-updater/bare
 
+## 0.29.1
+
+### Patch Changes
+
+- c283b5f: feat: add resetCache option to `bare` and `expo` plugin configurations
+  - @hot-updater/cli-tools@0.29.1
+  - @hot-updater/plugin-core@0.29.1
+
 ## 0.29.0
 
 ### Minor Changes
