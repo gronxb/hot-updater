@@ -1,5 +1,25 @@
 # hot-updater
 
+## 1.0.0
+
+### Minor Changes
+
+- a935992: feat: Rollout feature with control from 1% to 100%
+
+### Patch Changes
+
+- d0fe908: fix(console): rebuild copied bundles with fresh uuidv7 ids
+- Updated dependencies [a935992]
+- Updated dependencies [d0fe908]
+- Updated dependencies [a935992]
+  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/cli-tools@1.0.0
+  - @hot-updater/console@1.0.0
+  - @hot-updater/server@1.0.0
+  - @hot-updater/core@1.0.0
+  - @hot-updater/android-helper@1.0.0
+  - @hot-updater/apple-helper@1.0.0
+
 ## 0.28.0
 
 ### Patch Changes

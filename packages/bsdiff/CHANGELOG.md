@@ -1,5 +1,11 @@
 # @hot-updater/bsdiff
 
+## 1.0.0
+
+### Patch Changes
+
+- d0fe908: fix(console): rebuild copied bundles with fresh uuidv7 ids
+
 ## 0.28.0
 
 ## 0.27.1
