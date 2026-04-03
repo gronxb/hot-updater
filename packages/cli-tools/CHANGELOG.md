@@ -1,5 +1,12 @@
 # @hot-updater/cli-tools
 
+## 0.29.2
+
+### Patch Changes
+
+- 2a1bc80: fix: node deps bundling
+  - @hot-updater/plugin-core@0.29.2
+
 ## 0.29.1
 
 ### Patch Changes

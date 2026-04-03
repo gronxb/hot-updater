@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 0.29.2
+
+### Patch Changes
+
+- Updated dependencies [2a1bc80]
+  - @hot-updater/cli-tools@0.29.2
+
 ## 0.29.1
 
 ### Patch Changes

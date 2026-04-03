@@ -1,5 +1,11 @@
 # @hot-updater/core
 
+## 0.29.2
+
+### Patch Changes
+
+- 2a1bc80: fix: node deps bundling
+
 ## 0.29.1
 
 ## 0.29.0
