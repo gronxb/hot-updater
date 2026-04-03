@@ -253,6 +253,7 @@ export const deploy = async (options: DeployOptions) => {
   const deploymentContext = [
     `Channel: ${channel}`,
     `Rollout: ${rolloutPercentage}%`,
+    ...(config.signing?.enabled ? ["Signing: active"] : []),
     config.updateStrategy === "fingerprint"
       ? `Fingerprint: ${target.fingerprintHash}`
       : `Target app version: ${semverValid(target.appVersion)}`,
@@ -311,6 +312,8 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
+          let bundleSigned = false;
+
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
@@ -387,9 +390,6 @@ export const deploy = async (options: DeployOptions) => {
               );
             }
 
-            const s = p.spinner();
-            s.start("Signing bundle");
-
             try {
               const signature = await signBundle(
                 fileHash,
@@ -398,9 +398,8 @@ export const deploy = async (options: DeployOptions) => {
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
-              s.stop("Bundle signed successfully");
+              bundleSigned = true;
             } catch (error) {
-              s.error("Failed to sign bundle");
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
                 "Ensure private key path is correct and file has proper permissions",
@@ -409,13 +408,15 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
-          return `✅ Build Complete (${buildPlugin.name})`;
+          return bundleSigned
+            ? `✅ Build Complete (${buildPlugin.name}, signed)`
+            : `✅ Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      console.log(taskRef.buildResult.stdout.trim());
+      p.note(taskRef.buildResult.stdout.trim(), "Build Output");
     }
 
     await p.tasks([
@@ -490,10 +491,6 @@ export const deploy = async (options: DeployOptions) => {
     if (!bundleId) {
       throw new Error("Bundle ID not found");
     }
-
-    const deploymentSummary = `Bundle ID: ${bundleId}`;
-
-    p.note(deploymentSummary, "Result");
 
     if (options.interactive) {
       const port = await getConsolePort(config);
