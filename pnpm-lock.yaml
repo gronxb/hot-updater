@@ -1291,9 +1291,6 @@ importers:
 
   packages/cli-tools:
     dependencies:
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../core
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core

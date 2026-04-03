@@ -6,32 +6,11 @@
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
-  "react-native": "./dist/react-native.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
-    },
-    "./hotUpdateDirUtil": {
-      "import": "./dist/hotUpdateDirUtil.mjs",
-      "require": "./dist/hotUpdateDirUtil.cjs"
-    },
-    "./react-native": {
-      "import": "./dist/react-native.mjs",
-      "require": "./dist/react-native.cjs"
-    },
-    "./rollout": {
-      "import": "./dist/rollout.mjs",
-      "require": "./dist/rollout.cjs"
-    },
-    "./types": {
-      "import": "./dist/types.mjs",
-      "require": "./dist/types.cjs"
-    },
-    "./uuid": {
-      "import": "./dist/uuid.mjs",
-      "require": "./dist/uuid.cjs"
     },
     "./package.json": "./package.json"
   },

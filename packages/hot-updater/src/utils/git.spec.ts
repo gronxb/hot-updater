@@ -1,4 +1,4 @@
-import { HotUpdateDirUtil } from "@hot-updater/core";
+import { HotUpdateDirUtil } from "@hot-updater/cli-tools";
 import { mockReactNativeProjectRoot } from "@hot-updater/test-utils/node";
 import fs from "fs";
 import path from "path";

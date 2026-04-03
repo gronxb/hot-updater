@@ -49,19 +49,25 @@ const { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin } =
     return { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin };
   });
 
-vi.mock("@hot-updater/cli-tools", () => ({
-  colors: {
-    blueBright: (value: string) => value,
-    magenta: (value: string) => value,
-    underline: (value: string) => value,
-  },
-  createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
-  createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
-  createZipTargetFiles: mockCli.createZipTargetFiles,
-  getCwd: mockCli.getCwd,
-  loadConfig: mockCli.loadConfig,
-  p: mockCli.p,
-}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+
+  return {
+    ...actual,
+    colors: {
+      blueBright: (value: string) => value,
+      magenta: (value: string) => value,
+      underline: (value: string) => value,
+    },
+    createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
+    createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
+    createZipTargetFiles: mockCli.createZipTargetFiles,
+    getCwd: mockCli.getCwd,
+    loadConfig: mockCli.loadConfig,
+    p: mockCli.p,
+  };
+});
 
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
