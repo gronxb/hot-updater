@@ -390,6 +390,11 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
+    mockBuildPlugin.build.mockResolvedValue({
+      buildPath: "/mock/build",
+      bundleId: "bundle-123",
+      stdout: "LLVM\nHermes",
+    });
     vi.mocked(signBundle).mockResolvedValue("signature");
 
     await deploy({
@@ -402,9 +407,24 @@ describe("deploy rollout wiring", () => {
 
     expect(signBundle).toHaveBeenCalledWith("file-hash", "/mock/private.pem");
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
+    expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "✅ Bundle Signing Complete",
+    );
     expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nRollout: 100%\nSigning: active\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
+
+    const buildOutputOrder = mockCli.p.note.mock.calls.findIndex(
+      ([message, title]) =>
+        message === "LLVM\nHermes" && title === "Build Output",
+    );
+    const signingOrder = mockCli.p.log.success.mock.calls.findIndex(
+      ([message]) => message === "✅ Bundle Signing Complete",
+    );
+
+    expect(buildOutputOrder).toBeGreaterThanOrEqual(0);
+    expect(signingOrder).toBeGreaterThanOrEqual(0);
   });
 });

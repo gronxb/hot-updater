@@ -253,7 +253,6 @@ export const deploy = async (options: DeployOptions) => {
   const deploymentContext = [
     `Channel: ${channel}`,
     `Rollout: ${rolloutPercentage}%`,
-    ...(config.signing?.enabled ? ["Signing: active"] : []),
     config.updateStrategy === "fingerprint"
       ? `Fingerprint: ${target.fingerprintHash}`
       : `Target app version: ${semverValid(target.appVersion)}`,
@@ -312,8 +311,6 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
-          let bundleSigned = false;
-
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
@@ -398,7 +395,6 @@ export const deploy = async (options: DeployOptions) => {
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
-              bundleSigned = true;
             } catch (error) {
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
@@ -408,15 +404,17 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
-          return bundleSigned
-            ? `✅ Build Complete (${buildPlugin.name}, signed)`
-            : `✅ Build Complete (${buildPlugin.name})`;
+          return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
 
     if (taskRef.buildResult?.stdout) {
       p.note(taskRef.buildResult.stdout.trim(), "Build Output");
+    }
+
+    if (config.signing?.enabled) {
+      p.log.success("✅ Bundle Signing Complete");
     }
 
     await p.tasks([
