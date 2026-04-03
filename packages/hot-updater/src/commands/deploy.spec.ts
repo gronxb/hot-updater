@@ -50,7 +50,8 @@ const { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin } =
   });
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  const actual =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
 
   return {
     ...actual,
