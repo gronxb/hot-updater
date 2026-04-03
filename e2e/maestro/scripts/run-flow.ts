@@ -9,6 +9,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { p } from "../../../packages/cli-tools/src/prompts.ts";
 
 type Platform = "ios" | "android";
 
@@ -27,6 +28,7 @@ type RunCaptureOptions = {
 
 type RunLoggedOptions = RunCaptureOptions & {
   logPath: string;
+  streamOutput?: boolean;
 };
 
 type ParsedEnvFile = Record<string, string>;
@@ -121,6 +123,10 @@ function usage() {
     "Usage:",
     "  node ./e2e/maestro/scripts/run-flow.ts --platform <ios|android> [--flow <path>] [--reuse-app]",
   ].join("\n");
+}
+
+function showUsage() {
+  p.note(usage(), "Usage");
 }
 
 function resolveMaestroBin() {
@@ -418,8 +424,18 @@ async function runLogged(
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  child.stdout?.on("data", (chunk: Buffer | string) => logStream.write(chunk));
-  child.stderr?.on("data", (chunk: Buffer | string) => logStream.write(chunk));
+  child.stdout?.on("data", (chunk: Buffer | string) => {
+    logStream.write(chunk);
+    if (options.streamOutput) {
+      process.stdout.write(chunk);
+    }
+  });
+  child.stderr?.on("data", (chunk: Buffer | string) => {
+    logStream.write(chunk);
+    if (options.streamOutput) {
+      process.stderr.write(chunk);
+    }
+  });
 
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
@@ -509,7 +525,7 @@ async function terminateListenersOnPort(port: number) {
     return;
   }
 
-  console.log(
+  p.log.warning(
     `Port ${port} is in use. Terminating existing listener(s): ${initialPids.join(", ")}`,
   );
 
@@ -721,7 +737,7 @@ function shouldReuseStoredPort(storedPort: number) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help || !options.platform) {
-    console.log(usage());
+    showUsage();
     process.exit(options.help ? 0 : 1);
   }
 
@@ -756,10 +772,10 @@ async function main() {
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
 
-  console.log(`[maestro] START ${platform}/${scenarioName}`);
-  console.log(`[maestro] Flow: ${formatRepoRelative(options.flow)}`);
-  console.log(`[maestro] Results: ${formatRepoRelative(resultsDir)}`);
-  console.log(`[maestro] Control server: ${serverBaseUrl}`);
+  p.log.step(`Start ${platform}/${scenarioName}`);
+  p.log.info(`Flow: ${formatRepoRelative(options.flow)}`);
+  p.log.info(`Results: ${formatRepoRelative(resultsDir)}`);
+  p.log.info(`Control server: ${serverBaseUrl}`);
 
   let deviceId = "";
   let appId = "";
@@ -783,8 +799,8 @@ async function main() {
     if (reversedPort !== null) {
       const reverseMessage = `adb reverse tcp:${reversedPort} tcp:${reversedPort}`;
       androidDeviceLogLines.push(reverseMessage);
-      console.log(
-        `[maestro] Android reverse: tcp:${reversedPort} -> host tcp:${reversedPort}`,
+      p.log.info(
+        `Android reverse: tcp:${reversedPort} -> host tcp:${reversedPort}`,
       );
     }
     await fsPromises.writeFile(
@@ -890,7 +906,7 @@ async function main() {
   };
 
   try {
-    await waitForHttp(`${consoleBaseUrl}/ping`);
+    await waitForHttp(`${consoleBaseUrl}/manifest.json`);
     await waitForHttp(serverBaseUrl);
 
     await runLogged(
@@ -917,11 +933,12 @@ async function main() {
       {
         cwd: REPO_DIR,
         logPath: path.join(resultsDir, "maestro.log"),
+        streamOutput: true,
       },
     );
-    console.log(`[maestro] PASS ${platform}/${scenarioName}`);
+    p.log.success(`Pass ${platform}/${scenarioName}`);
   } catch (error) {
-    console.error(`[maestro] FAIL ${platform}/${scenarioName}`);
+    p.log.error(`Fail ${platform}/${scenarioName}`);
     throw error;
   } finally {
     await stopServer();
@@ -934,6 +951,6 @@ try {
 } catch (error) {
   const message =
     error instanceof Error ? error.message : "Unknown run-flow error";
-  console.error(message);
+  p.log.error(message);
   process.exit(1);
 }
