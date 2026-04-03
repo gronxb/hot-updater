@@ -45,28 +45,23 @@ class ZipDecompressionStrategy: DecompressionStrategy {
             return false
         }
 
-        guard let zipData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
-            NSLog("[ZipStrategy] Invalid ZIP: cannot read file data")
-            return false
-        }
-
-        do {
-            _ = try ZipContainer.open(container: zipData)
-            return true
-        } catch {
-            NSLog("[ZipStrategy] Invalid ZIP: structure validation failed - \(error.localizedDescription)")
-            return false
-        }
+        return true
     }
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
         NSLog("[ZipStrategy] Starting extraction of \(file) to \(destination)")
 
-        guard let zipData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+        let zipData: Data
+        do {
+            zipData = try readArchiveData(from: file)
+        } catch {
             throw NSError(
                 domain: "ZipDecompressionStrategy",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to read ZIP file at: \(file)"]
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to read ZIP file at: \(file)",
+                    NSUnderlyingErrorKey: error
+                ]
             )
         }
 
@@ -105,6 +100,13 @@ class ZipDecompressionStrategy: DecompressionStrategy {
         }
 
         NSLog("[ZipStrategy] Successfully extracted all entries")
+    }
+
+    private func readArchiveData(from file: String) throws -> Data {
+        try Data(
+            contentsOf: URL(fileURLWithPath: file),
+            options: .mappedIfSafe
+        )
     }
 
     private func extractZipEntry(_ entry: ZipEntry, to destination: String) throws {

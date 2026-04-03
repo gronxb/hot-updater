@@ -25,7 +25,7 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
             return false
         }
 
-        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+        guard let compressedData = try? readArchiveData(from: file) else {
             NSLog("[TarBrStrategy] Invalid file: cannot read file data")
             return false
         }
@@ -46,11 +46,17 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
         NSLog("[TarBrStrategy] Starting extraction of \(file) to \(destination)")
 
-        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+        let compressedData: Data
+        do {
+            compressedData = try readArchiveData(from: file)
+        } catch {
             throw NSError(
                 domain: "TarBrDecompressionStrategy",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to read tar.br file at: \(file)"]
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to read tar.br file at: \(file)",
+                    NSUnderlyingErrorKey: error
+                ]
             )
         }
 
@@ -99,6 +105,13 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
         }
 
         NSLog("[TarBrStrategy] Successfully extracted all entries")
+    }
+
+    private func readArchiveData(from file: String) throws -> Data {
+        try Data(
+            contentsOf: URL(fileURLWithPath: file),
+            options: .mappedIfSafe
+        )
     }
 
     private func readTarEntries(from compressedData: Data) throws -> [TarEntry] {

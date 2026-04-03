@@ -50,11 +50,17 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
         NSLog("[TarGzStrategy] Starting extraction of \(file) to \(destination)")
 
-        guard let compressedData = try? Data(contentsOf: URL(fileURLWithPath: file)) else {
+        let compressedData: Data
+        do {
+            compressedData = try readArchiveData(from: file)
+        } catch {
             throw NSError(
                 domain: "TarGzDecompressionStrategy",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to read tar.gz file at: \(file)"]
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to read tar.gz file at: \(file)",
+                    NSUnderlyingErrorKey: error
+                ]
             )
         }
 
@@ -103,6 +109,13 @@ class TarGzDecompressionStrategy: DecompressionStrategy {
         }
 
         NSLog("[TarGzStrategy] Successfully extracted all entries")
+    }
+
+    private func readArchiveData(from file: String) throws -> Data {
+        try Data(
+            contentsOf: URL(fileURLWithPath: file),
+            options: .mappedIfSafe
+        )
     }
 
     private func decompressGzip(_ data: Data) throws -> Data {
