@@ -5,7 +5,7 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
 
 type Platform = "ios" | "android";
@@ -102,8 +102,30 @@ type JsonSnapshot = {
   value: Record<string, unknown> | null;
 };
 
+type ConsoleServerFnName =
+  | "deleteBundle"
+  | "getBundle"
+  | "getBundles"
+  | "updateBundle";
+
+type ServerFnFetcher = (
+  url: string,
+  args: Array<{
+    data?: unknown;
+    method: "GET" | "POST";
+  }>,
+  handler: typeof fetch,
+) => Promise<unknown>;
+
+type ServerFnResultEnvelope<T> = {
+  error?: unknown;
+  result?: T;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
+const PNPM_STORE_DIR = path.join(REPO_DIR, "node_modules/.pnpm");
+const CONSOLE_SSR_DIR = path.join(REPO_DIR, "packages/console/.output/server/_ssr");
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const EMPTY_CRASH_HISTORY = {
@@ -196,6 +218,10 @@ const session: SessionState = {
 };
 
 const jobs = new Map<string, JobState>();
+let consoleServerFnIdsPromise:
+  | Promise<Record<ConsoleServerFnName, string>>
+  | null = null;
+let tanstackServerFnFetcherPromise: Promise<ServerFnFetcher> | null = null;
 
 function runCapture(
   command: string,
@@ -224,6 +250,139 @@ function runCapture(
   }
 
   return result.stdout.trim();
+}
+
+async function findConsoleApiRpcChunkPath() {
+  const entries = await fsPromises.readdir(CONSOLE_SSR_DIR);
+  const chunkName = entries
+    .filter((entry) => entry.startsWith("api-rpc-") && entry.endsWith(".mjs"))
+    .sort()[0];
+
+  if (!chunkName) {
+    throw new Error(
+      `Failed to locate console api-rpc chunk in ${CONSOLE_SSR_DIR}`,
+    );
+  }
+
+  return path.join(CONSOLE_SSR_DIR, chunkName);
+}
+
+function extractConsoleServerFnId(
+  source: string,
+  serverFnName: ConsoleServerFnName,
+) {
+  const pattern = new RegExp(
+    `${serverFnName}_createServerFn_handler = createServerRpc\\(\\{\\s*id: "([a-f0-9]+)"`,
+  );
+  const match = source.match(pattern);
+
+  if (!match?.[1]) {
+    throw new Error(`Failed to resolve TanStack server function id for ${serverFnName}`);
+  }
+
+  return match[1];
+}
+
+async function loadConsoleServerFnIds() {
+  const source = await fsPromises.readFile(await findConsoleApiRpcChunkPath(), "utf8");
+
+  return {
+    deleteBundle: extractConsoleServerFnId(source, "deleteBundle"),
+    getBundle: extractConsoleServerFnId(source, "getBundle"),
+    getBundles: extractConsoleServerFnId(source, "getBundles"),
+    updateBundle: extractConsoleServerFnId(source, "updateBundle"),
+  };
+}
+
+async function getConsoleServerFnIds() {
+  if (!consoleServerFnIdsPromise) {
+    consoleServerFnIdsPromise = loadConsoleServerFnIds();
+  }
+
+  return consoleServerFnIdsPromise;
+}
+
+async function loadTanstackServerFnFetcher() {
+  const entries = await fsPromises.readdir(PNPM_STORE_DIR);
+  const packageDir = entries
+    .filter((entry) => entry.startsWith("@tanstack+start-client-core@"))
+    .sort()[0];
+
+  if (!packageDir) {
+    throw new Error("Failed to locate @tanstack/start-client-core in pnpm store");
+  }
+
+  const modulePath = path.join(
+    PNPM_STORE_DIR,
+    packageDir,
+    "node_modules/@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js",
+  );
+  const module = (await import(pathToFileURL(modulePath).href)) as {
+    serverFnFetcher?: ServerFnFetcher;
+  };
+
+  if (typeof module.serverFnFetcher !== "function") {
+    throw new Error("Failed to load TanStack Start serverFnFetcher");
+  }
+
+  return module.serverFnFetcher;
+}
+
+async function getTanstackServerFnFetcher() {
+  if (!tanstackServerFnFetcherPromise) {
+    tanstackServerFnFetcherPromise = loadTanstackServerFnFetcher();
+  }
+
+  return tanstackServerFnFetcherPromise;
+}
+
+function unwrapConsoleServerFnResult<T>(
+  serverFnName: ConsoleServerFnName,
+  value: unknown,
+) {
+  if (value && typeof value === "object") {
+    const envelope = value as ServerFnResultEnvelope<T>;
+
+    if (envelope.error !== undefined && envelope.error !== null) {
+      if (envelope.error instanceof Error) {
+        throw envelope.error;
+      }
+
+      throw new Error(
+        `Console server function ${serverFnName} failed: ${String(envelope.error)}`,
+      );
+    }
+
+    if ("result" in envelope) {
+      return envelope.result as T;
+    }
+  }
+
+  return value as T;
+}
+
+async function callConsoleServerFn<T>(
+  serverFnName: ConsoleServerFnName,
+  method: "GET" | "POST",
+  data?: unknown,
+) {
+  const [consoleServerFnIds, serverFnFetcher] = await Promise.all([
+    getConsoleServerFnIds(),
+    getTanstackServerFnFetcher(),
+  ]);
+  const url = `${session.consoleApiBaseUrl}/_serverFn/${consoleServerFnIds[serverFnName]}`;
+  const result = await serverFnFetcher(
+    url,
+    [
+      {
+        data,
+        method,
+      },
+    ],
+    fetch,
+  );
+
+  return unwrapConsoleServerFnResult<T>(serverFnName, result);
 }
 
 async function runLogged(
@@ -354,25 +513,6 @@ async function waitForFile(filePath: string, attempts = 90) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-async function readResponseBody(response: Response) {
-  return truncateForLog(await response.text());
-}
-
-async function parseJsonResponse<T>(
-  response: Response,
-  context: string,
-): Promise<T> {
-  const body = await response.text();
-
-  if (!response.ok) {
-    throw new Error(
-      `${context}: ${response.status} ${response.statusText}${body ? `\n${truncateForLog(body)}` : ""}`,
-    );
-  }
-
-  return JSON.parse(body) as T;
-}
-
 function normalizeBundleListEntries(value: unknown): BundleListEntry[] {
   if (!Array.isArray(value)) {
     return [];
@@ -469,30 +609,27 @@ async function fetchBundlesPage(args: {
   limit: number;
   offset: number;
 }) {
-  const url = new URL(`${session.consoleApiBaseUrl}/api/bundles`);
-  url.searchParams.set("platform", session.platform);
-  if (args.channel) {
-    url.searchParams.set("channel", args.channel);
-  }
-  url.searchParams.set("limit", String(args.limit));
-  url.searchParams.set("offset", String(args.offset));
-
   logE2e("console-api request", {
+    channel: args.channel ?? null,
+    limit: args.limit,
     method: "GET",
-    url: url.toString(),
+    offset: args.offset,
+    platform: session.platform,
   });
-  const response = await fetch(url);
-  const bundles = normalizeBundleListResponse(
-    await parseJsonResponse<unknown>(response, "Failed to fetch bundles"),
-  );
+
+  const response = await callConsoleServerFn<BundleListPage>("getBundles", "GET", {
+    channel: args.channel,
+    limit: String(args.limit),
+    offset: String(args.offset),
+    platform: session.platform,
+  });
+  const bundles = normalizeBundleListResponse(response);
   logE2e("console-api response", {
     count: bundles.data.length,
     limit: args.limit,
     method: "GET",
     offset: args.offset,
-    status: response.status,
     total: bundles.pagination.total,
-    url: url.toString(),
   });
 
   return bundles;
@@ -514,29 +651,32 @@ async function fetchLatestBundle(args: { channel?: string }) {
 }
 
 async function fetchBundleById(bundleId: string) {
-  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
   logE2e("console-api request", {
     bundleId,
     method: "GET",
-    url,
   });
-  const response = await fetch(url);
-  const bundle = await parseJsonResponse<{
+
+  const bundle = await callConsoleServerFn<{
     channel: string;
     enabled: boolean;
     id: string;
     rolloutCohortCount?: number | null;
     shouldForceUpdate?: boolean;
     targetCohorts?: string[] | null;
-  }>(response, `Failed to fetch bundle ${bundleId}`);
+  } | null>("getBundle", "GET", {
+    bundleId,
+  });
+
+  if (!bundle) {
+    throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
+  }
+
   logE2e("console-api response", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
     method: "GET",
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-    status: response.status,
-    url,
   });
 
   return bundle;
@@ -551,60 +691,46 @@ async function patchBundle(
     targetCohorts?: string[] | null;
   },
 ) {
-  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
-  const body = JSON.stringify({ bundle: patch });
   logE2e("console-api request", {
     body: { bundle: patch },
     bundleId,
-    method: "PATCH",
-    url,
-  });
-  const response = await fetch(url, {
-    body,
-    headers: {
-      "Content-Type": "application/json",
-    },
-    method: "PATCH",
+    method: "POST",
   });
 
-  if (!response.ok) {
-    const responseBody = await readResponseBody(response);
-    throw new Error(
-      `Failed to patch bundle ${bundleId}: ${response.status} ${response.statusText}${responseBody ? `\n${responseBody}` : ""}`,
-    );
-  }
+  await callConsoleServerFn<{
+    bundle: {
+      channel: string;
+      enabled: boolean;
+      id: string;
+      rolloutCohortCount?: number | null;
+      shouldForceUpdate?: boolean;
+      targetCohorts?: string[] | null;
+    },
+    success: true;
+  }>("updateBundle", "POST", {
+    bundle: patch,
+    bundleId,
+  });
 
   logE2e("console-api response", {
     bundleId,
-    method: "PATCH",
-    status: response.status,
-    url,
+    method: "POST",
   });
 }
 
 async function deleteBundle(bundleId: string) {
-  const url = `${session.consoleApiBaseUrl}/api/bundles/${bundleId}`;
   logE2e("console-api request", {
     bundleId,
-    method: "DELETE",
-    url,
-  });
-  const response = await fetch(url, {
-    method: "DELETE",
+    method: "POST",
   });
 
-  if (!response.ok) {
-    const responseBody = await readResponseBody(response);
-    throw new Error(
-      `Failed to delete bundle ${bundleId}: ${response.status} ${response.statusText}${responseBody ? `\n${responseBody}` : ""}`,
-    );
-  }
+  await callConsoleServerFn<{ success: true }>("deleteBundle", "POST", {
+    bundleId,
+  });
 
   logE2e("console-api response", {
     bundleId,
-    method: "DELETE",
-    status: response.status,
-    url,
+    method: "POST",
   });
 }
 
