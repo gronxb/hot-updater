@@ -55,6 +55,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
   return {
     ...actual,
+    HotUpdateDirUtil: {
+      getDefaultOutputPath: vi.fn(() => ".hot-updater/output"),
+      outputGitignorePath: ".hot-updater/output",
+    },
     colors: {
       blueBright: (value: string) => value,
       magenta: (value: string) => value,
@@ -336,6 +340,28 @@ describe("deploy rollout wiring", () => {
       expect.objectContaining({
         rolloutCohortCount: 550,
       }),
+    );
+  });
+
+  it("prints deployment summary with bundle id and bundle path at the end", async () => {
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockCli.p.note).toHaveBeenCalledWith(
+      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Deployment",
+    );
+    expect(mockCli.p.note).toHaveBeenCalledWith(
+      "Bundle ID: bundle-123",
+      "Result",
+    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      "🚀 Deployment Successful (bundle-123)",
     );
   });
 });

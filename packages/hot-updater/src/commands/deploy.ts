@@ -1,5 +1,4 @@
 import {
-  colors,
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
@@ -167,8 +166,6 @@ export const deploy = async (options: DeployOptions) => {
     appVersion: null,
     fingerprintHash: null,
   };
-  p.log.step(`Channel: ${channel}`);
-  p.log.step(`Rollout: ${rolloutPercentage}%`);
 
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
@@ -237,8 +234,6 @@ export const deploy = async (options: DeployOptions) => {
       );
       return;
     }
-    p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
-
     target.appVersion = targetAppVersion;
   }
 
@@ -254,6 +249,16 @@ export const deploy = async (options: DeployOptions) => {
     }
     process.exit(1);
   }
+
+  const deploymentContext = [
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+    config.updateStrategy === "fingerprint"
+      ? `Fingerprint: ${target.fingerprintHash}`
+      : `Target app version: ${semverValid(target.appVersion)}`,
+  ].join("\n");
+
+  p.note(deploymentContext, "Deployment");
 
   if (
     appendToProjectRootGitignore({
@@ -404,17 +409,13 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
-          p.log.success(
-            `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
-          );
-
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.log.success(taskRef.buildResult.stdout);
+      console.log(taskRef.buildResult.stdout.trim());
     }
 
     await p.tasks([
@@ -490,6 +491,10 @@ export const deploy = async (options: DeployOptions) => {
       throw new Error("Bundle ID not found");
     }
 
+    const deploymentSummary = `Bundle ID: ${bundleId}`;
+
+    p.note(deploymentSummary, "Result");
+
     if (options.interactive) {
       const port = await getConsolePort(config);
       const isConsoleOpen = await isPortReachable(port, { host: "localhost" });
@@ -518,7 +523,7 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
-    p.outro("🚀 Deployment Successful");
+    p.outro(`🚀 Deployment Successful (${bundleId})`);
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
