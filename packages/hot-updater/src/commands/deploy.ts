@@ -1,5 +1,4 @@
 import {
-  colors,
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
@@ -167,8 +166,6 @@ export const deploy = async (options: DeployOptions) => {
     appVersion: null,
     fingerprintHash: null,
   };
-  p.log.step(`Channel: ${channel}`);
-  p.log.step(`Rollout: ${rolloutPercentage}%`);
 
   if (config.updateStrategy === "fingerprint") {
     const s = p.spinner();
@@ -237,8 +234,6 @@ export const deploy = async (options: DeployOptions) => {
       );
       return;
     }
-    p.log.info(`Target app version: ${semverValid(targetAppVersion)}`);
-
     target.appVersion = targetAppVersion;
   }
 
@@ -254,6 +249,17 @@ export const deploy = async (options: DeployOptions) => {
     }
     process.exit(1);
   }
+
+  const deploymentContext = [
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+    ...(config.signing?.enabled ? ["Signing: active"] : []),
+    config.updateStrategy === "fingerprint"
+      ? `Fingerprint: ${target.fingerprintHash}`
+      : `Target app version: ${semverValid(target.appVersion)}`,
+  ].join("\n");
+
+  p.note(deploymentContext, "Deployment");
 
   if (
     appendToProjectRootGitignore({
@@ -306,6 +312,8 @@ export const deploy = async (options: DeployOptions) => {
       {
         title: `📦 Building Bundle (${buildPlugin.name})`,
         task: async () => {
+          let bundleSigned = false;
+
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
@@ -382,9 +390,6 @@ export const deploy = async (options: DeployOptions) => {
               );
             }
 
-            const s = p.spinner();
-            s.start("Signing bundle");
-
             try {
               const signature = await signBundle(
                 fileHash,
@@ -393,9 +398,8 @@ export const deploy = async (options: DeployOptions) => {
               // Store signature in signed format (sig:<signature>)
               // The hash is verified implicitly during signature verification
               fileHash = createSignedFileHash(signature);
-              s.stop("Bundle signed successfully");
+              bundleSigned = true;
             } catch (error) {
-              s.error("Failed to sign bundle");
               p.log.error(`Signing error: ${(error as Error).message}`);
               p.log.error(
                 "Ensure private key path is correct and file has proper permissions",
@@ -404,17 +408,15 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
-          p.log.success(
-            `Bundle stored at ${colors.blueBright(path.relative(cwd, bundlePath))}`,
-          );
-
-          return `✅ Build Complete (${buildPlugin.name})`;
+          return bundleSigned
+            ? `✅ Build Complete (${buildPlugin.name}, signed)`
+            : `✅ Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.log.success(taskRef.buildResult.stdout);
+      p.note(taskRef.buildResult.stdout.trim(), "Build Output");
     }
 
     await p.tasks([
@@ -518,7 +520,7 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
-    p.outro("🚀 Deployment Successful");
+    p.outro(`🚀 Deployment Successful (${bundleId})`);
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
