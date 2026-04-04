@@ -16,6 +16,13 @@ export interface PaginationInfo {
   totalPages: number;
 }
 
+export interface Paginated<TData> {
+  data: TData;
+  pagination: PaginationInfo;
+}
+
+export type PaginatedResult = Paginated<Bundle[]>;
+
 export interface DatabaseBundleIdFilter {
   eq?: string;
   gt?: string;
@@ -61,10 +68,7 @@ export interface DatabasePlugin<TContext = unknown> {
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<{
-    data: Bundle[];
-    pagination: PaginationInfo;
-  }>;
+  ) => Promise<Paginated<Bundle[]>>;
   updateBundle: (
     targetBundleId: string,
     newBundle: Partial<Bundle>,

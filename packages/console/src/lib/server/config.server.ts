@@ -1,33 +1,56 @@
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
 
-let configPromise: Promise<{
-  config: ConfigResponse;
-  databasePlugin: DatabasePlugin;
-  storagePlugin: StoragePlugin;
-}> | null = null;
+let configPromise: Promise<ConfigResponse> | null = null;
+let storagePluginPromise: Promise<StoragePlugin> | null = null;
 
-export const prepareConfig = async () => {
+const loadCachedConfig = async () => {
   if (!configPromise) {
-    configPromise = (async () => {
-      try {
-        const config = await loadConfig(null);
-        const databasePlugin = await config.database();
-        const storagePlugin = await config.storage();
-        if (!databasePlugin) {
-          throw new Error("Database plugin initialization failed");
-        }
-        if (!storagePlugin) {
-          throw new Error("Storage plugin initialization failed");
-        }
-        return { config, databasePlugin, storagePlugin };
-      } catch (error) {
-        console.error("Error during configuration initialization:", error);
-        throw error;
-      }
-    })();
+    configPromise = loadConfig(null).catch((error) => {
+      configPromise = null;
+      throw error;
+    });
   }
+
   return configPromise;
 };
 
-export const isConfigLoaded = () => !!configPromise;
+const loadCachedStoragePlugin = async (config: ConfigResponse) => {
+  if (!storagePluginPromise) {
+    storagePluginPromise = Promise.resolve(config.storage())
+      .then((storagePlugin) => {
+        if (!storagePlugin) {
+          throw new Error("Storage plugin initialization failed");
+        }
+
+        return storagePlugin;
+      })
+      .catch((error) => {
+        storagePluginPromise = null;
+        throw error;
+      });
+  }
+
+  return storagePluginPromise;
+};
+
+export const prepareConfig = async () => {
+  try {
+    const config = await loadCachedConfig();
+    const [databasePlugin, storagePlugin] = await Promise.all([
+      config.database(),
+      loadCachedStoragePlugin(config),
+    ]);
+
+    if (!databasePlugin) {
+      throw new Error("Database plugin initialization failed");
+    }
+
+    return { config, databasePlugin, storagePlugin };
+  } catch (error) {
+    console.error("Error during configuration initialization:", error);
+    throw error;
+  }
+};
+
+export const isConfigLoaded = () => Boolean(configPromise);

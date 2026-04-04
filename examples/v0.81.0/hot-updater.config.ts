@@ -8,6 +8,35 @@ import { defineConfig } from "hot-updater";
 config({ path: ".env.hotupdater" });
 
 export default defineConfig({
+  nativeBuild: {
+    android: {
+      debugApk: {
+        packageName: "com.hotupdaterexample",
+        aab: false,
+        variant: "Debug",
+      },
+      releaseApk: {
+        packageName: "com.hotupdaterexample",
+        aab: false,
+      },
+    },
+    ios: {
+      debug: {
+        bundleIdentifier: "com.hotupdaterexample",
+        scheme: "HotUpdaterExample",
+        configuration: "Debug",
+        installPods: false,
+        simulator: true,
+      },
+      release: {
+        bundleIdentifier: "com.hotupdaterexample",
+        scheme: "HotUpdaterExample",
+        configuration: "Release",
+        installPods: true,
+      },
+    },
+  },
+
   build: bare({ enableHermes: true }),
   storage: s3Storage({
     region: "auto",
@@ -21,7 +50,11 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3007/hot-updater",
   }),
-  updateStrategy: "appVersion", // or "fingerprint"
+  fingerprint: {
+    debug: true,
+  },
+  updateStrategy: "appVersion",
+  compressStrategy: "tar.br",
   signing: {
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",

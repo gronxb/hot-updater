@@ -49,6 +49,24 @@ interface StandaloneRepositoryConfig {
 }
 ```
 
+`routes` lets you map the client to a different server shape:
+
+```typescript
+interface RouteConfig {
+  path: string;
+  headers?: Record<string, string>;
+}
+
+interface Routes {
+  create?: () => RouteConfig;
+  update?: (bundleId: string) => RouteConfig;
+  list?: () => RouteConfig;
+  channels?: () => RouteConfig;
+  retrieve?: (bundleId: string) => RouteConfig;
+  delete?: (bundleId: string) => RouteConfig;
+}
+```
+
 ### Basic Example
 
 ```typescript
@@ -85,6 +103,9 @@ database: standaloneRepository({
     list: () => ({
       path: "/v1/hot-updater/api/bundles"
     }),
+    channels: () => ({
+      path: "/v1/hot-updater/api/bundles/channels"
+    }),
     retrieve: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`
     }),
@@ -94,6 +115,145 @@ database: standaloneRepository({
   }
 })
 ```
+
+## Server Contract
+
+`standaloneRepository` is an HTTP client. If you are building a custom
+backend, your server must implement the bundle-management contract below.
+
+<Callout type="info">
+If you use `@hot-updater/server`, you do **not** need to implement these
+endpoints manually. `createHotUpdater()` already provides this contract when
+bundle routes are enabled, including `GET /api/bundles/channels`.
+</Callout>
+
+### Contract Types
+
+```typescript
+interface PaginationInfo {
+  total: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  currentPage: number;
+  totalPages: number;
+}
+
+interface DataResponse<TData> {
+  data: TData;
+}
+
+interface Paginated<TData> extends DataResponse<TData> {
+  pagination: PaginationInfo;
+}
+
+type PaginatedResult = Paginated<Bundle[]>;
+type ChannelsResponse = DataResponse<{ channels: string[] }>;
+```
+
+### Default Routes
+
+These are the default routes used by `standaloneRepository`. You can remap
+them with the `routes` option shown above.
+
+| Method | Default route | Request body | Success response |
+|--------|---------------|--------------|------------------|
+| POST | `/api/bundles` | `Bundle[]` | `{ "success": true }` |
+| PATCH | `/api/bundles/:id` | `Partial<Bundle>` | `{ "success": true }` |
+| GET | `/api/bundles` | none | `Paginated<Bundle[]>` |
+| GET | `/api/bundles/:id` | none | `Bundle` |
+| DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
+| GET | `/api/bundles/channels` | none | `ChannelsResponse` |
+
+### Bundle Shape
+
+Create requests send full `Bundle` objects. Update requests send
+`Partial<Bundle>` and, if an `id` is present in the body, it must match the
+`:id` route parameter.
+
+```typescript
+interface Bundle {
+  id: string;
+  platform: "ios" | "android";
+  shouldForceUpdate: boolean;
+  enabled: boolean;
+  fileHash: string;
+  storageUri: string;
+  gitCommitHash: string | null;
+  message: string | null;
+  channel: string;
+  targetAppVersion: string | null;
+  fingerprintHash: string | null;
+  metadata?: {
+    app_version?: string;
+  };
+  rolloutCohortCount?: number | null;
+  targetCohorts?: string[] | null;
+}
+```
+
+### List Bundles Contract
+
+`GET /api/bundles` must accept the pagination and filter query params used by
+the console and return a paginated JSON body.
+
+Supported query params:
+
+| Query param | Type | Notes |
+|-------------|------|-------|
+| `channel` | `string` | Exact match |
+| `platform` | `"ios" \| "android"` | Exact match |
+| `limit` | `number` | Page size |
+| `offset` | `number` | Page offset |
+
+Expected response:
+
+```json
+{
+  "data": [{ "id": "bundle-id", "channel": "production" }],
+  "pagination": {
+    "total": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "currentPage": 1,
+    "totalPages": 1
+  }
+}
+```
+
+`standaloneRepository` reads pagination metadata from the response body. It
+does not derive pagination from headers.
+
+### Retrieve And Channels Contract
+
+- `GET /api/bundles/:id` should return `200` with a `Bundle` body or `404` if
+  the bundle does not exist.
+- `GET /api/bundles/channels` must return:
+
+```json
+{
+  "data": {
+    "channels": ["production", "staging"]
+  }
+}
+```
+
+### Minimal `@hot-updater/server` Example
+
+If you want this contract without implementing it yourself, use
+`@hot-updater/server`:
+
+```typescript
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  database,
+  storages: [storage],
+  basePath: "/hot-updater",
+});
+```
+
+This mounts the bundle routes consumed by `standaloneRepository` under
+`/hot-updater/api/bundles*` by default.
 
 ## Next Steps
 

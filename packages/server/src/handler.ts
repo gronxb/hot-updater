@@ -10,7 +10,7 @@ import type {
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
-import type { PaginationInfo } from "./types";
+import type { ChannelsResponse, PaginatedResult } from "./types";
 
 declare const __VERSION__: string;
 
@@ -27,7 +27,7 @@ export interface HandlerAPI<TContext = unknown> {
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  ) => Promise<PaginatedResult>;
   insertBundle: (
     bundle: Bundle,
     context?: HotUpdaterContext<TContext>,
@@ -262,7 +262,7 @@ const handleGetBundles: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(result.data), {
+  return new Response(JSON.stringify(result), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -327,8 +327,13 @@ const handleGetChannels: RouteHandler = async (
   context,
 ) => {
   const channels = await api.getChannels(context);
+  const response: ChannelsResponse = {
+    data: {
+      channels,
+    },
+  };
 
-  return new Response(JSON.stringify({ channels }), {
+  return new Response(JSON.stringify(response), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

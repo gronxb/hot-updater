@@ -100,4 +100,63 @@ describe("createDatabasePlugin", () => {
       ],
     });
   });
+
+  it("preserves pending changes after a failed commit", async () => {
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === baseBundle.id ? baseBundle : null,
+    );
+    const commitBundle = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("commit failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, {
+      enabled: false,
+    });
+    await expect(plugin.commitBundle()).rejects.toThrow("commit failed");
+    await plugin.commitBundle();
+
+    expect(getBundleById).toHaveBeenCalledTimes(1);
+    expect(commitBundle).toHaveBeenNthCalledWith(1, {
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ],
+    });
+    expect(commitBundle).toHaveBeenNthCalledWith(2, {
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ],
+    });
+  });
 });

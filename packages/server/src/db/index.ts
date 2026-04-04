@@ -1,4 +1,5 @@
 import type {
+  DatabasePlugin,
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
@@ -92,10 +93,23 @@ export function createHotUpdater<TContext = unknown>(
 
   const core =
     isDatabasePluginFactory(database) || isDatabasePlugin(database)
-      ? createPluginDatabaseCore<TContext>(
-          isDatabasePluginFactory(database) ? database() : database,
-          resolveFileUrl,
-        )
+      ? (() => {
+          const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(
+            database,
+          )
+            ? database()
+            : database;
+
+          return createPluginDatabaseCore<TContext>(
+            () => plugin,
+            resolveFileUrl,
+            isDatabasePluginFactory(database)
+              ? {
+                  createMutationPlugin: () => database(),
+                }
+              : undefined,
+          );
+        })()
       : createOrmDatabaseCore<TContext>({
           database,
           resolveFileUrl,

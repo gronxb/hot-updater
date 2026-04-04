@@ -48,10 +48,7 @@ Your factory function must return an object with these methods:
     where?: { channel?: string; platform?: string };
     limit: number;
     offset: number;
-  }) => Promise<{
-    data: Bundle[];
-    pagination: PaginationInfo;
-  }>;
+  }) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
   getChannels: () => Promise<string[]>;
@@ -78,7 +75,7 @@ Here's a complete custom database plugin using a REST API:
 ```typescript title="customDatabase.ts"
 import {
   type Bundle,
-  type PaginationInfo,
+  type Paginated,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 
@@ -110,7 +107,7 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         return response.json();
       },
 
-      async getBundles(options) {
+      async getBundles(options): Promise<Paginated<Bundle[]>> {
         const params = new URLSearchParams({
           limit: String(options.limit),
           offset: String(options.offset),

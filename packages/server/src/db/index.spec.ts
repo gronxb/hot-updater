@@ -5,6 +5,7 @@ import type {
   StoragePlugin,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -359,6 +360,97 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(updateInfo?.fileUrl).toBe(
         "https://s3.example.com/test-bucket/fp-bundle.zip",
       );
+    });
+  });
+
+  describe("database plugin factories", () => {
+    it("isolates pending mutation state between overlapping writes", async () => {
+      const committedBundleIds: string[][] = [];
+      const onUnmount = vi.fn(async () => undefined);
+      let releaseFirstCommit!: () => void;
+      let notifyFirstCommitStarted!: () => void;
+      const firstCommitStarted = new Promise<void>((resolve) => {
+        notifyFirstCommitStarted = resolve;
+      });
+      const firstCommitGate = new Promise<void>((resolve) => {
+        releaseFirstCommit = resolve;
+      });
+      let commitCount = 0;
+
+      const isolatedHotUpdater = createHotUpdater({
+        database: createDatabasePlugin({
+          name: "isolatedPlugin",
+          factory: () => ({
+            async getBundleById() {
+              return null;
+            },
+            async getBundles() {
+              return {
+                data: [],
+                pagination: {
+                  hasNextPage: false,
+                  hasPreviousPage: false,
+                  currentPage: 1,
+                  totalPages: 1,
+                  total: 0,
+                },
+              };
+            },
+            async getChannels() {
+              return [];
+            },
+            onUnmount,
+            async commitBundle({ changedSets }) {
+              commitCount += 1;
+              committedBundleIds.push(
+                changedSets.map((change) => change.data.id),
+              );
+
+              if (commitCount === 1) {
+                notifyFirstCommitStarted();
+                await firstCommitGate;
+              }
+            },
+          }),
+        })({}),
+      });
+
+      const firstBundleId = "00000000-0000-0000-0000-000000000030";
+      const secondBundleId = "00000000-0000-0000-0000-000000000031";
+
+      const firstInsert = isolatedHotUpdater.insertBundle({
+        id: firstBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-1",
+        gitCommitHash: null,
+        message: "first bundle",
+        channel: "production",
+        storageUri: "s3://test-bucket/first.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      });
+      await firstCommitStarted;
+
+      const secondInsert = isolatedHotUpdater.insertBundle({
+        id: secondBundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-2",
+        gitCommitHash: null,
+        message: "second bundle",
+        channel: "production",
+        storageUri: "s3://test-bucket/second.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      });
+
+      releaseFirstCommit();
+      await Promise.all([firstInsert, secondInsert]);
+
+      expect(committedBundleIds).toEqual([[firstBundleId], [secondBundleId]]);
     });
   });
 });

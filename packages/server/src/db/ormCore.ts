@@ -24,7 +24,7 @@ import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";
-import type { PaginationInfo } from "../types";
+import type { Paginated } from "../types";
 import type { DatabaseAPI } from "./types";
 
 const parseTargetCohorts = (value: unknown): string[] | null => {
@@ -508,7 +508,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
 
     async getBundles(
       options: DatabaseBundleQueryOptions,
-    ): Promise<{ data: Bundle[]; pagination: PaginationInfo }> {
+    ): Promise<Paginated<Bundle[]>> {
       const orm = await ensureORM();
       const { where, limit, offset, orderBy } = options;
 

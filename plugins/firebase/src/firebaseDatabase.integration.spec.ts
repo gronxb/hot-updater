@@ -179,6 +179,48 @@ describe("firebaseDatabase plugin", () => {
     expect(channels.sort()).toEqual(["production", "staging"].sort());
   });
 
+  it("refreshes bundle data before merging an update after a previous list request", async () => {
+    const bundleId = "firebase-stale-cache";
+
+    await plugin.appendBundle({
+      id: bundleId,
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      fileHash: "hash-1",
+      gitCommitHash: "commit-1",
+      message: "stale message",
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+      metadata: { app_version: "initial" },
+    });
+    await plugin.commitBundle();
+
+    await plugin.getBundles({ limit: 20, offset: 0 });
+
+    await bundlesCollection.doc(bundleId).set(
+      {
+        message: "fresh message",
+        metadata: { app_version: "fresh" },
+      },
+      { merge: true },
+    );
+
+    await plugin.updateBundle(bundleId, { enabled: false });
+    await plugin.commitBundle();
+
+    const bundleDoc = await bundlesCollection.doc(bundleId).get();
+    expect(bundleDoc.data()).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        message: "fresh message",
+        metadata: { app_version: "fresh" },
+      }),
+    );
+  });
+
   it("should commit bundle changes and remove unused target_app_versions", async () => {
     await plugin.appendBundle({
       id: "bundle1",

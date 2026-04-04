@@ -176,7 +176,6 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
 export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
   name: "d1Database",
   factory: (config) => {
-    let bundles: Bundle[] = [];
     const cf = new Cloudflare({
       apiToken: config.cloudflareApiToken,
     });
@@ -233,11 +232,6 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
 
     return {
       async getBundleById(bundleId) {
-        const found = bundles.find((b) => b.id === bundleId);
-        if (found) {
-          return found;
-        }
-
         const sql = minify(/* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`);
         const singlePage = await cf.d1.database.query(config.databaseId, {
@@ -262,7 +256,12 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         const totalCount = await getTotalCount(where);
 
         // 2. Get paginated bundles
-        bundles = await getPaginatedBundles(where, limit, offset, orderBy);
+        const bundles = await getPaginatedBundles(
+          where,
+          limit,
+          offset,
+          orderBy,
+        );
 
         // 3. Calculate pagination metadata
         const paginationOptions: PaginationOptions = { limit, offset };
@@ -306,9 +305,6 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               sql: deleteSql,
               params: [op.data.id],
             });
-
-            // Update local bundles array
-            bundles = bundles.filter((b) => b.id !== op.data.id);
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const bundle = op.data;

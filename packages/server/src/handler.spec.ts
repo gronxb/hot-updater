@@ -1,4 +1,4 @@
-import { NIL_UUID } from "@hot-updater/core";
+import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 import { createHandler, type HandlerAPI } from "./handler";
 
@@ -10,22 +10,41 @@ type TestContext = {
   env: TestEnv;
 };
 
-const createApi = (): HandlerAPI<TestContext> => ({
-  getAppUpdateInfo: vi.fn().mockResolvedValue({
-    fileHash: null,
-    fileUrl: null,
-    id: NIL_UUID,
-    message: null,
-    shouldForceUpdate: true,
-    status: "ROLLBACK",
-  }),
-  getBundleById: vi.fn(),
-  getBundles: vi.fn(),
-  getChannels: vi.fn(),
-  insertBundle: vi.fn(),
-  updateBundleById: vi.fn(),
-  deleteBundleById: vi.fn(),
-});
+const testBundle: Bundle = {
+  id: "bundle-1",
+  platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: "hash123",
+  gitCommitHash: null,
+  message: "Test bundle",
+  channel: "production",
+  storageUri: "s3://test-bucket/bundles/bundle-1.zip",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+};
+
+const createApi = () =>
+  ({
+    getAppUpdateInfo: vi
+      .fn<HandlerAPI<TestContext>["getAppUpdateInfo"]>()
+      .mockResolvedValue({
+        fileHash: null,
+        fileUrl: null,
+        id: NIL_UUID,
+        message: null,
+        shouldForceUpdate: true,
+        status: "ROLLBACK",
+      }),
+    getBundleById: vi.fn<HandlerAPI<TestContext>["getBundleById"]>(),
+    getBundles: vi.fn<HandlerAPI<TestContext>["getBundles"]>(),
+    getChannels: vi
+      .fn<HandlerAPI<TestContext>["getChannels"]>()
+      .mockResolvedValue(["production"]),
+    insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
+    updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
+    deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
+  }) satisfies HandlerAPI<TestContext>;
 
 describe("createHandler", () => {
   it("supports the app-version route without a cohort segment", async () => {
@@ -134,7 +153,58 @@ describe("createHandler", () => {
     );
 
     expect(channelsResponse.status).toBe(200);
+    await expect(channelsResponse.json()).resolves.toEqual({
+      data: {
+        channels: ["production"],
+      },
+    });
+    expect(api.getChannels).toHaveBeenCalledWith(undefined);
     expect(updateResponse.status).toBe(404);
+  });
+
+  it("returns paginated bundle results in the response body", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 6,
+        totalPages: 26,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2&offset=10",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Total-Count")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      data: [testBundle],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 6,
+        totalPages: 26,
+      },
+    });
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+          platform: "ios",
+        },
+        limit: 2,
+        offset: 10,
+      },
+      undefined,
+    );
   });
 
   it("returns 400 when the platform route parameter is invalid", async () => {
