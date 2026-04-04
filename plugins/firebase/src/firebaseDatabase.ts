@@ -155,8 +155,6 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
 export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
   name: "firebaseDatabase",
   factory: (config) => {
-    let bundles: Bundle[] = [];
-
     let app: admin.app.App;
     try {
       app = admin.app();
@@ -169,11 +167,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
     return {
       async getBundleById(bundleId) {
-        const found = bundles.find((b) => b.id === bundleId);
-        if (found) {
-          return found;
-        }
-
         const bundleRef = bundlesCollection.doc(bundleId);
         const bundleSnap = await bundleRef.get();
 
@@ -206,8 +199,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
           const total = filteredBundles.length;
           const data = filteredBundles.slice(offset, offset + limit);
 
-          bundles = data;
-
           return {
             data,
             pagination: calculatePagination(total, {
@@ -229,7 +220,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
         const querySnapshot = await query.get();
 
-        bundles = sortBundles(
+        const data = sortBundles(
           querySnapshot.docs.map((doc) =>
             convertToBundle(doc.data() as SnakeCaseBundle),
           ),
@@ -237,7 +228,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         );
 
         return {
-          data: bundles,
+          data,
           pagination: calculatePagination(total, {
             limit,
             offset,
@@ -270,7 +261,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         }
 
         let isTargetAppVersionChanged = false;
-        const deletedBundleIds = new Set<string>();
 
         await db.runTransaction(async (transaction) => {
           const bundlesSnapshot = await transaction.get(bundlesCollection);
@@ -328,7 +318,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
               // Remove from bundlesMap
               delete bundlesMap[data.id];
-              deletedBundleIds.add(data.id);
               isTargetAppVersionChanged = true;
             }
           }
@@ -408,11 +397,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             }
           }
         });
-
-        // Update local cache
-        for (const bundleId of deletedBundleIds) {
-          bundles = bundles.filter((b) => b.id !== bundleId);
-        }
       },
     };
   },

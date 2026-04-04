@@ -1,6 +1,6 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
-import { beforeEach, describe, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { d1Database } from "./d1Database";
 
 type D1Row = {
@@ -253,5 +253,45 @@ describe("d1Database plugin", () => {
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
     },
+  });
+
+  it("refreshes bundle data before merging an update after a previous list request", async () => {
+    const bundleId = "bundle-stale-cache";
+    const initialRow: D1Row = {
+      id: bundleId,
+      channel: "production",
+      enabled: 1,
+      should_force_update: 0,
+      file_hash: "hash-1",
+      git_commit_hash: "commit-1",
+      message: "stale message",
+      platform: "ios",
+      target_app_version: "1.0.0",
+      storage_uri: "s3://bucket/stale.zip",
+      fingerprint_hash: null,
+      metadata: JSON.stringify({ source: "initial" }),
+      rollout_cohort_count: 1000,
+      target_cohorts: null,
+    };
+    rows.set(bundleId, initialRow);
+
+    await plugin.getBundles({ limit: 20, offset: 0 });
+
+    rows.set(bundleId, {
+      ...initialRow,
+      message: "fresh message",
+      metadata: JSON.stringify({ source: "fresh" }),
+    });
+
+    await plugin.updateBundle(bundleId, { enabled: false });
+    await plugin.commitBundle();
+
+    expect(rows.get(bundleId)).toEqual(
+      expect.objectContaining({
+        enabled: 0,
+        message: "fresh message",
+        metadata: JSON.stringify({ source: "fresh" }),
+      }),
+    );
   });
 });
