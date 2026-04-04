@@ -3,6 +3,20 @@ import { p } from "@hot-updater/cli-tools";
 import { type S3Migration, S3Migrator } from "./migrations/migrator";
 import type { AwsRegion } from "./regionLocationMap";
 
+function normalizeBucketRegion(
+  region: BucketLocationConstraint | null | undefined,
+): AwsRegion {
+  if (region == null) {
+    return "us-east-1";
+  }
+
+  if (region === "EU") {
+    return "eu-west-1";
+  }
+
+  return region;
+}
+
 export class S3Manager {
   private credentials: { accessKeyId: string; secretAccessKey: string };
 
@@ -21,9 +35,13 @@ export class S3Manager {
       buckets
         .filter((bucket) => bucket.Name)
         .map(async (bucket) => {
-          const { LocationConstraint: region } =
-            await s3Client.getBucketLocation({ Bucket: bucket.Name! });
-          return { name: bucket.Name!, region: region as AwsRegion };
+          const { LocationConstraint } = await s3Client.getBucketLocation({
+            Bucket: bucket.Name!,
+          });
+          return {
+            name: bucket.Name!,
+            region: normalizeBucketRegion(LocationConstraint),
+          };
         }),
     );
     return bucketInfos;
