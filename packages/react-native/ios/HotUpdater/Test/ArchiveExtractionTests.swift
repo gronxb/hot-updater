@@ -1,3 +1,4 @@
+#if canImport(Testing)
 import CryptoKit
 import Compression
 import Foundation
@@ -1173,3 +1174,4 @@ private extension Data {
         append(Data(bytes: &littleEndian, count: MemoryLayout<UInt64>.size))
     }
 }
+#endif
