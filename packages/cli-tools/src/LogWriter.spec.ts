@@ -1,5 +1,7 @@
 import fs from "fs";
+
 import { afterEach, describe, expect, it } from "vitest";
+
 import { createLogWriter, stripAnsi } from "./LogWriter";
 
 const createdLogFiles: string[] = [];

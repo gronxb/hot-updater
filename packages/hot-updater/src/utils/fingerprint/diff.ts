@@ -1,6 +1,7 @@
 import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
+
 import {
   type FingerprintOptions,
   type FingerprintResult,

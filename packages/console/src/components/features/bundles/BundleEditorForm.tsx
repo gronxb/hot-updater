@@ -10,6 +10,7 @@ import { Download, Plus, X } from "lucide-react";
 import { useState } from "react";
 import semver from "semver";
 import { toast } from "sonner";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import {
   useBundleDownloadUrlMutation,
   useUpdateBundleMutation,
 } from "@/lib/api";
+
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
 import { PromoteChannelDialog } from "./PromoteChannelDialog";
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";

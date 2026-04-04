@@ -68,7 +68,7 @@ const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
-// biome-ignore lint/complexity/useRegexLiterals: The literal form trips noControlCharactersInRegex for ESC.
+// The literal form trips noControlCharactersInRegex for ESC.
 const ANSI_ESCAPE_PATTERN = new RegExp("\\x1B\\[[0-?]*[ -/]*[@-~]", "g");
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,

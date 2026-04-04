@@ -314,9 +314,8 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-123");
     nativeModuleMock.updateBundle.mockResolvedValue(true);
 
-    const { getBaseURL, getBundleId, getManifest, updateBundle } = await import(
-      "./native"
-    );
+    const { getBaseURL, getBundleId, getManifest, updateBundle } =
+      await import("./native");
 
     expect(getBundleId()).toBe("bundle-123");
     expect(getManifest()).toEqual({
@@ -366,9 +365,8 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-beta");
     nativeModuleMock.resetChannel.mockResolvedValue(true);
 
-    const { getBaseURL, getBundleId, getManifest, resetChannel } = await import(
-      "./native"
-    );
+    const { getBaseURL, getBundleId, getManifest, resetChannel } =
+      await import("./native");
 
     expect(getBundleId()).toBe("bundle-beta");
     expect(getManifest()).toEqual({

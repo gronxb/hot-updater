@@ -1,8 +1,10 @@
+import fs from "fs";
+import path from "path";
+
 import { createFingerprintAsync } from "@expo/fingerprint";
 import { getCwd } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
-import fs from "fs";
-import path from "path";
+
 import { setFingerprintHash } from "../setFingerprintHash";
 import {
   ensureFingerprintConfig,

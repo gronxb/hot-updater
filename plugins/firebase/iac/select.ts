@@ -1,3 +1,5 @@
+import fs from "fs";
+
 import {
   type BuildType,
   ConfigBuilder,
@@ -7,7 +9,6 @@ import {
   p,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
-import fs from "fs";
 
 const getConfigTemplate = (build: BuildType) => {
   const storageConfig: ProviderConfig = {

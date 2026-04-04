@@ -4,6 +4,7 @@ import {
   SourceSkips,
 } from "@expo/fingerprint";
 import { loadConfig, p } from "@hot-updater/cli-tools";
+
 import { isExpo } from "../expoDetection";
 import { processExtraSources } from "./processExtraSources";
 

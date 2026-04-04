@@ -6,7 +6,6 @@
  */
 
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-// biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
 import {
   Alert,

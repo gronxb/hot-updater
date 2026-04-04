@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { hdiff } from "../src/index.js";
 import { readFixtureHbc } from "./test-helpers.js";
 

@@ -5,6 +5,7 @@ import {
   type UpdateStatus,
 } from "@hot-updater/core";
 import { NativeEventEmitter, Platform } from "react-native";
+
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
   type UpdateBundleParams,

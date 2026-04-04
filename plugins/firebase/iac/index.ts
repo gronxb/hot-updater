@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 import {
   type BuildType,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
@@ -10,8 +13,7 @@ import {
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
-import fs from "fs";
-import path from "path";
+
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { initFirebaseUser, setEnv } from "./select";
 
@@ -83,7 +85,7 @@ const syncFunctionsPackageJson = async (functionsDir: string) => {
   };
 
   packageJson.dependencies = {
-    ...(packageJson.dependencies ?? {}),
+    ...packageJson.dependencies,
     "@hot-updater/server": runtimePackageInfo.serverPackageVersion,
     hono: runtimePackageInfo.honoVersion,
   };

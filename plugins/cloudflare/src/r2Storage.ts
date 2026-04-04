@@ -1,3 +1,5 @@
+import path from "path";
+
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
@@ -6,7 +8,6 @@ import {
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
-import path from "path";
 import { createWrangler } from "./utils/createWrangler";
 
 export interface R2StorageConfig {

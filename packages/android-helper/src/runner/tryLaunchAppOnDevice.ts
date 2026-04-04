@@ -1,5 +1,6 @@
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
+
 import type { AndroidDevice } from "../types";
 import { Device } from "../utils/device";
 
@@ -61,7 +62,7 @@ export async function tryLaunchAppOnDevice({
     spinner.stop(
       `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${port}.`,
     );
-  } catch (_error) {
+  } catch {
     spinner.error("Failed to launch the app.");
     throw new Error(`Failed to launch the app on ${device.readableName}`);
     // Original cause: (error as ExecaError).stderr

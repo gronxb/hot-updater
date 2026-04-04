@@ -16,7 +16,7 @@
 
 ## Coding Style & Naming
 - Language: TypeScript (`strict: true`).
-- Formatting: Biome (2 spaces, semicolons, 80 cols, organized imports). Example: run `pnpm -w biome` before committing.
+- Formatting: `oxfmt` + `oxlint` (2 spaces, semicolons, 80 cols, sorted imports). Example: run `pnpm -w lint:fix` before committing.
 - Naming: camelCase (functions/vars), PascalCase (types/classes), kebab-case (package and dir names). Scoped packages use `@hot-updater/<name>`.
 - Structure: Source under `src/` with a focused `index.ts` entry per package.
 
@@ -27,7 +27,7 @@
 
 ## Commit & Pull Requests
 - Commit style: Conventional Commits (e.g., `feat(aws): add R2 option`, `fix(android): handle proguard syntax`).
-- Before PR: `pnpm -w biome`, `pnpm -w test`, and `pnpm changeset` (select affected packages; patch/minor as appropriate).
+- Before PR: `pnpm -w lint`, `pnpm -w test`, and `pnpm changeset` (select affected packages; patch/minor as appropriate).
 - PR content: clear description, linked issues, screenshots for console/UI changes, and notes on docs/Breaking Changes.
 
 ## Security & Configuration

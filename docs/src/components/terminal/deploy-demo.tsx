@@ -1,4 +1,5 @@
 import type { Terminal } from "@xterm/xterm";
+
 import { ClackRenderer, cyan, gray, green } from "./clack-renderer";
 import type { DemoConfig } from "./types";
 

@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
+
 import type { Database } from "./types";
 
 export interface PostgresConfig extends PoolConfig {}

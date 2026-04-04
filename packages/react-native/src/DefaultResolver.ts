@@ -1,4 +1,5 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
+
 import { fetchUpdateInfo } from "./fetchUpdateInfo";
 import type { HotUpdaterResolver, ResolverCheckUpdateParams } from "./types";
 

@@ -1,5 +1,6 @@
 import { p } from "@hot-updater/cli-tools";
 import { type ExecaError, execa } from "execa";
+
 import type { AndroidDevice } from "../types";
 import { Device } from "../utils/device";
 

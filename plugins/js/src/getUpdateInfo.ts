@@ -8,6 +8,7 @@ import {
   type UpdateInfo,
   type UpdateStatus,
 } from "@hot-updater/core";
+
 import { semverSatisfies } from "./semverSatisfies";
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {

@@ -6,6 +6,7 @@ import { type IosNativeRunOptions, runIos } from "@hot-updater/apple-helper";
 import { p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
+
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 

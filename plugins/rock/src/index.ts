@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+
 import { log } from "@hot-updater/cli-tools";
 import type {
   BasePluginArgs,
@@ -5,8 +8,6 @@ import type {
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
 import { uuidv7 } from "uuidv7";
 
 interface RunBundleArgs {

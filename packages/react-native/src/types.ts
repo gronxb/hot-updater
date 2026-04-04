@@ -1,4 +1,5 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
+
 import type { NotifyAppReadyResult } from "./native";
 
 /**

@@ -1,7 +1,8 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
-import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import fs from "fs";
 import path from "path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 
 const resolveExportOptionsPlist = (exportOptionsPlist?: string) => {
   const resolvedExportOptionsPlist = exportOptionsPlist

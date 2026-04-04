@@ -6,6 +6,7 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { deleteBundle } from "./deleteBundle";
 
 const baseBundle: Bundle = {

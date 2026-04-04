@@ -169,6 +169,7 @@ vi.mock("./console", () => ({
 }));
 
 import fs from "fs";
+
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
@@ -176,6 +177,7 @@ import { getLatestGitCommit } from "@/utils/git";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+
 import {
   deploy,
   getRolloutCohortCountFromPercentage,

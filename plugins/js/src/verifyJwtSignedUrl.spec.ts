@@ -1,5 +1,6 @@
 import { jwtVerify } from "jose";
 import { assert, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { verifyJwtSignedUrl } from "./verifyJwtSignedUrl";
 
 vi.mock("jose", () => ({

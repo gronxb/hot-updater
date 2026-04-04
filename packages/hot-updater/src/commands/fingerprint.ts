@@ -1,6 +1,8 @@
-import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,

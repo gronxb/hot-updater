@@ -2,6 +2,7 @@ import type {
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
+
 import { createPluginDatabaseCore } from "./db/pluginCore";
 import {
   type DatabaseAdapter,

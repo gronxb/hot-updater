@@ -1,6 +1,8 @@
+import path from "path";
+
 import { getCwd } from "@hot-updater/cli-tools";
 import { generateMinBundleId } from "@hot-updater/plugin-core";
-import path from "path";
+
 import { runGradle } from "./builder/runGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 

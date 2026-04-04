@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
 import type { Plugin, ResolvedConfig } from "vite";
 
 interface LLMPluginOptions {
@@ -74,7 +75,7 @@ function getCategoryMetadata(contentDir: string): Record<string, string> {
             const title =
               meta.title || meta.root?.title || humanizeDirectoryName(dirName);
             categoryMap[dirName] = title;
-          } catch (_error) {
+          } catch {
             // If parsing fails, use humanized name
             categoryMap[dirName] = humanizeDirectoryName(dirName);
           }

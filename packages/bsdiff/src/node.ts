@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+
 import { HdiffError, type HdiffErrorCode } from "./errors.js";
 import { hdiff } from "./hdiff.js";
 import { installPrecompiledWasm } from "./precompiled.js";

@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "lib": ["ESNext"],
-    "moduleResolution": "node",
+    "module": "node16",
+    "moduleResolution": "node16",
     "skipLibCheck": true,
     "outDir": "build",
     "rootDir": "src",

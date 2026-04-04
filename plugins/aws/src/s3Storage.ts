@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -13,8 +16,7 @@ import {
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
-import fs from "fs/promises";
-import path from "path";
+
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 
 export interface S3StorageConfig extends S3ClientConfig {

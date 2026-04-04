@@ -12,12 +12,14 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import {
   assertDockerComposeAvailable,
   findOpenPort,

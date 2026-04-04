@@ -1,7 +1,8 @@
-import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
-import { execa } from "execa";
 import fs from "fs";
 import path from "path";
+
+import { getCwd, getReactNativeMetadatas, p } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 
 export const installPodsIfNeeded = async (sourceDir: string): Promise<void> => {
   const podfilePath = path.join(sourceDir, "Podfile");
@@ -60,7 +61,7 @@ const checkShouldUseBundler = async (gemfilePath: string): Promise<boolean> => {
 
     const gemfileContent = await fs.promises.readFile(gemfilePath, "utf-8");
     return gemfileContent.includes("cocoapods");
-  } catch (_error) {
+  } catch {
     return false;
   }
 };

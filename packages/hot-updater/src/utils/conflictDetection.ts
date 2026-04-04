@@ -1,6 +1,7 @@
-import { colors, getCwd, getPackageManager, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { colors, getCwd, getPackageManager, p } from "@hot-updater/cli-tools";
 
 /**
  * Checks if a package can be resolved using require.resolve.
@@ -46,7 +47,7 @@ export function hasExpoUpdates(): boolean {
     const devDependencies = packageJson.devDependencies || {};
 
     return !!dependencies["expo-updates"] || !!devDependencies["expo-updates"];
-  } catch (_e) {
+  } catch {
     return false;
   }
 }

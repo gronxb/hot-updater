@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type { Bundle } from "./types";
 

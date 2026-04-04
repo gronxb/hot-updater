@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Moon, Package, Sun } from "lucide-react";
+
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {

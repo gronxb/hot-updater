@@ -2,6 +2,7 @@
 import "@xterm/xterm/css/xterm.css";
 import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
+
 import type { TerminalEmulatorProps } from "./types";
 
 const DEFAULT_THEME = {

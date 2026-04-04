@@ -1,6 +1,7 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { beforeEach, describe, vi } from "vitest";
+
 import { supabaseDatabase } from "./supabaseDatabase";
 
 type SupabaseBundleRow = {
@@ -131,7 +132,7 @@ const { bundleRows, createMockSupabaseClient } = vi.hoisted(() => {
       return this;
     }
 
-    // biome-ignore lint/suspicious/noThenProperty: this mock must be awaitable to match the Supabase query builder API.
+    // This mock must be awaitable to match the Supabase query builder API.
     then<TResult1 = any, TResult2 = never>(
       onfulfilled?: ((value: any) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,

@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 import { compileHermes } from "@hot-updater/bare";
 import { log } from "@hot-updater/cli-tools";
 import type {
@@ -6,9 +9,8 @@ import type {
   BuildPluginConfig,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
-import fs from "fs";
-import path from "path";
 import { uuidv7 } from "uuidv7";
+
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 

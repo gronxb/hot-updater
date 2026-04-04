@@ -1,5 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
+
 import { withJwtSignedUrl } from "./withJwtSignedUrl";
 
 describe("withJwtSignedUrl", () => {

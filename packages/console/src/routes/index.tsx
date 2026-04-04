@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createFileRoute } from "@tanstack/react-router";
+
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
 import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";

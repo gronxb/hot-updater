@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+
 import {
   Sheet,
   SheetContent,
@@ -7,6 +8,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+
 import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";

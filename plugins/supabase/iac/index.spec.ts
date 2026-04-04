@@ -1,8 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
 import { resolvePackageVersion } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
+
 import { resolveEdgeFunctionDenoConfig } from "./index";
 
 describe("resolveEdgeFunctionDenoConfig", () => {

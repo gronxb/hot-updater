@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import path from "path";
+
 import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
@@ -15,7 +17,7 @@ import {
   getPublicKeyFromPrivate,
   loadPrivateKey,
 } from "hot-updater";
-import path from "path";
+
 import pkg from "../../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 
@@ -91,13 +93,13 @@ const getPublicKeyFromConfig = async (
     const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
     console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
     return publicKeyPEM.trim();
-  } catch (_privateKeyError) {
+  } catch {
     try {
       // Priority 3: Public key file (fallback)
       const publicKeyPEM = await readFile(publicKeyPath, "utf-8");
       console.log(`[hot-updater] Using public key from ${publicKeyPath}`);
       return publicKeyPEM.trim();
-    } catch (_publicKeyError) {
+    } catch {
       // Priority 4: All sources failed - throw error
       throw new Error(
         "[hot-updater] Failed to load public key for bundle signing.\n\n" +

@@ -20,7 +20,6 @@ catalogs:
 onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
-  - '@biomejs/biome'
   - '@firebase/util'
   - '@sentry/cli'
   - '@swc/core'

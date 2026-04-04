@@ -67,8 +67,7 @@ const appVersionStrategy = async (
     cohort,
   }: AppVersionGetBundlesArgs,
 ) => {
-  const appVersionList = await DB.prepare(
-    /* sql */ `
+  const appVersionList = await DB.prepare(/* sql */ `
     SELECT 
       target_app_version
     FROM bundles
@@ -78,8 +77,7 @@ const appVersionStrategy = async (
       AND id >= ?
       AND target_app_version IS NOT NULL
     GROUP BY target_app_version
-  `,
-  )
+  `)
     .bind(platform, channel, minBundleId)
     .all<{ target_app_version: string; count: number }>();
 
@@ -101,8 +99,7 @@ const appVersionStrategy = async (
   }
 
   const placeholders = targetAppVersionList.map(() => "?").join(", ");
-  const rows = await DB.prepare(
-    /* sql */ `
+  const rows = await DB.prepare(/* sql */ `
     SELECT
       id,
       platform,
@@ -123,8 +120,7 @@ const appVersionStrategy = async (
       AND id >= ?
       AND channel = ?
       AND target_app_version IN (${placeholders})
-  `,
-  )
+  `)
     .bind(platform, minBundleId, channel, ...targetAppVersionList)
     .all<BundleRow>();
 
@@ -150,8 +146,7 @@ export const fingerprintStrategy = async (
     cohort,
   }: FingerprintGetBundlesArgs,
 ) => {
-  const rows = await DB.prepare(
-    /* sql */ `
+  const rows = await DB.prepare(/* sql */ `
     SELECT
       id,
       platform,
@@ -172,8 +167,7 @@ export const fingerprintStrategy = async (
       AND id >= ?
       AND channel = ?
       AND fingerprint_hash = ?
-  `,
-  )
+  `)
     .bind(platform, minBundleId, channel, fingerprintHash)
     .all<BundleRow>();
 

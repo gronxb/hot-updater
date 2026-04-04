@@ -1,7 +1,9 @@
 import os from "node:os";
+import path from "path";
+
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
-import path from "path";
+
 import type { AndroidDevice } from "../types";
 
 /**
@@ -65,7 +67,7 @@ async function tryRunAdbReverse({
 
     p.log.info(`Connecting "${deviceId}" to the development server`);
     await execa(adbPath, adbArgs);
-  } catch (_error) {
+  } catch {
     throw new Error(
       `Failed to connect "${deviceId}" to development server using "adb reverse"`,
     );

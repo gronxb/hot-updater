@@ -1,7 +1,9 @@
-import { getCwd } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { getCwd } from "@hot-updater/cli-tools";
 import plist from "plist";
+
 import type { ConfigParser } from "./configParser";
 import { parsePlist } from "./plistUtils";
 

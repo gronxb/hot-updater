@@ -65,7 +65,7 @@
   "devDependencies": {
     "@types/node": "^25.3.2",
     "tsdown": "catalog:tools",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vitest": "catalog:",
     "wrangler": "^4.69.0"
   },

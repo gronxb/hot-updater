@@ -1,4 +1,5 @@
 import type { StoragePluginHooks } from "@hot-updater/plugin-core";
+
 import type { S3StorageConfig } from "./s3Storage";
 import { s3Storage } from "./s3Storage";
 import {

@@ -1,7 +1,9 @@
+import path from "path";
+
 import { createFingerprintAsync } from "@expo/fingerprint";
 import { getCwd } from "@hot-updater/cli-tools";
-import path from "path";
 import { describe, expect, it } from "vitest";
+
 import { processExtraSources } from "./processExtraSources";
 
 describe("processExtraSources", () => {

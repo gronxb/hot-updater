@@ -5,6 +5,7 @@ import {
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
+
 import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {

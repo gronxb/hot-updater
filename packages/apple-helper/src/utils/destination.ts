@@ -2,6 +2,7 @@ import type {
   ApplePlatform,
   IosBuildDestination,
 } from "@hot-updater/plugin-core";
+
 import type { AppleDeviceType } from "../types";
 import { platformConfigs } from "./platform";
 

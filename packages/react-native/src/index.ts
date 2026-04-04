@@ -62,13 +62,6 @@ const registerGlobalGetBaseURL = () => {
       globalThis.HotUpdaterGetBaseURL = fn;
     }
   }
-
-  // Register to global (React Native, Node.js)
-  if (typeof global !== "undefined") {
-    if (!global.HotUpdaterGetBaseURL) {
-      global.HotUpdaterGetBaseURL = fn;
-    }
-  }
 };
 
 // Call registration immediately on module load

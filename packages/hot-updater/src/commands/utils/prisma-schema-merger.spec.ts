@@ -1,6 +1,8 @@
 import { readFile } from "fs/promises";
 import path from "path";
+
 import { describe, expect, it } from "vitest";
+
 import { mergePrismaSchema } from "./prisma-schema-merger";
 
 const HOT_UPDATER_MODELS = `model bundles {

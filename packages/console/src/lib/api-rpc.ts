@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
+
 import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "./constants";
 
 type GetBundlesInput = {
@@ -192,9 +193,8 @@ export const promoteBundle = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { promoteBundle: promoteBundleWithConfig } = await import(
-        "./server/promoteBundle"
-      );
+      const { promoteBundle: promoteBundleWithConfig } =
+        await import("./server/promoteBundle");
       const { config, databasePlugin, storagePlugin } = await prepareConfig();
       const bundle = await promoteBundleWithConfig(data, {
         config,
@@ -231,9 +231,8 @@ export const deleteBundle = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { deleteBundle: deleteBundleWithStorage } = await import(
-        "./server/deleteBundle"
-      );
+      const { deleteBundle: deleteBundleWithStorage } =
+        await import("./server/deleteBundle");
       const { databasePlugin, storagePlugin } = await prepareConfig();
 
       await deleteBundleWithStorage(data, {

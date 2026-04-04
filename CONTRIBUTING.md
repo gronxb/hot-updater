@@ -123,7 +123,7 @@ Ready to contribute your changes back? Follow this checklist before submitting y
    Format and lint the entire codebase to ensure code consistency and style correctness.
 
    ```bash
-   pnpm -w biome
+   pnpm -w lint
    ```
 
    Review and fix any reported issues.

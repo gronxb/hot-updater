@@ -1,8 +1,9 @@
-import { getCwd } from "@hot-updater/cli-tools";
 import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
+
+import { getCwd } from "@hot-updater/cli-tools";
 
 const execAsync = promisify(exec);
 

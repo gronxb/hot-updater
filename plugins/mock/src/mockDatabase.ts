@@ -5,6 +5,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
+
 import { minMax, sleep } from "./util/utils";
 
 const bundleMatchesQueryWhere = (

@@ -22,6 +22,7 @@ import {
   it,
   vi,
 } from "vitest";
+
 import { kyselyAdapter } from "../adapters/kysely";
 import { createHotUpdater } from "./index";
 

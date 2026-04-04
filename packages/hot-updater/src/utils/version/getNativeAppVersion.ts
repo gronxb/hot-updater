@@ -1,4 +1,5 @@
 import type { Platform } from "@hot-updater/core";
+
 import { getAndroidVersion } from "./getAndroidVersion";
 import { getIOSVersion } from "./getIOSVersion";
 

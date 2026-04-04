@@ -2,6 +2,7 @@ import tailwindcss from "@tailwindcss/vite";
 import mdx from "fumadocs-mdx/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "waku/config";
+
 import { deadLinkCheckerPlugin } from "./plugins/dead-link-checker-plugin";
 import { llmsTxtPlugin } from "./plugins/llms-txt-plugin";
 import * as MdxConfig from "./source.config.js";

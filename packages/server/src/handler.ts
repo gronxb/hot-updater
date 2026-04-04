@@ -9,6 +9,7 @@ import type {
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
+
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 

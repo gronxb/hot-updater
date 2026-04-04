@@ -1,11 +1,11 @@
-import { p } from "@hot-updater/cli-tools";
+import path from "path";
 
+import { p } from "@hot-updater/cli-tools";
 import {
   type ApplePlatform,
   generateMinBundleId,
   type IosBuildDestination,
 } from "@hot-updater/plugin-core";
-import path from "path";
 
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";

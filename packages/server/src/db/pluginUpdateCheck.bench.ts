@@ -1,4 +1,5 @@
 import { bench, describe } from "vitest";
+
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,

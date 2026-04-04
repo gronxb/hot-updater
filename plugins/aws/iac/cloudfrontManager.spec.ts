@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { buildDistributionConfig } from "./cloudfrontDistributionConfig";
 
 const mockCloudFront = vi.hoisted(() => ({

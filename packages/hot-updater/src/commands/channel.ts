@@ -1,4 +1,5 @@
 import { colors, p } from "@hot-updater/cli-tools";
+
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import { getChannel, setChannel } from "@/utils/setChannel";
 

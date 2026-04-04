@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { mockDatabase } from "../mockDatabase";
 
 const DEFAULT_BUNDLES: Bundle[] = [

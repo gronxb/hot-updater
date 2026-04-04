@@ -2,6 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
@@ -16,6 +17,7 @@ import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import {
   assertDockerDaemonAvailable,
   findOpenPort,

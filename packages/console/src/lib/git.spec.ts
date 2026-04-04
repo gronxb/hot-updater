@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { getCommitUrl } from "./git";
 
 describe("getCommitUrl", () => {

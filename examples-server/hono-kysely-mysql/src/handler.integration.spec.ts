@@ -5,6 +5,7 @@ import {
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import {
+  assertDockerComposeAvailable,
   cleanupServer,
   createGetUpdateInfo,
   killPort,
@@ -15,9 +16,6 @@ import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe } from "vitest";
-import {
-  assertDockerComposeAvailable,
-} from "../../../packages/test-utils/src/runtimeProcess";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);

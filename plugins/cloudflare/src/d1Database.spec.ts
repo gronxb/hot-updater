@@ -1,6 +1,7 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { d1Database } from "./d1Database";
 
 type D1Row = {

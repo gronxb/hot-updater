@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { generateMinBundleId } from "./generateMinBundleId";
 
 describe("generateMinBundleId", () => {

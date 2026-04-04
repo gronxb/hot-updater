@@ -1,6 +1,7 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { s3LambdaEdgeStorage } from "./s3LambdaEdgeStorage";
 
 vi.mock("@aws-sdk/cloudfront-signer", () => ({

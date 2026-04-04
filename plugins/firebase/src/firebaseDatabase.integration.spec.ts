@@ -1,6 +1,7 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
 

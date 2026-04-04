@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react",
+    "jsx-a11y"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "builtin": true,
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "packages/react-native/lib",
+    "**/package.json",
+    "**/dist",
+    "**/build",
+    "**/node_modules",
+    "**/*.js",
+    "**/*.cjs",
+    "**/*.mjs",
+    "**/ios",
+    "**/android",
+    "**/.source",
+    "**/pages.gen.ts",
+    "**/routeTree.gen.ts",
+    "plugins/aws/runtime-acceptance-*",
+    "plugins/firebase/runtime-acceptance-*",
+    "plugins/supabase/runtime-acceptance-*"
+  ],
+  "rules": {
+    "no-unused-vars": "error",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-invalid-void-type": "off",
+    "@typescript-eslint/no-non-null-assertion": "off",
+    "jsx-a11y/click-events-have-key-events": "off",
+    "no-param-reassign": "off",
+    "react/exhaustive-deps": "off",
+    "react/no-array-index-key": "off",
+    "unicorn/no-document-cookie": "off",
+    "unicorn/no-thenable": "off",
+    "unicorn/prefer-node-protocol": "off"
+  }
+}

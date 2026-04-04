@@ -3,7 +3,9 @@ import net from "node:net";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
+
 import { beforeAll, describe, expect, it } from "vitest";
+
 import { hdiff } from "../src/node.js";
 import { readFixtureHbc } from "./test-helpers.js";
 

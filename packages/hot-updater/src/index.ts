@@ -5,6 +5,7 @@ import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, log, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
+
 import {
   appIdSuffixCommandOption,
   deviceCommandOption,
@@ -27,6 +28,7 @@ import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {

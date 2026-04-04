@@ -44,8 +44,8 @@ const resolveJwtSecretFromContext = (
 };
 
 export const r2WorkerStorage = <
-  TContext extends
-    RequestEnvContext<CloudflareWorkerStorageEnv> = RequestEnvContext<CloudflareWorkerStorageEnv>,
+  TContext extends RequestEnvContext<CloudflareWorkerStorageEnv> =
+    RequestEnvContext<CloudflareWorkerStorageEnv>,
 >(
   config: CloudflareWorkerStorageConfig<TContext>,
 ) => {

@@ -5,6 +5,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
+
 import { bundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {

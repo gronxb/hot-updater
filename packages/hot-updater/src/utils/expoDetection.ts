@@ -1,6 +1,7 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
 
 /**
  * Checks if the project is using Expo CNG (Continuous Native Generation).

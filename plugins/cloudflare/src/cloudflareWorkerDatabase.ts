@@ -203,8 +203,8 @@ const resolveDbFromContext = (
 };
 
 export const d1WorkerDatabase = <
-  TContext extends
-    RequestEnvContext<CloudflareWorkerDatabaseEnv> = RequestEnvContext<CloudflareWorkerDatabaseEnv>,
+  TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv> =
+    RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 >() =>
   createDatabasePlugin<CloudflareWorkerDatabaseConfig<TContext>, TContext>({
     name: "d1WorkerDatabase",

@@ -59,7 +59,7 @@ Located in `src/types/`, provides TypeScript interfaces for plugins and core fun
 ## Development Guidelines
 
 ### Code Style
-- Follow the root Biome configuration
+- Follow the root OXC configuration
 - Use Web Standard APIs wherever possible
 - Avoid runtime-specific code paths unless absolutely necessary
 

@@ -1,3 +1,5 @@
+import fs from "fs";
+
 import { fromSSO } from "@aws-sdk/credential-providers";
 import {
   type BuildType,
@@ -9,7 +11,7 @@ import {
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
-import fs from "fs";
+
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
