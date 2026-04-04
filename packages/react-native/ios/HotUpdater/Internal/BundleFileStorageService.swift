@@ -147,6 +147,17 @@ class BundleFileStorageService: BundleStorageService {
         let manifest: ManifestAssets
     }
 
+    private enum UpdateProgress {
+        static let downloadEnd = 0.7
+        static let verificationStart = 0.72
+        static let verificationEnd = 0.82
+        static let extractionStart = 0.82
+        static let extractionEnd = 0.97
+        static let bundleValidation = 0.98
+        static let activationReady = 0.99
+        static let complete = 1.0
+    }
+
     private let fileSystem: FileSystemService
     private let downloadService: DownloadService
     private let decompressService: DecompressService
@@ -178,7 +189,7 @@ class BundleFileStorageService: BundleStorageService {
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
-                                               qos: .utility,
+                                               qos: .userInitiated,
                                                attributes: .concurrent)
 
         // Ensure bundle store directory exists
@@ -623,26 +634,23 @@ class BundleFileStorageService: BundleStorageService {
      */
     func findBundleFile(in directoryPath: String) -> Result<String?, Error> {
         NSLog("[BundleStorage] Searching for bundle file in directory: \(directoryPath)")
-        
-        // Check directory contents
+
+        let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
+        if self.fileSystem.fileExists(atPath: iosBundlePath) {
+            NSLog("[BundleStorage] Found iOS bundle atPath: \(iosBundlePath)")
+            return .success(iosBundlePath)
+        }
+
+        let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
+        if self.fileSystem.fileExists(atPath: mainBundlePath) {
+            NSLog("[BundleStorage] Found main bundle atPath: \(mainBundlePath)")
+            return .success(mainBundlePath)
+        }
+
         do {
             let contents = try self.fileSystem.contentsOfDirectory(atPath: directoryPath)
             NSLog("[BundleStorage] Directory contents: \(contents)")
-            
-            // Check for iOS bundle file directly
-            let iosBundlePath = (directoryPath as NSString).appendingPathComponent("index.ios.bundle")
-            if self.fileSystem.fileExists(atPath: iosBundlePath) {
-                NSLog("[BundleStorage] Found iOS bundle atPath: \(iosBundlePath)")
-                return .success(iosBundlePath)
-            }
-            
-            // Check for main bundle file
-            let mainBundlePath = (directoryPath as NSString).appendingPathComponent("main.jsbundle")
-            if self.fileSystem.fileExists(atPath: mainBundlePath) {
-                NSLog("[BundleStorage] Found main bundle atPath: \(mainBundlePath)")
-                return .success(mainBundlePath)
-            }
-            
+
             // Additional search: check all .bundle files
             for file in contents {
                 if file.hasSuffix(".bundle") {
@@ -662,19 +670,23 @@ class BundleFileStorageService: BundleStorageService {
     }
         
     /**
-    * Cleans up old bundles, keeping only the current and new bundles.
+    * Cleans up old bundles, keeping only the requested bundle IDs.
     * Executes synchronously on the calling thread.
     * @param currentBundleId ID of the current active bundle (optional)
     * @param bundleId ID of the new bundle to keep (optional)
     * @return Result of operation
     */
     func cleanupOldBundles(currentBundleId: String?, bundleId: String?) -> Result<Void, Error> {
+        cleanupOldBundles(bundleIdsToKeep: [currentBundleId, bundleId].compactMap { $0 })
+    }
+
+    private func cleanupOldBundles(bundleIdsToKeep: [String]) -> Result<Void, Error> {
         let storeDirResult = bundleStoreDir()
-        
+
         guard case .success(let storeDir) = storeDirResult else {
             return .failure(storeDirResult.failureError ?? BundleStorageError.unknown(nil))
         }
-        
+
         // List only directories that are not .tmp
         let contents: [String]
         do {
@@ -694,14 +706,12 @@ class BundleFileStorageService: BundleStorageService {
 
             return (!item.hasSuffix(".tmp") && self.fileSystem.fileExists(atPath: fullPath)) ? fullPath : nil
         }
-        
-        // Keep only the specified bundle IDs
-        let bundleIdsToKeep = Set([currentBundleId, bundleId].compactMap { $0 })
-        
+        let bundleIdsToKeepSet = Set(bundleIdsToKeep)
+
         bundles.forEach { bundlePath in
             let bundleName = (bundlePath as NSString).lastPathComponent
-            
-            if !bundleIdsToKeep.contains(bundleName) {
+
+            if !bundleIdsToKeepSet.contains(bundleName) {
                 do {
                     try self.fileSystem.removeItem(atPath: bundlePath)
                     NSLog("[BundleStorage] Removing old bundle: \(bundleName)")
@@ -712,7 +722,7 @@ class BundleFileStorageService: BundleStorageService {
                 NSLog("[BundleStorage] Keeping bundle: \(bundleName)")
             }
         }
-        
+
         // Remove any leftover .tmp directories
         contents.forEach { item in
             if item.hasSuffix(".tmp") {
@@ -725,8 +735,22 @@ class BundleFileStorageService: BundleStorageService {
                 }
             }
         }
-        
+
         return .success(())
+    }
+
+    private func scheduleCleanupOldBundles(bundleIdsToKeep: [String]) {
+        let uniqueBundleIdsToKeep = Array(Set(bundleIdsToKeep.filter { !$0.isEmpty }))
+        guard !uniqueBundleIdsToKeep.isEmpty else {
+            return
+        }
+
+        self.fileOperationQueue.async(flags: .barrier) {
+            let cleanupResult = self.cleanupOldBundles(bundleIdsToKeep: uniqueBundleIdsToKeep)
+            if case .failure(let error) = cleanupResult {
+                NSLog("[BundleStorage] Error during deferred cleanup: \(error)")
+            }
+        }
     }
     
     /**
@@ -895,12 +919,10 @@ class BundleFileStorageService: BundleStorageService {
                             let _ = self.saveMetadata(updatedMetadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
-                            // Clean up old bundles, preserving the fallback and new staging bundle.
-                            let bundleIdsToKeep = [updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
-                            if bundleIdsToKeep.count > 0 {
-                                let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
-                            }
-
+                            progressHandler(UpdateProgress.complete)
+                            self.scheduleCleanupOldBundles(
+                                bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                            )
                             completion(.success(true))
                         case .failure(let error):
                             completion(.failure(error))
@@ -997,8 +1019,7 @@ class BundleFileStorageService: BundleStorageService {
                 }
             },
             progressHandler: { downloadProgress in
-                // Map download progress to 0.0 - 0.8
-                progressHandler(downloadProgress * 0.8)
+                progressHandler(Self.mapProgress(downloadProgress, start: 0, end: UpdateProgress.downloadEnd))
             },
             completion: { [weak self] result in
             guard let self = self else {
@@ -1084,7 +1105,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param storeDir Path to the bundle-store directory
      * @param bundleId ID of the bundle being processed
      * @param tempDirectory Temporary directory for processing
-     * @param progressHandler Callback for extraction progress (0.8 to 1.0)
+     * @param progressHandler Callback for download/apply progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
     private func processDownloadedFileWithTmp(
@@ -1124,17 +1145,21 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             // 4) Create tmpDir
-            try self.fileSystem.createDirectory(atPath: tmpDir)
+            guard self.fileSystem.createDirectory(atPath: tmpDir) else {
+                throw BundleStorageError.directoryCreationFailed
+            }
             NSLog("[BundleStorage] Created tmpDir: \(tmpDir)")
             logFileSystemDiagnostics(path: tmpDir, context: "TmpDir Created")
 
             // 5) Verify bundle integrity (hash or signature based on fileHash format)
             NSLog("[BundleStorage] Verifying bundle integrity...")
+            progressHandler(UpdateProgress.verificationStart)
             let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
             let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
             switch verificationResult {
             case .success:
                 NSLog("[BundleStorage] Bundle verification completed successfully")
+                progressHandler(UpdateProgress.verificationEnd)
             case .failure(let error):
                 NSLog("[BundleStorage] Bundle verification failed: \(error)")
                 try? self.fileSystem.removeItem(atPath: tmpDir)
@@ -1148,8 +1173,12 @@ class BundleFileStorageService: BundleStorageService {
             logFileSystemDiagnostics(path: tempBundleFile, context: "Before Extraction")
             do {
                 try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
-                    // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
-                    progressHandler(0.8 + (unzipProgress * 0.2))
+                    let progress = Self.mapProgress(
+                        unzipProgress,
+                        start: UpdateProgress.extractionStart,
+                        end: UpdateProgress.extractionEnd
+                    )
+                    progressHandler(progress)
                 })
                 NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
                 logFileSystemDiagnostics(path: tmpDir, context: "After Extraction")
@@ -1167,6 +1196,7 @@ class BundleFileStorageService: BundleStorageService {
             try? self.fileSystem.removeItem(atPath: tempBundleFile)
 
             // 8) Verify that a valid bundle file exists inside tmpDir
+            progressHandler(UpdateProgress.bundleValidation)
             switch self.findBundleFile(in: tmpDir) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
@@ -1210,13 +1240,13 @@ class BundleFileStorageService: BundleStorageService {
                         // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        // 15) Clean up old bundles, preserving the fallback and new staging bundle.
-                        let bundleIdsToKeep = [updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
-                        if bundleIdsToKeep.count > 0 {
-                            let _ = self.cleanupOldBundles(currentBundleId: bundleIdsToKeep.first, bundleId: bundleIdsToKeep.count > 1 ? bundleIdsToKeep[1] : nil)
-                        }
+                        progressHandler(UpdateProgress.activationReady)
+                        self.scheduleCleanupOldBundles(
+                            bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                        )
 
-                        // 16) Complete with success
+                        // 15) Complete with success
+                        progressHandler(UpdateProgress.complete)
                         completion(.success(true))
                     case .failure(let err):
                         let nsError = err as NSError
@@ -1257,6 +1287,11 @@ class BundleFileStorageService: BundleStorageService {
                 completion(.failure(BundleStorageError.unknown(error)))
             }
         }
+    }
+
+    private static func mapProgress(_ value: Double, start: Double, end: Double) -> Double {
+        let clampedValue = min(max(value, 0), 1)
+        return start + (clampedValue * (end - start))
     }
 
     // MARK: - Rollback Support

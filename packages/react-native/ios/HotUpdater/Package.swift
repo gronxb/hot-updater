@@ -1,6 +1,35 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+let archiveSources = [
+    "ArchiveExtractionUtilities.swift",
+    "DecompressService.swift",
+    "DecompressionStrategy.swift",
+    "StreamingTarArchiveExtractor.swift",
+    "TarArchiveExtractor.swift",
+    "TarBrDecompressionStrategy.swift",
+    "TarGzDecompressionStrategy.swift",
+    "ZipArchiveExtractor.swift",
+    "ZipDecompressionStrategy.swift",
+]
+
+let archiveExcludedFiles = [
+    "BundleFileStorageService.swift",
+    "BundleMetadata.swift",
+    "CohortService.swift",
+    "FileManagerService.swift",
+    "HashUtils.swift",
+    "HotUpdater-Bridging-Header.h",
+    "HotUpdater.mm",
+    "HotUpdaterCrashHandler.h",
+    "HotUpdaterCrashHandler.mm",
+    "HotUpdaterImpl.swift",
+    "NotificationExtension.swift",
+    "SignatureVerifier.swift",
+    "URLSessionDownloadService.swift",
+    "VersionedPreferencesService.swift",
+]
+
 let package = Package(
     name: "HotUpdater",
     platforms: [
@@ -9,29 +38,23 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "HotUpdater",
-            // targets: ["HotUpdater"]
-            targets: ["HotUpdaterTest"]
+            name: "HotUpdaterArchive",
+            targets: ["HotUpdaterArchive"]
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/ZipArchive/ZipArchive.git", from: "2.6.0"),
-        .package(url: "https://github.com/tsolomko/SWCompression.git", from: "4.8.0"),
-    ],
+    dependencies: [],
     targets: [
-        // Target for Swift code
-        // Since React Native doesn't support SPM yet, we can't build properly. Will add proper unit tests when it's officially supported
-        // .target(
-        //     name: "HotUpdater",
-        //     path: "Internal",
-        //     exclude: [
-        //         "HotUpdater.mm",
-        //         "HotUpdater-Bridging-Header.h",
-        //     ]
-        // ),
+        // React Native's full native module cannot be built through SPM yet,
+        // but the pure-Swift archive extraction code can be.
+        .target(
+            name: "HotUpdaterArchive",
+            path: "Internal",
+            exclude: archiveExcludedFiles,
+            sources: archiveSources
+        ),
         .testTarget(
             name: "HotUpdaterTest",
-            // dependencies: ["HotUpdater"],
+            dependencies: ["HotUpdaterArchive"],
             path: "Test"
         ),
     ]

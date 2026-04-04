@@ -1,5 +1,4 @@
 import Foundation
-import SWCompression
 
 /**
  * Strategy for handling ZIP compressed files
@@ -34,7 +33,8 @@ class ZipDecompressionStrategy: DecompressionStrategy {
             fileHandle.closeFile()
         }
 
-        guard let header = try? fileHandle.read(upToCount: 4), header.count == 4 else {
+        guard let header = try? ArchiveExtractionUtilities.readUpToCount(from: fileHandle, count: 4),
+              header.count == 4 else {
             NSLog("[ZipStrategy] Invalid ZIP: cannot read header")
             return false
         }
@@ -50,118 +50,7 @@ class ZipDecompressionStrategy: DecompressionStrategy {
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
         NSLog("[ZipStrategy] Starting extraction of \(file) to \(destination)")
-
-        let zipData: Data
-        do {
-            zipData = try readArchiveData(from: file)
-        } catch {
-            throw NSError(
-                domain: "ZipDecompressionStrategy",
-                code: 1,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to read ZIP file at: \(file)",
-                    NSUnderlyingErrorKey: error
-                ]
-            )
-        }
-
-        progressHandler(0.1)
-
-        let zipEntries: [ZipEntry]
-        do {
-            zipEntries = try ZipContainer.open(container: zipData)
-            NSLog("[ZipStrategy] ZIP extraction successful, found \(zipEntries.count) entries")
-        } catch {
-            throw NSError(
-                domain: "ZipDecompressionStrategy",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "ZIP extraction failed: \(error.localizedDescription)"]
-            )
-        }
-
-        progressHandler(0.2)
-
-        let destinationURL = URL(fileURLWithPath: destination)
-        let canonicalDestination = destinationURL.standardized.path
-
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: canonicalDestination) {
-            try fileManager.createDirectory(
-                atPath: canonicalDestination,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-        }
-
-        let totalEntries = Double(zipEntries.count)
-        for (index, entry) in zipEntries.enumerated() {
-            try extractZipEntry(entry, to: canonicalDestination)
-            progressHandler(0.2 + (Double(index + 1) / totalEntries * 0.8))
-        }
-
+        try ZipArchiveExtractor.extract(file: file, to: destination, progressHandler: progressHandler)
         NSLog("[ZipStrategy] Successfully extracted all entries")
-    }
-
-    private func readArchiveData(from file: String) throws -> Data {
-        try Data(
-            contentsOf: URL(fileURLWithPath: file),
-            options: .mappedIfSafe
-        )
-    }
-
-    private func extractZipEntry(_ entry: ZipEntry, to destination: String) throws {
-        let fileManager = FileManager.default
-        let entryPath = entry.info.name.trimmingCharacters(in: .init(charactersIn: "/"))
-
-        guard !entryPath.isEmpty,
-              !entryPath.contains(".."),
-              !entryPath.hasPrefix("/") else {
-            NSLog("[ZipStrategy] Skipping suspicious path: \(entry.info.name)")
-            return
-        }
-
-        let fullPath = (destination as NSString).appendingPathComponent(entryPath)
-        let fullURL = URL(fileURLWithPath: fullPath)
-        let canonicalFullPath = fullURL.standardized.path
-        let canonicalDestination = URL(fileURLWithPath: destination).standardized.path
-
-        guard canonicalFullPath.hasPrefix(canonicalDestination + "/") ||
-              canonicalFullPath == canonicalDestination else {
-            throw NSError(
-                domain: "ZipDecompressionStrategy",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Path traversal attempt detected: \(entry.info.name)"]
-            )
-        }
-
-        if entry.info.type == .directory {
-            if !fileManager.fileExists(atPath: canonicalFullPath) {
-                try fileManager.createDirectory(
-                    atPath: canonicalFullPath,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
-            }
-            return
-        }
-
-        if entry.info.type == .regular {
-            let parentPath = (canonicalFullPath as NSString).deletingLastPathComponent
-            if !fileManager.fileExists(atPath: parentPath) {
-                try fileManager.createDirectory(
-                    atPath: parentPath,
-                    withIntermediateDirectories: true,
-                    attributes: nil
-                )
-            }
-
-            guard let data = entry.data else {
-                NSLog("[ZipStrategy] Skipping file with no data: \(entry.info.name)")
-                return
-            }
-
-            try data.write(to: URL(fileURLWithPath: canonicalFullPath))
-            NSLog("[ZipStrategy] Extracted: \(entryPath)")
-        }
     }
 }

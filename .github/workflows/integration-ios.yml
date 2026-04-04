@@ -35,6 +35,9 @@ jobs:
       - name: Library Build
         run: pnpm build
 
+      - name: Swift Tests
+        run: pnpm test:swift
+
       - name: Build iOS
         run: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
@@ -69,6 +72,9 @@ jobs:
 
       - name: Library Build
         run: pnpm build
+
+      - name: Swift Tests
+        run: pnpm test:swift
 
       - name: Build iOS
         run: |
