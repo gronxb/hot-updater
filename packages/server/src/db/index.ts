@@ -106,13 +106,6 @@ export function createHotUpdater<TContext = unknown>(
             isDatabasePluginFactory(database)
               ? {
                   createMutationPlugin: () => database(),
-                  cleanupMutationPlugin: async (mutationPlugin) => {
-                    try {
-                      await mutationPlugin.onUnmount?.();
-                    } catch {
-                      // Ignore cleanup failures so they do not mask the original result.
-                    }
-                  },
                 }
               : undefined,
           );

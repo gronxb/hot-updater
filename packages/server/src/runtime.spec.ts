@@ -427,6 +427,5 @@ describe("runtime createHotUpdater", () => {
     await Promise.all([firstInsert, secondInsert]);
 
     expect(committedBundleIds).toEqual([[firstBundleId], [secondBundleId]]);
-    expect(onUnmount).toHaveBeenCalledTimes(2);
   });
 });

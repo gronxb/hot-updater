@@ -111,16 +111,17 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
     config: TConfig,
     hooks?: DatabasePluginHooks,
   ): (() => DatabasePlugin<TContext>) => {
-    return (): DatabasePlugin<TContext> => {
-      // Lazy initialization: factory is only called on first method invocation
-      let cachedMethods: DatabasePluginMethods<TContext> | null = null;
-      const getMethods = () => {
-        if (!cachedMethods) {
-          cachedMethods = options.factory(config);
-        }
-        return cachedMethods;
-      };
+    // Share the underlying plugin methods for a configured factory while
+    // keeping each returned DatabasePlugin instance's pending changes isolated.
+    let cachedMethods: DatabasePluginMethods<TContext> | null = null;
+    const getMethods = () => {
+      if (!cachedMethods) {
+        cachedMethods = options.factory(config);
+      }
+      return cachedMethods;
+    };
 
+    return (): DatabasePlugin<TContext> => {
       const changedMap = new Map<
         string,
         {
