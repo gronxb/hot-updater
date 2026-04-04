@@ -79,6 +79,10 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
 - runFlow:
+    file: subflows/navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
     file: subflows/assert-text-by-id.yaml
     env:
       APP_ID: ${APP_ID}
