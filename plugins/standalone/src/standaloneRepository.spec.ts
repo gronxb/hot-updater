@@ -380,28 +380,6 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     ]);
   });
 
-  it("getChannels: supports the legacy root channels response", async () => {
-    server.use(
-      http.get(
-        "http://localhost/hot-updater/api/bundles/channels",
-        ({ request }) => {
-          expect(request.headers.get("Content-Type")).toEqual(
-            "application/json",
-          );
-          expect(request.headers.get("Cache-Control")).toEqual("no-cache");
-          return HttpResponse.json({
-            channels: ["production", "staging"],
-          });
-        },
-      ),
-    );
-
-    await expect(repo.getChannels()).resolves.toEqual([
-      "production",
-      "staging",
-    ]);
-  });
-
   it("getBundleById: GET /hot-updater/api/bundles/:id retrieves a bundle (success case)", async () => {
     server.use(
       http.get(
