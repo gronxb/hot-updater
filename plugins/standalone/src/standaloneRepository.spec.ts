@@ -386,7 +386,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
             "application/json",
           );
           expect(request.headers.get("Cache-Control")).toEqual("no-cache");
-          return HttpResponse.json(["production", "staging"]);
+          return HttpResponse.json({
+            channels: ["production", "staging"],
+          });
         },
       ),
     );
@@ -801,9 +803,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
               "Bearer token",
             );
             expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-            return HttpResponse.json([
-              ...new Set(testBundles.map((bundle) => bundle.channel)),
-            ]);
+            return HttpResponse.json({
+              channels: [
+                ...new Set(testBundles.map((bundle) => bundle.channel)),
+              ],
+            });
           },
         ),
       );
@@ -837,11 +841,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
               "Bearer token",
             );
             expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-            return HttpResponse.json([
-              ...new Set(
-                bundlesWithChannelAfter50.map((bundle) => bundle.channel),
-              ),
-            ]);
+            return HttpResponse.json({
+              channels: [
+                ...new Set(
+                  bundlesWithChannelAfter50.map((bundle) => bundle.channel),
+                ),
+              ],
+            });
           },
         ),
       );

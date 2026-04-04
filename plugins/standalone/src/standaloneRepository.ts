@@ -77,6 +77,15 @@ const appendSearchParams = (
   }
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+const isPaginatedResult = (value: unknown): value is PaginatedResult =>
+  isRecord(value) && Array.isArray(value.data) && isRecord(value.pagination);
+
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
@@ -225,7 +234,13 @@ export const standaloneRepository =
             throw new Error(`API Error: ${response.statusText}`);
           }
 
-          return (await response.json()) as PaginatedResult;
+          const result = (await response.json()) as unknown;
+
+          if (isPaginatedResult(result)) {
+            return result;
+          }
+
+          throw new Error("API Error: Invalid bundle list response");
         },
         async getChannels(): Promise<string[]> {
           const { path, headers: routeHeaders } = routes.channels();
@@ -239,7 +254,13 @@ export const standaloneRepository =
             throw new Error(`API Error: ${response.statusText}`);
           }
 
-          return (await response.json()) as string[];
+          const result = (await response.json()) as unknown;
+
+          if (isRecord(result) && isStringArray(result.channels)) {
+            return result.channels;
+          }
+
+          throw new Error("API Error: Invalid channels response");
         },
         async commitBundle({ changedSets }) {
           if (changedSets.length === 0) {

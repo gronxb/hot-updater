@@ -38,7 +38,9 @@ const createApi = () =>
       }),
     getBundleById: vi.fn<HandlerAPI<TestContext>["getBundleById"]>(),
     getBundles: vi.fn<HandlerAPI<TestContext>["getBundles"]>(),
-    getChannels: vi.fn<HandlerAPI<TestContext>["getChannels"]>(),
+    getChannels: vi
+      .fn<HandlerAPI<TestContext>["getChannels"]>()
+      .mockResolvedValue(["production"]),
     insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
@@ -151,6 +153,10 @@ describe("createHandler", () => {
     );
 
     expect(channelsResponse.status).toBe(200);
+    await expect(channelsResponse.json()).resolves.toEqual({
+      channels: ["production"],
+    });
+    expect(api.getChannels).toHaveBeenCalledWith(undefined);
     expect(updateResponse.status).toBe(404);
   });
 

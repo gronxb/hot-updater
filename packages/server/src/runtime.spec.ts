@@ -350,4 +350,83 @@ describe("runtime createHotUpdater", () => {
       hotUpdater.getBundleById(succeedingBundle.id),
     ).resolves.toEqual(succeedingBundle);
   });
+
+  it("isolates pending mutation state between overlapping writes", async () => {
+    const committedBundleIds: string[][] = [];
+    const onUnmount = vi.fn(async () => undefined);
+    let releaseFirstCommit!: () => void;
+    let notifyFirstCommitStarted!: () => void;
+    const firstCommitStarted = new Promise<void>((resolve) => {
+      notifyFirstCommitStarted = resolve;
+    });
+    const firstCommitGate = new Promise<void>((resolve) => {
+      releaseFirstCommit = resolve;
+    });
+    let commitCount = 0;
+
+    const database = createDatabasePlugin({
+      name: "isolatedPlugin",
+      factory: () => ({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        onUnmount,
+        async commitBundle({ changedSets }) {
+          commitCount += 1;
+          committedBundleIds.push(changedSets.map((change) => change.data.id));
+
+          if (commitCount === 1) {
+            notifyFirstCommitStarted();
+            await firstCommitGate;
+          }
+        },
+      }),
+    })({});
+
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: false,
+        bundles: false,
+      },
+    });
+
+    const firstBundleId = "00000000-0000-0000-0000-000000000020";
+    const secondBundleId = "00000000-0000-0000-0000-000000000021";
+
+    const firstInsert = hotUpdater.insertBundle({
+      ...bundle,
+      id: firstBundleId,
+      message: "first bundle",
+    });
+    await firstCommitStarted;
+
+    const secondInsert = hotUpdater.insertBundle({
+      ...bundle,
+      id: secondBundleId,
+      message: "second bundle",
+    });
+
+    releaseFirstCommit();
+    await Promise.all([firstInsert, secondInsert]);
+
+    expect(committedBundleIds).toEqual([[firstBundleId], [secondBundleId]]);
+    expect(onUnmount).toHaveBeenCalledTimes(2);
+  });
 });

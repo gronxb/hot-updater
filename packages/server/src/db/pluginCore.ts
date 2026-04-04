@@ -104,13 +104,32 @@ export function createPluginDatabaseCore<TContext = unknown>(
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>,
-  resetPlugin?: () => Promise<void> | void,
+  options?: {
+    createMutationPlugin?: () => DatabasePlugin<TContext>;
+    cleanupMutationPlugin?: (
+      plugin: DatabasePlugin<TContext>,
+    ) => Promise<void> | void;
+  },
 ): {
   api: DatabaseAPI<TContext>;
   adapterName: string;
   createMigrator: () => never;
   generateSchema: () => never;
 } {
+  const runWithMutationPlugin = async <T>(
+    operation: (plugin: DatabasePlugin<TContext>) => Promise<T>,
+  ): Promise<T> => {
+    const plugin = options?.createMutationPlugin?.() ?? getPlugin();
+
+    try {
+      return await operation(plugin);
+    } finally {
+      if (options?.createMutationPlugin) {
+        await options.cleanupMutationPlugin?.(plugin);
+      }
+    }
+  };
+
   const getSortedBundlePage = async (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
@@ -325,14 +344,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      const plugin = getPlugin();
-      try {
+      await runWithMutationPlugin(async (plugin) => {
         await plugin.appendBundle(bundle, context);
         await plugin.commitBundle(context);
-      } catch (error) {
-        await resetPlugin?.();
-        throw error;
-      }
+      });
     },
 
     async updateBundleById(
@@ -340,32 +355,24 @@ export function createPluginDatabaseCore<TContext = unknown>(
       newBundle: Partial<Bundle>,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      const plugin = getPlugin();
-      try {
+      await runWithMutationPlugin(async (plugin) => {
         await plugin.updateBundle(bundleId, newBundle, context);
         await plugin.commitBundle(context);
-      } catch (error) {
-        await resetPlugin?.();
-        throw error;
-      }
+      });
     },
 
     async deleteBundleById(
       bundleId: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      const plugin = getPlugin();
-      try {
+      await runWithMutationPlugin(async (plugin) => {
         const bundle = await plugin.getBundleById(bundleId, context);
         if (!bundle) {
           return;
         }
         await plugin.deleteBundle(bundle, context);
         await plugin.commitBundle(context);
-      } catch (error) {
-        await resetPlugin?.();
-        throw error;
-      }
+      });
     },
   };
 
