@@ -194,7 +194,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
-      metadata: { source: "initial" },
+      metadata: { app_version: "initial" },
     });
     await plugin.commitBundle();
 
@@ -203,7 +203,7 @@ describe("firebaseDatabase plugin", () => {
     await bundlesCollection.doc(bundleId).set(
       {
         message: "fresh message",
-        metadata: { source: "fresh" },
+        metadata: { app_version: "fresh" },
       },
       { merge: true },
     );
@@ -216,7 +216,7 @@ describe("firebaseDatabase plugin", () => {
       expect.objectContaining({
         enabled: false,
         message: "fresh message",
-        metadata: { source: "fresh" },
+        metadata: { app_version: "fresh" },
       }),
     );
   });
