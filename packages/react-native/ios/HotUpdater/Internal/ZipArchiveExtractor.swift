@@ -9,6 +9,10 @@ enum ZipArchiveExtractor {
     private static let deflatedMethod: UInt16 = 8
     private static let encryptedFlag: UInt16 = 1 << 0
     private static let maxCommentLength = 0xFFFF
+    private static let unixHostIdentifier: UInt8 = 3
+    private static let fileTypeMask: UInt16 = 0o170000
+    private static let symbolicLinkMode: UInt16 = 0o120000
+    private static let directoryMode: UInt16 = 0o040000
 
     private struct CentralDirectoryEntry {
         let path: String
@@ -19,6 +23,7 @@ enum ZipArchiveExtractor {
         let checksum: UInt32
         let localHeaderOffset: UInt64
         let isDirectory: Bool
+        let isSymbolicLink: Bool
     }
 
     private struct EndOfCentralDirectoryRecord {
@@ -89,6 +94,8 @@ enum ZipArchiveExtractor {
             let commentLength = Int(header.archiveUInt16LE(at: 32))
             let checksum = header.archiveUInt32LE(at: 16)
             let localHeaderOffset = header.archiveUInt32LE(at: 42)
+            let versionMadeBy = header.archiveUInt16LE(at: 4)
+            let externalAttributes = header.archiveUInt32LE(at: 38)
 
             guard compressedSize != UInt32.max,
                   uncompressedSize != UInt32.max,
@@ -108,7 +115,9 @@ enum ZipArchiveExtractor {
             }
 
             let path = decodePath(from: fileNameData)
-            let isDirectory = path.hasSuffix("/")
+            let mode = unixFileMode(versionMadeBy: versionMadeBy, externalAttributes: externalAttributes)
+            let isDirectory = path.hasSuffix("/") || mode == directoryMode
+            let isSymbolicLink = mode == symbolicLinkMode
 
             entries.append(
                 CentralDirectoryEntry(
@@ -119,7 +128,8 @@ enum ZipArchiveExtractor {
                     uncompressedSize: UInt64(uncompressedSize),
                     checksum: checksum,
                     localHeaderOffset: UInt64(localHeaderOffset),
-                    isDirectory: isDirectory
+                    isDirectory: isDirectory,
+                    isSymbolicLink: isSymbolicLink
                 )
             )
         }
@@ -196,6 +206,11 @@ enum ZipArchiveExtractor {
 
         if entry.isDirectory {
             try ArchiveExtractionUtilities.ensureDirectory(at: targetURL)
+            return
+        }
+
+        if entry.isSymbolicLink {
+            NSLog("[ZipArchiveExtractor] Skipping symbolic link entry: \(entry.path)")
             return
         }
 
@@ -416,6 +431,20 @@ enum ZipArchiveExtractor {
 
             return crc32(checksum, baseAddress, uInt(data.count))
         }
+    }
+
+    private static func unixFileMode(versionMadeBy: UInt16, externalAttributes: UInt32) -> UInt16? {
+        let hostIdentifier = UInt8((versionMadeBy >> 8) & 0xFF)
+        guard hostIdentifier == unixHostIdentifier else {
+            return nil
+        }
+
+        let mode = UInt16((externalAttributes >> 16) & 0xFFFF) & fileTypeMask
+        guard mode != 0 else {
+            return nil
+        }
+
+        return mode
     }
 
     private static func archiveFileSize(at path: String) throws -> UInt64 {

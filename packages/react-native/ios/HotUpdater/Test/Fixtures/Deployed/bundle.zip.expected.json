@@ -1,0 +1,20 @@
+{
+  "archiveFileName": "bundle.zip",
+  "files": [
+    {
+      "path": "assets/src/test/_image.png",
+      "sha256": "74ef3663597c70ea451c1ed59819a455f833c05169dd97b38ca2437a46d2871a",
+      "size": 501657
+    },
+    {
+      "path": "index.ios.bundle",
+      "sha256": "0dc12e35b79c3b285c57845662e56a083d1641dc6205f876ee132e63bbe352b6",
+      "size": 1559575
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "94a5c62b36091032af70e524b93d47574dea3427311ebcd72377202353daef0c",
+      "size": 321
+    }
+  ]
+}

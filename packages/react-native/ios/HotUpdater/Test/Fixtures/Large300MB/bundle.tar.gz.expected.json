@@ -1,0 +1,25 @@
+{
+  "archiveFileName": "bundle.tar.gz",
+  "files": [
+    {
+      "path": "assets/src/test/_fixture-large-300mb.bmp",
+      "sha256": "ab9a457363f04442258e22adf2c2c5175288d057eb8378b659c85d380b8608bf",
+      "size": 314572854
+    },
+    {
+      "path": "assets/src/test/_image.png",
+      "sha256": "74ef3663597c70ea451c1ed59819a455f833c05169dd97b38ca2437a46d2871a",
+      "size": 501657
+    },
+    {
+      "path": "index.ios.bundle",
+      "sha256": "9f4dcde092b1b6dbc5500a873543592850eb7de929bb59dc0a3ba5caa0353ccd",
+      "size": 1559875
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "79452d0dc8a28aff0bb78fb8a1e8402b157d79ea63225579e54bdb9d2fb847b7",
+      "size": 463
+    }
+  ]
+}

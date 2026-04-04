@@ -55,7 +55,8 @@ let package = Package(
         .testTarget(
             name: "HotUpdaterTest",
             dependencies: ["HotUpdaterArchive"],
-            path: "Test"
+            path: "Test",
+            exclude: ["Fixtures"]
         ),
     ]
 ) 
