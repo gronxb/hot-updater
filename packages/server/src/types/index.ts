@@ -16,7 +16,16 @@ export interface PaginationOptions {
   offset: number;
 }
 
-export interface PaginatedResult {
-  data: Bundle[];
+export interface DataResponse<TData> {
+  data: TData;
+}
+
+export interface Paginated<TData> extends DataResponse<TData> {
   pagination: PaginationInfo;
 }
+
+export type PaginatedResult = Paginated<Bundle[]>;
+
+export type ChannelsResponse = DataResponse<{
+  channels: string[];
+}>;

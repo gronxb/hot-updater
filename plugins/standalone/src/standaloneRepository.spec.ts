@@ -387,10 +387,27 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
           );
           expect(request.headers.get("Cache-Control")).toEqual("no-cache");
           return HttpResponse.json({
-            channels: ["production", "staging"],
+            data: {
+              channels: ["production", "staging"],
+            },
           });
         },
       ),
+    );
+
+    await expect(repo.getChannels()).resolves.toEqual([
+      "production",
+      "staging",
+    ]);
+  });
+
+  it("getChannels: supports the legacy flat response shape", async () => {
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles/channels", () => {
+        return HttpResponse.json({
+          channels: ["production", "staging"],
+        });
+      }),
     );
 
     await expect(repo.getChannels()).resolves.toEqual([
@@ -804,9 +821,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
             );
             expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
             return HttpResponse.json({
-              channels: [
-                ...new Set(testBundles.map((bundle) => bundle.channel)),
-              ],
+              data: {
+                channels: [
+                  ...new Set(testBundles.map((bundle) => bundle.channel)),
+                ],
+              },
             });
           },
         ),
@@ -842,11 +861,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
             );
             expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
             return HttpResponse.json({
-              channels: [
-                ...new Set(
-                  bundlesWithChannelAfter50.map((bundle) => bundle.channel),
-                ),
-              ],
+              data: {
+                channels: [
+                  ...new Set(
+                    bundlesWithChannelAfter50.map((bundle) => bundle.channel),
+                  ),
+                ],
+              },
             });
           },
         ),

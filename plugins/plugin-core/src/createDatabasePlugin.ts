@@ -5,7 +5,7 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
-  PaginationInfo,
+  Paginated,
 } from "./types";
 
 export interface AbstractDatabasePlugin<TContext = unknown> {
@@ -16,10 +16,7 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<{
-    data: Bundle[];
-    pagination: PaginationInfo;
-  }>;
+  ) => Promise<Paginated<Bundle[]>>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   onUnmount?: () => Promise<void>;
   commitBundle: (

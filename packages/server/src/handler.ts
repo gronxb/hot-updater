@@ -10,7 +10,7 @@ import type {
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
-import type { PaginatedResult } from "./types";
+import type { ChannelsResponse, PaginatedResult } from "./types";
 
 declare const __VERSION__: string;
 
@@ -426,8 +426,13 @@ const handleGetChannels: RouteHandler = async (
   context,
 ) => {
   const channels = await api.getChannels(context);
+  const response: ChannelsResponse = {
+    data: {
+      channels,
+    },
+  };
 
-  return new Response(JSON.stringify({ channels }), {
+  return new Response(JSON.stringify(response), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

@@ -1,13 +1,8 @@
-import type { Bundle, PaginationInfo } from "./types";
+import type { PaginationInfo } from "./types";
 
 export interface PaginationOptions {
   limit: number;
   offset: number;
-}
-
-export interface PaginatedResult {
-  data: Bundle[];
-  pagination: PaginationInfo;
 }
 
 /**

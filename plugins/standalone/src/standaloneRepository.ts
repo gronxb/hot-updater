@@ -86,6 +86,21 @@ const isStringArray = (value: unknown): value is string[] =>
 const isPaginatedResult = (value: unknown): value is PaginatedResult =>
   isRecord(value) && Array.isArray(value.data) && isRecord(value.pagination);
 
+const hasLegacyChannels = (
+  value: unknown,
+): value is {
+  channels: string[];
+} => isRecord(value) && isStringArray(value.channels);
+
+const hasDataChannels = (
+  value: unknown,
+): value is {
+  data: {
+    channels: string[];
+  };
+} =>
+  isRecord(value) && isRecord(value.data) && isStringArray(value.data.channels);
+
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
@@ -256,7 +271,11 @@ export const standaloneRepository =
 
           const result = (await response.json()) as unknown;
 
-          if (isRecord(result) && isStringArray(result.channels)) {
+          if (hasDataChannels(result)) {
+            return result.data.channels;
+          }
+
+          if (hasLegacyChannels(result)) {
             return result.channels;
           }
 

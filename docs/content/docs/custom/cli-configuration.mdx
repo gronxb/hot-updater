@@ -122,7 +122,7 @@ Your server must implement these endpoints (when using default routes):
 
 These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
 
-`GET /hot-updater/api/bundles` should return the full paginated result body
+`GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
 consumed by `standaloneRepository`:
 
 ```json
@@ -134,6 +134,16 @@ consumed by `standaloneRepository`:
     "hasPreviousPage": false,
     "currentPage": 1,
     "totalPages": 1
+  }
+}
+```
+
+`GET /hot-updater/api/bundles/channels` should return:
+
+```json
+{
+  "data": {
+    "channels": ["production", "staging"]
   }
 }
 ```

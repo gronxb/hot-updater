@@ -154,7 +154,9 @@ describe("createHandler", () => {
 
     expect(channelsResponse.status).toBe(200);
     await expect(channelsResponse.json()).resolves.toEqual({
-      channels: ["production"],
+      data: {
+        channels: ["production"],
+      },
     });
     expect(api.getChannels).toHaveBeenCalledWith(undefined);
     expect(updateResponse.status).toBe(404);
