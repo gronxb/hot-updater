@@ -1,5 +1,15 @@
 # @hot-updater/server
 
+## 0.29.3
+
+### Patch Changes
+
+- d1ffb83: Stale data due to module-level singleton configPromise and shared changedMap across requests
+- Updated dependencies [d1ffb83]
+  - @hot-updater/plugin-core@0.29.3
+  - @hot-updater/core@0.29.3
+  - @hot-updater/js@0.29.3
+
 ## 0.29.2
 
 ### Patch Changes
