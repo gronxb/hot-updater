@@ -101,10 +101,9 @@ describe("createDatabasePlugin", () => {
     });
   });
 
-  it("refetches the current bundle after a failed commit before applying a new update", async () => {
-    let persistedBundle = baseBundle;
+  it("preserves pending changes after a failed commit", async () => {
     const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === persistedBundle.id ? persistedBundle : null,
+      bundleId === baseBundle.id ? baseBundle : null,
     );
     const commitBundle = vi
       .fn()
@@ -116,7 +115,7 @@ describe("createDatabasePlugin", () => {
       factory: () => ({
         getBundleById,
         getBundles: async () => ({
-          data: [persistedBundle],
+          data: [baseBundle],
           pagination: {
             total: 1,
             hasNextPage: false,
@@ -131,29 +130,30 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await plugin.updateBundle(baseBundle.id, {
-      message: "stale pending draft",
+      enabled: false,
     });
     await expect(plugin.commitBundle()).rejects.toThrow("commit failed");
-
-    persistedBundle = {
-      ...baseBundle,
-      enabled: false,
-      message: "fresh state from API",
-    };
-
-    await plugin.updateBundle(baseBundle.id, {
-      shouldForceUpdate: true,
-    });
     await plugin.commitBundle();
 
-    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(getBundleById).toHaveBeenCalledTimes(1);
+    expect(commitBundle).toHaveBeenNthCalledWith(1, {
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ],
+    });
     expect(commitBundle).toHaveBeenNthCalledWith(2, {
       changedSets: [
         {
           operation: "update",
           data: {
-            ...persistedBundle,
-            shouldForceUpdate: true,
+            ...baseBundle,
+            enabled: false,
           },
         },
       ],
