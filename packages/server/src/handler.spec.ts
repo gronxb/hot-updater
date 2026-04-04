@@ -176,7 +176,7 @@ describe("createHandler", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Total-Count")).toBe("51");
-    await expect(response.json()).resolves.toEqual([{ id: "bundle-1" }]);
+    await expect(response.json()).resolves.toEqual([testBundle]);
     expect(api.getBundles).toHaveBeenCalledWith(
       {
         where: {
