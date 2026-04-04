@@ -264,7 +264,10 @@ const handleGetBundles: RouteHandler = async (
 
   return new Response(JSON.stringify(result.data), {
     status: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Total-Count": String(result.pagination.total),
+    },
   });
 };
 

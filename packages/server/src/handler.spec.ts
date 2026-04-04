@@ -137,6 +137,42 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(404);
   });
 
+  it("returns bundle pages with the total count header", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [{ id: "bundle-1" }],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 6,
+        totalPages: 26,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2&offset=10",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Total-Count")).toBe("51");
+    await expect(response.json()).resolves.toEqual([{ id: "bundle-1" }]);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+          platform: "ios",
+        },
+        limit: 2,
+        offset: 10,
+      },
+      undefined,
+    );
+  });
+
   it("returns 400 when the platform route parameter is invalid", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });

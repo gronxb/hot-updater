@@ -131,6 +131,49 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(callCount).toBe(2);
   });
 
+  it("getBundles: forwards limit and offset so results beyond the server default page remain reachable", async () => {
+    const bundles = Array.from({ length: 51 }, (_, index) => ({
+      ...DEFAULT_BUNDLE,
+      id: `bundle-${String(index + 1).padStart(2, "0")}`,
+      channel: "production",
+      enabled: true,
+      shouldForceUpdate: false,
+      targetAppVersion: "*",
+      storageUri: "gs://test-bucket/test-key",
+      fingerprintHash: null,
+    })) satisfies Bundle[];
+
+    let requestedLimit: string | null = null;
+    let requestedOffset: string | null = null;
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        requestedLimit = url.searchParams.get("limit");
+        requestedOffset = url.searchParams.get("offset");
+
+        const limit = Number.parseInt(requestedLimit ?? "50", 10);
+        const offset = Number.parseInt(requestedOffset ?? "0", 10);
+
+        return HttpResponse.json(bundles.slice(offset, offset + limit), {
+          headers: {
+            "X-Total-Count": bundles.length.toString(),
+          },
+        });
+      }),
+    );
+
+    const result = await repo.getBundles({
+      where: { id: { eq: bundles[50].id } },
+      limit: 1,
+      offset: 50,
+    });
+
+    expect(requestedLimit).toBe("1");
+    expect(requestedOffset).toBe("50");
+    expect(result.data).toEqual([bundles[50]]);
+  });
+
   it("should return correct pagination info for single page", async () => {
     // Mock initial bundles fetch
     server.use(
@@ -148,7 +191,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     await repo.commitBundle();
 
     // Mock filtered bundles response
-    const productionBundles = [TEST_BUNDLE_2, TEST_BUNDLE_1];
+    const productionBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2];
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);

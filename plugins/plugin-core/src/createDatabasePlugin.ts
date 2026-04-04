@@ -176,14 +176,19 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             changedSets: Array.from(changedMap.values()),
           };
 
-          if (context === undefined) {
-            await methods.commitBundle(params);
-          } else {
-            await methods.commitBundle(params, context);
+          try {
+            if (context === undefined) {
+              await methods.commitBundle(params);
+            } else {
+              await methods.commitBundle(params, context);
+            }
+          } catch (error) {
+            changedMap.clear();
+            throw error;
           }
 
-          await hooks?.onDatabaseUpdated?.();
           changedMap.clear();
+          await hooks?.onDatabaseUpdated?.();
         },
 
         async updateBundle(

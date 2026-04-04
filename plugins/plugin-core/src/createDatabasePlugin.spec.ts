@@ -100,4 +100,63 @@ describe("createDatabasePlugin", () => {
       ],
     });
   });
+
+  it("refetches the current bundle after a failed commit before applying a new update", async () => {
+    let persistedBundle = baseBundle;
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === persistedBundle.id ? persistedBundle : null,
+    );
+    const commitBundle = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("commit failed"))
+      .mockResolvedValueOnce(undefined);
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [persistedBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, {
+      message: "stale pending draft",
+    });
+    await expect(plugin.commitBundle()).rejects.toThrow("commit failed");
+
+    persistedBundle = {
+      ...baseBundle,
+      enabled: false,
+      message: "fresh state from API",
+    };
+
+    await plugin.updateBundle(baseBundle.id, {
+      shouldForceUpdate: true,
+    });
+    await plugin.commitBundle();
+
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(commitBundle).toHaveBeenNthCalledWith(2, {
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...persistedBundle,
+            shouldForceUpdate: true,
+          },
+        },
+      ],
+    });
+  });
 });

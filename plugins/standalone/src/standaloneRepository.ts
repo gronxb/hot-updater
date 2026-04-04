@@ -184,7 +184,23 @@ export const standaloneRepository =
         async getBundles(options) {
           const { where, limit, offset = 0, orderBy } = options ?? {};
           const { path, headers: routeHeaders } = routes.list();
-          const response = await fetch(buildUrl(path), {
+          const url = new URL(buildUrl(path));
+
+          if (where?.channel !== undefined) {
+            url.searchParams.set("channel", where.channel);
+          }
+
+          if (where?.platform !== undefined) {
+            url.searchParams.set("platform", where.platform);
+          }
+
+          if (limit !== undefined) {
+            url.searchParams.set("limit", String(limit));
+          }
+
+          url.searchParams.set("offset", String(offset));
+
+          const response = await fetch(url.toString(), {
             method: "GET",
             headers: getHeaders(routeHeaders),
           });
@@ -198,10 +214,19 @@ export const standaloneRepository =
             orderBy,
           );
 
-          const total = filteredBundles.length;
-          const data = limit
-            ? filteredBundles.slice(offset, offset + limit)
-            : filteredBundles;
+          const totalCountHeader = response.headers.get("X-Total-Count");
+          const parsedTotal = totalCountHeader
+            ? Number.parseInt(totalCountHeader, 10)
+            : Number.NaN;
+          const hasServerPagination = Number.isFinite(parsedTotal);
+          const total = hasServerPagination
+            ? parsedTotal
+            : filteredBundles.length;
+          const data = hasServerPagination
+            ? filteredBundles
+            : limit
+              ? filteredBundles.slice(offset, offset + limit)
+              : filteredBundles;
 
           const pagination = calculatePagination(total, { limit, offset });
 
