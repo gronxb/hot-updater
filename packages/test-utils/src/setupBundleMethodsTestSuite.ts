@@ -1,5 +1,5 @@
 import type { Bundle, Platform } from "@hot-updater/core";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 interface PaginationInfo {
   total: number;
@@ -71,6 +71,23 @@ export const setupBundleMethodsTestSuite = ({
   ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
 }) => {
+  beforeEach(async () => {
+    while (true) {
+      const existing = await getBundles({
+        limit: 1000,
+        offset: 0,
+      });
+
+      if (existing.data.length === 0) {
+        return;
+      }
+
+      for (const bundle of existing.data) {
+        await deleteBundleById(bundle.id);
+      }
+    }
+  });
+
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {
       const bundle: Bundle = {
@@ -518,7 +535,7 @@ export const setupBundleMethodsTestSuite = ({
           channel: "production",
           storageUri: "mock://test/null-1.zip",
           targetAppVersion: null,
-          fingerprintHash: null,
+          fingerprintHash: "fingerprint-null-target",
         },
         {
           id: "00000000-0000-0000-0000-000000000058",
@@ -531,7 +548,7 @@ export const setupBundleMethodsTestSuite = ({
           channel: "production",
           storageUri: "mock://test/null-2.zip",
           targetAppVersion: "1.0.0",
-          fingerprintHash: "fingerprint-1",
+          fingerprintHash: null,
         },
         {
           id: "00000000-0000-0000-0000-000000000059",
@@ -578,7 +595,7 @@ export const setupBundleMethodsTestSuite = ({
 
       expect(nullFingerprintBundles.data.map((bundle) => bundle.id)).toEqual([
         bundles[2].id,
-        bundles[0].id,
+        bundles[1].id,
       ]);
       expect(nullFingerprintBundles.pagination.total).toBe(2);
     });

@@ -199,6 +199,47 @@ describe("createHandler", () => {
     );
   });
 
+  it("parses advanced bundle filters from query parameters", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?enabled=false&idEq=bundle-2&idGt=bundle-0&idIn=bundle-2&idIn=bundle-3&targetAppVersionIn=1.0.0&targetAppVersionIn=2.0.0&targetAppVersionNotNull=true&fingerprintHashNull=true&limit=5&offset=10",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          enabled: false,
+          id: {
+            eq: "bundle-2",
+            gt: "bundle-0",
+            in: ["bundle-2", "bundle-3"],
+          },
+          targetAppVersionIn: ["1.0.0", "2.0.0"],
+          targetAppVersionNotNull: true,
+          fingerprintHash: null,
+        },
+        limit: 5,
+        offset: 10,
+      },
+      undefined,
+    );
+  });
+
   it("returns 400 when the platform route parameter is invalid", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });

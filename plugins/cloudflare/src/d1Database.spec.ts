@@ -40,6 +40,18 @@ const getFilteredRows = (sql: string, params: any[]) => {
   let filteredRows = Array.from(rows.values());
   let index = 0;
 
+  const consumeInValues = (pattern: RegExp) => {
+    const match = sql.match(pattern);
+    if (!match) {
+      return null;
+    }
+
+    const count = (match[1]?.match(/\?/g) ?? []).length;
+    const values = params.slice(index, index + count);
+    index += count;
+    return values;
+  };
+
   if (sql.includes("channel = ?")) {
     const channel = params[index++];
     filteredRows = filteredRows.filter((row) => row.channel === channel);
@@ -48,6 +60,78 @@ const getFilteredRows = (sql: string, params: any[]) => {
   if (sql.includes("platform = ?")) {
     const platform = params[index++];
     filteredRows = filteredRows.filter((row) => row.platform === platform);
+  }
+
+  if (sql.includes("enabled = ?")) {
+    const enabled = Number(params[index++]);
+    filteredRows = filteredRows.filter(
+      (row) => Number(row.enabled) === enabled,
+    );
+  }
+
+  const idInValues = consumeInValues(/id IN \(([^)]+)\)/);
+  if (idInValues) {
+    filteredRows = filteredRows.filter((row) => idInValues.includes(row.id));
+  }
+
+  if (sql.includes("id = ?")) {
+    const id = params[index++];
+    filteredRows = filteredRows.filter((row) => row.id === id);
+  }
+
+  if (sql.includes("id > ?")) {
+    const id = params[index++];
+    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) > 0);
+  }
+
+  if (sql.includes("id >= ?")) {
+    const id = params[index++];
+    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) >= 0);
+  }
+
+  if (sql.includes("id < ?")) {
+    const id = params[index++];
+    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) < 0);
+  }
+
+  if (sql.includes("id <= ?")) {
+    const id = params[index++];
+    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) <= 0);
+  }
+
+  if (sql.includes("target_app_version IS NOT NULL")) {
+    filteredRows = filteredRows.filter(
+      (row) => row.target_app_version !== null,
+    );
+  }
+
+  if (sql.includes("target_app_version IS NULL")) {
+    filteredRows = filteredRows.filter(
+      (row) => row.target_app_version === null,
+    );
+  } else if (sql.includes("target_app_version = ?")) {
+    const targetAppVersion = params[index++];
+    filteredRows = filteredRows.filter(
+      (row) => row.target_app_version === targetAppVersion,
+    );
+  }
+
+  const targetAppVersionInValues = consumeInValues(
+    /target_app_version IN \(([^)]+)\)/,
+  );
+  if (targetAppVersionInValues) {
+    filteredRows = filteredRows.filter((row) =>
+      targetAppVersionInValues.includes(row.target_app_version),
+    );
+  }
+
+  if (sql.includes("fingerprint_hash IS NULL")) {
+    filteredRows = filteredRows.filter((row) => row.fingerprint_hash === null);
+  } else if (sql.includes("fingerprint_hash = ?")) {
+    const fingerprintHash = params[index++];
+    filteredRows = filteredRows.filter(
+      (row) => row.fingerprint_hash === fingerprintHash,
+    );
   }
 
   return { filteredRows, index };

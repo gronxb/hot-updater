@@ -127,6 +127,57 @@ const requirePlatformParam = (params: Record<string, string>): Platform => {
   return platform;
 };
 
+const parseOptionalBooleanQueryParam = (
+  url: URL,
+  key: string,
+): boolean | undefined => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return undefined;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new HandlerBadRequestError(
+    `Invalid boolean query parameter: ${key}=${value}. Expected 'true' or 'false'.`,
+  );
+};
+
+const parseOptionalNullableStringQueryParam = (
+  url: URL,
+  key: string,
+  nullKey: string,
+): string | null | undefined => {
+  const value = url.searchParams.get(key);
+  const isNull = parseOptionalBooleanQueryParam(url, nullKey);
+
+  if (value !== null && isNull === true) {
+    throw new HandlerBadRequestError(
+      `Query parameters '${key}' and '${nullKey}' cannot be used together.`,
+    );
+  }
+
+  if (isNull === true) {
+    return null;
+  }
+
+  return value ?? undefined;
+};
+
+const parseOptionalArrayQueryParam = (
+  url: URL,
+  key: string,
+): string[] | undefined => {
+  const values = url.searchParams.getAll(key);
+  return values.length > 0 ? values : undefined;
+};
+
 type BundlePatchPayload = Partial<Bundle> & {
   id?: string;
 };
@@ -243,6 +294,31 @@ const handleGetBundles: RouteHandler = async (
   const platform = url.searchParams.get("platform");
   const limit = Number(url.searchParams.get("limit")) || 50;
   const offset = Number(url.searchParams.get("offset")) || 0;
+  const enabled = parseOptionalBooleanQueryParam(url, "enabled");
+  const targetAppVersion = parseOptionalNullableStringQueryParam(
+    url,
+    "targetAppVersion",
+    "targetAppVersionNull",
+  );
+  const targetAppVersionIn = parseOptionalArrayQueryParam(
+    url,
+    "targetAppVersionIn",
+  );
+  const targetAppVersionNotNull =
+    parseOptionalBooleanQueryParam(url, "targetAppVersionNotNull") === true
+      ? true
+      : undefined;
+  const fingerprintHash = parseOptionalNullableStringQueryParam(
+    url,
+    "fingerprintHash",
+    "fingerprintHashNull",
+  );
+  const idEq = url.searchParams.get("idEq") ?? undefined;
+  const idGt = url.searchParams.get("idGt") ?? undefined;
+  const idGte = url.searchParams.get("idGte") ?? undefined;
+  const idLt = url.searchParams.get("idLt") ?? undefined;
+  const idLte = url.searchParams.get("idLte") ?? undefined;
+  const idIn = parseOptionalArrayQueryParam(url, "idIn");
 
   if (platform !== null && !isPlatform(platform)) {
     throw new HandlerBadRequestError(
@@ -250,11 +326,34 @@ const handleGetBundles: RouteHandler = async (
     );
   }
 
+  const idFilter =
+    idEq !== undefined ||
+    idGt !== undefined ||
+    idGte !== undefined ||
+    idLt !== undefined ||
+    idLte !== undefined ||
+    idIn !== undefined
+      ? {
+          ...(idEq !== undefined && { eq: idEq }),
+          ...(idGt !== undefined && { gt: idGt }),
+          ...(idGte !== undefined && { gte: idGte }),
+          ...(idLt !== undefined && { lt: idLt }),
+          ...(idLte !== undefined && { lte: idLte }),
+          ...(idIn !== undefined && { in: idIn }),
+        }
+      : undefined;
+
   const result = await api.getBundles(
     {
       where: {
         ...(channel && { channel }),
         ...(platform && { platform }),
+        ...(enabled !== undefined && { enabled }),
+        ...(idFilter && { id: idFilter }),
+        ...(targetAppVersion !== undefined && { targetAppVersion }),
+        ...(targetAppVersionIn !== undefined && { targetAppVersionIn }),
+        ...(targetAppVersionNotNull === true && { targetAppVersionNotNull }),
+        ...(fingerprintHash !== undefined && { fingerprintHash }),
       },
       limit,
       offset,

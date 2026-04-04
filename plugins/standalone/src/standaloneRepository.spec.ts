@@ -202,6 +202,58 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(result.data).toEqual([bundles[50]]);
   });
 
+  it("getBundles: forwards advanced filters through query parameters", async () => {
+    let requestedEnabled: string | null = null;
+    let requestedIdEq: string | null = null;
+    let requestedIdIn: string[] = [];
+    let requestedTargetAppVersionIn: string[] = [];
+    let requestedTargetAppVersionNotNull: string | null = null;
+    let requestedFingerprintHashNull: string | null = null;
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        requestedEnabled = url.searchParams.get("enabled");
+        requestedIdEq = url.searchParams.get("idEq");
+        requestedIdIn = url.searchParams.getAll("idIn");
+        requestedTargetAppVersionIn =
+          url.searchParams.getAll("targetAppVersionIn");
+        requestedTargetAppVersionNotNull = url.searchParams.get(
+          "targetAppVersionNotNull",
+        );
+        requestedFingerprintHashNull = url.searchParams.get(
+          "fingerprintHashNull",
+        );
+
+        return HttpResponse.json(
+          createPaginatedResult([], { limit: 10, offset: 0 }),
+        );
+      }),
+    );
+
+    await repo.getBundles({
+      where: {
+        enabled: false,
+        id: {
+          eq: "bundle-2",
+          in: ["bundle-2", "bundle-3"],
+        },
+        targetAppVersionIn: ["1.0.0", "2.0.0"],
+        targetAppVersionNotNull: true,
+        fingerprintHash: null,
+      },
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(requestedEnabled).toBe("false");
+    expect(requestedIdEq).toBe("bundle-2");
+    expect(requestedIdIn).toEqual(["bundle-2", "bundle-3"]);
+    expect(requestedTargetAppVersionIn).toEqual(["1.0.0", "2.0.0"]);
+    expect(requestedTargetAppVersionNotNull).toBe("true");
+    expect(requestedFingerprintHashNull).toBe("true");
+  });
+
   it("should return correct pagination info for single page", async () => {
     // Mock initial bundles fetch
     server.use(
