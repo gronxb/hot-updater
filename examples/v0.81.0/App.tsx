@@ -31,7 +31,9 @@ const notify = proxy<{
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
-const E2E_SCENARIO_MARKER = "builtin-ios-maestro";
+const E2E_SCENARIO_MARKER = "runtime-channel-beta-maestro";
+const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
+  "assets/src/test/_fixture-archive-300mb-random.bmp";
 
 function maybeCrashForE2E() {
   /* E2E_CRASH_GUARD_START */
@@ -39,6 +41,13 @@ function maybeCrashForE2E() {
 }
 
 maybeCrashForE2E();
+
+function loadE2EDeployBundleAssets() {
+  /* E2E_DEPLOY_ASSET_GUARD_START */
+  /* E2E_DEPLOY_ASSET_GUARD_END */
+}
+
+loadE2EDeployBundleAssets();
 
 const getGlobalBaseUrl = (): string | null => {
   const maybeFn = Reflect.get(globalThis, "HotUpdaterGetBaseURL");
@@ -220,6 +229,9 @@ function App(): React.JSX.Element {
   }, []);
 
   const manifestAssetEntries = Object.entries(runtimeSnapshot.manifest.assets);
+  const hasLargeE2EAsset = manifestAssetEntries.some(
+    ([fileName]) => fileName === E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH,
+  );
   const statusPayload = JSON.stringify(notifyState, null, 2);
   const launchStatusText = `Current Launch Status: ${notifyState.status ?? "null"}`;
   const crashedBundleText = `Current Crashed Bundle ID: ${notifyState.crashedBundleId ?? "null"}`;
@@ -426,6 +438,11 @@ function App(): React.JSX.Element {
             value={extractFormatDateFromUUIDv7(runtimeSnapshot.bundleId)}
           />
           <InfoRow label="Min Bundle ID" value={runtimeSnapshot.minBundleId} />
+          <InfoRow
+            label="Large E2E Asset"
+            value={hasLargeE2EAsset ? "present" : "missing"}
+            valueTestID="runtime-large-e2e-asset"
+          />
           <InfoRow
             label="E2E Scenario Marker"
             value={E2E_SCENARIO_MARKER}

@@ -159,6 +159,7 @@ switch (ACTION) {
   case "deployBundle": {
     const outputKey = OUTPUT_KEY || "bundleId";
     const result = startJob("/e2e/jobs/deploy-bundle", {
+      bundleProfile: BUNDLE_PROFILE || undefined,
       channel: CHANNEL,
       disabled: maybeBoolean(DISABLED),
       forceUpdate: maybeBoolean(FORCE_UPDATE),

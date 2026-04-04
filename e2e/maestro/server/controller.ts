@@ -9,6 +9,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
 
 type Platform = "ios" | "android";
+type BundleProfile = "archive300mb" | "default";
 
 type JobResult = Record<string, unknown>;
 
@@ -21,7 +22,9 @@ type JobState = {
 type DeployMode = "crash" | "reset";
 
 type DeployedBundleRecord = {
+  archiveSizeBytes: number | null;
   bundleId: string;
+  bundleProfile: BundleProfile;
   channel: string;
   enabled: boolean;
   marker: string;
@@ -43,6 +46,8 @@ type SessionState = {
   exampleDir: string;
   initialMarker: string;
   iosDerivedDataPath: string;
+  largeArchiveAssetBackupPath: string | null;
+  largeArchiveAssetPath: string;
   platform: Platform;
   resultsDir: string;
   reuseApp: boolean;
@@ -50,6 +55,7 @@ type SessionState = {
 };
 
 type DeployBundleRequest = {
+  bundleProfile?: BundleProfile;
   channel: string;
   disabled?: boolean;
   forceUpdate?: boolean;
@@ -136,8 +142,24 @@ const CRASH_GUARD_START = "/* E2E_CRASH_GUARD_START */";
 const CRASH_GUARD_END = "/* E2E_CRASH_GUARD_END */";
 const CRASH_GUARD_PATTERN =
   /\/\* E2E_CRASH_GUARD_START \*\/[\s\S]*?\/\* E2E_CRASH_GUARD_END \*\//;
+const DEPLOY_ASSET_GUARD_START = "/* E2E_DEPLOY_ASSET_GUARD_START */";
+const DEPLOY_ASSET_GUARD_END = "/* E2E_DEPLOY_ASSET_GUARD_END */";
+const DEPLOY_ASSET_GUARD_PATTERN =
+  /\/\* E2E_DEPLOY_ASSET_GUARD_START \*\/[\s\S]*?\/\* E2E_DEPLOY_ASSET_GUARD_END \*\//;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
+const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
+  "src/test/_fixture-archive-300mb-random.bmp";
+const LARGE_ARCHIVE_ASSET_REQUIRE_PATH =
+  "./src/test/_fixture-archive-300mb-random.bmp";
+const LARGE_ARCHIVE_BMP_WIDTH = 4096;
+const LARGE_ARCHIVE_BMP_HEIGHT = 25600;
+const LARGE_ARCHIVE_BMP_HEADER_SIZE = 54;
+const LARGE_ARCHIVE_BMP_ROW_SIZE = LARGE_ARCHIVE_BMP_WIDTH * 3;
+const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
+  LARGE_ARCHIVE_BMP_HEADER_SIZE +
+  LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
+const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -211,6 +233,11 @@ const session: SessionState = {
   iosDerivedDataPath:
     process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
     "/tmp/hotupdater-v081-ios-maestro",
+  largeArchiveAssetBackupPath: null,
+  largeArchiveAssetPath: path.join(
+    EXAMPLE_DIR,
+    LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
+  ),
   platform,
   resultsDir,
   reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
@@ -450,11 +477,137 @@ async function restoreFile(sourcePath: string | null, targetPath: string) {
   await fsPromises.copyFile(sourcePath, targetPath);
 }
 
+function fillDeterministicPseudoRandomChunk(buffer: Buffer, seed: number) {
+  let state = seed >>> 0;
+  let offset = 0;
+
+  while (offset + 4 <= buffer.length) {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state >>>= 0;
+    state ^= state << 5;
+    state >>>= 0;
+    buffer.writeUInt32LE(state, offset);
+    offset += 4;
+  }
+
+  if (offset < buffer.length) {
+    state ^= state << 13;
+    state >>>= 0;
+    state ^= state >>> 17;
+    state >>>= 0;
+    state ^= state << 5;
+    state >>>= 0;
+
+    for (let index = offset; index < buffer.length; index += 1) {
+      buffer[index] = (state >>> ((index - offset) * 8)) & 0xff;
+    }
+  }
+
+  return state;
+}
+
+function createLargeArchiveBmpHeader() {
+  const header = Buffer.alloc(LARGE_ARCHIVE_BMP_HEADER_SIZE);
+  const pixelDataSize = LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
+
+  header.write("BM", 0, "ascii");
+  header.writeUInt32LE(LARGE_ARCHIVE_ASSET_SIZE_BYTES, 2);
+  header.writeUInt32LE(LARGE_ARCHIVE_BMP_HEADER_SIZE, 10);
+  header.writeUInt32LE(40, 14);
+  header.writeInt32LE(LARGE_ARCHIVE_BMP_WIDTH, 18);
+  header.writeInt32LE(LARGE_ARCHIVE_BMP_HEIGHT, 22);
+  header.writeUInt16LE(1, 26);
+  header.writeUInt16LE(24, 28);
+  header.writeUInt32LE(0, 30);
+  header.writeUInt32LE(pixelDataSize, 34);
+  header.writeInt32LE(2835, 38);
+  header.writeInt32LE(2835, 42);
+
+  return header;
+}
+
+async function writeDeterministicBmpFile(filePath: string) {
+  await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
+  const handle = await fsPromises.open(filePath, "w");
+
+  try {
+    const header = createLargeArchiveBmpHeader();
+    await handle.write(header, 0, header.length);
+
+    let remaining = LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
+    let seed = 0x5eed1234;
+
+    while (remaining > 0) {
+      const chunkSize = Math.min(1024 * 1024, remaining);
+      const chunk = Buffer.allocUnsafe(chunkSize);
+      seed = fillDeterministicPseudoRandomChunk(chunk, seed);
+
+      let offset = 0;
+      while (offset < chunk.length) {
+        const { bytesWritten } = await handle.write(
+          chunk,
+          offset,
+          chunk.length - offset,
+        );
+        offset += bytesWritten;
+      }
+
+      remaining -= chunkSize;
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function ensureLargeArchiveAsset() {
+  const existingStats = await fsPromises
+    .stat(session.largeArchiveAssetPath)
+    .catch(() => null);
+
+  if (existingStats?.isFile() && existingStats.size === LARGE_ARCHIVE_ASSET_SIZE_BYTES) {
+    return;
+  }
+
+  if (!session.largeArchiveAssetBackupPath) {
+    session.largeArchiveAssetBackupPath = await backupFile(
+      session.largeArchiveAssetPath,
+    );
+  }
+
+  await writeDeterministicBmpFile(session.largeArchiveAssetPath);
+  logE2e("large archive asset ready", {
+    path: path.relative(REPO_DIR, session.largeArchiveAssetPath),
+    sizeBytes: LARGE_ARCHIVE_ASSET_SIZE_BYTES,
+  });
+}
+
+function resolveBundleProfile(value: BundleProfile | undefined): BundleProfile {
+  return value ?? "default";
+}
+
+async function resolveDeployArchivePath(outputPath: string) {
+  const bundleDir = path.join(outputPath, "bundle");
+  const entries = await fsPromises.readdir(bundleDir, { withFileTypes: true });
+  const archiveEntry = entries.find(
+    (entry) => entry.isFile() && entry.name.startsWith("bundle."),
+  );
+
+  if (!archiveEntry) {
+    throw new Error(`Failed to locate deployed archive in ${bundleDir}`);
+  }
+
+  return path.join(bundleDir, archiveEntry.name);
+}
+
 async function applyAppScenario({
+  bundleProfile,
   marker,
   mode,
   safeBundleIds,
 }: {
+  bundleProfile: BundleProfile;
   marker: string;
   mode: DeployMode;
   safeBundleIds: string[];
@@ -466,6 +619,9 @@ async function applyAppScenario({
   }
   if (!CRASH_GUARD_PATTERN.test(source)) {
     throw new Error("Failed to locate E2E crash guard markers in App.tsx");
+  }
+  if (!DEPLOY_ASSET_GUARD_PATTERN.test(source)) {
+    throw new Error("Failed to locate E2E deploy asset guard markers in App.tsx");
   }
 
   const crashGuardSource =
@@ -485,16 +641,26 @@ async function applyAppScenario({
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
+  const deployAssetSource =
+    bundleProfile === "archive300mb"
+      ? [
+          DEPLOY_ASSET_GUARD_START,
+          `  void Image.resolveAssetSource(require(${JSON.stringify(LARGE_ARCHIVE_ASSET_REQUIRE_PATH)}));`,
+          `  ${DEPLOY_ASSET_GUARD_END}`,
+        ].join("\n")
+      : `${DEPLOY_ASSET_GUARD_START}\n  ${DEPLOY_ASSET_GUARD_END}`;
 
   const nextSource = source
     .replace(
       MARKER_PATTERN,
       `const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`,
     )
-    .replace(CRASH_GUARD_PATTERN, crashGuardSource);
+    .replace(CRASH_GUARD_PATTERN, crashGuardSource)
+    .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);
 
   await fsPromises.writeFile(session.appSourceFile, nextSource);
   logE2e("app scenario applied", {
+    bundleProfile,
     marker,
     mode,
     safeBundleIds,
@@ -1716,13 +1882,23 @@ async function bootstrap() {
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
+  if (!session.largeArchiveAssetBackupPath && fs.existsSync(session.largeArchiveAssetPath)) {
+    session.largeArchiveAssetBackupPath = await backupFile(
+      session.largeArchiveAssetPath,
+    );
+  }
 
   session.builtInBundleId = null;
   session.deployedBundles = [];
   session.storePath = null;
 
   await clearRemoteBundles();
+  await restoreFile(
+    session.largeArchiveAssetBackupPath,
+    session.largeArchiveAssetPath,
+  );
   await applyAppScenario({
+    bundleProfile: "default",
     marker: session.initialMarker,
     mode: "reset",
     safeBundleIds: [],
@@ -1749,12 +1925,22 @@ async function captureBuiltInBundleId() {
 }
 
 async function deployBundle(request: DeployBundleRequest) {
+  const bundleProfile = resolveBundleProfile(request.bundleProfile);
+
+  if (bundleProfile === "archive300mb") {
+    await ensureLargeArchiveAsset();
+  }
+
   await applyAppScenario({
+    bundleProfile,
     marker: request.marker,
     mode: request.mode,
     safeBundleIds: request.safeBundleIds,
   });
 
+  const deployOutputPath = await fsPromises.mkdtemp(
+    path.join(os.tmpdir(), "hu-maestro-deploy-"),
+  );
   const args = [
     "hot-updater",
     "deploy",
@@ -1764,6 +1950,8 @@ async function deployBundle(request: DeployBundleRequest) {
     request.targetAppVersion,
     "-c",
     request.channel,
+    "-o",
+    deployOutputPath,
   ];
 
   if (typeof request.rollout === "number") {
@@ -1787,6 +1975,7 @@ async function deployBundle(request: DeployBundleRequest) {
     `deploy-${request.channel}-${request.marker}.log`,
   );
   logE2e("deploy start", {
+    bundleProfile,
     channel: request.channel,
     command: `pnpm ${args.join(" ")}`,
     logPath: path.relative(REPO_DIR, deployLogPath),
@@ -1799,13 +1988,43 @@ async function deployBundle(request: DeployBundleRequest) {
     cwd: session.exampleDir,
     logPath: deployLogPath,
   });
-  logE2e("deploy done", {
-    channel: request.channel,
-    logPath: path.relative(REPO_DIR, deployLogPath),
-    marker: request.marker,
-    mode: request.mode,
-    platform: session.platform,
-  });
+
+  const archiveDetails = await (async () => {
+    try {
+      const archivePath = await resolveDeployArchivePath(deployOutputPath);
+      const archiveStats = await fsPromises.stat(archivePath);
+
+      if (
+        bundleProfile === "archive300mb" &&
+        archiveStats.size < LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES
+      ) {
+        throw new Error(
+          [
+            `Expected archive300mb deploy output to be at least ${LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES} bytes.`,
+            `Observed ${archiveStats.size} bytes at ${archivePath}.`,
+          ].join("\n"),
+        );
+      }
+
+      logE2e("deploy done", {
+        archivePath: path.relative(REPO_DIR, archivePath),
+        archiveSizeBytes: archiveStats.size,
+        bundleProfile,
+        channel: request.channel,
+        logPath: path.relative(REPO_DIR, deployLogPath),
+        marker: request.marker,
+        mode: request.mode,
+        platform: session.platform,
+      });
+
+      return {
+        path: archivePath,
+        sizeBytes: archiveStats.size,
+      };
+    } finally {
+      await fsPromises.rm(deployOutputPath, { force: true, recursive: true });
+    }
+  })();
 
   const bundleId = await fetchLatestBundle({
     channel: request.channel,
@@ -1820,7 +2039,9 @@ async function deployBundle(request: DeployBundleRequest) {
   const bundle = await fetchBundleById(bundleId);
 
   session.deployedBundles.push({
+    archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
+    bundleProfile,
     channel: bundle.channel,
     enabled: bundle.enabled,
     marker: request.marker,
@@ -1831,7 +2052,9 @@ async function deployBundle(request: DeployBundleRequest) {
   });
 
   return {
+    archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
+    bundleProfile,
     channel: bundle.channel,
     enabled: bundle.enabled,
     marker: request.marker,
@@ -2097,8 +2320,13 @@ async function cleanup() {
   if (session.appBackupPath) {
     await restoreFile(session.appBackupPath, session.appSourceFile);
   }
+  await restoreFile(
+    session.largeArchiveAssetBackupPath,
+    session.largeArchiveAssetPath,
+  );
 
   session.appBackupPath = null;
+  session.largeArchiveAssetBackupPath = null;
   return {};
 }
 

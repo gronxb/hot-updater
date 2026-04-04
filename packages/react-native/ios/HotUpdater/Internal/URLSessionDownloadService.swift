@@ -179,7 +179,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
                 try FileManager.default.removeItem(at: destinationURL)
             }
 
-            try FileManager.default.copyItem(at: location, to: destinationURL)
+            try persistDownloadedFile(from: location, to: destinationURL)
             NSLog("[DownloadService] Download completed successfully: \(actualSize ?? 0) bytes")
             completion?(.success(destinationURL))
         } catch {
@@ -234,6 +234,17 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             progressHandler?(0)
 
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
+        }
+    }
+}
+
+private extension URLSessionDownloadService {
+    func persistDownloadedFile(from location: URL, to destinationURL: URL) throws {
+        do {
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+        } catch {
+            NSLog("[DownloadService] Move failed, falling back to copy: \(error.localizedDescription)")
+            try FileManager.default.copyItem(at: location, to: destinationURL)
         }
     }
 }

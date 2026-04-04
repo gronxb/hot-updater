@@ -45,6 +45,7 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
+    bundleProfile?: "archive300mb" | "default";
     channel?: string;
     disabled?: boolean;
     forceUpdate?: boolean;
@@ -66,12 +67,23 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (payload.mode !== "reset" && payload.mode !== "crash") {
     return c.json({ error: "mode must be reset or crash" }, 400);
   }
+  if (
+    payload.bundleProfile !== undefined &&
+    payload.bundleProfile !== "default" &&
+    payload.bundleProfile !== "archive300mb"
+  ) {
+    return c.json(
+      { error: "bundleProfile must be default or archive300mb" },
+      400,
+    );
+  }
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
 
   return c.json({
     jobId: startDeployBundleJob({
+      bundleProfile: payload.bundleProfile,
       channel: payload.channel,
       disabled: payload.disabled,
       forceUpdate: payload.forceUpdate,

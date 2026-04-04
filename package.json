@@ -10,6 +10,7 @@
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest run --project=\"unit:*\"",
     "test:integration": "vitest run --project=\"integration:*\"",
+    "test:swift": "swift test --package-path packages/react-native/ios/HotUpdater",
     "bench": "node ./scripts/bench.mjs",
     "bench:update-check": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts packages/server/src/db/ormUpdateCheck.bench.ts",
     "bench:update-check:plugin": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts",
