@@ -191,39 +191,26 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const result = await repo.getBundles({
-      where: { id: { eq: bundles[50].id } },
-      limit: 1,
-      offset: 50,
-    });
+    const result = await repo.getBundles({ limit: 1, offset: 50 });
 
     expect(requestedLimit).toBe("1");
     expect(requestedOffset).toBe("50");
     expect(result.data).toEqual([bundles[50]]);
   });
 
-  it("getBundles: forwards advanced filters through query parameters", async () => {
-    let requestedEnabled: string | null = null;
-    let requestedIdEq: string | null = null;
-    let requestedIdIn: string[] = [];
-    let requestedTargetAppVersionIn: string[] = [];
-    let requestedTargetAppVersionNotNull: string | null = null;
-    let requestedFingerprintHashNull: string | null = null;
+  it("getBundles: forwards console filters through query parameters", async () => {
+    let requestedChannel: string | null = null;
+    let requestedPlatform: string | null = null;
+    let requestedLimit: string | null = null;
+    let requestedOffset: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
-        requestedEnabled = url.searchParams.get("enabled");
-        requestedIdEq = url.searchParams.get("idEq");
-        requestedIdIn = url.searchParams.getAll("idIn");
-        requestedTargetAppVersionIn =
-          url.searchParams.getAll("targetAppVersionIn");
-        requestedTargetAppVersionNotNull = url.searchParams.get(
-          "targetAppVersionNotNull",
-        );
-        requestedFingerprintHashNull = url.searchParams.get(
-          "fingerprintHashNull",
-        );
+        requestedChannel = url.searchParams.get("channel");
+        requestedPlatform = url.searchParams.get("platform");
+        requestedLimit = url.searchParams.get("limit");
+        requestedOffset = url.searchParams.get("offset");
 
         return HttpResponse.json(
           createPaginatedResult([], { limit: 10, offset: 0 }),
@@ -233,25 +220,17 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     await repo.getBundles({
       where: {
-        enabled: false,
-        id: {
-          eq: "bundle-2",
-          in: ["bundle-2", "bundle-3"],
-        },
-        targetAppVersionIn: ["1.0.0", "2.0.0"],
-        targetAppVersionNotNull: true,
-        fingerprintHash: null,
+        channel: "production",
+        platform: "ios",
       },
       limit: 10,
-      offset: 0,
+      offset: 20,
     });
 
-    expect(requestedEnabled).toBe("false");
-    expect(requestedIdEq).toBe("bundle-2");
-    expect(requestedIdIn).toEqual(["bundle-2", "bundle-3"]);
-    expect(requestedTargetAppVersionIn).toEqual(["1.0.0", "2.0.0"]);
-    expect(requestedTargetAppVersionNotNull).toBe("true");
-    expect(requestedFingerprintHashNull).toBe("true");
+    expect(requestedChannel).toBe("production");
+    expect(requestedPlatform).toBe("ios");
+    expect(requestedLimit).toBe("10");
+    expect(requestedOffset).toBe("20");
   });
 
   it("should return correct pagination info for single page", async () => {

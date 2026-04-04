@@ -193,8 +193,8 @@ interface Bundle {
 
 ### List Bundles Contract
 
-`GET /api/bundles` must accept pagination and filter query params and return a
-paginated JSON body.
+`GET /api/bundles` must accept the pagination and filter query params used by
+the console and return a paginated JSON body.
 
 Supported query params:
 
@@ -202,19 +202,6 @@ Supported query params:
 |-------------|------|-------|
 | `channel` | `string` | Exact match |
 | `platform` | `"ios" \| "android"` | Exact match |
-| `enabled` | `"true" \| "false"` | Boolean filter |
-| `idEq` | `string` | Exact ID match |
-| `idGt` | `string` | ID greater than |
-| `idGte` | `string` | ID greater than or equal |
-| `idLt` | `string` | ID less than |
-| `idLte` | `string` | ID less than or equal |
-| `idIn` | `string[]` | Repeat the query param for multiple IDs |
-| `targetAppVersion` | `string` | Exact match |
-| `targetAppVersionNull` | `"true"` | Filter rows where `targetAppVersion` is `null` |
-| `targetAppVersionIn` | `string[]` | Repeat the query param for multiple values |
-| `targetAppVersionNotNull` | `"true"` | Filter rows where `targetAppVersion` is not `null` |
-| `fingerprintHash` | `string` | Exact match |
-| `fingerprintHashNull` | `"true"` | Filter rows where `fingerprintHash` is `null` |
 | `limit` | `number` | Page size |
 | `offset` | `number` | Page offset |
 

@@ -59,20 +59,6 @@ export interface StandaloneRepositoryConfig {
 const appendPathSegment = (path: string, segment: string) =>
   `${path.replace(/\/+$/, "")}/${segment}`;
 
-const appendSearchParams = (
-  searchParams: URLSearchParams,
-  key: string,
-  values: string[] | undefined,
-) => {
-  if (!values) {
-    return;
-  }
-
-  for (const value of values) {
-    searchParams.append(key, value);
-  }
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
@@ -167,54 +153,6 @@ export const standaloneRepository =
 
           if (where?.platform !== undefined) {
             url.searchParams.set("platform", where.platform);
-          }
-
-          if (where?.enabled !== undefined) {
-            url.searchParams.set("enabled", String(where.enabled));
-          }
-
-          if (where?.id?.eq !== undefined) {
-            url.searchParams.set("idEq", where.id.eq);
-          }
-
-          if (where?.id?.gt !== undefined) {
-            url.searchParams.set("idGt", where.id.gt);
-          }
-
-          if (where?.id?.gte !== undefined) {
-            url.searchParams.set("idGte", where.id.gte);
-          }
-
-          if (where?.id?.lt !== undefined) {
-            url.searchParams.set("idLt", where.id.lt);
-          }
-
-          if (where?.id?.lte !== undefined) {
-            url.searchParams.set("idLte", where.id.lte);
-          }
-
-          appendSearchParams(url.searchParams, "idIn", where?.id?.in);
-
-          if (where?.targetAppVersion === null) {
-            url.searchParams.set("targetAppVersionNull", "true");
-          } else if (where?.targetAppVersion !== undefined) {
-            url.searchParams.set("targetAppVersion", where.targetAppVersion);
-          }
-
-          appendSearchParams(
-            url.searchParams,
-            "targetAppVersionIn",
-            where?.targetAppVersionIn,
-          );
-
-          if (where?.targetAppVersionNotNull === true) {
-            url.searchParams.set("targetAppVersionNotNull", "true");
-          }
-
-          if (where?.fingerprintHash === null) {
-            url.searchParams.set("fingerprintHashNull", "true");
-          } else if (where?.fingerprintHash !== undefined) {
-            url.searchParams.set("fingerprintHash", where.fingerprintHash);
           }
 
           if (limit !== undefined) {
