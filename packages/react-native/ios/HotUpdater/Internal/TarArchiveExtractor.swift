@@ -227,6 +227,14 @@ enum TarArchiveExtractor {
             return Data()
         }
 
+        guard size <= UInt64(Int.max) else {
+            throw NSError(
+                domain: "TarArchiveExtractor",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "TAR payload exceeds supported in-memory size: \(size) bytes"]
+            )
+        }
+
         let payload = try ArchiveExtractionUtilities.readExactly(from: handle, count: Int(size))
         try skipPadding(in: handle, size: size)
         return payload

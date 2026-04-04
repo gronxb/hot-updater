@@ -69,7 +69,18 @@ enum ArchiveExtractionUtilities {
             return
         }
 
-        try seek(handle, to: currentOffset(for: handle) + byteCount)
+        let offset = currentOffset(for: handle)
+        let (targetOffset, overflowed) = offset.addingReportingOverflow(byteCount)
+
+        guard !overflowed else {
+            throw NSError(
+                domain: "ArchiveExtractionUtilities",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "Archive offset overflow while skipping \(byteCount) bytes from offset \(offset)"]
+            )
+        }
+
+        try seek(handle, to: targetOffset)
     }
 
     static func normalizedRelativePath(from rawPath: String) -> String? {

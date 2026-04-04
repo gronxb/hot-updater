@@ -1,0 +1,113 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: archive-300mb-ota
+  STABLE_CHANNEL: production
+  LARGE_MARKER: archive-300mb-maestro
+  TARGET_APP_VERSION: 1.0.x
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      BUNDLE_PROFILE: archive300mb
+      CHANNEL: ${STABLE_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${LARGE_MARKER}
+      MESSAGE: Maestro 300MB archive OTA bundle
+      MODE: reset
+      OUTPUT_KEY: largeBundleId
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.largeBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.largeBundleId}
+      EXPECTED_MARKER: ${LARGE_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: subflows/assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Large E2E asset is present in manifest
+      EXPECTED_TEXT: present
+      TARGET_ID: runtime-large-e2e-asset
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: archive-300mb
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.largeBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertLaunchReport
+      CONTROL_URL: ${CONTROL_URL}
+      OPTIONAL: "true"
+      STATUS: STABLE
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: STABLE

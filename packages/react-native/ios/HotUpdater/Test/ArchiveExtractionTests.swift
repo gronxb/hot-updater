@@ -327,6 +327,48 @@ struct ArchiveExtractionTests {
             )
         }
     }
+
+    @Test
+    func rejectsTarEntrySizesThatOverflowOffsetSkipping() throws {
+        let workingDirectory = try makeWorkingDirectory()
+
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let archiveURL = try createMalformedTarArchive(
+            path: "../escape.txt",
+            rawSizeField: makeTarBinarySizeField(UInt64.max),
+            typeFlag: tarRegularFileType,
+            workingDirectory: workingDirectory,
+            fileName: "overflow-skip.tar"
+        )
+
+        assertThrows(containsAny: ["Archive offset overflow while skipping"]) {
+            _ = try TarArchiveExtractor.containsEntries(at: archiveURL.path)
+        }
+    }
+
+    @Test
+    func rejectsOversizedTarMetadataPayloadsBeforeIntConversion() throws {
+        let workingDirectory = try makeWorkingDirectory()
+
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let archiveURL = try createMalformedTarArchive(
+            path: "PaxHeaders.0",
+            rawSizeField: makeTarBinarySizeField(UInt64(Int.max) + 1),
+            typeFlag: tarPaxHeaderType,
+            workingDirectory: workingDirectory,
+            fileName: "oversized-pax.tar"
+        )
+
+        assertThrows(containsAny: ["TAR payload exceeds supported in-memory size"]) {
+            _ = try TarArchiveExtractor.containsEntries(at: archiveURL.path)
+        }
+    }
 }
 
 enum ArchiveFormat: CaseIterable {
@@ -753,6 +795,29 @@ private func createCompressedTarArchive(
     return archiveURL
 }
 
+private func createMalformedTarArchive(
+    path: String,
+    rawSizeField: Data,
+    typeFlag: UInt8,
+    workingDirectory: URL,
+    fileName: String
+) throws -> URL {
+    var archive = Data()
+    archive.append(
+        try makeTarHeader(
+            path: path,
+            rawSizeField: rawSizeField,
+            typeFlag: typeFlag,
+            linkName: ""
+        )
+    )
+    archive.append(Data(count: 1024))
+
+    let archiveURL = workingDirectory.appendingPathComponent(fileName)
+    try archive.write(to: archiveURL)
+    return archiveURL
+}
+
 private func createTarArchiveData(from entries: [TarEntrySpec]) throws -> Data {
     var archive = Data()
 
@@ -821,6 +886,42 @@ private func makeTarHeader(
     typeFlag: UInt8,
     linkName: String
 ) throws -> Data {
+    try makeTarHeader(
+        path: path,
+        typeFlag: typeFlag,
+        linkName: linkName
+    ) { writeBytes in
+        let digits = String(size, radix: 8)
+        let padded = String(repeating: "0", count: max(12 - digits.count - 1, 0)) + digits + "\0"
+        writeBytes(Data(padded.utf8), 124, 12)
+    }
+}
+
+private func makeTarHeader(
+    path: String,
+    rawSizeField: Data,
+    typeFlag: UInt8,
+    linkName: String
+) throws -> Data {
+    guard rawSizeField.count == 12 else {
+        throw TarFixtureError.invalidSizeField(rawSizeField.count)
+    }
+
+    return try makeTarHeader(
+        path: path,
+        typeFlag: typeFlag,
+        linkName: linkName
+    ) { writeBytes in
+        writeBytes(rawSizeField, 124, 12)
+    }
+}
+
+private func makeTarHeader(
+    path: String,
+    typeFlag: UInt8,
+    linkName: String,
+    writeSizeField: (_ writeBytes: (_ data: Data, _ offset: Int, _ maxLength: Int) -> Void) -> Void
+) throws -> Data {
     guard let pathData = path.data(using: .utf8), pathData.count <= 100 else {
         throw TarFixtureError.invalidPath(path)
     }
@@ -836,18 +937,15 @@ private func makeTarHeader(
         header.replaceSubrange(offset..<(offset + prefix.count), with: prefix)
     }
 
-    func writeOctal(_ value: Int, offset: Int, length: Int) {
-        let digits = String(value, radix: 8)
-        let padded = String(repeating: "0", count: max(length - digits.count - 1, 0)) + digits + "\0"
-        writeBytes(Data(padded.utf8), offset: offset, maxLength: length)
-    }
-
     writeBytes(pathData, offset: 0, maxLength: 100)
-    writeOctal(typeFlag == tarSymbolicLinkType ? 0o777 : 0o644, offset: 100, length: 8)
-    writeOctal(0, offset: 108, length: 8)
-    writeOctal(0, offset: 116, length: 8)
-    writeOctal(size, offset: 124, length: 12)
-    writeOctal(0, offset: 136, length: 12)
+    writeBytes(Data("0000777\0".utf8), offset: 100, maxLength: 8)
+    if typeFlag != tarSymbolicLinkType {
+        writeBytes(Data("0000644\0".utf8), offset: 100, maxLength: 8)
+    }
+    writeBytes(Data("0000000\0".utf8), offset: 108, maxLength: 8)
+    writeBytes(Data("0000000\0".utf8), offset: 116, maxLength: 8)
+    writeSizeField(writeBytes)
+    writeBytes(Data("00000000000\0".utf8), offset: 136, maxLength: 12)
     writeBytes(Data(repeating: 0x20, count: 8), offset: 148, maxLength: 8)
     writeBytes(Data([typeFlag]), offset: 156, maxLength: 1)
     writeBytes(linkNameData, offset: 157, maxLength: 100)
@@ -859,6 +957,15 @@ private func makeTarHeader(
     writeBytes(Data(checksumString.utf8), offset: 148, maxLength: 8)
 
     return header
+}
+
+private func makeTarBinarySizeField(_ value: UInt64) -> Data {
+    var rawSizeField = Data(repeating: 0, count: 12)
+    var bigEndianValue = value.bigEndian
+    let valueBytes = withUnsafeBytes(of: &bigEndianValue) { Data($0) }
+    rawSizeField.replaceSubrange(4..<12, with: valueBytes)
+    rawSizeField[0] = 0x80
+    return rawSizeField
 }
 
 private func appendTarPadding(for size: Int, to archive: inout Data) {
@@ -1151,6 +1258,7 @@ private func computeCRC32(_ data: Data) -> UInt32 {
 private enum TarFixtureError: Error {
     case compressionFailed
     case invalidPath(String)
+    case invalidSizeField(Int)
 }
 
 private enum ArchiveFixtureError: Error {
