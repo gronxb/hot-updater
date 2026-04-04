@@ -1,5 +1,13 @@
 # @hot-updater/datadog-plugin
 
+## 0.29.3
+
+### Patch Changes
+
+- Updated dependencies [d1ffb83]
+  - @hot-updater/plugin-core@0.29.3
+  - @hot-updater/core@0.29.3
+
 ## 0.29.2
 
 ### Patch Changes
