@@ -1,4 +1,5 @@
 import type {
+  DatabasePlugin,
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
@@ -93,7 +94,7 @@ export function createHotUpdater<TContext = unknown>(
   const core =
     isDatabasePluginFactory(database) || isDatabasePlugin(database)
       ? (() => {
-          const createDatabasePluginInstance = () =>
+          const createDatabasePluginInstance = (): DatabasePlugin<TContext> =>
             isDatabasePluginFactory(database) ? database() : database;
           let plugin = createDatabasePluginInstance();
 

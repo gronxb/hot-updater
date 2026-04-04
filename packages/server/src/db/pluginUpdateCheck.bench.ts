@@ -230,7 +230,10 @@ describe("plugin update check benchmark", () => {
   };
 
   const plugin = createBenchPlugin(bundles);
-  const currentApi = createPluginDatabaseCore(plugin, async () => null).api;
+  const currentApi = createPluginDatabaseCore(
+    () => plugin,
+    async () => null,
+  ).api;
 
   bench(
     "pluginCore legacy full fetch",
