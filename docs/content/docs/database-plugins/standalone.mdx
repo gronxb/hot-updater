@@ -85,6 +85,9 @@ database: standaloneRepository({
     list: () => ({
       path: "/v1/hot-updater/api/bundles"
     }),
+    channels: () => ({
+      path: "/v1/hot-updater/api/bundles/channels"
+    }),
     retrieve: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`
     }),
@@ -94,6 +97,24 @@ database: standaloneRepository({
   }
 })
 ```
+
+`GET /api/bundles` must return a paginated JSON body:
+
+```json
+{
+  "data": [{ "id": "bundle-id", "channel": "production" }],
+  "pagination": {
+    "total": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "currentPage": 1,
+    "totalPages": 1
+  }
+}
+```
+
+`standaloneRepository` reads pagination metadata from the response body, and
+`getChannels()` uses `GET /api/bundles/channels`.
 
 ## Next Steps
 

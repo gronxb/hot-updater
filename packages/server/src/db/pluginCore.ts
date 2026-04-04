@@ -19,7 +19,6 @@ import {
 import type { DatabaseAPI } from "./types";
 
 const PAGE_SIZE = 100;
-
 const DESC_ORDER = { field: "id", direction: "desc" } as const;
 
 const bundleMatchesQueryWhere = (
@@ -100,11 +99,12 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
 };
 
 export function createPluginDatabaseCore<TContext = unknown>(
-  plugin: DatabasePlugin<TContext>,
+  getPlugin: () => DatabasePlugin<TContext>,
   resolveFileUrl: (
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>,
+  resetPlugin?: () => Promise<void> | void,
 ): {
   api: DatabaseAPI<TContext>;
   adapterName: string;
@@ -115,7 +115,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
   ): Promise<Awaited<ReturnType<DatabasePlugin<TContext>["getBundles"]>>> => {
-    const result = await plugin.getBundles(
+    const result = await getPlugin().getBundles(
       {
         ...options,
         orderBy: options.orderBy ?? DESC_ORDER,
@@ -242,7 +242,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       id: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
-      return plugin.getBundleById(id, context);
+      return getPlugin().getBundleById(id, context);
     },
 
     async getUpdateInfo(
@@ -314,19 +314,25 @@ export function createPluginDatabaseCore<TContext = unknown>(
     async getChannels(
       context?: HotUpdaterContext<TContext>,
     ): Promise<string[]> {
-      return plugin.getChannels(context);
+      return getPlugin().getChannels(context);
     },
 
     async getBundles(options, context?: HotUpdaterContext<TContext>) {
-      return plugin.getBundles(options, context);
+      return getPlugin().getBundles(options, context);
     },
 
     async insertBundle(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      await plugin.appendBundle(bundle, context);
-      await plugin.commitBundle(context);
+      const plugin = getPlugin();
+      try {
+        await plugin.appendBundle(bundle, context);
+        await plugin.commitBundle(context);
+      } catch (error) {
+        await resetPlugin?.();
+        throw error;
+      }
     },
 
     async updateBundleById(
@@ -334,26 +340,38 @@ export function createPluginDatabaseCore<TContext = unknown>(
       newBundle: Partial<Bundle>,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      await plugin.updateBundle(bundleId, newBundle, context);
-      await plugin.commitBundle(context);
+      const plugin = getPlugin();
+      try {
+        await plugin.updateBundle(bundleId, newBundle, context);
+        await plugin.commitBundle(context);
+      } catch (error) {
+        await resetPlugin?.();
+        throw error;
+      }
     },
 
     async deleteBundleById(
       bundleId: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      const bundle = await plugin.getBundleById(bundleId, context);
-      if (!bundle) {
-        return;
+      const plugin = getPlugin();
+      try {
+        const bundle = await plugin.getBundleById(bundleId, context);
+        if (!bundle) {
+          return;
+        }
+        await plugin.deleteBundle(bundle, context);
+        await plugin.commitBundle(context);
+      } catch (error) {
+        await resetPlugin?.();
+        throw error;
       }
-      await plugin.deleteBundle(bundle, context);
-      await plugin.commitBundle(context);
     },
   };
 
   return {
     api,
-    adapterName: plugin.name,
+    adapterName: getPlugin().name,
     createMigrator: () => {
       throw new Error(
         "createMigrator is only available for Kysely/Prisma/Drizzle database adapters.",

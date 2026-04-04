@@ -92,10 +92,26 @@ export function createHotUpdater<TContext = unknown>(
 
   const core =
     isDatabasePluginFactory(database) || isDatabasePlugin(database)
-      ? createPluginDatabaseCore<TContext>(
-          isDatabasePluginFactory(database) ? database() : database,
-          resolveFileUrl,
-        )
+      ? (() => {
+          const createDatabasePluginInstance = () =>
+            isDatabasePluginFactory(database) ? database() : database;
+          let plugin = createDatabasePluginInstance();
+
+          return createPluginDatabaseCore<TContext>(
+            () => plugin,
+            resolveFileUrl,
+            isDatabasePluginFactory(database)
+              ? async () => {
+                  try {
+                    await plugin.onUnmount?.();
+                  } catch {
+                    // Preserve the original mutation failure when recycling the plugin.
+                  }
+                  plugin = createDatabasePluginInstance();
+                }
+              : undefined,
+          );
+        })()
       : createOrmDatabaseCore<TContext>({
           database,
           resolveFileUrl,

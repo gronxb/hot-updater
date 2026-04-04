@@ -1,12 +1,5 @@
-import type {
-  Bundle,
-  DatabaseBundleQueryOrder,
-  DatabaseBundleQueryWhere,
-} from "@hot-updater/plugin-core";
-import {
-  calculatePagination,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import type { Bundle, PaginatedResult } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 export interface RouteConfig {
   path: string;
@@ -21,6 +14,7 @@ export interface Routes {
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
+  channels?: () => RouteConfig;
   retrieve?: (bundleId: string) => RouteConfig;
   delete?: (bundleId: string) => RouteConfig;
 }
@@ -34,6 +28,10 @@ const defaultRoutes = {
   }),
   list: () => ({
     path: "/api/bundles",
+    headers: { "Cache-Control": "no-cache" },
+  }),
+  channels: () => ({
+    path: "/api/bundles/channels",
     headers: { "Cache-Control": "no-cache" },
   }),
   retrieve: (bundleId: string) => ({
@@ -62,72 +60,30 @@ export interface StandaloneRepositoryConfig {
   routes?: Routes;
 }
 
-const bundleMatchesQueryWhere = (
-  bundle: Bundle,
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel)
-    return false;
-  if (where.platform !== undefined && bundle.platform !== where.platform)
-    return false;
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
-    return false;
-  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
-  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
-    return false;
-  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
-    return false;
-  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
-    return false;
-  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
-    return false;
-  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
-  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
-    return false;
-  }
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-  if (
-    where.targetAppVersionIn &&
-    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
-  ) {
-    return false;
-  }
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
-    return false;
-  }
-  return true;
-};
-
-const sortBundles = (
-  bundles: Bundle[],
-  orderBy: DatabaseBundleQueryOrder | undefined,
-) => {
-  if (!orderBy) {
-    return bundles;
-  }
-
-  const direction = orderBy?.direction ?? "desc";
-  return bundles.slice().sort((a, b) => {
-    const result = a.id.localeCompare(b.id);
-    return direction === "asc" ? result : -result;
-  });
-};
+const appendPathSegment = (path: string, segment: string) =>
+  `${path.replace(/\/+$/, "")}/${segment}`;
 
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
     factory: (config) => {
       const legacyUpsertRoute = config.routes?.upsert;
+      const customListRoute = config.routes?.list?.();
       const routes = {
+        list: () => createRoute(defaultRoutes.list(), customListRoute),
+        channels: () => {
+          const defaultChannelsRoute = customListRoute
+            ? {
+                path: appendPathSegment(customListRoute.path, "channels"),
+                headers: {
+                  ...defaultRoutes.channels().headers,
+                  ...customListRoute.headers,
+                },
+              }
+            : defaultRoutes.channels();
+
+          return createRoute(defaultChannelsRoute, config.routes?.channels?.());
+        },
         create: () =>
           createRoute(
             defaultRoutes.create(),
@@ -142,7 +98,6 @@ export const standaloneRepository =
           legacyUpsertRoute
             ? createRoute(defaultRoutes.create(), legacyUpsertRoute())
             : null,
-        list: () => createRoute(defaultRoutes.list(), config.routes?.list?.()),
         retrieve: (bundleId: string) =>
           createRoute(
             defaultRoutes.retrieve(bundleId),
@@ -182,7 +137,7 @@ export const standaloneRepository =
           }
         },
         async getBundles(options) {
-          const { where, limit, offset = 0, orderBy } = options ?? {};
+          const { where, limit, offset = 0 } = options ?? {};
           const { path, headers: routeHeaders } = routes.list();
           const url = new URL(buildUrl(path));
 
@@ -207,36 +162,11 @@ export const standaloneRepository =
           if (!response.ok) {
             throw new Error(`API Error: ${response.statusText}`);
           }
-          const bundles = (await response.json()) as Bundle[];
 
-          const filteredBundles = sortBundles(
-            bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
-            orderBy,
-          );
-
-          const totalCountHeader = response.headers.get("X-Total-Count");
-          const parsedTotal = totalCountHeader
-            ? Number.parseInt(totalCountHeader, 10)
-            : Number.NaN;
-          const hasServerPagination = Number.isFinite(parsedTotal);
-          const total = hasServerPagination
-            ? parsedTotal
-            : filteredBundles.length;
-          const data = hasServerPagination
-            ? filteredBundles
-            : limit
-              ? filteredBundles.slice(offset, offset + limit)
-              : filteredBundles;
-
-          const pagination = calculatePagination(total, { limit, offset });
-
-          return {
-            data,
-            pagination,
-          };
+          return (await response.json()) as PaginatedResult;
         },
         async getChannels(): Promise<string[]> {
-          const { path, headers: routeHeaders } = routes.list();
+          const { path, headers: routeHeaders } = routes.channels();
 
           const response = await fetch(buildUrl(path), {
             method: "GET",
@@ -247,9 +177,7 @@ export const standaloneRepository =
             throw new Error(`API Error: ${response.statusText}`);
           }
 
-          const bundles = (await response.json()) as Bundle[];
-          const channels = bundles.map((b) => b.channel);
-          return [...new Set(channels)];
+          return (await response.json()) as string[];
         },
         async commitBundle({ changedSets }) {
           if (changedSets.length === 0) {

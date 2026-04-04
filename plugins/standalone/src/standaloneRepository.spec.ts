@@ -1,4 +1,8 @@
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  type Bundle,
+  calculatePagination,
+  type DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -82,6 +86,24 @@ const testBundles: Bundle[] = [
   TEST_BUNDLE_3,
 ];
 
+const createPaginatedResult = (
+  data: Bundle[],
+  options: {
+    total?: number;
+    limit?: number;
+    offset?: number;
+  } = {},
+) => {
+  const limit = options.limit ?? (data.length > 0 ? data.length : 20);
+  const offset = options.offset ?? 0;
+  const total = options.total ?? data.length;
+
+  return {
+    data,
+    pagination: calculatePagination(total, { limit, offset }),
+  };
+};
+
 const server = setupServer();
 
 beforeAll(() => server.listen());
@@ -107,7 +129,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         callCount++;
         expect(request.headers.get("Content-Type")).toEqual("application/json");
         expect(request.headers.get("Cache-Control")).toEqual("no-cache");
-        return HttpResponse.json(testBundles);
+        return HttpResponse.json(
+          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+        );
       }),
     );
 
@@ -121,7 +145,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
         callCount++;
-        return HttpResponse.json(testBundles);
+        return HttpResponse.json(
+          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+        );
       }),
     );
 
@@ -155,11 +181,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         const limit = Number.parseInt(requestedLimit ?? "50", 10);
         const offset = Number.parseInt(requestedOffset ?? "0", 10);
 
-        return HttpResponse.json(bundles.slice(offset, offset + limit), {
-          headers: {
-            "X-Total-Count": bundles.length.toString(),
-          },
-        });
+        return HttpResponse.json(
+          createPaginatedResult(bundles.slice(offset, offset + limit), {
+            total: bundles.length,
+            limit,
+            offset,
+          }),
+        );
       }),
     );
 
@@ -178,7 +206,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     // Mock initial bundles fetch
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json([]);
+        return HttpResponse.json(
+          createPaginatedResult([], { limit: 20, offset: 0 }),
+        );
       }),
       http.post("http://localhost/hot-updater/api/bundles", async () => {
         return HttpResponse.json({ success: true });
@@ -197,9 +227,19 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         const url = new URL(request.url);
         const channel = url.searchParams.get("channel");
         if (channel === "production") {
-          return HttpResponse.json(productionBundles);
+          return HttpResponse.json(
+            createPaginatedResult(productionBundles, {
+              limit: 20,
+              offset: 0,
+            }),
+          );
         }
-        return HttpResponse.json([TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3]);
+        return HttpResponse.json(
+          createPaginatedResult([TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3], {
+            limit: 20,
+            offset: 0,
+          }),
+        );
       }),
     );
 
@@ -238,11 +278,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         );
 
         const paginatedData = allBundles.slice(offset, offset + limit);
-        return HttpResponse.json(paginatedData, {
-          headers: {
-            "X-Total-Count": allBundles.length.toString(),
-          },
-        });
+        return HttpResponse.json(
+          createPaginatedResult(paginatedData, {
+            total: allBundles.length,
+            limit,
+            offset,
+          }),
+        );
       }),
       http.post("http://localhost/hot-updater/api/bundles", async () => {
         return HttpResponse.json({ success: true });
@@ -281,6 +323,26 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       currentPage: 2,
       totalPages: 2,
     });
+  });
+
+  it("getChannels: GET /hot-updater/api/bundles/channels fetches channels", async () => {
+    server.use(
+      http.get(
+        "http://localhost/hot-updater/api/bundles/channels",
+        ({ request }) => {
+          expect(request.headers.get("Content-Type")).toEqual(
+            "application/json",
+          );
+          expect(request.headers.get("Cache-Control")).toEqual("no-cache");
+          return HttpResponse.json(["production", "staging"]);
+        },
+      ),
+    );
+
+    await expect(repo.getChannels()).resolves.toEqual([
+      "production",
+      "staging",
+    ]);
   });
 
   it("getBundleById: GET /hot-updater/api/bundles/:id retrieves a bundle (success case)", async () => {
@@ -348,7 +410,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(testBundles);
+        return HttpResponse.json(
+          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+        );
       }),
       http.get(
         "http://localhost/hot-updater/api/bundles/:bundleId",
@@ -386,7 +450,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   it("updateBundle: throws error if target bundle does not exist", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json([]);
+        return HttpResponse.json(
+          createPaginatedResult([], { limit: 20, offset: 0 }),
+        );
       }),
     );
 
@@ -398,7 +464,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   it("appendBundle & commitBundle: appends a new bundle and commits", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json([]);
+        return HttpResponse.json(
+          createPaginatedResult([], { limit: 20, offset: 0 }),
+        );
       }),
     );
 
@@ -442,7 +510,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   it("commitBundle: throws exception on API error", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(testBundles);
+        return HttpResponse.json(
+          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+        );
       }),
       http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
         return HttpResponse.json(testBundles[0]);
@@ -557,7 +627,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         http.get("http://localhost/api/custom/bundles", ({ request }) => {
           expect(request.headers.get("Authorization")).toEqual("Bearer token");
           expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-          return HttpResponse.json(testBundles);
+          return HttpResponse.json(
+            createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+          );
         }),
       );
 
@@ -635,7 +707,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     it("commitBundle: UPDATE operations use custom update route and headers", async () => {
       server.use(
         http.get("http://localhost/api/custom/bundles", () => {
-          return HttpResponse.json(testBundles);
+          return HttpResponse.json(
+            createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
+          );
         }),
         http.get(
           "http://localhost/api/custom/bundles/:bundleId",
@@ -668,13 +742,24 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     it("getChannels", async () => {
       server.use(
-        http.get("http://localhost/api/custom/bundles", () => {
-          return HttpResponse.json(testBundles);
-        }),
+        http.get(
+          "http://localhost/api/custom/bundles/channels",
+          ({ request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
+            return HttpResponse.json([
+              ...new Set(testBundles.map((bundle) => bundle.channel)),
+            ]);
+          },
+        ),
       );
 
-      const bundles = await customRepo.getChannels();
-      expect(bundles).toEqual([...new Set(testBundles.map((b) => b.channel))]);
+      const channels = await customRepo.getChannels();
+      expect(channels).toEqual([
+        ...new Set(testBundles.map((bundle) => bundle.channel)),
+      ]);
     });
 
     it("getChannels: includes channels beyond the first 50 bundles", async () => {
@@ -693,9 +778,20 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       );
 
       server.use(
-        http.get("http://localhost/api/custom/bundles", () => {
-          return HttpResponse.json(bundlesWithChannelAfter50);
-        }),
+        http.get(
+          "http://localhost/api/custom/bundles/channels",
+          ({ request }) => {
+            expect(request.headers.get("Authorization")).toEqual(
+              "Bearer token",
+            );
+            expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
+            return HttpResponse.json([
+              ...new Set(
+                bundlesWithChannelAfter50.map((bundle) => bundle.channel),
+              ),
+            ]);
+          },
+        ),
       );
 
       const channels = await customRepo.getChannels();

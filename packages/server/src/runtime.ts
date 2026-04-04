@@ -79,12 +79,24 @@ export function createHotUpdater<TContext = unknown>(
     );
   }
 
-  const plugin = isDatabasePluginFactory(options.database)
-    ? options.database()
-    : options.database;
+  const createDatabasePluginInstance = () =>
+    isDatabasePluginFactory(options.database)
+      ? options.database()
+      : options.database;
+  let plugin = createDatabasePluginInstance();
   const core = createPluginDatabaseCore<TContext>(
-    plugin,
+    () => plugin,
     resolveStoragePluginUrl,
+    isDatabasePluginFactory(options.database)
+      ? async () => {
+          try {
+            await plugin.onUnmount?.();
+          } catch {
+            // Preserve the original mutation failure when recycling the plugin.
+          }
+          plugin = createDatabasePluginInstance();
+        }
+      : undefined,
   );
 
   const api = {

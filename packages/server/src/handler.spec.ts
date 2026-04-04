@@ -154,7 +154,7 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(404);
   });
 
-  it("returns bundle pages with the total count header", async () => {
+  it("returns paginated bundle results in the response body", async () => {
     const api = createApi();
     api.getBundles.mockResolvedValue({
       data: [testBundle],
@@ -175,8 +175,17 @@ describe("createHandler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("X-Total-Count")).toBe("51");
-    await expect(response.json()).resolves.toEqual([testBundle]);
+    expect(response.headers.get("X-Total-Count")).toBeNull();
+    await expect(response.json()).resolves.toEqual({
+      data: [testBundle],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 6,
+        totalPages: 26,
+      },
+    });
     expect(api.getBundles).toHaveBeenCalledWith(
       {
         where: {

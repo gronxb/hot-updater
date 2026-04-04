@@ -5,6 +5,7 @@ import type {
   RequestEnvContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { createHotUpdater } from "./runtime";
 
@@ -273,5 +274,80 @@ describe("runtime createHotUpdater", () => {
 
     expect(response.status).toBe(200);
     expect(getBundles).toHaveBeenCalledWith(expect.any(Object), undefined);
+  });
+
+  it("clears pending plugin changes after a failed mutation commit", async () => {
+    const committedBundles = new Map<string, Bundle>();
+    let commitAttempt = 0;
+
+    const database = createDatabasePlugin({
+      name: "failingPlugin",
+      factory: () => ({
+        async getBundleById(bundleId) {
+          return committedBundles.get(bundleId) ?? null;
+        },
+        async getBundles() {
+          return {
+            data: Array.from(committedBundles.values()),
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: committedBundles.size,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle({ changedSets }) {
+          commitAttempt += 1;
+
+          if (commitAttempt === 1) {
+            throw new Error("commit failed");
+          }
+
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              committedBundles.delete(change.data.id);
+              continue;
+            }
+
+            committedBundles.set(change.data.id, change.data);
+          }
+        },
+      }),
+    })({});
+
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: false,
+        bundles: false,
+      },
+    });
+
+    const failedBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000010",
+      message: "failed bundle",
+    };
+    const succeedingBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000011",
+      message: "succeeding bundle",
+    };
+
+    await expect(hotUpdater.insertBundle(failedBundle)).rejects.toThrow(
+      "commit failed",
+    );
+    await hotUpdater.insertBundle(succeedingBundle);
+
+    expect(await hotUpdater.getBundleById(failedBundle.id)).toBeNull();
+    await expect(
+      hotUpdater.getBundleById(succeedingBundle.id),
+    ).resolves.toEqual(succeedingBundle);
   });
 });
