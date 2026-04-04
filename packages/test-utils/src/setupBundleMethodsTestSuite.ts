@@ -1,5 +1,5 @@
 import type { Bundle, Platform } from "@hot-updater/core";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 interface PaginationInfo {
   total: number;
@@ -71,6 +71,23 @@ export const setupBundleMethodsTestSuite = ({
   ) => Promise<void>;
   deleteBundleById: (bundleId: string) => Promise<void>;
 }) => {
+  beforeEach(async () => {
+    while (true) {
+      const existing = await getBundles({
+        limit: 1000,
+        offset: 0,
+      });
+
+      if (existing.data.length === 0) {
+        return;
+      }
+
+      for (const bundle of existing.data) {
+        await deleteBundleById(bundle.id);
+      }
+    }
+  });
+
   describe("getBundleById", () => {
     it("should retrieve bundle by id without Prisma validation errors", async () => {
       const bundle: Bundle = {
@@ -360,6 +377,227 @@ export const setupBundleMethodsTestSuite = ({
       expect(page1.data.length).toBe(1);
       expect(page2.data.length).toBe(1);
       expect(page1.data[0].id).not.toBe(page2.data[0].id);
+    });
+
+    it("should filter bundles by id.in", async () => {
+      const bundles: Bundle[] = [
+        {
+          id: "00000000-0000-0000-0000-000000000051",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-in-1",
+          gitCommitHash: null,
+          message: "Bundle in 1",
+          channel: "production",
+          storageUri: "mock://test/in-1.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000052",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-in-2",
+          gitCommitHash: null,
+          message: "Bundle in 2",
+          channel: "production",
+          storageUri: "mock://test/in-2.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: "fingerprint-included",
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000053",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-in-3",
+          gitCommitHash: null,
+          message: "Bundle in 3",
+          channel: "production",
+          storageUri: "mock://test/in-3.zip",
+          targetAppVersion: "2.0.0",
+          fingerprintHash: null,
+        },
+      ];
+
+      for (const bundle of bundles) {
+        await insertBundle(bundle);
+      }
+
+      const result = await getBundles({
+        where: {
+          id: {
+            in: [bundles[0].id, bundles[2].id],
+          },
+        },
+        orderBy: { field: "id", direction: "desc" },
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(result.data.map((bundle) => bundle.id)).toEqual([
+        bundles[2].id,
+        bundles[0].id,
+      ]);
+      expect(result.pagination.total).toBe(2);
+    });
+
+    it("should paginate after applying targetAppVersionIn filters", async () => {
+      const bundles: Bundle[] = [
+        {
+          id: "00000000-0000-0000-0000-000000000054",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-target-1",
+          gitCommitHash: null,
+          message: "Target bundle 1",
+          channel: "production",
+          storageUri: "mock://test/target-1.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000055",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-target-2",
+          gitCommitHash: null,
+          message: "Target bundle 2",
+          channel: "production",
+          storageUri: "mock://test/target-2.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000056",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-target-3",
+          gitCommitHash: null,
+          message: "Target bundle 3",
+          channel: "production",
+          storageUri: "mock://test/target-3.zip",
+          targetAppVersion: "9.9.9",
+          fingerprintHash: null,
+        },
+      ];
+
+      for (const bundle of bundles) {
+        await insertBundle(bundle);
+      }
+
+      const firstPage = await getBundles({
+        where: {
+          targetAppVersionIn: ["1.0.0"],
+        },
+        orderBy: { field: "id", direction: "desc" },
+        limit: 1,
+        offset: 0,
+      });
+
+      expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
+        bundles[1].id,
+      ]);
+      expect(firstPage.pagination.total).toBe(2);
+      expect(firstPage.pagination.hasNextPage).toBe(true);
+
+      const secondPage = await getBundles({
+        where: {
+          targetAppVersionIn: ["1.0.0"],
+        },
+        orderBy: { field: "id", direction: "desc" },
+        limit: 1,
+        offset: 1,
+      });
+
+      expect(secondPage.data.map((bundle) => bundle.id)).toEqual([
+        bundles[0].id,
+      ]);
+      expect(secondPage.pagination.total).toBe(2);
+      expect(secondPage.pagination.hasPreviousPage).toBe(true);
+    });
+
+    it("should support null and not-null bundle filters", async () => {
+      const bundles: Bundle[] = [
+        {
+          id: "00000000-0000-0000-0000-000000000057",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-null-1",
+          gitCommitHash: null,
+          message: "Null target bundle",
+          channel: "production",
+          storageUri: "mock://test/null-1.zip",
+          targetAppVersion: null,
+          fingerprintHash: "fingerprint-null-target",
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000058",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-null-2",
+          gitCommitHash: null,
+          message: "Versioned bundle",
+          channel: "production",
+          storageUri: "mock://test/null-2.zip",
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        },
+        {
+          id: "00000000-0000-0000-0000-000000000059",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash-null-3",
+          gitCommitHash: null,
+          message: "Null fingerprint bundle",
+          channel: "production",
+          storageUri: "mock://test/null-3.zip",
+          targetAppVersion: "2.0.0",
+          fingerprintHash: null,
+        },
+      ];
+
+      for (const bundle of bundles) {
+        await insertBundle(bundle);
+      }
+
+      const nonNullTargetVersions = await getBundles({
+        where: {
+          targetAppVersionNotNull: true,
+        },
+        orderBy: { field: "id", direction: "desc" },
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(nonNullTargetVersions.data.map((bundle) => bundle.id)).toEqual([
+        bundles[2].id,
+        bundles[1].id,
+      ]);
+      expect(nonNullTargetVersions.pagination.total).toBe(2);
+
+      const nullFingerprintBundles = await getBundles({
+        where: {
+          fingerprintHash: null,
+        },
+        orderBy: { field: "id", direction: "desc" },
+        limit: 10,
+        offset: 0,
+      });
+
+      expect(nullFingerprintBundles.data.map((bundle) => bundle.id)).toEqual([
+        bundles[2].id,
+        bundles[1].id,
+      ]);
+      expect(nullFingerprintBundles.pagination.total).toBe(2);
     });
 
     it("should include rollout cohort fields in list results", async () => {

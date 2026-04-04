@@ -11,7 +11,7 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
-import type { PaginationInfo } from "../types";
+import type { PaginatedResult } from "../types";
 
 export type DatabasePluginFactory<TContext = unknown> =
   () => DatabasePlugin<TContext>;
@@ -62,7 +62,7 @@ export interface DatabaseAPI<TContext = unknown> {
   getBundles(
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ): Promise<{ data: Bundle[]; pagination: PaginationInfo }>;
+  ): Promise<PaginatedResult>;
   insertBundle(
     bundle: Bundle,
     context?: HotUpdaterContext<TContext>,

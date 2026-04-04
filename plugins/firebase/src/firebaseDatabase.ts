@@ -71,6 +71,69 @@ const sortBundles = (
   });
 };
 
+const applyFirestoreQueryableFilters = (
+  query: admin.firestore.Query<FirestoreData>,
+  where: DatabaseBundleQueryWhere | undefined,
+) => {
+  let nextQuery = query;
+
+  if (where?.channel) {
+    nextQuery = nextQuery.where("channel", "==", where.channel);
+  }
+  if (where?.platform) {
+    nextQuery = nextQuery.where("platform", "==", where.platform);
+  }
+  if (where?.enabled !== undefined) {
+    nextQuery = nextQuery.where("enabled", "==", where.enabled);
+  }
+  if (where?.fingerprintHash !== undefined && where.fingerprintHash !== null) {
+    nextQuery = nextQuery.where(
+      "fingerprint_hash",
+      "==",
+      where.fingerprintHash,
+    );
+  }
+  if (
+    where?.targetAppVersion !== undefined &&
+    where.targetAppVersion !== null
+  ) {
+    nextQuery = nextQuery.where(
+      "target_app_version",
+      "==",
+      where.targetAppVersion,
+    );
+  }
+  if (where?.id?.eq) {
+    nextQuery = nextQuery.where("id", "==", where.id.eq);
+  }
+  if (where?.id?.gt) {
+    nextQuery = nextQuery.where("id", ">", where.id.gt);
+  }
+  if (where?.id?.gte) {
+    nextQuery = nextQuery.where("id", ">=", where.id.gte);
+  }
+  if (where?.id?.lt) {
+    nextQuery = nextQuery.where("id", "<", where.id.lt);
+  }
+  if (where?.id?.lte) {
+    nextQuery = nextQuery.where("id", "<=", where.id.lte);
+  }
+
+  return nextQuery;
+};
+
+const requiresInMemoryFiltering = (
+  where: DatabaseBundleQueryWhere | undefined,
+) => {
+  return Boolean(
+    where?.id?.in ||
+      where?.targetAppVersionIn ||
+      where?.targetAppVersionNotNull ||
+      where?.targetAppVersion === null ||
+      where?.fingerprintHash === null,
+  );
+};
+
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
   channel: firestoreData.channel,
   enabled: Boolean(firestoreData.enabled),
@@ -92,8 +155,6 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
 export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
   name: "firebaseDatabase",
   factory: (config) => {
-    let bundles: Bundle[] = [];
-
     let app: admin.app.App;
     try {
       app = admin.app();
@@ -106,11 +167,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
     return {
       async getBundleById(bundleId) {
-        const found = bundles.find((b) => b.id === bundleId);
-        if (found) {
-          return found;
-        }
-
         const bundleRef = bundlesCollection.doc(bundleId);
         const bundleSnap = await bundleRef.get();
 
@@ -125,56 +181,34 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
       async getBundles(options) {
         const { where, limit, offset, orderBy } = options;
 
-        let query: admin.firestore.Query<FirestoreData> = bundlesCollection;
-
-        if (where?.channel) {
-          query = query.where("channel", "==", where.channel);
-        }
-        if (where?.platform) {
-          query = query.where("platform", "==", where.platform);
-        }
-        if (where?.enabled !== undefined) {
-          query = query.where("enabled", "==", where.enabled);
-        }
-        if (
-          where?.fingerprintHash !== undefined &&
-          where.fingerprintHash !== null
-        ) {
-          query = query.where("fingerprint_hash", "==", where.fingerprintHash);
-        }
-        if (
-          where?.targetAppVersion !== undefined &&
-          where.targetAppVersion !== null
-        ) {
-          query = query.where(
-            "target_app_version",
-            "==",
-            where.targetAppVersion,
-          );
-        }
-        if (where?.id?.eq) {
-          query = query.where("id", "==", where.id.eq);
-        }
-        if (where?.id?.gt) {
-          query = query.where("id", ">", where.id.gt);
-        }
-        if (where?.id?.gte) {
-          query = query.where("id", ">=", where.id.gte);
-        }
-        if (where?.id?.lt) {
-          query = query.where("id", "<", where.id.lt);
-        }
-        if (where?.id?.lte) {
-          query = query.where("id", "<=", where.id.lte);
-        }
+        let query = applyFirestoreQueryableFilters(bundlesCollection, where);
 
         query = query.orderBy(
           "id",
           orderBy?.direction === "asc" ? "asc" : "desc",
         );
 
-        const totalCountQuery = query;
-        const totalSnapshot = await totalCountQuery.get();
+        if (requiresInMemoryFiltering(where)) {
+          const querySnapshot = await query.get();
+          const filteredBundles = sortBundles(
+            querySnapshot.docs
+              .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
+              .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+            orderBy,
+          );
+          const total = filteredBundles.length;
+          const data = filteredBundles.slice(offset, offset + limit);
+
+          return {
+            data,
+            pagination: calculatePagination(total, {
+              limit,
+              offset,
+            }),
+          };
+        }
+
+        const totalSnapshot = await query.get();
         const total = totalSnapshot.size;
 
         if (offset > 0) {
@@ -186,15 +220,15 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
         const querySnapshot = await query.get();
 
-        bundles = sortBundles(
-          querySnapshot.docs
-            .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
-            .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+        const data = sortBundles(
+          querySnapshot.docs.map((doc) =>
+            convertToBundle(doc.data() as SnakeCaseBundle),
+          ),
           orderBy,
         );
 
         return {
-          data: bundles,
+          data,
           pagination: calculatePagination(total, {
             limit,
             offset,
@@ -227,7 +261,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
         }
 
         let isTargetAppVersionChanged = false;
-        const deletedBundleIds = new Set<string>();
 
         await db.runTransaction(async (transaction) => {
           const bundlesSnapshot = await transaction.get(bundlesCollection);
@@ -285,7 +318,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
               // Remove from bundlesMap
               delete bundlesMap[data.id];
-              deletedBundleIds.add(data.id);
               isTargetAppVersionChanged = true;
             }
           }
@@ -365,11 +397,6 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             }
           }
         });
-
-        // Update local cache
-        for (const bundleId of deletedBundleIds) {
-          bundles = bundles.filter((b) => b.id !== bundleId);
-        }
       },
     };
   },

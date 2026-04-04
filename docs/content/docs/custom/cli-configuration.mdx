@@ -94,6 +94,9 @@ database: standaloneRepository({
     list: () => ({
       path: "/v1/hot-updater/api/bundles"
     }),
+    channels: () => ({
+      path: "/v1/hot-updater/api/bundles/channels"
+    }),
     retrieve: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`
     }),
@@ -118,6 +121,32 @@ Your server must implement these endpoints (when using default routes):
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
 
 These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
+
+`GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
+consumed by `standaloneRepository`:
+
+```json
+{
+  "data": [{ "id": "bundle-id", "channel": "production" }],
+  "pagination": {
+    "total": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "currentPage": 1,
+    "totalPages": 1
+  }
+}
+```
+
+`GET /hot-updater/api/bundles/channels` should return:
+
+```json
+{
+  "data": {
+    "channels": ["production", "staging"]
+  }
+}
+```
 
 ## Next Steps
 

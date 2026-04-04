@@ -2,13 +2,13 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
-import { standaloneRepository } from "@hot-updater/standalone";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createHotUpdater } from "./db";
 
@@ -64,6 +64,9 @@ beforeAll(async () => {
   server.use(
     // Specific routes
     http.get(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
+      handleRequest(request),
+    ),
+    http.get(`${baseUrl}/hot-updater/api/bundles/channels`, ({ request }) =>
       handleRequest(request),
     ),
     http.get(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
@@ -243,6 +246,26 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
 
     expect(prodResult.data).toHaveLength(2);
+  });
+
+  it("Real integration: getChannels → handler GET /bundles/channels", async () => {
+    await api.insertBundle(
+      createTestBundle({ id: uuidv7(), channel: "production" }),
+    );
+    await api.insertBundle(createTestBundle({ id: uuidv7(), channel: "beta" }));
+    await api.insertBundle(
+      createTestBundle({ id: uuidv7(), channel: "production" }),
+    );
+
+    const repo = standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater`,
+    })();
+
+    const channels = await repo.getChannels();
+
+    expect(channels).toHaveLength(2);
+    expect(channels).toContain("production");
+    expect(channels).toContain("beta");
   });
 
   it("Full E2E: create → retrieve → update → delete via standalone", async () => {

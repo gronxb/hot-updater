@@ -92,6 +92,21 @@ function getSemverNormalizedVersions(version: string): string[] {
   return Array.from(versions);
 }
 
+function resolveStorageTarget({
+  targetAppVersion,
+  fingerprintHash,
+}: {
+  targetAppVersion?: string | null;
+  fingerprintHash?: string | null;
+}): string {
+  const target = normalizeTargetAppVersion(targetAppVersion) ?? fingerprintHash;
+  if (!target) {
+    throw new Error("target not found");
+  }
+
+  return target;
+}
+
 export interface BlobOperations {
   listObjects: (prefix: string) => Promise<string[]>;
   loadObject: <T>(key: string) => Promise<T | null>;
@@ -395,12 +410,7 @@ export const createBlobDatabasePlugin = <TConfig>({
 
             // Insert operation.
             if (operation === "insert") {
-              const target =
-                normalizeTargetAppVersion(data.targetAppVersion) ??
-                data.fingerprintHash;
-              if (!target) {
-                throw new Error("target not found");
-              }
+              const target = resolveStorageTarget(data);
               const key = `${data.channel}/${data.platform}/${target}/update.json`;
               const bundleWithKey: BundleWithUpdateJsonKey = {
                 ...data,
@@ -452,21 +462,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             }
 
             if (operation === "update") {
-              // Compute the new key using updated channel, platform, and targetAppVersion if provided.
-              const newChannel =
-                data.channel !== undefined ? data.channel : bundle.channel;
-              const newPlatform =
-                data.platform !== undefined ? data.platform : bundle.platform;
-              const target =
-                data.fingerprintHash ??
-                bundle.fingerprintHash ??
-                normalizeTargetAppVersion(data.targetAppVersion) ??
-                normalizeTargetAppVersion(bundle.targetAppVersion);
-              if (!target) {
-                throw new Error("target not found");
-              }
-
-              const newKey = `${newChannel}/${newPlatform}/${target}/update.json`;
+              const updatedBundle = { ...bundle, ...data };
+              const newKey = `${updatedBundle.channel}/${updatedBundle.platform}/${resolveStorageTarget(updatedBundle)}/update.json`;
 
               if (newKey !== bundle._updateJsonKey) {
                 // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
@@ -476,7 +473,6 @@ export const createBlobDatabasePlugin = <TConfig>({
 
                 changedBundlesByKey[newKey] = changedBundlesByKey[newKey] || [];
 
-                const updatedBundle = { ...bundle, ...data };
                 updatedBundle._oldUpdateJsonKey = oldKey;
                 updatedBundle._updateJsonKey = newKey;
 
@@ -511,7 +507,6 @@ export const createBlobDatabasePlugin = <TConfig>({
 
               // No key change: update the bundle normally.
               const currentKey = bundle._updateJsonKey;
-              const updatedBundle = { ...bundle, ...data };
               bundlesMap.set(data.id, updatedBundle);
               pendingBundlesMap.set(data.id, updatedBundle);
               changedBundlesByKey[currentKey] =

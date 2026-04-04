@@ -209,8 +209,6 @@ export const d1WorkerDatabase = <
   createDatabasePlugin<CloudflareWorkerDatabaseConfig<TContext>, TContext>({
     name: "d1WorkerDatabase",
     factory: (config) => {
-      let bundles: Bundle[] = [];
-
       const queryAll = async <TRow>(
         sql: string,
         params: unknown[] = [],
@@ -239,11 +237,6 @@ export const d1WorkerDatabase = <
 
       return {
         async getBundleById(bundleId, context) {
-          const found = bundles.find((bundle) => bundle.id === bundleId);
-          if (found) {
-            return found;
-          }
-
           const row = await queryFirst<SnakeCaseBundle>(
             "SELECT * FROM bundles WHERE id = ? LIMIT 1",
             [bundleId],
@@ -274,7 +267,7 @@ export const d1WorkerDatabase = <
             context,
           );
 
-          bundles = rows.map(transformRowToBundle);
+          const bundles = rows.map(transformRowToBundle);
 
           const paginationOptions: PaginationOptions = { limit, offset };
           return {
@@ -305,9 +298,6 @@ export const d1WorkerDatabase = <
                 .prepare("DELETE FROM bundles WHERE id = ?")
                 .bind(operation.data.id)
                 .run();
-              bundles = bundles.filter(
-                (bundle) => bundle.id !== operation.data.id,
-              );
               continue;
             }
 

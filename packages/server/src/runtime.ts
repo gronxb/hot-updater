@@ -34,6 +34,7 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
 export function createHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
 ): HotUpdaterAPI<TContext> {
+  const database = options.database;
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
     (plugin) => (typeof plugin === "function" ? plugin() : plugin),
@@ -70,21 +71,21 @@ export function createHotUpdater<TContext = unknown>(
     return fileUrl;
   };
 
-  if (
-    !isDatabasePluginFactory(options.database) &&
-    !isDatabasePlugin(options.database)
-  ) {
+  if (!isDatabasePluginFactory(database) && !isDatabasePlugin(database)) {
     throw new Error(
       "@hot-updater/server/runtime only supports database plugins.",
     );
   }
 
-  const plugin = isDatabasePluginFactory(options.database)
-    ? options.database()
-    : options.database;
+  const plugin = isDatabasePluginFactory(database) ? database() : database;
   const core = createPluginDatabaseCore<TContext>(
-    plugin,
+    () => plugin,
     resolveStoragePluginUrl,
+    isDatabasePluginFactory(database)
+      ? {
+          createMutationPlugin: () => database(),
+        }
+      : undefined,
   );
 
   const api = {

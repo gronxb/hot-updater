@@ -5,7 +5,7 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
-  PaginationInfo,
+  Paginated,
 } from "./types";
 
 export interface AbstractDatabasePlugin<TContext = unknown> {
@@ -16,10 +16,7 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<{
-    data: Bundle[];
-    pagination: PaginationInfo;
-  }>;
+  ) => Promise<Paginated<Bundle[]>>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   onUnmount?: () => Promise<void>;
   commitBundle: (
@@ -111,16 +108,17 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
     config: TConfig,
     hooks?: DatabasePluginHooks,
   ): (() => DatabasePlugin<TContext>) => {
-    return (): DatabasePlugin<TContext> => {
-      // Lazy initialization: factory is only called on first method invocation
-      let cachedMethods: DatabasePluginMethods<TContext> | null = null;
-      const getMethods = () => {
-        if (!cachedMethods) {
-          cachedMethods = options.factory(config);
-        }
-        return cachedMethods;
-      };
+    // Share the underlying plugin methods for a configured factory while
+    // keeping each returned DatabasePlugin instance's pending changes isolated.
+    let cachedMethods: DatabasePluginMethods<TContext> | null = null;
+    const getMethods = () => {
+      if (!cachedMethods) {
+        cachedMethods = options.factory(config);
+      }
+      return cachedMethods;
+    };
 
+    return (): DatabasePlugin<TContext> => {
       const changedMap = new Map<
         string,
         {
@@ -182,8 +180,8 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             await methods.commitBundle(params, context);
           }
 
-          await hooks?.onDatabaseUpdated?.();
           changedMap.clear();
+          await hooks?.onDatabaseUpdated?.();
         },
 
         async updateBundle(

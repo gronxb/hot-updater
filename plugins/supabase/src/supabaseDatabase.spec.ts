@@ -23,8 +23,42 @@ type SupabaseBundleRow = {
 const { bundleRows, createMockSupabaseClient } = vi.hoisted(() => {
   const bundleRows = new Map<string, SupabaseBundleRow>();
 
+  type QueryFilter =
+    | {
+        type: "eq" | "gt" | "gte" | "lt" | "lte" | "is";
+        column: string;
+        value: unknown;
+      }
+    | {
+        type: "in";
+        column: string;
+        values: unknown[];
+      }
+    | {
+        type: "not";
+        column: string;
+        operator: string;
+        value: unknown;
+      };
+
+  const compareValues = (left: unknown, right: unknown) => {
+    if (typeof left === "string" && typeof right === "string") {
+      return left.localeCompare(right);
+    }
+
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+
+    if (typeof left === "boolean" && typeof right === "boolean") {
+      return Number(left) - Number(right);
+    }
+
+    return String(left).localeCompare(String(right));
+  };
+
   class QueryBuilder {
-    private readonly filters = new Map<string, unknown>();
+    private readonly filters: QueryFilter[] = [];
     private ascending = true;
     private limitValue: number | undefined;
     private rangeStart: number | undefined;
@@ -37,7 +71,42 @@ const { bundleRows, createMockSupabaseClient } = vi.hoisted(() => {
     ) {}
 
     eq(column: string, value: unknown) {
-      this.filters.set(column, value);
+      this.filters.push({ type: "eq", column, value });
+      return this;
+    }
+
+    gt(column: string, value: unknown) {
+      this.filters.push({ type: "gt", column, value });
+      return this;
+    }
+
+    gte(column: string, value: unknown) {
+      this.filters.push({ type: "gte", column, value });
+      return this;
+    }
+
+    lt(column: string, value: unknown) {
+      this.filters.push({ type: "lt", column, value });
+      return this;
+    }
+
+    lte(column: string, value: unknown) {
+      this.filters.push({ type: "lte", column, value });
+      return this;
+    }
+
+    in(column: string, values: unknown[]) {
+      this.filters.push({ type: "in", column, values });
+      return this;
+    }
+
+    is(column: string, value: unknown) {
+      this.filters.push({ type: "is", column, value });
+      return this;
+    }
+
+    not(column: string, operator: string, value: unknown) {
+      this.filters.push({ type: "not", column, operator, value });
       return this;
     }
 
@@ -118,10 +187,37 @@ const { bundleRows, createMockSupabaseClient } = vi.hoisted(() => {
     private getFilteredRows() {
       let filteredRows = Array.from(bundleRows.values());
 
-      for (const [column, value] of this.filters.entries()) {
-        filteredRows = filteredRows.filter(
-          (row) => row[column as keyof SupabaseBundleRow] === value,
-        );
+      for (const filter of this.filters) {
+        filteredRows = filteredRows.filter((row) => {
+          const rowValue = row[filter.column as keyof SupabaseBundleRow];
+
+          switch (filter.type) {
+            case "eq":
+              return rowValue === filter.value;
+            case "gt":
+              return compareValues(rowValue, filter.value) > 0;
+            case "gte":
+              return compareValues(rowValue, filter.value) >= 0;
+            case "lt":
+              return compareValues(rowValue, filter.value) < 0;
+            case "lte":
+              return compareValues(rowValue, filter.value) <= 0;
+            case "in":
+              return filter.values.includes(rowValue);
+            case "is":
+              return rowValue === filter.value;
+            case "not":
+              if (filter.operator === "is") {
+                return rowValue !== filter.value;
+              }
+
+              throw new Error(
+                `Unsupported not operator in Supabase mock: ${filter.operator}`,
+              );
+          }
+
+          return false;
+        });
       }
 
       return filteredRows;
