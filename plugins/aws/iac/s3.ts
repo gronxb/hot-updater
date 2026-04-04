@@ -35,8 +35,9 @@ export class S3Manager {
       buckets
         .filter((bucket) => bucket.Name)
         .map(async (bucket) => {
-          const { LocationConstraint } =
-            await s3Client.getBucketLocation({ Bucket: bucket.Name! });
+          const { LocationConstraint } = await s3Client.getBucketLocation({
+            Bucket: bucket.Name!,
+          });
           return {
             name: bucket.Name!,
             region: normalizeBucketRegion(LocationConstraint),
