@@ -58,10 +58,6 @@ interface RouteConfig {
 }
 
 interface Routes {
-  /**
-   * @deprecated Use `create` and `update`.
-   */
-  upsert?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
@@ -168,11 +164,6 @@ them with the `routes` option shown above.
 | DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
 | GET | `/api/bundles/channels` | none | `ChannelsResponse` |
 
-Legacy compatibility:
-
-- If you only provide `routes.upsert`, update requests are sent as `POST` to
-  that route with a `Bundle[]` body.
-
 ### Bundle Shape
 
 Create requests send full `Bundle` objects. Update requests send
@@ -258,9 +249,6 @@ does not derive pagination from headers.
   }
 }
 ```
-
-For backward compatibility, `standaloneRepository` also accepts the legacy flat
-response shape `{ "channels": string[] }`.
 
 ### Minimal `@hot-updater/server` Example
 

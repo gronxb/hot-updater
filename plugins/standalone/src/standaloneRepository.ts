@@ -7,10 +7,6 @@ export interface RouteConfig {
 }
 
 export interface Routes {
-  /**
-   * @deprecated Use `create` and `update`. Kept for backward compatibility.
-   */
-  upsert?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
@@ -86,12 +82,6 @@ const isStringArray = (value: unknown): value is string[] =>
 const isPaginatedResult = (value: unknown): value is PaginatedResult =>
   isRecord(value) && Array.isArray(value.data) && isRecord(value.pagination);
 
-const hasLegacyChannels = (
-  value: unknown,
-): value is {
-  channels: string[];
-} => isRecord(value) && isStringArray(value.channels);
-
 const hasDataChannels = (
   value: unknown,
 ): value is {
@@ -105,7 +95,6 @@ export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
     factory: (config) => {
-      const legacyUpsertRoute = config.routes?.upsert;
       const customListRoute = config.routes?.list?.();
       const routes = {
         list: () => createRoute(defaultRoutes.list(), customListRoute),
@@ -123,19 +112,12 @@ export const standaloneRepository =
           return createRoute(defaultChannelsRoute, config.routes?.channels?.());
         },
         create: () =>
-          createRoute(
-            defaultRoutes.create(),
-            config.routes?.create?.() ?? legacyUpsertRoute?.(),
-          ),
+          createRoute(defaultRoutes.create(), config.routes?.create?.()),
         update: (bundleId: string) =>
           createRoute(
             defaultRoutes.update(bundleId),
             config.routes?.update?.(bundleId),
           ),
-        legacyUpsert: () =>
-          legacyUpsertRoute
-            ? createRoute(defaultRoutes.create(), legacyUpsertRoute())
-            : null,
         retrieve: (bundleId: string) =>
           createRoute(
             defaultRoutes.retrieve(bundleId),
@@ -275,10 +257,6 @@ export const standaloneRepository =
             return result.data.channels;
           }
 
-          if (hasLegacyChannels(result)) {
-            return result.channels;
-          }
-
           throw new Error("API Error: Invalid channels response");
         },
         async commitBundle({ changedSets }) {
@@ -332,15 +310,11 @@ export const standaloneRepository =
                 throw new Error("Failed to commit bundle");
               }
             } else if (op.operation === "update") {
-              const legacyRoute =
-                !config.routes?.update && routes.legacyUpsert();
-              const { path, headers: routeHeaders } = legacyRoute
-                ? legacyRoute
-                : routes.update(op.data.id);
+              const { path, headers: routeHeaders } = routes.update(op.data.id);
               const response = await fetch(buildUrl(path), {
-                method: legacyRoute ? "POST" : "PATCH",
+                method: "PATCH",
                 headers: getHeaders(routeHeaders),
-                body: JSON.stringify(legacyRoute ? [op.data] : op.data),
+                body: JSON.stringify(op.data),
               });
 
               if (!response.ok) {
