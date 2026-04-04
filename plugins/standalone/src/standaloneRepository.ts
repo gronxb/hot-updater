@@ -77,6 +77,12 @@ const hasDataChannels = (
 } =>
   isRecord(value) && isRecord(value.data) && isStringArray(value.data.channels);
 
+const hasChannels = (
+  value: unknown,
+): value is {
+  channels: string[];
+} => isRecord(value) && isStringArray(value.channels);
+
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
@@ -193,6 +199,10 @@ export const standaloneRepository =
 
           if (hasDataChannels(result)) {
             return result.data.channels;
+          }
+
+          if (hasChannels(result)) {
+            return result.channels;
           }
 
           throw new Error("API Error: Invalid channels response");
