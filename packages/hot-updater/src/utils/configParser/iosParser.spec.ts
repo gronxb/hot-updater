@@ -1,8 +1,10 @@
-import { getCwd } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { getCwd } from "@hot-updater/cli-tools";
 import plist from "plist";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { IosConfigParser } from "./iosParser";
 import { parsePlist } from "./plistUtils";
 

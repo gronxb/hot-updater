@@ -1,6 +1,7 @@
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import { NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
+
 import { withSignedUrl } from "./withSignedUrl";
 
 vi.mock("@aws-sdk/cloudfront-signer", () => ({

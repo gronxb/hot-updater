@@ -225,7 +225,7 @@ export const standaloneRepository =
               if (contentType?.includes("application/json")) {
                 try {
                   await response.json();
-                } catch (_jsonError) {
+                } catch {
                   if (!response.ok) {
                     throw new Error("Failed to parse response");
                   }

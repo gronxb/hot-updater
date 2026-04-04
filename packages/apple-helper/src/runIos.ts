@@ -1,5 +1,7 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
 import path from "path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
+
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import {
   type DeviceRunnerOptions,

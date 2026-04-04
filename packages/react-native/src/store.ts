@@ -1,4 +1,5 @@
 import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
+
 import { addListener } from "./native";
 
 export type HotUpdaterState = {

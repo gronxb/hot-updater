@@ -1,5 +1,6 @@
 import type { Platform } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
+
 import { getAndroidVersion } from "@/utils/version/getAndroidVersion";
 import { getIOSVersion } from "@/utils/version/getIOSVersion";
 

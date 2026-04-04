@@ -1,6 +1,7 @@
 import fs from "fs/promises";
-import JSZip from "jszip";
 import path from "path";
+
+import JSZip from "jszip";
 
 export const createZipTargetFiles = async ({
   outfile,

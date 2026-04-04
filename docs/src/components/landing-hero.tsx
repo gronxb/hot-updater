@@ -1,6 +1,7 @@
 "use client";
 import { Github } from "lucide-react";
 import { Link } from "waku";
+
 import { Logo } from "./Logo";
 import { runDeployDemo } from "./terminal/deploy-demo";
 import { TerminalEmulator } from "./terminal/terminal-emulator";

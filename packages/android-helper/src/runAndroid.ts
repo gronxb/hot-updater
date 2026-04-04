@@ -1,6 +1,8 @@
+import path from "path";
+
 import { getCwd, p } from "@hot-updater/cli-tools";
 import { generateMinBundleId } from "@hot-updater/plugin-core";
-import path from "path";
+
 import { runGradle } from "./builder/runGradle";
 import { tryInstallAppOnDevice } from "./runner/tryInstallAppOnDevice";
 import { tryLaunchAppOnDevice } from "./runner/tryLaunchAppOnDevice";

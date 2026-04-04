@@ -1,7 +1,8 @@
-import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
-import { execa } from "execa";
 import fs from "fs";
 import path from "path";
+
+import { getReactNativeMetadatas } from "@hot-updater/cli-tools";
+import { execa } from "execa";
 
 /**
  * Returns the Hermes OS binary folder name for the current platform.

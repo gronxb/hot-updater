@@ -1,4 +1,5 @@
 import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
+
 import { supabaseDatabase } from "./supabaseDatabase";
 
 export interface SupabaseEdgeFunctionDatabaseConfig {

@@ -127,10 +127,10 @@ const requiresInMemoryFiltering = (
 ) => {
   return Boolean(
     where?.id?.in ||
-      where?.targetAppVersionIn ||
-      where?.targetAppVersionNotNull ||
-      where?.targetAppVersion === null ||
-      where?.fingerprintHash === null,
+    where?.targetAppVersionIn ||
+    where?.targetAppVersionNotNull ||
+    where?.targetAppVersion === null ||
+    where?.fingerprintHash === null,
   );
 };
 

@@ -1,9 +1,11 @@
+import fs from "fs";
 import os from "node:os";
+import path from "path";
+
 import { p } from "@hot-updater/cli-tools";
 import type { ApplePlatform } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import fs from "fs";
-import path from "path";
+
 import type {
   AppleDevice,
   AppleDeviceType,

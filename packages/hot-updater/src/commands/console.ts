@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 

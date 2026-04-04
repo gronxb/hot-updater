@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
 import { getCommitUrl } from "@/lib/git";

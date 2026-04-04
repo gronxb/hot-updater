@@ -1,7 +1,9 @@
 import * as fs from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
+
 import { describe, expect, it } from "vitest";
+
 import { resolveMain } from "../src/resolveMain";
 
 // Utility to create a temporary directory

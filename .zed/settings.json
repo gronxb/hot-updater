@@ -1,6 +1,0 @@
-{
-  "code_actions_on_format": {
-    "source.organizeImports.biome": true,
-    "source.fixAll.biome": true
-  }
-}

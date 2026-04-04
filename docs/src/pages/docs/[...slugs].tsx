@@ -6,6 +6,7 @@ import {
   DocsTitle,
 } from "fumadocs-ui/page";
 import type { PageProps } from "waku/router";
+
 import { VersionTag } from "@/components/version-tag";
 import { source } from "@/lib/source";
 

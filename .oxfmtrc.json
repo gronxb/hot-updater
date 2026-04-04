@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "useTabs": false,
+  "tabWidth": 2,
+  "printWidth": 80,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "quoteProps": "as-needed",
+  "trailingComma": "all",
+  "semi": true,
+  "arrowParens": "always",
+  "bracketSameLine": false,
+  "bracketSpacing": true,
+  "singleAttributePerLine": false,
+  "endOfLine": "lf",
+  "sortImports": true,
+  "ignorePatterns": [
+    "packages/react-native/lib",
+    "**/package.json",
+    "**/dist",
+    "**/build",
+    "**/node_modules",
+    "**/*.js",
+    "**/ios",
+    "**/android",
+    "**/.source",
+    "**/pages.gen.ts",
+    "**/routeTree.gen.ts"
+  ]
+}

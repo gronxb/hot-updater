@@ -1,5 +1,6 @@
 import { createHotUpdater } from "@hot-updater/server/runtime";
 import { Hono } from "hono";
+
 import {
   d1Database,
   type RequestEnvContext,

@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import { mergeWith } from "es-toolkit";
+
 import type {
   DatabaseBundleQueryOptions,
   DatabasePlugin,

@@ -1,5 +1,6 @@
 import type { DistributionConfig } from "@aws-sdk/client-cloudfront";
 import { describe, expect, it } from "vitest";
+
 import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,

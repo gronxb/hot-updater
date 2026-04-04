@@ -1,6 +1,8 @@
-import { execa } from "execa";
 import type { Readable } from "stream";
 import { pipeline } from "stream/promises";
+
+import { execa } from "execa";
+
 import { createXcodebuildLogger } from "./createXcodebuildLogger";
 
 let cachedXcbeautifyAvailability: boolean | null = null;

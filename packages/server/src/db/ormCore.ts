@@ -21,6 +21,7 @@ import { semverSatisfies } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
 import type { FumaDBAdapter } from "fumadb/adapters";
+
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";

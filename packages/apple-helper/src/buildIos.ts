@@ -1,6 +1,8 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import path from "path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
+
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import { exportXcodeArchive } from "./builder/exportXcodeArchive";

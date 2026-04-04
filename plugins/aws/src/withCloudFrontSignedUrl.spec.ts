@@ -4,6 +4,7 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
+
 import { withCloudFrontSignedUrl } from "./withCloudFrontSignedUrl";
 
 vi.mock("@aws-sdk/cloudfront-signer", () => ({

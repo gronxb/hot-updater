@@ -9,6 +9,7 @@ import { filterCompatibleAppVersions } from "@hot-updater/js";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
 import camelcaseKeys from "camelcase-keys";
 import { afterAll, beforeEach, describe } from "vitest";
+
 import { prepareSql } from "./prepareSql";
 
 const createInsertBundleQuery = (bundle: Bundle) => {

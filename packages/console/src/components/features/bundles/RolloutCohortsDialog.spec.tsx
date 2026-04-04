@@ -4,6 +4,7 @@ import {
 } from "@hot-updater/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 
 describe("RolloutCohortsDialog", () => {

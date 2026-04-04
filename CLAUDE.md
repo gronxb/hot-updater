@@ -46,10 +46,10 @@ pnpm test
 # Type checking
 pnpm test:type
 
-# Format code with Biome
+# Format code with OXC
 pnpm lint:fix
 
-# Check code with Biome
+# Check code with OXC
 pnpm lint
 ```
 
@@ -96,7 +96,7 @@ npx hot-updater channel
 
 1. `pnpm build` - All packages and plugins must build successfully
 2. `pnpm test:type` - TypeScript type checking must pass with no errors
-3. `pnpm lint` - Code must pass Biome linting and formatting checks
+3. `pnpm lint` - Code must pass OXC linting and formatting checks
 4. `pnpm test` - All unit tests must pass
 
 Before committing changes, always run these commands locally to ensure CI will pass:
@@ -105,7 +105,7 @@ pnpm build && pnpm test:type && pnpm lint && pnpm test
 ```
 
 ### Code Style
-- Uses Biome for formatting and linting (see `biome.json`)
+- Uses `oxfmt` and `oxlint` for formatting and linting (see `.oxfmtrc.json` and `.oxlintrc.json`)
 - 2-space indentation, 80 character line width
 - Semicolons required, arrow parentheses always
 

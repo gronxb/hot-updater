@@ -47,7 +47,7 @@
     "react-test-renderer": "19.1.0",
     "repack-plugin-sentry": "^0.1.4",
     "rock": "^0.8.13",
-    "typescript": "5.0.4"
+    "typescript": "6.0.2"
   },
   "engines": {
     "node": ">=18"

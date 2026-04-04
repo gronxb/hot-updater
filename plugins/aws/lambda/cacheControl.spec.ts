@@ -11,9 +11,8 @@ beforeAll(async () => {
     S3_BUCKET_NAME: "hot-updater-test",
   };
 
-  ({ ONE_YEAR_IN_SECONDS, SHARED_EDGE_CACHE_CONTROL } = await import(
-    "./index"
-  ));
+  ({ ONE_YEAR_IN_SECONDS, SHARED_EDGE_CACHE_CONTROL } =
+    await import("./index"));
 });
 
 describe("cacheControl", () => {

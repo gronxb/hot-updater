@@ -1,4 +1,5 @@
 import { loadConfig } from "@hot-updater/cli-tools";
+
 import { AndroidConfigParser } from "./configParser/androidParser";
 import { IosConfigParser } from "./configParser/iosParser";
 

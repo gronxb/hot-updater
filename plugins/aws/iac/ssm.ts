@@ -1,6 +1,8 @@
+import crypto from "crypto";
+
 import { ParameterNotFound, SSM } from "@aws-sdk/client-ssm";
 import { p } from "@hot-updater/cli-tools";
-import crypto from "crypto";
+
 import type { AwsRegion } from "./regionLocationMap";
 
 export class SSMKeyPairManager {

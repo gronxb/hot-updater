@@ -1,3 +1,5 @@
+import path from "path";
+
 import { p } from "@hot-updater/cli-tools";
 import {
   type ApplePlatform,
@@ -5,7 +7,7 @@ import {
   type IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
-import path from "path";
+
 import type { AppleDeviceType } from "../types";
 import { installPodsIfNeeded } from "../utils/cocoapods";
 import { createRandomTmpDir } from "../utils/createRandomTmpDir";

@@ -1,8 +1,10 @@
-import { getCwd } from "@hot-updater/cli-tools";
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import fs from "fs";
 import path from "path";
+
+import { getCwd } from "@hot-updater/cli-tools";
+import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { AndroidConfigParser } from "./androidParser";
 
 // Mock modules

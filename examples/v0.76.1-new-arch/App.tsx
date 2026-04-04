@@ -7,7 +7,6 @@
 
 import { HOT_UPDATER_SUPABASE_URL } from "@env";
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-// biome-ignore lint/style/useImportType: <explanation>
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 

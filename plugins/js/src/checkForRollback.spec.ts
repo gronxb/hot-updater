@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
+
 import { checkForRollback } from "./checkForRollback";
 
 const DEFAULT_BUNDLE_FINGERPRINT_STRATEGY = {

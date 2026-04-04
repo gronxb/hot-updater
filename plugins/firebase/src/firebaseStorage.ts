@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
@@ -5,8 +8,6 @@ import {
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
-import fs from "fs/promises";
-import path from "path";
 
 export interface FirebaseStorageConfig extends admin.AppOptions {
   storageBucket: string;

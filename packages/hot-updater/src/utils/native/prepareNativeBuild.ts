@@ -1,3 +1,5 @@
+import path from "path";
+
 import {
   type EnrichedNativeBuildAndroidScheme,
   enrichNativeBuildAndroidScheme,
@@ -15,7 +17,7 @@ import {
   p,
 } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
-import path from "path";
+
 import {
   createAndInjectFingerprintFiles,
   isFingerprintEquals,

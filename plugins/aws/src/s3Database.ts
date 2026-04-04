@@ -14,6 +14,7 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import mime from "mime";
+
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import { streamToString } from "./utils/streamToString";
 

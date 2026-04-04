@@ -1,4 +1,5 @@
 import type { ConfigResponse } from "@hot-updater/cli-tools";
+
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
 

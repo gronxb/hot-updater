@@ -1,5 +1,6 @@
 import { p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
+
 import type { AppleDevice } from "../types";
 
 export interface SimulatorRunnerOptions {

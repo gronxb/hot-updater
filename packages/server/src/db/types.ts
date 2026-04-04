@@ -11,6 +11,7 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 import type { FumaDBAdapter } from "fumadb/adapters";
+
 import type { PaginatedResult } from "../types";
 
 export type DatabasePluginFactory<TContext = unknown> =

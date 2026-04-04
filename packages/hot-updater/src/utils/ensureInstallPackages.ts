@@ -1,4 +1,5 @@
 import { ensureInstallPackages as ensureInstall } from "@hot-updater/cli-tools";
+
 import { version } from "@/packageJson";
 
 const ensurePackageVersion = (pkg: string) => {

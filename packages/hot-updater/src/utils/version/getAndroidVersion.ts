@@ -1,6 +1,7 @@
-import { getCwd } from "@hot-updater/cli-tools";
 import fs from "fs/promises";
 import path from "path";
+
+import { getCwd } from "@hot-updater/cli-tools";
 import semverValid from "semver/ranges/valid";
 
 const getAndroidVersionFromAppBuildGradle = async (): Promise<

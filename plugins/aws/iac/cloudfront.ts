@@ -1,7 +1,9 @@
+import crypto from "crypto";
+
 import { CloudFront } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
-import crypto from "crypto";
 import { delay } from "es-toolkit";
+
 import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
@@ -304,7 +306,7 @@ export class CloudFrontManager {
                   return "CloudFront distribution deployment completed.";
                 }
                 throw new Error("Retry");
-              } catch (_err) {
+              } catch {
                 if (retryCount++ >= 5) {
                   message(
                     `CloudFront distribution is still in progress. This may take a few minutes. (${retryCount})`,

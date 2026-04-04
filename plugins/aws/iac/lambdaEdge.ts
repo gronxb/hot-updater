@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+
 import { Lambda } from "@aws-sdk/client-lambda";
 import {
   copyDirToTmp,
@@ -6,8 +9,6 @@ import {
   p,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import fs from "fs/promises";
-import path from "path";
 
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };

@@ -1,7 +1,8 @@
-import { env } from "cloudflare:test";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
+
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {

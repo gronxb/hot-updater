@@ -1,8 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import toml from "toml";
 
+import toml from "toml";
 import xdgAppPaths from "xdg-app-paths";
 
 const isDirectory = (configPath: string) => {

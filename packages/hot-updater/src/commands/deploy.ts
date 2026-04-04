@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 import {
   createTarBrTargetFiles,
   createTarGzTargetFiles,
@@ -8,11 +11,10 @@ import {
   p,
 } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
-import fs from "fs";
 import isPortReachable from "is-port-reachable";
 import open from "open";
-import path from "path";
 import semverValid from "semver/ranges/valid";
+
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
 import { writeBundleManifest } from "@/utils/bundleManifest";
@@ -33,6 +35,7 @@ import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
@@ -464,13 +467,11 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
-              metadata: {
-                ...(appVersion
-                  ? {
-                      app_version: appVersion,
-                    }
-                  : {}),
-              },
+              metadata: appVersion
+                ? {
+                    app_version: appVersion,
+                  }
+                : {},
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();

@@ -1,6 +1,7 @@
-import { getPackageManager, p } from "@hot-updater/cli-tools";
 import fs from "fs";
 import Module from "module";
+
+import { getPackageManager, p } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock dependencies

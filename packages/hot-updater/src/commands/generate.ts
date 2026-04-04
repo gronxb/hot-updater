@@ -1,7 +1,9 @@
-import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server";
 import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
+import path from "path";
+
+import { p } from "@hot-updater/cli-tools";
+import type { Migrator } from "@hot-updater/server";
 import {
   type Dialect,
   Kysely,
@@ -9,8 +11,8 @@ import {
   PostgresDialect,
   SqliteDialect,
 } from "kysely";
-import path from "path";
 import { format } from "sql-formatter";
+
 import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,

@@ -1,3 +1,6 @@
+import fs from "fs/promises";
+import path from "path";
+
 import {
   createStorageKeyBuilder,
   createStoragePlugin,
@@ -5,8 +8,7 @@ import {
   parseStorageUri,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
-import fs from "fs/promises";
-import path from "path";
+
 import type { Database } from "./types";
 
 export interface SupabaseStorageConfig {

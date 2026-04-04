@@ -1,3 +1,5 @@
+import path from "path";
+
 import type {
   ConfigInput,
   Platform,
@@ -5,8 +7,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
-import path from "path";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
+
 import { getCwd } from "./cwd.js";
 
 export type HotUpdaterConfigOptions = {

@@ -16,6 +16,7 @@ import {
   type HotUpdaterContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
+
 import type { DatabaseAPI } from "./types";
 
 const PAGE_SIZE = 100;

@@ -1,5 +1,6 @@
 import { readPackageUp } from "read-package-up";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import { areVersionsCompatible, doctor } from "./doctor";
 
 vi.mock("read-package-up", () => ({

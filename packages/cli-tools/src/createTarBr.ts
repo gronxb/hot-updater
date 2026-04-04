@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
-import * as tar from "tar";
 import { brotliCompressSync, constants as zlibConstants } from "zlib";
+
+import * as tar from "tar";
 
 export const createTarBrTargetFiles = async ({
   outfile,

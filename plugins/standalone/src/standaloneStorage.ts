@@ -1,10 +1,12 @@
+import fs from "fs/promises";
+import path from "path";
+
 import type {
   StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
-import fs from "fs/promises";
 import mime from "mime";
-import path from "path";
+
 import type { RouteConfig } from "./standaloneRepository";
 
 export interface StorageRoutes {

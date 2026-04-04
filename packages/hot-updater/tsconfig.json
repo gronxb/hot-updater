@@ -23,10 +23,9 @@
     "useDefineForClassFields": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
-      "@/package.json": ["package.json"],
-      "@/*": ["src/*"]
+      "@/package.json": ["./package.json"],
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src"]

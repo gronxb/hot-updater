@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+
 import type { Plugin, ResolvedConfig } from "vite";
 
 interface DeadLinkCheckerOptions {
@@ -291,7 +292,7 @@ export function deadLinkCheckerPlugin(options: DeadLinkCheckerOptions): Plugin {
               suggestion: `Use [${linkText}](${linkPath}/${firstPage})`,
             };
           }
-        } catch (_e) {
+        } catch {
           // Invalid meta.json, continue to return error
         }
       }

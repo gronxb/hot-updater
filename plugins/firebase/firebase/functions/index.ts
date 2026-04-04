@@ -2,6 +2,7 @@ import { createHotUpdater } from "@hot-updater/server/runtime";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
+
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 

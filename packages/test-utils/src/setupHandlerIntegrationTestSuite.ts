@@ -1,8 +1,9 @@
+import fs from "fs/promises";
+import path from "path";
+
 import type { AppUpdateInfo, Bundle, GetBundlesArgs } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
 
 export interface TestApiConfig {
   baseUrl: string;

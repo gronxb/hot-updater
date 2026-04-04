@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";

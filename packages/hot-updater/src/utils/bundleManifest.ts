@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+
 import { getFileHashFromFile } from "./getFileHash";
 
 export interface Manifest {

@@ -1,4 +1,7 @@
+import fs from "fs/promises";
 import { createRequire } from "node:module";
+import path from "path";
+
 import {
   type BuildType,
   ConfigBuilder,
@@ -13,8 +16,7 @@ import {
 } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
+
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 
 const require = createRequire(import.meta.url);

@@ -7,6 +7,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
+
 import { createHotUpdater } from "./runtime";
 
 const bundle: Bundle = {

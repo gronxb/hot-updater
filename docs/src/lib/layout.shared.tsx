@@ -1,5 +1,6 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 import { Github } from "lucide-react";
+
 import { Logo } from "../components/Logo";
 
 export function baseOptions(): BaseLayoutProps {

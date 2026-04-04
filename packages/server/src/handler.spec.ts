@@ -1,5 +1,6 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
+
 import { createHandler, type HandlerAPI } from "./handler";
 
 type TestEnv = {

@@ -5,8 +5,8 @@
   "keywords": [],
   "license": "MIT",
   "scripts": {
-    "lint:fix": "biome lint packages/** plugins/** docs --write --unsafe",
-    "lint": "biome check packages/** plugins/** docs",
+    "lint:fix": "oxfmt --write \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously packages plugins docs",
+    "lint": "oxfmt --check \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" && oxlint packages plugins docs",
     "clear": "rimraf --glob **/dist .nx",
     "test": "vitest run --project=\"unit:*\"",
     "test:integration": "vitest run --project=\"integration:*\"",
@@ -28,18 +28,20 @@
     "changeset": "changeset"
   },
   "devDependencies": {
-    "@hono/node-server": "catalog:hono",
-    "@biomejs/biome": "^2.3.2",
     "@changesets/cli": "^2.29.8",
     "@cloudflare/vitest-pool-workers": "0.13.0",
+    "@hono/node-server": "catalog:hono",
     "@nx/js": "22.6.3",
     "@swc/helpers": "^0.5.17",
     "execa": "catalog:tools",
     "hono": "catalog:hono",
     "nx": "22.6.3",
+    "oxfmt": "^0.43.0",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^0.19.0",
     "rimraf": "^5.0.7",
     "tsdown": "catalog:tools",
-    "typescript": "^5.8.3",
+    "typescript": "^6.0.2",
     "vitest": "catalog:"
   },
   "packageManager": "pnpm@10.33.0"

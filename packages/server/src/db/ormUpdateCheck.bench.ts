@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { bench, describe } from "vitest";
+
 import { filterCompatibleAppVersions } from "../../../../plugins/plugin-core/src";
 import type {
   AppVersionGetBundlesArgs,

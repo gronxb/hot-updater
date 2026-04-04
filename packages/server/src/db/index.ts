@@ -3,6 +3,7 @@ import type {
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
+
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import {

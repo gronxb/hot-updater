@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import { applyBspatch, equalsBytes, readFixtureHbc } from "./test-helpers.js";
 
 type NodeRuntimeModule = typeof import("../src/node.js");

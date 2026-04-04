@@ -3,6 +3,7 @@ import type {
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import type { AppOptions } from "firebase-admin/app";
+
 import { firebaseStorage } from "./firebaseStorage";
 
 const trimTrailingSlash = (value: string) => {

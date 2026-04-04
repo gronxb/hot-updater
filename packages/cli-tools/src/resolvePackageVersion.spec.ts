@@ -1,7 +1,9 @@
-import path from "node:path";
 import fs from "fs/promises";
+import path from "node:path";
 import os from "os";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
 import { resolvePackageVersion } from "./resolvePackageVersion";
 
 let tempDir = "";
