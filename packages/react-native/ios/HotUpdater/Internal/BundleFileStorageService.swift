@@ -1182,19 +1182,10 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
-                    guard self.fileSystem.fileExists(atPath: sourcePath) else {
+                    guard self.fileSystem.fileExists(atPath: sourcePath),
+                          HashUtils.verifyHash(fileURL: URL(fileURLWithPath: sourcePath), expectedHash: expectedHash)
+                    else {
                         throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
-                    }
-
-                    let sourceVerificationResult = SignatureVerifier.verifyBundle(
-                        fileURL: URL(fileURLWithPath: sourcePath),
-                        fileHash: expectedHash
-                    )
-                    guard case .success = sourceVerificationResult else {
-                        if case .failure(let error) = sourceVerificationResult {
-                            throw BundleStorageError.signatureVerificationFailed(error)
-                        }
-                        throw BundleStorageError.unknown(nil)
                     }
 
                     try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
@@ -1224,15 +1215,8 @@ class BundleFileStorageService: BundleStorageService {
                     }
                 ) {
                 case .success(let downloadedFileURL):
-                    let assetVerificationResult = SignatureVerifier.verifyBundle(
-                        fileURL: downloadedFileURL,
-                        fileHash: expectedHash
-                    )
-                    guard case .success = assetVerificationResult else {
-                        if case .failure(let error) = assetVerificationResult {
-                            throw BundleStorageError.signatureVerificationFailed(error)
-                        }
-                        throw BundleStorageError.unknown(nil)
+                    guard HashUtils.verifyHash(fileURL: downloadedFileURL, expectedHash: expectedHash) else {
+                        throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
                     }
                 case .failure(let error):
                     if let downloadError = error as? DownloadError,

@@ -1050,15 +1050,10 @@ class BundleFileStorageService(
                                 IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
                             )
                     val sourceFile = File(sourceDir, assetPath)
-                    if (!sourceFile.exists()) {
+                    if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, expectedHash)) {
                         throw HotUpdaterException.downloadFailed(
                             IllegalStateException("Reusable asset missing or corrupted: $assetPath"),
                         )
-                    }
-                    try {
-                        SignatureVerifier.verifyBundle(context, sourceFile, expectedHash)
-                    } catch (e: SignatureVerificationException) {
-                        throw HotUpdaterException.signatureVerificationFailed(e)
                     }
                     copyBundleFile(sourceFile, targetFile)
                     val progress = 0.2 + (((index + 1).toDouble() / totalAssets.toDouble()) * 0.72)
@@ -1102,14 +1097,10 @@ class BundleFileStorageService(
                     }
 
                     is DownloadResult.Success -> {
-                        try {
-                            SignatureVerifier.verifyBundle(
-                                context,
-                                assetDownloadResult.file,
-                                expectedHash,
+                        if (!HashUtils.verifyHash(assetDownloadResult.file, expectedHash)) {
+                            throw HotUpdaterException.signatureVerificationFailed(
+                                SignatureVerificationException.FileHashMismatch(),
                             )
-                        } catch (e: SignatureVerificationException) {
-                            throw HotUpdaterException.signatureVerificationFailed(e)
                         }
                     }
                 }
