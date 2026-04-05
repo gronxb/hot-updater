@@ -480,6 +480,11 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(signBundle).toHaveBeenCalledWith("file-hash", "/mock/private.pem");
+    expect(writeBundleManifest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signingPrivateKeyPath: "/mock/private.pem",
+      }),
+    );
     expect(mockCli.p.spinner).not.toHaveBeenCalled();
     expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
     expect(mockCli.p.log.success).toHaveBeenCalledWith(

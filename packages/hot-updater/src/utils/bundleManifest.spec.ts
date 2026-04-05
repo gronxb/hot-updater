@@ -3,9 +3,18 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/signedHashUtils", () => ({
+  createSignedFileHash: vi.fn((value: string) => `sig:${value}`),
+}));
+
+vi.mock("./signing/bundleSigning", () => ({
+  signBundle: vi.fn(async (fileHash: string) => `signature:${fileHash}`),
+}));
 
 import { createBundleManifest, writeBundleManifest } from "./bundleManifest";
+import { signBundle } from "./signing/bundleSigning";
 
 const createdDirectories: string[] = [];
 
@@ -86,5 +95,34 @@ describe("bundleManifest", () => {
       },
     });
     expect(writtenManifest.assets).not.toHaveProperty("manifest.json");
+  });
+
+  it("stores signed asset hashes when a signing key is provided", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+
+    const bundlePath = path.join(buildPath, "index.android.bundle");
+    await fs.writeFile(bundlePath, "bundle-content");
+
+    const manifest = await createBundleManifest({
+      bundleId: "bundle-789",
+      signingPrivateKeyPath: "/mock/private.pem",
+      targetFiles: [{ path: bundlePath, name: "index.android.bundle" }],
+    });
+
+    expect(signBundle).toHaveBeenCalledWith(
+      hash("bundle-content"),
+      "/mock/private.pem",
+    );
+    expect(manifest).toEqual({
+      bundleId: "bundle-789",
+      assets: {
+        "index.android.bundle": {
+          fileHash: `sig:signature:${hash("bundle-content")}`,
+        },
+      },
+    });
   });
 });
