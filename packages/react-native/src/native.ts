@@ -1,4 +1,5 @@
 import {
+  type ChangedAsset,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -288,14 +289,30 @@ export async function updateBundle(
 
   const targetChannel =
     typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
+  const targetManifestUrl =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestUrl;
+  const targetManifestFileHash =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestFileHash;
+  const targetChangedAssets =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.changedAssets;
 
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
+        changedAssets:
+          (targetChangedAssets as Record<string, ChangedAsset> | null) ?? null,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        manifestFileHash: targetManifestFileHash ?? null,
+        manifestUrl: targetManifestUrl ?? null,
       });
       if (ok) {
         sessionState.markBundleInstalled(updateBundleId, targetChannel);

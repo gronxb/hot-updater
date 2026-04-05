@@ -8,6 +8,11 @@ import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
+data class ChangedAssetDescriptor(
+    val fileUrl: String,
+    val fileHash: String,
+)
+
 /**
  * Interface for bundle storage operations
  */
@@ -50,6 +55,9 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        manifestUrl: String?,
+        manifestFileHash: String?,
+        changedAssets: Map<String, ChangedAssetDescriptor>?,
         progressCallback: (Double) -> Unit,
     )
 
@@ -114,6 +122,11 @@ class BundleFileStorageService(
     companion object {
         private const val TAG = "BundleStorage"
     }
+
+    private data class ParsedBundleManifest(
+        val bundleId: String,
+        val assets: Map<String, String>,
+    )
 
     private data class ActiveBundleMetadataSnapshot(
         val activeBundleId: String,
@@ -319,6 +332,81 @@ class BundleFileStorageService(
             is org.json.JSONArray -> jsonArrayToList(value)
             else -> value
         }
+
+    private fun parseBundleManifestFromMap(manifest: Map<String, Any?>): ParsedBundleManifest? {
+        val manifestBundleId =
+            (manifest["bundleId"] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+        val assetsValue = manifest["assets"] as? Map<*, *> ?: return null
+        val assets = linkedMapOf<String, String>()
+
+        for ((assetPath, assetValue) in assetsValue) {
+            if (assetPath !is String) {
+                return null
+            }
+
+            val assetMap = assetValue as? Map<*, *> ?: return null
+            val fileHash = assetMap["fileHash"] as? String ?: return null
+            assets[assetPath] = fileHash
+        }
+
+        return ParsedBundleManifest(
+            bundleId = manifestBundleId,
+            assets = assets,
+        )
+    }
+
+    private fun parseBundleManifestFromFile(manifestFile: File): ParsedBundleManifest? {
+        if (!manifestFile.exists()) {
+            return null
+        }
+
+        return try {
+            val parsed = JSONObject(manifestFile.readText()).let(::jsonObjectToMap)
+            parseBundleManifestFromMap(parsed)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse manifest ${manifestFile.absolutePath}: ${e.message}")
+            null
+        }
+    }
+
+    private fun writeBundleManifestFile(
+        destination: File,
+        manifest: ParsedBundleManifest,
+    ) {
+        destination.parentFile?.mkdirs()
+        val assetsObject = JSONObject()
+
+        manifest.assets.toSortedMap().forEach { (assetPath, fileHash) ->
+            assetsObject.put(
+                assetPath,
+                JSONObject().put("fileHash", fileHash),
+            )
+        }
+
+        val manifestObject =
+            JSONObject()
+                .put("bundleId", manifest.bundleId)
+                .put("assets", assetsObject)
+
+        destination.writeText("${manifestObject}\n")
+    }
+
+    private fun getActiveBundleDir(): File? {
+        val activeBundleId = getActiveBundleId() ?: return null
+        val bundleDir = File(getBundleStoreDir(), activeBundleId)
+        return bundleDir.takeIf { it.exists() }
+    }
+
+    private fun copyBundleFile(
+        source: File,
+        destination: File,
+    ) {
+        destination.parentFile?.mkdirs()
+        source.copyTo(destination, overwrite = true)
+    }
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -579,11 +667,14 @@ class BundleFileStorageService(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        manifestUrl: String?,
+        manifestFileHash: String?,
+        changedAssets: Map<String, ChangedAssetDescriptor>?,
         progressCallback: (Double) -> Unit,
     ) {
         Log.d(
             TAG,
-            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
+            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash manifestUrl $manifestUrl",
         )
 
         // If no URL is provided, reset to fallback and clean up all bundles
@@ -658,6 +749,30 @@ class BundleFileStorageService(
             } else {
                 // If index.android.bundle is missing, delete and re-download
                 finalBundleDir.deleteRecursively()
+            }
+        }
+
+        if (!manifestUrl.isNullOrEmpty() && !manifestFileHash.isNullOrEmpty() && changedAssets != null) {
+            try {
+                updateBundleFromManifest(
+                    bundleId = bundleId,
+                    manifestUrl = manifestUrl,
+                    manifestFileHash = manifestFileHash,
+                    changedAssets = changedAssets,
+                    bundleStoreDir = bundleStoreDir,
+                    finalBundleDir = finalBundleDir,
+                    progressCallback = progressCallback,
+                )
+                return
+            } catch (e: Exception) {
+                if (fileUrl.isNullOrEmpty()) {
+                    throw e
+                }
+                Log.w(
+                    TAG,
+                    "Manifest-driven install failed for $bundleId. Falling back to archive: ${e.message}",
+                    e,
+                )
             }
         }
 
@@ -856,6 +971,183 @@ class BundleFileStorageService(
     /**
      * Removes old bundles except for the specified bundle IDs, and any leftover .tmp directories
      */
+    private suspend fun updateBundleFromManifest(
+        bundleId: String,
+        manifestUrl: String,
+        manifestFileHash: String,
+        changedAssets: Map<String, ChangedAssetDescriptor>,
+        bundleStoreDir: File,
+        finalBundleDir: File,
+        progressCallback: (Double) -> Unit,
+    ) {
+        val activeBundleDir = getActiveBundleDir()
+        val currentManifest =
+            getActiveBundleMetadataSnapshot()?.manifest?.let(::parseBundleManifestFromMap)
+        val baseDir = fileSystem.getExternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
+        val tempDir = File(baseDir, "bundle-manifest-temp")
+        val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
+
+        if (tempDir.exists()) {
+            tempDir.deleteRecursively()
+        }
+        tempDir.mkdirs()
+
+        try {
+            val manifestFile = File(tempDir, "manifest.json")
+            when (
+                val manifestDownloadResult =
+                    downloadService.downloadFile(
+                        URL(manifestUrl),
+                        manifestFile,
+                    ) { downloadProgress ->
+                        progressCallback(downloadProgress * 0.15)
+                    }
+            ) {
+                is DownloadResult.Error -> {
+                    if (manifestDownloadResult.exception is IncompleteDownloadException) {
+                        val incompleteEx =
+                            manifestDownloadResult.exception as IncompleteDownloadException
+                        throw HotUpdaterException.incompleteDownload(
+                            incompleteEx.expectedSize,
+                            incompleteEx.actualSize,
+                        )
+                    }
+                    throw HotUpdaterException.downloadFailed(manifestDownloadResult.exception)
+                }
+
+                is DownloadResult.Success -> Unit
+            }
+
+            try {
+                SignatureVerifier.verifyBundle(context, manifestFile, manifestFileHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            progressCallback(0.2)
+
+            val targetManifest = parseBundleManifestFromFile(manifestFile) ?: throw HotUpdaterException.invalidBundle()
+            if (targetManifest.bundleId != bundleId) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            if (tmpDir.exists()) {
+                tmpDir.deleteRecursively()
+            }
+            tmpDir.mkdirs()
+
+            val targetEntries = targetManifest.assets.entries.toList()
+            val totalAssets = targetEntries.size.coerceAtLeast(1)
+
+            targetEntries.forEachIndexed { index, (assetPath, expectedHash) ->
+                val targetFile = File(tmpDir, assetPath)
+                val currentHash = currentManifest?.assets?.get(assetPath)
+
+                if (currentHash == expectedHash) {
+                    val sourceDir = activeBundleDir ?: throw HotUpdaterException.downloadFailed(
+                        IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
+                    )
+                    val sourceFile = File(sourceDir, assetPath)
+                    if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, expectedHash)) {
+                        throw HotUpdaterException.downloadFailed(
+                            IllegalStateException("Reusable asset missing or corrupted: $assetPath"),
+                        )
+                    }
+                    copyBundleFile(sourceFile, targetFile)
+                    val progress = 0.2 + (((index + 1).toDouble() / totalAssets.toDouble()) * 0.72)
+                    progressCallback(progress)
+                    return@forEachIndexed
+                }
+
+                val changedAsset =
+                    changedAssets[assetPath]
+                        ?: throw HotUpdaterException.downloadFailed(
+                            IllegalStateException("Changed asset missing from update response: $assetPath"),
+                        )
+
+                if (!changedAsset.fileHash.equals(expectedHash, ignoreCase = true)) {
+                    throw HotUpdaterException.signatureVerificationFailed(
+                        SignatureVerificationException.FileHashMismatch(),
+                    )
+                }
+
+                when (
+                    val assetDownloadResult =
+                        downloadService.downloadFile(
+                            URL(changedAsset.fileUrl),
+                            targetFile,
+                        ) { downloadProgress ->
+                            val progress =
+                                0.2 + (((index.toDouble() + downloadProgress) / totalAssets.toDouble()) * 0.72)
+                            progressCallback(progress)
+                        }
+                ) {
+                    is DownloadResult.Error -> {
+                        if (assetDownloadResult.exception is IncompleteDownloadException) {
+                            val incompleteEx =
+                                assetDownloadResult.exception as IncompleteDownloadException
+                            throw HotUpdaterException.incompleteDownload(
+                                incompleteEx.expectedSize,
+                                incompleteEx.actualSize,
+                            )
+                        }
+                        throw HotUpdaterException.downloadFailed(assetDownloadResult.exception)
+                    }
+
+                    is DownloadResult.Success -> {
+                        if (!HashUtils.verifyHash(assetDownloadResult.file, expectedHash)) {
+                            throw HotUpdaterException.signatureVerificationFailed(
+                                SignatureVerificationException.FileHashMismatch(),
+                            )
+                        }
+                    }
+                }
+            }
+
+            writeBundleManifestFile(File(tmpDir, "manifest.json"), targetManifest)
+
+            val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
+            if (extractedIndex == null) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            if (finalBundleDir.exists()) {
+                finalBundleDir.deleteRecursively()
+            }
+
+            val renamed = tmpDir.renameTo(finalBundleDir)
+            if (!renamed) {
+                if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                    if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                        throw HotUpdaterException.moveOperationFailed()
+                    }
+                    tmpDir.deleteRecursively()
+                }
+            }
+
+            val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+            if (finalIndexFile == null) {
+                finalBundleDir.deleteRecursively()
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            finalBundleDir.setLastModified(System.currentTimeMillis())
+
+            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
+            saveMetadata(updatedMetadata)
+            setBundleURL(finalIndexFile.absolutePath)
+
+            tempDir.deleteRecursively()
+            cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
+            progressCallback(1.0)
+        } catch (e: Exception) {
+            tempDir.deleteRecursively()
+            tmpDir.deleteRecursively()
+            throw e
+        }
+    }
+
     private fun cleanupOldBundles(
         bundleStoreDir: File,
         currentBundleId: String?,

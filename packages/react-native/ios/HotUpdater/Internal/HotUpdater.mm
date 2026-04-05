@@ -553,6 +553,15 @@ RCT_EXPORT_MODULE();
     if (params.fileHash()) {
         paramDict[@"fileHash"] = params.fileHash();
     }
+    if (params.manifestUrl()) {
+        paramDict[@"manifestUrl"] = params.manifestUrl();
+    }
+    if (params.manifestFileHash()) {
+        paramDict[@"manifestFileHash"] = params.manifestFileHash();
+    }
+    if (params.changedAssets()) {
+        paramDict[@"changedAssets"] = params.changedAssets();
+    }
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();
     }

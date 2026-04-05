@@ -2,6 +2,7 @@ import type {
   AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
+  ChangedAsset,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
   Platform,
@@ -21,6 +22,53 @@ import type { DatabaseAPI } from "./types";
 
 const PAGE_SIZE = 100;
 const DESC_ORDER = { field: "id", direction: "desc" } as const;
+
+type BundleManifest = {
+  bundleId: string;
+  assets: Record<string, { fileHash: string }>;
+};
+
+const isBundleManifest = (value: unknown): value is BundleManifest => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const manifest = value as {
+    bundleId?: unknown;
+    assets?: unknown;
+  };
+
+  if (typeof manifest.bundleId !== "string") {
+    return false;
+  }
+
+  if (!manifest.assets || typeof manifest.assets !== "object") {
+    return false;
+  }
+
+  return Object.values(manifest.assets as Record<string, unknown>).every(
+    (asset) =>
+      !!asset &&
+      typeof asset === "object" &&
+      !Array.isArray(asset) &&
+      typeof (asset as { fileHash?: unknown }).fileHash === "string",
+  );
+};
+
+const createChildStorageUri = (
+  baseStorageUri: string,
+  relativePath: string,
+) => {
+  const baseUrl = new URL(baseStorageUri);
+  const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
+  const relativeSegments = relativePath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment));
+
+  baseUrl.pathname = `${normalizedBasePath}/${relativeSegments.join("/")}`;
+  return baseUrl.toString();
+};
 
 const bundleMatchesQueryWhere = (
   bundle: Bundle,
@@ -98,6 +146,79 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   storageUri: null,
   fileHash: null,
 };
+
+async function fetchBundleManifest<TContext>(
+  storageUri: string,
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<string | null>,
+  context?: HotUpdaterContext<TContext>,
+): Promise<{ fileUrl: string; manifest: BundleManifest } | null> {
+  const fileUrl = await resolveFileUrl(storageUri, context);
+
+  if (!fileUrl) {
+    return null;
+  }
+
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    return null;
+  }
+
+  const payload = (await response.json()) as unknown;
+  if (!isBundleManifest(payload)) {
+    return null;
+  }
+
+  return {
+    fileUrl,
+    manifest: payload,
+  };
+}
+
+async function resolveChangedAssets<TContext>({
+  assetBaseStorageUri,
+  currentManifest,
+  resolveFileUrl,
+  targetManifest,
+  context,
+}: {
+  assetBaseStorageUri: string;
+  currentManifest: BundleManifest | null;
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<string | null>;
+  targetManifest: BundleManifest;
+  context?: HotUpdaterContext<TContext>;
+}): Promise<Record<string, ChangedAsset>> {
+  const changedEntries = await Promise.all(
+    Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
+      const currentAsset = currentManifest?.assets[assetPath];
+      if (currentAsset?.fileHash === asset.fileHash) {
+        return null;
+      }
+
+      const storageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
+      const fileUrl = await resolveFileUrl(storageUri, context);
+
+      if (!fileUrl) {
+        return null;
+      }
+
+      return [
+        assetPath,
+        {
+          fileHash: asset.fileHash,
+          fileUrl,
+        },
+      ] as const;
+    }),
+  );
+
+  return Object.fromEntries(changedEntries.filter(Boolean));
+}
 
 export function createPluginDatabaseCore<TContext = unknown>(
   getPlugin: () => DatabasePlugin<TContext>,
@@ -328,7 +449,72 @@ export function createPluginDatabaseCore<TContext = unknown>(
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      return { ...rest, fileUrl };
+      const baseResponse: AppUpdateInfo = { ...rest, fileUrl };
+
+      if (info.id === NIL_UUID) {
+        return baseResponse;
+      }
+
+      const targetBundle = await getPlugin().getBundleById(info.id, context);
+      const manifestStorageUri = targetBundle?.metadata?.manifest_storage_uri;
+      const manifestFileHash = targetBundle?.metadata?.manifest_file_hash;
+      const assetBaseStorageUri =
+        targetBundle?.metadata?.asset_base_storage_uri;
+
+      if (!manifestStorageUri || !manifestFileHash || !assetBaseStorageUri) {
+        return baseResponse;
+      }
+
+      try {
+        const targetManifestResult = await fetchBundleManifest(
+          manifestStorageUri,
+          resolveFileUrl,
+          context,
+        );
+
+        if (!targetManifestResult) {
+          return baseResponse;
+        }
+
+        const currentManifestResult =
+          args.bundleId !== NIL_UUID
+            ? await (async () => {
+                const currentBundle = await getPlugin().getBundleById(
+                  args.bundleId,
+                  context,
+                );
+                const currentManifestStorageUri =
+                  currentBundle?.metadata?.manifest_storage_uri;
+
+                if (!currentManifestStorageUri) {
+                  return null;
+                }
+
+                return fetchBundleManifest(
+                  currentManifestStorageUri,
+                  resolveFileUrl,
+                  context,
+                );
+              })()
+            : null;
+
+        const changedAssets = await resolveChangedAssets({
+          assetBaseStorageUri,
+          currentManifest: currentManifestResult?.manifest ?? null,
+          resolveFileUrl,
+          targetManifest: targetManifestResult.manifest,
+          context,
+        });
+
+        return {
+          ...baseResponse,
+          changedAssets,
+          manifestFileHash,
+          manifestUrl: targetManifestResult.fileUrl,
+        };
+      } catch {
+        return baseResponse;
+      }
     },
 
     async getChannels(

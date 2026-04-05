@@ -45,10 +45,22 @@ class HotUpdater {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
+            manifestUrl: String?,
+            manifestFileHash: String?,
+            changedAssets: Map<String, ChangedAssetDescriptor>?,
             channel: String?,
             progressCallback: (Double) -> Unit,
         ) {
-            getInstance(context).updateBundle(bundleId, fileUrl, fileHash, channel, progressCallback)
+            getInstance(context).updateBundle(
+                bundleId,
+                fileUrl,
+                fileHash,
+                manifestUrl,
+                manifestFileHash,
+                changedAssets,
+                channel,
+                progressCallback,
+            )
         }
 
         /**

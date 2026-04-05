@@ -38,6 +38,26 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
+    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+            return null
+        }
+
+        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
+        val iterator = changedAssetsMap.keySetIterator()
+
+        while (iterator.hasNextKey()) {
+            val assetPath = iterator.nextKey()
+            val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
+            val assetUrl = assetMap.getString("fileUrl") ?: continue
+            val assetHash = assetMap.getString("fileHash") ?: continue
+            parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash)
+        }
+
+        return parsedAssets
+    }
+
     @ReactMethod
     override fun reload(promise: Promise) {
         moduleScope.launch {
@@ -92,6 +112,9 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val manifestUrl = params.getString("manifestUrl")
+                val manifestFileHash = params.getString("manifestFileHash")
+                val changedAssets = parseChangedAssets(params)
                 val channel = params.getString("channel")
 
                 val impl = getInstance()
@@ -100,6 +123,9 @@ class HotUpdaterModule internal constructor(
                     bundleId,
                     fileUrl,
                     fileHash,
+                    manifestUrl,
+                    manifestFileHash,
+                    changedAssets,
                     channel,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
