@@ -193,31 +193,43 @@ async function resolveChangedAssets<TContext>({
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Record<string, ChangedAsset>> {
-  const changedEntries = await Promise.all(
-    Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
-      const currentAsset = currentManifest?.assets[assetPath];
-      if (currentAsset?.fileHash === asset.fileHash) {
-        return null;
-      }
+  const changedEntries = (
+    await Promise.all(
+      Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
+        const currentAsset = currentManifest?.assets[assetPath];
+        if (currentAsset?.fileHash === asset.fileHash) {
+          return null;
+        }
 
-      const storageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
-      const fileUrl = await resolveFileUrl(storageUri, context);
+        const storageUri = createChildStorageUri(
+          assetBaseStorageUri,
+          assetPath,
+        );
+        const fileUrl = await resolveFileUrl(storageUri, context);
 
-      if (!fileUrl) {
-        return null;
-      }
+        if (!fileUrl) {
+          return null;
+        }
 
-      return [
-        assetPath,
-        {
-          fileHash: asset.fileHash,
-          fileUrl,
-        },
-      ] as const;
-    }),
+        return [
+          assetPath,
+          {
+            fileHash: asset.fileHash,
+            fileUrl,
+          },
+        ] as const;
+      }),
+    )
+  ).filter(
+    (
+      entry,
+    ): entry is readonly [
+      string,
+      { readonly fileHash: string; readonly fileUrl: string },
+    ] => entry !== null,
   );
 
-  return Object.fromEntries(changedEntries.filter(Boolean));
+  return Object.fromEntries(changedEntries);
 }
 
 export function createPluginDatabaseCore<TContext = unknown>(

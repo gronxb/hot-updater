@@ -1044,9 +1044,11 @@ class BundleFileStorageService(
                 val currentHash = currentManifest?.assets?.get(assetPath)
 
                 if (currentHash == expectedHash) {
-                    val sourceDir = activeBundleDir ?: throw HotUpdaterException.downloadFailed(
-                        IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
-                    )
+                    val sourceDir =
+                        activeBundleDir
+                            ?: throw HotUpdaterException.downloadFailed(
+                                IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
+                            )
                     val sourceFile = File(sourceDir, assetPath)
                     if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, expectedHash)) {
                         throw HotUpdaterException.downloadFailed(
