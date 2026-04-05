@@ -27,6 +27,7 @@ const SIGNED_HASH_PREFIX = "sig:";
 
 interface BundleManifest {
   bundleId?: string;
+  assets?: Record<string, { fileHash: string }>;
 }
 
 export interface PromoteBundleInput {
@@ -66,6 +67,23 @@ function getArchiveFilename(storageUri: string) {
   const filename = path.basename(pathname);
   return filename || "bundle.zip";
 }
+
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
 
 function resolveExtractedPath(rootDir: string, entryName: string) {
   const normalizedEntryName = entryName.replaceAll("\\", "/");
@@ -212,6 +230,11 @@ async function rewriteManifestBundleId(
   manifest.bundleId = nextBundleId;
 
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  return {
+    manifest,
+    manifestPath,
+  };
 }
 
 async function resolveBundleDownloadUrl(
@@ -265,6 +288,7 @@ export async function createCopiedBundleArchive({
   const sourceArchivePath = path.join(workDir, archiveFilename);
   const extractDir = path.join(workDir, "bundle");
   const outputArchivePath = path.join(workDir, archiveFilename);
+  const uploadedStorageUris: string[] = [];
 
   await fs.mkdir(extractDir, { recursive: true });
 
@@ -272,37 +296,90 @@ export async function createCopiedBundleArchive({
     await downloadArchive(downloadUrl, sourceArchivePath);
     const format = await extractArchive(sourceArchivePath, extractDir);
 
-    await rewriteManifestBundleId(extractDir, nextBundleId);
+    const { manifest, manifestPath } = await rewriteManifestBundleId(
+      extractDir,
+      nextBundleId,
+    );
     await fs.rm(sourceArchivePath, { force: true });
     await createArchiveFromDirectory(extractDir, outputArchivePath, format);
 
     const fileHash = await getFileHash(outputArchivePath);
-    const shouldKeepSignedHash =
-      isSignedFileHash(bundle.fileHash) && !config.signing?.enabled;
+    const manifestHash = await getFileHash(manifestPath);
+    const requiresSigningKey = [
+      bundle.fileHash,
+      bundle.metadata?.manifest_file_hash,
+    ]
+      .filter((hash): hash is string => Boolean(hash))
+      .some((hash) => isSignedFileHash(hash));
 
-    if (shouldKeepSignedHash) {
+    if (requiresSigningKey && !config.signing?.privateKeyPath) {
       throw new Error(
         "Cannot copy a signed bundle without signing.privateKeyPath in hot-updater.config.ts",
       );
     }
 
-    const nextFileHash =
+    const signingKeyPath =
       config.signing?.enabled && config.signing.privateKeyPath
-        ? await signFileHash(fileHash, config.signing.privateKeyPath)
-        : fileHash;
+        ? config.signing.privateKeyPath
+        : null;
+    const nextFileHash = signingKeyPath
+      ? await signFileHash(fileHash, signingKeyPath)
+      : fileHash;
+    const nextManifestFileHash = signingKeyPath
+      ? await signFileHash(manifestHash, signingKeyPath)
+      : manifestHash;
 
-    const { storageUri } = await storagePlugin.upload(
+    const archiveUpload = await storagePlugin.upload(
       nextBundleId,
       outputArchivePath,
     );
+    uploadedStorageUris.push(archiveUpload.storageUri);
+    const manifestUpload = await storagePlugin.upload(
+      nextBundleId,
+      manifestPath,
+    );
+    uploadedStorageUris.push(manifestUpload.storageUri);
+
+    const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
+      left.localeCompare(right),
+    );
+
+    for (const assetPath of assetPaths) {
+      const relativeDir = getRelativeStorageDir(assetPath);
+      const uploadKey = [nextBundleId, "files", relativeDir]
+        .filter(Boolean)
+        .join("/");
+      const assetUpload = await storagePlugin.upload(
+        uploadKey,
+        path.join(extractDir, assetPath),
+      );
+      uploadedStorageUris.push(assetUpload.storageUri);
+    }
+
+    const assetBaseStorageUri = replaceStorageUriLeaf(
+      manifestUpload.storageUri,
+      "files",
+    );
 
     return {
-      ...bundle,
-      id: nextBundleId,
-      channel: targetChannel,
-      storageUri,
-      fileHash: nextFileHash,
-    } satisfies Bundle;
+      bundle: {
+        ...bundle,
+        id: nextBundleId,
+        channel: targetChannel,
+        storageUri: archiveUpload.storageUri,
+        fileHash: nextFileHash,
+        metadata: {
+          ...bundle.metadata,
+          asset_base_storage_uri: assetBaseStorageUri,
+          manifest_file_hash: nextManifestFileHash,
+          manifest_storage_uri: manifestUpload.storageUri,
+        },
+      } satisfies Bundle,
+      uploadedStorageUris,
+    };
+  } catch (error) {
+    await deleteUploadedCopy(storagePlugin, uploadedStorageUris);
+    throw error;
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
   }
@@ -310,16 +387,18 @@ export async function createCopiedBundleArchive({
 
 async function deleteUploadedCopy(
   storagePlugin: StoragePlugin,
-  storageUri: string | null,
+  storageUris: string[],
 ) {
-  if (!storageUri) {
+  if (storageUris.length === 0) {
     return;
   }
 
-  try {
-    await storagePlugin.delete(storageUri);
-  } catch (error) {
-    console.error("Failed to delete uploaded bundle copy:", error);
+  for (const storageUri of new Set(storageUris)) {
+    try {
+      await storagePlugin.delete(storageUri);
+    } catch (error) {
+      console.error("Failed to delete uploaded bundle copy:", error);
+    }
   }
 }
 
@@ -362,22 +441,25 @@ export async function promoteBundle(
   }
 
   const resolvedNextBundleId = nextBundleId?.trim() || createUUIDv7();
-  const copiedBundle = await createCopiedBundleArchive({
-    bundle,
-    config: deps.config,
-    nextBundleId: resolvedNextBundleId,
-    storagePlugin: deps.storagePlugin,
-    targetChannel: normalizedTargetChannel,
-  });
-  let uploadedStorageUri: string | null = copiedBundle.storageUri;
+  const { bundle: copiedBundle, uploadedStorageUris } =
+    await createCopiedBundleArchive({
+      bundle,
+      config: deps.config,
+      nextBundleId: resolvedNextBundleId,
+      storagePlugin: deps.storagePlugin,
+      targetChannel: normalizedTargetChannel,
+    });
+  let shouldCleanupUploadedCopy = true;
 
   try {
     await deps.databasePlugin.appendBundle(copiedBundle);
     await deps.databasePlugin.commitBundle();
-    uploadedStorageUri = null;
+    shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {
-    await deleteUploadedCopy(deps.storagePlugin, uploadedStorageUri);
+    if (shouldCleanupUploadedCopy) {
+      await deleteUploadedCopy(deps.storagePlugin, uploadedStorageUris);
+    }
     throw error;
   }
 }
