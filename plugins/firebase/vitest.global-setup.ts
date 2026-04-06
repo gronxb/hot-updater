@@ -17,7 +17,6 @@ type EmulatorLogs = {
 };
 
 let emulatorProcess: ChildProcessWithoutNullStreams | undefined;
-let emulatorLogs: EmulatorLogs = { stdout: [], stderr: [] };
 let firestorePort: number | undefined;
 let tempConfigDir: string | undefined;
 let projectId: string | undefined;
@@ -274,7 +273,6 @@ export async function setup() {
       projectId,
     });
     emulatorProcess = runtime.child;
-    emulatorLogs = runtime.logs;
 
     try {
       const emulatorReady = await waitForEmulator(
@@ -290,8 +288,7 @@ export async function setup() {
       console.log("Firebase emulator started successfully");
       return;
     } catch (error) {
-      lastError =
-        error instanceof Error ? error : new Error(String(error));
+      lastError = error instanceof Error ? error : new Error(String(error));
       console.error(
         `Firebase emulator startup attempt ${attempt}/${MAX_STARTUP_ATTEMPTS} failed`,
       );
@@ -330,7 +327,6 @@ export async function teardown(options?: { resetState?: boolean }) {
   }
 
   emulatorProcess = undefined;
-  emulatorLogs = { stdout: [], stderr: [] };
 
   if (resetState) {
     firestorePort = undefined;
