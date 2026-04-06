@@ -204,9 +204,17 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
 
 export type HotUpdaterProgressArtifactType = "archive" | "manifest";
 
+export interface HotUpdaterManifestProgressDetails {
+  totalFiles: number;
+  completedFiles: number;
+  currentFilePath: string | null;
+  currentFileProgress: number | null;
+}
+
 export interface HotUpdaterProgressEvent {
   progress: number;
   artifactType?: HotUpdaterProgressArtifactType | null;
+  details?: HotUpdaterManifestProgressDetails | null;
   totalFiles?: number | null;
   completedFiles?: number | null;
   currentFilePath?: string | null;

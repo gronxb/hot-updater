@@ -38,12 +38,14 @@ describe("hotUpdaterStore", () => {
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
       artifactType: "manifest",
-      completedFiles: 2,
-      currentFilePath: "index.ios.bundle",
-      currentFileProgress: 0.5,
+      details: {
+        completedFiles: 2,
+        currentFilePath: "index.ios.bundle",
+        currentFileProgress: 0.5,
+        totalFiles: 4,
+      },
       isUpdateDownloaded: false,
       progress: 0.42,
-      totalFiles: 4,
     });
   });
 
@@ -70,13 +72,10 @@ describe("hotUpdaterStore", () => {
     });
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
-      artifactType: "archive",
-      completedFiles: null,
-      currentFilePath: null,
-      currentFileProgress: null,
+      artifactType: null,
+      details: null,
       isUpdateDownloaded: false,
       progress: 0.25,
-      totalFiles: null,
     });
   });
 
@@ -99,13 +98,10 @@ describe("hotUpdaterStore", () => {
     });
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
-      artifactType: "archive",
-      completedFiles: null,
-      currentFilePath: null,
-      currentFileProgress: null,
+      artifactType: null,
+      details: null,
       isUpdateDownloaded: false,
       progress: 0.4,
-      totalFiles: null,
     });
   });
 });

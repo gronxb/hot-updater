@@ -385,6 +385,8 @@ function createHotUpdaterClient() {
       const ok = await resetChannel();
       if (ok) {
         hotUpdaterStore.setState({
+          artifactType: null,
+          details: null,
           isUpdateDownloaded: false,
           progress: 0,
         });

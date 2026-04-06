@@ -197,67 +197,106 @@ const E2ENavButton = ({
 
 const formatFallbackPercent = (value: number | null | undefined) => {
   if (typeof value !== "number") {
-    return "null";
+    return "pending";
   }
 
   return `${Math.round(value * 100)}%`;
 };
 
 type ExampleFallbackProps = {
-  artifactType: "archive" | "manifest" | null;
-  completedFiles: number | null;
-  currentFilePath: string | null;
-  currentFileProgress: number | null;
+  artifactType: "manifest" | null;
+  details: {
+    completedFiles: number;
+    currentFilePath: string | null;
+    currentFileProgress: number | null;
+    totalFiles: number;
+  } | null;
   message: string | null;
   progress: number;
   status: "CHECK_FOR_UPDATE" | "UPDATING";
-  totalFiles: number | null;
 };
 
 const UpdateFallbackModal = ({
   artifactType,
-  completedFiles,
-  currentFilePath,
-  currentFileProgress,
+  details,
   message,
   progress,
   status,
-  totalFiles,
-}: ExampleFallbackProps) => (
-  <Modal transparent visible={true}>
-    <View style={styles.fallbackOverlay}>
-      <View style={styles.fallbackCard}>
-        <Text style={styles.fallbackTitle} testID="fallback-status-title">
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        <Text style={styles.fallbackProgressValue} testID="fallback-total-progress">
-          {formatFallbackPercent(progress)}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-artifact-type">
-          artifactType: {artifactType ?? "null"}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-total-files">
-          totalFiles: {totalFiles ?? "null"}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-completed-files">
-          completedFiles: {completedFiles ?? "null"}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-current-file-path">
-          currentFilePath: {currentFilePath ?? "null"}
-        </Text>
-        <Text
-          style={styles.fallbackMetaText}
-          testID="fallback-current-file-progress"
-        >
-          currentFileProgress: {formatFallbackPercent(currentFileProgress)}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-message">
-          message: {message ?? "null"}
-        </Text>
+}: ExampleFallbackProps) => {
+  const isManifestUpdate = artifactType === "manifest" && details !== null;
+  const statusTitle =
+    status === "UPDATING" ? "Updating..." : "Checking for Update...";
+  const stageText =
+    status === "CHECK_FOR_UPDATE"
+      ? "Looking for the latest bundle"
+      : isManifestUpdate
+        ? "Applying manifest diff update"
+        : "Preparing update package";
+
+  return (
+    <Modal transparent visible={true}>
+      <View style={styles.fallbackOverlay}>
+        <View style={styles.fallbackCard}>
+          <Text style={styles.fallbackTitle} testID="fallback-status-title">
+            {statusTitle}
+          </Text>
+          <Text
+            style={styles.fallbackProgressValue}
+            testID="fallback-total-progress"
+          >
+            {formatFallbackPercent(progress)}
+          </Text>
+          <Text style={styles.fallbackMetaText} testID="fallback-artifact-type">
+            {stageText}
+          </Text>
+          <Text style={styles.fallbackMetaText} testID="fallback-details-state">
+            details: {isManifestUpdate ? "manifest" : "hidden"}
+          </Text>
+          {isManifestUpdate ? (
+            <>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-total-files"
+              >
+                totalFiles: {details.totalFiles}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-completed-files"
+              >
+                completedFiles: {details.completedFiles}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-current-file-path"
+              >
+                currentFilePath: {details.currentFilePath ?? "preparing next file"}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-current-file-progress"
+              >
+                currentFileProgress:{" "}
+                {formatFallbackPercent(details.currentFileProgress)}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-file-summary"
+              >
+                fileProgress: {details.completedFiles}/{details.totalFiles}
+              </Text>
+            </>
+          ) : null}
+          {message ? (
+            <Text style={styles.fallbackMetaText} testID="fallback-message">
+              message: {message}
+            </Text>
+          ) : null}
+        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);

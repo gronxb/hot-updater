@@ -1,16 +1,16 @@
 import { useSyncExternalStore } from "react";
 
-import type { HotUpdaterProgressArtifactType } from "./native";
+import type {
+  HotUpdaterManifestProgressDetails,
+  HotUpdaterProgressEvent,
+} from "./native";
 import { addListener } from "./native";
 
 export type HotUpdaterState = {
   progress: number;
   isUpdateDownloaded: boolean;
-  artifactType: HotUpdaterProgressArtifactType | null;
-  totalFiles: number | null;
-  completedFiles: number | null;
-  currentFilePath: string | null;
-  currentFileProgress: number | null;
+  artifactType: "manifest" | null;
+  details: HotUpdaterManifestProgressDetails | null;
 };
 
 const createHotUpdaterStore = () => {
@@ -18,10 +18,7 @@ const createHotUpdaterStore = () => {
     progress: 0,
     isUpdateDownloaded: false,
     artifactType: null,
-    totalFiles: null,
-    completedFiles: null,
-    currentFilePath: null,
-    currentFileProgress: null,
+    details: null,
   };
 
   const getSnapshot = () => {
@@ -34,6 +31,61 @@ const createHotUpdaterStore = () => {
     for (const listener of listeners) {
       listener();
     }
+  };
+
+  const normalizeManifestDetails = (
+    event: HotUpdaterProgressEvent,
+  ): HotUpdaterManifestProgressDetails | null => {
+    if (event.details) {
+      return {
+        completedFiles: Math.max(
+          0,
+          Math.min(event.details.completedFiles, event.details.totalFiles),
+        ),
+        currentFilePath: event.details.currentFilePath ?? null,
+        currentFileProgress:
+          typeof event.details.currentFileProgress === "number"
+            ? Math.max(0, Math.min(event.details.currentFileProgress, 1))
+            : null,
+        totalFiles: Math.max(0, event.details.totalFiles),
+      };
+    }
+
+    if (
+      event.artifactType !== "manifest" ||
+      typeof event.totalFiles !== "number" ||
+      typeof event.completedFiles !== "number"
+    ) {
+      return null;
+    }
+
+    return {
+      completedFiles: Math.max(
+        0,
+        Math.min(event.completedFiles, event.totalFiles),
+      ),
+      currentFilePath: event.currentFilePath ?? null,
+      currentFileProgress:
+        typeof event.currentFileProgress === "number"
+          ? Math.max(0, Math.min(event.currentFileProgress, 1))
+          : null,
+      totalFiles: Math.max(0, event.totalFiles),
+    };
+  };
+
+  const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
+    const manifestDetails = normalizeManifestDetails(event);
+    const nextProgress =
+      typeof event.progress === "number" ? event.progress : state.progress;
+
+    state = {
+      artifactType: manifestDetails ? "manifest" : null,
+      details: manifestDetails,
+      isUpdateDownloaded: nextProgress >= 1,
+      progress: nextProgress,
+    };
+
+    emitChange();
   };
 
   const setState = (newState: Partial<HotUpdaterState>) => {
@@ -55,11 +107,16 @@ const createHotUpdaterStore = () => {
       nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
     }
 
-    if (newState.artifactType === "archive") {
-      nextState.totalFiles = newState.totalFiles ?? null;
-      nextState.completedFiles = newState.completedFiles ?? null;
-      nextState.currentFilePath = newState.currentFilePath ?? null;
-      nextState.currentFileProgress = newState.currentFileProgress ?? null;
+    if (newState.artifactType !== "manifest") {
+      nextState.artifactType = null;
+    }
+
+    if (newState.details === undefined) {
+      nextState.details = state.details;
+    }
+
+    if (nextState.artifactType !== "manifest") {
+      nextState.details = null;
     }
 
     state = nextState;
@@ -73,7 +130,7 @@ const createHotUpdaterStore = () => {
 
   // Subscribe to native onProgress events
   // This listener is registered once when the store is created
-  addListener("onProgress", setState);
+  addListener("onProgress", applyProgressEvent);
 
   return { getSnapshot, setState, subscribe };
 };

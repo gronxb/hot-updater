@@ -29,10 +29,7 @@ export type HotUpdaterFallbackComponentProps = {
   progress: number;
   message: string | null;
   artifactType: HotUpdaterState["artifactType"];
-  totalFiles: HotUpdaterState["totalFiles"];
-  completedFiles: HotUpdaterState["completedFiles"];
-  currentFilePath: HotUpdaterState["currentFilePath"];
-  currentFileProgress: HotUpdaterState["currentFileProgress"];
+  details: HotUpdaterState["details"];
 };
 
 /**
@@ -361,11 +358,8 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         return (
           <Fallback
             artifactType={progressState.artifactType}
-            completedFiles={progressState.completedFiles}
-            currentFilePath={progressState.currentFilePath}
-            currentFileProgress={progressState.currentFileProgress}
+            details={progressState.details}
             progress={progress}
-            totalFiles={progressState.totalFiles}
             status={updateStatus}
             message={message}
           />
