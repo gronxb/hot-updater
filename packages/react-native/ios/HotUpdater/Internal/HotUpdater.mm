@@ -238,6 +238,7 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
 NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterDownloadDidFinish";
+NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUpdaterUpdateProgressDidChange";
 
 @interface HotUpdaterRecoverySignalBridge : NSObject
 @end
@@ -279,7 +280,7 @@ NSNotificationName const HotUpdaterDownloadDidFinishNotification = @"HotUpdaterD
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadProgress:)
-                                                     name:HotUpdaterDownloadProgressUpdateNotification
+                                                     name:HotUpdaterUpdateProgressDidChangeNotification
                                                    object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(handleDownloadCompletion:)
@@ -468,7 +469,7 @@ RCT_EXPORT_MODULE();
          NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970] * 1000;
          if ((currentTime - self.lastUpdateTime) >= 100 || progress >= 1.0) {
              self.lastUpdateTime = currentTime;
-             [self sendEvent:@"onProgress" body:@{@"progress": @(progress)}];
+             [self sendEvent:@"onProgress" body:userInfo ?: @{}];
          }
      }
  }

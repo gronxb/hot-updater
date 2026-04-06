@@ -1,18 +1,27 @@
-import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
+import { useSyncExternalStore } from "react";
 
+import type { HotUpdaterProgressArtifactType } from "./native";
 import { addListener } from "./native";
 
 export type HotUpdaterState = {
   progress: number;
   isUpdateDownloaded: boolean;
+  artifactType: HotUpdaterProgressArtifactType | null;
+  totalFiles: number | null;
+  completedFiles: number | null;
+  currentFilePath: string | null;
+  currentFileProgress: number | null;
 };
-
-const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
 
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
     progress: 0,
     isUpdateDownloaded: false,
+    artifactType: null,
+    totalFiles: null,
+    completedFiles: null,
+    currentFilePath: null,
+    currentFileProgress: null,
   };
 
   const getSnapshot = () => {
@@ -46,6 +55,13 @@ const createHotUpdaterStore = () => {
       nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
     }
 
+    if (newState.artifactType === "archive") {
+      nextState.totalFiles = newState.totalFiles ?? null;
+      nextState.completedFiles = newState.completedFiles ?? null;
+      nextState.currentFilePath = newState.currentFilePath ?? null;
+      nextState.currentFileProgress = newState.currentFileProgress ?? null;
+    }
+
     state = nextState;
     emitChange();
   };
@@ -67,10 +83,11 @@ export const hotUpdaterStore = createHotUpdaterStore();
 export const useHotUpdaterStore = <T = HotUpdaterState>(
   selector: (snapshot: HotUpdaterState) => T = (snapshot) => snapshot as T,
 ) => {
-  return useSyncExternalStoreWithSelector(
+  const snapshot = useSyncExternalStore(
     hotUpdaterStore.subscribe,
     hotUpdaterStore.getSnapshot,
     hotUpdaterStore.getSnapshot,
-    selector,
   );
+
+  return selector(snapshot);
 };

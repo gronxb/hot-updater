@@ -12,6 +12,42 @@ public struct ChangedAssetDescriptor {
     }
 }
 
+public struct UpdateProgressPayload {
+    public let progress: Double
+    public let artifactType: String
+    public let totalFiles: Int?
+    public let completedFiles: Int?
+    public let currentFilePath: String?
+    public let currentFileProgress: Double?
+
+    public init(
+        progress: Double,
+        artifactType: String,
+        totalFiles: Int? = nil,
+        completedFiles: Int? = nil,
+        currentFilePath: String? = nil,
+        currentFileProgress: Double? = nil
+    ) {
+        self.progress = progress
+        self.artifactType = artifactType
+        self.totalFiles = totalFiles
+        self.completedFiles = completedFiles
+        self.currentFilePath = currentFilePath
+        self.currentFileProgress = currentFileProgress
+    }
+
+    public var userInfo: [String: Any] {
+        return [
+            "artifactType": artifactType,
+            "progress": progress,
+            "totalFiles": totalFiles ?? NSNull(),
+            "completedFiles": completedFiles ?? NSNull(),
+            "currentFilePath": currentFilePath ?? NSNull(),
+            "currentFileProgress": currentFileProgress ?? NSNull()
+        ]
+    }
+}
+
 public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
     case downloadFailed(Error)
@@ -118,7 +154,7 @@ public protocol BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
 
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
     func markLaunchCompleted(bundleId: String?)
@@ -189,6 +225,56 @@ class BundleFileStorageService: BundleStorageService {
     private var currentLaunchReport: LaunchReport?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
+
+    private func emitArchiveProgress(
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        progress: Double
+    ) {
+        progressHandler(
+            UpdateProgressPayload(
+                progress: max(0, min(progress, 1)),
+                artifactType: "archive"
+            )
+        )
+    }
+
+    private func calculateManifestOverallProgress(
+        totalFiles: Int,
+        completedFiles: Int,
+        currentFileProgress: Double = 0
+    ) -> Double {
+        let effectiveTotal = max(totalFiles + 1, 1)
+        let normalizedProgress =
+            (Double(completedFiles) + max(0, min(currentFileProgress, 1))) /
+            Double(effectiveTotal)
+        return max(0, min(normalizedProgress, 0.99))
+    }
+
+    private func emitManifestProgress(
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        totalFiles: Int,
+        completedFiles: Int,
+        currentFilePath: String?,
+        currentFileProgress: Double?
+    ) {
+        let normalizedCompletedFiles = max(0, min(completedFiles, totalFiles))
+        progressHandler(
+            UpdateProgressPayload(
+                progress: calculateManifestOverallProgress(
+                    totalFiles: totalFiles,
+                    completedFiles: normalizedCompletedFiles,
+                    currentFileProgress: currentFileProgress ?? 0
+                ),
+                artifactType: "manifest",
+                totalFiles: totalFiles,
+                completedFiles: normalizedCompletedFiles,
+                currentFilePath: currentFilePath,
+                currentFileProgress: currentFileProgress.map {
+                    max(0, min($0, 1))
+                }
+            )
+        )
+    }
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
@@ -943,7 +1029,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
@@ -1006,7 +1092,10 @@ class BundleFileStorageService: BundleStorageService {
                             let _ = self.saveMetadata(updatedMetadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
-                            progressHandler(UpdateProgress.complete)
+                            self.emitArchiveProgress(
+                                progressHandler: progressHandler,
+                                progress: UpdateProgress.complete
+                            )
                             self.scheduleCleanupOldBundles(
                                 bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
                             )
@@ -1085,7 +1174,7 @@ class BundleFileStorageService: BundleStorageService {
         manifestFileHash: String,
         changedAssets: [String: ChangedAssetDescriptor],
         storeDir: String,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         let tempDirResult = tempDir()
@@ -1113,7 +1202,13 @@ class BundleFileStorageService: BundleStorageService {
                 from: manifestUrl,
                 to: tempManifestPath,
                 progressHandler: { progress in
-                    progressHandler(progress * 0.15)
+                    self.emitManifestProgress(
+                        progressHandler: progressHandler,
+                        totalFiles: 1,
+                        completedFiles: 0,
+                        currentFilePath: "manifest.json",
+                        currentFileProgress: progress
+                    )
                 }
             ) {
             case .success:
@@ -1137,8 +1232,6 @@ class BundleFileStorageService: BundleStorageService {
                 throw BundleStorageError.unknown(nil)
             }
 
-            progressHandler(0.2)
-
             guard let manifestData = try? Data(contentsOf: URL(fileURLWithPath: tempManifestPath)),
                   let manifestJson = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
                   let targetManifest = parseBundleManifest(from: manifestJson),
@@ -1146,6 +1239,14 @@ class BundleFileStorageService: BundleStorageService {
             else {
                 throw BundleStorageError.invalidBundle
             }
+            let manifestTotalFiles = 1 + targetManifest.assets.count
+            self.emitManifestProgress(
+                progressHandler: progressHandler,
+                totalFiles: manifestTotalFiles,
+                completedFiles: 1,
+                currentFilePath: nil,
+                currentFileProgress: nil
+            )
 
             let currentManifest = getActiveBundleMetadataSnapshot().flatMap { snapshot in
                 parseBundleManifest(from: snapshot.manifest)
@@ -1159,11 +1260,11 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             let sortedAssets = targetManifest.assets.sorted { $0.key < $1.key }
-            let totalAssets = max(sortedAssets.count, 1)
 
             for (index, asset) in sortedAssets.enumerated() {
                 let assetPath = asset.key
                 let expectedHash = asset.value
+                let completedFiles = 1 + index
                 let destinationPath = (tmpDir as NSString).appendingPathComponent(assetPath)
                 let destinationDir = (destinationPath as NSString).deletingLastPathComponent
                 guard self.fileSystem.createDirectory(atPath: destinationDir) else {
@@ -1189,8 +1290,13 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
-                    let progress = 0.2 + (Double(index + 1) / Double(totalAssets) * 0.72)
-                    progressHandler(progress)
+                    self.emitManifestProgress(
+                        progressHandler: progressHandler,
+                        totalFiles: manifestTotalFiles,
+                        completedFiles: completedFiles + 1,
+                        currentFilePath: nil,
+                        currentFileProgress: nil
+                    )
                     continue
                 }
 
@@ -1210,8 +1316,13 @@ class BundleFileStorageService: BundleStorageService {
                     from: changedAsset.fileUrl,
                     to: destinationPath,
                     progressHandler: { progress in
-                        let mapped = 0.2 + ((Double(index) + progress) / Double(totalAssets) * 0.72)
-                        progressHandler(mapped)
+                        self.emitManifestProgress(
+                            progressHandler: progressHandler,
+                            totalFiles: manifestTotalFiles,
+                            completedFiles: completedFiles,
+                            currentFilePath: assetPath,
+                            currentFileProgress: progress
+                        )
                     }
                 ) {
                 case .success(let downloadedFileURL):
@@ -1255,11 +1366,19 @@ class BundleFileStorageService: BundleStorageService {
                     let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
                     let _ = self.saveMetadata(updatedMetadata)
                     self.cleanupTemporaryFiles([tempDirectory])
-                    progressHandler(UpdateProgress.activationReady)
                     self.scheduleCleanupOldBundles(
                         bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
                     )
-                    progressHandler(UpdateProgress.complete)
+                    progressHandler(
+                        UpdateProgressPayload(
+                            progress: UpdateProgress.complete,
+                            artifactType: "manifest",
+                            totalFiles: manifestTotalFiles,
+                            completedFiles: manifestTotalFiles,
+                            currentFilePath: nil,
+                            currentFileProgress: nil
+                        )
+                    )
                     completion(.success(true))
                 case .failure(let error):
                     try? self.fileSystem.removeItem(atPath: realDir)
@@ -1289,7 +1408,7 @@ class BundleFileStorageService: BundleStorageService {
         fileUrl: URL,
         fileHash: String?,
         storeDir: String,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         // 1) Prepare temp directory for download
@@ -1345,7 +1464,14 @@ class BundleFileStorageService: BundleStorageService {
                 }
             },
             progressHandler: { downloadProgress in
-                progressHandler(Self.mapProgress(downloadProgress, start: 0, end: UpdateProgress.downloadEnd))
+                self.emitArchiveProgress(
+                    progressHandler: progressHandler,
+                    progress: Self.mapProgress(
+                        downloadProgress,
+                        start: 0,
+                        end: UpdateProgress.downloadEnd
+                    )
+                )
             },
             completion: { [weak self] result in
             guard let self = self else {
@@ -1441,7 +1567,7 @@ class BundleFileStorageService: BundleStorageService {
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
@@ -1479,13 +1605,19 @@ class BundleFileStorageService: BundleStorageService {
 
             // 5) Verify bundle integrity (hash or signature based on fileHash format)
             NSLog("[BundleStorage] Verifying bundle integrity...")
-            progressHandler(UpdateProgress.verificationStart)
+            self.emitArchiveProgress(
+                progressHandler: progressHandler,
+                progress: UpdateProgress.verificationStart
+            )
             let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
             let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
             switch verificationResult {
             case .success:
                 NSLog("[BundleStorage] Bundle verification completed successfully")
-                progressHandler(UpdateProgress.verificationEnd)
+                self.emitArchiveProgress(
+                    progressHandler: progressHandler,
+                    progress: UpdateProgress.verificationEnd
+                )
             case .failure(let error):
                 NSLog("[BundleStorage] Bundle verification failed: \(error)")
                 try? self.fileSystem.removeItem(atPath: tmpDir)
@@ -1499,12 +1631,14 @@ class BundleFileStorageService: BundleStorageService {
             logFileSystemDiagnostics(path: tempBundleFile, context: "Before Extraction")
             do {
                 try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
-                    let progress = Self.mapProgress(
-                        unzipProgress,
-                        start: UpdateProgress.extractionStart,
-                        end: UpdateProgress.extractionEnd
+                    self.emitArchiveProgress(
+                        progressHandler: progressHandler,
+                        progress: Self.mapProgress(
+                            unzipProgress,
+                            start: UpdateProgress.extractionStart,
+                            end: UpdateProgress.extractionEnd
+                        )
                     )
-                    progressHandler(progress)
                 })
                 NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
                 logFileSystemDiagnostics(path: tmpDir, context: "After Extraction")
@@ -1522,7 +1656,10 @@ class BundleFileStorageService: BundleStorageService {
             try? self.fileSystem.removeItem(atPath: tempBundleFile)
 
             // 8) Verify that a valid bundle file exists inside tmpDir
-            progressHandler(UpdateProgress.bundleValidation)
+            self.emitArchiveProgress(
+                progressHandler: progressHandler,
+                progress: UpdateProgress.bundleValidation
+            )
             switch self.findBundleFile(in: tmpDir) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
@@ -1566,13 +1703,19 @@ class BundleFileStorageService: BundleStorageService {
                         // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        progressHandler(UpdateProgress.activationReady)
+                        self.emitArchiveProgress(
+                            progressHandler: progressHandler,
+                            progress: UpdateProgress.activationReady
+                        )
                         self.scheduleCleanupOldBundles(
                             bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
                         )
 
                         // 15) Complete with success
-                        progressHandler(UpdateProgress.complete)
+                        self.emitArchiveProgress(
+                            progressHandler: progressHandler,
+                            progress: UpdateProgress.complete
+                        )
                         completion(.success(true))
                     case .failure(let err):
                         let nsError = err as NSError

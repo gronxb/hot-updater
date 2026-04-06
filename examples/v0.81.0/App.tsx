@@ -195,6 +195,70 @@ const E2ENavButton = ({
   </Pressable>
 );
 
+const formatFallbackPercent = (value: number | null | undefined) => {
+  if (typeof value !== "number") {
+    return "null";
+  }
+
+  return `${Math.round(value * 100)}%`;
+};
+
+type ExampleFallbackProps = {
+  artifactType: "archive" | "manifest" | null;
+  completedFiles: number | null;
+  currentFilePath: string | null;
+  currentFileProgress: number | null;
+  message: string | null;
+  progress: number;
+  status: "CHECK_FOR_UPDATE" | "UPDATING";
+  totalFiles: number | null;
+};
+
+const UpdateFallbackModal = ({
+  artifactType,
+  completedFiles,
+  currentFilePath,
+  currentFileProgress,
+  message,
+  progress,
+  status,
+  totalFiles,
+}: ExampleFallbackProps) => (
+  <Modal transparent visible={true}>
+    <View style={styles.fallbackOverlay}>
+      <View style={styles.fallbackCard}>
+        <Text style={styles.fallbackTitle} testID="fallback-status-title">
+          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
+        </Text>
+        <Text style={styles.fallbackProgressValue} testID="fallback-total-progress">
+          {formatFallbackPercent(progress)}
+        </Text>
+        <Text style={styles.fallbackMetaText} testID="fallback-artifact-type">
+          artifactType: {artifactType ?? "null"}
+        </Text>
+        <Text style={styles.fallbackMetaText} testID="fallback-total-files">
+          totalFiles: {totalFiles ?? "null"}
+        </Text>
+        <Text style={styles.fallbackMetaText} testID="fallback-completed-files">
+          completedFiles: {completedFiles ?? "null"}
+        </Text>
+        <Text style={styles.fallbackMetaText} testID="fallback-current-file-path">
+          currentFilePath: {currentFilePath ?? "null"}
+        </Text>
+        <Text
+          style={styles.fallbackMetaText}
+          testID="fallback-current-file-progress"
+        >
+          currentFileProgress: {formatFallbackPercent(currentFileProgress)}
+        </Text>
+        <Text style={styles.fallbackMetaText} testID="fallback-message">
+          message: {message ?? "null"}
+        </Text>
+      </View>
+    </View>
+  </Modal>
+);
+
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
@@ -851,10 +915,28 @@ const styles = StyleSheet.create({
   fallbackOverlay: {
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: 10,
     flex: 1,
     justifyContent: "center",
     padding: 20,
+  },
+  fallbackCard: {
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
+    borderRadius: 20,
+    gap: 8,
+    maxWidth: 360,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    width: "100%",
+  },
+  fallbackMetaText: {
+    color: "#e2e8f0",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  fallbackProgressValue: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "800",
   },
   fallbackTitle: {
     color: "#ffffff",
@@ -940,20 +1022,7 @@ export default HotUpdater.wrap({
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;
   },
-  fallbackComponent: ({ progress, status }) => (
-    <Modal transparent visible={true}>
-      <View style={styles.fallbackOverlay}>
-        <Text style={styles.fallbackTitle}>
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        {progress > 0 ? (
-          <Text style={styles.fallbackTitle}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
-  ),
+  fallbackComponent: UpdateFallbackModal,
   onError: (error) => {
     console.error(error);
   },

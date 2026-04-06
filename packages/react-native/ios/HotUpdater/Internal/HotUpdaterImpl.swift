@@ -243,11 +243,16 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { progress in
-                // Call JS progress callback if provided
-                if let callback = progressCallback {
-                    DispatchQueue.main.async {
-                        callback([progress])
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .updateProgressDidChange,
+                        object: nil,
+                        userInfo: payload.userInfo
+                    )
+
+                    if let callback = progressCallback {
+                        callback([payload.progress])
                     }
                 }
             }) { [weak self] result in

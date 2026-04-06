@@ -133,7 +133,18 @@ class HotUpdaterModule internal constructor(
                         try {
                             val progressParams =
                                 WritableNativeMap().apply {
-                                    putDouble("progress", progress)
+                                    putDouble("progress", progress.progress)
+                                    putString("artifactType", progress.artifactType)
+                                    progress.totalFiles?.let { putInt("totalFiles", it) } ?: putNull("totalFiles")
+                                    progress.completedFiles?.let {
+                                        putInt("completedFiles", it)
+                                    } ?: putNull("completedFiles")
+                                    progress.currentFilePath?.let {
+                                        putString("currentFilePath", it)
+                                    } ?: putNull("currentFilePath")
+                                    progress.currentFileProgress?.let {
+                                        putDouble("currentFileProgress", it)
+                                    } ?: putNull("currentFileProgress")
                                 }
 
                             this@HotUpdaterModule

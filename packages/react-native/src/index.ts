@@ -32,6 +32,8 @@ import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,
+  HotUpdaterProgressArtifactType,
+  HotUpdaterProgressEvent,
   Manifest,
   ManifestAsset,
   NotifyAppReadyResult,
@@ -48,6 +50,7 @@ export {
   type SignatureVerificationFailure,
 } from "./types";
 export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
+export type { HotUpdaterFallbackComponentProps } from "./wrap";
 
 /**
  * Register getBaseURL to global objects for use without imports.

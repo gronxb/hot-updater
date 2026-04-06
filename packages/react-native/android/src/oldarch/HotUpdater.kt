@@ -49,7 +49,7 @@ class HotUpdater {
             manifestFileHash: String?,
             changedAssets: Map<String, ChangedAssetDescriptor>?,
             channel: String?,
-            progressCallback: (Double) -> Unit,
+            progressCallback: (UpdateProgressPayload) -> Unit,
         ) {
             getInstance(context).updateBundle(
                 bundleId,

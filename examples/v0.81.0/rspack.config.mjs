@@ -4,6 +4,15 @@ import * as Repack from '@callstack/repack';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const appNodeModules = path.join(__dirname, 'node_modules');
+const resolveOptions = Repack.getResolveOptions();
+
+const runtimeAliases = {
+  react$: path.join(appNodeModules, 'react'),
+  'react/jsx-dev-runtime$': path.join(appNodeModules, 'react/jsx-dev-runtime.js'),
+  'react/jsx-runtime$': path.join(appNodeModules, 'react/jsx-runtime.js'),
+  'react-native$': path.join(appNodeModules, 'react-native'),
+};
 
 /**
  * Rspack configuration enhanced with Re.Pack defaults for React Native.
@@ -16,7 +25,11 @@ export default Repack.defineRspackConfig({
   context: __dirname,
   entry: './index.js',
   resolve: {
-    ...Repack.getResolveOptions(),
+    ...resolveOptions,
+    alias: {
+      ...(resolveOptions.alias ?? {}),
+      ...runtimeAliases,
+    },
   },
   module: {
     rules: [

@@ -202,10 +202,19 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
     : null;
 };
 
+export type HotUpdaterProgressArtifactType = "archive" | "manifest";
+
+export interface HotUpdaterProgressEvent {
+  progress: number;
+  artifactType?: HotUpdaterProgressArtifactType | null;
+  totalFiles?: number | null;
+  completedFiles?: number | null;
+  currentFilePath?: string | null;
+  currentFileProgress?: number | null;
+}
+
 export type HotUpdaterEvent = {
-  onProgress: {
-    progress: number;
-  };
+  onProgress: HotUpdaterProgressEvent;
 };
 
 const eventEmitter = new NativeEventEmitter(HotUpdaterNative);

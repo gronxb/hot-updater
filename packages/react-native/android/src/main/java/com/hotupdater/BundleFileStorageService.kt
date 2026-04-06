@@ -13,6 +13,15 @@ data class ChangedAssetDescriptor(
     val fileHash: String,
 )
 
+data class UpdateProgressPayload(
+    val progress: Double,
+    val artifactType: String,
+    val totalFiles: Int? = null,
+    val completedFiles: Int? = null,
+    val currentFilePath: String? = null,
+    val currentFileProgress: Double? = null,
+)
+
 /**
  * Interface for bundle storage operations
  */
@@ -58,7 +67,7 @@ interface BundleStorageService {
         manifestUrl: String?,
         manifestFileHash: String?,
         changedAssets: Map<String, ChangedAssetDescriptor>?,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     )
 
     /**
@@ -121,6 +130,55 @@ class BundleFileStorageService(
 ) : BundleStorageService {
     companion object {
         private const val TAG = "BundleStorage"
+    }
+
+    private fun emitArchiveProgress(
+        progressCallback: (UpdateProgressPayload) -> Unit,
+        progress: Double,
+    ) {
+        progressCallback(
+            UpdateProgressPayload(
+                progress = progress.coerceIn(0.0, 1.0),
+                artifactType = "archive",
+            ),
+        )
+    }
+
+    private fun calculateManifestOverallProgress(
+        totalFiles: Int,
+        completedFiles: Int,
+        currentFileProgress: Double = 0.0,
+    ): Double {
+        val effectiveTotal = (totalFiles + 1).coerceAtLeast(1)
+        return (
+            (completedFiles.toDouble() + currentFileProgress.coerceIn(0.0, 1.0)) /
+                effectiveTotal.toDouble()
+        ).coerceIn(0.0, 0.99)
+    }
+
+    private fun emitManifestProgress(
+        progressCallback: (UpdateProgressPayload) -> Unit,
+        totalFiles: Int,
+        completedFiles: Int,
+        currentFilePath: String?,
+        currentFileProgress: Double?,
+    ) {
+        val normalizedCompletedFiles = completedFiles.coerceIn(0, totalFiles)
+        progressCallback(
+            UpdateProgressPayload(
+                progress =
+                    calculateManifestOverallProgress(
+                        totalFiles = totalFiles,
+                        completedFiles = normalizedCompletedFiles,
+                        currentFileProgress = currentFileProgress ?: 0.0,
+                    ),
+                artifactType = "manifest",
+                totalFiles = totalFiles,
+                completedFiles = normalizedCompletedFiles,
+                currentFilePath = currentFilePath,
+                currentFileProgress = currentFileProgress?.coerceIn(0.0, 1.0),
+            ),
+        )
     }
 
     private data class ParsedBundleManifest(
@@ -670,7 +728,7 @@ class BundleFileStorageService(
         manifestUrl: String?,
         manifestFileHash: String?,
         changedAssets: Map<String, ChangedAssetDescriptor>?,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         Log.d(
             TAG,
@@ -827,7 +885,7 @@ class BundleFileStorageService(
                     },
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
-                    progressCallback(downloadProgress * 0.8)
+                    emitArchiveProgress(progressCallback, downloadProgress * 0.8)
                 }
 
             // Check for disk space error first before processing download result
@@ -882,7 +940,10 @@ class BundleFileStorageService(
                             tmpDir.absolutePath,
                         ) { unzipProgress ->
                             // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
-                            progressCallback(0.8 + (unzipProgress * 0.2))
+                            emitArchiveProgress(
+                                progressCallback,
+                                0.8 + (unzipProgress * 0.2),
+                            )
                         }
                     ) {
                         Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
@@ -978,7 +1039,7 @@ class BundleFileStorageService(
         changedAssets: Map<String, ChangedAssetDescriptor>,
         bundleStoreDir: File,
         finalBundleDir: File,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         val activeBundleDir = getActiveBundleDir()
         val currentManifest =
@@ -1000,7 +1061,13 @@ class BundleFileStorageService(
                         URL(manifestUrl),
                         manifestFile,
                     ) { downloadProgress ->
-                        progressCallback(downloadProgress * 0.15)
+                        emitManifestProgress(
+                            progressCallback = progressCallback,
+                            totalFiles = 1,
+                            completedFiles = 0,
+                            currentFilePath = "manifest.json",
+                            currentFileProgress = downloadProgress,
+                        )
                     }
             ) {
                 is DownloadResult.Error -> {
@@ -1024,12 +1091,18 @@ class BundleFileStorageService(
                 throw HotUpdaterException.signatureVerificationFailed(e)
             }
 
-            progressCallback(0.2)
-
             val targetManifest = parseBundleManifestFromFile(manifestFile) ?: throw HotUpdaterException.invalidBundle()
             if (targetManifest.bundleId != bundleId) {
                 throw HotUpdaterException.invalidBundle()
             }
+            val manifestTotalFiles = 1 + targetManifest.assets.size
+            emitManifestProgress(
+                progressCallback = progressCallback,
+                totalFiles = manifestTotalFiles,
+                completedFiles = 1,
+                currentFilePath = null,
+                currentFileProgress = null,
+            )
 
             if (tmpDir.exists()) {
                 tmpDir.deleteRecursively()
@@ -1037,11 +1110,10 @@ class BundleFileStorageService(
             tmpDir.mkdirs()
 
             val targetEntries = targetManifest.assets.entries.toList()
-            val totalAssets = targetEntries.size.coerceAtLeast(1)
-
             targetEntries.forEachIndexed { index, (assetPath, expectedHash) ->
                 val targetFile = File(tmpDir, assetPath)
                 val currentHash = currentManifest?.assets?.get(assetPath)
+                val completedFiles = 1 + index
 
                 if (currentHash == expectedHash) {
                     val sourceDir =
@@ -1056,8 +1128,13 @@ class BundleFileStorageService(
                         )
                     }
                     copyBundleFile(sourceFile, targetFile)
-                    val progress = 0.2 + (((index + 1).toDouble() / totalAssets.toDouble()) * 0.72)
-                    progressCallback(progress)
+                    emitManifestProgress(
+                        progressCallback = progressCallback,
+                        totalFiles = manifestTotalFiles,
+                        completedFiles = completedFiles + 1,
+                        currentFilePath = null,
+                        currentFileProgress = null,
+                    )
                     return@forEachIndexed
                 }
 
@@ -1079,9 +1156,13 @@ class BundleFileStorageService(
                             URL(changedAsset.fileUrl),
                             targetFile,
                         ) { downloadProgress ->
-                            val progress =
-                                0.2 + (((index.toDouble() + downloadProgress) / totalAssets.toDouble()) * 0.72)
-                            progressCallback(progress)
+                            emitManifestProgress(
+                                progressCallback = progressCallback,
+                                totalFiles = manifestTotalFiles,
+                                completedFiles = completedFiles,
+                                currentFilePath = assetPath,
+                                currentFileProgress = downloadProgress,
+                            )
                         }
                 ) {
                     is DownloadResult.Error -> {
@@ -1142,7 +1223,16 @@ class BundleFileStorageService(
 
             tempDir.deleteRecursively()
             cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
-            progressCallback(1.0)
+            progressCallback(
+                UpdateProgressPayload(
+                    progress = 1.0,
+                    artifactType = "manifest",
+                    totalFiles = manifestTotalFiles,
+                    completedFiles = manifestTotalFiles,
+                    currentFilePath = null,
+                    currentFileProgress = null,
+                ),
+            )
         } catch (e: Exception) {
             tempDir.deleteRecursively()
             tmpDir.deleteRecursively()
