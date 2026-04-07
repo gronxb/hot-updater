@@ -19,9 +19,9 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun reloadProcess(promise: Promise)
 
-    abstract fun notifyAppReady(): WritableMap
+    abstract fun notifyAppReady(): String
 
-    abstract fun getCrashHistory(): WritableArray
+    abstract fun getCrashHistory(): String
 
     abstract fun clearCrashHistory(): Boolean
 
@@ -33,7 +33,7 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getBundleId(): String?
 
-    abstract fun getManifest(): WritableMap
+    abstract fun getManifest(): String
 
     abstract fun resetChannel(promise: Promise)
 }

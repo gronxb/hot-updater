@@ -153,10 +153,16 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun notifyAppReady(): WritableNativeMap = getInstance().notifyAppReady().toWritableNativeMap()
+    override fun notifyAppReady(): String {
+        val result = getInstance().notifyAppReady()
+        return org.json.JSONObject(result).toString()
+    }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getCrashHistory(): WritableNativeArray = getInstance().getCrashHistory().toWritableNativeArray()
+    override fun getCrashHistory(): String {
+        val history = getInstance().getCrashHistory()
+        return org.json.JSONArray(history).toString()
+    }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun clearCrashHistory(): Boolean {
@@ -177,7 +183,10 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
+    override fun getManifest(): String {
+        val result = getInstance().getManifest()
+        return org.json.JSONObject(result).toString()
+    }
 
     @ReactMethod
     override fun setCohort(cohort: String) {
