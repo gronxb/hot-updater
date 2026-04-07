@@ -269,6 +269,14 @@ export function createPluginDatabaseCore<TContext = unknown>(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
     ): Promise<UpdateInfo | null> {
+      const plugin = getPlugin();
+      const directGetUpdateInfo = plugin.getUpdateInfo;
+      if (directGetUpdateInfo) {
+        return context === undefined
+          ? await directGetUpdateInfo(args)
+          : await directGetUpdateInfo(args, context);
+      }
+
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
       const baseWhere = getBaseWhere({

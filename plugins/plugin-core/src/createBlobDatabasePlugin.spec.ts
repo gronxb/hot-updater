@@ -76,10 +76,14 @@ const bundlesData = [
 let fakeStore: Record<string, string> = {};
 // 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[] }[] = [];
+let listObjectCalls: string[] = [];
+let loadObjectCalls: string[] = [];
 
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
+  listObjectCalls = [];
+  loadObjectCalls = [];
 });
 
 afterEach(() => {
@@ -88,11 +92,13 @@ afterEach(() => {
 
 describe("blobDatabase plugin", () => {
   async function listObjects(prefix: string): Promise<string[]> {
+    listObjectCalls.push(prefix);
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
   async function loadObject<T>(path: string): Promise<T | null> {
+    loadObjectCalls.push(path);
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -136,6 +142,197 @@ describe("blobDatabase plugin", () => {
         invalidatePaths,
       }),
     })({})();
+  });
+
+  const seedUpdateManifests = (bundles: Bundle[]) => {
+    const bundlesByKey = new Map<string, Bundle[]>();
+    const targetVersionsByKey = new Map<string, Set<string>>();
+
+    for (const bundle of bundles) {
+      const target = bundle.targetAppVersion ?? bundle.fingerprintHash;
+      if (!target) {
+        continue;
+      }
+
+      const key = `${bundle.channel}/${bundle.platform}/${target}/update.json`;
+      const storedBundles = bundlesByKey.get(key) ?? [];
+      storedBundles.push(bundle);
+      bundlesByKey.set(key, storedBundles);
+
+      if (bundle.targetAppVersion) {
+        const targetVersionsKey = `${bundle.channel}/${bundle.platform}/target-app-versions.json`;
+        const targetVersions =
+          targetVersionsByKey.get(targetVersionsKey) ?? new Set<string>();
+        targetVersions.add(bundle.targetAppVersion);
+        targetVersionsByKey.set(targetVersionsKey, targetVersions);
+      }
+    }
+
+    for (const [key, storedBundles] of bundlesByKey.entries()) {
+      fakeStore[key] = JSON.stringify(
+        storedBundles.sort((left, right) => right.id.localeCompare(left.id)),
+      );
+    }
+
+    for (const [key, targetVersions] of targetVersionsByKey.entries()) {
+      fakeStore[key] = JSON.stringify(Array.from(targetVersions));
+    }
+  };
+
+  it("uses direct app-version manifests for update checks without reloading all bundles", async () => {
+    const latestBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+    const previousBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000001",
+    );
+
+    seedUpdateManifests([previousBundle, latestBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: latestBundle.fileHash,
+      id: latestBundle.id,
+      message: latestBundle.message,
+      shouldForceUpdate: latestBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: latestBundle.storageUri,
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      "production/ios/target-app-versions.json",
+      "production/ios/*/update.json",
+    ]);
+  });
+
+  it("uses fingerprint manifests directly for update checks", async () => {
+    const fingerprintBundle: Bundle = {
+      ...DEFAULT_BUNDLE,
+      channel: "production",
+      id: "00000000-0000-0000-0000-000000000010",
+      platform: "ios",
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-1",
+    };
+
+    seedUpdateManifests([fingerprintBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: fingerprintBundle.fileHash,
+      id: fingerprintBundle.id,
+      message: fingerprintBundle.message,
+      shouldForceUpdate: fingerprintBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: fingerprintBundle.storageUri,
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      "production/ios/fingerprint-1/update.json",
+    ]);
+  });
+
+  it("respects cohort eligibility when selecting app-version updates", async () => {
+    const gatedBundle: Bundle = {
+      ...createBundleJson(
+        "production",
+        "ios",
+        "*",
+        "00000000-0000-0000-0000-000000000021",
+      ),
+      targetCohorts: ["beta"],
+    };
+    const fallbackBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000020",
+    );
+    fallbackBundle.targetCohorts = ["stable"];
+
+    seedUpdateManifests([fallbackBundle, gatedBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        cohort: "stable",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: fallbackBundle.id,
+      status: "UPDATE",
+    });
+  });
+
+  it("returns rollback candidates from direct manifests when the current bundle is no longer eligible", async () => {
+    const currentBundle: Bundle = {
+      ...createBundleJson(
+        "production",
+        "ios",
+        "*",
+        "00000000-0000-0000-0000-000000000031",
+      ),
+      targetCohorts: ["beta"],
+    };
+    const rollbackBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000030",
+    );
+
+    seedUpdateManifests([rollbackBundle, currentBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: currentBundle.id,
+        cohort: "stable",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: rollbackBundle.fileHash,
+      id: rollbackBundle.id,
+      message: rollbackBundle.message,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      storageUri: rollbackBundle.storageUri,
+    });
+  });
+
+  it("respects minBundleId when no direct-manifest candidates are available", async () => {
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000040",
+        minBundleId: "00000000-0000-0000-0000-000000000040",
+        platform: "ios",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("should append a new bundle and commit to S3", async () => {

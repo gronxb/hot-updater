@@ -15,6 +15,8 @@
     "bench:update-check": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts packages/server/src/db/ormUpdateCheck.bench.ts",
     "bench:update-check:plugin": "node ./scripts/bench.mjs packages/server/src/db/pluginUpdateCheck.bench.ts",
     "bench:update-check:orm": "node ./scripts/bench.mjs packages/server/src/db/ormUpdateCheck.bench.ts",
+    "bench:lambda": "node ./scripts/bench.mjs plugins/aws/lambda/updateCheck.bench.ts",
+    "bench:lambda:memory": "node ./scripts/bench-memory.mjs plugins/aws/lambda/updateCheck.memory.spec.ts",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*,docs",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
     "e2e:maestro": "node ./e2e/maestro/scripts/run.ts",

@@ -31,6 +31,111 @@ type TestEnv = {
 type TestContext = RequestEnvContext<TestEnv>;
 
 describe("runtime createHotUpdater", () => {
+  it("resolves storage URLs with handler context when database fast-path is used", async () => {
+    const request = new Request(
+      "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
+        `${NIL_UUID}/${NIL_UUID}`,
+    );
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>();
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: bundle.fileHash,
+      id: bundle.id,
+      message: bundle.message,
+      shouldForceUpdate: bundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: bundle.storageUri,
+    }));
+    const getDownloadUrl = vi.fn<StoragePlugin<TestContext>["getDownloadUrl"]>(
+      async (_storageUri, context) => {
+        return {
+          fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
+        };
+      },
+    );
+
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        return id === bundle.id ? bundle : null;
+      },
+      getBundles,
+      getUpdateInfo,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage: StoragePlugin<TestContext> = {
+      name: "testStorage",
+      supportedProtocol: "s3",
+      async upload(key) {
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
+      async delete() {},
+      getDownloadUrl,
+    };
+
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [storage],
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: true,
+        bundles: false,
+      },
+    });
+
+    const response = await hotUpdater.handler(request, {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      fileHash: "hash123",
+      fileUrl: "https://assets.example.com/bundle.zip",
+      id: "00000000-0000-0000-0000-000000000001",
+      message: "Test bundle",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
+    expect(getUpdateInfo).toHaveBeenCalledWith(
+      {
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: NIL_UUID,
+        channel: "production",
+        cohort: undefined,
+        minBundleId: NIL_UUID,
+        platform: "ios",
+      },
+      expect.objectContaining({
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request: expect.any(Request),
+      }),
+    );
+    expect(getBundles).not.toHaveBeenCalled();
+    expect(getDownloadUrl).toHaveBeenCalledWith(
+      "s3://test-bucket/bundles/bundle.zip",
+      expect.objectContaining({
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request: expect.any(Request),
+      }),
+    );
+  });
+
   it("passes the handler context to database and storage resolution", async () => {
     const request = new Request(
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +

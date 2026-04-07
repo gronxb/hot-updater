@@ -1,6 +1,20 @@
-import type { Bundle, Platform } from "@hot-updater/core";
+import type {
+  AppVersionGetBundlesArgs,
+  Bundle,
+  FingerprintGetBundlesArgs,
+  GetBundlesArgs,
+  Platform,
+  UpdateInfo,
+} from "@hot-updater/core";
 
-export type { Bundle, Platform } from "@hot-updater/core";
+export type {
+  AppVersionGetBundlesArgs,
+  Bundle,
+  FingerprintGetBundlesArgs,
+  GetBundlesArgs,
+  Platform,
+  UpdateInfo,
+} from "@hot-updater/core";
 
 export * from "./utils";
 
@@ -65,6 +79,10 @@ export interface DatabasePlugin<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<Bundle | null>;
+  getUpdateInfo?: (
+    args: GetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<UpdateInfo | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,

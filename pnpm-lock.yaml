@@ -2054,6 +2054,9 @@ importers:
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@hot-updater/js':
+        specifier: workspace:*
+        version: link:../js
       es-toolkit:
         specifier: ^1.32.0
         version: 1.32.0
