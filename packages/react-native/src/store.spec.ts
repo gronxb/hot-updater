@@ -28,24 +28,125 @@ describe("hotUpdaterStore", () => {
     expect(emitProgress).toBeTypeOf("function");
 
     emitProgress?.({
-      artifactType: "manifest",
-      completedFiles: 2,
-      currentFilePath: "index.ios.bundle",
-      currentFileProgress: 0.5,
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 1,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 0.5,
+            status: "downloading",
+          },
+        ],
+        totalFilesCount: 2,
+      },
       progress: 0.42,
-      totalFiles: 4,
     });
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
-      artifactType: "manifest",
+      artifactType: "diff",
       details: {
-        completedFiles: 2,
-        currentFilePath: "index.ios.bundle",
-        currentFileProgress: 0.5,
-        totalFiles: 4,
+        completedFilesCount: 1,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 0.5,
+            status: "downloading",
+          },
+        ],
+        totalFilesCount: 2,
       },
       isUpdateDownloaded: false,
       progress: 0.42,
+    });
+  });
+
+  it("stores diff snapshot transitions from downloading to downloaded", async () => {
+    const { hotUpdaterStore } = await import("./store");
+    const emitProgress = listeners.get("onProgress");
+
+    emitProgress?.({
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 0,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 0.6,
+            status: "downloading",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 0,
+            status: "pending",
+          },
+        ],
+        totalFilesCount: 2,
+      },
+      progress: 0.4,
+    });
+
+    emitProgress?.({
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 1,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 0,
+            status: "pending",
+          },
+        ],
+        totalFilesCount: 2,
+      },
+      progress: 0.6,
+    });
+
+    expect(hotUpdaterStore.getSnapshot()).toEqual({
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 1,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 0,
+            status: "pending",
+          },
+        ],
+        totalFilesCount: 2,
+      },
+      isUpdateDownloaded: false,
+      progress: 0.6,
     });
   });
 
@@ -54,25 +155,41 @@ describe("hotUpdaterStore", () => {
     const emitProgress = listeners.get("onProgress");
 
     emitProgress?.({
-      artifactType: "manifest",
-      completedFiles: 3,
-      currentFilePath: "assets/logo.png",
-      currentFileProgress: 1,
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 2,
+        files: [
+          {
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 1,
+            path: "assets/logo.png",
+            progress: 1,
+            status: "downloaded",
+          },
+          {
+            order: 2,
+            path: "assets/bg.png",
+            progress: 0,
+            status: "pending",
+          },
+        ],
+        totalFilesCount: 3,
+      },
       progress: 0.9,
-      totalFiles: 5,
     });
 
     emitProgress?.({
       artifactType: "archive",
-      completedFiles: null,
-      currentFilePath: null,
-      currentFileProgress: null,
       progress: 0.25,
-      totalFiles: null,
     });
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
-      artifactType: null,
+      artifactType: "archive",
       details: null,
       isUpdateDownloaded: false,
       progress: 0.25,
@@ -84,12 +201,20 @@ describe("hotUpdaterStore", () => {
     const emitProgress = listeners.get("onProgress");
 
     emitProgress?.({
-      artifactType: "manifest",
-      completedFiles: 1,
-      currentFilePath: "manifest.json",
-      currentFileProgress: 0.8,
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 0,
+        files: [
+          {
+            order: 0,
+            path: "manifest.asset.png",
+            progress: 0,
+            status: "failed",
+          },
+        ],
+        totalFilesCount: 1,
+      },
       progress: 0.2,
-      totalFiles: 3,
     });
 
     emitProgress?.({
@@ -98,7 +223,7 @@ describe("hotUpdaterStore", () => {
     });
 
     expect(hotUpdaterStore.getSnapshot()).toEqual({
-      artifactType: null,
+      artifactType: "archive",
       details: null,
       isUpdateDownloaded: false,
       progress: 0.4,

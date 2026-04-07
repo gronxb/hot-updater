@@ -202,24 +202,37 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
     : null;
 };
 
-export type HotUpdaterProgressArtifactType = "archive" | "manifest";
+export type HotUpdaterProgressArtifactType = "archive" | "diff";
 
-export interface HotUpdaterManifestProgressDetails {
-  totalFiles: number;
-  completedFiles: number;
-  currentFilePath: string | null;
-  currentFileProgress: number | null;
-}
+export type HotUpdaterDiffFileStatus =
+  | "pending"
+  | "downloading"
+  | "downloaded"
+  | "failed";
 
-export interface HotUpdaterProgressEvent {
+export interface HotUpdaterDiffFileSnapshot {
+  path: string;
+  status: HotUpdaterDiffFileStatus;
   progress: number;
-  artifactType?: HotUpdaterProgressArtifactType | null;
-  details?: HotUpdaterManifestProgressDetails | null;
-  totalFiles?: number | null;
-  completedFiles?: number | null;
-  currentFilePath?: string | null;
-  currentFileProgress?: number | null;
+  order: number;
 }
+
+export interface HotUpdaterDiffProgressDetails {
+  totalFilesCount: number;
+  completedFilesCount: number;
+  files: HotUpdaterDiffFileSnapshot[];
+}
+
+export type HotUpdaterProgressEvent =
+  | {
+      progress: number;
+      artifactType: "archive";
+    }
+  | {
+      progress: number;
+      artifactType: "diff";
+      details: HotUpdaterDiffProgressDetails;
+    };
 
 export type HotUpdaterEvent = {
   onProgress: HotUpdaterProgressEvent;

@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 import type {
-  HotUpdaterManifestProgressDetails,
+  HotUpdaterDiffFileSnapshot,
+  HotUpdaterDiffProgressDetails,
   HotUpdaterProgressEvent,
 } from "./native";
 import { addListener } from "./native";
@@ -9,8 +10,8 @@ import { addListener } from "./native";
 export type HotUpdaterState = {
   progress: number;
   isUpdateDownloaded: boolean;
-  artifactType: "manifest" | null;
-  details: HotUpdaterManifestProgressDetails | null;
+  artifactType: "archive" | "diff" | null;
+  details: HotUpdaterDiffProgressDetails | null;
 };
 
 const createHotUpdaterStore = () => {
@@ -33,54 +34,39 @@ const createHotUpdaterStore = () => {
     }
   };
 
-  const normalizeManifestDetails = (
-    event: HotUpdaterProgressEvent,
-  ): HotUpdaterManifestProgressDetails | null => {
-    if (event.details) {
-      return {
-        completedFiles: Math.max(
-          0,
-          Math.min(event.details.completedFiles, event.details.totalFiles),
-        ),
-        currentFilePath: event.details.currentFilePath ?? null,
-        currentFileProgress:
-          typeof event.details.currentFileProgress === "number"
-            ? Math.max(0, Math.min(event.details.currentFileProgress, 1))
-            : null,
-        totalFiles: Math.max(0, event.details.totalFiles),
-      };
-    }
-
-    if (
-      event.artifactType !== "manifest" ||
-      typeof event.totalFiles !== "number" ||
-      typeof event.completedFiles !== "number"
-    ) {
-      return null;
-    }
+  const normalizeDiffDetails = (
+    details: HotUpdaterDiffProgressDetails,
+  ): HotUpdaterDiffProgressDetails => {
+    const totalFilesCount = Math.max(0, details.totalFilesCount);
+    const normalizedFiles: HotUpdaterDiffFileSnapshot[] = details.files
+      .map((file) => ({
+        order: Math.max(0, file.order),
+        path: file.path,
+        progress: Math.max(0, Math.min(file.progress, 1)),
+        status: file.status,
+      }))
+      .sort((left, right) => left.order - right.order);
 
     return {
-      completedFiles: Math.max(
+      completedFilesCount: Math.max(
         0,
-        Math.min(event.completedFiles, event.totalFiles),
+        Math.min(details.completedFilesCount, totalFilesCount),
       ),
-      currentFilePath: event.currentFilePath ?? null,
-      currentFileProgress:
-        typeof event.currentFileProgress === "number"
-          ? Math.max(0, Math.min(event.currentFileProgress, 1))
-          : null,
-      totalFiles: Math.max(0, event.totalFiles),
+      files: normalizedFiles,
+      totalFilesCount,
     };
   };
 
   const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
-    const manifestDetails = normalizeManifestDetails(event);
-    const nextProgress =
-      typeof event.progress === "number" ? event.progress : state.progress;
+    const nextProgress = Math.max(0, Math.min(event.progress, 1));
+    const nextDetails =
+      event.artifactType === "diff"
+        ? normalizeDiffDetails(event.details)
+        : null;
 
     state = {
-      artifactType: manifestDetails ? "manifest" : null,
-      details: manifestDetails,
+      artifactType: event.artifactType,
+      details: nextDetails,
       isUpdateDownloaded: nextProgress >= 1,
       progress: nextProgress,
     };
@@ -107,15 +93,11 @@ const createHotUpdaterStore = () => {
       nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
     }
 
-    if (newState.artifactType !== "manifest") {
-      nextState.artifactType = null;
-    }
-
     if (newState.details === undefined) {
       nextState.details = state.details;
     }
 
-    if (nextState.artifactType !== "manifest") {
+    if (nextState.artifactType !== "diff") {
       nextState.details = null;
     }
 

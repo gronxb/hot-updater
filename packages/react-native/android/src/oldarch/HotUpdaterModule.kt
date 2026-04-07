@@ -135,16 +135,30 @@ class HotUpdaterModule internal constructor(
                                 WritableNativeMap().apply {
                                     putDouble("progress", progress.progress)
                                     putString("artifactType", progress.artifactType)
-                                    progress.totalFiles?.let { putInt("totalFiles", it) } ?: putNull("totalFiles")
-                                    progress.completedFiles?.let {
-                                        putInt("completedFiles", it)
-                                    } ?: putNull("completedFiles")
-                                    progress.currentFilePath?.let {
-                                        putString("currentFilePath", it)
-                                    } ?: putNull("currentFilePath")
-                                    progress.currentFileProgress?.let {
-                                        putDouble("currentFileProgress", it)
-                                    } ?: putNull("currentFileProgress")
+                                    progress.details?.let { details ->
+                                        putMap(
+                                            "details",
+                                            WritableNativeMap().apply {
+                                                putInt("totalFilesCount", details.totalFilesCount)
+                                                putInt("completedFilesCount", details.completedFilesCount)
+                                                putArray(
+                                                    "files",
+                                                    WritableNativeArray().apply {
+                                                        details.files.forEach { file ->
+                                                            pushMap(
+                                                                WritableNativeMap().apply {
+                                                                    putString("path", file.path)
+                                                                    putString("status", file.status)
+                                                                    putDouble("progress", file.progress)
+                                                                    putInt("order", file.order)
+                                                                },
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
 
                             this@HotUpdaterModule

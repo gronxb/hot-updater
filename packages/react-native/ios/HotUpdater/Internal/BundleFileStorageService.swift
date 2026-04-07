@@ -15,35 +15,75 @@ public struct ChangedAssetDescriptor {
 public struct UpdateProgressPayload {
     public let progress: Double
     public let artifactType: String
-    public let totalFiles: Int?
-    public let completedFiles: Int?
-    public let currentFilePath: String?
-    public let currentFileProgress: Double?
+    public let details: DiffProgressDetails?
+    
+    public struct DiffProgressFileSnapshot {
+        public let path: String
+        public let status: String
+        public let progress: Double
+        public let order: Int
+
+        public init(
+            path: String,
+            status: String,
+            progress: Double,
+            order: Int
+        ) {
+            self.path = path
+            self.status = status
+            self.progress = progress
+            self.order = order
+        }
+
+        public var userInfo: [String: Any] {
+            return [
+                "path": path,
+                "status": status,
+                "progress": progress,
+                "order": order
+            ]
+        }
+    }
+
+    public struct DiffProgressDetails {
+        public let totalFilesCount: Int
+        public let completedFilesCount: Int
+        public let files: [DiffProgressFileSnapshot]
+
+        public init(
+            totalFilesCount: Int,
+            completedFilesCount: Int,
+            files: [DiffProgressFileSnapshot] = []
+        ) {
+            self.totalFilesCount = totalFilesCount
+            self.completedFilesCount = completedFilesCount
+            self.files = files
+        }
+
+        public var userInfo: [String: Any] {
+            return [
+                "totalFilesCount": totalFilesCount,
+                "completedFilesCount": completedFilesCount,
+                "files": files.map(\.userInfo)
+            ]
+        }
+    }
 
     public init(
         progress: Double,
         artifactType: String,
-        totalFiles: Int? = nil,
-        completedFiles: Int? = nil,
-        currentFilePath: String? = nil,
-        currentFileProgress: Double? = nil
+        details: DiffProgressDetails? = nil
     ) {
         self.progress = progress
         self.artifactType = artifactType
-        self.totalFiles = totalFiles
-        self.completedFiles = completedFiles
-        self.currentFilePath = currentFilePath
-        self.currentFileProgress = currentFileProgress
+        self.details = details
     }
 
     public var userInfo: [String: Any] {
         return [
             "artifactType": artifactType,
             "progress": progress,
-            "totalFiles": totalFiles ?? NSNull(),
-            "completedFiles": completedFiles ?? NSNull(),
-            "currentFilePath": currentFilePath ?? NSNull(),
-            "currentFileProgress": currentFileProgress ?? NSNull()
+            "details": details?.userInfo ?? NSNull()
         ]
     }
 }
@@ -238,40 +278,89 @@ class BundleFileStorageService: BundleStorageService {
         )
     }
 
-    private func calculateManifestOverallProgress(
-        totalFiles: Int,
-        completedFiles: Int,
-        currentFileProgress: Double = 0
-    ) -> Double {
-        let effectiveTotal = max(totalFiles + 1, 1)
-        let normalizedProgress =
-            (Double(completedFiles) + max(0, min(currentFileProgress, 1))) /
-            Double(effectiveTotal)
-        return max(0, min(normalizedProgress, 0.99))
+    private func createDiffProgressFiles(
+        changedAssets: [String: ChangedAssetDescriptor]
+    ) -> [UpdateProgressPayload.DiffProgressFileSnapshot] {
+        return changedAssets.keys.sorted().enumerated().map { index, path in
+            UpdateProgressPayload.DiffProgressFileSnapshot(
+                path: path,
+                status: "pending",
+                progress: 0,
+                order: index
+            )
+        }
     }
 
-    private func emitManifestProgress(
-        progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        totalFiles: Int,
-        completedFiles: Int,
-        currentFilePath: String?,
-        currentFileProgress: Double?
+    private func updateDiffProgressFile(
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        assetPath: String,
+        status: String,
+        progress: Double
     ) {
-        let normalizedCompletedFiles = max(0, min(completedFiles, totalFiles))
+        guard let fileIndex = files.firstIndex(where: { $0.path == assetPath }) else {
+            return
+        }
+
+        files[fileIndex] = UpdateProgressPayload.DiffProgressFileSnapshot(
+            path: files[fileIndex].path,
+            status: status,
+            progress: max(0, min(progress, 1)),
+            order: files[fileIndex].order
+        )
+    }
+
+    private func calculateDiffOverallProgress(
+        phase: String,
+        files: [UpdateProgressPayload.DiffProgressFileSnapshot],
+        manifestProgress: Double = 0
+    ) -> Double {
+        let normalizedManifestProgress = max(0, min(manifestProgress, 1))
+        switch phase {
+        case "manifest":
+            return normalizedManifestProgress * 0.15
+        case "downloading":
+            guard !files.isEmpty else {
+                return 0.92
+            }
+
+            let completedFilesCount = files.filter { $0.status == "downloaded" }.count
+            let activeProgressUnits = files
+                .filter { $0.status == "downloading" }
+                .reduce(0.0) { partialResult, file in
+                    partialResult + max(0, min(file.progress, 1))
+                }
+            let normalizedProgress =
+                (Double(completedFilesCount) + activeProgressUnits) / Double(files.count)
+            return max(0.2, min(0.2 + normalizedProgress * 0.72, 0.92))
+        case "finalizing":
+            return 0.97
+        case "completed":
+            return 1.0
+        default:
+            return 0
+        }
+    }
+
+    private func emitDiffProgress(
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        phase: String,
+        files: [UpdateProgressPayload.DiffProgressFileSnapshot],
+        manifestProgress: Double = 0
+    ) {
+        let completedFilesCount = files.filter { $0.status == "downloaded" }.count
         progressHandler(
             UpdateProgressPayload(
-                progress: calculateManifestOverallProgress(
-                    totalFiles: totalFiles,
-                    completedFiles: normalizedCompletedFiles,
-                    currentFileProgress: currentFileProgress ?? 0
+                progress: calculateDiffOverallProgress(
+                    phase: phase,
+                    files: files,
+                    manifestProgress: manifestProgress
                 ),
-                artifactType: "manifest",
-                totalFiles: totalFiles,
-                completedFiles: normalizedCompletedFiles,
-                currentFilePath: currentFilePath,
-                currentFileProgress: currentFileProgress.map {
-                    max(0, min($0, 1))
-                }
+                artifactType: "diff",
+                details: UpdateProgressPayload.DiffProgressDetails(
+                    totalFilesCount: files.count,
+                    completedFilesCount: completedFilesCount,
+                    files: files
+                )
             )
         )
     }
@@ -1196,18 +1285,24 @@ class BundleFileStorageService: BundleStorageService {
         let tempManifestPath = (tempDirectory as NSString).appendingPathComponent("manifest.json")
         let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
         let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
+        var diffFiles = createDiffProgressFiles(changedAssets: changedAssets)
 
         do {
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "manifest",
+                files: diffFiles,
+                manifestProgress: 0
+            )
             switch self.downloadFileSynchronously(
                 from: manifestUrl,
                 to: tempManifestPath,
                 progressHandler: { progress in
-                    self.emitManifestProgress(
+                    self.emitDiffProgress(
                         progressHandler: progressHandler,
-                        totalFiles: 1,
-                        completedFiles: 0,
-                        currentFilePath: "manifest.json",
-                        currentFileProgress: progress
+                        phase: "manifest",
+                        files: diffFiles,
+                        manifestProgress: progress
                     )
                 }
             ) {
@@ -1239,13 +1334,10 @@ class BundleFileStorageService: BundleStorageService {
             else {
                 throw BundleStorageError.invalidBundle
             }
-            let manifestTotalFiles = 1 + targetManifest.assets.count
-            self.emitManifestProgress(
+            self.emitDiffProgress(
                 progressHandler: progressHandler,
-                totalFiles: manifestTotalFiles,
-                completedFiles: 1,
-                currentFilePath: nil,
-                currentFileProgress: nil
+                phase: diffFiles.isEmpty ? "finalizing" : "downloading",
+                files: diffFiles
             )
 
             let currentManifest = getActiveBundleMetadataSnapshot().flatMap { snapshot in
@@ -1261,10 +1353,9 @@ class BundleFileStorageService: BundleStorageService {
 
             let sortedAssets = targetManifest.assets.sorted { $0.key < $1.key }
 
-            for (index, asset) in sortedAssets.enumerated() {
+            for asset in sortedAssets {
                 let assetPath = asset.key
                 let expectedHash = asset.value
-                let completedFiles = 1 + index
                 let destinationPath = (tmpDir as NSString).appendingPathComponent(assetPath)
                 let destinationDir = (destinationPath as NSString).deletingLastPathComponent
                 guard self.fileSystem.createDirectory(atPath: destinationDir) else {
@@ -1290,17 +1381,21 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
-                    self.emitManifestProgress(
-                        progressHandler: progressHandler,
-                        totalFiles: manifestTotalFiles,
-                        completedFiles: completedFiles + 1,
-                        currentFilePath: nil,
-                        currentFileProgress: nil
-                    )
                     continue
                 }
 
                 guard let changedAsset = changedAssets[assetPath] else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
                     throw BundleStorageError.downloadFailed(
                         NSError(domain: "HotUpdater", code: 0, userInfo: [
                             NSLocalizedDescriptionKey: "Changed asset missing from update response: \(assetPath)"
@@ -1309,6 +1404,17 @@ class BundleFileStorageService: BundleStorageService {
                 }
 
                 guard changedAsset.fileHash.caseInsensitiveCompare(expectedHash) == .orderedSame else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
                     throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
                 }
 
@@ -1316,20 +1422,60 @@ class BundleFileStorageService: BundleStorageService {
                     from: changedAsset.fileUrl,
                     to: destinationPath,
                     progressHandler: { progress in
-                        self.emitManifestProgress(
+                        self.updateDiffProgressFile(
+                            files: &diffFiles,
+                            assetPath: assetPath,
+                            status: "downloading",
+                            progress: progress
+                        )
+                        self.emitDiffProgress(
                             progressHandler: progressHandler,
-                            totalFiles: manifestTotalFiles,
-                            completedFiles: completedFiles,
-                            currentFilePath: assetPath,
-                            currentFileProgress: progress
+                            phase: "downloading",
+                            files: diffFiles
                         )
                     }
                 ) {
                 case .success(let downloadedFileURL):
                     guard HashUtils.verifyHash(fileURL: downloadedFileURL, expectedHash: expectedHash) else {
+                        updateDiffProgressFile(
+                            files: &diffFiles,
+                            assetPath: assetPath,
+                            status: "failed",
+                            progress: 1
+                        )
+                        self.emitDiffProgress(
+                            progressHandler: progressHandler,
+                            phase: "downloading",
+                            files: diffFiles
+                        )
                         throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
                     }
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "downloaded",
+                        progress: 1
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                            ? "finalizing"
+                            : "downloading",
+                        files: diffFiles
+                    )
                 case .failure(let error):
+                    let lastKnownProgress = diffFiles.first(where: { $0.path == assetPath })?.progress ?? 0
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: lastKnownProgress
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
                     if let downloadError = error as? DownloadError,
                        case .incompleteDownload(let expected, let actual) = downloadError {
                         throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
@@ -1337,6 +1483,12 @@ class BundleFileStorageService: BundleStorageService {
                     throw BundleStorageError.downloadFailed(error)
                 }
             }
+
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "finalizing",
+                files: diffFiles
+            )
 
             let manifestDestination = (tmpDir as NSString).appendingPathComponent("manifest.json")
             try writeManifestFile(targetManifest, to: manifestDestination)
@@ -1372,11 +1524,12 @@ class BundleFileStorageService: BundleStorageService {
                     progressHandler(
                         UpdateProgressPayload(
                             progress: UpdateProgress.complete,
-                            artifactType: "manifest",
-                            totalFiles: manifestTotalFiles,
-                            completedFiles: manifestTotalFiles,
-                            currentFilePath: nil,
-                            currentFileProgress: nil
+                            artifactType: "diff",
+                            details: UpdateProgressPayload.DiffProgressDetails(
+                                totalFilesCount: diffFiles.count,
+                                completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
+                                files: diffFiles
+                            )
                         )
                     )
                     completion(.success(true))
