@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.29.4
+
+### Patch Changes
+
+- aa96e1a: fix(android): oldarch sync methods crash with WritableNativeMap/Array return types
+  - @hot-updater/cli-tools@0.29.4
+  - @hot-updater/core@0.29.4
+  - @hot-updater/js@0.29.4
+  - @hot-updater/plugin-core@0.29.4
+
 ## 0.29.3
 
 ### Patch Changes
