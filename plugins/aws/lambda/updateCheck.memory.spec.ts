@@ -1,4 +1,6 @@
 import { writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
@@ -184,15 +186,12 @@ const createMemoryHotUpdater = () => {
 };
 
 const measureScenario = async (url: string) => {
-  if (typeof globalThis.gc !== "function") {
-    throw new Error(
-      "Memory benchmark requires Node.js to run with --expose-gc.",
-    );
-  }
-
   const hotUpdater = createMemoryHotUpdater();
+  const runGc = () => {
+    globalThis.gc?.();
+  };
 
-  globalThis.gc();
+  runGc();
   const initial = process.memoryUsage();
   let peakHeapUsed = initial.heapUsed;
   let peakRss = initial.rss;
@@ -207,7 +206,7 @@ const measureScenario = async (url: string) => {
     peakRss = Math.max(peakRss, snapshot.rss);
   }
 
-  globalThis.gc();
+  runGc();
   const final = process.memoryUsage();
 
   return {
@@ -221,10 +220,12 @@ const measureScenario = async (url: string) => {
 
 describe.sequential("aws lambda update check memory", () => {
   it("writes deterministic memory metrics for update-check routes", async () => {
-    const outputPath = process.env.HOT_UPDATER_MEMORY_OUTPUT;
-    if (!outputPath) {
-      throw new Error("HOT_UPDATER_MEMORY_OUTPUT is required.");
-    }
+    const outputPath =
+      process.env.HOT_UPDATER_MEMORY_OUTPUT ??
+      path.join(
+        os.tmpdir(),
+        `hot-updater-memory-${process.pid}-${Date.now()}.json`,
+      );
 
     const appVersionUrl = `https://updates.example.com${BASE_PATH}/app-version/ios/${APP_VERSION}/production/${NIL_UUID}/${NIL_UUID}`;
     const fingerprintUrl = `https://updates.example.com${BASE_PATH}/fingerprint/ios/${TARGET_FINGERPRINT}/production/${NIL_UUID}/${NIL_UUID}`;

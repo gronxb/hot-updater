@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, GetBundlesArgs, HotUpdaterContext } from "./types";
+import type { Bundle, GetBundlesArgs, RequestEnvContext } from "./types";
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -177,7 +177,7 @@ describe("createDatabasePlugin", () => {
       bundleId: baseBundle.id,
       platform: "ios",
     };
-    const context: HotUpdaterContext<{ assetHost: string }> = {
+    const context: RequestEnvContext<{ assetHost: string }> = {
       env: {
         assetHost: "https://assets.example.com",
       },

@@ -2,7 +2,7 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   DatabasePlugin,
-  HotUpdaterContext,
+  RequestEnvContext,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -29,7 +29,7 @@ const updateArgs: GetBundlesArgs = {
   platform: "ios",
 };
 
-type TestContext = HotUpdaterContext<{
+type TestContext = RequestEnvContext<{
   assetHost: string;
 }>;
 
