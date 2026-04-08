@@ -115,7 +115,7 @@ Your server must implement these endpoints (when using default routes):
 |--------|----------|-------------|
 | POST | `/hot-updater/api/bundles` | Create bundles |
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, after, before) |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
@@ -125,7 +125,9 @@ These endpoints are automatically created when you use `@hot-updater/server` wit
 `GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
 consumed by `standaloneRepository`:
 
-Cursor pagination is the official contract.
+Cursor pagination is the official contract. `page` is an optional positive
+integer that keeps page numbers stable for console and standalone repository
+requests.
 
 ```json
 {

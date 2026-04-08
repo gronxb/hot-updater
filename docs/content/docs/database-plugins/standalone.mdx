@@ -198,7 +198,9 @@ interface Bundle {
 `GET /api/bundles` must accept the pagination and filter query params used by
 the console and `standaloneRepository`, and return a paginated JSON body.
 
-Cursor-based pagination is the official contract.
+Cursor-based pagination is the official contract. `page` is an optional
+positive integer used alongside cursors when the caller needs stable page
+numbers.
 
 Supported query params:
 
@@ -207,6 +209,7 @@ Supported query params:
 | `channel` | `string` | Exact match |
 | `platform` | `"ios" \| "android"` | Exact match |
 | `limit` | `number` | Window size |
+| `page` | `number` | Optional positive page number for stable page-aligned requests |
 | `after` | `string` | Fetch the next window after this bundle ID |
 | `before` | `string` | Fetch the previous window before this bundle ID |
 

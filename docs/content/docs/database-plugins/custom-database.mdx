@@ -50,6 +50,7 @@ Your factory function must return an object with these methods:
   getBundles: (options: {
     where?: { channel?: string; platform?: string };
     limit: number;
+    page?: number;
     cursor?: { after?: string; before?: string };
   }) => Promise<Paginated<Bundle[]>>;
 
@@ -120,6 +121,9 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
           limit: String(options.limit),
         });
 
+        if (options.page !== undefined) {
+          params.set("page", String(options.page));
+        }
         if (options.cursor?.after) {
           params.set("after", options.cursor.after);
         }
