@@ -28,6 +28,8 @@ export interface PaginationInfo {
   hasPreviousPage: boolean;
   currentPage: number;
   totalPages: number;
+  nextCursor?: string | null;
+  previousCursor?: string | null;
 }
 
 export interface Paginated<TData> {
@@ -62,10 +64,36 @@ export interface DatabaseBundleQueryOrder {
   direction: "asc" | "desc";
 }
 
+export interface DatabaseBundleCursor {
+  /**
+   * Fetch the next window after this bundle ID.
+   *
+   * This is the preferred pagination mode for bundle-management queries.
+   */
+  after?: string;
+  /**
+   * Fetch the previous window before this bundle ID.
+   *
+   * This is the preferred pagination mode for bundle-management queries.
+   */
+  before?: string;
+}
+
 export interface DatabaseBundleQueryOptions {
   where?: DatabaseBundleQueryWhere;
   limit: number;
-  offset: number;
+  /**
+   * Legacy offset-based pagination.
+   *
+   * @deprecated Prefer cursor-based pagination with `cursor.after` or
+   * `cursor.before`. Offset-based pagination is kept for backwards
+   * compatibility and will be removed in a future major release.
+   */
+  offset?: number;
+  /**
+   * Preferred cursor-based pagination for bundle-management queries.
+   */
+  cursor?: DatabaseBundleCursor;
   orderBy?: DatabaseBundleQueryOrder;
 }
 

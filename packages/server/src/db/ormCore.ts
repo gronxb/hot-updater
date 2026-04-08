@@ -511,7 +511,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
       options: DatabaseBundleQueryOptions,
     ): Promise<Paginated<Bundle[]>> {
       const orm = await ensureORM();
-      const { where, limit, offset, orderBy } = options;
+      const { where, limit, offset = 0, orderBy } = options;
 
       const total = await orm.count("bundles", {
         where: buildBundleWhere(where),

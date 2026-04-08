@@ -54,7 +54,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset, orderBy } = options ?? {};
+        const { where, limit, offset = 0, orderBy } = options ?? {};
 
         if (
           (where?.targetAppVersionIn &&

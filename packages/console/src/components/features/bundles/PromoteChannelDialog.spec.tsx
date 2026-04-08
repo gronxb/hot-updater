@@ -225,6 +225,8 @@ describe("PromoteChannelDialog", () => {
     expect(mockSetBundleId).toHaveBeenCalledWith("bundle-copy-id", {
       channel: "beta",
       offset: "0",
+      after: undefined,
+      before: undefined,
     });
   });
 

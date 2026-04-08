@@ -179,6 +179,12 @@ describe("blobDatabase plugin", () => {
     }
   };
 
+  const seedBundlesIndex = (bundles: Bundle[]) => {
+    fakeStore["_index/bundles.json"] = JSON.stringify(
+      bundles.slice().sort((left, right) => right.id.localeCompare(left.id)),
+    );
+  };
+
   it("uses direct app-version manifests for update checks without reloading all bundles", async () => {
     const latestBundle = createBundleJson(
       "production",
@@ -875,6 +881,125 @@ describe("blobDatabase plugin", () => {
       currentPage: 1,
       totalPages: 1,
     });
+  });
+
+  it("rebuilds the management index with a broad scan once, then serves later reads without rescanning", async () => {
+    const bundleA = createBundleJson("production", "ios", "1.0.0", "index-A");
+    const bundleB = createBundleJson("production", "ios", "1.0.0", "index-B");
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      bundleA,
+      bundleB,
+    ]);
+
+    await plugin.getBundles({ limit: 20, offset: 0 });
+
+    expect(fakeStore["_index/bundles.json"]).toBeDefined();
+    expect(listObjectCalls).toEqual(["", ""]);
+    expect(loadObjectCalls.slice().sort()).toEqual(
+      ["_index/bundles.json", "production/ios/1.0.0/update.json"].sort(),
+    );
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await plugin.getBundles({
+      limit: 1,
+      cursor: {
+        after: bundleB.id,
+      },
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([]);
+  });
+
+  it("reads cursor pages from a stored index manifest without scanning update manifests", async () => {
+    const bundles = [
+      createBundleJson("production", "ios", "1.0.0", "bundle-300"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-200"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-100"),
+    ];
+
+    seedBundlesIndex(bundles);
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      cursor: {
+        after: "bundle-200",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual(["_index/bundles.json"]);
+  });
+
+  it("supports cursor pagination from the index manifest", async () => {
+    const bundles = [
+      createBundleJson("production", "ios", "1.0.0", "bundle-300"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-200"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-100"),
+    ];
+
+    await plugin.appendBundle(bundles[0]);
+    await plugin.appendBundle(bundles[1]);
+    await plugin.appendBundle(bundles[2]);
+    await plugin.commitBundle();
+
+    const firstPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      offset: 0,
+    });
+
+    expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-300",
+      "bundle-200",
+    ]);
+    expect(firstPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 2,
+      nextCursor: "bundle-200",
+    });
+    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
+
+    const secondPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
+    });
+
+    expect(secondPage.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(secondPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: false,
+      hasPreviousPage: true,
+      currentPage: 2,
+      totalPages: 2,
+      previousCursor: "bundle-100",
+    });
+    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
+
+    const previousPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      offset: 0,
+      cursor: {
+        before: secondPage.pagination.previousCursor ?? undefined,
+      },
+    });
+
+    expect(previousPage.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-300",
+      "bundle-200",
+    ]);
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {

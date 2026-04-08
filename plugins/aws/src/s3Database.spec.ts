@@ -68,6 +68,8 @@ let cloudfrontGetInvalidationError: Error | null = null;
 let cloudfrontInvalidationCounter = 0;
 let nextCloudfrontInvalidationStatuses: string[] | null = null;
 let cloudfrontInvalidationStatuses = new Map<string, string[]>();
+let listedObjectPrefixes: string[] = [];
+let loadedObjectKeys: string[] = [];
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -161,11 +163,14 @@ beforeEach(() => {
   cloudfrontInvalidationCounter = 0;
   nextCloudfrontInvalidationStatuses = null;
   cloudfrontInvalidationStatuses = new Map();
+  listedObjectPrefixes = [];
+  loadedObjectKeys = [];
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
       if (command instanceof ListObjectsV2Command) {
         const prefix = command.input.Prefix ?? "";
+        listedObjectPrefixes.push(prefix);
         const keys = Object.keys(fakeStore).filter((key) =>
           key.startsWith(prefix),
         );
@@ -176,6 +181,9 @@ beforeEach(() => {
       }
       if (command instanceof GetObjectCommand) {
         const key = command.input.Key;
+        if (key) {
+          loadedObjectKeys.push(key);
+        }
         if (key && fakeStore[key] !== undefined) {
           await delay(7);
           return { Body: Readable.from([Buffer.from(fakeStore[key])]) };
@@ -217,6 +225,47 @@ describe("s3Database plugin", () => {
     })();
   });
 
+  const seedUpdateManifests = (bundles: Bundle[]) => {
+    const bundlesByKey = new Map<string, Bundle[]>();
+    const targetVersionsByKey = new Map<string, Set<string>>();
+
+    for (const bundle of bundles) {
+      const target = bundle.targetAppVersion ?? bundle.fingerprintHash;
+      if (!target) {
+        continue;
+      }
+
+      const key = `${bundle.channel}/${bundle.platform}/${target}/update.json`;
+      const storedBundles = bundlesByKey.get(key) ?? [];
+      storedBundles.push(bundle);
+      bundlesByKey.set(key, storedBundles);
+
+      if (bundle.targetAppVersion) {
+        const targetVersionsKey = `${bundle.channel}/${bundle.platform}/target-app-versions.json`;
+        const targetVersions =
+          targetVersionsByKey.get(targetVersionsKey) ?? new Set<string>();
+        targetVersions.add(bundle.targetAppVersion);
+        targetVersionsByKey.set(targetVersionsKey, targetVersions);
+      }
+    }
+
+    for (const [key, storedBundles] of bundlesByKey.entries()) {
+      fakeStore[key] = JSON.stringify(
+        storedBundles.sort((left, right) => right.id.localeCompare(left.id)),
+      );
+    }
+
+    for (const [key, targetVersions] of targetVersionsByKey.entries()) {
+      fakeStore[key] = JSON.stringify(Array.from(targetVersions));
+    }
+  };
+
+  const seedBundlesIndex = (bundles: Bundle[]) => {
+    fakeStore["_index/bundles.json"] = JSON.stringify(
+      bundles.slice().sort((left, right) => right.id.localeCompare(left.id)),
+    );
+  };
+
   setupBundleMethodsTestSuite({
     getBundleById: (id) => plugin.getBundleById(id),
     getChannels: () => plugin.getChannels(),
@@ -237,6 +286,105 @@ describe("s3Database plugin", () => {
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
     },
+  });
+
+  it("uses direct app-version manifests for update checks without listing S3 objects", async () => {
+    const previousBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000001",
+    );
+    const latestBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+
+    seedUpdateManifests([previousBundle, latestBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: latestBundle.fileHash,
+      id: latestBundle.id,
+      message: latestBundle.message,
+      shouldForceUpdate: latestBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: latestBundle.storageUri,
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      "production/ios/target-app-versions.json",
+      "production/ios/*/update.json",
+    ]);
+  });
+
+  it("uses direct fingerprint manifests for update checks without listing S3 objects", async () => {
+    const fingerprintBundle = createBundleJsonFingerprint(
+      "production",
+      "ios",
+      "fingerprint-1",
+      "00000000-0000-0000-0000-000000000010",
+    );
+
+    seedUpdateManifests([fingerprintBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: fingerprintBundle.fileHash,
+      id: fingerprintBundle.id,
+      message: fingerprintBundle.message,
+      shouldForceUpdate: fingerprintBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: fingerprintBundle.storageUri,
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      "production/ios/fingerprint-1/update.json",
+    ]);
+  });
+
+  it("reads management cursor pages from the stored index manifest without scanning S3", async () => {
+    const bundles = [
+      createBundleJson("production", "ios", "1.0.0", "bundle-300"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-200"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-100"),
+    ];
+
+    seedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      cursor: {
+        after: "bundle-200",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual(["_index/bundles.json"]);
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -833,6 +981,7 @@ describe("s3Database plugin", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
+      nextCursor: "bundle2",
     });
 
     const secondPage = await plugin.getBundles({
@@ -848,6 +997,7 @@ describe("s3Database plugin", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
+      previousCursor: "bundle1",
     });
   });
 

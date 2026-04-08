@@ -6,6 +6,8 @@ const homeSearch = {
   channel: undefined,
   platform: undefined,
   offset: undefined,
+  after: undefined,
+  before: undefined,
   bundleId: undefined,
 } as const;
 

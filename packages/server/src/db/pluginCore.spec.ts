@@ -82,6 +82,47 @@ describe("createPluginDatabaseCore", () => {
     expect(getBundles).not.toHaveBeenCalled();
   });
 
+  it("does not fall back to scanning when plugin getUpdateInfo returns null", async () => {
+    const getBundles = vi.fn<DatabasePlugin["getBundles"]>(async () => ({
+      data: [baseBundle],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    }));
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin["getUpdateInfo"]>
+    >(async () => null);
+
+    const plugin: DatabasePlugin = {
+      name: "null-fast-path-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById() {
+        return null;
+      },
+      getBundles,
+      getUpdateInfo,
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async () => null,
+    );
+
+    await expect(core.api.getUpdateInfo(updateArgs)).resolves.toBeNull();
+    expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs);
+    expect(getBundles).not.toHaveBeenCalled();
+  });
+
   it("falls back to scanning when plugin getUpdateInfo is absent", async () => {
     const latestBundle = {
       ...baseBundle,

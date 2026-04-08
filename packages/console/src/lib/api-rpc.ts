@@ -8,6 +8,8 @@ type GetBundlesInput = {
   platform?: "ios" | "android";
   limit?: string;
   offset?: string;
+  after?: string;
+  before?: string;
 };
 
 type GetBundleInput = {
@@ -82,6 +84,8 @@ export const getBundles = createServerFn({ method: "GET" })
         platform: data?.platform ?? undefined,
         limit: data?.limit ? Number(data.limit) : DEFAULT_PAGE_LIMIT,
         offset: data?.offset ? Number(data.offset) : DEFAULT_PAGE_OFFSET,
+        after: data?.after ?? undefined,
+        before: data?.before ?? undefined,
       };
 
       const { databasePlugin } = await prepareConfig();
@@ -92,12 +96,25 @@ export const getBundles = createServerFn({ method: "GET" })
         },
         limit: query.limit,
         offset: query.offset,
+        cursor:
+          query.after || query.before
+            ? {
+                after: query.after,
+                before: query.before,
+              }
+            : undefined,
       });
 
       return (
         bundles ?? {
           data: [],
-          pagination: { total: 0, limit: query.limit, offset: query.offset },
+          pagination: {
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 0,
+          },
         }
       );
     } catch (error) {

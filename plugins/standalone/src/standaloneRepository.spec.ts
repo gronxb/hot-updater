@@ -234,6 +234,66 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(requestedOffset).toBe("20");
   });
 
+  it("getBundles: prefers cursor query params without requiring offset", async () => {
+    let requestedAfter: string | null = null;
+    let requestedBefore: string | null = null;
+    let requestedOffset: string | null = null;
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        requestedAfter = url.searchParams.get("after");
+        requestedBefore = url.searchParams.get("before");
+        requestedOffset = url.searchParams.get("offset");
+
+        return HttpResponse.json(
+          createPaginatedResult([TEST_BUNDLE_1], { limit: 1, offset: 1 }),
+        );
+      }),
+    );
+
+    const result = await repo.getBundles({
+      limit: 1,
+      cursor: {
+        after: "bundle1",
+      },
+    });
+
+    expect(requestedAfter).toBe("bundle1");
+    expect(requestedBefore).toBeNull();
+    expect(requestedOffset).toBeNull();
+    expect(result.data).toEqual([TEST_BUNDLE_1]);
+  });
+
+  it("getBundles: keeps legacy offset available for backwards-compatible cursor requests", async () => {
+    let requestedAfter: string | null = null;
+    let requestedOffset: string | null = null;
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        requestedAfter = url.searchParams.get("after");
+        requestedOffset = url.searchParams.get("offset");
+
+        return HttpResponse.json(
+          createPaginatedResult([TEST_BUNDLE_2], { limit: 1, offset: 50 }),
+        );
+      }),
+    );
+
+    const result = await repo.getBundles({
+      limit: 1,
+      offset: 50,
+      cursor: {
+        after: "bundle-49",
+      },
+    });
+
+    expect(requestedAfter).toBe("bundle-49");
+    expect(requestedOffset).toBe("50");
+    expect(result.data).toEqual([TEST_BUNDLE_2]);
+  });
+
   it("should return correct pagination info for single page", async () => {
     // Mock initial bundles fetch
     server.use(

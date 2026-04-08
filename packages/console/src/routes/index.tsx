@@ -15,6 +15,8 @@ export const Route = createFileRoute("/")({
       channel: search.channel as string | undefined,
       platform: search.platform as "ios" | "android" | undefined,
       offset: search.offset as string | undefined,
+      after: search.after as string | undefined,
+      before: search.before as string | undefined,
       bundleId: search.bundleId as string | undefined,
     };
   },
@@ -28,10 +30,13 @@ function BundlesPage() {
     channel: filters.channel,
     platform: filters.platform,
     offset: filters.offset,
+    after: filters.after,
+    before: filters.before,
     limit: "20",
   });
 
   const bundles = bundlesData?.data ?? [];
+  const pagination = bundlesData?.pagination;
   const selectedBundleFromList = activeBundleId
     ? (bundles.find((bundle) => bundle.id === activeBundleId) ?? null)
     : null;
@@ -62,6 +67,7 @@ function BundlesPage() {
       <div className="flex-1 p-6 space-y-6 bg-muted/5">
         <BundlesTable
           bundles={bundles}
+          pagination={pagination}
           selectedBundleId={bundleId}
           onRowClick={(bundle) => setBundleId(bundle.id)}
         />

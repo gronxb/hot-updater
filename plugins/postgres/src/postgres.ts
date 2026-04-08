@@ -48,7 +48,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset, orderBy } = options ?? {};
+        const { where, limit, offset = 0, orderBy } = options ?? {};
 
         let countQuery = db.selectFrom("bundles");
         if (where?.channel) {

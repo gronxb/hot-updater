@@ -19,6 +19,8 @@ type BundleFilters = {
   platform?: "ios" | "android";
   limit?: string;
   offset?: string;
+  after?: string;
+  before?: string;
 };
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;

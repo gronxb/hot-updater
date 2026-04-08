@@ -9,6 +9,8 @@ export interface PaginationInfo {
   hasPreviousPage: boolean;
   currentPage: number;
   totalPages: number;
+  nextCursor?: string | null;
+  previousCursor?: string | null;
 }
 
 export interface PaginationOptions {

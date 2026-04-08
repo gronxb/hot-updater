@@ -9,6 +9,8 @@ import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
 import type {
   AppVersionGetBundlesArgs,
   Bundle,
+  DatabaseBundleCursor,
+  DatabaseBundleQueryOrder,
   DatabasePluginHooks,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
@@ -117,6 +119,86 @@ function resolveStorageTarget({
   return target;
 }
 
+const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
+const BUNDLES_INDEX_KEY = "_index/bundles.json";
+
+function sortManagedBundles(
+  bundles: Bundle[],
+  orderBy: DatabaseBundleQueryOrder = DEFAULT_DESC_ORDER,
+): Bundle[] {
+  return sortBundles(bundles, orderBy);
+}
+
+function paginateBundlesWithCursor({
+  bundles,
+  limit,
+  offset,
+  cursor,
+  orderBy,
+}: {
+  bundles: Bundle[];
+  limit: number;
+  offset?: number;
+  cursor?: DatabaseBundleCursor;
+  orderBy?: DatabaseBundleQueryOrder;
+}) {
+  const normalizedOffset = offset ?? 0;
+  const sortedBundles = sortManagedBundles(bundles, orderBy);
+  const direction = orderBy?.direction ?? DEFAULT_DESC_ORDER.direction;
+
+  let paginatedData: Bundle[];
+  if (cursor?.after) {
+    const candidates = sortedBundles.filter((bundle) =>
+      direction === "desc"
+        ? bundle.id.localeCompare(cursor.after!) < 0
+        : bundle.id.localeCompare(cursor.after!) > 0,
+    );
+    paginatedData = limit > 0 ? candidates.slice(0, limit) : candidates;
+  } else if (cursor?.before) {
+    const candidates = sortedBundles.filter((bundle) =>
+      direction === "desc"
+        ? bundle.id.localeCompare(cursor.before!) > 0
+        : bundle.id.localeCompare(cursor.before!) < 0,
+    );
+    paginatedData =
+      limit > 0
+        ? candidates.slice(Math.max(0, candidates.length - limit))
+        : candidates;
+  } else {
+    paginatedData =
+      limit > 0
+        ? sortedBundles.slice(normalizedOffset, normalizedOffset + limit)
+        : sortedBundles.slice(normalizedOffset);
+  }
+
+  const total = sortedBundles.length;
+  const startIndex =
+    paginatedData.length > 0
+      ? sortedBundles.findIndex((bundle) => bundle.id === paginatedData[0].id)
+      : Math.min(normalizedOffset, total);
+  const pagination = calculatePagination(total, {
+    limit,
+    offset: startIndex,
+  });
+  const nextCursor =
+    paginatedData.length > 0 && startIndex + paginatedData.length < total
+      ? paginatedData.at(-1)?.id
+      : undefined;
+  const previousCursor =
+    paginatedData.length > 0 && startIndex > 0
+      ? paginatedData[0]?.id
+      : undefined;
+
+  return {
+    data: paginatedData,
+    pagination: {
+      ...pagination,
+      ...(nextCursor ? { nextCursor } : {}),
+      ...(previousCursor ? { previousCursor } : {}),
+    },
+  };
+}
+
 export interface BlobOperations {
   listObjects: (prefix: string) => Promise<string[]>;
   loadObject: <T>(key: string) => Promise<T | null>;
@@ -153,6 +235,7 @@ export const createBlobDatabasePlugin = <TConfig>({
     const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
     // Temporary store for newly added or modified bundles.
     const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
+    let bundlesIndexCache: Bundle[] | null = null;
 
     const PLATFORMS = ["ios", "android"] as const;
 
@@ -185,7 +268,43 @@ export const createBlobDatabasePlugin = <TConfig>({
         bundlesMap.set(id, bundle);
       }
 
-      return orderBy(allBundles, [(v) => v.id], ["desc"]);
+      const sortedBundles = orderBy(allBundles, [(v) => v.id], ["desc"]);
+      const nextIndexBundles = sortManagedBundles(
+        sortedBundles.map((bundle) => removeBundleInternalKeys(bundle)),
+      );
+      bundlesIndexCache = nextIndexBundles.length > 0 ? nextIndexBundles : null;
+      return sortedBundles;
+    }
+
+    async function loadBundlesIndex(): Promise<Bundle[]> {
+      if (bundlesIndexCache) {
+        return bundlesIndexCache;
+      }
+
+      const storedIndex = await loadObject<Bundle[]>(BUNDLES_INDEX_KEY);
+      if (storedIndex) {
+        bundlesIndexCache = sortManagedBundles(storedIndex);
+        return bundlesIndexCache;
+      }
+
+      const rebuiltIndex = sortManagedBundles(
+        (await reloadBundles()).map((bundle) =>
+          removeBundleInternalKeys(bundle),
+        ),
+      );
+      if (rebuiltIndex.length === 0) {
+        return rebuiltIndex;
+      }
+
+      bundlesIndexCache = rebuiltIndex;
+
+      try {
+        await uploadObject(BUNDLES_INDEX_KEY, rebuiltIndex);
+      } catch {
+        // Ignore best-effort backfill failures and serve from memory.
+      }
+
+      return rebuiltIndex;
     }
 
     /**
@@ -434,49 +553,27 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getBundles(options) {
-          // Always load the latest data from S3.
-          let allBundles = await reloadBundles();
-          const { where, limit, offset, orderBy } = options;
+          let allBundles = await loadBundlesIndex();
+          const { where, limit, offset = 0, orderBy, cursor } = options;
 
-          // Apply filtering conditions first to get the total count after filtering
           if (where) {
             allBundles = allBundles.filter((bundle) =>
               bundleMatchesQueryWhere(bundle, where),
             );
           }
 
-          const cleanBundles = sortBundles(
-            allBundles.map(removeBundleInternalKeys),
+          return paginateBundlesWithCursor({
+            bundles: allBundles,
+            limit,
+            offset,
+            cursor,
             orderBy,
-          );
-          const total = cleanBundles.length;
-
-          // Apply pagination to data
-          let paginatedData = cleanBundles;
-          if (offset > 0) {
-            paginatedData = paginatedData.slice(offset);
-          }
-          if (limit) {
-            paginatedData = paginatedData.slice(0, limit);
-          }
-
-          return {
-            data: paginatedData,
-            pagination: calculatePagination(total, {
-              limit,
-              offset,
-            }),
-          };
+          });
         },
 
         async getChannels() {
-          const allBundles = await reloadBundles();
-          const total = allBundles.length;
-          const result = await this.getBundles({
-            limit: total,
-            offset: 0,
-          });
-          return [...new Set(result.data.map((bundle) => bundle.channel))];
+          const allBundles = await loadBundlesIndex();
+          return [...new Set(allBundles.map((bundle) => bundle.channel))];
         },
 
         async commitBundle({ changedSets }) {
@@ -657,6 +754,25 @@ export const createBlobDatabasePlugin = <TConfig>({
               await updateTargetVersionsForPlatform(platform);
             }
           }
+
+          const currentIndexBundles = await loadBundlesIndex();
+          const nextIndexMap = new Map(
+            currentIndexBundles.map((bundle) => [bundle.id, bundle]),
+          );
+          for (const { operation, data } of changedSets) {
+            if (operation === "delete") {
+              nextIndexMap.delete(data.id);
+              continue;
+            }
+
+            nextIndexMap.set(data.id, data);
+          }
+
+          const nextIndexBundles = sortManagedBundles(
+            Array.from(nextIndexMap.values()),
+          );
+          await uploadObject(BUNDLES_INDEX_KEY, nextIndexBundles);
+          bundlesIndexCache = nextIndexBundles;
 
           // Enconded paths for invalidation (in case of special characters)
           const encondedPaths = new Set<string>();

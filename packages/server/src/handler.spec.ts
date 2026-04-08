@@ -208,6 +208,83 @@ describe("createHandler", () => {
     );
   });
 
+  it("passes cursor pagination params through to getBundles", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 2,
+        totalPages: 26,
+        nextCursor: "bundle-1",
+        previousCursor: "bundle-9",
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&offset=20&after=bundle-20",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+        },
+        limit: 20,
+        offset: 20,
+        cursor: {
+          after: "bundle-20",
+          before: undefined,
+        },
+      },
+      undefined,
+    );
+  });
+
+  it("supports cursor pagination without forcing a legacy offset", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+        nextCursor: null,
+        previousCursor: null,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+        },
+        limit: 20,
+        cursor: {
+          after: "bundle-20",
+          before: undefined,
+        },
+      },
+      undefined,
+    );
+  });
+
   it("returns 400 when the platform route parameter is invalid", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });

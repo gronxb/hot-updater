@@ -247,7 +247,7 @@ export const d1WorkerDatabase = <
         },
 
         async getBundles(options, context) {
-          const { where, limit, offset, orderBy } = options;
+          const { where, limit, offset = 0, orderBy } = options;
           const { sql: whereClause, params } = buildWhereClause(where);
           const orderSql =
             orderBy?.direction === "asc"

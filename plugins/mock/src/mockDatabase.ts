@@ -85,7 +85,7 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset, orderBy } = options ?? {};
+        const { where, limit, offset = 0, orderBy } = options ?? {};
         await sleep(minMax(config.latency.min, config.latency.max));
 
         const filteredBundles = sortBundles(

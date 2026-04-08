@@ -24,6 +24,8 @@ describe("useFilterParams", () => {
       channel: "stable",
       platform: "ios",
       offset: "20",
+      after: "bundle-020",
+      before: undefined,
     });
 
     const { result } = renderHook(() => useFilterParams());
@@ -38,6 +40,8 @@ describe("useFilterParams", () => {
         channel: undefined,
         platform: "ios",
         offset: "0",
+        after: undefined,
+        before: undefined,
         bundleId: undefined,
       },
     });
@@ -48,6 +52,8 @@ describe("useFilterParams", () => {
       channel: "stable",
       platform: "android",
       offset: "20",
+      after: "bundle-020",
+      before: undefined,
     });
 
     const { result } = renderHook(() => useFilterParams());
@@ -62,6 +68,8 @@ describe("useFilterParams", () => {
         channel: "stable",
         platform: "android",
         offset: undefined,
+        after: "bundle-020",
+        before: undefined,
         bundleId: undefined,
       },
     });
@@ -72,6 +80,8 @@ describe("useFilterParams", () => {
       channel: "stable",
       platform: "ios",
       offset: "40",
+      after: "bundle-040",
+      before: undefined,
       bundleId: undefined,
     });
 
@@ -87,6 +97,8 @@ describe("useFilterParams", () => {
         channel: "beta",
         platform: "ios",
         offset: "0",
+        after: undefined,
+        before: undefined,
         bundleId: "bundle-123",
       },
     });

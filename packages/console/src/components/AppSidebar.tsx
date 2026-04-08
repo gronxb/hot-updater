@@ -32,6 +32,8 @@ export function AppSidebar() {
             channel: undefined,
             platform: undefined,
             offset: undefined,
+            after: undefined,
+            before: undefined,
             bundleId: undefined,
           }}
           className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
@@ -65,6 +67,8 @@ export function AppSidebar() {
                       channel: undefined,
                       platform: undefined,
                       offset: undefined,
+                      after: undefined,
+                      before: undefined,
                       bundleId: undefined,
                     }}
                   >

@@ -124,7 +124,7 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
       return bundlesById.get(bundleId) ?? null;
     },
     async getBundles(options: DatabaseBundleQueryOptions) {
-      const { where, limit, offset, orderBy } = options;
+      const { where, limit, offset = 0, orderBy } = options;
       const source = sortByDirection(orderBy?.direction);
       const matched = source.filter((bundle) =>
         bundleMatchesWhere(bundle, where),

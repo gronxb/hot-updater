@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
 import {
   flexRender,
   getCoreRowModel,
@@ -22,12 +22,14 @@ import { bundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {
   bundles: Bundle[];
+  pagination?: PaginationInfo;
   selectedBundleId?: string;
   onRowClick: (bundle: Bundle) => void;
 }
 
 export function BundlesTable({
   bundles,
+  pagination,
   selectedBundleId,
   onRowClick,
 }: BundlesTableProps) {
@@ -41,17 +43,35 @@ export function BundlesTable({
   });
 
   const handlePreviousPage = () => {
+    const previousCursor = pagination?.previousCursor ?? bundles[0]?.id;
+    if (!previousCursor) {
+      return;
+    }
     const newOffset = Math.max(0, currentOffset - DEFAULT_PAGE_LIMIT);
-    setFilters({ offset: newOffset.toString() });
+    setFilters({
+      offset: newOffset.toString(),
+      after: undefined,
+      before: previousCursor,
+    });
   };
 
   const handleNextPage = () => {
+    const nextCursor = pagination?.nextCursor ?? bundles.at(-1)?.id;
+    if (!nextCursor) {
+      return;
+    }
     const newOffset = currentOffset + DEFAULT_PAGE_LIMIT;
-    setFilters({ offset: newOffset.toString() });
+    setFilters({
+      offset: newOffset.toString(),
+      after: nextCursor,
+      before: undefined,
+    });
   };
 
-  const hasNextPage = bundles.length === DEFAULT_PAGE_LIMIT;
-  const hasPreviousPage = currentOffset > 0;
+  const hasNextPage = pagination?.hasNextPage ?? false;
+  const hasPreviousPage = pagination?.hasPreviousPage ?? currentOffset > 0;
+  const startEntry = bundles.length === 0 ? 0 : currentOffset + 1;
+  const endEntry = currentOffset + bundles.length;
 
   return (
     <div className="space-y-4">
@@ -118,12 +138,8 @@ export function BundlesTable({
 
       <div className="flex items-center justify-between px-2">
         <div className="text-xs text-muted-foreground font-medium">
-          Showing <span className="text-foreground">{currentOffset + 1}</span>{" "}
-          to{" "}
-          <span className="text-foreground">
-            {currentOffset + bundles.length}
-          </span>{" "}
-          entries
+          Showing <span className="text-foreground">{startEntry}</span> to{" "}
+          <span className="text-foreground">{endEntry}</span> entries
         </div>
         <div className="flex items-center gap-2">
           <Button
