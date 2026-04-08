@@ -93,9 +93,9 @@ describe("createPluginDatabaseCore", () => {
         totalPages: 1,
       },
     }));
-    const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin["getUpdateInfo"]>
-    >(async () => null);
+    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
+      async () => null,
+    );
 
     const plugin: DatabasePlugin = {
       name: "null-fast-path-plugin",

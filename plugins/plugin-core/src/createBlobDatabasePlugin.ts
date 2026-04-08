@@ -11,6 +11,7 @@ import type {
   Bundle,
   DatabaseBundleCursor,
   DatabaseBundleQueryOrder,
+  DatabaseBundleQueryWhere,
   DatabasePluginHooks,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
@@ -120,13 +121,250 @@ function resolveStorageTarget({
 }
 
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
-const BUNDLES_INDEX_KEY = "_index/bundles.json";
+const MANAGEMENT_INDEX_PREFIX = "_index";
+const MANAGEMENT_INDEX_VERSION = 1 as const;
+const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+const ALL_SCOPE_CACHE_KEY = "*|*";
+
+interface ManagementIndexScope {
+  channel?: string;
+  platform?: Bundle["platform"];
+}
+
+interface ManagementIndexPageDescriptor {
+  key: string;
+  count: number;
+  firstId: string;
+  lastId: string;
+}
+
+interface ManagementIndexRoot {
+  version: typeof MANAGEMENT_INDEX_VERSION;
+  pageSize: number;
+  total: number;
+  channels?: string[];
+  pages: ManagementIndexPageDescriptor[];
+}
+
+interface ManagementIndexScopeArtifact {
+  cacheKey: string;
+  rootKey: string;
+  root: ManagementIndexRoot;
+  pageKeys: string[];
+}
+
+interface ManagementIndexArtifacts {
+  pages: Map<string, Bundle[]>;
+  scopes: ManagementIndexScopeArtifact[];
+}
 
 function sortManagedBundles(
   bundles: Bundle[],
   orderBy: DatabaseBundleQueryOrder = DEFAULT_DESC_ORDER,
 ): Bundle[] {
   return sortBundles(bundles, orderBy);
+}
+
+function isDefaultManagementOrder(orderBy?: DatabaseBundleQueryOrder): boolean {
+  return (
+    orderBy === undefined ||
+    (orderBy.field === DEFAULT_DESC_ORDER.field &&
+      orderBy.direction === DEFAULT_DESC_ORDER.direction)
+  );
+}
+
+function hasUnsupportedManagementFilters(
+  where?: DatabaseBundleQueryWhere,
+): boolean {
+  if (!where) {
+    return false;
+  }
+
+  return Boolean(
+    where.enabled !== undefined ||
+    where.id !== undefined ||
+    where.targetAppVersion !== undefined ||
+    where.targetAppVersionIn !== undefined ||
+    where.targetAppVersionNotNull !== undefined ||
+    where.fingerprintHash !== undefined,
+  );
+}
+
+function getSupportedManagementScope(
+  where?: DatabaseBundleQueryWhere,
+  orderBy?: DatabaseBundleQueryOrder,
+): ManagementIndexScope | null {
+  if (
+    !isDefaultManagementOrder(orderBy) ||
+    hasUnsupportedManagementFilters(where)
+  ) {
+    return null;
+  }
+
+  return {
+    channel: where?.channel,
+    platform: where?.platform,
+  };
+}
+
+function encodeScopePart(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function getManagementScopeCacheKey({
+  channel,
+  platform,
+}: ManagementIndexScope): string {
+  return `${channel ?? "*"}|${platform ?? "*"}`;
+}
+
+function getManagementScopePrefix({
+  channel,
+  platform,
+}: ManagementIndexScope): string {
+  if (channel && platform) {
+    return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeScopePart(channel)}/platform/${platform}`;
+  }
+
+  if (channel) {
+    return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeScopePart(channel)}`;
+  }
+
+  if (platform) {
+    return `${MANAGEMENT_INDEX_PREFIX}/platform/${platform}`;
+  }
+
+  return `${MANAGEMENT_INDEX_PREFIX}/all`;
+}
+
+function getManagementRootKey(scope: ManagementIndexScope): string {
+  return `${getManagementScopePrefix(scope)}/root.json`;
+}
+
+function getManagementPageKey(
+  scope: ManagementIndexScope,
+  pageIndex: number,
+): string {
+  return `${getManagementScopePrefix(scope)}/pages/${String(pageIndex).padStart(4, "0")}.json`;
+}
+
+function createBundleWithUpdateJsonKey(
+  bundle: Bundle,
+): BundleWithUpdateJsonKey {
+  const target = resolveStorageTarget(bundle);
+  return {
+    ...bundle,
+    _updateJsonKey: `${bundle.channel}/${bundle.platform}/${target}/update.json`,
+  };
+}
+
+function getPageStartOffsets(pages: ManagementIndexPageDescriptor[]): number[] {
+  const startOffsets: number[] = [];
+  let offset = 0;
+
+  for (const page of pages) {
+    startOffsets.push(offset);
+    offset += page.count;
+  }
+
+  return startOffsets;
+}
+
+function createEmptyManagementResult(limit: number) {
+  return {
+    data: [] as Bundle[],
+    pagination: calculatePagination(0, {
+      limit,
+      offset: 0,
+    }),
+  };
+}
+
+function buildManagementIndexArtifacts(
+  allBundles: Bundle[],
+): ManagementIndexArtifacts {
+  const sortedAllBundles = sortManagedBundles(allBundles);
+  const pages = new Map<string, Bundle[]>();
+  const scopes: ManagementIndexScopeArtifact[] = [];
+  const channels = [
+    ...new Set(sortedAllBundles.map((bundle) => bundle.channel)),
+  ].sort();
+
+  const addScope = (
+    scope: ManagementIndexScope,
+    scopeBundles: Bundle[],
+    options?: { includeChannels?: boolean },
+  ) => {
+    if (!options?.includeChannels && scopeBundles.length === 0) {
+      return;
+    }
+
+    const pageKeys: string[] = [];
+    const pageDescriptors: ManagementIndexPageDescriptor[] = [];
+
+    for (
+      let pageIndex = 0;
+      pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopeBundles.length;
+      pageIndex++
+    ) {
+      const page = scopeBundles.slice(
+        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
+        (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+      );
+      const key = getManagementPageKey(scope, pageIndex);
+      pages.set(key, page);
+      pageKeys.push(key);
+      pageDescriptors.push({
+        key,
+        count: page.length,
+        firstId: page[0]!.id,
+        lastId: page.at(-1)!.id,
+      });
+    }
+
+    const root: ManagementIndexRoot = {
+      version: MANAGEMENT_INDEX_VERSION,
+      pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+      total: scopeBundles.length,
+      pages: pageDescriptors,
+      ...(options?.includeChannels ? { channels } : {}),
+    };
+
+    scopes.push({
+      cacheKey: getManagementScopeCacheKey(scope),
+      rootKey: getManagementRootKey(scope),
+      root,
+      pageKeys,
+    });
+  };
+
+  addScope({}, sortedAllBundles, { includeChannels: true });
+
+  for (const channel of channels) {
+    const channelBundles = sortedAllBundles.filter(
+      (bundle) => bundle.channel === channel,
+    );
+    addScope({ channel }, channelBundles);
+
+    for (const platform of ["ios", "android"] as const) {
+      const scopedBundles = channelBundles.filter(
+        (bundle) => bundle.platform === platform,
+      );
+      addScope({ channel, platform }, scopedBundles);
+    }
+  }
+
+  for (const platform of ["ios", "android"] as const) {
+    const platformBundles = sortedAllBundles.filter(
+      (bundle) => bundle.platform === platform,
+    );
+    addScope({ platform }, platformBundles);
+  }
+
+  return {
+    pages,
+    scopes,
+  };
 }
 
 function paginateBundlesWithCursor({
@@ -235,29 +473,497 @@ export const createBlobDatabasePlugin = <TConfig>({
     const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
     // Temporary store for newly added or modified bundles.
     const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
-    let bundlesIndexCache: Bundle[] | null = null;
+    const managementRootCache = new Map<string, ManagementIndexRoot | null>();
 
     const PLATFORMS = ["ios", "android"] as const;
+
+    const getAllManagementArtifact = (
+      artifacts: ManagementIndexArtifacts,
+    ): ManagementIndexScopeArtifact => {
+      const allArtifact = artifacts.scopes.find(
+        (scope) => scope.cacheKey === ALL_SCOPE_CACHE_KEY,
+      );
+      if (!allArtifact) {
+        throw new Error("all-bundles management index artifact not found");
+      }
+
+      return allArtifact;
+    };
+
+    const replaceManagementRootCache = (
+      artifacts: ManagementIndexArtifacts,
+    ) => {
+      managementRootCache.clear();
+      for (const scope of artifacts.scopes) {
+        managementRootCache.set(scope.cacheKey, scope.root);
+      }
+    };
+
+    const createHydratedBundle = (bundle: Bundle): BundleWithUpdateJsonKey => {
+      const hydratedBundle = createBundleWithUpdateJsonKey(bundle);
+      bundlesMap.set(hydratedBundle.id, hydratedBundle);
+      return hydratedBundle;
+    };
+
+    const loadStoredManagementRoot = async (
+      scope: ManagementIndexScope,
+    ): Promise<ManagementIndexRoot | null> => {
+      const cacheKey = getManagementScopeCacheKey(scope);
+      if (managementRootCache.has(cacheKey)) {
+        return managementRootCache.get(cacheKey) ?? null;
+      }
+
+      const storedRoot = await loadObject<ManagementIndexRoot>(
+        getManagementRootKey(scope),
+      );
+      if (storedRoot) {
+        managementRootCache.set(cacheKey, storedRoot);
+        return storedRoot;
+      }
+
+      return null;
+    };
+
+    const loadManagementPage = async (
+      descriptor: ManagementIndexPageDescriptor,
+      pageCache?: Map<string, Bundle[] | null>,
+    ): Promise<Bundle[] | null> => {
+      if (pageCache?.has(descriptor.key)) {
+        return pageCache.get(descriptor.key) ?? null;
+      }
+
+      const page = await loadObject<Bundle[]>(descriptor.key);
+      pageCache?.set(descriptor.key, page);
+      return page;
+    };
+
+    const loadBundleFromManagementRoot = async (
+      root: ManagementIndexRoot,
+      bundleId: string,
+    ): Promise<Bundle | null> => {
+      const pageIndex = findPageIndexContainingId(root.pages, bundleId);
+      if (pageIndex < 0) {
+        return null;
+      }
+
+      const descriptor = root.pages[pageIndex]!;
+      const page = await loadManagementPage(descriptor);
+      if (!page) {
+        return null;
+      }
+
+      return page.find((item) => item.id === bundleId) ?? null;
+    };
+
+    const loadAllBundlesFromRoot = async (
+      root: ManagementIndexRoot,
+    ): Promise<Bundle[] | null> => {
+      const allBundles: Bundle[] = [];
+      const pageCache = new Map<string, Bundle[] | null>();
+
+      for (const descriptor of root.pages) {
+        const page = await loadManagementPage(descriptor, pageCache);
+        if (!page) {
+          return null;
+        }
+        allBundles.push(...page);
+      }
+
+      return allBundles;
+    };
+
+    const persistManagementIndexArtifacts = async (
+      nextArtifacts: ManagementIndexArtifacts,
+      previousArtifacts?: ManagementIndexArtifacts,
+    ): Promise<void> => {
+      for (const [key, page] of nextArtifacts.pages.entries()) {
+        await uploadObject(key, page);
+      }
+
+      for (const scope of nextArtifacts.scopes) {
+        await uploadObject(scope.rootKey, scope.root);
+      }
+
+      if (!previousArtifacts) {
+        return;
+      }
+
+      const nextPageKeys = new Set(nextArtifacts.pages.keys());
+      const nextRootKeys = new Set(
+        nextArtifacts.scopes.map((scope) => scope.rootKey),
+      );
+
+      for (const [key] of previousArtifacts.pages.entries()) {
+        if (!nextPageKeys.has(key)) {
+          await deleteObject(key).catch(() => {});
+        }
+      }
+
+      for (const scope of previousArtifacts.scopes) {
+        if (!nextRootKeys.has(scope.rootKey)) {
+          await deleteObject(scope.rootKey).catch(() => {});
+        }
+      }
+    };
+
+    const ensureAllManagementRoot = async (): Promise<ManagementIndexRoot> => {
+      if (managementRootCache.has(ALL_SCOPE_CACHE_KEY)) {
+        const cachedAllRoot = managementRootCache.get(ALL_SCOPE_CACHE_KEY);
+        if (cachedAllRoot) {
+          return cachedAllRoot;
+        }
+      }
+
+      const storedAllRoot = await loadStoredManagementRoot({});
+      if (storedAllRoot) {
+        return storedAllRoot;
+      }
+
+      const rebuiltBundles = sortManagedBundles(
+        (await reloadBundles()).map((bundle) =>
+          removeBundleInternalKeys(bundle),
+        ),
+      );
+      const artifacts = buildManagementIndexArtifacts(rebuiltBundles);
+      await persistManagementIndexArtifacts(artifacts);
+      replaceManagementRootCache(artifacts);
+      return getAllManagementArtifact(artifacts).root;
+    };
+
+    const loadManagementScopeRoot = async (
+      scope: ManagementIndexScope,
+    ): Promise<ManagementIndexRoot | null> => {
+      const cacheKey = getManagementScopeCacheKey(scope);
+      if (managementRootCache.has(cacheKey)) {
+        return managementRootCache.get(cacheKey) ?? null;
+      }
+
+      if (cacheKey === ALL_SCOPE_CACHE_KEY) {
+        return ensureAllManagementRoot();
+      }
+
+      const storedRoot = await loadStoredManagementRoot(scope);
+      if (storedRoot) {
+        return storedRoot;
+      }
+
+      await ensureAllManagementRoot();
+
+      const storedScopedRoot = await loadStoredManagementRoot(scope);
+      if (storedScopedRoot) {
+        return storedScopedRoot;
+      }
+
+      managementRootCache.set(cacheKey, null);
+      return null;
+    };
+
+    const loadAllBundlesForManagementFallback = async (): Promise<Bundle[]> => {
+      const allRoot = await loadManagementScopeRoot({});
+      if (allRoot) {
+        const pagedBundles = await loadAllBundlesFromRoot(allRoot);
+        if (pagedBundles) {
+          return pagedBundles;
+        }
+      }
+
+      return sortManagedBundles(
+        (await reloadBundles()).map((bundle) =>
+          removeBundleInternalKeys(bundle),
+        ),
+      );
+    };
+
+    const loadCurrentBundlesForIndexRebuild = async (): Promise<Bundle[]> => {
+      return loadAllBundlesForManagementFallback();
+    };
+
+    const findPageIndexContainingId = (
+      pages: ManagementIndexPageDescriptor[],
+      id: string,
+    ): number => {
+      return pages.findIndex(
+        (page) =>
+          id.localeCompare(page.firstId) <= 0 &&
+          id.localeCompare(page.lastId) >= 0,
+      );
+    };
+
+    const readPagedBundles = async ({
+      root,
+      limit,
+      offset,
+      cursor,
+    }: {
+      root: ManagementIndexRoot;
+      limit: number;
+      offset?: number;
+      cursor?: DatabaseBundleCursor;
+    }) => {
+      if (root.total === 0 || root.pages.length === 0) {
+        return createEmptyManagementResult(limit);
+      }
+
+      const pageStartOffsets = getPageStartOffsets(root.pages);
+      const pageCache = new Map<string, Bundle[] | null>();
+
+      if (cursor?.after) {
+        let pageIndex = root.pages.findIndex((page) => {
+          const containsCursor =
+            cursor.after!.localeCompare(page.firstId) <= 0 &&
+            cursor.after!.localeCompare(page.lastId) >= 0;
+          const wholePageEligible =
+            cursor.after!.localeCompare(page.firstId) > 0;
+          return containsCursor || wholePageEligible;
+        });
+
+        if (pageIndex < 0) {
+          return {
+            data: [] as Bundle[],
+            pagination: {
+              ...calculatePagination(root.total, {
+                limit,
+                offset: root.total,
+              }),
+              previousCursor: cursor.after,
+            },
+          };
+        }
+
+        const data: Bundle[] = [];
+        let startIndex: number | null = null;
+
+        while (
+          pageIndex < root.pages.length &&
+          (limit <= 0 || data.length < limit)
+        ) {
+          const descriptor = root.pages[pageIndex]!;
+          const page = await loadManagementPage(descriptor, pageCache);
+          if (!page) {
+            return paginateBundlesWithCursor({
+              bundles: await loadAllBundlesForManagementFallback(),
+              limit,
+              offset,
+              cursor,
+            });
+          }
+
+          const containsCursor =
+            cursor.after.localeCompare(descriptor.firstId) <= 0 &&
+            cursor.after.localeCompare(descriptor.lastId) >= 0;
+          let eligiblePageBundles = page;
+
+          if (containsCursor) {
+            const startInPage = page.findIndex(
+              (bundle) => bundle.id.localeCompare(cursor.after!) < 0,
+            );
+            if (startInPage < 0) {
+              eligiblePageBundles = [];
+            } else {
+              eligiblePageBundles = page.slice(startInPage);
+              startIndex ??= (pageStartOffsets[pageIndex] ?? 0) + startInPage;
+            }
+          } else if (eligiblePageBundles.length > 0) {
+            startIndex ??= pageStartOffsets[pageIndex] ?? 0;
+          }
+
+          data.push(...eligiblePageBundles);
+
+          if (limit > 0 && data.length >= limit) {
+            break;
+          }
+
+          pageIndex += 1;
+        }
+
+        const paginatedData = limit > 0 ? data.slice(0, limit) : data;
+        const resolvedStartIndex = startIndex ?? root.total;
+        const pagination = calculatePagination(root.total, {
+          limit,
+          offset: resolvedStartIndex,
+        });
+
+        return {
+          data: paginatedData,
+          pagination: {
+            ...pagination,
+            ...(paginatedData.length > 0 &&
+            resolvedStartIndex + paginatedData.length < root.total
+              ? { nextCursor: paginatedData.at(-1)?.id }
+              : {}),
+            ...(paginatedData.length > 0 && resolvedStartIndex > 0
+              ? { previousCursor: paginatedData[0]?.id }
+              : {}),
+          },
+        };
+      }
+
+      if (cursor?.before) {
+        let pageIndex = -1;
+        for (let index = root.pages.length - 1; index >= 0; index--) {
+          const page = root.pages[index]!;
+          const containsCursor =
+            cursor.before.localeCompare(page.firstId) <= 0 &&
+            cursor.before.localeCompare(page.lastId) >= 0;
+          const wholePageEligible =
+            cursor.before.localeCompare(page.lastId) < 0;
+          if (containsCursor || wholePageEligible) {
+            pageIndex = index;
+            break;
+          }
+        }
+
+        if (pageIndex < 0) {
+          return createEmptyManagementResult(limit);
+        }
+
+        let startIndex: number | null = null;
+        let collected: Bundle[] = [];
+
+        while (pageIndex >= 0 && (limit <= 0 || collected.length < limit)) {
+          const descriptor = root.pages[pageIndex]!;
+          const page = await loadManagementPage(descriptor, pageCache);
+          if (!page) {
+            return paginateBundlesWithCursor({
+              bundles: await loadAllBundlesForManagementFallback(),
+              limit,
+              offset,
+              cursor,
+            });
+          }
+
+          const containsCursor =
+            cursor.before.localeCompare(descriptor.firstId) <= 0 &&
+            cursor.before.localeCompare(descriptor.lastId) >= 0;
+
+          const eligiblePageBundles = containsCursor
+            ? page.filter(
+                (bundle) => bundle.id.localeCompare(cursor.before!) > 0,
+              )
+            : page;
+
+          collected = [...eligiblePageBundles, ...collected];
+          if (eligiblePageBundles.length > 0) {
+            startIndex = pageStartOffsets[pageIndex] ?? 0;
+          }
+
+          if (limit > 0 && collected.length >= limit) {
+            break;
+          }
+
+          pageIndex -= 1;
+        }
+
+        if (startIndex === null || collected.length === 0) {
+          return createEmptyManagementResult(limit);
+        }
+
+        let paginatedData = collected;
+        if (limit > 0 && collected.length > limit) {
+          const dropCount = collected.length - limit;
+          paginatedData = collected.slice(dropCount);
+          startIndex += dropCount;
+        }
+
+        const pagination = calculatePagination(root.total, {
+          limit,
+          offset: startIndex,
+        });
+
+        return {
+          data: paginatedData,
+          pagination: {
+            ...pagination,
+            ...(paginatedData.length > 0 &&
+            startIndex + paginatedData.length < root.total
+              ? { nextCursor: paginatedData.at(-1)?.id }
+              : {}),
+            ...(paginatedData.length > 0 && startIndex > 0
+              ? { previousCursor: paginatedData[0]?.id }
+              : {}),
+          },
+        };
+      }
+
+      const normalizedOffset = offset ?? 0;
+      if (normalizedOffset >= root.total) {
+        return {
+          data: [] as Bundle[],
+          pagination: calculatePagination(root.total, {
+            limit,
+            offset: Math.min(normalizedOffset, root.total),
+          }),
+        };
+      }
+
+      let pageIndex = 0;
+      for (let index = pageStartOffsets.length - 1; index >= 0; index--) {
+        if (pageStartOffsets[index]! <= normalizedOffset) {
+          pageIndex = index;
+          break;
+        }
+      }
+      const startInPage = normalizedOffset - (pageStartOffsets[pageIndex] ?? 0);
+      const data: Bundle[] = [];
+
+      for (
+        let currentPageIndex = pageIndex;
+        currentPageIndex < root.pages.length &&
+        (limit <= 0 || data.length < limit);
+        currentPageIndex++
+      ) {
+        const descriptor = root.pages[currentPageIndex]!;
+        const page = await loadManagementPage(descriptor, pageCache);
+        if (!page) {
+          return paginateBundlesWithCursor({
+            bundles: await loadAllBundlesForManagementFallback(),
+            limit,
+            offset,
+            cursor,
+          });
+        }
+
+        data.push(
+          ...(currentPageIndex === pageIndex ? page.slice(startInPage) : page),
+        );
+      }
+
+      const paginatedData = limit > 0 ? data.slice(0, limit) : data;
+      const pagination = calculatePagination(root.total, {
+        limit,
+        offset: normalizedOffset,
+      });
+
+      return {
+        data: paginatedData,
+        pagination: {
+          ...pagination,
+          ...(paginatedData.length > 0 &&
+          normalizedOffset + paginatedData.length < root.total
+            ? { nextCursor: paginatedData.at(-1)?.id }
+            : {}),
+          ...(paginatedData.length > 0 && normalizedOffset > 0
+            ? { previousCursor: paginatedData[0]?.id }
+            : {}),
+        },
+      };
+    };
 
     // Reload all bundle data from S3.
     async function reloadBundles() {
       bundlesMap.clear();
 
-      const platformPromises = PLATFORMS.map(async (platform) => {
-        // Retrieve update.json files for the platform across all channels.
-        const keys = await listUpdateJsonKeys(platform);
-        const filePromises = keys.map(async (key) => {
-          const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
-          return bundlesData.map((bundle) => ({
-            ...bundle,
-            _updateJsonKey: key,
-          }));
-        });
-        const results = await Promise.all(filePromises);
-        return results.flat();
+      const updateJsonKeys = (await listObjects("")).filter((key) =>
+        /^[^/]+\/(?:ios|android)\/[^/]+\/update\.json$/.test(key),
+      );
+      const filePromises = updateJsonKeys.map(async (key) => {
+        const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+        return bundlesData.map((bundle) => ({
+          ...bundle,
+          _updateJsonKey: key,
+        }));
       });
-
-      const allBundles = (await Promise.all(platformPromises)).flat();
+      const allBundles = (await Promise.all(filePromises)).flat();
 
       for (const bundle of allBundles) {
         bundlesMap.set(bundle.id, bundle as BundleWithUpdateJsonKey);
@@ -269,42 +975,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       }
 
       const sortedBundles = orderBy(allBundles, [(v) => v.id], ["desc"]);
-      const nextIndexBundles = sortManagedBundles(
-        sortedBundles.map((bundle) => removeBundleInternalKeys(bundle)),
-      );
-      bundlesIndexCache = nextIndexBundles.length > 0 ? nextIndexBundles : null;
       return sortedBundles;
-    }
-
-    async function loadBundlesIndex(): Promise<Bundle[]> {
-      if (bundlesIndexCache) {
-        return bundlesIndexCache;
-      }
-
-      const storedIndex = await loadObject<Bundle[]>(BUNDLES_INDEX_KEY);
-      if (storedIndex) {
-        bundlesIndexCache = sortManagedBundles(storedIndex);
-        return bundlesIndexCache;
-      }
-
-      const rebuiltIndex = sortManagedBundles(
-        (await reloadBundles()).map((bundle) =>
-          removeBundleInternalKeys(bundle),
-        ),
-      );
-      if (rebuiltIndex.length === 0) {
-        return rebuiltIndex;
-      }
-
-      bundlesIndexCache = rebuiltIndex;
-
-      try {
-        await uploadObject(BUNDLES_INDEX_KEY, rebuiltIndex);
-      } catch {
-        // Ignore best-effort backfill failures and serve from memory.
-      }
-
-      return rebuiltIndex;
     }
 
     /**
@@ -371,35 +1042,6 @@ export const createBlobDatabasePlugin = <TConfig>({
           await uploadObject(targetKey, newTargetVersions);
         }
       }
-    }
-
-    /**
-     * Lists update.json keys for a given platform.
-     *
-     * - If a channel is provided, only that channel's update.json files are listed.
-     * - Otherwise, all channels for the given platform are returned.
-     */
-    async function listUpdateJsonKeys(
-      platform?: string,
-      channel?: string,
-    ): Promise<string[]> {
-      const prefix = channel
-        ? platform
-          ? `${channel}/${platform}/`
-          : `${channel}/`
-        : "";
-      // Use appropriate key format based on whether a channel is given.
-      const pattern = channel
-        ? platform
-          ? new RegExp(`^${channel}/${platform}/[^/]+/update\\.json$`)
-          : new RegExp(`^${channel}/[^/]+/[^/]+/update\\.json$`)
-        : platform
-          ? new RegExp(`^[^/]+/${platform}/[^/]+/update\\.json$`)
-          : /^[^/]+\/[^/]+\/[^/]+\/update\.json$/;
-
-      return listObjects(prefix).then((keys) =>
-        keys.filter((key) => pattern.test(key)),
-      );
     }
 
     const getAppVersionUpdateInfo = async ({
@@ -540,8 +1182,41 @@ export const createBlobDatabasePlugin = <TConfig>({
           if (bundle) {
             return removeBundleInternalKeys(bundle);
           }
+
+          const allRoot = await loadManagementScopeRoot({});
+          if (allRoot) {
+            const matchedBundle = await loadBundleFromManagementRoot(
+              allRoot,
+              bundleId,
+            );
+            if (matchedBundle) {
+              return removeBundleInternalKeys(
+                createHydratedBundle(matchedBundle),
+              );
+            }
+
+            managementRootCache.delete(ALL_SCOPE_CACHE_KEY);
+            const refreshedAllRoot = await loadStoredManagementRoot({});
+            if (refreshedAllRoot) {
+              const refreshedBundle = await loadBundleFromManagementRoot(
+                refreshedAllRoot,
+                bundleId,
+              );
+              if (refreshedBundle) {
+                return removeBundleInternalKeys(
+                  createHydratedBundle(refreshedBundle),
+                );
+              }
+            }
+          }
+
           const bundles = await reloadBundles();
-          return bundles.find((bundle) => bundle.id === bundleId) ?? null;
+          const matchedBundle = bundles.find((item) => item.id === bundleId);
+          if (!matchedBundle) {
+            return null;
+          }
+
+          return removeBundleInternalKeys(matchedBundle);
         },
 
         async getUpdateInfo(args: GetBundlesArgs) {
@@ -553,9 +1228,24 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getBundles(options) {
-          let allBundles = await loadBundlesIndex();
           const { where, limit, offset = 0, orderBy, cursor } = options;
+          const scope = getSupportedManagementScope(where, orderBy);
 
+          if (scope) {
+            const root = await loadManagementScopeRoot(scope);
+            if (!root) {
+              return createEmptyManagementResult(limit);
+            }
+
+            return readPagedBundles({
+              root,
+              limit,
+              offset,
+              cursor,
+            });
+          }
+
+          let allBundles = await loadAllBundlesForManagementFallback();
           if (where) {
             allBundles = allBundles.filter((bundle) =>
               bundleMatchesQueryWhere(bundle, where),
@@ -572,8 +1262,8 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getChannels() {
-          const allBundles = await loadBundlesIndex();
-          return [...new Set(allBundles.map((bundle) => bundle.channel))];
+          const allRoot = await loadManagementScopeRoot({});
+          return allRoot?.channels ?? [];
         },
 
         async commitBundle({ changedSets }) {
@@ -755,7 +1445,7 @@ export const createBlobDatabasePlugin = <TConfig>({
             }
           }
 
-          const currentIndexBundles = await loadBundlesIndex();
+          const currentIndexBundles = await loadCurrentBundlesForIndexRebuild();
           const nextIndexMap = new Map(
             currentIndexBundles.map((bundle) => [bundle.id, bundle]),
           );
@@ -771,8 +1461,14 @@ export const createBlobDatabasePlugin = <TConfig>({
           const nextIndexBundles = sortManagedBundles(
             Array.from(nextIndexMap.values()),
           );
-          await uploadObject(BUNDLES_INDEX_KEY, nextIndexBundles);
-          bundlesIndexCache = nextIndexBundles;
+          const previousArtifacts =
+            buildManagementIndexArtifacts(currentIndexBundles);
+          const nextArtifacts = buildManagementIndexArtifacts(nextIndexBundles);
+          await persistManagementIndexArtifacts(
+            nextArtifacts,
+            previousArtifacts,
+          );
+          replaceManagementRootCache(nextArtifacts);
 
           // Enconded paths for invalidation (in case of special characters)
           const encondedPaths = new Set<string>();

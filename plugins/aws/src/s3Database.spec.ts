@@ -59,6 +59,15 @@ const createBundleJsonFingerprint = (
   targetAppVersion: null,
 });
 
+const MANAGEMENT_INDEX_PREFIX = "_index";
+const MANAGEMENT_INDEX_VERSION = 1;
+const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+
+type ManagementScope = {
+  channel?: string;
+  platform?: "ios" | "android";
+};
+
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
 let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
@@ -260,11 +269,112 @@ describe("s3Database plugin", () => {
     }
   };
 
-  const seedBundlesIndex = (bundles: Bundle[]) => {
-    fakeStore["_index/bundles.json"] = JSON.stringify(
-      bundles.slice().sort((left, right) => right.id.localeCompare(left.id)),
-    );
+  const getManagementScopePrefix = ({ channel, platform }: ManagementScope) => {
+    if (channel && platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}/platform/${platform}`;
+    }
+
+    if (channel) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}`;
+    }
+
+    if (platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/platform/${platform}`;
+    }
+
+    return `${MANAGEMENT_INDEX_PREFIX}/all`;
   };
+
+  const getManagementRootKey = (scope: ManagementScope) =>
+    `${getManagementScopePrefix(scope)}/root.json`;
+
+  const getManagementPageKey = (scope: ManagementScope, pageIndex: number) =>
+    `${getManagementScopePrefix(scope)}/pages/${String(pageIndex).padStart(4, "0")}.json`;
+
+  const sortManagementBundles = (bundles: Bundle[]) =>
+    bundles.slice().sort((left, right) => right.id.localeCompare(left.id));
+
+  const seedPagedBundlesIndex = (bundles: Bundle[]) => {
+    const sortedBundles = sortManagementBundles(bundles);
+    const channels = [
+      ...new Set(sortedBundles.map((bundle) => bundle.channel)),
+    ].sort();
+
+    const addScope = (
+      scope: ManagementScope,
+      scopedBundles: Bundle[],
+      options?: { includeChannels?: boolean },
+    ) => {
+      if (!options?.includeChannels && scopedBundles.length === 0) {
+        return;
+      }
+
+      const pages = [];
+      for (
+        let pageIndex = 0;
+        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopedBundles.length;
+        pageIndex++
+      ) {
+        const page = scopedBundles.slice(
+          pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
+          (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+        );
+        const key = getManagementPageKey(scope, pageIndex);
+        fakeStore[key] = JSON.stringify(page);
+        pages.push({
+          key,
+          count: page.length,
+          firstId: page[0]!.id,
+          lastId: page.at(-1)!.id,
+        });
+      }
+
+      fakeStore[getManagementRootKey(scope)] = JSON.stringify({
+        version: MANAGEMENT_INDEX_VERSION,
+        pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+        total: scopedBundles.length,
+        pages,
+        ...(options?.includeChannels ? { channels } : {}),
+      });
+    };
+
+    addScope({}, sortedBundles, { includeChannels: true });
+
+    for (const channel of channels) {
+      const channelBundles = sortedBundles.filter(
+        (bundle) => bundle.channel === channel,
+      );
+      addScope({ channel }, channelBundles);
+
+      for (const platform of ["ios", "android"] as const) {
+        addScope(
+          { channel, platform },
+          channelBundles.filter((bundle) => bundle.platform === platform),
+        );
+      }
+    }
+
+    for (const platform of ["ios", "android"] as const) {
+      addScope(
+        { platform },
+        sortedBundles.filter((bundle) => bundle.platform === platform),
+      );
+    }
+  };
+
+  const createScopedBundles = ({
+    channel = "production",
+    platform = "ios",
+    count,
+  }: {
+    channel?: string;
+    platform?: "ios" | "android";
+    count: number;
+  }) =>
+    Array.from({ length: count }, (_, index) => {
+      const id = `bundle-${String(count - index).padStart(3, "0")}`;
+      return createBundleJson(channel, platform, "1.0.0", id);
+    });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => plugin.getBundleById(id),
@@ -286,6 +396,17 @@ describe("s3Database plugin", () => {
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
     },
+  });
+
+  beforeEach(() => {
+    fakeStore = {};
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
   });
 
   it("uses direct app-version manifests for update checks without listing S3 objects", async () => {
@@ -363,28 +484,182 @@ describe("s3Database plugin", () => {
     ]);
   });
 
-  it("reads management cursor pages from the stored index manifest without scanning S3", async () => {
-    const bundles = [
-      createBundleJson("production", "ios", "1.0.0", "bundle-300"),
-      createBundleJson("production", "ios", "1.0.0", "bundle-200"),
-      createBundleJson("production", "ios", "1.0.0", "bundle-100"),
-    ];
+  it("reads the first all-bundles page from one root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
 
-    seedBundlesIndex(bundles);
+    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      bundles.slice(0, 20).map((bundle) => bundle.id),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "channel scope",
+      where: { channel: "production" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production" }),
+        getManagementPageKey({ channel: "production" }, 0),
+      ],
+    },
+    {
+      label: "platform scope",
+      where: { platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ platform: "ios" }),
+        getManagementPageKey({ platform: "ios" }, 0),
+      ],
+    },
+    {
+      label: "channel + platform scope",
+      where: { channel: "production", platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production", platform: "ios" }),
+        getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      ],
+    },
+  ])(
+    "reads warm filtered bundles with minimal S3 objects for $label",
+    async ({ where, expectedKeys }) => {
+      const bundles = [
+        ...createScopedBundles({
+          count: 70,
+          channel: "production",
+          platform: "ios",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "production",
+          platform: "android",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "staging",
+          platform: "ios",
+        }),
+      ];
+      seedPagedBundlesIndex(bundles);
+      listedObjectPrefixes = [];
+      loadedObjectKeys = [];
+
+      await plugin.getBundles({
+        where,
+        limit: 20,
+        cursor: {
+          after: "bundle-999",
+        },
+      });
+
+      expect(listedObjectPrefixes).toEqual([]);
+      expect(loadedObjectKeys).toEqual(expectedKeys);
+    },
+  );
+
+  it("reads at most two leaf pages when an after cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
 
     const result = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
-      limit: 2,
+      limit: 20,
       cursor: {
-        after: "bundle-200",
+        after: "bundle-021",
       },
     });
 
-    expect(result.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(20 - index).padStart(3, "0")}`,
+      ),
+    );
     expect(listedObjectPrefixes).toEqual([]);
-    expect(loadedObjectKeys).toEqual(["_index/bundles.json"]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+    ]);
+  });
+
+  it("reads at most two leaf pages when a before cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        before: "bundle-005",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(25 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("reads channels from the all-bundles root only", async () => {
+    seedPagedBundlesIndex([
+      ...createScopedBundles({
+        count: 2,
+        channel: "production",
+        platform: "ios",
+      }),
+      ...createScopedBundles({
+        count: 2,
+        channel: "staging",
+        platform: "android",
+      }),
+    ]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([
+      "production",
+      "staging",
+    ]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+  });
+
+  it("reads bundle detail from the all-bundles root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getBundleById("bundle-005")).resolves.toMatchObject({
+      id: "bundle-005",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 1),
+    ]);
   });
 
   it("should append a new bundle and commit to S3", async () => {
