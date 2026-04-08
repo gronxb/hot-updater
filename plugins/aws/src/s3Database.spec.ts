@@ -662,6 +662,181 @@ describe("s3Database plugin", () => {
     ]);
   });
 
+  it("serves console-style reads from rebuilt paged indexes after updating bundle metadata", async () => {
+    const targetBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "console-update-target",
+    );
+    const siblingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-update-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.updateBundle(targetBundle.id, {
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+    await plugin.commitBundle();
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const updatedBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(updatedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        channel: "production",
+        enabled: false,
+        message: "Updated from console",
+      },
+      siblingBundle,
+    ]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getBundleById(targetBundle.id)).resolves.toMatchObject({
+      id: targetBundle.id,
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after deleting bundles", async () => {
+    const deletedBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "console-delete-target",
+    );
+    const survivingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-delete-survivor",
+    );
+
+    await plugin.appendBundle(deletedBundle);
+    await plugin.appendBundle(survivingBundle);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(deletedBundle);
+    await plugin.commitBundle();
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const productionBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(productionBundles.data).toEqual([survivingBundle]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+
+    plugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const removedScopeBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(removedScopeBundles.data).toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys.every((key) => key.endsWith("/root.json"))).toBe(
+      true,
+    );
+    expect(loadedObjectKeys).toContain(
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+    );
+    expect(loadedObjectKeys).toContain(getManagementRootKey({}));
+  });
+
   it("should append a new bundle and commit to S3", async () => {
     // Create new bundle
     const bundleKey = "production/ios/1.0.0/update.json";

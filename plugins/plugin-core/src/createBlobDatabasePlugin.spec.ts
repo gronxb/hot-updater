@@ -1233,6 +1233,217 @@ describe("blobDatabase plugin", () => {
     ]);
   });
 
+  it("serves console-style reads from rebuilt paged indexes after updating bundle metadata", async () => {
+    const targetBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "console-update-target",
+    );
+    const siblingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-update-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.updateBundle(targetBundle.id, {
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+    await plugin.commitBundle();
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const updatedBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(updatedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        channel: "production",
+        enabled: false,
+        message: "Updated from console",
+      },
+      siblingBundle,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getBundleById(targetBundle.id)).resolves.toMatchObject({
+      id: targetBundle.id,
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after deleting bundles", async () => {
+    const deletedBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "console-delete-target",
+    );
+    const survivingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-delete-survivor",
+    );
+
+    await plugin.appendBundle(deletedBundle);
+    await plugin.appendBundle(survivingBundle);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(deletedBundle);
+    await plugin.commitBundle();
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const productionBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(productionBundles.data).toEqual([survivingBundle]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+
+    plugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const removedScopeBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+      offset: 0,
+    });
+
+    expect(removedScopeBundles.data).toEqual([]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls.every((key) => key.endsWith("/root.json"))).toBe(
+      true,
+    );
+    expect(loadObjectCalls).toContain(
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+    );
+    expect(loadObjectCalls).toContain(getManagementRootKey({}));
+  });
+
   it("supports cursor pagination from the index manifest", async () => {
     const bundles = [
       createBundleJson("production", "ios", "1.0.0", "bundle-300"),
