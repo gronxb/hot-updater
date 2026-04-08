@@ -5,6 +5,7 @@ import {
   DocsPage,
   DocsTitle,
 } from "fumadocs-ui/page";
+import type { ComponentProps } from "react";
 import type { PageProps } from "waku/router";
 
 import { VersionTag } from "@/components/version-tag";
@@ -27,17 +28,17 @@ export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
   }
 
   const MDX = page.data.body;
+  const components = defaultMdxComponents as ComponentProps<
+    typeof MDX
+  >["components"];
+
   return (
     <DocsPage toc={page.data.toc}>
       <DocsTitle>{page.data.title}</DocsTitle>
       <VersionTag version={page.data?.version} />
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
-        <MDX
-          components={{
-            ...defaultMdxComponents,
-          }}
-        />
+        <MDX components={components} />
       </DocsBody>
     </DocsPage>
   );
