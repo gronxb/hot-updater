@@ -1,5 +1,16 @@
 # @hot-updater/supabase
 
+## 0.29.5
+
+### Patch Changes
+
+- 52208f4: perf: Fast-path lambda update checks through plugin-core
+- Updated dependencies [52208f4]
+  - @hot-updater/server@0.29.5
+  - @hot-updater/plugin-core@0.29.5
+  - @hot-updater/cli-tools@0.29.5
+  - @hot-updater/core@0.29.5
+
 ## 0.29.4
 
 ### Patch Changes
