@@ -1,8 +1,9 @@
-import { execa } from "execa";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { execa } from "execa";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -68,7 +69,11 @@ const parseArgs = (args) => {
 };
 
 const ensureRunMode = (args) => {
-  if (args.includes("--run") || args.includes("--watch") || args.includes("-w")) {
+  if (
+    args.includes("--run") ||
+    args.includes("--watch") ||
+    args.includes("-w")
+  ) {
     return args;
   }
 
@@ -76,10 +81,7 @@ const ensureRunMode = (args) => {
 };
 
 const hasArgValue = (args, flag) => {
-  return (
-    args.includes(flag) ||
-    args.some((arg) => arg.startsWith(`${flag}=`))
-  );
+  return args.includes(flag) || args.some((arg) => arg.startsWith(`${flag}=`));
 };
 
 const runPnpm = async (args, cwd) => {
@@ -119,17 +121,24 @@ const ensureWorktree = async (commitHash) => {
 
   if (!hasWorktree) {
     await fs.mkdir(path.dirname(worktreeDir), { recursive: true });
-    await execa("git", ["worktree", "add", "--detach", worktreeDir, resolvedHash], {
-      cwd: rootDir,
-      stdio: "inherit",
-    });
+    await execa(
+      "git",
+      ["worktree", "add", "--detach", worktreeDir, resolvedHash],
+      {
+        cwd: rootDir,
+        stdio: "inherit",
+      },
+    );
   }
 
   const installedFlag = path.join(worktreeDir, ".bench-install-complete");
   try {
     await fs.access(installedFlag);
   } catch {
-    await runPnpm(["install", "--frozen-lockfile", "--ignore-scripts"], worktreeDir);
+    await runPnpm(
+      ["install", "--frozen-lockfile", "--ignore-scripts"],
+      worktreeDir,
+    );
     await fs.writeFile(installedFlag, `${Date.now()}\n`, "utf8");
   }
 
@@ -182,10 +191,10 @@ const sourceEntryCandidates = [
 ];
 
 const collectWorkspaceAliases = async (targetRoot) => {
-  const aliases = {};
+  const aliases = [];
 
   for (const workspaceRoot of workspaceRoots) {
-    const workspacePath = path.join(rootDir, workspaceRoot);
+    const workspacePath = path.join(targetRoot, workspaceRoot);
     let entries = [];
 
     try {
@@ -217,10 +226,12 @@ const collectWorkspaceAliases = async (targetRoot) => {
 
           try {
             await fs.access(candidatePath);
-            aliases[packageName] = path.join(
-              targetRoot,
-              path.relative(rootDir, candidatePath),
-            );
+            const sourceDir = path.dirname(candidatePath);
+            aliases.push({
+              packageName,
+              entryPath: candidatePath,
+              sourceDir,
+            });
             break;
           } catch {
             continue;
@@ -235,14 +246,35 @@ const collectWorkspaceAliases = async (targetRoot) => {
   return aliases;
 };
 
-const createBaselineVitestConfig = async (worktreeDir) => {
-  const aliasMap = await collectWorkspaceAliases(worktreeDir);
-  const configPath = path.join(worktreeDir, ".bench-vitest.config.mjs");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const createStandaloneVitestConfig = async (targetRoot) => {
+  const aliasMap = await collectWorkspaceAliases(targetRoot);
+  const configPath = path.join(targetRoot, ".bench-vitest.config.mjs");
+  const aliasSource = aliasMap
+    .map(({ packageName, entryPath, sourceDir }) => {
+      const exactPattern = `^${escapeRegex(packageName)}$`;
+      const prefixPattern = `^${escapeRegex(packageName)}/(.*)$`;
+      return `{
+      find: new RegExp(${JSON.stringify(exactPattern)}),
+      replacement: ${JSON.stringify(entryPath)},
+    },
+    {
+      find: new RegExp(${JSON.stringify(prefixPattern)}),
+      replacement: ${JSON.stringify(`${sourceDir}/$1`)},
+    }`;
+    })
+    .join(",\n    ");
   const configSource = `import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    alias: ${JSON.stringify(aliasMap, null, 2)},
+    alias: [
+    ${aliasSource}
+    ],
+  },
+  test: {
+    environment: "node",
   },
 });
 `;
@@ -263,10 +295,16 @@ const loadBenchmarks = async (jsonPath, baseDir) => {
     } catch {
       normalizedFilepath = file.filepath;
     }
-    const relativeFilepath = path.relative(normalizedBaseDir, normalizedFilepath);
+    const relativeFilepath = path.relative(
+      normalizedBaseDir,
+      normalizedFilepath,
+    );
     for (const group of file.groups ?? []) {
       for (const benchmark of group.benchmarks ?? []) {
-        if (typeof benchmark.mean !== "number" || !Number.isFinite(benchmark.mean)) {
+        if (
+          typeof benchmark.mean !== "number" ||
+          !Number.isFinite(benchmark.mean)
+        ) {
           continue;
         }
 
@@ -285,14 +323,19 @@ const printCrossCommitSummary = async ({
   baselineRoot,
   currentJsonPath,
 }) => {
-  const baselineBenchmarks = await loadBenchmarks(baselineJsonPath, baselineRoot);
+  const baselineBenchmarks = await loadBenchmarks(
+    baselineJsonPath,
+    baselineRoot,
+  );
   const currentBenchmarks = await loadBenchmarks(currentJsonPath, rootDir);
   const sharedKeys = [...currentBenchmarks.keys()].filter((key) =>
     baselineBenchmarks.has(key),
   );
 
   if (sharedKeys.length === 0) {
-    console.log("No matching benchmark names were found for cross-commit comparison.");
+    console.log(
+      "No matching benchmark names were found for cross-commit comparison.",
+    );
     return;
   }
 
@@ -347,7 +390,16 @@ const main = async () => {
   }
 
   if (!commitHash) {
-    await runPnpm(["vitest", "bench", ...ensureRunMode(forward)], rootDir);
+    const currentConfigPath = await createStandaloneVitestConfig(rootDir);
+
+    await runPnpm(
+      [
+        "vitest",
+        "bench",
+        ...ensureRunMode(["-c", currentConfigPath, ...forward]),
+      ],
+      rootDir,
+    );
     return;
   }
 
@@ -355,9 +407,11 @@ const main = async () => {
     throw new Error("--compare cannot be used together with --commit-hash");
   }
 
-  const { resolvedHash, shortHash, worktreeDir } = await ensureWorktree(commitHash);
+  const { resolvedHash, shortHash, worktreeDir } =
+    await ensureWorktree(commitHash);
   const filesToMirror = await collectBenchFilesToMirror(forward);
-  const baselineConfigPath = await createBaselineVitestConfig(worktreeDir);
+  const baselineConfigPath = await createStandaloneVitestConfig(worktreeDir);
+  const currentConfigPath = await createStandaloneVitestConfig(rootDir);
   const baselineFile = path.join(
     os.tmpdir(),
     `hot-updater-bench-${shortHash}.json`,
@@ -392,6 +446,8 @@ const main = async () => {
       "vitest",
       "bench",
       ...ensureRunMode([
+        "-c",
+        currentConfigPath,
         ...forward,
         "--compare",
         baselineFile,

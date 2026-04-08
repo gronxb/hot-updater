@@ -1,10 +1,19 @@
+import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 import { orderBy } from "es-toolkit";
 import semver from "semver";
 
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
+import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
 import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
-import type { Bundle, DatabasePluginHooks } from "./types";
+import type {
+  AppVersionGetBundlesArgs,
+  Bundle,
+  DatabasePluginHooks,
+  FingerprintGetBundlesArgs,
+  GetBundlesArgs,
+  UpdateInfo,
+} from "./types";
 
 interface BundleWithUpdateJsonKey extends Bundle {
   _updateJsonKey: string;
@@ -274,6 +283,77 @@ export const createBlobDatabasePlugin = <TConfig>({
       );
     }
 
+    const getAppVersionUpdateInfo = async ({
+      appVersion,
+      bundleId,
+      channel = "production",
+      cohort,
+      minBundleId,
+      platform,
+    }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
+      const targetVersionsKey = `${channel}/${platform}/target-app-versions.json`;
+      const targetAppVersions =
+        (await loadObject<string[]>(targetVersionsKey)) ?? [];
+      const matchingVersions = filterCompatibleAppVersions(
+        targetAppVersions,
+        appVersion,
+      );
+
+      const result = await Promise.allSettled(
+        matchingVersions.map(async (targetAppVersion) => {
+          const normalizedVersion =
+            normalizeTargetAppVersion(targetAppVersion) ?? targetAppVersion;
+
+          return (
+            (await loadObject<Bundle[]>(
+              `${channel}/${platform}/${normalizedVersion}/update.json`,
+            )) ?? []
+          );
+        }),
+      );
+
+      const bundles = result
+        .filter(
+          (entry): entry is PromiseFulfilledResult<Bundle[]> =>
+            entry.status === "fulfilled",
+        )
+        .flatMap((entry) => entry.value);
+
+      return getManifestUpdateInfo(bundles, {
+        _updateStrategy: "appVersion",
+        appVersion,
+        bundleId,
+        channel,
+        cohort,
+        minBundleId,
+        platform,
+      });
+    };
+
+    const getFingerprintUpdateInfo = async ({
+      bundleId,
+      channel = "production",
+      cohort,
+      fingerprintHash,
+      minBundleId,
+      platform,
+    }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
+      const bundles =
+        (await loadObject<Bundle[]>(
+          `${channel}/${platform}/${fingerprintHash}/update.json`,
+        )) ?? [];
+
+      return getManifestUpdateInfo(bundles, {
+        _updateStrategy: "fingerprint",
+        bundleId,
+        channel,
+        cohort,
+        fingerprintHash,
+        minBundleId,
+        platform,
+      });
+    };
+
     const addAppVersionInvalidationPaths = (
       pathsToInvalidate: Set<string>,
       {
@@ -343,6 +423,14 @@ export const createBlobDatabasePlugin = <TConfig>({
           }
           const bundles = await reloadBundles();
           return bundles.find((bundle) => bundle.id === bundleId) ?? null;
+        },
+
+        async getUpdateInfo(args: GetBundlesArgs) {
+          if (args._updateStrategy === "appVersion") {
+            return getAppVersionUpdateInfo(args);
+          }
+
+          return getFingerprintUpdateInfo(args);
         },
 
         async getBundles(options) {

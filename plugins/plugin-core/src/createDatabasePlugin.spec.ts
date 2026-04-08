@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle } from "./types";
+import type { Bundle, GetBundlesArgs, RequestEnvContext } from "./types";
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -159,5 +159,55 @@ describe("createDatabasePlugin", () => {
         },
       ],
     });
+  });
+
+  it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
+    const expected = {
+      fileHash: baseBundle.fileHash,
+      id: baseBundle.id,
+      message: baseBundle.message,
+      shouldForceUpdate: baseBundle.shouldForceUpdate,
+      status: "UPDATE" as const,
+      storageUri: baseBundle.storageUri,
+    };
+    const getUpdateInfo = vi.fn(async () => expected);
+    const args: GetBundlesArgs = {
+      _updateStrategy: "appVersion",
+      appVersion: "1.0.0",
+      bundleId: baseBundle.id,
+      platform: "ios",
+    };
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundleId === baseBundle.id ? baseBundle : null,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        getUpdateInfo,
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await expect(plugin.getUpdateInfo?.(args, context)).resolves.toEqual(
+      expected,
+    );
+    expect(getUpdateInfo).toHaveBeenCalledWith(args, context);
   });
 });

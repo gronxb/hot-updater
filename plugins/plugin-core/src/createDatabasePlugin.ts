@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { mergeWith } from "es-toolkit";
 
 import type {
@@ -14,6 +14,10 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<Bundle | null>;
+  getUpdateInfo?: (
+    args: GetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<UpdateInfo | null>;
   getBundles: (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
@@ -135,7 +139,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         changedMap.set(data.id, { operation, data });
       };
 
-      return {
+      const plugin: DatabasePlugin<TContext> = {
         name: options.name,
 
         async getBundleById(bundleId: string, context) {
@@ -223,6 +227,43 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           markChanged("delete", deleteBundle);
         },
       };
+
+      Object.defineProperty(plugin, "getUpdateInfo", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          const methods = getMethods();
+          const directGetUpdateInfo = methods.getUpdateInfo;
+
+          if (!directGetUpdateInfo) {
+            Object.defineProperty(plugin, "getUpdateInfo", {
+              configurable: true,
+              enumerable: true,
+              value: undefined,
+            });
+            return undefined;
+          }
+
+          const wrappedGetUpdateInfo: NonNullable<
+            DatabasePlugin<TContext>["getUpdateInfo"]
+          > = async (args, context) => {
+            if (context === undefined) {
+              return directGetUpdateInfo(args);
+            }
+
+            return directGetUpdateInfo(args, context);
+          };
+
+          Object.defineProperty(plugin, "getUpdateInfo", {
+            configurable: true,
+            enumerable: true,
+            value: wrappedGetUpdateInfo,
+          });
+          return wrappedGetUpdateInfo;
+        },
+      });
+
+      return plugin;
     };
   };
 }
