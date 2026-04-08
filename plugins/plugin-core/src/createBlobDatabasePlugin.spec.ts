@@ -100,6 +100,19 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
+  const createPlugin = (config: { managementIndexPageSize?: number } = {}) =>
+    createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })(config)();
+
   async function listObjects(prefix: string): Promise<string[]> {
     listObjectCalls.push(prefix);
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
@@ -127,30 +140,14 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.push({ paths });
   }
 
-  let plugin = createBlobDatabasePlugin({
-    name: "blobDatabase",
-    factory: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects,
-      loadObject,
-      uploadObject,
-      deleteObject,
-      invalidatePaths,
-    }),
-  })({})();
+  let plugin = createPlugin({
+    managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+  });
 
   beforeEach(async () => {
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
   });
 
   const seedUpdateManifests = (bundles: Bundle[]) => {
@@ -994,6 +991,7 @@ describe("blobDatabase plugin", () => {
   });
 
   it("rebuilds paged management indexes with one broad scan, then serves later cursor reads without rescanning", async () => {
+    plugin = createPlugin();
     const bundleA = createBundleJson("production", "ios", "1.0.0", "index-A");
     const bundleB = createBundleJson("production", "ios", "1.0.0", "index-B");
     fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
@@ -1003,6 +1001,9 @@ describe("blobDatabase plugin", () => {
 
     await plugin.getBundles({ limit: 20 });
 
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 128,
+    });
     expect(fakeStore[getManagementRootKey({})]).toBeDefined();
     expect(fakeStore[getManagementPageKey({}, 0)]).toBeDefined();
     expect(listObjectCalls).toEqual([""]);
@@ -1030,6 +1031,24 @@ describe("blobDatabase plugin", () => {
       getManagementRootKey({ channel: "production", platform: "ios" }),
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
+  });
+
+  it("rebuilds stored management indexes when the configured page size changes", async () => {
+    const bundles = createScopedBundles({ count: 5 });
+    seedUpdateManifests(bundles);
+
+    plugin = createPlugin({ managementIndexPageSize: 2 });
+    await plugin.getBundles({ limit: 5 });
+
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeDefined();
+
+    plugin = createPlugin({ managementIndexPageSize: 3 });
+    await plugin.getBundles({ limit: 5 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 3,
+    });
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeUndefined();
   });
 
   it("reads the first all-bundles page from one root and one leaf page", async () => {
@@ -1259,17 +1278,9 @@ describe("blobDatabase plugin", () => {
     });
     await plugin.commitBundle();
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1294,17 +1305,9 @@ describe("blobDatabase plugin", () => {
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1322,17 +1325,9 @@ describe("blobDatabase plugin", () => {
       getManagementPageKey({}, 0),
     ]);
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1364,17 +1359,9 @@ describe("blobDatabase plugin", () => {
     await plugin.deleteBundle(deletedBundle);
     await plugin.commitBundle();
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1391,17 +1378,9 @@ describe("blobDatabase plugin", () => {
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1411,17 +1390,9 @@ describe("blobDatabase plugin", () => {
     expect(listObjectCalls).toEqual([]);
     expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
 
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     listObjectCalls = [];
     loadObjectCalls = [];
@@ -1465,17 +1436,9 @@ describe("blobDatabase plugin", () => {
       limit: 20,
     });
 
-    const secondPlugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    const secondPlugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     await secondPlugin.updateBundle(targetBundle.id, {
       enabled: false,
@@ -1519,17 +1482,9 @@ describe("blobDatabase plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
 
-    const secondPlugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({})();
+    const secondPlugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
 
     const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
     expect(bundleToDelete).toEqual(stagingBundle);

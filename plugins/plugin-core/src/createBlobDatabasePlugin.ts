@@ -124,8 +124,12 @@ function resolveStorageTarget({
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 const MANAGEMENT_INDEX_PREFIX = "_index";
 const MANAGEMENT_INDEX_VERSION = 1 as const;
-const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+const DEFAULT_MANAGEMENT_INDEX_PAGE_SIZE = 128;
 const ALL_SCOPE_CACHE_KEY = "*|*";
+
+export interface BlobDatabasePluginConfig {
+  managementIndexPageSize?: number;
+}
 
 interface ManagementIndexScope {
   channel?: string;
@@ -157,6 +161,19 @@ interface ManagementIndexScopeArtifact {
 interface ManagementIndexArtifacts {
   pages: Map<string, Bundle[]>;
   scopes: ManagementIndexScopeArtifact[];
+}
+
+function resolveManagementIndexPageSize(
+  config: BlobDatabasePluginConfig,
+): number {
+  const pageSize =
+    config.managementIndexPageSize ?? DEFAULT_MANAGEMENT_INDEX_PAGE_SIZE;
+
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    throw new Error("managementIndexPageSize must be a positive integer.");
+  }
+
+  return pageSize;
 }
 
 function sortManagedBundles(
@@ -283,6 +300,7 @@ function createEmptyManagementResult(limit: number) {
 
 function buildManagementIndexArtifacts(
   allBundles: Bundle[],
+  pageSize: number,
 ): ManagementIndexArtifacts {
   const sortedAllBundles = sortManagedBundles(allBundles);
   const pages = new Map<string, Bundle[]>();
@@ -305,12 +323,12 @@ function buildManagementIndexArtifacts(
 
     for (
       let pageIndex = 0;
-      pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopeBundles.length;
+      pageIndex * pageSize < scopeBundles.length;
       pageIndex++
     ) {
       const page = scopeBundles.slice(
-        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
-        (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+        pageIndex * pageSize,
+        (pageIndex + 1) * pageSize,
       );
       const key = getManagementPageKey(scope, pageIndex);
       pages.set(key, page);
@@ -325,7 +343,7 @@ function buildManagementIndexArtifacts(
 
     const root: ManagementIndexRoot = {
       version: MANAGEMENT_INDEX_VERSION,
-      pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+      pageSize,
       total: scopeBundles.length,
       pages: pageDescriptors,
       ...(options?.includeChannels ? { channels } : {}),
@@ -392,6 +410,9 @@ export const createBlobDatabasePlugin = <TConfig>({
   factory: (config: TConfig) => BlobOperations;
 }) => {
   return (config: TConfig, hooks?: DatabasePluginHooks) => {
+    const managementIndexPageSize = resolveManagementIndexPageSize(
+      config as TConfig & BlobDatabasePluginConfig,
+    );
     const {
       listObjects,
       loadObject,
@@ -536,7 +557,7 @@ export const createBlobDatabasePlugin = <TConfig>({
 
     const ensureAllManagementRoot = async (): Promise<ManagementIndexRoot> => {
       const storedAllRoot = await loadStoredManagementRoot({});
-      if (storedAllRoot) {
+      if (storedAllRoot && storedAllRoot.pageSize === managementIndexPageSize) {
         return storedAllRoot;
       }
 
@@ -545,10 +566,16 @@ export const createBlobDatabasePlugin = <TConfig>({
           removeBundleInternalKeys(bundle),
         ),
       );
-      const artifacts = buildManagementIndexArtifacts(rebuiltBundles);
-      await persistManagementIndexArtifacts(artifacts);
-      replaceManagementRootCache(artifacts);
-      return getAllManagementArtifact(artifacts).root;
+      const nextArtifacts = buildManagementIndexArtifacts(
+        rebuiltBundles,
+        managementIndexPageSize,
+      );
+      const previousArtifacts = storedAllRoot
+        ? buildManagementIndexArtifacts(rebuiltBundles, storedAllRoot.pageSize)
+        : undefined;
+      await persistManagementIndexArtifacts(nextArtifacts, previousArtifacts);
+      replaceManagementRootCache(nextArtifacts);
+      return getAllManagementArtifact(nextArtifacts).root;
     };
 
     const loadManagementScopeRoot = async (
@@ -1423,9 +1450,14 @@ export const createBlobDatabasePlugin = <TConfig>({
           const nextIndexBundles = sortManagedBundles(
             Array.from(nextIndexMap.values()),
           );
-          const previousArtifacts =
-            buildManagementIndexArtifacts(currentIndexBundles);
-          const nextArtifacts = buildManagementIndexArtifacts(nextIndexBundles);
+          const previousArtifacts = buildManagementIndexArtifacts(
+            currentIndexBundles,
+            managementIndexPageSize,
+          );
+          const nextArtifacts = buildManagementIndexArtifacts(
+            nextIndexBundles,
+            managementIndexPageSize,
+          );
           await persistManagementIndexArtifacts(
             nextArtifacts,
             previousArtifacts,

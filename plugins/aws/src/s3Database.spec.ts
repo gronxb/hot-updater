@@ -15,7 +15,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { s3Database } from "./s3Database";
+import { type S3DatabaseConfig, s3Database } from "./s3Database";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -220,18 +220,23 @@ afterEach(() => {
 describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
-  let plugin = s3Database({
-    bucketName,
-    ...s3Config,
-    cloudfrontDistributionId: "test-distribution-id",
-  })();
-
-  beforeEach(async () => {
-    plugin = s3Database({
+  const createPlugin = (config: Partial<S3DatabaseConfig> = {}) =>
+    s3Database({
       bucketName,
       ...s3Config,
       cloudfrontDistributionId: "test-distribution-id",
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+      ...config,
     })();
+
+  let plugin = createPlugin({
+    managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+  });
+
+  beforeEach(async () => {
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
   });
 
   const seedUpdateManifests = (bundles: Bundle[]) => {
@@ -402,11 +407,7 @@ describe("s3Database plugin", () => {
     fakeStore = {};
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
   });
 
   it("uses direct app-version manifests for update checks without listing S3 objects", async () => {
@@ -500,6 +501,20 @@ describe("s3Database plugin", () => {
       getManagementRootKey({}),
       getManagementPageKey({}, 0),
     ]);
+  });
+
+  it("uses a custom management index page size from s3Database config", async () => {
+    const bundles = createScopedBundles({ count: 5 });
+    seedUpdateManifests(bundles);
+
+    plugin = createPlugin({ managementIndexPageSize: 2 });
+
+    await plugin.getBundles({ limit: 5 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 2,
+    });
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeDefined();
   });
 
   it.each([
@@ -717,11 +732,7 @@ describe("s3Database plugin", () => {
     });
     await plugin.commitBundle();
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -746,11 +757,7 @@ describe("s3Database plugin", () => {
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -768,11 +775,7 @@ describe("s3Database plugin", () => {
       getManagementPageKey({}, 0),
     ]);
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -804,11 +807,7 @@ describe("s3Database plugin", () => {
     await plugin.deleteBundle(deletedBundle);
     await plugin.commitBundle();
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -825,11 +824,7 @@ describe("s3Database plugin", () => {
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -839,11 +834,7 @@ describe("s3Database plugin", () => {
     expect(listedObjectPrefixes).toEqual([]);
     expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
 
-    plugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    plugin = createPlugin();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -887,11 +878,7 @@ describe("s3Database plugin", () => {
       limit: 20,
     });
 
-    const secondPlugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    const secondPlugin = createPlugin();
 
     await secondPlugin.updateBundle(targetBundle.id, {
       enabled: false,
@@ -935,11 +922,7 @@ describe("s3Database plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
 
-    const secondPlugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-    })();
+    const secondPlugin = createPlugin();
 
     const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
     expect(bundleToDelete).toEqual(stagingBundle);
