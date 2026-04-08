@@ -1,5 +1,8 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
@@ -43,6 +46,19 @@ describe("firebaseDatabase plugin", () => {
       }
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
+    },
+  });
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo: async (bundles, args) => {
+      await clearCollections();
+
+      for (const bundle of bundles) {
+        await plugin.appendBundle(bundle);
+      }
+      await plugin.commitBundle();
+
+      return plugin.getUpdateInfo?.(args) ?? null;
     },
   });
 

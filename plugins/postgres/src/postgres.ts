@@ -6,6 +6,7 @@ import {
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
 
+import { getUpdateInfo } from "./getUpdateInfo";
 import type { Database } from "./types";
 
 export interface PostgresConfig extends PoolConfig {}
@@ -21,6 +22,9 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
       async onUnmount() {
         await db.destroy();
         await pool.end();
+      },
+      async getUpdateInfo(args) {
+        return getUpdateInfo(pool, args);
       },
       async getBundleById(bundleId) {
         const data = await db

@@ -2,6 +2,7 @@ import {
   type Bundle,
   calculatePagination,
   createDatabasePlugin,
+  createDatabasePluginGetUpdateInfo,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
@@ -172,6 +173,56 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
 
     return {
       supportsCursorPagination: true,
+      getUpdateInfo: createDatabasePluginGetUpdateInfo({
+        async listTargetAppVersions({ platform, channel, minBundleId }) {
+          return Array.from(
+            new Set(
+              bundles
+                .filter(
+                  (bundle) =>
+                    bundle.enabled &&
+                    bundle.platform === platform &&
+                    bundle.channel === channel &&
+                    bundle.id.localeCompare(minBundleId) >= 0 &&
+                    bundle.targetAppVersion,
+                )
+                .map((bundle) => bundle.targetAppVersion)
+                .filter((version): version is string => Boolean(version)),
+            ),
+          );
+        },
+
+        async getBundlesByTargetAppVersions(
+          { platform, channel, minBundleId },
+          targetAppVersions,
+        ) {
+          return bundles.filter(
+            (bundle) =>
+              bundle.enabled &&
+              bundle.platform === platform &&
+              bundle.channel === channel &&
+              bundle.id.localeCompare(minBundleId) >= 0 &&
+              targetAppVersions.includes(bundle.targetAppVersion ?? ""),
+          );
+        },
+
+        async getBundlesByFingerprint({
+          platform,
+          channel,
+          minBundleId,
+          fingerprintHash,
+        }) {
+          return bundles.filter(
+            (bundle) =>
+              bundle.enabled &&
+              bundle.platform === platform &&
+              bundle.channel === channel &&
+              bundle.id.localeCompare(minBundleId) >= 0 &&
+              bundle.fingerprintHash === fingerprintHash,
+          );
+        },
+      }),
+
       async getBundleById(bundleId: string) {
         await sleep(minMax(config.latency.min, config.latency.max));
         return bundles.find((b) => b.id === bundleId) ?? null;

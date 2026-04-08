@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setupGetUpdateInfoTestSuite } from "../../../../packages/test-utils/src/index";
 import { mockDatabase } from "../mockDatabase";
 
 const DEFAULT_BUNDLES: Bundle[] = [
@@ -50,6 +51,17 @@ describe("mockDatabase", () => {
       latency: DEFAULT_LATENCY,
       initialBundles: DEFAULT_BUNDLES_MOCK,
     })();
+  });
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo: async (bundles, args) => {
+      const plugin = mockDatabase({
+        latency: DEFAULT_LATENCY,
+        initialBundles: JSON.parse(JSON.stringify(bundles)),
+      })();
+
+      return plugin.getUpdateInfo?.(args) ?? null;
+    },
   });
 
   it("should return a database plugin", async () => {
