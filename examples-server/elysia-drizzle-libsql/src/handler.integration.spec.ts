@@ -65,13 +65,13 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     });
 
     serverProcess = spawnServerProcess({
-      serverCommand: ["npx", "tsx", "src/index.ts"],
+      serverCommand: ["pnpm", "exec", "tsx", "src/index.ts"],
       port,
       testDbPath,
       projectRoot,
     });
 
-    await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+    await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
