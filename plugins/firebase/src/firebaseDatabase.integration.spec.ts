@@ -138,7 +138,6 @@ describe("firebaseDatabase plugin", () => {
     const bundles = await plugin.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
     expect(bundles.data).toHaveLength(2);
     expect(bundles.data[0].id).toBe("bundle2");
@@ -199,7 +198,7 @@ describe("firebaseDatabase plugin", () => {
     });
     await plugin.commitBundle();
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     await bundlesCollection.doc(bundleId).set(
       {
@@ -334,7 +333,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.appendBundle(bundleC);
     await plugin.commitBundle();
 
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
     expect(bundles.data).toHaveLength(3);
     expect(bundles.data[0].id).toBe("bundleC");
     expect(bundles.data[1].id).toBe("bundleB");
@@ -391,7 +390,6 @@ describe("firebaseDatabase plugin", () => {
     const result = await plugin.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
 
     expect(result.data).toHaveLength(2);
@@ -458,7 +456,6 @@ describe("firebaseDatabase plugin", () => {
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -468,12 +465,15 @@ describe("firebaseDatabase plugin", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
+      nextCursor: "bundle2",
     });
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -483,6 +483,7 @@ describe("firebaseDatabase plugin", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
+      previousCursor: "bundle1",
     });
   });
 
@@ -537,7 +538,6 @@ describe("firebaseDatabase plugin", () => {
     const filteredBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
     expect(filteredBundles.data).toHaveLength(1);
     expect(filteredBundles.data[0].id).toBe("bundleX");
@@ -1005,7 +1005,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Get bundles to populate cache
-    const bundlesBefore = await plugin.getBundles({ limit: 10, offset: 0 });
+    const bundlesBefore = await plugin.getBundles({ limit: 10 });
     expect(bundlesBefore.data).toHaveLength(3);
 
     // Delete bundleY
@@ -1013,7 +1013,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Verify cache is updated
-    const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
+    const bundlesAfter = await plugin.getBundles({ limit: 10 });
     expect(bundlesAfter.data).toHaveLength(2);
 
     const remainingIds = bundlesAfter.data.map((b) => b.id);
@@ -1104,7 +1104,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Verify initial state
-    const bundlesBefore = await plugin.getBundles({ limit: 10, offset: 0 });
+    const bundlesBefore = await plugin.getBundles({ limit: 10 });
     expect(bundlesBefore.data).toHaveLength(3);
 
     const channelsBefore = await plugin.getChannels();
@@ -1131,7 +1131,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Verify selective deletion
-    const bundlesAfter = await plugin.getBundles({ limit: 10, offset: 0 });
+    const bundlesAfter = await plugin.getBundles({ limit: 10 });
     expect(bundlesAfter.data).toHaveLength(2);
 
     // Verify channels still exist (other bundles use them)
@@ -1173,7 +1173,7 @@ describe("firebaseDatabase plugin", () => {
     await plugin.commitBundle();
 
     // Verify all bundles are deleted
-    const finalBundles = await plugin.getBundles({ limit: 10, offset: 0 });
+    const finalBundles = await plugin.getBundles({ limit: 10 });
     expect(finalBundles.data).toHaveLength(0);
 
     // Verify all channels are deleted

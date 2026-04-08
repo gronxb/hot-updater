@@ -250,7 +250,11 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where = {}, limit, offset = 0, orderBy } = options;
+        const { where = {}, limit, orderBy } = options;
+        const offset =
+          (("offset" in options ? options.offset : undefined) as
+            | number
+            | undefined) ?? 0;
 
         // 1. Get total count for pagination
         const totalCount = await getTotalCount(where);

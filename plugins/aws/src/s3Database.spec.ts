@@ -490,7 +490,7 @@ describe("s3Database plugin", () => {
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
 
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
 
     expect(result.data.map((bundle) => bundle.id)).toEqual(
       bundles.slice(0, 20).map((bundle) => bundle.id),
@@ -699,7 +699,6 @@ describe("s3Database plugin", () => {
     const updatedBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(updatedBundles.data).toEqual([
@@ -787,7 +786,6 @@ describe("s3Database plugin", () => {
     const productionBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(productionBundles.data).toEqual([survivingBundle]);
@@ -823,7 +821,6 @@ describe("s3Database plugin", () => {
     const removedScopeBundles = await plugin.getBundles({
       where: { channel: "staging", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(removedScopeBundles.data).toEqual([]);
@@ -835,6 +832,96 @@ describe("s3Database plugin", () => {
       getManagementRootKey({ channel: "staging", platform: "ios" }),
     );
     expect(loadedObjectKeys).toContain(getManagementRootKey({}));
+  });
+
+  it("revalidates cached management roots when another S3 plugin instance updates bundles", async () => {
+    const targetBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-target",
+    );
+    const siblingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    const secondPlugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    await secondPlugin.updateBundle(targetBundle.id, {
+      enabled: false,
+      message: "Updated from another instance",
+    });
+    await secondPlugin.commitBundle();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const refreshedBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(refreshedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        enabled: false,
+        message: "Updated from another instance",
+      },
+      siblingBundle,
+    ]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+      getManagementPageKey({ channel: "staging", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("revalidates cached management roots when another S3 plugin instance changes channels", async () => {
+    const stagingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-channel-target",
+    );
+
+    await plugin.appendBundle(stagingBundle);
+    await plugin.commitBundle();
+
+    await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
+
+    const secondPlugin = s3Database({
+      bucketName,
+      ...s3Config,
+      cloudfrontDistributionId: "test-distribution-id",
+    })();
+
+    const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
+    expect(bundleToDelete).toEqual(stagingBundle);
+    await secondPlugin.deleteBundle(bundleToDelete!);
+    await secondPlugin.commitBundle();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -882,7 +969,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -954,7 +1041,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -1057,7 +1144,7 @@ describe("s3Database plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -1156,7 +1243,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Force reload bundle info from S3
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Assert: Returned bundle list should only include valid bundles
     expect(bundles.data).toHaveLength(3);
@@ -1225,7 +1312,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Assert: All bundles from all channels should be loaded
     expect(bundles.data).toHaveLength(5);
@@ -1276,7 +1363,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -1354,7 +1441,6 @@ describe("s3Database plugin", () => {
     const result = await plugin.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
 
     expect(result.data).toHaveLength(2);
@@ -1421,7 +1507,6 @@ describe("s3Database plugin", () => {
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -1437,7 +1522,9 @@ describe("s3Database plugin", () => {
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -1501,7 +1588,7 @@ describe("s3Database plugin", () => {
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
 
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Descending order: "C" > "B" > "A"
     expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
@@ -1518,7 +1605,7 @@ describe("s3Database plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -1551,7 +1638,7 @@ describe("s3Database plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
     expect(bundles.data).toEqual([]);
   });
 
@@ -1644,7 +1731,6 @@ describe("s3Database plugin", () => {
     // Act: Load all bundles
     const bundles = await plugin.getBundles({
       limit: 10,
-      offset: 0,
       where: {
         platform: undefined,
         channel: "production",

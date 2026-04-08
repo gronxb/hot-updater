@@ -243,8 +243,15 @@ const handleGetBundles: RouteHandler = async (
   const channel = url.searchParams.get("channel") ?? undefined;
   const platform = url.searchParams.get("platform");
   const limit = Number(url.searchParams.get("limit")) || 50;
+  const offset = url.searchParams.get("offset");
   const after = url.searchParams.get("after") ?? undefined;
   const before = url.searchParams.get("before") ?? undefined;
+
+  if (offset !== null) {
+    throw new HandlerBadRequestError(
+      "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
+    );
+  }
 
   if (platform !== null && !isPlatform(platform)) {
     throw new HandlerBadRequestError(

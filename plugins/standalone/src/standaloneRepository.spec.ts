@@ -217,6 +217,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(result.data).toEqual([TEST_BUNDLE_1]);
   });
 
+  it("getBundles: rejects removed offset pagination", async () => {
+    await expect(
+      repo.getBundles({ limit: 20, offset: 1 } as never),
+    ).rejects.toThrow(
+      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+    );
+  });
+
   it("should return correct pagination info for single page", async () => {
     // Mock initial bundles fetch
     server.use(

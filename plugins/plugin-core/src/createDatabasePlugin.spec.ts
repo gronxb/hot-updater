@@ -210,4 +210,98 @@ describe("createDatabasePlugin", () => {
     );
     expect(getUpdateInfo).toHaveBeenCalledWith(args, context);
   });
+
+  it("rejects removed offset pagination on the public plugin API", async () => {
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async () => null,
+        getBundles: async () => ({
+          data: [],
+          pagination: {
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 0,
+          },
+        }),
+        getChannels: async () => [],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await expect(
+      plugin.getBundles({ limit: 20, offset: 10 } as never),
+    ).rejects.toThrow(
+      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+    );
+  });
+
+  it("adapts cursor pagination for legacy database methods that still page by offset", async () => {
+    const bundles = [
+      { ...baseBundle, id: "bundle-300" },
+      { ...baseBundle, id: "bundle-200" },
+      { ...baseBundle, id: "bundle-100" },
+    ];
+
+    const plugin = createDatabasePlugin({
+      name: "legacy-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundles.find((bundle) => bundle.id === bundleId) ?? null,
+        getBundles: async (options) => {
+          const offset = options.offset ?? 0;
+          const filtered = bundles
+            .filter((bundle) => {
+              if (options.where?.id?.lt) {
+                return bundle.id.localeCompare(options.where.id.lt) < 0;
+              }
+              if (options.where?.id?.gt) {
+                return bundle.id.localeCompare(options.where.id.gt) > 0;
+              }
+              return true;
+            })
+            .sort((a, b) => {
+              const result = a.id.localeCompare(b.id);
+              return options.orderBy?.direction === "asc" ? result : -result;
+            });
+          const page =
+            options.limit > 0
+              ? filtered.slice(offset, offset + options.limit)
+              : filtered.slice(offset);
+
+          return {
+            data: page,
+            pagination: {
+              total: filtered.length,
+              hasNextPage: offset + options.limit < filtered.length,
+              hasPreviousPage: offset > 0,
+              currentPage: Math.floor(offset / options.limit) + 1,
+              totalPages: Math.ceil(filtered.length / options.limit),
+            },
+          };
+        },
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    const firstPage = await plugin.getBundles({ limit: 2 });
+    const secondPage = await plugin.getBundles({
+      limit: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
+    });
+
+    expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-300",
+      "bundle-200",
+    ]);
+    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
+    expect(secondPage.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
+    expect(secondPage.pagination.currentPage).toBe(2);
+  });
 });

@@ -83,14 +83,6 @@ export interface DatabaseBundleQueryOptions {
   where?: DatabaseBundleQueryWhere;
   limit: number;
   /**
-   * Legacy offset-based pagination.
-   *
-   * @deprecated Prefer cursor-based pagination with `cursor.after` or
-   * `cursor.before`. Offset-based pagination is kept for backwards
-   * compatibility and will be removed in a future major release.
-   */
-  offset?: number;
-  /**
    * Preferred cursor-based pagination for bundle-management queries.
    */
   cursor?: DatabaseBundleCursor;

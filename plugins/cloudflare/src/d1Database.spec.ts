@@ -276,7 +276,7 @@ describe("d1Database plugin", () => {
     };
     rows.set(bundleId, initialRow);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     rows.set(bundleId, {
       ...initialRow,

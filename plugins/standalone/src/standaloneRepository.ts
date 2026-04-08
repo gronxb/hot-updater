@@ -125,6 +125,7 @@ export const standaloneRepository =
       });
 
       return {
+        supportsCursorPagination: true,
         async getBundleById(bundleId: string): Promise<Bundle | null> {
           try {
             const { path, headers: routeHeaders } = routes.retrieve(bundleId);
@@ -144,6 +145,16 @@ export const standaloneRepository =
         },
         async getBundles(options) {
           const { where, limit, cursor } = options ?? {};
+          if (
+            options &&
+            typeof options === "object" &&
+            "offset" in options &&
+            options.offset !== undefined
+          ) {
+            throw new Error(
+              "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+            );
+          }
           const { path, headers: routeHeaders } = routes.list();
           const url = new URL(buildUrl(path));
 

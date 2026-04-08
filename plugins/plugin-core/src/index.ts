@@ -7,6 +7,7 @@ export * from "./createStoragePlugin";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
+export * from "./paginateBundles";
 export * from "./queryBundles";
 export * from "./semverSatisfies";
 export * from "./types";

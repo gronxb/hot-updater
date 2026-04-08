@@ -51,7 +51,6 @@ Your factory function must return an object with these methods:
     where?: { channel?: string; platform?: string };
     limit: number;
     cursor?: { after?: string; before?: string };
-    offset?: number; // deprecated legacy pagination
   }) => Promise<Paginated<Bundle[]>>;
 
   // Get all available channels
@@ -127,9 +126,6 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
         if (options.cursor?.before) {
           params.set("before", options.cursor.before);
         }
-        if (options.offset !== undefined) {
-          params.set("offset", String(options.offset));
-        }
 
         if (options.where?.channel) {
           params.set("channel", options.where.channel);
@@ -193,10 +189,8 @@ export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
 });
 ```
 
-Use cursor pagination as the primary contract for new plugins. Legacy
-offset-based pagination is still supported for compatibility, but it is
-deprecated and should only be kept if you need to interoperate with older
-clients.
+Use cursor pagination as the contract for bundle-management queries. The
+`offset` query parameter has been removed from the public API.
 
 ## Helper Utilities
 
@@ -204,16 +198,18 @@ The `@hot-updater/plugin-core` package provides helper functions:
 
 ### calculatePagination
 
-Generates pagination metadata from total count and options:
+Generates pagination metadata after your implementation resolves a cursor into
+an internal start index:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
 
+const startIndex = resolvedCursorStartIndex;
 const pagination = calculatePagination(totalCount, {
   limit: 10,
-  offset: 0,
+  offset: startIndex,
 });
-// Result: { total, limit, offset, hasMore }
+// Result: { total, hasNextPage, hasPreviousPage, currentPage, totalPages }
 ```
 
 ## CLI Configuration

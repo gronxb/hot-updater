@@ -179,7 +179,11 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset = 0, orderBy } = options;
+        const { where, limit, orderBy } = options;
+        const offset =
+          (("offset" in options ? options.offset : undefined) as
+            | number
+            | undefined) ?? 0;
 
         let query = applyFirestoreQueryableFilters(bundlesCollection, where);
 

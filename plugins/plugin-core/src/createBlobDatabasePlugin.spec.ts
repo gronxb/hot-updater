@@ -496,7 +496,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -568,7 +568,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -671,7 +671,7 @@ describe("blobDatabase plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -769,7 +769,7 @@ describe("blobDatabase plugin", () => {
       ),
     ]);
 
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: Returned bundle list should only include valid bundles
     expect(result.data).toHaveLength(3);
     expect(result.data).toEqual(
@@ -844,7 +844,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: All bundles from all channels should be loaded
     expect(result.data).toHaveLength(5);
     expect(result.data).toEqual(
@@ -901,7 +901,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -981,7 +981,7 @@ describe("blobDatabase plugin", () => {
       bundleA,
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Descending order: "C" > "B" > "A"
     expect(result.data).toEqual([bundleC, bundleB, bundleA]);
     expect(result.pagination).toEqual({
@@ -1001,7 +1001,7 @@ describe("blobDatabase plugin", () => {
       bundleB,
     ]);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     expect(fakeStore[getManagementRootKey({})]).toBeDefined();
     expect(fakeStore[getManagementPageKey({}, 0)]).toBeDefined();
@@ -1027,6 +1027,7 @@ describe("blobDatabase plugin", () => {
 
     expect(listObjectCalls).toEqual([]);
     expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
       getManagementPageKey({ channel: "production", platform: "ios" }, 0),
     ]);
   });
@@ -1037,7 +1038,7 @@ describe("blobDatabase plugin", () => {
     listObjectCalls = [];
     loadObjectCalls = [];
 
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
 
     expect(result.data.map((bundle) => bundle.id)).toEqual(
       bundles.slice(0, 20).map((bundle) => bundle.id),
@@ -1276,7 +1277,6 @@ describe("blobDatabase plugin", () => {
     const updatedBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(updatedBundles.data).toEqual([
@@ -1382,7 +1382,6 @@ describe("blobDatabase plugin", () => {
     const productionBundles = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(productionBundles.data).toEqual([survivingBundle]);
@@ -1430,7 +1429,6 @@ describe("blobDatabase plugin", () => {
     const removedScopeBundles = await plugin.getBundles({
       where: { channel: "staging", platform: "ios" },
       limit: 20,
-      offset: 0,
     });
 
     expect(removedScopeBundles.data).toEqual([]);
@@ -1442,6 +1440,108 @@ describe("blobDatabase plugin", () => {
       getManagementRootKey({ channel: "staging", platform: "ios" }),
     );
     expect(loadObjectCalls).toContain(getManagementRootKey({}));
+  });
+
+  it("revalidates cached management roots when another plugin instance updates bundles", async () => {
+    const targetBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-target",
+    );
+    const siblingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    const secondPlugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    await secondPlugin.updateBundle(targetBundle.id, {
+      enabled: false,
+      message: "Updated from another instance",
+    });
+    await secondPlugin.commitBundle();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const refreshedBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(refreshedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        enabled: false,
+        message: "Updated from another instance",
+      },
+      siblingBundle,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+      getManagementPageKey({ channel: "staging", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("revalidates cached management roots when another plugin instance changes channels", async () => {
+    const stagingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-channel-target",
+    );
+
+    await plugin.appendBundle(stagingBundle);
+    await plugin.commitBundle();
+
+    await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
+
+    const secondPlugin = createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })({})();
+
+    const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
+    expect(bundleToDelete).toEqual(stagingBundle);
+    await secondPlugin.deleteBundle(bundleToDelete!);
+    await secondPlugin.commitBundle();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
   });
 
   it("supports cursor pagination from the index manifest", async () => {
@@ -1459,7 +1559,6 @@ describe("blobDatabase plugin", () => {
     const firstPage = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
@@ -1479,7 +1578,6 @@ describe("blobDatabase plugin", () => {
     const secondPage = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 2,
-      offset: 2,
       cursor: {
         after: firstPage.pagination.nextCursor ?? undefined,
       },
@@ -1499,7 +1597,6 @@ describe("blobDatabase plugin", () => {
     const previousPage = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 2,
-      offset: 0,
       cursor: {
         before: secondPage.pagination.previousCursor ?? undefined,
       },
@@ -1522,7 +1619,7 @@ describe("blobDatabase plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -1555,7 +1652,7 @@ describe("blobDatabase plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     expect(result.data).toEqual([]);
     expect(result.pagination).toEqual({
       total: 0,
@@ -1655,7 +1752,6 @@ describe("blobDatabase plugin", () => {
     // Act: Load all bundles
     const result = await plugin.getBundles({
       limit: 10,
-      offset: 0,
       where: {
         platform: undefined,
         channel: "production",
@@ -1970,7 +2066,6 @@ describe("blobDatabase plugin", () => {
     const bundlesBeforeDeletion = await plugin.getBundles({
       where: { platform: "ios", channel: "production" },
       limit: 10,
-      offset: 0,
     });
     expect(bundlesBeforeDeletion.data).toHaveLength(3);
 
@@ -1982,7 +2077,6 @@ describe("blobDatabase plugin", () => {
     const bundlesAfterDeletion = await plugin.getBundles({
       where: { platform: "ios", channel: "production" },
       limit: 10,
-      offset: 0,
     });
     expect(bundlesAfterDeletion.data).toHaveLength(2);
     expect(bundlesAfterDeletion.data.some((b) => b.id === "bundle2")).toBe(
@@ -2731,7 +2825,6 @@ describe("blobDatabase plugin", () => {
       const result = await plugin.getBundles({
         where: { platform: "ios", channel: "production" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data).toHaveLength(2);
@@ -2826,7 +2919,6 @@ describe("blobDatabase plugin", () => {
       const result = await plugin.getBundles({
         where: { platform: "ios", channel: "production" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data).toHaveLength(2);

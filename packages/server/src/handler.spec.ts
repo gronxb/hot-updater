@@ -283,6 +283,24 @@ describe("createHandler", () => {
     );
   });
 
+  it("returns 400 when bundle list requests still send offset pagination", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?limit=20&offset=40",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
+    });
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when the platform route parameter is invalid", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
