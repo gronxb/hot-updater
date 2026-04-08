@@ -243,9 +243,6 @@ const handleGetBundles: RouteHandler = async (
   const channel = url.searchParams.get("channel") ?? undefined;
   const platform = url.searchParams.get("platform");
   const limit = Number(url.searchParams.get("limit")) || 50;
-  const rawOffset = url.searchParams.get("offset");
-  const offset =
-    rawOffset === null || rawOffset === "" ? undefined : Number(rawOffset);
   const after = url.searchParams.get("after") ?? undefined;
   const before = url.searchParams.get("before") ?? undefined;
 
@@ -262,7 +259,6 @@ const handleGetBundles: RouteHandler = async (
         ...(platform && { platform }),
       },
       limit,
-      ...(offset !== undefined ? { offset } : {}),
       cursor:
         after || before
           ? {

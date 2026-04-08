@@ -1,13 +1,12 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
-import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "./constants";
+import { DEFAULT_PAGE_LIMIT } from "./constants";
 
 type GetBundlesInput = {
   channel?: string;
   platform?: "ios" | "android";
   limit?: string;
-  offset?: string;
   after?: string;
   before?: string;
 };
@@ -83,7 +82,6 @@ export const getBundles = createServerFn({ method: "GET" })
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
         limit: data?.limit ? Number(data.limit) : DEFAULT_PAGE_LIMIT,
-        offset: data?.offset ? Number(data.offset) : DEFAULT_PAGE_OFFSET,
         after: data?.after ?? undefined,
         before: data?.before ?? undefined,
       };
@@ -95,7 +93,6 @@ export const getBundles = createServerFn({ method: "GET" })
           platform: query.platform,
         },
         limit: query.limit,
-        offset: query.offset,
         cursor:
           query.after || query.before
             ? {

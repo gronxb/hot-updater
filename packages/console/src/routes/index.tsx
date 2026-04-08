@@ -14,7 +14,6 @@ export const Route = createFileRoute("/")({
     return {
       channel: search.channel as string | undefined,
       platform: search.platform as "ios" | "android" | undefined,
-      offset: search.offset as string | undefined,
       after: search.after as string | undefined,
       before: search.before as string | undefined,
       bundleId: search.bundleId as string | undefined,
@@ -29,7 +28,6 @@ function BundlesPage() {
   const { data: bundlesData, isLoading } = useBundlesQuery({
     channel: filters.channel,
     platform: filters.platform,
-    offset: filters.offset,
     after: filters.after,
     before: filters.before,
     limit: "20",

@@ -143,7 +143,7 @@ export const standaloneRepository =
           }
         },
         async getBundles(options) {
-          const { where, limit, offset, cursor } = options ?? {};
+          const { where, limit, cursor } = options ?? {};
           const { path, headers: routeHeaders } = routes.list();
           const url = new URL(buildUrl(path));
 
@@ -165,10 +165,6 @@ export const standaloneRepository =
 
           if (cursor?.before !== undefined) {
             url.searchParams.set("before", cursor.before);
-          }
-
-          if (offset !== undefined) {
-            url.searchParams.set("offset", String(offset));
           }
 
           const response = await fetch(url.toString(), {

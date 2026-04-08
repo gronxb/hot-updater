@@ -18,7 +18,6 @@ type BundleFilters = {
   channel?: string;
   platform?: "ios" | "android";
   limit?: string;
-  offset?: string;
   after?: string;
   before?: string;
 };

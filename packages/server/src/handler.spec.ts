@@ -179,7 +179,7 @@ describe("createHandler", () => {
 
     const response = await handler(
       new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2&offset=10",
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2",
       ),
     );
 
@@ -202,7 +202,6 @@ describe("createHandler", () => {
           platform: "ios",
         },
         limit: 2,
-        offset: 10,
       },
       undefined,
     );
@@ -226,7 +225,7 @@ describe("createHandler", () => {
 
     const response = await handler(
       new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&offset=20&after=bundle-20",
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
       ),
     );
 
@@ -237,7 +236,6 @@ describe("createHandler", () => {
           channel: "production",
         },
         limit: 20,
-        offset: 20,
         cursor: {
           after: "bundle-20",
           before: undefined,
@@ -247,7 +245,7 @@ describe("createHandler", () => {
     );
   });
 
-  it("supports cursor pagination without forcing a legacy offset", async () => {
+  it("supports cursor pagination without a legacy offset query param", async () => {
     const api = createApi();
     api.getBundles.mockResolvedValue({
       data: [testBundle],

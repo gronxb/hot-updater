@@ -136,7 +136,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const bundles = await repo.getBundles({ limit: 20, offset: 0 });
+    const bundles = await repo.getBundles({ limit: 20 });
     expect(bundles.data).toEqual(testBundles);
     expect(callCount).toBe(1);
   });
@@ -152,58 +152,16 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.getBundles({ limit: 20, offset: 0 });
-    const refreshed = await repo.getBundles({ limit: 20, offset: 0 });
+    await repo.getBundles({ limit: 20 });
+    const refreshed = await repo.getBundles({ limit: 20 });
     expect(refreshed.data).toEqual(testBundles);
     expect(callCount).toBe(2);
-  });
-
-  it("getBundles: forwards limit and offset so results beyond the server default page remain reachable", async () => {
-    const bundles = Array.from({ length: 51 }, (_, index) => ({
-      ...DEFAULT_BUNDLE,
-      id: `bundle-${String(index + 1).padStart(2, "0")}`,
-      channel: "production",
-      enabled: true,
-      shouldForceUpdate: false,
-      targetAppVersion: "*",
-      storageUri: "gs://test-bucket/test-key",
-      fingerprintHash: null,
-    })) satisfies Bundle[];
-
-    let requestedLimit: string | null = null;
-    let requestedOffset: string | null = null;
-
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        requestedLimit = url.searchParams.get("limit");
-        requestedOffset = url.searchParams.get("offset");
-
-        const limit = Number.parseInt(requestedLimit ?? "50", 10);
-        const offset = Number.parseInt(requestedOffset ?? "0", 10);
-
-        return HttpResponse.json(
-          createPaginatedResult(bundles.slice(offset, offset + limit), {
-            total: bundles.length,
-            limit,
-            offset,
-          }),
-        );
-      }),
-    );
-
-    const result = await repo.getBundles({ limit: 1, offset: 50 });
-
-    expect(requestedLimit).toBe("1");
-    expect(requestedOffset).toBe("50");
-    expect(result.data).toEqual([bundles[50]]);
   });
 
   it("getBundles: forwards console filters through query parameters", async () => {
     let requestedChannel: string | null = null;
     let requestedPlatform: string | null = null;
     let requestedLimit: string | null = null;
-    let requestedOffset: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
@@ -211,7 +169,6 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         requestedChannel = url.searchParams.get("channel");
         requestedPlatform = url.searchParams.get("platform");
         requestedLimit = url.searchParams.get("limit");
-        requestedOffset = url.searchParams.get("offset");
 
         return HttpResponse.json(
           createPaginatedResult([], { limit: 10, offset: 0 }),
@@ -225,26 +182,22 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         platform: "ios",
       },
       limit: 10,
-      offset: 20,
     });
 
     expect(requestedChannel).toBe("production");
     expect(requestedPlatform).toBe("ios");
     expect(requestedLimit).toBe("10");
-    expect(requestedOffset).toBe("20");
   });
 
-  it("getBundles: prefers cursor query params without requiring offset", async () => {
+  it("getBundles: forwards cursor query params without offset", async () => {
     let requestedAfter: string | null = null;
     let requestedBefore: string | null = null;
-    let requestedOffset: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
         requestedAfter = url.searchParams.get("after");
         requestedBefore = url.searchParams.get("before");
-        requestedOffset = url.searchParams.get("offset");
 
         return HttpResponse.json(
           createPaginatedResult([TEST_BUNDLE_1], { limit: 1, offset: 1 }),
@@ -261,37 +214,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     expect(requestedAfter).toBe("bundle1");
     expect(requestedBefore).toBeNull();
-    expect(requestedOffset).toBeNull();
     expect(result.data).toEqual([TEST_BUNDLE_1]);
-  });
-
-  it("getBundles: keeps legacy offset available for backwards-compatible cursor requests", async () => {
-    let requestedAfter: string | null = null;
-    let requestedOffset: string | null = null;
-
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        requestedAfter = url.searchParams.get("after");
-        requestedOffset = url.searchParams.get("offset");
-
-        return HttpResponse.json(
-          createPaginatedResult([TEST_BUNDLE_2], { limit: 1, offset: 50 }),
-        );
-      }),
-    );
-
-    const result = await repo.getBundles({
-      limit: 1,
-      offset: 50,
-      cursor: {
-        after: "bundle-49",
-      },
-    });
-
-    expect(requestedAfter).toBe("bundle-49");
-    expect(requestedOffset).toBe("50");
-    expect(result.data).toEqual([TEST_BUNDLE_2]);
   });
 
   it("should return correct pagination info for single page", async () => {
@@ -338,7 +261,6 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     const result = await repo.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
 
     expect(result.data).toHaveLength(2);
@@ -360,23 +282,32 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
-        const limit = Number.parseInt(
-          url.searchParams.get("limit") || "20",
-          10,
-        );
-        const offset = Number.parseInt(
-          url.searchParams.get("offset") || "0",
-          10,
-        );
+        const after = url.searchParams.get("after");
+        if (after === TEST_BUNDLE_2.id) {
+          return HttpResponse.json({
+            data: [TEST_BUNDLE_3],
+            pagination: {
+              total: allBundles.length,
+              hasNextPage: false,
+              hasPreviousPage: true,
+              currentPage: 2,
+              totalPages: 2,
+              previousCursor: TEST_BUNDLE_3.id,
+            },
+          });
+        }
 
-        const paginatedData = allBundles.slice(offset, offset + limit);
-        return HttpResponse.json(
-          createPaginatedResult(paginatedData, {
+        return HttpResponse.json({
+          data: [TEST_BUNDLE_1, TEST_BUNDLE_2],
+          pagination: {
             total: allBundles.length,
-            limit,
-            offset,
-          }),
-        );
+            hasNextPage: true,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 2,
+            nextCursor: TEST_BUNDLE_2.id,
+          },
+        });
       }),
       http.post("http://localhost/hot-updater/api/bundles", async () => {
         return HttpResponse.json({ success: true });
@@ -390,7 +321,6 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     const firstPage = await repo.getBundles({
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -400,11 +330,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
+      nextCursor: TEST_BUNDLE_2.id,
     });
 
     const secondPage = await repo.getBundles({
       limit: 2,
-      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor!,
+      },
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -414,6 +347,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
+      previousCursor: TEST_BUNDLE_3.id,
     });
   });
 
@@ -496,7 +430,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.getBundles({ limit: 20, offset: 0 })).rejects.toThrow(
+    await expect(repo.getBundles({ limit: 20 })).rejects.toThrow(
       "API Error: Internal Server Error",
     );
   });
@@ -729,7 +663,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         }),
       );
 
-      const bundles = await customRepo.getBundles({ limit: 20, offset: 0 });
+      const bundles = await customRepo.getBundles({ limit: 20 });
       expect(bundles.data).toEqual(testBundles);
     });
 

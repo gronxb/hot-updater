@@ -33,8 +33,7 @@ export function BundlesTable({
   selectedBundleId,
   onRowClick,
 }: BundlesTableProps) {
-  const { filters, setFilters } = useFilterParams();
-  const currentOffset = Number(filters.offset || 0);
+  const { setFilters } = useFilterParams();
 
   const table = useReactTable({
     data: bundles,
@@ -47,9 +46,7 @@ export function BundlesTable({
     if (!previousCursor) {
       return;
     }
-    const newOffset = Math.max(0, currentOffset - DEFAULT_PAGE_LIMIT);
     setFilters({
-      offset: newOffset.toString(),
       after: undefined,
       before: previousCursor,
     });
@@ -60,18 +57,18 @@ export function BundlesTable({
     if (!nextCursor) {
       return;
     }
-    const newOffset = currentOffset + DEFAULT_PAGE_LIMIT;
     setFilters({
-      offset: newOffset.toString(),
       after: nextCursor,
       before: undefined,
     });
   };
 
   const hasNextPage = pagination?.hasNextPage ?? false;
-  const hasPreviousPage = pagination?.hasPreviousPage ?? currentOffset > 0;
-  const startEntry = bundles.length === 0 ? 0 : currentOffset + 1;
-  const endEntry = currentOffset + bundles.length;
+  const hasPreviousPage = pagination?.hasPreviousPage ?? false;
+  const currentPage = pagination?.currentPage ?? 1;
+  const startEntry =
+    bundles.length === 0 ? 0 : (currentPage - 1) * DEFAULT_PAGE_LIMIT + 1;
+  const endEntry = startEntry === 0 ? 0 : startEntry + bundles.length - 1;
 
   return (
     <div className="space-y-4">

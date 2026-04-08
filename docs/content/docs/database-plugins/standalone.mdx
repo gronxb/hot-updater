@@ -198,9 +198,7 @@ interface Bundle {
 `GET /api/bundles` must accept the pagination and filter query params used by
 the console and `standaloneRepository`, and return a paginated JSON body.
 
-Cursor-based pagination is the official contract. Legacy offset-based
-pagination remains supported for backwards compatibility, but it is deprecated
-and will be removed in a future major release.
+Cursor-based pagination is the official contract.
 
 Supported query params:
 
@@ -211,10 +209,6 @@ Supported query params:
 | `limit` | `number` | Window size |
 | `after` | `string` | Fetch the next window after this bundle ID |
 | `before` | `string` | Fetch the previous window before this bundle ID |
-| `offset` | `number` | Deprecated legacy page offset |
-
-If both cursor params and `offset` are provided, cursor pagination should take
-precedence.
 
 Expected response:
 

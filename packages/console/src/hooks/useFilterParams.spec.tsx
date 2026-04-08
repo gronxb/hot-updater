@@ -23,7 +23,6 @@ describe("useFilterParams", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "ios",
-      offset: "20",
       after: "bundle-020",
       before: undefined,
     });
@@ -39,7 +38,6 @@ describe("useFilterParams", () => {
       search: {
         channel: undefined,
         platform: "ios",
-        offset: "0",
         after: undefined,
         before: undefined,
         bundleId: undefined,
@@ -47,11 +45,10 @@ describe("useFilterParams", () => {
     });
   });
 
-  it("preserves omitted filters while allowing offset to be cleared", () => {
+  it("preserves omitted filters while allowing cursor params to be cleared", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "android",
-      offset: "20",
       after: "bundle-020",
       before: undefined,
     });
@@ -59,7 +56,7 @@ describe("useFilterParams", () => {
     const { result } = renderHook(() => useFilterParams());
 
     act(() => {
-      result.current.setFilters({ offset: undefined });
+      result.current.setFilters({ after: undefined });
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({
@@ -67,19 +64,17 @@ describe("useFilterParams", () => {
       search: {
         channel: "stable",
         platform: "android",
-        offset: undefined,
-        after: "bundle-020",
+        after: undefined,
         before: undefined,
         bundleId: undefined,
       },
     });
   });
 
-  it("sets bundleId in the URL and resets offset when the channel changes", () => {
+  it("sets bundleId in the URL and resets cursors when the channel changes", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "ios",
-      offset: "40",
       after: "bundle-040",
       before: undefined,
       bundleId: undefined,
@@ -96,7 +91,6 @@ describe("useFilterParams", () => {
       search: {
         channel: "beta",
         platform: "ios",
-        offset: "0",
         after: undefined,
         before: undefined,
         bundleId: "bundle-123",

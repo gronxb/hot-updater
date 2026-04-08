@@ -31,7 +31,6 @@ export function AppSidebar() {
           search={{
             channel: undefined,
             platform: undefined,
-            offset: undefined,
             after: undefined,
             before: undefined,
             bundleId: undefined,
@@ -66,7 +65,6 @@ export function AppSidebar() {
                     search={{
                       channel: undefined,
                       platform: undefined,
-                      offset: undefined,
                       after: undefined,
                       before: undefined,
                       bundleId: undefined,
