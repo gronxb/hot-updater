@@ -40,6 +40,10 @@ export function BundlesTable({
     columns: bundleColumns,
     getCoreRowModel: getCoreRowModel(),
   });
+  const hasNextPage = pagination?.hasNextPage ?? false;
+  const hasPreviousPage = pagination?.hasPreviousPage ?? false;
+  const currentPage = pagination?.currentPage ?? 1;
+  const totalPages = pagination?.totalPages ?? 0;
 
   const handlePreviousPage = () => {
     const previousCursor = pagination?.previousCursor ?? bundles[0]?.id;
@@ -47,6 +51,7 @@ export function BundlesTable({
       return;
     }
     setFilters({
+      page: Math.max(1, currentPage - 1),
       after: undefined,
       before: previousCursor,
     });
@@ -58,14 +63,11 @@ export function BundlesTable({
       return;
     }
     setFilters({
+      page: currentPage + 1,
       after: nextCursor,
       before: undefined,
     });
   };
-
-  const hasNextPage = pagination?.hasNextPage ?? false;
-  const hasPreviousPage = pagination?.hasPreviousPage ?? false;
-  const currentPage = pagination?.currentPage ?? 1;
   const startEntry =
     bundles.length === 0 ? 0 : (currentPage - 1) * DEFAULT_PAGE_LIMIT + 1;
   const endEntry = startEntry === 0 ? 0 : startEntry + bundles.length - 1;
@@ -138,7 +140,16 @@ export function BundlesTable({
           Showing <span className="text-foreground">{startEntry}</span> to{" "}
           <span className="text-foreground">{endEntry}</span> entries
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-muted-foreground font-medium">
+            Page <span className="text-foreground">{currentPage}</span>
+            {totalPages > 0 ? (
+              <>
+                {" "}
+                of <span className="text-foreground">{totalPages}</span>
+              </>
+            ) : null}
+          </div>
           <Button
             variant="outline"
             size="sm"

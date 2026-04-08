@@ -11,9 +11,22 @@ import { useBundleQuery, useBundlesQuery } from "@/lib/api";
 export const Route = createFileRoute("/")({
   component: BundlesPage,
   validateSearch: (search: Record<string, unknown>) => {
+    const parsedPage =
+      typeof search.page === "number"
+        ? search.page
+        : typeof search.page === "string"
+          ? Number(search.page)
+          : undefined;
+
     return {
       channel: search.channel as string | undefined,
       platform: search.platform as "ios" | "android" | undefined,
+      page:
+        parsedPage !== undefined &&
+        Number.isInteger(parsedPage) &&
+        parsedPage > 1
+          ? parsedPage
+          : undefined,
       after: search.after as string | undefined,
       before: search.before as string | undefined,
       bundleId: search.bundleId as string | undefined,
@@ -28,6 +41,7 @@ function BundlesPage() {
   const { data: bundlesData, isLoading } = useBundlesQuery({
     channel: filters.channel,
     platform: filters.platform,
+    page: filters.page,
     after: filters.after,
     before: filters.before,
     limit: "20",

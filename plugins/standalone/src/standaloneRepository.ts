@@ -144,19 +144,21 @@ export const standaloneRepository =
           }
         },
         async getBundles(options) {
-          const { where, limit, cursor } = options ?? {};
-          if (
+          const { where, limit, cursor, page } = options ?? {};
+          const internalOffset =
             options &&
             typeof options === "object" &&
             "offset" in options &&
-            options.offset !== undefined
-          ) {
-            throw new Error(
-              "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-            );
-          }
+            typeof options.offset === "number"
+              ? options.offset
+              : undefined;
           const { path, headers: routeHeaders } = routes.list();
           const url = new URL(buildUrl(path));
+          const resolvedPage =
+            page ??
+            (internalOffset !== undefined && limit > 0
+              ? Math.floor(internalOffset / limit) + 1
+              : undefined);
 
           if (where?.channel !== undefined) {
             url.searchParams.set("channel", where.channel);
@@ -168,6 +170,10 @@ export const standaloneRepository =
 
           if (limit !== undefined) {
             url.searchParams.set("limit", String(limit));
+          }
+
+          if (resolvedPage !== undefined) {
+            url.searchParams.set("page", String(resolvedPage));
           }
 
           if (cursor?.after !== undefined) {

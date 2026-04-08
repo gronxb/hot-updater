@@ -83,6 +83,11 @@ export interface DatabaseBundleQueryOptions {
   where?: DatabaseBundleQueryWhere;
   limit: number;
   /**
+   * Optional page number used by management UIs to keep page boundaries stable
+   * even when new bundles are inserted ahead of the current cursor window.
+   */
+  page?: number;
+  /**
    * Preferred cursor-based pagination for bundle-management queries.
    */
   cursor?: DatabaseBundleCursor;

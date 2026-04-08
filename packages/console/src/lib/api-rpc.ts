@@ -6,6 +6,7 @@ import { DEFAULT_PAGE_LIMIT } from "./constants";
 type GetBundlesInput = {
   channel?: string;
   platform?: "ios" | "android";
+  page?: number;
   limit?: string;
   after?: string;
   before?: string;
@@ -81,6 +82,12 @@ export const getBundles = createServerFn({ method: "GET" })
       const query = {
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
+        page:
+          typeof data?.page === "number" &&
+          Number.isInteger(data.page) &&
+          data.page > 1
+            ? data.page
+            : undefined,
         limit: data?.limit ? Number(data.limit) : DEFAULT_PAGE_LIMIT,
         after: data?.after ?? undefined,
         before: data?.before ?? undefined,
@@ -93,6 +100,7 @@ export const getBundles = createServerFn({ method: "GET" })
           platform: query.platform,
         },
         limit: query.limit,
+        page: query.page,
         cursor:
           query.after || query.before
             ? {

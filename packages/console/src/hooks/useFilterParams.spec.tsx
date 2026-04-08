@@ -23,6 +23,7 @@ describe("useFilterParams", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "ios",
+      page: 3,
       after: "bundle-020",
       before: undefined,
     });
@@ -38,6 +39,7 @@ describe("useFilterParams", () => {
       search: {
         channel: undefined,
         platform: "ios",
+        page: undefined,
         after: undefined,
         before: undefined,
         bundleId: undefined,
@@ -49,6 +51,7 @@ describe("useFilterParams", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "android",
+      page: 4,
       after: "bundle-020",
       before: undefined,
     });
@@ -64,6 +67,7 @@ describe("useFilterParams", () => {
       search: {
         channel: "stable",
         platform: "android",
+        page: 4,
         after: undefined,
         before: undefined,
         bundleId: undefined,
@@ -75,6 +79,7 @@ describe("useFilterParams", () => {
     mockUseSearch.mockReturnValue({
       channel: "stable",
       platform: "ios",
+      page: 5,
       after: "bundle-040",
       before: undefined,
       bundleId: undefined,
@@ -91,9 +96,43 @@ describe("useFilterParams", () => {
       search: {
         channel: "beta",
         platform: "ios",
+        page: undefined,
         after: undefined,
         before: undefined,
         bundleId: "bundle-123",
+      },
+    });
+  });
+
+  it("omits page 1 from the URL while keeping higher pages", () => {
+    mockUseSearch.mockReturnValue({
+      channel: "stable",
+      platform: "ios",
+      page: 2,
+      after: "bundle-040",
+      before: undefined,
+      bundleId: undefined,
+    });
+
+    const { result } = renderHook(() => useFilterParams());
+
+    act(() => {
+      result.current.setFilters({
+        page: 1,
+        before: "bundle-020",
+        after: undefined,
+      });
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/",
+      search: {
+        channel: "stable",
+        platform: "ios",
+        page: undefined,
+        after: undefined,
+        before: "bundle-020",
+        bundleId: undefined,
       },
     });
   });

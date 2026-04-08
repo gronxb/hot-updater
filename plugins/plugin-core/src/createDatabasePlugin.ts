@@ -59,6 +59,14 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
 const REPLACE_ON_UPDATE_KEYS = ["targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
+function normalizePage(value: number | undefined): number | undefined {
+  if (!Number.isInteger(value) || value === undefined || value < 1) {
+    return undefined;
+  }
+
+  return value;
+}
+
 function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
   return mergeWith(baseBundle, patch, (_targetValue, sourceValue, key) => {
     if (
@@ -369,8 +377,47 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           const methods = getMethods();
           const normalizedOptions = {
             ...options,
+            page: normalizePage(options.page),
             orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
           };
+
+          if (normalizedOptions.page !== undefined) {
+            const { page, ...pageOptions } = normalizedOptions;
+            const requestedOffset = (page - 1) * normalizedOptions.limit;
+            let pageResult = await runGetBundles(
+              {
+                ...pageOptions,
+                offset: requestedOffset,
+              },
+              context,
+            );
+
+            const total = pageResult.pagination.total;
+            const totalPages =
+              total === 0 ? 0 : Math.ceil(total / normalizedOptions.limit);
+            const maxOffset =
+              totalPages === 0
+                ? 0
+                : (Math.max(1, totalPages) - 1) * normalizedOptions.limit;
+            const resolvedOffset = Math.min(requestedOffset, maxOffset);
+
+            if (resolvedOffset !== requestedOffset) {
+              pageResult = await runGetBundles(
+                {
+                  ...pageOptions,
+                  offset: resolvedOffset,
+                },
+                context,
+              );
+            }
+
+            return createPaginatedResult(
+              total,
+              normalizedOptions.limit,
+              resolvedOffset,
+              pageResult.data,
+            );
+          }
 
           if (methods.supportsCursorPagination) {
             if (context === undefined) {

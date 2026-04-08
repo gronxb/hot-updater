@@ -192,12 +192,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   it("getBundles: forwards cursor query params without offset", async () => {
     let requestedAfter: string | null = null;
     let requestedBefore: string | null = null;
+    let requestedPage: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
         requestedAfter = url.searchParams.get("after");
         requestedBefore = url.searchParams.get("before");
+        requestedPage = url.searchParams.get("page");
 
         return HttpResponse.json(
           createPaginatedResult([TEST_BUNDLE_1], { limit: 1, offset: 1 }),
@@ -214,7 +216,40 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     expect(requestedAfter).toBe("bundle1");
     expect(requestedBefore).toBeNull();
+    expect(requestedPage).toBeNull();
     expect(result.data).toEqual([TEST_BUNDLE_1]);
+  });
+
+  it("getBundles: forwards page-aligned cursor requests", async () => {
+    let requestedAfter: string | null = null;
+    let requestedPage: string | null = null;
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        requestedAfter = url.searchParams.get("after");
+        requestedPage = url.searchParams.get("page");
+
+        return HttpResponse.json(
+          createPaginatedResult([TEST_BUNDLE_2], {
+            limit: 20,
+            offset: 20,
+            total: 121,
+          }),
+        );
+      }),
+    );
+
+    await repo.getBundles({
+      limit: 20,
+      page: 2,
+      cursor: {
+        after: "bundle-020",
+      },
+    });
+
+    expect(requestedAfter).toBe("bundle-020");
+    expect(requestedPage).toBe("2");
   });
 
   it("getBundles: rejects removed offset pagination", async () => {

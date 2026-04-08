@@ -620,6 +620,36 @@ describe("s3Database plugin", () => {
     ]);
   });
 
+  it("keeps page-aligned results stable when a stale cursor is combined with page=2", async () => {
+    const bundles = createScopedBundles({ count: 121 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      page: 2,
+      cursor: {
+        after: "bundle-110",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(101 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(result.pagination.currentPage).toBe(2);
+    expect(result.pagination.previousCursor).toBe("bundle-101");
+    expect(result.pagination.nextCursor).toBe("bundle-082");
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
   it("reads channels from the all-bundles root only", async () => {
     seedPagedBundlesIndex([
       ...createScopedBundles({

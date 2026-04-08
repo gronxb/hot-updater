@@ -609,10 +609,12 @@ export const createBlobDatabasePlugin = <TConfig>({
     const readPagedBundles = async ({
       root,
       limit,
+      offset,
       cursor,
     }: {
       root: ManagementIndexRoot;
       limit: number;
+      offset?: number;
       cursor?: DatabaseBundleCursor;
     }) => {
       if (root.total === 0 || root.pages.length === 0) {
@@ -621,6 +623,74 @@ export const createBlobDatabasePlugin = <TConfig>({
 
       const pageStartOffsets = getPageStartOffsets(root.pages);
       const pageCache = new Map<string, Bundle[] | null>();
+
+      if (offset !== undefined) {
+        const normalizedOffset = Math.max(0, offset);
+
+        if (normalizedOffset >= root.total) {
+          return {
+            data: [] as Bundle[],
+            pagination: calculatePagination(root.total, {
+              limit,
+              offset: normalizedOffset,
+            }),
+          };
+        }
+
+        let pageIndex = 0;
+        for (let index = pageStartOffsets.length - 1; index >= 0; index--) {
+          if ((pageStartOffsets[index] ?? 0) <= normalizedOffset) {
+            pageIndex = index;
+            break;
+          }
+        }
+        const startInPage =
+          normalizedOffset - (pageStartOffsets[pageIndex] ?? 0);
+        const data: Bundle[] = [];
+
+        for (
+          let currentPageIndex = pageIndex;
+          currentPageIndex < root.pages.length &&
+          (limit <= 0 || data.length < limit);
+          currentPageIndex++
+        ) {
+          const descriptor = root.pages[currentPageIndex]!;
+          const page = await loadManagementPage(descriptor, pageCache);
+          if (!page) {
+            return paginateBundles({
+              bundles: await loadAllBundlesForManagementFallback(),
+              limit,
+              offset: normalizedOffset,
+            });
+          }
+
+          data.push(
+            ...(currentPageIndex === pageIndex
+              ? page.slice(startInPage)
+              : page),
+          );
+        }
+
+        const paginatedData = limit > 0 ? data.slice(0, limit) : data;
+        const pagination = calculatePagination(root.total, {
+          limit,
+          offset: normalizedOffset,
+        });
+
+        return {
+          data: paginatedData,
+          pagination: {
+            ...pagination,
+            ...(paginatedData.length > 0 &&
+            normalizedOffset + paginatedData.length < root.total
+              ? { nextCursor: paginatedData.at(-1)?.id }
+              : {}),
+            ...(paginatedData.length > 0 && normalizedOffset > 0
+              ? { previousCursor: paginatedData[0]?.id }
+              : {}),
+          },
+        };
+      }
 
       if (cursor?.after) {
         let pageIndex = root.pages.findIndex((page) => {
@@ -1120,7 +1190,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
 
         async getBundles(options) {
-          const { where, limit, orderBy, cursor } = options;
+          const { where, limit, offset, orderBy, cursor } = options;
           const scope = getSupportedManagementScope(where, orderBy);
 
           if (scope) {
@@ -1132,6 +1202,7 @@ export const createBlobDatabasePlugin = <TConfig>({
             return readPagedBundles({
               root,
               limit,
+              offset,
               cursor,
             });
           }
@@ -1146,6 +1217,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           return paginateBundles({
             bundles: allBundles,
             limit,
+            offset,
             cursor,
             orderBy,
           });

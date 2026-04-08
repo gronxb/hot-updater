@@ -71,16 +71,44 @@ const sortBundles = (
 const paginateMockBundles = ({
   bundles,
   limit,
+  offset,
   cursor,
   orderBy,
 }: {
   bundles: Bundle[];
   limit: number;
+  offset?: number;
   cursor?: { after?: string; before?: string };
   orderBy?: DatabaseBundleQueryOrder;
 }) => {
   const sortedBundles = sortBundles(bundles, orderBy);
   const direction = orderBy?.direction ?? "desc";
+  const total = sortedBundles.length;
+
+  if (offset !== undefined) {
+    const normalizedOffset = Math.max(0, offset);
+    const data =
+      limit > 0
+        ? sortedBundles.slice(normalizedOffset, normalizedOffset + limit)
+        : sortedBundles.slice(normalizedOffset);
+    const pagination = calculatePagination(total, {
+      limit,
+      offset: normalizedOffset,
+    });
+
+    return {
+      data,
+      pagination: {
+        ...pagination,
+        ...(data.length > 0 && normalizedOffset + data.length < total
+          ? { nextCursor: data.at(-1)?.id }
+          : {}),
+        ...(data.length > 0 && normalizedOffset > 0
+          ? { previousCursor: data[0]?.id }
+          : {}),
+      },
+    };
+  }
 
   let data: Bundle[];
   if (cursor?.after) {
@@ -104,7 +132,6 @@ const paginateMockBundles = ({
     data = limit > 0 ? sortedBundles.slice(0, limit) : sortedBundles;
   }
 
-  const total = sortedBundles.length;
   const startIndex =
     data.length > 0
       ? sortedBundles.findIndex((bundle) => bundle.id === data[0]!.id)
@@ -151,7 +178,7 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, cursor, orderBy } = options ?? {};
+        const { where, limit, offset, cursor, orderBy } = options ?? {};
         await sleep(minMax(config.latency.min, config.latency.max));
 
         const filteredBundles = sortBundles(
@@ -163,6 +190,7 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
           ...paginateMockBundles({
             bundles: filteredBundles,
             limit,
+            offset,
             cursor,
             orderBy,
           }),

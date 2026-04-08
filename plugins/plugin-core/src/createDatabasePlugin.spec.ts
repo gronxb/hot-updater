@@ -304,4 +304,85 @@ describe("createDatabasePlugin", () => {
     expect(secondPage.pagination.previousCursor).toBe("bundle-100");
     expect(secondPage.pagination.currentPage).toBe(2);
   });
+
+  it("uses internal offset pagination when a stable page number is provided", async () => {
+    const bundles = Array.from({ length: 45 }, (_, index) => ({
+      ...baseBundle,
+      id: `bundle-${String(45 - index).padStart(3, "0")}`,
+    }));
+    const getBundles = vi.fn(async (options) => {
+      const filtered = bundles.slice();
+      const offset = options.offset ?? 0;
+      const page =
+        options.limit > 0
+          ? filtered.slice(offset, offset + options.limit)
+          : filtered.slice(offset);
+
+      return {
+        data: page,
+        pagination: {
+          total: filtered.length,
+          hasNextPage: offset + options.limit < filtered.length,
+          hasPreviousPage: offset > 0,
+          currentPage: Math.floor(offset / options.limit) + 1,
+          totalPages: Math.ceil(filtered.length / options.limit),
+        },
+      };
+    });
+
+    const plugin = createDatabasePlugin({
+      name: "page-aware-plugin",
+      factory: () => ({
+        supportsCursorPagination: true,
+        getBundleById: async (bundleId) =>
+          bundles.find((bundle) => bundle.id === bundleId) ?? null,
+        getBundles,
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    const pageTwo = await plugin.getBundles({
+      limit: 20,
+      page: 2,
+      cursor: {
+        after: "bundle-033",
+      },
+    });
+
+    expect(getBundles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 20,
+        offset: 20,
+        cursor: {
+          after: "bundle-033",
+        },
+      }),
+    );
+    expect(pageTwo.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-025",
+      "bundle-024",
+      "bundle-023",
+      "bundle-022",
+      "bundle-021",
+      "bundle-020",
+      "bundle-019",
+      "bundle-018",
+      "bundle-017",
+      "bundle-016",
+      "bundle-015",
+      "bundle-014",
+      "bundle-013",
+      "bundle-012",
+      "bundle-011",
+      "bundle-010",
+      "bundle-009",
+      "bundle-008",
+      "bundle-007",
+      "bundle-006",
+    ]);
+    expect(pageTwo.pagination.currentPage).toBe(2);
+    expect(pageTwo.pagination.previousCursor).toBe("bundle-025");
+    expect(pageTwo.pagination.nextCursor).toBe("bundle-006");
+  });
 });
