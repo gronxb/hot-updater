@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.29.5
+
+### Patch Changes
+
+- b653286: fix(ios): avoid false invalid zip errors during bundle extraction
+- Updated dependencies [52208f4]
+  - @hot-updater/plugin-core@0.29.5
+  - @hot-updater/cli-tools@0.29.5
+  - @hot-updater/core@0.29.5
+  - @hot-updater/js@0.29.5
+
 ## 0.29.4
 
 ### Patch Changes

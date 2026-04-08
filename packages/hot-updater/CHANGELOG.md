@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.29.5
+
+### Patch Changes
+
+- Updated dependencies [52208f4]
+  - @hot-updater/server@0.29.5
+  - @hot-updater/plugin-core@0.29.5
+  - @hot-updater/android-helper@0.29.5
+  - @hot-updater/apple-helper@0.29.5
+  - @hot-updater/cli-tools@0.29.5
+  - @hot-updater/console@0.29.5
+  - @hot-updater/core@0.29.5
+
 ## 0.29.4
 
 ### Patch Changes

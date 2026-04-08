@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.29.5
+
+### Patch Changes
+
+- 52208f4: perf: Fast-path lambda update checks through plugin-core
+  - @hot-updater/core@0.29.5
+  - @hot-updater/js@0.29.5
+
 ## 0.29.4
 
 ### Patch Changes
