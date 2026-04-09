@@ -14,7 +14,12 @@ describe("createDefaultResolver", () => {
   it("strips trailing slashes from baseURL for app-version requests", async () => {
     fetchUpdateInfoMock.mockResolvedValueOnce(null);
 
-    const resolver = createDefaultResolver("http://localhost:3007/hot-updater/");
+    const resolver = createDefaultResolver(
+      "http://localhost:3007/hot-updater/",
+    );
+    if (!resolver.checkUpdate) {
+      throw new Error("Default resolver must implement checkUpdate");
+    }
 
     await resolver.checkUpdate({
       appVersion: "1.0",
@@ -42,6 +47,9 @@ describe("createDefaultResolver", () => {
     const resolver = createDefaultResolver(
       "http://localhost:3007/hot-updater///",
     );
+    if (!resolver.checkUpdate) {
+      throw new Error("Default resolver must implement checkUpdate");
+    }
 
     await resolver.checkUpdate({
       appVersion: "1.0",

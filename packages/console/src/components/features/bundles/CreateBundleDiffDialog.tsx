@@ -47,7 +47,7 @@ export function CreateBundleDiffDialog({
     channel: bundle.channel,
     platform: bundle.platform,
     limit: "200",
-    offset: "0",
+    page: 1,
   });
 
   const baseCandidates = (bundlesData?.data ?? []).filter(
