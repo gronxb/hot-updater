@@ -1,13 +1,15 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
-import { DEFAULT_PAGE_LIMIT, DEFAULT_PAGE_OFFSET } from "./constants";
+import { DEFAULT_PAGE_LIMIT } from "./constants";
 
 type GetBundlesInput = {
   channel?: string;
   platform?: "ios" | "android";
+  page?: number;
   limit?: string;
-  offset?: string;
+  after?: string;
+  before?: string;
 };
 
 type GetBundleInput = {
@@ -85,8 +87,15 @@ export const getBundles = createServerFn({ method: "GET" })
       const query = {
         channel: data?.channel ?? undefined,
         platform: data?.platform ?? undefined,
+        page:
+          typeof data?.page === "number" &&
+          Number.isInteger(data.page) &&
+          data.page > 1
+            ? data.page
+            : undefined,
         limit: data?.limit ? Number(data.limit) : DEFAULT_PAGE_LIMIT,
-        offset: data?.offset ? Number(data.offset) : DEFAULT_PAGE_OFFSET,
+        after: data?.after ?? undefined,
+        before: data?.before ?? undefined,
       };
 
       const { databasePlugin } = await prepareConfig();
@@ -96,13 +105,26 @@ export const getBundles = createServerFn({ method: "GET" })
           platform: query.platform,
         },
         limit: query.limit,
-        offset: query.offset,
+        page: query.page,
+        cursor:
+          query.after || query.before
+            ? {
+                after: query.after,
+                before: query.before,
+              }
+            : undefined,
       });
 
       return (
         bundles ?? {
           data: [],
-          pagination: { total: 0, limit: query.limit, offset: query.offset },
+          pagination: {
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 0,
+          },
         }
       );
     } catch (error) {

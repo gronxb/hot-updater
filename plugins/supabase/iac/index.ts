@@ -6,13 +6,16 @@ import {
   type BuildType,
   ConfigBuilder,
   copyDirToTmp,
+  createHotUpdaterConfigScaffoldFromBuilder,
   link,
   makeEnv,
+  type HotUpdaterConfigScaffold,
   type ProviderConfig,
   p,
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
+  writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
@@ -25,7 +28,7 @@ const WORKSPACE_PACKAGE_PREFIX = "@hot-updater/";
 const IMPORT_SPECIFIER_PATTERN =
   /from\s+["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-const getConfigTemplate = (build: BuildType) => {
+const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -42,11 +45,12 @@ const getConfigTemplate = (build: BuildType) => {
   })`,
   };
 
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .getResult();
+  return createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage(storageConfig)
+      .setDatabase(databaseConfig),
+  );
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -701,7 +705,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   await removeTmpDir();
 
-  await fs.writeFile("hot-updater.config.ts", getConfigTemplate(build));
+  const configWriteResult = await writeHotUpdaterConfig(
+    getConfigScaffold(build),
+  );
 
   await makeEnv({
     HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,
@@ -709,9 +715,19 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  p.log.success(
-    "Generated 'hot-updater.config.ts' file with Supabase settings.",
-  );
+  if (configWriteResult.status === "created") {
+    p.log.success(
+      "Generated 'hot-updater.config.ts' file with Supabase settings.",
+    );
+  } else if (configWriteResult.status === "merged") {
+    p.log.success(
+      "Updated 'hot-updater.config.ts' file with Supabase settings.",
+    );
+  } else {
+    p.log.warn(
+      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
+    );
+  }
 
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {

@@ -32,21 +32,29 @@ run_named_step() {
   local step_name="$2"
   shift 2
 
-  local safe_name log_file status
+  local safe_name log_file status tail_pid
   safe_name="${step_name//:/-}"
   log_file="${LOG_DIR}/${order}-${safe_name}.log"
 
   printf '==> [%s] %s\n' "$step_name" "$*"
 
-  set +e
+  : >"$log_file"
   {
     printf 'cwd: %s\n' "$PWD"
     printf 'step: %s\n' "$step_name"
     printf 'command: %s\n\n' "$*"
-    "$@"
-  } 2>&1 | tee "$log_file"
-  status=${PIPESTATUS[0]}
+  } >>"$log_file"
+
+  tail -n +1 -f "$log_file" &
+  tail_pid=$!
+
+  set +e
+  "$@" >>"$log_file" 2>&1
+  status=$?
   set -e
+
+  kill "$tail_pid" >/dev/null 2>&1 || true
+  wait "$tail_pid" 2>/dev/null || true
 
   if [[ $status -ne 0 ]]; then
     printf '\n[FAIL] %s\n' "$step_name" >&2

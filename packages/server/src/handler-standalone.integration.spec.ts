@@ -234,7 +234,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     })();
 
     // Get all bundles
-    const result = await repo.getBundles({ limit: 50, offset: 0 });
+    const result = await repo.getBundles({ limit: 50 });
 
     expect(result.data).toHaveLength(3);
     expect(result.pagination.total).toBe(3);
@@ -243,7 +243,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const prodResult = await repo.getBundles({
       where: { channel: "production" },
       limit: 50,
-      offset: 0,
     });
 
     expect(prodResult.data).toHaveLength(2);

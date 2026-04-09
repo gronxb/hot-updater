@@ -428,9 +428,42 @@ class BundleFileStorageService(
         return regex.find(currentUrl)?.groupValues?.get(1)
     }
 
+    private fun resolveBundleFile(bundleDir: File): File? {
+        val manifest = readManifestFromBundleDir(bundleDir)
+        val manifestBundlePath =
+            (manifest?.get("assets") as? Map<*, *>)
+                ?.keys
+                ?.mapNotNull { key ->
+                    (key as? String)
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.takeIf { File(it).name.endsWith(".android.bundle") }
+                }?.singleOrNull()
+
+        if (manifestBundlePath != null) {
+            try {
+                val canonicalBundleDir = bundleDir.canonicalFile
+                val canonicalBundleFile = File(bundleDir, manifestBundlePath).canonicalFile
+                val canonicalBundleDirPath = canonicalBundleDir.path
+                val canonicalBundleFilePath = canonicalBundleFile.path
+                val isWithinBundleDir =
+                    canonicalBundleFilePath == canonicalBundleDirPath ||
+                        canonicalBundleFilePath.startsWith("$canonicalBundleDirPath${File.separator}")
+
+                if (isWithinBundleDir && canonicalBundleFile.isFile) {
+                    return canonicalBundleFile
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to resolve manifest bundle file from ${bundleDir.absolutePath}: ${e.message}")
+            }
+        }
+
+        return File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
+    }
+
     private fun findBundleFile(bundleId: String): File? {
         val bundleDir = File(getBundleStoreDir(), bundleId)
-        return bundleDir.walk().find { it.name == "index.android.bundle" && it.exists() }
+        return resolveBundleFile(bundleDir)
     }
 
     private fun getBundleUrlForId(bundleId: String): String? = findBundleFile(bundleId)?.absolutePath
@@ -952,8 +985,8 @@ class BundleFileStorageService(
         val finalBundleDir = File(bundleStoreDir, bundleId)
         if (finalBundleDir.exists()) {
             Log.d(TAG, "Bundle for bundleId $bundleId already exists. Using cached bundle.")
-            val existingIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
-            if (existingIndexFile != null) {
+            val existingBundleFile = resolveBundleFile(finalBundleDir)
+            if (existingBundleFile != null) {
                 // Update last modified time
                 finalBundleDir.setLastModified(System.currentTimeMillis())
 
@@ -963,7 +996,7 @@ class BundleFileStorageService(
                 saveMetadata(updatedMetadata)
 
                 // Set bundle URL for backwards compatibility
-                setBundleURL(existingIndexFile.absolutePath)
+                setBundleURL(existingBundleFile.absolutePath)
 
                 // Keep the current verified bundle as a fallback if one exists.
                 cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
@@ -1118,17 +1151,17 @@ class BundleFileStorageService(
                         throw HotUpdaterException.extractionFormatError()
                     }
 
-                    // 4) Find index.android.bundle inside tmpDir
-                    val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
-                    if (extractedIndex == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in tmpDir.")
+                    // 4) Resolve the extracted Android bundle file.
+                    val extractedBundleFile = resolveBundleFile(tmpDir)
+                    if (extractedBundleFile == null) {
+                        Log.d("BundleStorage", "Android bundle file could not be resolved in tmpDir.")
                         tempDir.deleteRecursively()
                         tmpDir.deleteRecursively()
                         throw HotUpdaterException.invalidBundle()
                     }
 
                     // 5) Log extracted bundle file size
-                    val bundleSize = extractedIndex.length()
+                    val bundleSize = extractedBundleFile.length()
                     Log.d("BundleStorage", "Extracted bundle size: $bundleSize bytes")
 
                     // 6) If the realDir (bundle-store/<bundleId>) exists, delete it
@@ -1157,10 +1190,10 @@ class BundleFileStorageService(
                         }
                     }
 
-                    // 8) Verify index.android.bundle exists inside finalBundleDir
-                    val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
-                    if (finalIndexFile == null) {
-                        Log.d("BundleStorage", "index.android.bundle not found in realDir.")
+                    // 8) Verify the Android bundle file exists inside finalBundleDir.
+                    val finalBundleFile = resolveBundleFile(finalBundleDir)
+                    if (finalBundleFile == null) {
+                        Log.d("BundleStorage", "Android bundle file could not be resolved in realDir.")
                         tempDir.deleteRecursively()
                         finalBundleDir.deleteRecursively()
                         throw HotUpdaterException.invalidBundle()
@@ -1170,7 +1203,7 @@ class BundleFileStorageService(
                     finalBundleDir.setLastModified(System.currentTimeMillis())
 
                     // 10) Save the new bundle as STAGING with verification pending
-                    val bundlePath = finalIndexFile.absolutePath
+                    val bundlePath = finalBundleFile.absolutePath
                     Log.d(TAG, "Setting bundle as staging: $bundlePath")
 
                     // Update metadata: set new bundle as staging

@@ -12,6 +12,7 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  createDatabasePluginGetUpdateInfo,
 } from "@hot-updater/plugin-core";
 
 type D1Result<T> = {
@@ -235,7 +236,93 @@ export const d1WorkerDatabase = <
         return result ?? null;
       };
 
+      const queryBundlesForUpdateInfo = async (
+        conditions: QueryConditions,
+        context?: HotUpdaterContext<TContext>,
+      ): Promise<Bundle[]> => {
+        const { sql: whereClause, params } = buildWhereClause(conditions);
+        const rows = await queryAll<SnakeCaseBundle>(
+          `
+            SELECT * FROM bundles
+            ${whereClause}
+          `,
+          params,
+          context,
+        );
+
+        return rows.map(transformRowToBundle);
+      };
+
+      const getTargetAppVersionsForUpdateInfo = async (
+        {
+          platform,
+          channel,
+          minBundleId,
+        }: {
+          platform: Bundle["platform"];
+          channel: string;
+          minBundleId: string;
+        },
+        context?: HotUpdaterContext<TContext>,
+      ): Promise<string[]> => {
+        const rows = await queryAll<{ target_app_version: string }>(
+          `
+            SELECT target_app_version
+            FROM bundles
+            WHERE channel = ?
+              AND platform = ?
+              AND enabled = 1
+              AND id >= ?
+              AND target_app_version IS NOT NULL
+            GROUP BY target_app_version
+          `,
+          [channel, platform, minBundleId],
+          context,
+        );
+
+        return rows.map((row) => row.target_app_version);
+      };
+
       return {
+        getUpdateInfo: createDatabasePluginGetUpdateInfo({
+          listTargetAppVersions: getTargetAppVersionsForUpdateInfo,
+          getBundlesByTargetAppVersions(
+            { platform, channel, minBundleId },
+            targetAppVersions,
+            context,
+          ) {
+            return queryBundlesForUpdateInfo(
+              {
+                enabled: true,
+                platform,
+                channel,
+                id: {
+                  gte: minBundleId,
+                },
+                targetAppVersionIn: targetAppVersions,
+              },
+              context,
+            );
+          },
+          getBundlesByFingerprint(
+            { platform, channel, minBundleId, fingerprintHash },
+            context,
+          ) {
+            return queryBundlesForUpdateInfo(
+              {
+                enabled: true,
+                platform,
+                channel,
+                id: {
+                  gte: minBundleId,
+                },
+                fingerprintHash,
+              },
+              context,
+            );
+          },
+        }),
+
         async getBundleById(bundleId, context) {
           const row = await queryFirst<SnakeCaseBundle>(
             "SELECT * FROM bundles WHERE id = ? LIMIT 1",
@@ -247,7 +334,11 @@ export const d1WorkerDatabase = <
         },
 
         async getBundles(options, context) {
-          const { where, limit, offset, orderBy } = options;
+          const { where, limit, orderBy } = options;
+          const offset =
+            (("offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
           const { sql: whereClause, params } = buildWhereClause(where);
           const orderSql =
             orderBy?.direction === "asc"

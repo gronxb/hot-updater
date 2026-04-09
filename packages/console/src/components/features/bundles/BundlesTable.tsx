@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
 import {
   flexRender,
   getCoreRowModel,
@@ -22,17 +22,18 @@ import { createBundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {
   bundles: Bundle[];
+  pagination?: PaginationInfo;
   selectedBundleId?: string;
   onRowClick: (bundle: Bundle) => void;
 }
 
 export function BundlesTable({
   bundles,
+  pagination,
   selectedBundleId,
   onRowClick,
 }: BundlesTableProps) {
-  const { filters, setFilters } = useFilterParams();
-  const currentOffset = Number(filters.offset || 0);
+  const { setFilters } = useFilterParams();
   const bundleMap = new Map(bundles.map((bundle) => [bundle.id, bundle]));
   const depthByBundleId: Record<string, number> = {};
 
@@ -69,19 +70,37 @@ export function BundlesTable({
     columns: bundleColumns,
     getCoreRowModel: getCoreRowModel(),
   });
+  const hasNextPage = pagination?.hasNextPage ?? false;
+  const hasPreviousPage = pagination?.hasPreviousPage ?? false;
+  const currentPage = pagination?.currentPage ?? 1;
+  const totalPages = pagination?.totalPages ?? 0;
 
   const handlePreviousPage = () => {
-    const newOffset = Math.max(0, currentOffset - DEFAULT_PAGE_LIMIT);
-    setFilters({ offset: newOffset.toString() });
+    const previousCursor = pagination?.previousCursor ?? bundles[0]?.id;
+    if (!previousCursor) {
+      return;
+    }
+    setFilters({
+      page: Math.max(1, currentPage - 1),
+      after: undefined,
+      before: previousCursor,
+    });
   };
 
   const handleNextPage = () => {
-    const newOffset = currentOffset + DEFAULT_PAGE_LIMIT;
-    setFilters({ offset: newOffset.toString() });
+    const nextCursor = pagination?.nextCursor ?? bundles.at(-1)?.id;
+    if (!nextCursor) {
+      return;
+    }
+    setFilters({
+      page: currentPage + 1,
+      after: nextCursor,
+      before: undefined,
+    });
   };
-
-  const hasNextPage = bundles.length === DEFAULT_PAGE_LIMIT;
-  const hasPreviousPage = currentOffset > 0;
+  const startEntry =
+    bundles.length === 0 ? 0 : (currentPage - 1) * DEFAULT_PAGE_LIMIT + 1;
+  const endEntry = startEntry === 0 ? 0 : startEntry + bundles.length - 1;
 
   return (
     <div className="space-y-4">
@@ -148,14 +167,19 @@ export function BundlesTable({
 
       <div className="flex items-center justify-between px-2">
         <div className="text-xs text-muted-foreground font-medium">
-          Showing <span className="text-foreground">{currentOffset + 1}</span>{" "}
-          to{" "}
-          <span className="text-foreground">
-            {currentOffset + bundles.length}
-          </span>{" "}
-          entries
+          Showing <span className="text-foreground">{startEntry}</span> to{" "}
+          <span className="text-foreground">{endEntry}</span> entries
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-muted-foreground font-medium">
+            Page <span className="text-foreground">{currentPage}</span>
+            {totalPages > 0 ? (
+              <>
+                {" "}
+                of <span className="text-foreground">{totalPages}</span>
+              </>
+            ) : null}
+          </div>
           <Button
             variant="outline"
             size="sm"

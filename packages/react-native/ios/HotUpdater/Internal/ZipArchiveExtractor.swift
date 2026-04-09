@@ -249,6 +249,7 @@ enum ZipArchiveExtractor {
             extractionResult = try extractDeflatedEntry(
                 from: handle,
                 compressedSize: entry.compressedSize,
+                path: entry.path,
                 to: outputHandle
             )
         default:
@@ -300,6 +301,7 @@ enum ZipArchiveExtractor {
     private static func extractDeflatedEntry(
         from handle: FileHandle,
         compressedSize: UInt64,
+        path: String,
         to outputHandle: FileHandle
     ) throws -> (writtenSize: UInt64, checksum: UInt32) {
         let outputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: ArchiveExtractionUtilities.bufferSize)
@@ -345,22 +347,23 @@ enum ZipArchiveExtractor {
 
                 stream.next_in = UnsafeMutablePointer(mutating: baseAddress)
                 stream.avail_in = uInt(chunk.count)
+                var needsMoreInput = false
 
                 repeat {
                     stream.next_out = outputBuffer
                     stream.avail_out = uInt(ArchiveExtractionUtilities.bufferSize)
 
                     let status = inflate(&stream, Z_NO_FLUSH)
+                    let producedBytes = ArchiveExtractionUtilities.bufferSize - Int(stream.avail_out)
+                    if producedBytes > 0 {
+                        let outputData = Data(bytes: outputBuffer, count: producedBytes)
+                        outputHandle.write(outputData)
+                        totalWritten += UInt64(producedBytes)
+                        checksum = updateCRC32(checksum, with: outputData)
+                    }
+
                     switch status {
                     case Z_OK, Z_STREAM_END:
-                        let producedBytes = ArchiveExtractionUtilities.bufferSize - Int(stream.avail_out)
-                        if producedBytes > 0 {
-                            let outputData = Data(bytes: outputBuffer, count: producedBytes)
-                            outputHandle.write(outputData)
-                            totalWritten += UInt64(producedBytes)
-                            checksum = updateCRC32(checksum, with: outputData)
-                        }
-
                         if status == Z_STREAM_END {
                             guard stream.avail_in == 0, remainingBytes == 0 else {
                                 throw NSError(
@@ -372,16 +375,33 @@ enum ZipArchiveExtractor {
 
                             reachedStreamEnd = true
                         }
+                    case Z_BUF_ERROR:
+                        guard stream.avail_in == 0, remainingBytes > 0 else {
+                            let message = stream.msg.map { String(cString: $0) } ?? "Unknown zlib error"
+                            throw NSError(
+                                domain: "ZipArchiveExtractor",
+                                code: 13,
+                                userInfo: [
+                                    NSLocalizedDescriptionKey:
+                                        "ZIP deflate failed for \(path): status=\(status) totalIn=\(stream.total_in) totalOut=\(stream.total_out) \(message)"
+                                ]
+                            )
+                        }
+
+                        needsMoreInput = true
 
                     default:
                         let message = stream.msg.map { String(cString: $0) } ?? "Unknown zlib error"
                         throw NSError(
                             domain: "ZipArchiveExtractor",
                             code: 13,
-                            userInfo: [NSLocalizedDescriptionKey: "ZIP deflate failed: \(message)"]
+                            userInfo: [
+                                NSLocalizedDescriptionKey:
+                                    "ZIP deflate failed for \(path): status=\(status) totalIn=\(stream.total_in) totalOut=\(stream.total_out) \(message)"
+                            ]
                         )
                     }
-                } while stream.avail_in > 0 || stream.avail_out == 0
+                } while (stream.avail_in > 0 || stream.avail_out == 0) && !needsMoreInput && !reachedStreamEnd
             }
 
             if reachedStreamEnd {

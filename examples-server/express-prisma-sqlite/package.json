@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:type": "tsc --noEmit",
+    "test:type": "prisma generate && tsc --noEmit",
     "postinstall": "prisma generate",
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx prisma db push"

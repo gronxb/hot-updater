@@ -13,6 +13,9 @@ import {
   NIL_UUID,
 } from "@hot-updater/core";
 import type {
+  DatabaseBundleCursor,
+  DatabaseBundleIdFilter,
+  DatabaseBundleQueryOrder,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   HotUpdaterContext,
@@ -56,6 +59,74 @@ const getLastItem = <T extends unknown[]>(
   items: T,
 ): T extends [...infer _, infer Last] ? Last : never =>
   items.at(-1) as T extends [...infer _, infer Last] ? Last : never;
+
+const DEFAULT_BUNDLE_ORDER = { field: "id", direction: "desc" } as const;
+
+const mergeIdFilter = (
+  base: DatabaseBundleIdFilter | undefined,
+  patch: DatabaseBundleIdFilter,
+): DatabaseBundleIdFilter => ({
+  ...base,
+  ...patch,
+});
+
+const mergeWhereWithIdFilter = (
+  where: DatabaseBundleQueryWhere | undefined,
+  idFilter: DatabaseBundleIdFilter,
+): DatabaseBundleQueryWhere => ({
+  ...where,
+  id: mergeIdFilter(where?.id, idFilter),
+});
+
+const buildCursorPageWhere = (
+  where: DatabaseBundleQueryWhere | undefined,
+  cursor: DatabaseBundleCursor,
+  orderBy: DatabaseBundleQueryOrder,
+): {
+  reverseData: boolean;
+  where: DatabaseBundleQueryWhere;
+  orderBy: DatabaseBundleQueryOrder;
+} => {
+  const direction = orderBy.direction;
+
+  if (cursor.after) {
+    return {
+      reverseData: false,
+      where: mergeWhereWithIdFilter(where, {
+        [direction === "desc" ? "lt" : "gt"]: cursor.after,
+      }),
+      orderBy,
+    };
+  }
+
+  if (cursor.before) {
+    return {
+      reverseData: true,
+      where: mergeWhereWithIdFilter(where, {
+        [direction === "desc" ? "gt" : "lt"]: cursor.before,
+      }),
+      orderBy: {
+        field: orderBy.field,
+        direction: direction === "desc" ? "asc" : "desc",
+      },
+    };
+  }
+
+  return {
+    reverseData: false,
+    where: where ?? {},
+    orderBy,
+  };
+};
+
+const buildCountBeforeWhere = (
+  where: DatabaseBundleQueryWhere | undefined,
+  firstBundleId: string,
+  orderBy: DatabaseBundleQueryOrder,
+): DatabaseBundleQueryWhere =>
+  mergeWhereWithIdFilter(where, {
+    [orderBy.direction === "desc" ? "gt" : "lt"]: firstBundleId,
+  });
 
 export const HotUpdaterDB = fumadb({
   namespace: "hot_updater",
@@ -562,7 +633,12 @@ export function createOrmDatabaseCore<TContext = unknown>({
       options: DatabaseBundleQueryOptions,
     ): Promise<Paginated<Bundle[]>> {
       const orm = await ensureORM();
-      const { where, limit, offset, orderBy } = options;
+      const { where, limit } = options;
+      const orderBy = options.orderBy ?? DEFAULT_BUNDLE_ORDER;
+      const offset =
+        (("offset" in options ? options.offset : undefined) as
+          | number
+          | undefined) ?? 0;
 
       const total = await orm.count("bundles", {
         where: buildBundleWhere(where),
@@ -600,32 +676,109 @@ export function createOrmDatabaseCore<TContext = unknown>({
         "target_cohorts",
       ];
 
-      const rows = isMongoAdapter
-        ? (
-            await orm.findMany("bundles", {
+      const findBundles = async ({
+        where,
+        orderBy,
+        limit,
+        offset,
+      }: {
+        where?: DatabaseBundleQueryWhere;
+        orderBy: DatabaseBundleQueryOrder;
+        limit: number;
+        offset: number;
+      }) => {
+        const rows = isMongoAdapter
+          ? (
+              await orm.findMany("bundles", {
+                select: selectedColumns,
+                where: buildBundleWhere(where),
+              })
+            )
+              .sort((a, b) => {
+                const result = a.id.localeCompare(b.id);
+                return orderBy.direction === "asc" ? result : -result;
+              })
+              .slice(offset, offset + limit)
+          : await orm.findMany("bundles", {
               select: selectedColumns,
               where: buildBundleWhere(where),
-            })
-          )
-            .sort((a, b) => {
-              const direction = orderBy?.direction ?? "desc";
-              const result = a.id.localeCompare(b.id);
-              return direction === "asc" ? result : -result;
-            })
-            .slice(offset, offset + limit)
-        : await orm.findMany("bundles", {
-            select: selectedColumns,
-            where: buildBundleWhere(where),
-            orderBy: [[orderBy?.field ?? "id", orderBy?.direction ?? "desc"]],
-            limit,
-            offset,
-          });
+              orderBy: [[orderBy.field, orderBy.direction]],
+              limit,
+              offset,
+            });
 
-      const data: Bundle[] = rows.map(mapBundleRecordToBundle);
+        return rows.map(mapBundleRecordToBundle);
+      };
+
+      if (!options.cursor?.after && !options.cursor?.before) {
+        const data = await findBundles({
+          where,
+          orderBy,
+          limit,
+          offset,
+        });
+
+        return {
+          data,
+          pagination: {
+            ...calculatePagination(total, { limit, offset }),
+            ...(data.length > 0 && offset + data.length < total
+              ? { nextCursor: data.at(-1)?.id }
+              : {}),
+            ...(data.length > 0 && offset > 0
+              ? { previousCursor: data[0]?.id }
+              : {}),
+          },
+        };
+      }
+
+      const {
+        where: cursorWhere,
+        orderBy: cursorOrderBy,
+        reverseData,
+      } = buildCursorPageWhere(where, options.cursor, orderBy);
+      const cursorPage = await findBundles({
+        where: cursorWhere,
+        orderBy: cursorOrderBy,
+        limit,
+        offset: 0,
+      });
+      const data = reverseData ? cursorPage.slice().reverse() : cursorPage;
+
+      if (data.length === 0) {
+        const emptyStartIndex = options.cursor.after ? total : 0;
+        return {
+          data,
+          pagination: {
+            ...calculatePagination(total, {
+              limit,
+              offset: emptyStartIndex,
+            }),
+            ...(options.cursor.after
+              ? { previousCursor: options.cursor.after }
+              : {}),
+            ...(options.cursor.before
+              ? { nextCursor: options.cursor.before }
+              : {}),
+          },
+        };
+      }
+
+      const startIndex = await orm.count("bundles", {
+        where: buildBundleWhere(
+          buildCountBeforeWhere(where, data[0]!.id, orderBy),
+        ),
+      });
 
       return {
         data,
-        pagination: calculatePagination(total, { limit, offset }),
+        pagination: {
+          ...calculatePagination(total, { limit, offset: startIndex }),
+          ...(startIndex + data.length < total
+            ? { nextCursor: data.at(-1)?.id }
+            : {}),
+          ...(startIndex > 0 ? { previousCursor: data[0]?.id } : {}),
+        },
       };
     },
 

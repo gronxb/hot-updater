@@ -12,7 +12,7 @@ name: iOS Integration
 
 jobs:
   build-new-arch:
-    runs-on: macos-14
+    runs-on: macos-15
     name: Build iOS (New Architecture)
     steps:
       - uses: actions/checkout@v3
@@ -50,7 +50,7 @@ jobs:
           HOT_UPDATER_CHANNEL: dev
 
   build-old-arch:
-    runs-on: macos-14
+    runs-on: macos-15
     name: Build iOS (Old Architecture)
     steps:
       - uses: actions/checkout@v3
