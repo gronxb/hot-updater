@@ -2,6 +2,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  createBundleDiff as createBundleDiffApi,
   createBundle as createBundleApi,
   deleteBundle as deleteBundleApi,
   getBundle,
@@ -179,6 +180,25 @@ export function useDeleteBundleMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function useCreateBundleDiffMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { baseBundleId: string; bundleId: string }) =>
+      createBundleDiffApi({ data: params }),
+    onSuccess: async ({ bundle }) => {
+      queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundle(bundle.id),
+        }),
       ]);
     },
   });

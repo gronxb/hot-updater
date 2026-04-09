@@ -17,10 +17,53 @@ import {
 
 const columnHelper = createColumnHelper<Bundle>();
 
-export const bundleColumns = [
+function StackedBundleIdCell({
+  bundle,
+  depth,
+}: {
+  bundle: Bundle;
+  depth: number;
+}) {
+  const baseBundleId = bundle.metadata?.diff_base_bundle_id;
+
+  return (
+    <div className="min-w-[180px] space-y-1">
+      <div className="flex items-center gap-2">
+        {depth > 0 ? (
+          <div className="flex items-center gap-1">
+            {Array.from({ length: depth }).map((_, index) => (
+              <span
+                key={`${bundle.id}-stack-${index}`}
+                className="h-5 w-2 rounded-full bg-linear-to-b from-border via-border/70 to-transparent"
+              />
+            ))}
+          </div>
+        ) : null}
+        <BundleIdDisplay bundleId={bundle.id} />
+      </div>
+      {baseBundleId ? (
+        <div className="text-[11px] text-muted-foreground">
+          stacked on{" "}
+          <span className="font-mono">{baseBundleId.slice(0, 8)}</span>
+        </div>
+      ) : (
+        <div className="text-[11px] text-muted-foreground">stack root</div>
+      )}
+    </div>
+  );
+}
+
+export const createBundleColumns = (
+  depthByBundleId: Record<string, number> = {},
+) => [
   columnHelper.accessor("id", {
     header: "Bundle ID",
-    cell: (info) => <BundleIdDisplay bundleId={info.getValue()} />,
+    cell: (info) => (
+      <StackedBundleIdCell
+        bundle={info.row.original}
+        depth={depthByBundleId[info.getValue()] ?? 0}
+      />
+    ),
   }),
   columnHelper.accessor("channel", {
     header: "Channel",

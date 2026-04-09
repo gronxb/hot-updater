@@ -52,7 +52,36 @@ class HotUpdaterModule internal constructor(
             val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
             val assetUrl = assetMap.getString("fileUrl") ?: continue
             val assetHash = assetMap.getString("fileHash") ?: continue
-            parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash)
+            val patchMap = assetMap.getMap("patch")
+            val patch =
+                if (patchMap != null) {
+                    val algorithm = patchMap.getString("algorithm")
+                    val baseBundleId = patchMap.getString("baseBundleId")
+                    val baseFileHash = patchMap.getString("baseFileHash")
+                    val patchFileHash = patchMap.getString("patchFileHash")
+                    val patchUrl = patchMap.getString("patchUrl")
+
+                    if (
+                        algorithm != null &&
+                        baseBundleId != null &&
+                        baseFileHash != null &&
+                        patchFileHash != null &&
+                        patchUrl != null
+                    ) {
+                        BsdiffPatchDescriptor(
+                            algorithm = algorithm,
+                            baseBundleId = baseBundleId,
+                            baseFileHash = baseFileHash,
+                            patchFileHash = patchFileHash,
+                            patchUrl = patchUrl,
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash, patch)
         }
 
         return parsedAssets

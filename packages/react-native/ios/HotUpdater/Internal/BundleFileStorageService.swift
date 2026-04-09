@@ -5,10 +5,38 @@ public typealias ManifestAssets = [String: Any]
 public struct ChangedAssetDescriptor {
     public let fileUrl: URL
     public let fileHash: String
+    public let patch: BsdiffPatchDescriptor?
 
-    public init(fileUrl: URL, fileHash: String) {
+    public init(
+        fileUrl: URL,
+        fileHash: String,
+        patch: BsdiffPatchDescriptor? = nil
+    ) {
         self.fileUrl = fileUrl
         self.fileHash = fileHash
+        self.patch = patch
+    }
+}
+
+public struct BsdiffPatchDescriptor {
+    public let algorithm: String
+    public let baseBundleId: String
+    public let baseFileHash: String
+    public let patchFileHash: String
+    public let patchUrl: URL
+
+    public init(
+        algorithm: String,
+        baseBundleId: String,
+        baseFileHash: String,
+        patchFileHash: String,
+        patchUrl: URL
+    ) {
+        self.algorithm = algorithm
+        self.baseBundleId = baseBundleId
+        self.baseFileHash = baseFileHash
+        self.patchFileHash = patchFileHash
+        self.patchUrl = patchUrl
     }
 }
 
@@ -363,6 +391,162 @@ class BundleFileStorageService: BundleStorageService {
                 )
             )
         )
+    }
+
+    private func resetDiffProgressFile(
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        assetPath: String,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) {
+        updateDiffProgressFile(
+            files: &files,
+            assetPath: assetPath,
+            status: "pending",
+            progress: 0
+        )
+        emitDiffProgress(
+            progressHandler: progressHandler,
+            phase: "downloading",
+            files: files
+        )
+    }
+
+    private func patchTempPath(
+        tempDirectory: String,
+        assetPath: String
+    ) -> String {
+        let safeName = assetPath
+            .replacingOccurrences(of: "/", with: "__")
+            .replacingOccurrences(of: "\\", with: "__")
+        let patchDirectory = (tempDirectory as NSString).appendingPathComponent("patches")
+        _ = fileSystem.createDirectory(atPath: patchDirectory)
+        return (patchDirectory as NSString).appendingPathComponent("\(safeName).bsdiff")
+    }
+
+    private func applyPatchAssetIfPossible(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        currentBundleDir: String?,
+        destinationPath: String,
+        expectedHash: String,
+        tempDirectory: String,
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) -> Bool {
+        guard let patch = changedAsset.patch,
+              patch.algorithm == "bsdiff",
+              currentBundleId == patch.baseBundleId,
+              let currentBundleDir
+        else {
+            return false
+        }
+
+        let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
+        guard self.fileSystem.fileExists(atPath: sourcePath),
+              HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: sourcePath),
+                expectedHash: patch.baseFileHash
+              )
+        else {
+            return false
+        }
+
+        let patchPath = patchTempPath(
+            tempDirectory: tempDirectory,
+            assetPath: assetPath
+        )
+
+        defer {
+            try? self.fileSystem.removeItem(atPath: patchPath)
+            if self.fileSystem.fileExists(atPath: destinationPath),
+               !HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: destinationPath),
+                expectedHash: expectedHash
+               ) {
+                try? self.fileSystem.removeItem(atPath: destinationPath)
+            }
+        }
+
+        do {
+            switch self.downloadFileSynchronously(
+                from: patch.patchUrl,
+                to: patchPath,
+                progressHandler: { progress in
+                    self.updateDiffProgressFile(
+                        files: &files,
+                        assetPath: assetPath,
+                        status: "downloading",
+                        progress: progress
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: files
+                    )
+                }
+            ) {
+            case .success(let patchFileURL):
+                guard HashUtils.verifyHash(
+                    fileURL: patchFileURL,
+                    expectedHash: patch.patchFileHash
+                ) else {
+                    resetDiffProgressFile(
+                        files: &files,
+                        assetPath: assetPath,
+                        progressHandler: progressHandler
+                    )
+                    return false
+                }
+
+                var patchError: NSError?
+                let applied = BsdiffPatchBridge.applyPatch(
+                    atPath: patchPath,
+                    toBaseAtPath: sourcePath,
+                    outputAtPath: destinationPath,
+                    error: &patchError
+                )
+                guard applied else {
+                    if let patchError {
+                        NSLog("[BundleStorage] Failed to apply bsdiff patch: \(patchError.localizedDescription)")
+                    }
+                    resetDiffProgressFile(
+                        files: &files,
+                        assetPath: assetPath,
+                        progressHandler: progressHandler
+                    )
+                    return false
+                }
+
+                guard HashUtils.verifyHash(
+                    fileURL: URL(fileURLWithPath: destinationPath),
+                    expectedHash: expectedHash
+                ) else {
+                    resetDiffProgressFile(
+                        files: &files,
+                        assetPath: assetPath,
+                        progressHandler: progressHandler
+                    )
+                    return false
+                }
+
+                return true
+            case .failure:
+                resetDiffProgressFile(
+                    files: &files,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+        } catch {
+            resetDiffProgressFile(
+                files: &files,
+                assetPath: assetPath,
+                progressHandler: progressHandler
+            )
+            return false
+        }
     }
 
     public init(fileSystem: FileSystemService,
@@ -1416,6 +1600,34 @@ class BundleFileStorageService: BundleStorageService {
                         files: diffFiles
                     )
                     throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+                }
+
+                let patched = applyPatchAssetIfPossible(
+                    assetPath: assetPath,
+                    changedAsset: changedAsset,
+                    currentBundleId: currentBundleId,
+                    currentBundleDir: currentBundleDir,
+                    destinationPath: destinationPath,
+                    expectedHash: expectedHash,
+                    tempDirectory: tempDirectory,
+                    files: &diffFiles,
+                    progressHandler: progressHandler
+                )
+                if patched {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "downloaded",
+                        progress: 1
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                            ? "finalizing"
+                            : "downloading",
+                        files: diffFiles
+                    )
+                    continue
                 }
 
                 switch self.downloadFileSynchronously(

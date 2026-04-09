@@ -8,6 +8,7 @@
 #import "React/RCTRootView.h"
 #import "React/RCTUtils.h" // Needed for RCTPromiseResolveBlock/RejectBlock in Swift
 #import <SSZipArchive/SSZipArchive.h>
+#import "BsdiffPatchBridge.h"
 
 @interface HotUpdaterRecoverySignalBridge : NSObject
 + (void)installSignalHandlers:(NSString *)crashMarkerPath;

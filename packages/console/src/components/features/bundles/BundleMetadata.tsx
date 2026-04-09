@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useConfigQuery } from "@/lib/api";
 import { getCommitUrl } from "@/lib/git";
@@ -11,11 +12,17 @@ interface BundleMetadataProps {
 
 export function BundleMetadata({ bundle }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
+  const diffBaseBundleId = bundle.metadata?.diff_base_bundle_id;
+  const hbcPatchAssetPath = bundle.metadata?.hbc_patch_asset_path;
+  const hbcPatchFileHash = bundle.metadata?.hbc_patch_file_hash;
   const hasMetadata =
     bundle.targetAppVersion ||
     bundle.fingerprintHash ||
     bundle.gitCommitHash ||
-    bundle.fileHash;
+    bundle.fileHash ||
+    diffBaseBundleId ||
+    hbcPatchAssetPath ||
+    hbcPatchFileHash;
   const gitCommitUrl =
     bundle.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
@@ -71,6 +78,29 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
             <span className="text-muted-foreground">File Hash</span>
             <span className="font-mono text-xs">
               {bundle.fileHash.slice(0, 16)}...
+            </span>
+          </div>
+        )}
+
+        {diffBaseBundleId && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Diff Base</span>
+            <BundleIdDisplay bundleId={diffBaseBundleId} maxLength={18} />
+          </div>
+        )}
+
+        {hbcPatchAssetPath && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Patch Asset</span>
+            <span className="font-mono text-xs">{hbcPatchAssetPath}</span>
+          </div>
+        )}
+
+        {hbcPatchFileHash && (
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Patch Hash</span>
+            <span className="font-mono text-xs">
+              {hbcPatchFileHash.slice(0, 16)}...
             </span>
           </div>
         )}

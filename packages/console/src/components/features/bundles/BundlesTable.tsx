@@ -18,7 +18,7 @@ import {
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 
-import { bundleColumns } from "./BundleTableColumns";
+import { createBundleColumns } from "./BundleTableColumns";
 
 interface BundlesTableProps {
   bundles: Bundle[];
@@ -33,6 +33,36 @@ export function BundlesTable({
 }: BundlesTableProps) {
   const { filters, setFilters } = useFilterParams();
   const currentOffset = Number(filters.offset || 0);
+  const bundleMap = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+  const depthByBundleId: Record<string, number> = {};
+
+  const getDepth = (bundleId: string, stack = new Set<string>()): number => {
+    if (depthByBundleId[bundleId] !== undefined) {
+      return depthByBundleId[bundleId];
+    }
+
+    if (stack.has(bundleId)) {
+      depthByBundleId[bundleId] = 0;
+      return 0;
+    }
+
+    const bundle = bundleMap.get(bundleId);
+    const baseBundleId = bundle?.metadata?.diff_base_bundle_id;
+    if (!bundle || !baseBundleId || !bundleMap.has(baseBundleId)) {
+      depthByBundleId[bundleId] = 0;
+      return 0;
+    }
+
+    const nextStack = new Set(stack);
+    nextStack.add(bundleId);
+    depthByBundleId[bundleId] = getDepth(baseBundleId, nextStack) + 1;
+    return depthByBundleId[bundleId];
+  };
+
+  for (const bundle of bundles) {
+    getDepth(bundle.id);
+  }
+  const bundleColumns = createBundleColumns(depthByBundleId);
 
   const table = useReactTable({
     data: bundles,

@@ -232,6 +232,67 @@ async function resolveChangedAssets<TContext>({
   return Object.fromEntries(changedEntries);
 }
 
+async function attachHbcPatchDescriptor<TContext>({
+  changedAssets,
+  currentBundle,
+  resolveFileUrl,
+  targetBundle,
+  context,
+}: {
+  changedAssets: Record<string, ChangedAsset>;
+  currentBundle: Bundle | null;
+  resolveFileUrl: (
+    storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<string | null>;
+  targetBundle: Bundle | null;
+  context?: HotUpdaterContext<TContext>;
+}): Promise<Record<string, ChangedAsset>> {
+  const baseBundleId = targetBundle?.metadata?.diff_base_bundle_id;
+  const patchAssetPath = targetBundle?.metadata?.hbc_patch_asset_path;
+  const patchStorageUri = targetBundle?.metadata?.hbc_patch_storage_uri;
+  const patchFileHash = targetBundle?.metadata?.hbc_patch_file_hash;
+  const patchBaseFileHash = targetBundle?.metadata?.hbc_patch_base_file_hash;
+  const patchAlgorithm =
+    targetBundle?.metadata?.hbc_patch_algorithm ?? "bsdiff";
+
+  if (
+    currentBundle?.id !== baseBundleId ||
+    !baseBundleId ||
+    !patchAssetPath ||
+    !patchStorageUri ||
+    !patchFileHash ||
+    !patchBaseFileHash ||
+    patchAlgorithm !== "bsdiff"
+  ) {
+    return changedAssets;
+  }
+
+  const changedAsset = changedAssets[patchAssetPath];
+  if (!changedAsset) {
+    return changedAssets;
+  }
+
+  const patchUrl = await resolveFileUrl(patchStorageUri, context);
+  if (!patchUrl) {
+    return changedAssets;
+  }
+
+  return {
+    ...changedAssets,
+    [patchAssetPath]: {
+      ...changedAsset,
+      patch: {
+        algorithm: "bsdiff",
+        baseBundleId,
+        baseFileHash: patchBaseFileHash,
+        patchFileHash,
+        patchUrl,
+      },
+    },
+  };
+}
+
 export function createPluginDatabaseCore<TContext = unknown>(
   getPlugin: () => DatabasePlugin<TContext>,
   resolveFileUrl: (
@@ -478,6 +539,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
       }
 
       try {
+        const currentBundle =
+          args.bundleId !== NIL_UUID
+            ? await getPlugin().getBundleById(args.bundleId, context)
+            : null;
         const targetManifestResult = await fetchBundleManifest(
           manifestStorageUri,
           resolveFileUrl,
@@ -488,27 +553,14 @@ export function createPluginDatabaseCore<TContext = unknown>(
           return baseResponse;
         }
 
-        const currentManifestResult =
-          args.bundleId !== NIL_UUID
-            ? await (async () => {
-                const currentBundle = await getPlugin().getBundleById(
-                  args.bundleId,
-                  context,
-                );
-                const currentManifestStorageUri =
-                  currentBundle?.metadata?.manifest_storage_uri;
-
-                if (!currentManifestStorageUri) {
-                  return null;
-                }
-
-                return fetchBundleManifest(
-                  currentManifestStorageUri,
-                  resolveFileUrl,
-                  context,
-                );
-              })()
-            : null;
+        const currentManifestResult = currentBundle?.metadata
+          ?.manifest_storage_uri
+          ? await fetchBundleManifest(
+              currentBundle.metadata.manifest_storage_uri,
+              resolveFileUrl,
+              context,
+            )
+          : null;
 
         const changedAssets = await resolveChangedAssets({
           assetBaseStorageUri,
@@ -517,10 +569,17 @@ export function createPluginDatabaseCore<TContext = unknown>(
           targetManifest: targetManifestResult.manifest,
           context,
         });
+        const changedAssetsWithPatch = await attachHbcPatchDescriptor({
+          changedAssets,
+          currentBundle,
+          resolveFileUrl,
+          targetBundle,
+          context,
+        });
 
         return {
           ...baseResponse,
-          changedAssets,
+          changedAssets: changedAssetsWithPatch,
           manifestFileHash,
           manifestUrl: targetManifestResult.fileUrl,
         };

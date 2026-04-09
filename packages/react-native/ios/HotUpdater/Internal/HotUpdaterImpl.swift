@@ -234,7 +234,32 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                     return
                 }
 
-                partialResult[entry.key] = ChangedAssetDescriptor(fileUrl: fileUrl, fileHash: fileHash)
+                let patchPayload = entry.value["patch"] as? [String: Any]
+                let patch = patchPayload.flatMap { payload -> BsdiffPatchDescriptor? in
+                    guard let algorithm = payload["algorithm"] as? String,
+                          let baseBundleId = payload["baseBundleId"] as? String,
+                          let baseFileHash = payload["baseFileHash"] as? String,
+                          let patchFileHash = payload["patchFileHash"] as? String,
+                          let patchUrlString = payload["patchUrl"] as? String,
+                          let patchUrl = URL(string: patchUrlString)
+                    else {
+                        return nil
+                    }
+
+                    return BsdiffPatchDescriptor(
+                        algorithm: algorithm,
+                        baseBundleId: baseBundleId,
+                        baseFileHash: baseFileHash,
+                        patchFileHash: patchFileHash,
+                        patchUrl: patchUrl
+                    )
+                }
+
+                partialResult[entry.key] = ChangedAssetDescriptor(
+                    fileUrl: fileUrl,
+                    fileHash: fileHash,
+                    patch: patch
+                )
             }
 
             // Extract progress callback if provided

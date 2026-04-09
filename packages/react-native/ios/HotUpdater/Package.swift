@@ -14,6 +14,8 @@ let archiveSources = [
 ]
 
 let archiveExcludedFiles = [
+    "BsdiffPatchBridge.h",
+    "BsdiffPatchBridge.mm",
     "BundleFileStorageService.swift",
     "BundleMetadata.swift",
     "CohortService.swift",
