@@ -64,6 +64,21 @@ NSData *DecompressBzip(NSData *compressed, NSError **error) {
 }
 }  // namespace
 
+extern "C" BOOL HotUpdaterApplyBsdiffPatch(NSString *patchPath,
+                                            NSString *basePath,
+                                            NSString *outputPath) {
+  NSError *patchError = nil;
+  BOOL applied = [BsdiffPatchBridge applyPatchAtPath:patchPath
+                                         toBaseAtPath:basePath
+                                        outputAtPath:outputPath
+                                               error:&patchError];
+  if (!applied && patchError != nil) {
+    NSLog(@"[BundleStorage] Failed to apply bsdiff patch: %@",
+          patchError.localizedDescription);
+  }
+  return applied;
+}
+
 @implementation BsdiffPatchBridge
 
 + (BOOL)applyPatchAtPath:(NSString *)patchPath

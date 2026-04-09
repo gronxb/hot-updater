@@ -1,5 +1,24 @@
 import Foundation
 
+@_silgen_name("HotUpdaterApplyBsdiffPatch")
+private func hotUpdaterApplyBsdiffPatchSymbol(
+    _ patchPath: NSString,
+    _ basePath: NSString,
+    _ outputPath: NSString
+) -> ObjCBool
+
+private func hotUpdaterApplyBsdiffPatch(
+    patchPath: String,
+    basePath: String,
+    outputPath: String
+) -> Bool {
+    return hotUpdaterApplyBsdiffPatchSymbol(
+        patchPath as NSString,
+        basePath as NSString,
+        outputPath as NSString
+    ).boolValue
+}
+
 public typealias ManifestAssets = [String: Any]
 
 public struct ChangedAssetDescriptor {
@@ -468,13 +487,18 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
 
+        var updatedFiles = files
         do {
+            defer {
+                files = updatedFiles
+            }
+
             switch self.downloadFileSynchronously(
                 from: patch.patchUrl,
                 to: patchPath,
                 progressHandler: { progress in
                     self.updateDiffProgressFile(
-                        files: &files,
+                        files: &updatedFiles,
                         assetPath: assetPath,
                         status: "downloading",
                         progress: progress
@@ -482,7 +506,7 @@ class BundleFileStorageService: BundleStorageService {
                     self.emitDiffProgress(
                         progressHandler: progressHandler,
                         phase: "downloading",
-                        files: files
+                        files: updatedFiles
                     )
                 }
             ) {
@@ -492,26 +516,21 @@ class BundleFileStorageService: BundleStorageService {
                     expectedHash: patch.patchFileHash
                 ) else {
                     resetDiffProgressFile(
-                        files: &files,
+                        files: &updatedFiles,
                         assetPath: assetPath,
                         progressHandler: progressHandler
                     )
                     return false
                 }
 
-                var patchError: NSError?
-                let applied = BsdiffPatchBridge.applyPatch(
-                    atPath: patchPath,
-                    toBaseAtPath: sourcePath,
-                    outputAtPath: destinationPath,
-                    error: &patchError
+                let applied = hotUpdaterApplyBsdiffPatch(
+                    patchPath: patchPath,
+                    basePath: sourcePath,
+                    outputPath: destinationPath
                 )
                 guard applied else {
-                    if let patchError {
-                        NSLog("[BundleStorage] Failed to apply bsdiff patch: \(patchError.localizedDescription)")
-                    }
                     resetDiffProgressFile(
-                        files: &files,
+                        files: &updatedFiles,
                         assetPath: assetPath,
                         progressHandler: progressHandler
                     )
@@ -523,7 +542,7 @@ class BundleFileStorageService: BundleStorageService {
                     expectedHash: expectedHash
                 ) else {
                     resetDiffProgressFile(
-                        files: &files,
+                        files: &updatedFiles,
                         assetPath: assetPath,
                         progressHandler: progressHandler
                     )
@@ -533,7 +552,7 @@ class BundleFileStorageService: BundleStorageService {
                 return true
             case .failure:
                 resetDiffProgressFile(
-                    files: &files,
+                    files: &updatedFiles,
                     assetPath: assetPath,
                     progressHandler: progressHandler
                 )
@@ -541,7 +560,7 @@ class BundleFileStorageService: BundleStorageService {
             }
         } catch {
             resetDiffProgressFile(
-                files: &files,
+                files: &updatedFiles,
                 assetPath: assetPath,
                 progressHandler: progressHandler
             )
