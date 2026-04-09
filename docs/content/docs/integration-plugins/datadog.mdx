@@ -11,10 +11,11 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Datadog Account: Sign up here if you don't have one.
 - Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
 - Datadog host: in order to communicate with Datadog, you need to specify the host to which the Auth token refers using the environment variable `DATADOG_HOST` (e.g., `DATADOG_HOST=datadoghq.eu`)
+- Node.js 20 or later: `@datadog/datadog-ci@5` requires Node.js 20+.
 - Install the plugin:
 
 ```package-install
-npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
+npm install @hot-updater/datadog-plugin @datadog/datadog-ci@~5.12.1 --save-dev
 ```
 
 ## Step 1: Wrap Your Build Plugin

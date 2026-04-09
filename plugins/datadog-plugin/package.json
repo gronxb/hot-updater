@@ -49,9 +49,10 @@
     "execa": "catalog:tools"
   },
   "devDependencies": {
+    "@datadog/datadog-ci": "~5.12.1",
     "@types/node": "catalog:"
   },
   "peerDependencies": {
-    "@datadog/datadog-ci": "^3"
+    "@datadog/datadog-ci": "~5.12.1"
   }
 }
