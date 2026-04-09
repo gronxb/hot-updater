@@ -243,7 +243,28 @@ const handleGetBundles: RouteHandler = async (
   const channel = url.searchParams.get("channel") ?? undefined;
   const platform = url.searchParams.get("platform");
   const limit = Number(url.searchParams.get("limit")) || 50;
-  const offset = Number(url.searchParams.get("offset")) || 0;
+  const pageParam = url.searchParams.get("page");
+  const offset = url.searchParams.get("offset");
+  const after = url.searchParams.get("after") ?? undefined;
+  const before = url.searchParams.get("before") ?? undefined;
+  const page =
+    pageParam === null
+      ? undefined
+      : Number.isInteger(Number(pageParam)) && Number(pageParam) > 0
+        ? Number(pageParam)
+        : null;
+
+  if (offset !== null) {
+    throw new HandlerBadRequestError(
+      "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
+    );
+  }
+
+  if (page === null) {
+    throw new HandlerBadRequestError(
+      "The 'page' query parameter must be a positive integer.",
+    );
+  }
 
   if (platform !== null && !isPlatform(platform)) {
     throw new HandlerBadRequestError(
@@ -258,7 +279,14 @@ const handleGetBundles: RouteHandler = async (
         ...(platform && { platform }),
       },
       limit,
-      offset,
+      page,
+      cursor:
+        after || before
+          ? {
+              after,
+              before,
+            }
+          : undefined,
     },
     context,
   );

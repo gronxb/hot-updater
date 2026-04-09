@@ -7,6 +7,8 @@ interface PaginationInfo {
   hasPreviousPage: boolean;
   currentPage: number;
   totalPages: number;
+  nextCursor?: string | null;
+  previousCursor?: string | null;
 }
 
 interface DatabaseBundleQueryOptions {
@@ -28,7 +30,10 @@ interface DatabaseBundleQueryOptions {
     fingerprintHash?: string | null;
   };
   limit: number;
-  offset: number;
+  cursor?: {
+    after?: string;
+    before?: string;
+  };
   orderBy?: {
     field: "id";
     direction: "asc" | "desc";
@@ -75,7 +80,6 @@ export const setupBundleMethodsTestSuite = ({
     while (true) {
       const existing = await getBundles({
         limit: 1000,
-        offset: 0,
       });
 
       if (existing.data.length === 0) {
@@ -229,7 +233,6 @@ export const setupBundleMethodsTestSuite = ({
 
       const result = await getBundles({
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data.length).toBeGreaterThanOrEqual(2);
@@ -275,7 +278,6 @@ export const setupBundleMethodsTestSuite = ({
       const result = await getBundles({
         where: { channel: "beta" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data.length).toBeGreaterThanOrEqual(1);
@@ -321,7 +323,6 @@ export const setupBundleMethodsTestSuite = ({
       const result = await getBundles({
         where: { platform: "android" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data.length).toBeGreaterThanOrEqual(1);
@@ -366,12 +367,13 @@ export const setupBundleMethodsTestSuite = ({
 
       const page1 = await getBundles({
         limit: 1,
-        offset: 0,
       });
 
       const page2 = await getBundles({
         limit: 1,
-        offset: 1,
+        cursor: {
+          after: page1.pagination.nextCursor ?? undefined,
+        },
       });
 
       expect(page1.data.length).toBe(1);
@@ -434,7 +436,6 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data.map((bundle) => bundle.id)).toEqual([
@@ -497,7 +498,6 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 1,
-        offset: 0,
       });
 
       expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
@@ -512,7 +512,9 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 1,
-        offset: 1,
+        cursor: {
+          after: firstPage.pagination.nextCursor ?? undefined,
+        },
       });
 
       expect(secondPage.data.map((bundle) => bundle.id)).toEqual([
@@ -575,7 +577,6 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 10,
-        offset: 0,
       });
 
       expect(nonNullTargetVersions.data.map((bundle) => bundle.id)).toEqual([
@@ -590,7 +591,6 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 10,
-        offset: 0,
       });
 
       expect(nullFingerprintBundles.data.map((bundle) => bundle.id)).toEqual([
@@ -605,7 +605,6 @@ export const setupBundleMethodsTestSuite = ({
 
       const result = await getBundles({
         limit: 10,
-        offset: 0,
       });
 
       const found = result.data.find(
@@ -625,7 +624,6 @@ export const setupBundleMethodsTestSuite = ({
         .map(() =>
           getBundles({
             limit: 10,
-            offset: 0,
           }),
         );
 

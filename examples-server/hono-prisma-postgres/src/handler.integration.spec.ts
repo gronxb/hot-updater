@@ -22,6 +22,61 @@ import { afterAll, beforeAll, describe } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
+
+const waitForPostgresContainer = async () => {
+  const deadline = Date.now() + 60_000;
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    try {
+      await execa(
+        "docker",
+        [
+          "exec",
+          "hono-prisma-postgres",
+          "pg_isready",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "hot_updater",
+        ],
+        {
+          cwd: projectRoot,
+        },
+      );
+
+      await execa(
+        "docker",
+        [
+          "exec",
+          "hono-prisma-postgres",
+          "psql",
+          "-h",
+          "127.0.0.1",
+          "-U",
+          "hot_updater",
+          "-d",
+          "hot_updater",
+          "-c",
+          "SELECT 1;",
+        ],
+        {
+          cwd: projectRoot,
+        },
+      );
+
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  throw new Error(
+    `PostgreSQL container did not become ready in time: ${String(lastError)}`,
+  );
+};
+
 assertDockerComposeAvailable(
   "Hono + Prisma + PostgreSQL integration tests require Docker Compose and a running Docker daemon.",
 );
@@ -53,8 +108,7 @@ describe(
         cwd: projectRoot,
       });
 
-      // Wait for PostgreSQL to be ready
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await waitForPostgresContainer();
 
       // Create test database
       await execa(
@@ -63,6 +117,8 @@ describe(
           "exec",
           "hono-prisma-postgres",
           "psql",
+          "-h",
+          "127.0.0.1",
           "-U",
           "hot_updater",
           "-c",
@@ -127,10 +183,12 @@ describe(
             "exec",
             "hono-prisma-postgres",
             "psql",
+            "-h",
+            "127.0.0.1",
             "-U",
             "hot_updater",
             "-c",
-            `DROP DATABASE IF EXISTS ${testDbName};`,
+            `DROP DATABASE IF EXISTS ${testDbName} WITH (FORCE);`,
           ],
           {
             cwd: projectRoot,

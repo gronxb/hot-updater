@@ -1,7 +1,12 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
-const rootExclude = ["**/dist/**", "**/lib/**", "**/node_modules/**"];
+const rootExclude = [
+  "**/dist/**",
+  "**/lib/**",
+  "**/node_modules/**",
+  "**/runtime-acceptance-*/**",
+];
 const unitInclude = [
   "packages/**/*.spec.ts",
   "packages/**/*.test.ts",

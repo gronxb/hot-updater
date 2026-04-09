@@ -6,7 +6,7 @@ import type {
   DatabasePlugin,
 } from "../../../../plugins/plugin-core/src";
 import {
-  calculatePagination,
+  paginateBundles,
   semverSatisfies,
 } from "../../../../plugins/plugin-core/src";
 import type {
@@ -124,17 +124,19 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
       return bundlesById.get(bundleId) ?? null;
     },
     async getBundles(options: DatabaseBundleQueryOptions) {
-      const { where, limit, offset, orderBy } = options;
+      const { where, limit, cursor, orderBy } = options;
       const source = sortByDirection(orderBy?.direction);
       const matched = source.filter((bundle) =>
         bundleMatchesWhere(bundle, where),
       );
-      const page = matched.slice(offset, offset + limit).map(cloneBundle);
+      const paginated = paginateBundles({
+        bundles: matched.map(cloneBundle),
+        limit,
+        cursor,
+        orderBy,
+      });
 
-      return {
-        data: page,
-        pagination: calculatePagination(matched.length, { limit, offset }),
-      };
+      return paginated;
     },
     async getChannels() {
       return [...new Set(bundles.map((bundle) => bundle.channel))];
@@ -164,7 +166,6 @@ const oldPluginCoreGetUpdateInfo = async (
   const { pagination } = await plugin.getBundles({
     where,
     limit: 1,
-    offset: 0,
   });
 
   if (pagination.total === 0) {
@@ -174,7 +175,6 @@ const oldPluginCoreGetUpdateInfo = async (
   const { data } = await plugin.getBundles({
     where,
     limit: pagination.total,
-    offset: 0,
   });
 
   for (const bundle of data) {

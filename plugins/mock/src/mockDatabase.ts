@@ -2,6 +2,7 @@ import {
   type Bundle,
   calculatePagination,
   createDatabasePlugin,
+  createDatabasePluginGetUpdateInfo,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
@@ -68,6 +69,98 @@ const sortBundles = (
   });
 };
 
+const paginateMockBundles = ({
+  bundles,
+  limit,
+  offset,
+  cursor,
+  orderBy,
+}: {
+  bundles: Bundle[];
+  limit: number;
+  offset?: number;
+  cursor?: { after?: string; before?: string };
+  orderBy?: DatabaseBundleQueryOrder;
+}) => {
+  const sortedBundles = sortBundles(bundles, orderBy);
+  const direction = orderBy?.direction ?? "desc";
+  const total = sortedBundles.length;
+
+  if (offset !== undefined) {
+    const normalizedOffset = Math.max(0, offset);
+    const data =
+      limit > 0
+        ? sortedBundles.slice(normalizedOffset, normalizedOffset + limit)
+        : sortedBundles.slice(normalizedOffset);
+    const pagination = calculatePagination(total, {
+      limit,
+      offset: normalizedOffset,
+    });
+
+    return {
+      data,
+      pagination: {
+        ...pagination,
+        ...(data.length > 0 && normalizedOffset + data.length < total
+          ? { nextCursor: data.at(-1)?.id }
+          : {}),
+        ...(data.length > 0 && normalizedOffset > 0
+          ? { previousCursor: data[0]?.id }
+          : {}),
+      },
+    };
+  }
+
+  let data: Bundle[];
+  if (cursor?.after) {
+    const candidates = sortedBundles.filter((bundle) =>
+      direction === "desc"
+        ? bundle.id.localeCompare(cursor.after!) < 0
+        : bundle.id.localeCompare(cursor.after!) > 0,
+    );
+    data = limit > 0 ? candidates.slice(0, limit) : candidates;
+  } else if (cursor?.before) {
+    const candidates = sortedBundles.filter((bundle) =>
+      direction === "desc"
+        ? bundle.id.localeCompare(cursor.before!) > 0
+        : bundle.id.localeCompare(cursor.before!) < 0,
+    );
+    data =
+      limit > 0
+        ? candidates.slice(Math.max(0, candidates.length - limit))
+        : candidates;
+  } else {
+    data = limit > 0 ? sortedBundles.slice(0, limit) : sortedBundles;
+  }
+
+  const startIndex =
+    data.length > 0
+      ? sortedBundles.findIndex((bundle) => bundle.id === data[0]!.id)
+      : cursor?.after
+        ? total
+        : 0;
+  const pagination = calculatePagination(total, { limit, offset: startIndex });
+
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      ...(data.length > 0 && startIndex + data.length < total
+        ? { nextCursor: data.at(-1)?.id }
+        : {}),
+      ...(data.length > 0 && startIndex > 0
+        ? { previousCursor: data[0]?.id }
+        : {}),
+      ...(data.length === 0 && cursor?.after
+        ? { previousCursor: cursor.after }
+        : {}),
+      ...(data.length === 0 && cursor?.before
+        ? { nextCursor: cursor.before }
+        : {}),
+    },
+  };
+};
+
 export interface MockDatabaseConfig {
   latency: { min: number; max: number };
   initialBundles?: Bundle[];
@@ -79,13 +172,64 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
     const bundles: Bundle[] = config.initialBundles ?? [];
 
     return {
+      supportsCursorPagination: true,
+      getUpdateInfo: createDatabasePluginGetUpdateInfo({
+        async listTargetAppVersions({ platform, channel, minBundleId }) {
+          return Array.from(
+            new Set(
+              bundles
+                .filter(
+                  (bundle) =>
+                    bundle.enabled &&
+                    bundle.platform === platform &&
+                    bundle.channel === channel &&
+                    bundle.id.localeCompare(minBundleId) >= 0 &&
+                    bundle.targetAppVersion,
+                )
+                .map((bundle) => bundle.targetAppVersion)
+                .filter((version): version is string => Boolean(version)),
+            ),
+          );
+        },
+
+        async getBundlesByTargetAppVersions(
+          { platform, channel, minBundleId },
+          targetAppVersions,
+        ) {
+          return bundles.filter(
+            (bundle) =>
+              bundle.enabled &&
+              bundle.platform === platform &&
+              bundle.channel === channel &&
+              bundle.id.localeCompare(minBundleId) >= 0 &&
+              targetAppVersions.includes(bundle.targetAppVersion ?? ""),
+          );
+        },
+
+        async getBundlesByFingerprint({
+          platform,
+          channel,
+          minBundleId,
+          fingerprintHash,
+        }) {
+          return bundles.filter(
+            (bundle) =>
+              bundle.enabled &&
+              bundle.platform === platform &&
+              bundle.channel === channel &&
+              bundle.id.localeCompare(minBundleId) >= 0 &&
+              bundle.fingerprintHash === fingerprintHash,
+          );
+        },
+      }),
+
       async getBundleById(bundleId: string) {
         await sleep(minMax(config.latency.min, config.latency.max));
         return bundles.find((b) => b.id === bundleId) ?? null;
       },
 
       async getBundles(options) {
-        const { where, limit, offset, orderBy } = options ?? {};
+        const { where, limit, offset, cursor, orderBy } = options ?? {};
         await sleep(minMax(config.latency.min, config.latency.max));
 
         const filteredBundles = sortBundles(
@@ -93,15 +237,14 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
           orderBy,
         );
 
-        const total = filteredBundles.length;
-        const data = limit
-          ? filteredBundles.slice(offset, offset + limit)
-          : filteredBundles;
-        const pagination = calculatePagination(total, { limit, offset });
-
         return {
-          data,
-          pagination,
+          ...paginateMockBundles({
+            bundles: filteredBundles,
+            limit,
+            offset,
+            cursor,
+            orderBy,
+          }),
         };
       },
 

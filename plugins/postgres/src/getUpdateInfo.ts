@@ -1,5 +1,6 @@
 import {
   type AppVersionGetBundlesArgs,
+  type FingerprintGetBundlesArgs,
   type GetBundlesArgs,
   NIL_UUID,
   type UpdateInfo,
@@ -67,12 +68,52 @@ export const appVersionStrategy = async (
   return result.rows[0] ? (camelcaseKeys(result.rows[0]) as UpdateInfo) : null;
 };
 
+export const fingerprintStrategy = async (
+  pool: pg.Pool,
+  {
+    platform,
+    fingerprintHash,
+    bundleId,
+    minBundleId = NIL_UUID,
+    channel = "production",
+    cohort,
+  }: FingerprintGetBundlesArgs,
+) => {
+  const sqlGetUpdateInfo = minify(`
+    SELECT *
+    FROM get_update_info_by_fingerprint_hash(
+      $1, -- platform
+      $2, -- bundleId
+      $3, -- minBundleId (nullable)
+      $4, -- channel
+      $5, -- fingerprintHash
+      $6  -- cohort (nullable)
+    );
+  `);
+
+  const result = await pool.query<{
+    id: string;
+    should_force_update: boolean;
+    message: string;
+    status: string;
+    storage_uri: string | null;
+    file_hash: string | null;
+  }>(sqlGetUpdateInfo, [
+    platform,
+    bundleId,
+    minBundleId ?? NIL_UUID,
+    channel,
+    fingerprintHash,
+    cohort ?? null,
+  ]);
+
+  return result.rows[0] ? (camelcaseKeys(result.rows[0]) as UpdateInfo) : null;
+};
+
 export const getUpdateInfo = (pool: pg.Pool, args: GetBundlesArgs) => {
   if (args._updateStrategy === "appVersion") {
     return appVersionStrategy(pool, args);
   }
 
-  // TODO:
-  // return fingerprintStrategy(bundles, args);
-  return null;
+  return fingerprintStrategy(pool, args);
 };
