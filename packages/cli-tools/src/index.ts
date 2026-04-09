@@ -12,6 +12,7 @@ export * from "./ensureInstallPackages";
 export * from "./getAndroidSdkPath";
 export * from "./getPackageManager";
 export * from "./getReactNativeMetadatas";
+export * from "./hotUpdaterConfig";
 export * from "./HotUpdateDirUtil";
 export * from "./LogWriter";
 export * from "./loadConfig";

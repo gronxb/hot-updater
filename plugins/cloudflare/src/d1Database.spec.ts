@@ -1,5 +1,8 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -179,6 +182,23 @@ vi.mock("cloudflare", () => ({
           }
 
           if (
+            normalizedSql.startsWith("select target_app_version from bundles")
+          ) {
+            const { filteredRows } = getFilteredRows(sql, params);
+            const result = Array.from(
+              new Set(
+                filteredRows
+                  .map((row) => row.target_app_version)
+                  .filter((version): version is string => Boolean(version)),
+              ),
+            ).map((targetAppVersion) => ({
+              target_app_version: targetAppVersion,
+            }));
+
+            return createPage(result);
+          }
+
+          if (
             normalizedSql.startsWith(
               "select channel from bundles group by channel",
             )
@@ -256,6 +276,19 @@ describe("d1Database plugin", () => {
     },
   });
 
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo: async (bundles, args) => {
+      rows.clear();
+
+      for (const bundle of bundles) {
+        await plugin.appendBundle(bundle);
+      }
+      await plugin.commitBundle();
+
+      return plugin.getUpdateInfo?.(args) ?? null;
+    },
+  });
+
   it("refreshes bundle data before merging an update after a previous list request", async () => {
     const bundleId = "bundle-stale-cache";
     const initialRow: D1Row = {
@@ -276,7 +309,7 @@ describe("d1Database plugin", () => {
     };
     rows.set(bundleId, initialRow);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     rows.set(bundleId, {
       ...initialRow,

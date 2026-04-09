@@ -89,6 +89,10 @@ android {
     }
   }
 
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
+
   lintOptions {
     disable "GradleCompatible"
   }
@@ -132,11 +136,9 @@ dependencies {
   // For > 0.71, this will be replaced by `com.facebook.react:react-android:$version` by react gradle plugin
   //noinspection GradleDynamicVersion
   if (project.ext.shouldConsumeReactNativeFromMavenCentral()) {
-    // noinspection GradleDynamicVersion
-    implementation 'com.facebook.react:react-android:+'
+    implementation "com.facebook.react:react-android:${project.ext.reactNativeVersion}"
   } else {
-    // noinspection GradleDynamicVersion
-    implementation 'com.facebook.react:react-native:+'
+    implementation "com.facebook.react:react-native:${project.ext.reactNativeVersion}"
   }
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
@@ -144,6 +146,8 @@ dependencies {
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   implementation files('libs/org.brotli.dec-1.2.0.jar')
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.json:json:20240303"
 }
 
 if (isNewArchitectureEnabled()) {

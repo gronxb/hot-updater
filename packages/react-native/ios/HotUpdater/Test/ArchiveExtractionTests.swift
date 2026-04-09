@@ -100,6 +100,30 @@ struct ArchiveExtractionTests {
     }
 
     @Test
+    func extractsIssue913SyntheticZipFixture() throws {
+        let workingDirectory = try makeWorkingDirectory()
+
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let archiveURL = issue913SyntheticFixtureDirectory().appendingPathComponent(
+            "issue913-synthetic.zip"
+        )
+        #expect(FileManager.default.fileExists(atPath: archiveURL.path))
+
+        let extractionDirectory = workingDirectory.appendingPathComponent(
+            "extracted",
+            isDirectory: true
+        )
+
+        let progressValues = try extractArchive(at: archiveURL, to: extractionDirectory)
+        assertExtractionCompleted(progressValues)
+        try assertExtractedFiles(issue913SyntheticExtractedFiles, in: extractionDirectory)
+        #expect(try countRegularFiles(in: extractionDirectory) == 1)
+    }
+
+    @Test
     func skipsZipTraversalAndSymbolicLinkEntries() throws {
         let workingDirectory = try makeWorkingDirectory()
 
@@ -536,6 +560,13 @@ private func deployedFixtureDirectory(for fixtureSet: DeployedFixtureSet) -> URL
         .appendingPathComponent(fixtureSet.directoryName, isDirectory: true)
 }
 
+private func issue913SyntheticFixtureDirectory() -> URL {
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appendingPathComponent("Fixtures", isDirectory: true)
+        .appendingPathComponent("Issue913Synthetic", isDirectory: true)
+}
+
 private func makeWorkingDirectory() throws -> URL {
     try FileManager.default.url(
         for: .itemReplacementDirectory,
@@ -665,6 +696,26 @@ private func archiveByteCount(of archiveURL: URL) throws -> Int {
     return (attributes[.size] as? NSNumber)?.intValue ?? 0
 }
 
+private func countRegularFiles(in directory: URL) throws -> Int {
+    guard let enumerator = FileManager.default.enumerator(
+        at: directory,
+        includingPropertiesForKeys: [.isRegularFileKey]
+    ) else {
+        return 0
+    }
+
+    var count = 0
+
+    for case let fileURL as URL in enumerator {
+        let values = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
+        if values.isRegularFile == true {
+            count += 1
+        }
+    }
+
+    return count
+}
+
 private func computeFileSHA256(at fileURL: URL) throws -> String {
     let fileHandle = try FileHandle(forReadingFrom: fileURL)
 
@@ -699,6 +750,14 @@ private func assertThrows(
         #expect(fragments.contains { message.contains($0) })
     }
 }
+
+private let issue913SyntheticExtractedFiles: [ExtractedFileExpectation] = [
+    ExtractedFileExpectation(
+        path: "assets/repro/logo-repeated.bin",
+        sha256: "08c95a1f7e50074189db216f1601ed927427f55b21cd8f878209e2e4735ee1a3",
+        size: 1_963_870
+    ),
+]
 
 private func createArchive(
     format: ArchiveFormat,

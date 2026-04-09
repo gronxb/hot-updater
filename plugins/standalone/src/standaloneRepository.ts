@@ -125,6 +125,7 @@ export const standaloneRepository =
       });
 
       return {
+        supportsCursorPagination: true,
         async getBundleById(bundleId: string): Promise<Bundle | null> {
           try {
             const { path, headers: routeHeaders } = routes.retrieve(bundleId);
@@ -143,9 +144,21 @@ export const standaloneRepository =
           }
         },
         async getBundles(options) {
-          const { where, limit, offset = 0 } = options ?? {};
+          const { where, limit, cursor, page } = options ?? {};
+          const internalOffset =
+            options &&
+            typeof options === "object" &&
+            "offset" in options &&
+            typeof options.offset === "number"
+              ? options.offset
+              : undefined;
           const { path, headers: routeHeaders } = routes.list();
           const url = new URL(buildUrl(path));
+          const resolvedPage =
+            page ??
+            (internalOffset !== undefined && limit > 0
+              ? Math.floor(internalOffset / limit) + 1
+              : undefined);
 
           if (where?.channel !== undefined) {
             url.searchParams.set("channel", where.channel);
@@ -159,7 +172,17 @@ export const standaloneRepository =
             url.searchParams.set("limit", String(limit));
           }
 
-          url.searchParams.set("offset", String(offset));
+          if (resolvedPage !== undefined) {
+            url.searchParams.set("page", String(resolvedPage));
+          }
+
+          if (cursor?.after !== undefined) {
+            url.searchParams.set("after", cursor.after);
+          }
+
+          if (cursor?.before !== undefined) {
+            url.searchParams.set("before", cursor.before);
+          }
 
           const response = await fetch(url.toString(), {
             method: "GET",

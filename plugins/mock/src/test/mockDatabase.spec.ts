@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setupGetUpdateInfoTestSuite } from "../../../../packages/test-utils/src/index";
 import { mockDatabase } from "../mockDatabase";
 
 const DEFAULT_BUNDLES: Bundle[] = [
@@ -52,8 +53,19 @@ describe("mockDatabase", () => {
     })();
   });
 
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo: async (bundles, args) => {
+      const plugin = mockDatabase({
+        latency: DEFAULT_LATENCY,
+        initialBundles: JSON.parse(JSON.stringify(bundles)),
+      })();
+
+      return plugin.getUpdateInfo?.(args) ?? null;
+    },
+  });
+
   it("should return a database plugin", async () => {
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     expect(bundles.data).toEqual([]);
   });
@@ -61,7 +73,6 @@ describe("mockDatabase", () => {
   it("should return a database plugin with initial bundles", async () => {
     const bundles = await pluginWithBundles.getBundles({
       limit: 20,
-      offset: 0,
     });
 
     expect(bundles.data).toEqual(DEFAULT_BUNDLES_MOCK);
@@ -121,7 +132,6 @@ describe("mockDatabase", () => {
     const result = await plugin.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
 
     expect(result.data).toHaveLength(2);
@@ -191,7 +201,6 @@ describe("mockDatabase", () => {
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -201,12 +210,15 @@ describe("mockDatabase", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
+      nextCursor: "bundle2",
     });
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -216,6 +228,7 @@ describe("mockDatabase", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
+      previousCursor: "bundle1",
     });
   });
 
@@ -223,7 +236,7 @@ describe("mockDatabase", () => {
     await plugin.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
     await plugin.commitBundle();
 
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     expect(bundles.data).toEqual([DEFAULT_BUNDLES_MOCK[0]]);
   });
@@ -241,7 +254,6 @@ describe("mockDatabase", () => {
 
     const bundles = await singleBundlePlugin.getBundles({
       limit: 20,
-      offset: 0,
     });
 
     expect(bundles.data).toEqual([
@@ -276,7 +288,6 @@ describe("mockDatabase", () => {
   it("should sort bundles by id", async () => {
     const bundles = await pluginWithBundles.getBundles({
       limit: 20,
-      offset: 0,
     });
 
     expect(bundles.data).toEqual(DEFAULT_BUNDLES_MOCK);
@@ -286,7 +297,6 @@ describe("mockDatabase", () => {
     // Get initial bundles and verify count
     const bundlesBefore = await pluginWithBundles.getBundles({
       limit: 20,
-      offset: 0,
     });
     expect(bundlesBefore.data).toHaveLength(2);
 
@@ -301,7 +311,6 @@ describe("mockDatabase", () => {
     // Verify deletion
     const bundlesAfter = await pluginWithBundles.getBundles({
       limit: 20,
-      offset: 0,
     });
     expect(bundlesAfter.data).toHaveLength(1);
 
@@ -353,7 +362,6 @@ describe("mockDatabase", () => {
   it("should delete bundles and update getBundleById results", async () => {
     const initialBundles = await pluginWithBundles.getBundles({
       limit: 20,
-      offset: 0,
     });
 
     const bundleToDelete = initialBundles.data[0];
@@ -441,11 +449,10 @@ describe("mockDatabase", () => {
     // Get first page with limit 2
     const firstPage = await testPlugin.getBundles({
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
-    expect(firstPage.data.map((b) => b.id)).toEqual(["bundle-1", "bundle-3"]);
+    expect(firstPage.data.map((b) => b.id)).toEqual(["bundle-3", "bundle-1"]);
     expect(firstPage.pagination.total).toBe(2);
     expect(firstPage.pagination.hasNextPage).toBe(false);
   });
@@ -498,7 +505,7 @@ describe("mockDatabase", () => {
     expect(bundleAfterDelete).toBeNull();
 
     // Verify empty list
-    const allBundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const allBundles = await plugin.getBundles({ limit: 20 });
     expect(allBundles.data).toHaveLength(0);
   });
 
@@ -542,7 +549,7 @@ describe("mockDatabase", () => {
     await plugin.commitBundle();
 
     // Should only have bundle2
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
     expect(bundles.data).toHaveLength(1);
     expect(bundles.data[0].id).toBe("bundle2");
   });

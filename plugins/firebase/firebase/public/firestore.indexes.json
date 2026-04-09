@@ -5,6 +5,17 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "target_app_version", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bundles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "channel", "order": "ASCENDING" },
         { "fieldPath": "platform", "order": "ASCENDING" },
         { "fieldPath": "enabled", "order": "ASCENDING" },
         { "fieldPath": "target_app_version", "order": "ASCENDING" },
@@ -34,6 +45,17 @@
       "fields": [
         { "fieldPath": "platform", "order": "ASCENDING" },
         { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bundles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "channel", "order": "ASCENDING" },
+        { "fieldPath": "enabled", "order": "ASCENDING" },
+        { "fieldPath": "platform", "order": "ASCENDING" },
+        { "fieldPath": "fingerprint_hash", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
       ]
     },
     {

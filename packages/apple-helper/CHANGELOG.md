@@ -1,5 +1,20 @@
 # @hot-updater/apple-helper
 
+## 0.29.5
+
+### Patch Changes
+
+- Updated dependencies [52208f4]
+  - @hot-updater/plugin-core@0.29.5
+  - @hot-updater/cli-tools@0.29.5
+
+## 0.29.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.29.4
+- @hot-updater/plugin-core@0.29.4
+
 ## 0.29.3
 
 ### Patch Changes

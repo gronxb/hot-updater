@@ -6,6 +6,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
+import { getUpdateInfo } from "./getUpdateInfo";
 import type { Database } from "./types";
 
 export interface SupabaseDatabaseConfig {
@@ -22,6 +23,10 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
     );
 
     return {
+      async getUpdateInfo(args) {
+        return getUpdateInfo(supabase, args);
+      },
+
       async getBundleById(bundleId) {
         const { data, error } = await supabase
           .from("bundles")
@@ -54,7 +59,11 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where, limit, offset, orderBy } = options ?? {};
+        const { where, limit, orderBy } = options ?? {};
+        const offset =
+          ((options && "offset" in options ? options.offset : undefined) as
+            | number
+            | undefined) ?? 0;
 
         if (
           (where?.targetAppVersionIn &&

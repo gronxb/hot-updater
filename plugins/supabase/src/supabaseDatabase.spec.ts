@@ -1,5 +1,10 @@
+import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBundleMethodsTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { beforeEach, describe, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
@@ -244,21 +249,141 @@ const { bundleRows, createMockSupabaseClient } = vi.hoisted(() => {
         },
       };
     },
-    async rpc(name: string) {
-      if (name !== "get_channels") {
-        return { data: null, error: new Error(`Unsupported RPC: ${name}`) };
+    async rpc(name: string, params?: Record<string, unknown>) {
+      if (name === "get_channels") {
+        return {
+          data: Array.from(
+            new Set(Array.from(bundleRows.values()).map((row) => row.channel)),
+          ).map((channel) => ({ channel })),
+          error: null,
+        };
       }
 
-      return {
-        data: Array.from(
-          new Set(Array.from(bundleRows.values()).map((row) => row.channel)),
-        ).map((channel) => ({ channel })),
-        error: null,
-      };
+      if (name === "get_target_app_version_list") {
+        const platform = params?.app_platform as SupabaseBundleRow["platform"];
+        const minBundleId = params?.min_bundle_id as string;
+
+        const data = Array.from(
+          new Set(
+            Array.from(bundleRows.values())
+              .filter(
+                (row) =>
+                  row.platform === platform &&
+                  row.id.localeCompare(minBundleId) >= 0 &&
+                  row.target_app_version,
+              )
+              .map((row) => row.target_app_version),
+          ),
+        ).map((targetAppVersion) => ({
+          target_app_version: targetAppVersion,
+        }));
+
+        return { data, error: null };
+      }
+
+      if (name === "get_update_info_by_app_version") {
+        const platform = params?.app_platform as SupabaseBundleRow["platform"];
+        const appVersion = params?.app_version as string;
+        const bundleId = params?.bundle_id as string;
+        const minBundleId = params?.min_bundle_id as string;
+        const channel = params?.target_channel as string;
+        const targetAppVersionList = (params?.target_app_version_list ??
+          []) as string[];
+        const cohort = (params?.cohort as string | null) ?? undefined;
+
+        const bundles = Array.from(bundleRows.values())
+          .filter(
+            (row) =>
+              row.enabled &&
+              row.platform === platform &&
+              row.channel === channel &&
+              row.id.localeCompare(minBundleId) >= 0 &&
+              targetAppVersionList.includes(row.target_app_version ?? ""),
+          )
+          .map(toBundle);
+
+        const updateInfo = (await getUpdateInfoJS(bundles, {
+          _updateStrategy: "appVersion",
+          appVersion,
+          bundleId,
+          minBundleId,
+          channel,
+          cohort,
+          platform,
+        })) as UpdateInfo | null;
+
+        return {
+          data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
+          error: null,
+        };
+      }
+
+      if (name === "get_update_info_by_fingerprint_hash") {
+        const platform = params?.app_platform as SupabaseBundleRow["platform"];
+        const bundleId = params?.bundle_id as string;
+        const minBundleId = params?.min_bundle_id as string;
+        const channel = params?.target_channel as string;
+        const fingerprintHash = params?.target_fingerprint_hash as string;
+        const cohort = (params?.cohort as string | null) ?? undefined;
+
+        const bundles = Array.from(bundleRows.values())
+          .filter(
+            (row) =>
+              row.enabled &&
+              row.platform === platform &&
+              row.channel === channel &&
+              row.id.localeCompare(minBundleId) >= 0 &&
+              row.fingerprint_hash === fingerprintHash,
+          )
+          .map(toBundle);
+
+        const updateInfo = (await getUpdateInfoJS(bundles, {
+          _updateStrategy: "fingerprint",
+          fingerprintHash,
+          bundleId,
+          minBundleId,
+          channel,
+          cohort,
+          platform,
+        })) as UpdateInfo | null;
+
+        return {
+          data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
+          error: null,
+        };
+      }
+
+      return { data: null, error: new Error(`Unsupported RPC: ${name}`) };
     },
   });
 
   return { bundleRows, createMockSupabaseClient };
+});
+
+const toBundle = (row: SupabaseBundleRow) => ({
+  channel: row.channel,
+  enabled: row.enabled,
+  shouldForceUpdate: row.should_force_update,
+  fileHash: row.file_hash,
+  gitCommitHash: row.git_commit_hash,
+  id: row.id,
+  message: row.message,
+  platform: row.platform,
+  targetAppVersion: row.target_app_version,
+  fingerprintHash: row.fingerprint_hash,
+  storageUri: row.storage_uri,
+  metadata: row.metadata ?? {},
+  rolloutCohortCount: row.rollout_cohort_count ?? 1000,
+  targetCohorts: row.target_cohorts ?? null,
+});
+
+const toUpdateInfoRow = (updateInfo: UpdateInfo) => ({
+  id: updateInfo.id,
+  should_force_update: updateInfo.shouldForceUpdate,
+  message: updateInfo.message,
+  status: updateInfo.status,
+  storage_uri: updateInfo.storageUri,
+  file_hash: updateInfo.fileHash,
 });
 
 vi.mock("@supabase/supabase-js", () => ({
@@ -295,6 +420,19 @@ describe("supabaseDatabase plugin", () => {
       }
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
+    },
+  });
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo: async (bundles, args: GetBundlesArgs) => {
+      bundleRows.clear();
+
+      for (const bundle of bundles) {
+        await plugin.appendBundle(bundle);
+      }
+      await plugin.commitBundle();
+
+      return plugin.getUpdateInfo?.(args) ?? null;
     },
   });
 });

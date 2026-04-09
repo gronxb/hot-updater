@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/test-utils",
   "private": true,
-  "version": "0.29.3",
+  "version": "0.29.5",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -46,6 +46,7 @@
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
+    "typescript": "6.0.2",
     "vitest": "catalog:"
   }
 }

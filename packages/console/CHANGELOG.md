@@ -1,5 +1,17 @@
 # @hot-updater/console
 
+## 0.29.5
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.29.5
+
+## 0.29.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.29.4
+
 ## 0.29.3
 
 ### Patch Changes

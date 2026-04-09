@@ -305,15 +305,21 @@ export function createPluginDatabaseCore<TContext = unknown>(
     isCandidate: (bundle: Bundle) => boolean;
     context?: HotUpdaterContext<TContext>;
   }): Promise<UpdateInfo | null> => {
-    let offset = 0;
+    let after: string | undefined;
 
     while (true) {
       const { data, pagination } = await getSortedBundlePage(
         {
           where: queryWhere,
           limit: PAGE_SIZE,
-          offset,
           orderBy: DESC_ORDER,
+          ...(after
+            ? {
+                cursor: {
+                  after,
+                },
+              }
+            : {}),
         },
         context,
       );
@@ -356,7 +362,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
         break;
       }
 
-      offset += PAGE_SIZE;
+      after = data.at(-1)?.id;
+      if (!after) {
+        break;
+      }
     }
 
     if (args.bundleId === NIL_UUID) {
@@ -402,6 +411,14 @@ export function createPluginDatabaseCore<TContext = unknown>(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
     ): Promise<UpdateInfo | null> {
+      const plugin = getPlugin();
+      const directGetUpdateInfo = plugin.getUpdateInfo;
+      if (directGetUpdateInfo) {
+        return context === undefined
+          ? await directGetUpdateInfo(args)
+          : await directGetUpdateInfo(args, context);
+      }
+
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
       const baseWhere = getBaseWhere({

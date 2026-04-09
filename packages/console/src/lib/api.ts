@@ -17,8 +17,10 @@ import {
 type BundleFilters = {
   channel?: string;
   platform?: "ios" | "android";
+  page?: number;
   limit?: string;
-  offset?: string;
+  after?: string;
+  before?: string;
 };
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;

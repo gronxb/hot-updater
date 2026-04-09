@@ -30,6 +30,7 @@ interface S3DatabaseConfig {
   region: string;                     // AWS region
   bucketName: string;                 // S3 bucket for metadata
   cloudfrontDistributionId?: string;  // CloudFront distribution ID for cache invalidation
+  managementIndexPageSize?: number;   // Management index page size (default: 128)
   apiBasePath?: string;               // API path (default: "/api/check-update")
   credentials?: {
     accessKeyId: string;
@@ -52,7 +53,8 @@ export default defineConfig({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
     },
     bucketName: 'my-metadata-bucket',
-    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID
+    cloudfrontDistributionId: process.env.CLOUDFRONT_DISTRIBUTION_ID,
+    managementIndexPageSize: 128,
   }),
   // ... other config
 });

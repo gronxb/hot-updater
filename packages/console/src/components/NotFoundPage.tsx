@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 const homeSearch = {
   channel: undefined,
   platform: undefined,
-  offset: undefined,
+  page: undefined,
+  after: undefined,
+  before: undefined,
   bundleId: undefined,
 } as const;
 

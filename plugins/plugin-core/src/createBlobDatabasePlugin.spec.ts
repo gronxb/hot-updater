@@ -72,14 +72,27 @@ const bundlesData = [
   },
 ] as const;
 
+const MANAGEMENT_INDEX_PREFIX = "_index";
+const MANAGEMENT_INDEX_VERSION = 1;
+const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+
+type ManagementScope = {
+  channel?: string;
+  platform?: "ios" | "android";
+};
+
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
 // 캐시 무효화 요청을 추적하기 위한 배열
 let cloudfrontInvalidations: { paths: string[] }[] = [];
+let listObjectCalls: string[] = [];
+let loadObjectCalls: string[] = [];
 
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
+  listObjectCalls = [];
+  loadObjectCalls = [];
 });
 
 afterEach(() => {
@@ -87,12 +100,27 @@ afterEach(() => {
 });
 
 describe("blobDatabase plugin", () => {
+  const createPlugin = (config: { managementIndexPageSize?: number } = {}) =>
+    createBlobDatabasePlugin({
+      name: "blobDatabase",
+      factory: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects,
+        loadObject,
+        uploadObject,
+        deleteObject,
+        invalidatePaths,
+      }),
+    })(config)();
+
   async function listObjects(prefix: string): Promise<string[]> {
+    listObjectCalls.push(prefix);
     const keys = Object.keys(fakeStore).filter((key) => key.startsWith(prefix));
     return keys;
   }
 
   async function loadObject<T>(path: string): Promise<T | null> {
+    loadObjectCalls.push(path);
     const data = fakeStore[path];
     if (data) {
       return JSON.parse(data);
@@ -112,30 +140,312 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.push({ paths });
   }
 
-  let plugin = createBlobDatabasePlugin({
-    name: "blobDatabase",
-    factory: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects,
-      loadObject,
-      uploadObject,
-      deleteObject,
-      invalidatePaths,
-    }),
-  })({})();
+  let plugin = createPlugin({
+    managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+  });
 
   beforeEach(async () => {
-    plugin = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+  });
+
+  const seedUpdateManifests = (bundles: Bundle[]) => {
+    const bundlesByKey = new Map<string, Bundle[]>();
+    const targetVersionsByKey = new Map<string, Set<string>>();
+
+    for (const bundle of bundles) {
+      const target = bundle.targetAppVersion ?? bundle.fingerprintHash;
+      if (!target) {
+        continue;
+      }
+
+      const key = `${bundle.channel}/${bundle.platform}/${target}/update.json`;
+      const storedBundles = bundlesByKey.get(key) ?? [];
+      storedBundles.push(bundle);
+      bundlesByKey.set(key, storedBundles);
+
+      if (bundle.targetAppVersion) {
+        const targetVersionsKey = `${bundle.channel}/${bundle.platform}/target-app-versions.json`;
+        const targetVersions =
+          targetVersionsByKey.get(targetVersionsKey) ?? new Set<string>();
+        targetVersions.add(bundle.targetAppVersion);
+        targetVersionsByKey.set(targetVersionsKey, targetVersions);
+      }
+    }
+
+    for (const [key, storedBundles] of bundlesByKey.entries()) {
+      fakeStore[key] = JSON.stringify(
+        storedBundles.sort((left, right) => right.id.localeCompare(left.id)),
+      );
+    }
+
+    for (const [key, targetVersions] of targetVersionsByKey.entries()) {
+      fakeStore[key] = JSON.stringify(Array.from(targetVersions));
+    }
+  };
+
+  const getManagementScopePrefix = ({ channel, platform }: ManagementScope) => {
+    if (channel && platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}/platform/${platform}`;
+    }
+
+    if (channel) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}`;
+    }
+
+    if (platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/platform/${platform}`;
+    }
+
+    return `${MANAGEMENT_INDEX_PREFIX}/all`;
+  };
+
+  const getManagementRootKey = (scope: ManagementScope) =>
+    `${getManagementScopePrefix(scope)}/root.json`;
+
+  const getManagementPageKey = (scope: ManagementScope, pageIndex: number) =>
+    `${getManagementScopePrefix(scope)}/pages/${String(pageIndex).padStart(4, "0")}.json`;
+
+  const sortManagementBundles = (bundles: Bundle[]) =>
+    bundles.slice().sort((left, right) => right.id.localeCompare(left.id));
+
+  const seedPagedBundlesIndex = (bundles: Bundle[]) => {
+    const sortedBundles = sortManagementBundles(bundles);
+    const channels = [
+      ...new Set(sortedBundles.map((bundle) => bundle.channel)),
+    ].sort();
+
+    const addScope = (
+      scope: ManagementScope,
+      scopedBundles: Bundle[],
+      options?: { includeChannels?: boolean },
+    ) => {
+      if (!options?.includeChannels && scopedBundles.length === 0) {
+        return;
+      }
+
+      const pages = [];
+      for (
+        let pageIndex = 0;
+        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopedBundles.length;
+        pageIndex++
+      ) {
+        const page = scopedBundles.slice(
+          pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
+          (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+        );
+        const key = getManagementPageKey(scope, pageIndex);
+        fakeStore[key] = JSON.stringify(page);
+        pages.push({
+          key,
+          count: page.length,
+          firstId: page[0]!.id,
+          lastId: page.at(-1)!.id,
+        });
+      }
+
+      fakeStore[getManagementRootKey(scope)] = JSON.stringify({
+        version: MANAGEMENT_INDEX_VERSION,
+        pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+        total: scopedBundles.length,
+        pages,
+        ...(options?.includeChannels ? { channels } : {}),
+      });
+    };
+
+    addScope({}, sortedBundles, { includeChannels: true });
+
+    for (const channel of channels) {
+      const channelBundles = sortedBundles.filter(
+        (bundle) => bundle.channel === channel,
+      );
+      addScope({ channel }, channelBundles);
+
+      for (const platform of ["ios", "android"] as const) {
+        addScope(
+          { channel, platform },
+          channelBundles.filter((bundle) => bundle.platform === platform),
+        );
+      }
+    }
+
+    for (const platform of ["ios", "android"] as const) {
+      addScope(
+        { platform },
+        sortedBundles.filter((bundle) => bundle.platform === platform),
+      );
+    }
+  };
+
+  const createScopedBundles = ({
+    channel = "production",
+    platform = "ios",
+    count,
+  }: {
+    channel?: string;
+    platform?: "ios" | "android";
+    count: number;
+  }) =>
+    Array.from({ length: count }, (_, index) => {
+      const id = `bundle-${String(count - index).padStart(3, "0")}`;
+      return createBundleJson(channel, platform, "1.0.0", id);
+    });
+
+  it("uses direct app-version manifests for update checks without reloading all bundles", async () => {
+    const latestBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+    const previousBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000001",
+    );
+
+    seedUpdateManifests([previousBundle, latestBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
       }),
-    })({})();
+    ).resolves.toEqual({
+      fileHash: latestBundle.fileHash,
+      id: latestBundle.id,
+      message: latestBundle.message,
+      shouldForceUpdate: latestBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: latestBundle.storageUri,
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      "production/ios/target-app-versions.json",
+      "production/ios/*/update.json",
+    ]);
+  });
+
+  it("uses fingerprint manifests directly for update checks", async () => {
+    const fingerprintBundle: Bundle = {
+      ...DEFAULT_BUNDLE,
+      channel: "production",
+      id: "00000000-0000-0000-0000-000000000010",
+      platform: "ios",
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-1",
+    };
+
+    seedUpdateManifests([fingerprintBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: fingerprintBundle.fileHash,
+      id: fingerprintBundle.id,
+      message: fingerprintBundle.message,
+      shouldForceUpdate: fingerprintBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: fingerprintBundle.storageUri,
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      "production/ios/fingerprint-1/update.json",
+    ]);
+  });
+
+  it("respects cohort eligibility when selecting app-version updates", async () => {
+    const gatedBundle: Bundle = {
+      ...createBundleJson(
+        "production",
+        "ios",
+        "*",
+        "00000000-0000-0000-0000-000000000021",
+      ),
+      targetCohorts: ["beta"],
+    };
+    const fallbackBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000020",
+    );
+    fallbackBundle.targetCohorts = ["stable"];
+
+    seedUpdateManifests([fallbackBundle, gatedBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        cohort: "stable",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: fallbackBundle.id,
+      status: "UPDATE",
+    });
+  });
+
+  it("returns rollback candidates from direct manifests when the current bundle is no longer eligible", async () => {
+    const currentBundle: Bundle = {
+      ...createBundleJson(
+        "production",
+        "ios",
+        "*",
+        "00000000-0000-0000-0000-000000000031",
+      ),
+      targetCohorts: ["beta"],
+    };
+    const rollbackBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000030",
+    );
+
+    seedUpdateManifests([rollbackBundle, currentBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: currentBundle.id,
+        cohort: "stable",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: rollbackBundle.fileHash,
+      id: rollbackBundle.id,
+      message: rollbackBundle.message,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      storageUri: rollbackBundle.storageUri,
+    });
+  });
+
+  it("respects minBundleId when no direct-manifest candidates are available", async () => {
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000040",
+        minBundleId: "00000000-0000-0000-0000-000000000040",
+        platform: "ios",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -183,7 +493,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -255,7 +565,7 @@ describe("blobDatabase plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -358,7 +668,7 @@ describe("blobDatabase plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -456,7 +766,7 @@ describe("blobDatabase plugin", () => {
       ),
     ]);
 
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: Returned bundle list should only include valid bundles
     expect(result.data).toHaveLength(3);
     expect(result.data).toEqual(
@@ -531,7 +841,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Assert: All bundles from all channels should be loaded
     expect(result.data).toHaveLength(5);
     expect(result.data).toEqual(
@@ -588,7 +898,7 @@ describe("blobDatabase plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -668,7 +978,7 @@ describe("blobDatabase plugin", () => {
       bundleA,
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     // Descending order: "C" > "B" > "A"
     expect(result.data).toEqual([bundleC, bundleB, bundleA]);
     expect(result.pagination).toEqual({
@@ -678,6 +988,579 @@ describe("blobDatabase plugin", () => {
       currentPage: 1,
       totalPages: 1,
     });
+  });
+
+  it("rebuilds paged management indexes with one broad scan, then serves later cursor reads without rescanning", async () => {
+    plugin = createPlugin();
+    const bundleA = createBundleJson("production", "ios", "1.0.0", "index-A");
+    const bundleB = createBundleJson("production", "ios", "1.0.0", "index-B");
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      bundleA,
+      bundleB,
+    ]);
+
+    await plugin.getBundles({ limit: 20 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 128,
+    });
+    expect(fakeStore[getManagementRootKey({})]).toBeDefined();
+    expect(fakeStore[getManagementPageKey({}, 0)]).toBeDefined();
+    expect(listObjectCalls).toEqual([""]);
+    expect(loadObjectCalls.slice().sort()).toEqual(
+      [
+        getManagementRootKey({}),
+        getManagementPageKey({}, 0),
+        "production/ios/1.0.0/update.json",
+      ].sort(),
+    );
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await plugin.getBundles({
+      limit: 1,
+      where: { channel: "production", platform: "ios" },
+      cursor: {
+        after: bundleB.id,
+      },
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("rebuilds stored management indexes when the configured page size changes", async () => {
+    const bundles = createScopedBundles({ count: 5 });
+    seedUpdateManifests(bundles);
+
+    plugin = createPlugin({ managementIndexPageSize: 2 });
+    await plugin.getBundles({ limit: 5 });
+
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeDefined();
+
+    plugin = createPlugin({ managementIndexPageSize: 3 });
+    await plugin.getBundles({ limit: 5 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 3,
+    });
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeUndefined();
+  });
+
+  it("reads the first all-bundles page from one root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const result = await plugin.getBundles({ limit: 20 });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      bundles.slice(0, 20).map((bundle) => bundle.id),
+    );
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "channel scope",
+      where: { channel: "production" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production" }),
+        getManagementPageKey({ channel: "production" }, 0),
+      ],
+    },
+    {
+      label: "platform scope",
+      where: { platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ platform: "ios" }),
+        getManagementPageKey({ platform: "ios" }, 0),
+      ],
+    },
+    {
+      label: "channel + platform scope",
+      where: { channel: "production", platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production", platform: "ios" }),
+        getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      ],
+    },
+  ])(
+    "reads warm filtered bundles with minimal objects for $label",
+    async ({ where, expectedKeys }) => {
+      const bundles = [
+        ...createScopedBundles({
+          count: 70,
+          channel: "production",
+          platform: "ios",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "production",
+          platform: "android",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "staging",
+          platform: "ios",
+        }),
+      ];
+      seedPagedBundlesIndex(bundles);
+      listObjectCalls = [];
+      loadObjectCalls = [];
+
+      await plugin.getBundles({
+        where,
+        limit: 20,
+        cursor: {
+          after: "bundle-999",
+        },
+      });
+
+      expect(listObjectCalls).toEqual([]);
+      expect(loadObjectCalls).toEqual(expectedKeys);
+    },
+  );
+
+  it("reads at most two leaf pages when an after cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        after: "bundle-021",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(20 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+    ]);
+  });
+
+  it("reads at most two leaf pages when a before cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        before: "bundle-005",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(25 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("reads channels from the all-bundles root only", async () => {
+    seedPagedBundlesIndex([
+      ...createScopedBundles({
+        count: 2,
+        channel: "production",
+        platform: "ios",
+      }),
+      ...createScopedBundles({
+        count: 2,
+        channel: "staging",
+        platform: "android",
+      }),
+    ]);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([
+      "production",
+      "staging",
+    ]);
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+  });
+
+  it("reads bundle detail from the all-bundles root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getBundleById("bundle-005")).resolves.toMatchObject({
+      id: "bundle-005",
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 1),
+    ]);
+  });
+
+  it("refreshes a stale cached management root before falling back to a broad scan for bundle detail", async () => {
+    await plugin.getChannels();
+
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "bundle-stale-root",
+    );
+    seedPagedBundlesIndex([bundle]);
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getBundleById(bundle.id)).resolves.toMatchObject({
+      id: bundle.id,
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after updating bundle metadata", async () => {
+    const targetBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "console-update-target",
+    );
+    const siblingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-update-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.updateBundle(targetBundle.id, {
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+    await plugin.commitBundle();
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const updatedBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(updatedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        channel: "production",
+        enabled: false,
+        message: "Updated from console",
+      },
+      siblingBundle,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getBundleById(targetBundle.id)).resolves.toMatchObject({
+      id: targetBundle.id,
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after deleting bundles", async () => {
+    const deletedBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "console-delete-target",
+    );
+    const survivingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-delete-survivor",
+    );
+
+    await plugin.appendBundle(deletedBundle);
+    await plugin.appendBundle(survivingBundle);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(deletedBundle);
+    await plugin.commitBundle();
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const productionBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(productionBundles.data).toEqual([survivingBundle]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const removedScopeBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(removedScopeBundles.data).toEqual([]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls.every((key) => key.endsWith("/root.json"))).toBe(
+      true,
+    );
+    expect(loadObjectCalls).toContain(
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+    );
+    expect(loadObjectCalls).toContain(getManagementRootKey({}));
+  });
+
+  it("revalidates cached management roots when another plugin instance updates bundles", async () => {
+    const targetBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-target",
+    );
+    const siblingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    const secondPlugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    await secondPlugin.updateBundle(targetBundle.id, {
+      enabled: false,
+      message: "Updated from another instance",
+    });
+    await secondPlugin.commitBundle();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const refreshedBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(refreshedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        enabled: false,
+        message: "Updated from another instance",
+      },
+      siblingBundle,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+      getManagementPageKey({ channel: "staging", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("revalidates cached management roots when another plugin instance changes channels", async () => {
+    const stagingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-channel-target",
+    );
+
+    await plugin.appendBundle(stagingBundle);
+    await plugin.commitBundle();
+
+    await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
+
+    const secondPlugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+
+    const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
+    expect(bundleToDelete).toEqual(stagingBundle);
+    await secondPlugin.deleteBundle(bundleToDelete!);
+    await secondPlugin.commitBundle();
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([getManagementRootKey({})]);
+  });
+
+  it("supports cursor pagination from the index manifest", async () => {
+    const bundles = [
+      createBundleJson("production", "ios", "1.0.0", "bundle-300"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-200"),
+      createBundleJson("production", "ios", "1.0.0", "bundle-100"),
+    ];
+
+    await plugin.appendBundle(bundles[0]);
+    await plugin.appendBundle(bundles[1]);
+    await plugin.appendBundle(bundles[2]);
+    await plugin.commitBundle();
+
+    const firstPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+    });
+
+    expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-300",
+      "bundle-200",
+    ]);
+    expect(firstPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 2,
+      nextCursor: "bundle-200",
+    });
+    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
+
+    const secondPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
+    });
+
+    expect(secondPage.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
+    expect(secondPage.pagination).toEqual({
+      total: 3,
+      hasNextPage: false,
+      hasPreviousPage: true,
+      currentPage: 2,
+      totalPages: 2,
+      previousCursor: "bundle-100",
+    });
+    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
+
+    const previousPage = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 2,
+      cursor: {
+        before: secondPage.pagination.previousCursor ?? undefined,
+      },
+    });
+
+    expect(previousPage.data.map((bundle) => bundle.id)).toEqual([
+      "bundle-300",
+      "bundle-200",
+    ]);
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {
@@ -691,7 +1574,7 @@ describe("blobDatabase plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -724,7 +1607,7 @@ describe("blobDatabase plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const result = await plugin.getBundles({ limit: 20, offset: 0 });
+    const result = await plugin.getBundles({ limit: 20 });
     expect(result.data).toEqual([]);
     expect(result.pagination).toEqual({
       total: 0,
@@ -824,7 +1707,6 @@ describe("blobDatabase plugin", () => {
     // Act: Load all bundles
     const result = await plugin.getBundles({
       limit: 10,
-      offset: 0,
       where: {
         platform: undefined,
         channel: "production",
@@ -1139,7 +2021,6 @@ describe("blobDatabase plugin", () => {
     const bundlesBeforeDeletion = await plugin.getBundles({
       where: { platform: "ios", channel: "production" },
       limit: 10,
-      offset: 0,
     });
     expect(bundlesBeforeDeletion.data).toHaveLength(3);
 
@@ -1151,7 +2032,6 @@ describe("blobDatabase plugin", () => {
     const bundlesAfterDeletion = await plugin.getBundles({
       where: { platform: "ios", channel: "production" },
       limit: 10,
-      offset: 0,
     });
     expect(bundlesAfterDeletion.data).toHaveLength(2);
     expect(bundlesAfterDeletion.data.some((b) => b.id === "bundle2")).toBe(
@@ -1900,7 +2780,6 @@ describe("blobDatabase plugin", () => {
       const result = await plugin.getBundles({
         where: { platform: "ios", channel: "production" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data).toHaveLength(2);
@@ -1995,7 +2874,6 @@ describe("blobDatabase plugin", () => {
       const result = await plugin.getBundles({
         where: { platform: "ios", channel: "production" },
         limit: 10,
-        offset: 0,
       });
 
       expect(result.data).toHaveLength(2);

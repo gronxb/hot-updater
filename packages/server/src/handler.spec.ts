@@ -179,7 +179,7 @@ describe("createHandler", () => {
 
     const response = await handler(
       new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2&offset=10",
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2",
       ),
     );
 
@@ -202,10 +202,160 @@ describe("createHandler", () => {
           platform: "ios",
         },
         limit: 2,
-        offset: 10,
+        page: undefined,
       },
       undefined,
     );
+  });
+
+  it("passes cursor pagination params through to getBundles", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 51,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 2,
+        totalPages: 26,
+        nextCursor: "bundle-1",
+        previousCursor: "bundle-9",
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+        },
+        limit: 20,
+        page: undefined,
+        cursor: {
+          after: "bundle-20",
+          before: undefined,
+        },
+      },
+      undefined,
+    );
+  });
+
+  it("supports cursor pagination without a legacy offset query param", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+        nextCursor: null,
+        previousCursor: null,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+        },
+        limit: 20,
+        page: undefined,
+        cursor: {
+          after: "bundle-20",
+          before: undefined,
+        },
+      },
+      undefined,
+    );
+  });
+
+  it("returns 400 when bundle list requests still send offset pagination", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?limit=20&offset=40",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
+    });
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
+  it("passes page-aligned pagination params through to getBundles", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 121,
+        hasNextPage: true,
+        hasPreviousPage: true,
+        currentPage: 2,
+        totalPages: 7,
+        nextCursor: "bundle-1",
+        previousCursor: "bundle-9",
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&page=2&after=bundle-20",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+        },
+        limit: 20,
+        page: 2,
+        cursor: {
+          after: "bundle-20",
+          before: undefined,
+        },
+      },
+      undefined,
+    );
+  });
+
+  it("returns 400 when bundle list requests send an invalid page", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/bundles?limit=20&page=0"),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "The 'page' query parameter must be a positive integer.",
+    });
+    expect(api.getBundles).not.toHaveBeenCalled();
   });
 
   it("returns 400 when the platform route parameter is invalid", async () => {
