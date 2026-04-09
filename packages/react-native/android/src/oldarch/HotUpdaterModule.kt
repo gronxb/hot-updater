@@ -3,11 +3,11 @@ package com.hotupdater
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -131,30 +131,28 @@ class HotUpdaterModule internal constructor(
                     Handler(Looper.getMainLooper()).post {
                         try {
                             val progressParams =
-                                WritableNativeMap().apply {
+                                Arguments.createMap().apply {
                                     putDouble("progress", progress.progress)
                                     putString("artifactType", progress.artifactType)
                                     progress.details?.let { details ->
+                                        val files = Arguments.createArray()
+                                        details.files.forEach { file ->
+                                            files.pushMap(
+                                                Arguments.createMap().apply {
+                                                    putString("path", file.path)
+                                                    putString("status", file.status)
+                                                    putDouble("progress", file.progress)
+                                                    putInt("order", file.order)
+                                                },
+                                            )
+                                        }
+
                                         putMap(
                                             "details",
-                                            WritableNativeMap().apply {
+                                            Arguments.createMap().apply {
                                                 putInt("totalFilesCount", details.totalFilesCount)
                                                 putInt("completedFilesCount", details.completedFilesCount)
-                                                putArray(
-                                                    "files",
-                                                    WritableNativeArray().apply {
-                                                        details.files.forEach { file ->
-                                                            pushMap(
-                                                                WritableNativeMap().apply {
-                                                                    putString("path", file.path)
-                                                                    putString("status", file.status)
-                                                                    putDouble("progress", file.progress)
-                                                                    putInt("order", file.order)
-                                                                },
-                                                            )
-                                                        }
-                                                    },
-                                                )
+                                                putArray("files", files)
                                             },
                                         )
                                     }
