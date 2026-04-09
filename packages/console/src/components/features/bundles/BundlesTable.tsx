@@ -157,6 +157,7 @@ export function BundlesTable({
             {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => {
                 const isExpanded = row.original.id === expandedBundleId;
+                const panelId = `bundle-lineage-panel-${row.original.id}`;
 
                 return (
                   <Fragment key={row.original.id}>
@@ -166,14 +167,9 @@ export function BundlesTable({
                           ? "selected"
                           : undefined
                       }
-                      onClick={() =>
-                        onExpandedBundleChange(
-                          isExpanded ? undefined : row.original.id,
-                        )
-                      }
                       className={cn(
-                        "cursor-pointer transition-colors hover:bg-muted/30 data-[state=selected]:bg-muted",
-                        isExpanded && "bg-muted/20",
+                        "transition-colors hover:bg-muted/10 focus-within:bg-muted/15 data-[state=selected]:bg-muted/15",
+                        isExpanded && "bg-primary/5",
                       )}
                     >
                       {row.getVisibleCells().map((cell) => (
@@ -193,7 +189,8 @@ export function BundlesTable({
                           className="border-t-0 p-0"
                         >
                           <BundleChildrenPanel
-                            baseBundle={row.original}
+                            panelId={panelId}
+                            bundle={row.original}
                             bundles={childBundles}
                             loading={isChildBundlesLoading}
                             onDetailClick={onDetailClick}

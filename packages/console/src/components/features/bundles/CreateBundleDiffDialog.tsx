@@ -75,7 +75,7 @@ export function CreateBundleDiffDialog({
 
   const handleSubmit = async () => {
     if (!baseBundleId) {
-      toast.error("Select a base bundle first");
+      toast.error("Select a Base Bundle First");
       return;
     }
 
@@ -84,7 +84,7 @@ export function CreateBundleDiffDialog({
         baseBundleId,
         bundleId: bundle.id,
       });
-      toast.success("HBC diff artifact created", {
+      toast.success("BSDIFF Patch Created", {
         description: `base: ${baseBundleId.slice(0, 8)} -> target: ${bundle.id.slice(0, 8)}`,
       });
       onOpenChange(false);
@@ -92,7 +92,7 @@ export function CreateBundleDiffDialog({
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to create bundle diff artifact",
+          : "Failed to create BSDIFF patch",
       );
       console.error(error);
     }
@@ -102,22 +102,22 @@ export function CreateBundleDiffDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create HBC Diff</DialogTitle>
+          <DialogTitle>Create BSDIFF Patch</DialogTitle>
           <DialogDescription>
-            Pick an older bundle as the base. The console will generate a BSDIFF
-            patch for the Hermes bundle, upload it, and attach the stacked diff
-            metadata to this target bundle.
+            Pick an older bundle as the base. The console generates a Hermes
+            BSDIFF patch, uploads it, and attaches the metadata to this target
+            bundle.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="flex flex-col gap-4 py-4">
           <div className="rounded-xl border bg-muted/30 p-4">
             <div className="flex items-start gap-3">
               <div className="rounded-lg border bg-background p-2 text-muted-foreground">
                 <Layers3 className="h-4 w-4" />
               </div>
-              <div className="space-y-3">
-                <div className="space-y-1">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1">
                   <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                     Target Bundle
                   </p>
@@ -139,7 +139,7 @@ export function CreateBundleDiffDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label htmlFor="bundle-diff-base">Base Bundle</Label>
             <Select value={baseBundleId} onValueChange={setBaseBundleId}>
               <SelectTrigger id="bundle-diff-base">
@@ -167,7 +167,7 @@ export function CreateBundleDiffDialog({
           </div>
 
           {quickCandidates.length > 0 && (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Recent Base Candidates
               </p>
@@ -199,8 +199,8 @@ export function CreateBundleDiffDialog({
             disabled={!baseBundleId || createBundleDiffMutation.isPending}
           >
             {createBundleDiffMutation.isPending
-              ? "Creating Diff..."
-              : "Create Diff"}
+              ? "Creating Patch…"
+              : "Create Patch"}
           </Button>
         </DialogFooter>
       </DialogContent>

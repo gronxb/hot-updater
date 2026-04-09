@@ -70,7 +70,7 @@ function BundlesPage() {
     return (
       <div className="flex flex-col h-full">
         <FilterToolbar />
-        <div className="flex-1 p-6 space-y-4 bg-muted/5">
+        <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-6">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -83,7 +83,7 @@ function BundlesPage() {
   return (
     <div className="flex flex-col h-full">
       <FilterToolbar />
-      <div className="flex-1 p-6 space-y-6 bg-muted/5">
+      <div className="flex flex-1 flex-col gap-6 bg-muted/5 p-6">
         <BundlesTable
           bundles={bundles}
           pagination={pagination}
