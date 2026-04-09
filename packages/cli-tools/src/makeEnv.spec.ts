@@ -105,4 +105,48 @@ describe("makeEnv", () => {
     const result = await makeEnv(newEnvVars);
     expect(result).toBe("# A comment\nA=100\nB=2\nC=3");
   });
+
+  it("preserves existing keys when requested", async () => {
+    vi.mocked(fs.readFile).mockResolvedValueOnce(
+      "GOOGLE_APPLICATION_CREDENTIALS=existing.json\nOTHER_KEY=old",
+    );
+
+    const result = await makeEnv(
+      {
+        GOOGLE_APPLICATION_CREDENTIALS: "new.json",
+        OTHER_KEY: "new",
+      },
+      ".env.hotupdater",
+      {
+        preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
+      },
+    );
+
+    expect(result).toBe(
+      "GOOGLE_APPLICATION_CREDENTIALS=existing.json\nOTHER_KEY=new",
+    );
+  });
+
+  it("preserves existing commented keys when requested", async () => {
+    vi.mocked(fs.readFile).mockResolvedValueOnce(
+      "# Existing credential\nGOOGLE_APPLICATION_CREDENTIALS=existing.json",
+    );
+
+    const result = await makeEnv(
+      {
+        GOOGLE_APPLICATION_CREDENTIALS: {
+          comment: "New credential",
+          value: "new.json",
+        },
+      },
+      ".env.hotupdater",
+      {
+        preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
+      },
+    );
+
+    expect(result).toBe(
+      "# Existing credential\nGOOGLE_APPLICATION_CREDENTIALS=existing.json",
+    );
+  });
 });
