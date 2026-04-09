@@ -46,6 +46,7 @@
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
+    "typescript": "6.0.2",
     "vitest": "catalog:"
   }
 }

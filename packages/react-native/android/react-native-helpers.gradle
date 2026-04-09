@@ -33,6 +33,9 @@ file("$reactNativeRootDir/ReactAndroid/gradle.properties").withInputStream { rea
 def REACT_NATIVE_VERSION = reactProperties.getProperty("VERSION_NAME")
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.startsWith("0.0.0-") ? 1000 : REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
 
+project.ext.reactNativeVersion = REACT_NATIVE_VERSION
+project.ext.reactNativeMinorVersion = REACT_NATIVE_MINOR_VERSION
+
 project.ext.resolveReactNativeDirectory = { ->
   return resolveReactNativeDirectory()
 }
