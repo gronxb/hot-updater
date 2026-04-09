@@ -27,6 +27,10 @@ import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";
 import type { Paginated } from "../types";
 import type { DatabaseAPI } from "./types";
+import {
+  parseBundleMetadata,
+  resolveManifestArtifacts,
+} from "./updateArtifacts";
 
 const parseTargetCohorts = (value: unknown): string[] | null => {
   if (!value) return null;
@@ -175,46 +179,67 @@ export function createOrmDatabaseCore<TContext = unknown>({
     return conditions.length > 0 ? b.and(...conditions) : true;
   };
 
+  const mapBundleRecordToBundle = (record: {
+    id: string;
+    platform: string;
+    should_force_update: unknown;
+    enabled: unknown;
+    file_hash: string;
+    git_commit_hash: string | null;
+    message: string | null;
+    channel: string;
+    storage_uri: string;
+    target_app_version: string | null;
+    fingerprint_hash: string | null;
+    metadata?: unknown;
+    rollout_cohort_count?: number | null;
+    target_cohorts?: unknown;
+  }): Bundle => ({
+    id: record.id,
+    platform: record.platform as Platform,
+    shouldForceUpdate: Boolean(record.should_force_update),
+    enabled: Boolean(record.enabled),
+    fileHash: record.file_hash,
+    gitCommitHash: record.git_commit_hash ?? null,
+    message: record.message ?? null,
+    channel: record.channel,
+    storageUri: record.storage_uri,
+    targetAppVersion: record.target_app_version ?? null,
+    fingerprintHash: record.fingerprint_hash ?? null,
+    metadata: parseBundleMetadata(record.metadata),
+    rolloutCohortCount:
+      record.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+    targetCohorts: parseTargetCohorts(record.target_cohorts),
+  });
+
+  const fetchBundleById = async (id: string): Promise<Bundle | null> => {
+    const orm = await ensureORM();
+    const result = await orm.findFirst("bundles", {
+      select: [
+        "id",
+        "platform",
+        "should_force_update",
+        "enabled",
+        "file_hash",
+        "git_commit_hash",
+        "message",
+        "channel",
+        "storage_uri",
+        "target_app_version",
+        "fingerprint_hash",
+        "metadata",
+        "rollout_cohort_count",
+        "target_cohorts",
+      ],
+      where: (b) => b("id", "=", id),
+    });
+
+    return result ? mapBundleRecordToBundle(result) : null;
+  };
+
   const api: DatabaseAPI<TContext> = {
     async getBundleById(id: string): Promise<Bundle | null> {
-      const orm = await ensureORM();
-      const result = await orm.findFirst("bundles", {
-        select: [
-          "id",
-          "platform",
-          "should_force_update",
-          "enabled",
-          "file_hash",
-          "git_commit_hash",
-          "message",
-          "channel",
-          "storage_uri",
-          "target_app_version",
-          "fingerprint_hash",
-          "metadata",
-          "rollout_cohort_count",
-          "target_cohorts",
-        ],
-        where: (b) => b("id", "=", id),
-      });
-      if (!result) return null;
-      const bundle: Bundle = {
-        id: result.id,
-        platform: result.platform as Platform,
-        shouldForceUpdate: Boolean(result.should_force_update),
-        enabled: Boolean(result.enabled),
-        fileHash: result.file_hash,
-        gitCommitHash: result.git_commit_hash ?? null,
-        message: result.message ?? null,
-        channel: result.channel,
-        storageUri: result.storage_uri,
-        targetAppVersion: result.target_app_version ?? null,
-        fingerprintHash: result.fingerprint_hash ?? null,
-        rolloutCohortCount:
-          result.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-        targetCohorts: parseTargetCohorts(result.target_cohorts),
-      };
-      return bundle;
+      return fetchBundleById(id);
     },
 
     async getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null> {
@@ -494,7 +519,33 @@ export function createOrmDatabaseCore<TContext = unknown>({
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      return { ...rest, fileUrl };
+      const baseResponse = { ...rest, fileUrl };
+
+      try {
+        const currentBundle =
+          args.bundleId !== NIL_UUID
+            ? await fetchBundleById(args.bundleId)
+            : null;
+        const targetBundle =
+          info.id !== NIL_UUID ? await fetchBundleById(info.id) : null;
+        const manifestArtifacts = await resolveManifestArtifacts({
+          currentBundle,
+          resolveFileUrl,
+          targetBundle,
+          context,
+        });
+
+        if (!manifestArtifacts) {
+          return baseResponse;
+        }
+
+        return {
+          ...baseResponse,
+          ...manifestArtifacts,
+        };
+      } catch {
+        return baseResponse;
+      }
     },
 
     async getChannels(): Promise<string[]> {
@@ -570,24 +621,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
             offset,
           });
 
-      const data: Bundle[] = rows.map(
-        (r): Bundle => ({
-          id: r.id,
-          platform: r.platform as Platform,
-          shouldForceUpdate: Boolean(r.should_force_update),
-          enabled: Boolean(r.enabled),
-          fileHash: r.file_hash,
-          gitCommitHash: r.git_commit_hash ?? null,
-          message: r.message ?? null,
-          channel: r.channel,
-          storageUri: r.storage_uri,
-          targetAppVersion: r.target_app_version ?? null,
-          fingerprintHash: r.fingerprint_hash ?? null,
-          rolloutCohortCount:
-            r.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-          targetCohorts: parseTargetCohorts(r.target_cohorts),
-        }),
-      );
+      const data: Bundle[] = rows.map(mapBundleRecordToBundle);
 
       return {
         data,

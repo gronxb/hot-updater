@@ -95,8 +95,11 @@ private class ProgressResponseBody(
                 val currentTime = System.currentTimeMillis()
 
                 if (currentTime - lastProgressTime >= 100) {
-                    val progress = totalBytesRead.toDouble() / contentLength()
-                    progressCallback.invoke(progress)
+                    val totalBytes = contentLength()
+                    if (totalBytes > 0) {
+                        val progress = totalBytesRead.toDouble() / totalBytes
+                        progressCallback.invoke(progress)
+                    }
                     lastProgressTime = currentTime
                 }
                 return bytesRead
@@ -235,7 +238,7 @@ class OkHttpDownloadService : DownloadService {
 
                 // Verify file size
                 val finalSize = destination.length()
-                if (finalSize != totalSize) {
+                if (totalSize >= 0 && finalSize != totalSize) {
                     Log.d(TAG, "Download incomplete: $finalSize / $totalSize bytes")
 
                     // Delete incomplete file
