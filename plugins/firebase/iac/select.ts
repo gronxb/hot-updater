@@ -1,16 +1,17 @@
-import fs from "fs";
-
 import {
   type BuildType,
-  ConfigBuilder,
+  createHotUpdaterConfigScaffold,
+  type HotUpdaterConfigScaffold,
   link,
   makeEnv,
+  type ManagedHelperStatement,
   type ProviderConfig,
   p,
+  writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
-const getConfigTemplate = (build: BuildType) => {
+const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
     configString: `firebaseStorage({
@@ -27,20 +28,26 @@ const getConfigTemplate = (build: BuildType) => {
   })`,
   };
 
-  const intermediate = `
+  const helperStatements: ManagedHelperStatement[] = [
+    {
+      name: "credential",
+      strategy: "preserve-existing",
+      code: `
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();`.trim();
+const credential = admin.credential.applicationDefault();`.trim(),
+    },
+  ];
 
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .addImport({ pkg: "firebase-admin", defaultOrNamespace: "admin" })
-    .setIntermediateCode(intermediate)
-    .getResult();
+  return createHotUpdaterConfigScaffold({
+    build,
+    storage: storageConfig,
+    database: databaseConfig,
+    helperStatements,
+    extraImports: [{ pkg: "firebase-admin", defaultOrNamespace: "admin" }],
+  });
 };
 
 export const setEnv = async ({
@@ -60,18 +67,29 @@ export const setEnv = async ({
     },
     HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
     HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
+  }, ".env.hotupdater", {
+    preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
   });
 
   p.log.success("Firebase credentials have been successfully configured.");
 
   try {
-    await fs.promises.writeFile(
-      "hot-updater.config.ts",
-      getConfigTemplate(build),
+    const configWriteResult = await writeHotUpdaterConfig(
+      getConfigScaffold(build),
     );
-    p.log.success(
-      "Configuration file 'hot-updater.config.ts' has been created.",
-    );
+    if (configWriteResult.status === "created") {
+      p.log.success(
+        "Configuration file 'hot-updater.config.ts' has been created.",
+      );
+    } else if (configWriteResult.status === "merged") {
+      p.log.success(
+        "Configuration file 'hot-updater.config.ts' has been updated.",
+      );
+    } else {
+      p.log.warn(
+        `Existing 'hot-updater.config.ts' was left unchanged: ${configWriteResult.reason}`,
+      );
+    }
   } catch (error: any) {
     console.error("Error writing configuration file:", error.message);
   }

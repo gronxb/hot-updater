@@ -5,8 +5,12 @@ type EnvVarValue = string | { comment: string; value: string };
 export const makeEnv = async (
   newEnvVars: Record<string, EnvVarValue>,
   filePath = ".env.hotupdater",
+  options?: {
+    preserveKeys?: string[];
+  },
 ): Promise<string> => {
   try {
+    const preserveKeys = new Set(options?.preserveKeys ?? []);
     // Read the existing .env.hotupdater file or initialize with an empty string if not found
     const existingContent = await fs
       .readFile(filePath, "utf-8")
@@ -32,7 +36,10 @@ export const makeEnv = async (
           const nextLine = (lines[i + 1] ?? "").trim();
           if (nextLine && !nextLine.startsWith("#") && nextLine.includes("=")) {
             const [possibleKey = ""] = nextLine.split("=");
-            if (Object.hasOwn(newEnvVars, possibleKey.trim())) {
+            if (
+              Object.hasOwn(newEnvVars, possibleKey.trim()) &&
+              !preserveKeys.has(possibleKey.trim())
+            ) {
               // Skip the current comment line if the following key is being updated
               continue;
             }
@@ -48,6 +55,11 @@ export const makeEnv = async (
         const key = keyPart?.trim() ?? "";
         if (Object.hasOwn(newEnvVars, key)) {
           processedKeys.add(key);
+          if (preserveKeys.has(key)) {
+            updatedLines.push(line);
+            continue;
+          }
+
           const newValue = newEnvVars[key];
           if (typeof newValue === "object" && newValue !== null) {
             updatedLines.push(`# ${newValue.comment}`);

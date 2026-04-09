@@ -1,5 +1,3 @@
-import fs from "fs";
-
 import { fromSSO } from "@aws-sdk/credential-providers";
 import {
   type BuildType,
@@ -9,6 +7,7 @@ import {
   makeEnv,
   p,
   transformTemplate,
+  writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
@@ -20,7 +19,7 @@ import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpda
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import { getConfigTemplate, SOURCE_TEMPLATE } from "./templates";
+import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -247,9 +246,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   });
 
   // Create configuration file
-  await fs.promises.writeFile(
-    "hot-updater.config.ts",
-    getConfigTemplate(build, { profile: ssoProfile }),
+  const configWriteResult = await writeHotUpdaterConfig(
+    getConfigScaffold(build, { profile: ssoProfile }),
   );
 
   await makeEnv({
@@ -285,7 +283,15 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   p.log.success("Generated '.env.hotupdater' file with AWS settings.");
-  p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
+  if (configWriteResult.status === "created") {
+    p.log.success("Generated 'hot-updater.config.ts' file with AWS settings.");
+  } else if (configWriteResult.status === "merged") {
+    p.log.success("Updated 'hot-updater.config.ts' file with AWS settings.");
+  } else {
+    p.log.warn(
+      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
+    );
+  }
 
   // Provide API URL for client use (using CloudFront domain)
   const sourceUrl = `https://${distributionDomain}/api/check-update`;

@@ -14,6 +14,100 @@ export type ProviderConfig = {
   configString: string; // The JS code string for storage: ..., database: ...
 };
 
+export type ConfigBuilderScaffold = {
+  imports: ImportInfo[];
+  buildConfigString: string;
+  storageConfigString: string;
+  databaseConfigString: string;
+  intermediateCode: string;
+  text: string;
+};
+
+const normalizeImportInfos = (imports: ImportInfo[]) => {
+  const collectedImports = new Map<
+    string,
+    { named: Set<string>; defaultOrNamespace?: string; sideEffect?: boolean }
+  >();
+
+  for (const info of imports) {
+    const existing = collectedImports.get(info.pkg);
+
+    if (existing) {
+      if (info.named) {
+        for (const namedImport of info.named) {
+          existing.named.add(namedImport);
+        }
+      }
+
+      if (info.defaultOrNamespace && !existing.defaultOrNamespace) {
+        existing.defaultOrNamespace = info.defaultOrNamespace;
+      }
+
+      if (info.sideEffect && !existing.sideEffect) {
+        existing.sideEffect = true;
+      }
+      continue;
+    }
+
+    collectedImports.set(info.pkg, {
+      named: new Set(info.named ?? []),
+      defaultOrNamespace: info.defaultOrNamespace,
+      sideEffect: info.sideEffect ?? false,
+    });
+  }
+
+  return Array.from(collectedImports.entries())
+    .sort(([a], [b]) => {
+      const isABuild = a.startsWith("@hot-updater/");
+      const isBBuild = b.startsWith("@hot-updater/");
+      if (isABuild !== isBBuild) return isABuild ? -1 : 1;
+      if (a === "dotenv/config") return -1;
+      if (b === "dotenv/config") return 1;
+      const isAdminA = a === "firebase-admin";
+      const isAdminB = b === "firebase-admin";
+      if (isAdminA !== isAdminB) return isAdminA ? -1 : 1;
+      return a.localeCompare(b);
+    })
+    .map(([pkg, info]) => ({
+      pkg,
+      named: Array.from(info.named).sort(),
+      defaultOrNamespace: info.defaultOrNamespace,
+      sideEffect: info.sideEffect ?? false,
+    }));
+};
+
+export const renderImportStatements = (imports: ImportInfo[]) => {
+  const importLines: string[] = [];
+
+  for (const info of normalizeImportInfos(imports)) {
+    if (info.sideEffect) {
+      importLines.push(`import "${info.pkg}";`);
+      continue;
+    }
+
+    if (info.defaultOrNamespace) {
+      if (info.pkg === "firebase-admin" && (info.named?.length ?? 0) > 0) {
+        importLines.push(
+          `import ${info.defaultOrNamespace}, { ${info.named!.join(", ")} } from "${info.pkg}";`,
+        );
+      } else {
+        importLines.push(
+          `import ${info.defaultOrNamespace} from "${info.pkg}";`,
+        );
+      }
+      continue;
+    }
+
+    if ((info.named?.length ?? 0) > 0) {
+      importLines.push(
+        `import { ${info.named!.join(", ")} } from "${info.pkg}";`,
+      );
+    }
+  }
+
+  return importLines.join("\n");
+};
+
 // Builder Interface
 export interface IConfigBuilder {
   /** Sets the build type ('bare' or 'rock' or 'expo') and adds necessary build imports. */
@@ -85,43 +179,15 @@ export class ConfigBuilder implements IConfigBuilder {
     }
   }
 
-  private generateImportStatements(): string {
-    const importLines: string[] = [];
-    // Sort packages for consistent order (customize as needed)
-    const sortedPackages = Array.from(this.collectedImports.keys()).sort(
-      (a, b) => {
-        // Simple sort: build types, then dotenv, then others alphabetically
-        const isABuild = a.startsWith("@hot-updater/");
-        const isBBuild = b.startsWith("@hot-updater/");
-        if (isABuild !== isBBuild) return isABuild ? -1 : 1;
-        if (a === "dotenv/config") return -1;
-        if (b === "dotenv/config") return 1;
-        const isAdminA = a === "firebase-admin";
-        const isAdminB = b === "firebase-admin";
-        if (isAdminA !== isAdminB) return isAdminA ? -1 : 1; // Put admin early if present
-        return a.localeCompare(b);
-      },
+  private getImportInfos(): ImportInfo[] {
+    return normalizeImportInfos(
+      Array.from(this.collectedImports.entries()).map(([pkg, info]) => ({
+        pkg,
+        named: Array.from(info.named),
+        defaultOrNamespace: info.defaultOrNamespace,
+        sideEffect: info.sideEffect ?? false,
+      })),
     );
-
-    for (const pkg of sortedPackages) {
-      const info = this.collectedImports.get(pkg)!;
-      if (info.sideEffect) {
-        importLines.push(`import "${pkg}";`);
-      } else if (info.defaultOrNamespace) {
-        // If both namespace and named imports exist for firebase-admin, handle it specially
-        if (pkg === "firebase-admin" && info.named.size > 0) {
-          importLines.push(
-            `import ${info.defaultOrNamespace}, { ${Array.from(info.named).sort().join(", ")} } from "${pkg}";`,
-          );
-        } else {
-          importLines.push(`import ${info.defaultOrNamespace} from "${pkg}";`);
-        }
-      } else if (info.named.size > 0) {
-        const namedPart = Array.from(info.named).sort().join(", ");
-        importLines.push(`import { ${namedPart} } from "${pkg}";`);
-      }
-    }
-    return importLines.join("\n");
   }
 
   private generateBuildConfigString(): string {
@@ -187,7 +253,7 @@ export class ConfigBuilder implements IConfigBuilder {
     return this;
   }
 
-  getResult(): string {
+  getScaffold(): ConfigBuilderScaffold {
     // Validate required parts are set
     if (!this.buildType)
       throw new Error("Build type must be set using .setBuildType()");
@@ -196,11 +262,12 @@ export class ConfigBuilder implements IConfigBuilder {
     if (!this.databaseInfo)
       throw new Error("Database config must be set using .setDatabase()");
 
-    const importStatements = this.generateImportStatements();
+    const imports = this.getImportInfos();
+    const importStatements = renderImportStatements(imports);
     const buildConfigString = this.generateBuildConfigString();
 
     // Assemble the final string
-    return `
+    const text = `
 ${importStatements}
 
 config({ path: ".env.hotupdater" });
@@ -213,5 +280,18 @@ export default defineConfig({
   updateStrategy: "appVersion", // or "fingerprint"
 });
 `.trim(); // Ensure trailing newline
+
+    return {
+      imports,
+      buildConfigString,
+      storageConfigString: this.storageInfo.configString,
+      databaseConfigString: this.databaseInfo.configString,
+      intermediateCode: this.intermediateCode,
+      text,
+    };
+  }
+
+  getResult(): string {
+    return this.getScaffold().text;
   }
 }

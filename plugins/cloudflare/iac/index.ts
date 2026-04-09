@@ -4,14 +4,16 @@ import path from "path";
 
 import {
   type BuildType,
-  ConfigBuilder,
   copyDirToTmp,
+  createHotUpdaterConfigScaffold,
   getCwd,
+  type HotUpdaterConfigScaffold,
   link,
   makeEnv,
   type ProviderConfig,
   p,
   transformTemplate,
+  writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";
 import dayjs from "dayjs";
@@ -20,7 +22,7 @@ import { execa } from "execa";
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
-const getConfigTemplate = (build: BuildType) => {
+const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -38,11 +40,11 @@ const getConfigTemplate = (build: BuildType) => {
   })`,
   };
 
-  return new ConfigBuilder()
-    .setBuildType(build)
-    .setStorage(storageConfig)
-    .setDatabase(databaseConfig)
-    .getResult();
+  return createHotUpdaterConfigScaffold({
+    build,
+    storage: storageConfig,
+    database: databaseConfig,
+  });
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -426,7 +428,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     r2BucketName: selectedBucketName,
   });
 
-  await fs.writeFile("hot-updater.config.ts", getConfigTemplate(build));
+  const configWriteResult = await writeHotUpdaterConfig(getConfigScaffold(build));
 
   await makeEnv({
     HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
@@ -435,9 +437,19 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
   });
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
-  p.log.success(
-    "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
-  );
+  if (configWriteResult.status === "created") {
+    p.log.success(
+      "Generated 'hot-updater.config.ts' file with Cloudflare settings.",
+    );
+  } else if (configWriteResult.status === "merged") {
+    p.log.success(
+      "Updated 'hot-updater.config.ts' file with Cloudflare settings.",
+    );
+  } else {
+    p.log.warn(
+      `Kept existing 'hot-updater.config.ts' unchanged: ${configWriteResult.reason}`,
+    );
+  }
 
   if (subdomains.subdomain) {
     p.note(

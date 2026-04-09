@@ -45,6 +45,7 @@
   "dependencies": {
     "@hot-updater/plugin-core": "workspace:*",
     "oxc-transform": "0.121.0",
+    "typescript": "6.0.2",
     "unconfig": "7.5.0"
   },
   "devDependencies": {
@@ -61,7 +62,6 @@
     "read-package-up": "^11.0.0",
     "semver": "^7.6.3",
     "tar": "^7.5.1",
-    "typescript": "6.0.2",
     "workspace-tools": "^0.36.4"
   },
   "inlinedDependencies": {
