@@ -4,8 +4,9 @@ import path from "path";
 
 import {
   type BuildType,
+  ConfigBuilder,
   copyDirToTmp,
-  createHotUpdaterConfigScaffold,
+  createHotUpdaterConfigScaffoldFromBuilder,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
@@ -44,11 +45,12 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   })`,
   };
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage: storageConfig,
-    database: databaseConfig,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage(storageConfig)
+      .setDatabase(databaseConfig),
+  );
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -703,7 +705,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   await removeTmpDir();
 
-  const configWriteResult = await writeHotUpdaterConfig(getConfigScaffold(build));
+  const configWriteResult = await writeHotUpdaterConfig(
+    getConfigScaffold(build),
+  );
 
   await makeEnv({
     HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,

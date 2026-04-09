@@ -1,6 +1,7 @@
 import {
   type BuildType,
-  createHotUpdaterConfigScaffold,
+  ConfigBuilder,
+  createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
@@ -41,12 +42,17 @@ const credential = admin.credential.applicationDefault();`.trim(),
     },
   ];
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage: storageConfig,
-    database: databaseConfig,
+  const builder = new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storageConfig)
+    .setDatabase(databaseConfig)
+    .addImport({ pkg: "firebase-admin", defaultOrNamespace: "admin" })
+    .setIntermediateCode(
+      helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
+    );
+
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
     helperStatements,
-    extraImports: [{ pkg: "firebase-admin", defaultOrNamespace: "admin" }],
   });
 };
 
@@ -59,17 +65,21 @@ export const setEnv = async ({
   storageBucket: string;
   build: BuildType;
 }) => {
-  await makeEnv({
-    GOOGLE_APPLICATION_CREDENTIALS: {
-      comment:
-        "Project Settings > Service Accounts > New Private Key > Download JSON",
-      value: "your-credentials.json",
+  await makeEnv(
+    {
+      GOOGLE_APPLICATION_CREDENTIALS: {
+        comment:
+          "Project Settings > Service Accounts > New Private Key > Download JSON",
+        value: "your-credentials.json",
+      },
+      HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
+      HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
     },
-    HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
-    HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
-  }, ".env.hotupdater", {
-    preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
-  });
+    ".env.hotupdater",
+    {
+      preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
+    },
+  );
 
   p.log.success("Firebase credentials have been successfully configured.");
 

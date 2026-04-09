@@ -4,8 +4,9 @@ import path from "path";
 
 import {
   type BuildType,
+  ConfigBuilder,
   copyDirToTmp,
-  createHotUpdaterConfigScaffold,
+  createHotUpdaterConfigScaffoldFromBuilder,
   getCwd,
   type HotUpdaterConfigScaffold,
   link,
@@ -40,11 +41,12 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   })`,
   };
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage: storageConfig,
-    database: databaseConfig,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage(storageConfig)
+      .setDatabase(databaseConfig),
+  );
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -428,7 +430,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     r2BucketName: selectedBucketName,
   });
 
-  const configWriteResult = await writeHotUpdaterConfig(getConfigScaffold(build));
+  const configWriteResult = await writeHotUpdaterConfig(
+    getConfigScaffold(build),
+  );
 
   await makeEnv({
     HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,

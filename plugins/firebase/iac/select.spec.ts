@@ -1,18 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
-
 import { makeEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { describe, expect, it, vi } from "vitest";
 
 import { setEnv } from "./select";
 
 vi.mock("@hot-updater/cli-tools", async () => {
-  const actual =
-    await vi.importActual<typeof import("@hot-updater/cli-tools")>(
-      "@hot-updater/cli-tools",
-    );
+  const actual = await vi.importActual<typeof import("@hot-updater/cli-tools")>(
+    "@hot-updater/cli-tools",
+  );
 
   return {
     ...actual,
     createHotUpdaterConfigScaffold: vi.fn().mockReturnValue({}),
+    createHotUpdaterConfigScaffoldFromBuilder: vi.fn().mockReturnValue({}),
     makeEnv: vi.fn().mockResolvedValue(""),
     p: {
       log: {

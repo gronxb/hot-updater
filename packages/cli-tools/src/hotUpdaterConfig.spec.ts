@@ -4,9 +4,13 @@ import path from "path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { BuildType, ProviderConfig } from "./ConfigBuilder";
 import {
-  createHotUpdaterConfigScaffold,
+  type BuildType,
+  ConfigBuilder,
+  type ProviderConfig,
+} from "./ConfigBuilder";
+import {
+  createHotUpdaterConfigScaffoldFromBuilder,
   writeHotUpdaterConfig,
   type ManagedHelperStatement,
 } from "./hotUpdaterConfig";
@@ -30,11 +34,12 @@ const createSupabaseScaffold = (build: BuildType) => {
   })`,
   };
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage,
-    database,
-  });
+  return createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage(storage)
+      .setDatabase(database),
+  );
 };
 
 const createAwsScaffold = (
@@ -80,25 +85,31 @@ const createAwsScaffold = (
         },
       ];
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage,
-    database,
+  const builder = new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storage)
+    .setDatabase(database)
+    .setIntermediateCode(
+      helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
+    );
+
+  if (profile) {
+    builder.addImport({
+      pkg: "@aws-sdk/credential-provider-sso",
+      named: ["fromSSO"],
+    });
+  }
+
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
     helperStatements,
-    extraImports: profile
-      ? [
-          {
-            pkg: "@aws-sdk/credential-provider-sso",
-            named: ["fromSSO"],
-          },
-        ]
-      : [],
   });
 };
 
 afterEach(async () => {
   await Promise.all(
-    tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })),
+    tempDirs
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 });
 
@@ -158,7 +169,9 @@ export default defineConfig({
     const updatedConfig = await fs.readFile(configPath, "utf-8");
 
     expect(result.status).toBe("merged");
-    expect(updatedConfig).toContain("supabaseUrl: process.env.CUSTOM_SUPABASE_URL!");
+    expect(updatedConfig).toContain(
+      "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
+    );
     expect(updatedConfig).toContain("preserveMe: true");
     expect(updatedConfig).toContain(
       "supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!",
@@ -271,8 +284,12 @@ export default defineConfig({
     const updatedConfig = await fs.readFile(configPath, "utf-8");
 
     expect(result.status).toBe("merged");
-    expect(updatedConfig).toContain('import { rock } from "@hot-updater/rock";');
-    expect(updatedConfig).not.toContain('import { bare } from "@hot-updater/bare";');
+    expect(updatedConfig).toContain(
+      'import { rock } from "@hot-updater/rock";',
+    );
+    expect(updatedConfig).not.toContain(
+      'import { bare } from "@hot-updater/bare";',
+    );
     expect(updatedConfig).toContain("build: rock()");
     expect(updatedConfig).toContain("debug: true");
   });
@@ -343,6 +360,8 @@ export default defineConfig({
     );
 
     expect(result.status).toBe("skipped");
-    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(originalConfig);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(
+      originalConfig,
+    );
   });
 });

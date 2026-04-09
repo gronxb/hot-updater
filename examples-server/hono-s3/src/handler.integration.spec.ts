@@ -1,3 +1,6 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 import {
   CreateBucketCommand,
   HeadBucketCommand,
@@ -19,8 +22,6 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
@@ -33,6 +34,10 @@ const REGION = "us-east-1";
 const ACCESS_KEY_ID = "test";
 const SECRET_ACCESS_KEY = "test";
 const METADATA_BUCKET = "hot-updater-metadata";
+
+const sleep = async (ms: number) => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
 
 assertDockerComposeAvailable(
   "Hono + S3 integration tests require Docker Compose and a running Docker daemon.",
@@ -49,11 +54,27 @@ async function ensureBucketExists(bucketName: string) {
     forcePathStyle: true,
   });
 
-  try {
-    await client.send(new HeadBucketCommand({ Bucket: bucketName }));
-  } catch {
-    await client.send(new CreateBucketCommand({ Bucket: bucketName }));
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: bucketName }));
+      return;
+    } catch (headError) {
+      lastError = headError;
+
+      try {
+        await client.send(new CreateBucketCommand({ Bucket: bucketName }));
+        return;
+      } catch (createError) {
+        lastError = createError;
+      }
+    }
+
+    await sleep(1000);
   }
+
+  throw lastError;
 }
 
 describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
@@ -72,9 +93,6 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     await execa("docker", ["compose", "up", "-d"], {
       cwd: projectRoot,
     });
-
-    // Wait for Localstack to be ready
-    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Ensure required buckets exist
     await ensureBucketExists(METADATA_BUCKET);

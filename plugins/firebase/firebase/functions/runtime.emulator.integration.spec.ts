@@ -1,8 +1,10 @@
 import {
   access,
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -182,6 +184,25 @@ describe.sequential("firebase functions runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/firebase/node_modules"),
       path.join(functionsDir, "node_modules"),
     );
+    const firebaseFunctionsPackagePath = await realpath(
+      path.join(
+        WORKSPACE_ROOT,
+        "plugins/firebase/node_modules/firebase-functions",
+      ),
+    );
+    const firebaseFunctionsBinPath = path.join(
+      functionsDir,
+      "node_modules",
+      ".bin",
+      "firebase-functions",
+    );
+    await writeFile(
+      firebaseFunctionsBinPath,
+      `#!/bin/sh
+exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions.js")}" "$@"
+`,
+    );
+    await chmod(firebaseFunctionsBinPath, 0o755);
     await writeFile(
       path.join(functionsDir, "index.cjs"),
       transformEnv(

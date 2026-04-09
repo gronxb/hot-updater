@@ -30,6 +30,11 @@ export type CreateHotUpdaterConfigScaffoldOptions = {
   updateStrategy?: "appVersion" | "fingerprint";
 };
 
+export type CreateHotUpdaterConfigScaffoldFromBuilderOptions = {
+  helperStatements?: ManagedHelperStatement[];
+  updateStrategy?: "appVersion" | "fingerprint";
+};
+
 export type HotUpdaterConfigScaffold = {
   text: string;
   imports: ImportInfo[];
@@ -280,13 +285,15 @@ const mergeObjectLiteralText = (
     }
 
     existingPropertyNames.add(propertyName);
-    const nextProperty = newWrapped.objectLiteral.properties.find((candidate) => {
-      if (ts.isSpreadAssignment(candidate)) {
-        return false;
-      }
+    const nextProperty = newWrapped.objectLiteral.properties.find(
+      (candidate) => {
+        if (ts.isSpreadAssignment(candidate)) {
+          return false;
+        }
 
-      return getPropertyName(candidate) === propertyName;
-    });
+        return getPropertyName(candidate) === propertyName;
+      },
+    );
 
     if (
       !nextProperty ||
@@ -321,9 +328,7 @@ const mergeObjectLiteralText = (
   let mergedText = existingText;
   for (const edit of edits.sort((a, b) => b.start - a.start)) {
     mergedText =
-      mergedText.slice(0, edit.start) +
-      edit.text +
-      mergedText.slice(edit.end);
+      mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
   }
 
   const missingPropertyTexts = newWrapped.objectLiteral.properties
@@ -428,7 +433,10 @@ const findManagedProperty = (
   );
 
 const getCallCallee = (expression: ts.Expression) => {
-  if (!ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression)) {
+  if (
+    !ts.isCallExpression(expression) ||
+    !ts.isIdentifier(expression.expression)
+  ) {
     return null;
   }
 
@@ -570,7 +578,8 @@ const updateManagedObject = (
     }
 
     propertyEdits.push({
-      start: existingProperty.initializer.getStart(existingSourceFile) - objectStart,
+      start:
+        existingProperty.initializer.getStart(existingSourceFile) - objectStart,
       end: existingProperty.initializer.end - objectStart,
       text: nextInitializerText,
     });
@@ -579,9 +588,7 @@ const updateManagedObject = (
   let mergedText = objectText;
   for (const edit of propertyEdits.sort((a, b) => b.start - a.start)) {
     mergedText =
-      mergedText.slice(0, edit.start) +
-      edit.text +
-      mergedText.slice(edit.end);
+      mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
   }
 
   return appendMissingProperties(
@@ -596,7 +603,9 @@ const rebuildImportBlock = (
   sourceFile: ts.SourceFile,
   scaffold: HotUpdaterConfigScaffold,
 ) => {
-  const importDeclarations = sourceFile.statements.filter(ts.isImportDeclaration);
+  const importDeclarations = sourceFile.statements.filter(
+    ts.isImportDeclaration,
+  );
   if (importDeclarations.length === 0) {
     return {
       start: 0,
@@ -613,7 +622,11 @@ const rebuildImportBlock = (
         !MANAGED_IMPORT_PACKAGES.has(moduleSpecifier.text)
       );
     })
-    .map((declaration) => trimStatementText(sourceText.slice(declaration.getFullStart(), declaration.end)));
+    .map((declaration) =>
+      trimStatementText(
+        sourceText.slice(declaration.getFullStart(), declaration.end),
+      ),
+    );
 
   const managedImportText = renderImportStatements(scaffold.imports);
   const nextImportBlock = [...preservedImportTexts, managedImportText]
@@ -635,7 +648,8 @@ const rebuildManagedBody = (
 ) => {
   const statementsBeforeExport = sourceFile.statements.filter(
     (statement) =>
-      !ts.isImportDeclaration(statement) && statement.pos < exportAssignment.pos,
+      !ts.isImportDeclaration(statement) &&
+      statement.pos < exportAssignment.pos,
   );
   const managedHelpers = new Map(
     scaffold.helperStatements.map((statement) => [statement.name, statement]),
@@ -719,6 +733,19 @@ export const createHotUpdaterConfigScaffold = ({
     builder.setIntermediateCode(intermediateCode);
   }
 
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
+    helperStatements,
+    updateStrategy,
+  });
+};
+
+export const createHotUpdaterConfigScaffoldFromBuilder = (
+  builder: ConfigBuilder,
+  {
+    helperStatements = [],
+    updateStrategy = "appVersion",
+  }: CreateHotUpdaterConfigScaffoldFromBuilderOptions = {},
+): HotUpdaterConfigScaffold => {
   const scaffold = builder.getScaffold();
   return {
     text:
@@ -801,7 +828,11 @@ export const writeHotUpdaterConfig = async (
     end: existingConfig.objectLiteral.end,
     text: nextObjectText,
   };
-  const importEdit = rebuildImportBlock(existingText, existingSourceFile, scaffold);
+  const importEdit = rebuildImportBlock(
+    existingText,
+    existingSourceFile,
+    scaffold,
+  );
   const bodyEdit = rebuildManagedBody(
     existingText,
     existingSourceFile,
@@ -822,9 +853,7 @@ export const writeHotUpdaterConfig = async (
     (a, b) => b.start - a.start,
   )) {
     mergedText =
-      mergedText.slice(0, edit.start) +
-      edit.text +
-      mergedText.slice(edit.end);
+      mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
   }
 
   await fs.writeFile(filePath, mergedText, "utf-8");

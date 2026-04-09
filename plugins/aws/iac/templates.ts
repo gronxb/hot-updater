@@ -1,6 +1,7 @@
 import {
   type BuildType,
-  createHotUpdaterConfigScaffold,
+  ConfigBuilder,
+  createHotUpdaterConfigScaffoldFromBuilder,
   type HotUpdaterConfigScaffold,
   type ManagedHelperStatement,
   type ProviderConfig,
@@ -61,19 +62,23 @@ const commonOptions = {
     ];
   }
 
-  return createHotUpdaterConfigScaffold({
-    build,
-    storage: storageConfig,
-    database: databaseConfig,
+  const builder = new ConfigBuilder()
+    .setBuildType(build)
+    .setStorage(storageConfig)
+    .setDatabase(databaseConfig)
+    .setIntermediateCode(
+      helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
+    );
+
+  if (profile) {
+    builder.addImport({
+      pkg: "@aws-sdk/credential-provider-sso",
+      named: ["fromSSO"],
+    });
+  }
+
+  return createHotUpdaterConfigScaffoldFromBuilder(builder, {
     helperStatements,
-    extraImports: profile
-      ? [
-          {
-            pkg: "@aws-sdk/credential-provider-sso",
-            named: ["fromSSO"],
-          },
-        ]
-      : [],
   });
 };
 
