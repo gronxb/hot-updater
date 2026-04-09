@@ -74,7 +74,8 @@ export function PromoteChannelDialog({
   const openBundleDetail = (nextBundleId: string, nextChannel: string) => {
     setBundleId(nextBundleId, {
       channel: nextChannel,
-      offset: "0",
+      after: undefined,
+      before: undefined,
     });
   };
 

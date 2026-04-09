@@ -12,13 +12,17 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  type BlobDatabasePluginConfig,
+  createBlobDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import mime from "mime";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import { streamToString } from "./utils/streamToString";
 
-export interface S3DatabaseConfig extends S3ClientConfig {
+export interface S3DatabaseConfig
+  extends S3ClientConfig, BlobDatabasePluginConfig {
   bucketName: string;
   /**
    * CloudFront distribution ID used for cache invalidation.

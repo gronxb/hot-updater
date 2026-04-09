@@ -11,6 +11,7 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  createDatabasePluginGetUpdateInfo,
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
@@ -230,7 +231,90 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       return rows.map(transformRowToBundle);
     }
 
+    async function queryBundlesForUpdateInfo(
+      conditions: QueryConditions,
+    ): Promise<Bundle[]> {
+      const { sql: whereClause, params } = buildWhereClause(conditions);
+      const sql = minify(`
+        SELECT * FROM bundles
+        ${whereClause}
+      `);
+
+      const result = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params,
+      });
+
+      const rows = await resolvePage<SnakeCaseBundle>(result);
+      return rows.map(transformRowToBundle);
+    }
+
+    async function getTargetAppVersionsForUpdateInfo({
+      platform,
+      channel,
+      minBundleId,
+    }: {
+      platform: Bundle["platform"];
+      channel: string;
+      minBundleId: string;
+    }): Promise<string[]> {
+      const sql = minify(`
+        SELECT target_app_version
+        FROM bundles
+        WHERE channel = ?
+          AND platform = ?
+          AND enabled = 1
+          AND id >= ?
+          AND target_app_version IS NOT NULL
+        GROUP BY target_app_version
+      `);
+
+      const result = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params: [channel, platform, minBundleId],
+      });
+
+      const rows = await resolvePage<{ target_app_version: string }>(result);
+      return rows.map((row) => row.target_app_version);
+    }
+
     return {
+      getUpdateInfo: createDatabasePluginGetUpdateInfo({
+        listTargetAppVersions: getTargetAppVersionsForUpdateInfo,
+        getBundlesByTargetAppVersions(
+          { platform, channel, minBundleId },
+          targetAppVersions,
+        ) {
+          return queryBundlesForUpdateInfo({
+            enabled: true,
+            platform,
+            channel,
+            id: {
+              gte: minBundleId,
+            },
+            targetAppVersionIn: targetAppVersions,
+          });
+        },
+        getBundlesByFingerprint({
+          platform,
+          channel,
+          minBundleId,
+          fingerprintHash,
+        }) {
+          return queryBundlesForUpdateInfo({
+            enabled: true,
+            platform,
+            channel,
+            id: {
+              gte: minBundleId,
+            },
+            fingerprintHash,
+          });
+        },
+      }),
+
       async getBundleById(bundleId) {
         const sql = minify(/* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`);
@@ -250,7 +334,11 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       },
 
       async getBundles(options) {
-        const { where = {}, limit, offset, orderBy } = options;
+        const { where = {}, limit, orderBy } = options;
+        const offset =
+          (("offset" in options ? options.offset : undefined) as
+            | number
+            | undefined) ?? 0;
 
         // 1. Get total count for pagination
         const totalCount = await getTotalCount(where);

@@ -136,6 +136,8 @@ interface PaginationInfo {
   hasPreviousPage: boolean;
   currentPage: number;
   totalPages: number;
+  nextCursor?: string | null;
+  previousCursor?: string | null;
 }
 
 interface DataResponse<TData> {
@@ -194,7 +196,11 @@ interface Bundle {
 ### List Bundles Contract
 
 `GET /api/bundles` must accept the pagination and filter query params used by
-the console and return a paginated JSON body.
+the console and `standaloneRepository`, and return a paginated JSON body.
+
+Cursor-based pagination is the official contract. `page` is an optional
+positive integer used alongside cursors when the caller needs stable page
+numbers.
 
 Supported query params:
 
@@ -202,8 +208,10 @@ Supported query params:
 |-------------|------|-------|
 | `channel` | `string` | Exact match |
 | `platform` | `"ios" \| "android"` | Exact match |
-| `limit` | `number` | Page size |
-| `offset` | `number` | Page offset |
+| `limit` | `number` | Window size |
+| `page` | `number` | Optional positive page number for stable page-aligned requests |
+| `after` | `string` | Fetch the next window after this bundle ID |
+| `before` | `string` | Fetch the previous window before this bundle ID |
 
 Expected response:
 
@@ -215,13 +223,22 @@ Expected response:
     "hasNextPage": false,
     "hasPreviousPage": false,
     "currentPage": 1,
-    "totalPages": 1
+    "totalPages": 1,
+    "nextCursor": null,
+    "previousCursor": null
   }
 }
 ```
 
 `standaloneRepository` reads pagination metadata from the response body. It
-does not derive pagination from headers.
+does not derive pagination from headers. `currentPage` and `totalPages` are
+kept for backwards compatibility; `nextCursor` and `previousCursor` are the
+preferred navigation fields.
+
+If your standalone server is backed by object storage or manifest files, keep
+`GET /api/bundles` on an index-backed path once the index is warm. Cursor
+pages should not require rescanning all manifests, and this should be covered
+by deterministic read-counter regression tests.
 
 ### Retrieve And Channels Contract
 

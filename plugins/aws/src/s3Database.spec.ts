@@ -15,7 +15,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { s3Database } from "./s3Database";
+import { type S3DatabaseConfig, s3Database } from "./s3Database";
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -59,6 +59,15 @@ const createBundleJsonFingerprint = (
   targetAppVersion: null,
 });
 
+const MANAGEMENT_INDEX_PREFIX = "_index";
+const MANAGEMENT_INDEX_VERSION = 1;
+const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+
+type ManagementScope = {
+  channel?: string;
+  platform?: "ios" | "android";
+};
+
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
 let cloudfrontInvalidations: { paths: string[]; distributionId: string }[] = [];
@@ -68,6 +77,8 @@ let cloudfrontGetInvalidationError: Error | null = null;
 let cloudfrontInvalidationCounter = 0;
 let nextCloudfrontInvalidationStatuses: string[] | null = null;
 let cloudfrontInvalidationStatuses = new Map<string, string[]>();
+let listedObjectPrefixes: string[] = [];
+let loadedObjectKeys: string[] = [];
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -161,11 +172,14 @@ beforeEach(() => {
   cloudfrontInvalidationCounter = 0;
   nextCloudfrontInvalidationStatuses = null;
   cloudfrontInvalidationStatuses = new Map();
+  listedObjectPrefixes = [];
+  loadedObjectKeys = [];
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
       if (command instanceof ListObjectsV2Command) {
         const prefix = command.input.Prefix ?? "";
+        listedObjectPrefixes.push(prefix);
         const keys = Object.keys(fakeStore).filter((key) =>
           key.startsWith(prefix),
         );
@@ -176,6 +190,9 @@ beforeEach(() => {
       }
       if (command instanceof GetObjectCommand) {
         const key = command.input.Key;
+        if (key) {
+          loadedObjectKeys.push(key);
+        }
         if (key && fakeStore[key] !== undefined) {
           await delay(7);
           return { Body: Readable.from([Buffer.from(fakeStore[key])]) };
@@ -203,19 +220,166 @@ afterEach(() => {
 describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
-  let plugin = s3Database({
-    bucketName,
-    ...s3Config,
-    cloudfrontDistributionId: "test-distribution-id",
-  })();
-
-  beforeEach(async () => {
-    plugin = s3Database({
+  const createPlugin = (config: Partial<S3DatabaseConfig> = {}) =>
+    s3Database({
       bucketName,
       ...s3Config,
       cloudfrontDistributionId: "test-distribution-id",
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+      ...config,
     })();
+
+  let plugin = createPlugin({
+    managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
   });
+
+  beforeEach(async () => {
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
+  });
+
+  const seedUpdateManifests = (bundles: Bundle[]) => {
+    const bundlesByKey = new Map<string, Bundle[]>();
+    const targetVersionsByKey = new Map<string, Set<string>>();
+
+    for (const bundle of bundles) {
+      const target = bundle.targetAppVersion ?? bundle.fingerprintHash;
+      if (!target) {
+        continue;
+      }
+
+      const key = `${bundle.channel}/${bundle.platform}/${target}/update.json`;
+      const storedBundles = bundlesByKey.get(key) ?? [];
+      storedBundles.push(bundle);
+      bundlesByKey.set(key, storedBundles);
+
+      if (bundle.targetAppVersion) {
+        const targetVersionsKey = `${bundle.channel}/${bundle.platform}/target-app-versions.json`;
+        const targetVersions =
+          targetVersionsByKey.get(targetVersionsKey) ?? new Set<string>();
+        targetVersions.add(bundle.targetAppVersion);
+        targetVersionsByKey.set(targetVersionsKey, targetVersions);
+      }
+    }
+
+    for (const [key, storedBundles] of bundlesByKey.entries()) {
+      fakeStore[key] = JSON.stringify(
+        storedBundles.sort((left, right) => right.id.localeCompare(left.id)),
+      );
+    }
+
+    for (const [key, targetVersions] of targetVersionsByKey.entries()) {
+      fakeStore[key] = JSON.stringify(Array.from(targetVersions));
+    }
+  };
+
+  const getManagementScopePrefix = ({ channel, platform }: ManagementScope) => {
+    if (channel && platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}/platform/${platform}`;
+    }
+
+    if (channel) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}`;
+    }
+
+    if (platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/platform/${platform}`;
+    }
+
+    return `${MANAGEMENT_INDEX_PREFIX}/all`;
+  };
+
+  const getManagementRootKey = (scope: ManagementScope) =>
+    `${getManagementScopePrefix(scope)}/root.json`;
+
+  const getManagementPageKey = (scope: ManagementScope, pageIndex: number) =>
+    `${getManagementScopePrefix(scope)}/pages/${String(pageIndex).padStart(4, "0")}.json`;
+
+  const sortManagementBundles = (bundles: Bundle[]) =>
+    bundles.slice().sort((left, right) => right.id.localeCompare(left.id));
+
+  const seedPagedBundlesIndex = (bundles: Bundle[]) => {
+    const sortedBundles = sortManagementBundles(bundles);
+    const channels = [
+      ...new Set(sortedBundles.map((bundle) => bundle.channel)),
+    ].sort();
+
+    const addScope = (
+      scope: ManagementScope,
+      scopedBundles: Bundle[],
+      options?: { includeChannels?: boolean },
+    ) => {
+      if (!options?.includeChannels && scopedBundles.length === 0) {
+        return;
+      }
+
+      const pages = [];
+      for (
+        let pageIndex = 0;
+        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopedBundles.length;
+        pageIndex++
+      ) {
+        const page = scopedBundles.slice(
+          pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
+          (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+        );
+        const key = getManagementPageKey(scope, pageIndex);
+        fakeStore[key] = JSON.stringify(page);
+        pages.push({
+          key,
+          count: page.length,
+          firstId: page[0]!.id,
+          lastId: page.at(-1)!.id,
+        });
+      }
+
+      fakeStore[getManagementRootKey(scope)] = JSON.stringify({
+        version: MANAGEMENT_INDEX_VERSION,
+        pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+        total: scopedBundles.length,
+        pages,
+        ...(options?.includeChannels ? { channels } : {}),
+      });
+    };
+
+    addScope({}, sortedBundles, { includeChannels: true });
+
+    for (const channel of channels) {
+      const channelBundles = sortedBundles.filter(
+        (bundle) => bundle.channel === channel,
+      );
+      addScope({ channel }, channelBundles);
+
+      for (const platform of ["ios", "android"] as const) {
+        addScope(
+          { channel, platform },
+          channelBundles.filter((bundle) => bundle.platform === platform),
+        );
+      }
+    }
+
+    for (const platform of ["ios", "android"] as const) {
+      addScope(
+        { platform },
+        sortedBundles.filter((bundle) => bundle.platform === platform),
+      );
+    }
+  };
+
+  const createScopedBundles = ({
+    channel = "production",
+    platform = "ios",
+    count,
+  }: {
+    channel?: string;
+    platform?: "ios" | "android";
+    count: number;
+  }) =>
+    Array.from({ length: count }, (_, index) => {
+      const id = `bundle-${String(count - index).padStart(3, "0")}`;
+      return createBundleJson(channel, platform, "1.0.0", id);
+    });
 
   setupBundleMethodsTestSuite({
     getBundleById: (id) => plugin.getBundleById(id),
@@ -237,6 +401,540 @@ describe("s3Database plugin", () => {
       await plugin.deleteBundle(bundle);
       await plugin.commitBundle();
     },
+  });
+
+  beforeEach(() => {
+    fakeStore = {};
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+    plugin = createPlugin();
+  });
+
+  it("uses direct app-version manifests for update checks without listing S3 objects", async () => {
+    const previousBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000001",
+    );
+    const latestBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+
+    seedUpdateManifests([previousBundle, latestBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: latestBundle.fileHash,
+      id: latestBundle.id,
+      message: latestBundle.message,
+      shouldForceUpdate: latestBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: latestBundle.storageUri,
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      "production/ios/target-app-versions.json",
+      "production/ios/*/update.json",
+    ]);
+  });
+
+  it("uses direct fingerprint manifests for update checks without listing S3 objects", async () => {
+    const fingerprintBundle = createBundleJsonFingerprint(
+      "production",
+      "ios",
+      "fingerprint-1",
+      "00000000-0000-0000-0000-000000000010",
+    );
+
+    seedUpdateManifests([fingerprintBundle]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: fingerprintBundle.fileHash,
+      id: fingerprintBundle.id,
+      message: fingerprintBundle.message,
+      shouldForceUpdate: fingerprintBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: fingerprintBundle.storageUri,
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      "production/ios/fingerprint-1/update.json",
+    ]);
+  });
+
+  it("reads the first all-bundles page from one root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({ limit: 20 });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      bundles.slice(0, 20).map((bundle) => bundle.id),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it("uses a custom management index page size from s3Database config", async () => {
+    const bundles = createScopedBundles({ count: 5 });
+    seedUpdateManifests(bundles);
+
+    plugin = createPlugin({ managementIndexPageSize: 2 });
+
+    await plugin.getBundles({ limit: 5 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 2,
+    });
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeDefined();
+  });
+
+  it.each([
+    {
+      label: "channel scope",
+      where: { channel: "production" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production" }),
+        getManagementPageKey({ channel: "production" }, 0),
+      ],
+    },
+    {
+      label: "platform scope",
+      where: { platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ platform: "ios" }),
+        getManagementPageKey({ platform: "ios" }, 0),
+      ],
+    },
+    {
+      label: "channel + platform scope",
+      where: { channel: "production", platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production", platform: "ios" }),
+        getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      ],
+    },
+  ])(
+    "reads warm filtered bundles with minimal S3 objects for $label",
+    async ({ where, expectedKeys }) => {
+      const bundles = [
+        ...createScopedBundles({
+          count: 70,
+          channel: "production",
+          platform: "ios",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "production",
+          platform: "android",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "staging",
+          platform: "ios",
+        }),
+      ];
+      seedPagedBundlesIndex(bundles);
+      listedObjectPrefixes = [];
+      loadedObjectKeys = [];
+
+      await plugin.getBundles({
+        where,
+        limit: 20,
+        cursor: {
+          after: "bundle-999",
+        },
+      });
+
+      expect(listedObjectPrefixes).toEqual([]);
+      expect(loadedObjectKeys).toEqual(expectedKeys);
+    },
+  );
+
+  it("reads at most two leaf pages when an after cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        after: "bundle-021",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(20 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+    ]);
+  });
+
+  it("reads at most two leaf pages when a before cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        before: "bundle-005",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(25 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("keeps page-aligned results stable when a stale cursor is combined with page=2", async () => {
+    const bundles = createScopedBundles({ count: 121 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      page: 2,
+      cursor: {
+        after: "bundle-110",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(101 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(result.pagination.currentPage).toBe(2);
+    expect(result.pagination.previousCursor).toBe("bundle-101");
+    expect(result.pagination.nextCursor).toBe("bundle-082");
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("reads channels from the all-bundles root only", async () => {
+    seedPagedBundlesIndex([
+      ...createScopedBundles({
+        count: 2,
+        channel: "production",
+        platform: "ios",
+      }),
+      ...createScopedBundles({
+        count: 2,
+        channel: "staging",
+        platform: "android",
+      }),
+    ]);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([
+      "production",
+      "staging",
+    ]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+  });
+
+  it("reads bundle detail from the all-bundles root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getBundleById("bundle-005")).resolves.toMatchObject({
+      id: "bundle-005",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 1),
+    ]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after updating bundle metadata", async () => {
+    const targetBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "console-update-target",
+    );
+    const siblingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-update-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.updateBundle(targetBundle.id, {
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+    await plugin.commitBundle();
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const updatedBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(updatedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        channel: "production",
+        enabled: false,
+        message: "Updated from console",
+      },
+      siblingBundle,
+    ]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getBundleById(targetBundle.id)).resolves.toMatchObject({
+      id: targetBundle.id,
+      channel: "production",
+      enabled: false,
+      message: "Updated from console",
+    });
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+  });
+
+  it("serves console-style reads from rebuilt paged indexes after deleting bundles", async () => {
+    const deletedBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "console-delete-target",
+    );
+    const survivingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "console-delete-survivor",
+    );
+
+    await plugin.appendBundle(deletedBundle);
+    await plugin.appendBundle(survivingBundle);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(deletedBundle);
+    await plugin.commitBundle();
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const productionBundles = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(productionBundles.data).toEqual([survivingBundle]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
+
+    plugin = createPlugin();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const removedScopeBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(removedScopeBundles.data).toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys.every((key) => key.endsWith("/root.json"))).toBe(
+      true,
+    );
+    expect(loadedObjectKeys).toContain(
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+    );
+    expect(loadedObjectKeys).toContain(getManagementRootKey({}));
+  });
+
+  it("revalidates cached management roots when another S3 plugin instance updates bundles", async () => {
+    const targetBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-target",
+    );
+    const siblingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-list-sibling",
+    );
+
+    await plugin.appendBundle(targetBundle);
+    await plugin.appendBundle(siblingBundle);
+    await plugin.commitBundle();
+
+    await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    const secondPlugin = createPlugin();
+
+    await secondPlugin.updateBundle(targetBundle.id, {
+      enabled: false,
+      message: "Updated from another instance",
+    });
+    await secondPlugin.commitBundle();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const refreshedBundles = await plugin.getBundles({
+      where: { channel: "staging", platform: "ios" },
+      limit: 20,
+    });
+
+    expect(refreshedBundles.data).toEqual([
+      {
+        ...targetBundle,
+        enabled: false,
+        message: "Updated from another instance",
+      },
+      siblingBundle,
+    ]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+      getManagementPageKey({ channel: "staging", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("revalidates cached management roots when another S3 plugin instance changes channels", async () => {
+    const stagingBundle = createBundleJson(
+      "staging",
+      "ios",
+      "1.0.0",
+      "stale-channel-target",
+    );
+
+    await plugin.appendBundle(stagingBundle);
+    await plugin.commitBundle();
+
+    await expect(plugin.getChannels()).resolves.toEqual(["staging"]);
+
+    const secondPlugin = createPlugin();
+
+    const bundleToDelete = await secondPlugin.getBundleById(stagingBundle.id);
+    expect(bundleToDelete).toEqual(stagingBundle);
+    await secondPlugin.deleteBundle(bundleToDelete!);
+    await secondPlugin.commitBundle();
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getChannels()).resolves.toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -284,7 +982,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["2.0.0"]);
 
     // Update bundle and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
@@ -356,7 +1054,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
     // Load all bundle info from S3 into memory cache
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     // Update targetAppVersion of one bundle from ios/1.x.x to 1.0.2
     await plugin.updateBundle("00000000-0000-0000-0000-000000000003", {
@@ -459,7 +1157,7 @@ describe("s3Database plugin", () => {
     // Set initial state of target-app-versions.json
     fakeStore[targetVersionsKey] = JSON.stringify(["1.x.x", "1.0.2"]);
 
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
 
     await plugin.updateBundle("00000000-0000-0000-0000-000000000004", {
       targetAppVersion: "1.x.x",
@@ -558,7 +1256,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Force reload bundle info from S3
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Assert: Returned bundle list should only include valid bundles
     expect(bundles.data).toHaveLength(3);
@@ -627,7 +1325,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load all bundles from S3
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Assert: All bundles from all channels should be loaded
     expect(bundles.data).toHaveLength(5);
@@ -678,7 +1376,7 @@ describe("s3Database plugin", () => {
     ]);
 
     // Act: Load bundles, update channel, and commit
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     await plugin.updateBundle("channel-move-test", {
       channel: "production",
     });
@@ -756,7 +1454,6 @@ describe("s3Database plugin", () => {
     const result = await plugin.getBundles({
       where: { channel: "production" },
       limit: 20,
-      offset: 0,
     });
 
     expect(result.data).toHaveLength(2);
@@ -823,7 +1520,6 @@ describe("s3Database plugin", () => {
     const firstPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 0,
     });
 
     expect(firstPage.data).toHaveLength(2);
@@ -833,12 +1529,15 @@ describe("s3Database plugin", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
+      nextCursor: "bundle2",
     });
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production" },
       limit: 2,
-      offset: 2,
+      cursor: {
+        after: firstPage.pagination.nextCursor ?? undefined,
+      },
     });
 
     expect(secondPage.data).toHaveLength(1);
@@ -848,6 +1547,7 @@ describe("s3Database plugin", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
+      previousCursor: "bundle1",
     });
   });
 
@@ -901,7 +1601,7 @@ describe("s3Database plugin", () => {
     ]);
     fakeStore["production/ios/2.0.0/update.json"] = JSON.stringify([bundleC]);
 
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
 
     // Descending order: "C" > "B" > "A"
     expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
@@ -918,7 +1618,7 @@ describe("s3Database plugin", () => {
     fakeStore["production/android/2.0.0/update.json"] = JSON.stringify([
       bundle,
     ]);
-    await plugin.getBundles({ limit: 20, offset: 0 });
+    await plugin.getBundles({ limit: 20 });
     const fetchedBundle = await plugin.getBundleById("internal-test");
     expect(fetchedBundle).not.toHaveProperty("_updateJsonKey");
     expect(fetchedBundle).not.toHaveProperty("_oldUpdateJsonKey");
@@ -951,7 +1651,7 @@ describe("s3Database plugin", () => {
   it("should return an empty array when no update.json files exist in S3", async () => {
     // Verify empty array is returned when no update.json files exist in S3
     fakeStore = {}; // Initialize S3 store
-    const bundles = await plugin.getBundles({ limit: 20, offset: 0 });
+    const bundles = await plugin.getBundles({ limit: 20 });
     expect(bundles.data).toEqual([]);
   });
 
@@ -1044,7 +1744,6 @@ describe("s3Database plugin", () => {
     // Act: Load all bundles
     const bundles = await plugin.getBundles({
       limit: 10,
-      offset: 0,
       where: {
         platform: undefined,
         channel: "production",
