@@ -53,6 +53,6 @@
     "@types/node": "catalog:"
   },
   "peerDependencies": {
-    "@datadog/datadog-ci": "~5.12.1"
+    "@datadog/datadog-ci": "*"
   }
 }
