@@ -9,6 +9,7 @@ import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -17,7 +18,22 @@ import {
 
 const columnHelper = createColumnHelper<Bundle>();
 
-function StackedBundleIdCell({
+function BundleIdCell({
+  bundle,
+}: {
+  bundle: Bundle;
+}) {
+  const hasDiffBase = Boolean(bundle.metadata?.diff_base_bundle_id);
+
+  return (
+    <div className="flex min-w-[180px] items-center gap-2">
+      <BundleIdDisplay bundleId={bundle.id} />
+      {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
+    </div>
+  );
+}
+
+function DiffBaseCell({
   bundle,
   depth,
 }: {
@@ -26,29 +42,14 @@ function StackedBundleIdCell({
 }) {
   const baseBundleId = bundle.metadata?.diff_base_bundle_id;
 
+  if (!baseBundleId) {
+    return <Badge variant="outline">Root</Badge>;
+  }
+
   return (
-    <div className="min-w-[180px] space-y-1">
-      <div className="flex items-center gap-2">
-        {depth > 0 ? (
-          <div className="flex items-center gap-1">
-            {Array.from({ length: depth }).map((_, index) => (
-              <span
-                key={`${bundle.id}-stack-${index}`}
-                className="h-5 w-2 rounded-full bg-linear-to-b from-border via-border/70 to-transparent"
-              />
-            ))}
-          </div>
-        ) : null}
-        <BundleIdDisplay bundleId={bundle.id} />
-      </div>
-      {baseBundleId ? (
-        <div className="text-[11px] text-muted-foreground">
-          stacked on{" "}
-          <span className="font-mono">{baseBundleId.slice(0, 8)}</span>
-        </div>
-      ) : (
-        <div className="text-[11px] text-muted-foreground">stack root</div>
-      )}
+    <div className="flex min-w-[180px] items-center gap-2">
+      <BundleIdDisplay bundleId={baseBundleId} maxLength={18} />
+      {depth > 1 ? <Badge variant="outline">L{depth}</Badge> : null}
     </div>
   );
 }
@@ -58,10 +59,15 @@ export const createBundleColumns = (
 ) => [
   columnHelper.accessor("id", {
     header: "Bundle ID",
+    cell: (info) => <BundleIdCell bundle={info.row.original} />,
+  }),
+  columnHelper.display({
+    id: "diffBase",
+    header: "Diff Base",
     cell: (info) => (
-      <StackedBundleIdCell
+      <DiffBaseCell
         bundle={info.row.original}
-        depth={depthByBundleId[info.getValue()] ?? 0}
+        depth={depthByBundleId[info.row.original.id] ?? 0}
       />
     ),
   }),
