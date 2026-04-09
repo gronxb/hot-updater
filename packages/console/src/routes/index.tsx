@@ -30,12 +30,19 @@ export const Route = createFileRoute("/")({
       after: search.after as string | undefined,
       before: search.before as string | undefined,
       bundleId: search.bundleId as string | undefined,
+      expandedBundleId: search.expandedBundleId as string | undefined,
     };
   },
 });
 
 function BundlesPage() {
-  const { filters, bundleId, setBundleId } = useFilterParams();
+  const {
+    filters,
+    bundleId,
+    expandedBundleId,
+    setBundleId,
+    setExpandedBundleId,
+  } = useFilterParams();
   const activeBundleId = bundleId ?? "";
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
@@ -80,8 +87,10 @@ function BundlesPage() {
         <BundlesTable
           bundles={bundles}
           pagination={pagination}
+          expandedBundleId={expandedBundleId}
           selectedBundleId={bundleId}
-          onRowClick={(bundle) => setBundleId(bundle.id)}
+          onExpandedBundleChange={setExpandedBundleId}
+          onDetailClick={(bundle) => setBundleId(bundle.id)}
         />
       </div>
 

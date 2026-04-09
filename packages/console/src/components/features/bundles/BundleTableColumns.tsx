@@ -1,7 +1,7 @@
 import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { Fingerprint, Package } from "lucide-react";
+import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -10,36 +10,60 @@ import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+interface BundleColumnsOptions {
+  depthByBundleId?: Record<string, number>;
+  expandedBundleId?: string;
+  onDetailClick: (bundle: Bundle) => void;
+  onToggleExpand: (bundle: Bundle) => void;
+}
+
 const columnHelper = createColumnHelper<Bundle>();
 
 function BundleIdCell({
   bundle,
+  expandedBundleId,
+  onToggleExpand,
 }: {
   bundle: Bundle;
+  expandedBundleId?: string;
+  onToggleExpand: (bundle: Bundle) => void;
 }) {
   const hasDiffBase = Boolean(bundle.metadata?.diff_base_bundle_id);
+  const isExpanded = bundle.id === expandedBundleId;
 
   return (
-    <div className="flex min-w-[180px] items-center gap-2">
+    <div className="flex min-w-[240px] items-center gap-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 touch-manipulation"
+        aria-label={isExpanded ? "Hide Patch Bundles" : "Show Patch Bundles"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleExpand(bundle);
+        }}
+      >
+        {isExpanded ? (
+          <ChevronDown aria-hidden="true" />
+        ) : (
+          <ChevronRight aria-hidden="true" />
+        )}
+      </Button>
       <BundleIdDisplay bundleId={bundle.id} />
       {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
     </div>
   );
 }
 
-function DiffBaseCell({
-  bundle,
-  depth,
-}: {
-  bundle: Bundle;
-  depth: number;
-}) {
+function DiffBaseCell({ bundle, depth }: { bundle: Bundle; depth: number }) {
   const baseBundleId = bundle.metadata?.diff_base_bundle_id;
 
   if (!baseBundleId) {
@@ -54,12 +78,21 @@ function DiffBaseCell({
   );
 }
 
-export const createBundleColumns = (
-  depthByBundleId: Record<string, number> = {},
-) => [
+export const createBundleColumns = ({
+  depthByBundleId = {},
+  expandedBundleId,
+  onDetailClick,
+  onToggleExpand,
+}: BundleColumnsOptions) => [
   columnHelper.accessor("id", {
     header: "Bundle ID",
-    cell: (info) => <BundleIdCell bundle={info.row.original} />,
+    cell: (info) => (
+      <BundleIdCell
+        bundle={info.row.original}
+        expandedBundleId={expandedBundleId}
+        onToggleExpand={onToggleExpand}
+      />
+    ),
   }),
   columnHelper.display({
     id: "diffBase",
@@ -152,5 +185,25 @@ export const createBundleColumns = (
     id: "created",
     header: "Created",
     cell: (info) => <TimestampDisplay uuid={info.getValue()} />,
+  }),
+  columnHelper.display({
+    id: "detail",
+    header: "Detail",
+    cell: (info) => (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="touch-manipulation"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDetailClick(info.row.original);
+          }}
+        >
+          Detail
+        </Button>
+      </div>
+    ),
   }),
 ];

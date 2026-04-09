@@ -35,6 +35,7 @@ export function AppSidebar() {
             after: undefined,
             before: undefined,
             bundleId: undefined,
+            expandedBundleId: undefined,
           }}
           className="flex items-center gap-3 p-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2"
         >
@@ -70,6 +71,7 @@ export function AppSidebar() {
                       after: undefined,
                       before: undefined,
                       bundleId: undefined,
+                      expandedBundleId: undefined,
                     }}
                   >
                     <Package />

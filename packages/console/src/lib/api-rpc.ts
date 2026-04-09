@@ -16,6 +16,10 @@ type GetBundleInput = {
   bundleId: string;
 };
 
+type GetBundleChildrenInput = {
+  baseBundleId: string;
+};
+
 type GetBundleDownloadUrlInput = {
   bundleId: string;
 };
@@ -99,7 +103,7 @@ export const getBundles = createServerFn({ method: "GET" })
       };
 
       const { databasePlugin } = await prepareConfig();
-      const bundles = await databasePlugin.getBundles({
+      const bundleQueryOptions = {
         where: {
           channel: query.channel,
           platform: query.platform,
@@ -113,7 +117,8 @@ export const getBundles = createServerFn({ method: "GET" })
                 before: query.before,
               }
             : undefined,
-      });
+      } as Parameters<typeof databasePlugin.getBundles>[0];
+      const bundles = await databasePlugin.getBundles(bundleQueryOptions);
 
       return (
         bundles ?? {
@@ -144,6 +149,24 @@ export const getBundle = createServerFn({ method: "GET" })
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleChildren = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleChildrenInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleChildren: getBundleChildrenWithConfig } =
+        await import("./server/getBundleChildren");
+      const { databasePlugin } = await prepareConfig();
+
+      return await getBundleChildrenWithConfig(data, {
+        databasePlugin,
+      });
+    } catch (error) {
+      console.error("Error during bundle children retrieval:", error);
       throw error;
     }
   });

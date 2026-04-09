@@ -15,6 +15,7 @@ interface BundleSearchParams {
   after: string | undefined;
   before: string | undefined;
   bundleId: string | undefined;
+  expandedBundleId: string | undefined;
 }
 
 export function useFilterParams() {
@@ -29,6 +30,7 @@ export function useFilterParams() {
     before: search.before as string | undefined,
   };
   const bundleId = search.bundleId as string | undefined;
+  const expandedBundleId = search.expandedBundleId as string | undefined;
 
   const navigateWithSearch = (nextSearch: BundleSearchParams) => {
     void navigate({
@@ -74,6 +76,7 @@ export function useFilterParams() {
     navigateWithSearch({
       ...getNextFilters(newFilters),
       bundleId: undefined,
+      expandedBundleId: undefined,
     });
   };
 
@@ -84,6 +87,18 @@ export function useFilterParams() {
     navigateWithSearch({
       ...getNextFilters(newFilters),
       bundleId: nextBundleId,
+      expandedBundleId,
+    });
+  };
+
+  const setExpandedBundleId = (
+    nextExpandedBundleId: string | undefined,
+    newFilters: Partial<BundleFilters> = {},
+  ) => {
+    navigateWithSearch({
+      ...getNextFilters(newFilters),
+      bundleId,
+      expandedBundleId: nextExpandedBundleId,
     });
   };
 
@@ -95,14 +110,17 @@ export function useFilterParams() {
       after: undefined,
       before: undefined,
       bundleId: undefined,
+      expandedBundleId: undefined,
     });
   };
 
   return {
     filters,
     bundleId,
+    expandedBundleId,
     setFilters,
     setBundleId,
+    setExpandedBundleId,
     resetFilters,
   };
 }
