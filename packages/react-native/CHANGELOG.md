@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.29.7
+
+### Patch Changes
+
+- 8301941: fix(android): handle downloads without content length
+  - @hot-updater/cli-tools@0.29.7
+  - @hot-updater/core@0.29.7
+  - @hot-updater/js@0.29.7
+  - @hot-updater/plugin-core@0.29.7
+
 ## 0.29.6
 
 ### Patch Changes
