@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## 0.29.8
+
+### Patch Changes
+
+- 28e14aa: guard pending bundle dialogs in console
+  - @hot-updater/cli-tools@0.29.8
+
 ## 0.29.7
 
 ### Patch Changes
