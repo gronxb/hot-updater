@@ -362,17 +362,18 @@ function runScenario(
     args.push("--reuse-app");
   }
 
+  const nodeArgs = [...process.execArgv, ...args];
   const label = `${platform}/${scenarioRun.scenarioName}`;
   p.log.step(`Run ${label}${reuseApp ? " (reuse-app)" : ""}`);
 
   if (dryRun) {
     p.log.info(
-      `${process.execPath} ${args.map((value) => JSON.stringify(value)).join(" ")}`,
+      `${process.execPath} ${nodeArgs.map((value) => JSON.stringify(value)).join(" ")}`,
     );
     return;
   }
 
-  const result = spawnSync(process.execPath, args, {
+  const result = spawnSync(process.execPath, nodeArgs, {
     cwd: REPO_DIR,
     stdio: "inherit",
   });
