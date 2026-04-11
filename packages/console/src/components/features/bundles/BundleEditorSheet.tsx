@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { useEffect, useState } from "react";
 
 import {
   Sheet,
@@ -28,9 +29,47 @@ export function BundleEditorSheet({
   open,
   onOpenChange,
 }: BundleEditorSheetProps) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setIsSaving(false);
+    }
+  }, [open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isSaving) {
+      return;
+    }
+
+    if (!nextOpen) {
+      setIsSaving(false);
+    }
+
+    onOpenChange(nextOpen);
+  };
+
+  const closeSheet = () => {
+    setIsSaving(false);
+    onOpenChange(false);
+  };
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent
+        className="w-[600px] sm:max-w-[600px] overflow-y-auto"
+        showCloseButton={!isSaving}
+        onEscapeKeyDown={(event) => {
+          if (isSaving) {
+            event.preventDefault();
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (isSaving) {
+            event.preventDefault();
+          }
+        }}
+      >
         <SheetHeader>
           <SheetTitle>{bundle ? "Edit Bundle" : "Bundle Details"}</SheetTitle>
           <SheetDescription>
@@ -57,7 +96,8 @@ export function BundleEditorSheet({
             <BundleEditorForm
               key={bundle.id}
               bundle={bundle}
-              onClose={() => onOpenChange(false)}
+              onClose={closeSheet}
+              onBusyChange={setIsSaving}
             />
             <BundleMetadata bundle={bundle} />
           </div>
