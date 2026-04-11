@@ -27,8 +27,21 @@ export function DeleteBundleDialog({
   onSuccess,
 }: DeleteBundleDialogProps) {
   const deleteBundleMutation = useDeleteBundleMutation();
+  const isDeleting = deleteBundleMutation.isPending;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isDeleting) {
+      return;
+    }
+
+    onOpenChange(nextOpen);
+  };
 
   const handleDelete = async () => {
+    if (isDeleting) {
+      return;
+    }
+
     try {
       await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
       toast.success("Bundle deleted successfully");
@@ -41,8 +54,14 @@ export function DeleteBundleDialog({
   };
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
+      <AlertDialogContent
+        onEscapeKeyDown={(event) => {
+          if (isDeleting) {
+            event.preventDefault();
+          }
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
           <AlertDialogDescription>
@@ -61,13 +80,16 @@ export function DeleteBundleDialog({
         </div>
 
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleDelete}
+            onClick={(event) => {
+              event.preventDefault();
+              void handleDelete();
+            }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            disabled={deleteBundleMutation.isPending}
+            disabled={isDeleting}
           >
-            {deleteBundleMutation.isPending ? "Deleting..." : "Delete"}
+            {isDeleting ? "Deleting..." : "Delete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
