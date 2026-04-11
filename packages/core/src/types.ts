@@ -5,11 +5,26 @@ export type BundleMetadata = {
   manifest_storage_uri?: string;
   manifest_file_hash?: string;
   asset_base_storage_uri?: string;
+  diff_base_bundle_id?: string;
+  hbc_patch_algorithm?: "bsdiff";
+  hbc_patch_asset_path?: string;
+  hbc_patch_base_file_hash?: string;
+  hbc_patch_file_hash?: string;
+  hbc_patch_storage_uri?: string;
 };
+
+export interface ChangedAssetPatch {
+  algorithm: "bsdiff";
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchUrl: string;
+}
 
 export interface ChangedAsset {
   fileUrl: string;
   fileHash: string;
+  patch?: ChangedAssetPatch | null;
 }
 
 export interface Bundle {

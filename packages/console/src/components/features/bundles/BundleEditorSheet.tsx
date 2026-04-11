@@ -30,20 +30,22 @@ export function BundleEditorSheet({
 }: BundleEditorSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
+      <SheetContent className="w-[640px] overflow-y-auto overscroll-contain sm:max-w-[640px]">
         <SheetHeader>
-          <SheetTitle>{bundle ? "Edit Bundle" : "Bundle Details"}</SheetTitle>
+          <SheetTitle>{bundle ? "Bundle Detail" : "Bundle Details"}</SheetTitle>
           <SheetDescription>
             {bundle ? (
               <BundleBasicInfo bundle={bundle} />
             ) : loading ? (
               bundleId ? (
-                <span className="font-mono text-xs">Loading {bundleId}</span>
+                <span translate="no" className="font-mono text-xs">
+                  Loading {bundleId}…
+                </span>
               ) : (
-                "Loading bundle details"
+                "Loading bundle details…"
               )
             ) : bundleId ? (
-              <span className="font-mono text-xs">
+              <span translate="no" className="font-mono text-xs">
                 Bundle not found: {bundleId}
               </span>
             ) : (
@@ -53,7 +55,7 @@ export function BundleEditorSheet({
         </SheetHeader>
 
         {bundle ? (
-          <div className="px-6 pb-6 space-y-6">
+          <div className="flex flex-col gap-6 px-6 pb-6">
             <BundleEditorForm
               key={bundle.id}
               bundle={bundle}
@@ -62,7 +64,7 @@ export function BundleEditorSheet({
             <BundleMetadata bundle={bundle} />
           </div>
         ) : loading ? (
-          <div className="px-6 pb-6 space-y-4">
+          <div className="flex flex-col gap-4 px-6 pb-6">
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-28 w-full" />
             <Skeleton className="h-10 w-full" />

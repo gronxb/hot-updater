@@ -2,9 +2,11 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  createBundleDiff as createBundleDiffApi,
   createBundle as createBundleApi,
   deleteBundle as deleteBundleApi,
   getBundle,
+  getBundleChildren,
   getBundleDownloadUrl,
   getBundles,
   getChannels,
@@ -35,6 +37,10 @@ export const queryKeys = {
     all: bundleListQueryKey,
     list: (filters?: BundleFilters) =>
       [...bundleListQueryKey, filters ?? {}] as const,
+  },
+  bundleChildren: {
+    all: ["bundle-children"] as const,
+    list: (baseBundleId: string) => ["bundle-children", baseBundleId] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
 };
@@ -98,6 +104,15 @@ export function useBundleQuery(bundleId: string) {
   });
 }
 
+export function useBundleChildrenQuery(baseBundleId: string) {
+  return useQuery({
+    queryKey: queryKeys.bundleChildren.list(baseBundleId),
+    queryFn: () => getBundleChildren({ data: { baseBundleId } }),
+    staleTime: Infinity,
+    enabled: !!baseBundleId,
+  });
+}
+
 // Mutation Hooks
 export function useBundleDownloadUrlMutation() {
   return useMutation({
@@ -123,6 +138,9 @@ export function useUpdateBundleMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
         queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
+        queryClient.invalidateQueries({
           queryKey: queryKeys.bundle(vars.bundleId),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
@@ -139,6 +157,9 @@ export function useCreateBundleMutation() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
       ]);
     },
@@ -160,6 +181,9 @@ export function usePromoteBundleMutation() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
         queryClient.invalidateQueries({
           queryKey: queryKeys.bundle(bundle.id),
@@ -180,7 +204,32 @@ export function useDeleteBundleMutation() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
+      ]);
+    },
+  });
+}
+
+export function useCreateBundleDiffMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { baseBundleId: string; bundleId: string }) =>
+      createBundleDiffApi({ data: params }),
+    onSuccess: async ({ bundle }) => {
+      queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundleChildren.all,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.bundle(bundle.id),
+        }),
       ]);
     },
   });

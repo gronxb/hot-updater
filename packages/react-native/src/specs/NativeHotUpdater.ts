@@ -5,6 +5,13 @@ import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 export interface ChangedAsset {
   fileUrl: string;
   fileHash: string;
+  patch?: {
+    algorithm: "bsdiff";
+    baseBundleId: string;
+    baseFileHash: string;
+    patchFileHash: string;
+    patchUrl: string;
+  } | null;
 }
 
 export interface UpdateBundleParams {

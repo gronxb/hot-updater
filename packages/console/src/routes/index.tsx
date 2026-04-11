@@ -30,12 +30,19 @@ export const Route = createFileRoute("/")({
       after: search.after as string | undefined,
       before: search.before as string | undefined,
       bundleId: search.bundleId as string | undefined,
+      expandedBundleId: search.expandedBundleId as string | undefined,
     };
   },
 });
 
 function BundlesPage() {
-  const { filters, bundleId, setBundleId } = useFilterParams();
+  const {
+    filters,
+    bundleId,
+    expandedBundleId,
+    setBundleId,
+    setExpandedBundleId,
+  } = useFilterParams();
   const activeBundleId = bundleId ?? "";
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
@@ -63,7 +70,7 @@ function BundlesPage() {
     return (
       <div className="flex flex-col h-full">
         <FilterToolbar />
-        <div className="flex-1 p-6 space-y-4 bg-muted/5">
+        <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-6">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -76,12 +83,14 @@ function BundlesPage() {
   return (
     <div className="flex flex-col h-full">
       <FilterToolbar />
-      <div className="flex-1 p-6 space-y-6 bg-muted/5">
+      <div className="flex flex-1 flex-col gap-6 bg-muted/5 p-6">
         <BundlesTable
           bundles={bundles}
           pagination={pagination}
+          expandedBundleId={expandedBundleId}
           selectedBundleId={bundleId}
-          onRowClick={(bundle) => setBundleId(bundle.id)}
+          onExpandedBundleChange={setExpandedBundleId}
+          onDetailClick={(bundle) => setBundleId(bundle.id)}
         />
       </div>
 

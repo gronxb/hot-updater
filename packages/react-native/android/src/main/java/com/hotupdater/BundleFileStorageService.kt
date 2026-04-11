@@ -11,6 +11,15 @@ import java.net.URL
 data class ChangedAssetDescriptor(
     val fileUrl: String,
     val fileHash: String,
+    val patch: BsdiffPatchDescriptor? = null,
+)
+
+data class BsdiffPatchDescriptor(
+    val algorithm: String,
+    val baseBundleId: String,
+    val baseFileHash: String,
+    val patchFileHash: String,
+    val patchUrl: String,
 )
 
 data class UpdateProgressPayload(
@@ -234,6 +243,108 @@ class BundleFileStorageService(
                     ),
             ),
         )
+    }
+
+    private fun resetDiffProgressFile(
+        files: MutableList<DiffProgressFileSnapshot>,
+        assetPath: String,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ) {
+        updateDiffProgressFile(
+            files = files,
+            assetPath = assetPath,
+            status = "pending",
+            progress = 0.0,
+        )
+        emitDiffProgress(
+            progressCallback = progressCallback,
+            phase = "downloading",
+            files = files,
+        )
+    }
+
+    private fun patchTempFile(
+        tempDir: File,
+        assetPath: String,
+    ): File {
+        val safeName = assetPath.replace("/", "__").replace("\\", "__")
+        val patchDir = File(tempDir, "patches")
+        patchDir.mkdirs()
+        return File(patchDir, "$safeName.bsdiff")
+    }
+
+    private suspend fun applyPatchAssetIfPossible(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        activeBundleDir: File?,
+        targetFile: File,
+        expectedHash: String,
+        tempDir: File,
+        diffFiles: MutableList<DiffProgressFileSnapshot>,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ): Boolean {
+        val patch = changedAsset.patch ?: return false
+        if (patch.algorithm != "bsdiff" || currentBundleId != patch.baseBundleId) {
+            return false
+        }
+
+        val sourceDir = activeBundleDir ?: return false
+        val sourceFile = File(sourceDir, assetPath)
+        if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, patch.baseFileHash)) {
+            return false
+        }
+
+        val patchFile = patchTempFile(tempDir, assetPath)
+
+        return try {
+            when (
+                val patchDownloadResult =
+                    downloadService.downloadFile(
+                        URL(patch.patchUrl),
+                        patchFile,
+                    ) { downloadProgress ->
+                        updateDiffProgressFile(
+                            files = diffFiles,
+                            assetPath = assetPath,
+                            status = "downloading",
+                            progress = downloadProgress,
+                        )
+                        emitDiffProgress(
+                            progressCallback = progressCallback,
+                            phase = "downloading",
+                            files = diffFiles,
+                        )
+                    }
+            ) {
+                is DownloadResult.Error -> {
+                    false
+                }
+                is DownloadResult.Success -> {
+                    if (!HashUtils.verifyHash(patchDownloadResult.file, patch.patchFileHash)) {
+                        false
+                    } else {
+                        BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        HashUtils.verifyHash(targetFile, expectedHash)
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            patchFile.delete()
+            if (!targetFile.exists() || !HashUtils.verifyHash(targetFile, expectedHash)) {
+                targetFile.delete()
+            }
+        }.also { patched ->
+            if (!patched) {
+                resetDiffProgressFile(
+                    files = diffFiles,
+                    assetPath = assetPath,
+                    progressCallback = progressCallback,
+                )
+            }
+        }
     }
 
     private data class ParsedBundleManifest(
@@ -1130,6 +1241,7 @@ class BundleFileStorageService(
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         val activeBundleDir = getActiveBundleDir()
+        val currentBundleId = getBundleId()
         val currentManifest =
             getActiveBundleMetadataSnapshot()?.manifest?.let(::parseBundleManifestFromMap)
         val baseDir = fileSystem.getExternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
@@ -1256,6 +1368,38 @@ class BundleFileStorageService(
                     throw HotUpdaterException.signatureVerificationFailed(
                         SignatureVerificationException.FileHashMismatch(),
                     )
+                }
+
+                val patched =
+                    applyPatchAssetIfPossible(
+                        assetPath = assetPath,
+                        changedAsset = changedAsset,
+                        currentBundleId = currentBundleId,
+                        activeBundleDir = activeBundleDir,
+                        targetFile = targetFile,
+                        expectedHash = expectedHash,
+                        tempDir = tempDir,
+                        diffFiles = diffFiles,
+                        progressCallback = progressCallback,
+                    )
+                if (patched) {
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "downloaded",
+                        progress = 1.0,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase =
+                            if (diffFiles.all { it.status == "downloaded" }) {
+                                "finalizing"
+                            } else {
+                                "downloading"
+                            },
+                        files = diffFiles,
+                    )
+                    return@forEachIndexed
                 }
 
                 when (
