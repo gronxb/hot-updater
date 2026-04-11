@@ -235,7 +235,7 @@ class OkHttpDownloadService : DownloadService {
 
                 // Verify file size
                 val finalSize = destination.length()
-                if (finalSize != totalSize) {
+                if (totalSize > 0 && finalSize != totalSize) {
                     Log.d(TAG, "Download incomplete: $finalSize / $totalSize bytes")
 
                     // Delete incomplete file

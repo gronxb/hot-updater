@@ -786,7 +786,7 @@ async function fetchBundlesPage(args: {
   const response = await callConsoleServerFn<BundleListPage>("getBundles", "GET", {
     channel: args.channel,
     limit: String(args.limit),
-    offset: String(args.offset),
+    page: Math.floor(args.offset / args.limit) + 1,
     platform: session.platform,
   });
   const bundles = normalizeBundleListResponse(response);
