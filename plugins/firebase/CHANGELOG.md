@@ -1,5 +1,16 @@
 # @hot-updater/firebase
 
+## 0.29.6
+
+### Patch Changes
+
+- 80cce61: feat(cli): merge init config on re-run
+- Updated dependencies [80cce61]
+  - @hot-updater/cli-tools@0.29.6
+  - @hot-updater/core@0.29.6
+  - @hot-updater/server@0.29.6
+  - @hot-updater/plugin-core@0.29.6
+
 ## 0.29.5
 
 ### Patch Changes

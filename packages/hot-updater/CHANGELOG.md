@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.29.6
+
+### Patch Changes
+
+- 5a2d37c: Fix the local `fix-ci` runner so the integration step finishes cleanly after
+  background emulator processes exit.
+- Updated dependencies [80cce61]
+  - @hot-updater/cli-tools@0.29.6
+  - @hot-updater/android-helper@0.29.6
+  - @hot-updater/apple-helper@0.29.6
+  - @hot-updater/console@0.29.6
+  - @hot-updater/core@0.29.6
+  - @hot-updater/server@0.29.6
+  - @hot-updater/plugin-core@0.29.6
+
 ## 0.29.5
 
 ### Patch Changes
