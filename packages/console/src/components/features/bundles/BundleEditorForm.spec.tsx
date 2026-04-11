@@ -135,6 +135,28 @@ describe("BundleEditorForm", () => {
     expect(saveButton.hasAttribute("disabled")).toBe(true);
   });
 
+  it("disables secondary actions while the save mutation is pending", () => {
+    mockUpdateBundleMutation.isPending = true;
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    expect(
+      screen
+        .getByRole("button", { name: "Promote to Channel" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Download Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Delete Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("shows normalized semver ranges and blocks invalid target app versions", () => {
     render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
 
