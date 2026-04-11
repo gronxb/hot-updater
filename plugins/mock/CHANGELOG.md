@@ -1,5 +1,12 @@
 # @hot-updater/mock
 
+## 0.29.7
+
+### Patch Changes
+
+- @hot-updater/core@0.29.7
+- @hot-updater/plugin-core@0.29.7
+
 ## 0.29.6
 
 ### Patch Changes
