@@ -1,4 +1,5 @@
 import {
+  type ChangedAsset,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -201,10 +202,40 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
     : null;
 };
 
+export type HotUpdaterProgressArtifactType = "archive" | "diff";
+
+export type HotUpdaterDiffFileStatus =
+  | "pending"
+  | "downloading"
+  | "downloaded"
+  | "failed";
+
+export interface HotUpdaterDiffFileSnapshot {
+  path: string;
+  status: HotUpdaterDiffFileStatus;
+  progress: number;
+  order: number;
+}
+
+export interface HotUpdaterDiffProgressDetails {
+  totalFilesCount: number;
+  completedFilesCount: number;
+  files: HotUpdaterDiffFileSnapshot[];
+}
+
+export type HotUpdaterProgressEvent =
+  | {
+      progress: number;
+      artifactType: "archive";
+    }
+  | {
+      progress: number;
+      artifactType: "diff";
+      details: HotUpdaterDiffProgressDetails;
+    };
+
 export type HotUpdaterEvent = {
-  onProgress: {
-    progress: number;
-  };
+  onProgress: HotUpdaterProgressEvent;
 };
 
 const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
@@ -288,14 +319,30 @@ export async function updateBundle(
 
   const targetChannel =
     typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
+  const targetManifestUrl =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestUrl;
+  const targetManifestFileHash =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestFileHash;
+  const targetChangedAssets =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.changedAssets;
 
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
+        changedAssets:
+          (targetChangedAssets as Record<string, ChangedAsset> | null) ?? null,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        manifestFileHash: targetManifestFileHash ?? null,
+        manifestUrl: targetManifestUrl ?? null,
       });
       if (ok) {
         sessionState.markBundleInstalled(updateBundleId, targetChannel);

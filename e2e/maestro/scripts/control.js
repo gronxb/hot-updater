@@ -64,12 +64,27 @@ function startJob(pathname, body) {
   const response = request("POST", pathname, body);
   const payload = expectOk(response, "job start");
   const jobId = payload.jobId;
+  const timeoutSeconds = (() => {
+    if (JOB_TIMEOUT_SECONDS) {
+      const parsed = Number(JOB_TIMEOUT_SECONDS);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    // Bootstrap can include a full clean release build on iOS.
+    if (pathname === "/e2e/jobs/bootstrap") {
+      return 1800;
+    }
+
+    return 720;
+  })();
 
   if (!jobId) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < 720; attempt += 1) {
+  for (let attempt = 0; attempt < timeoutSeconds; attempt += 1) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -84,7 +99,7 @@ function startJob(pathname, body) {
     pause(1000);
   }
 
-  throw new Error(`timed out waiting for job ${jobId}`);
+  throw new Error(`timed out waiting for job ${jobId} after ${timeoutSeconds}s`);
 }
 
 function maybeNumber(value) {

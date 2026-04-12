@@ -168,8 +168,11 @@ export async function checkForUpdate(
       return updateBundle({
         bundleId: updateInfo.id,
         channel: runtimeChannel,
+        changedAssets: updateInfo.changedAssets ?? null,
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
+        manifestFileHash: updateInfo.manifestFileHash ?? null,
+        manifestUrl: updateInfo.manifestUrl ?? null,
         status: updateInfo.status,
         shouldSkipCurrentBundleIdCheck: isFirstRuntimeChannelSwitchAttempt,
       });

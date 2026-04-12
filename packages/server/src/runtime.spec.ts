@@ -238,6 +238,180 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
+  it("returns signed manifest metadata and changed asset URLs when manifest artifacts are available", async () => {
+    const currentBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000001",
+      metadata: {
+        asset_base_storage_uri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
+        manifest_file_hash: "sig:current-manifest",
+        manifest_storage_uri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/manifest.json",
+      },
+      storageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/bundle.zip",
+    };
+    const nextBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      metadata: {
+        asset_base_storage_uri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
+        manifest_file_hash: "sig:next-manifest",
+        manifest_storage_uri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/manifest.json",
+      },
+      storageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
+    };
+    const request = new Request(
+      "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
+        `${NIL_UUID}/${currentBundle.id}`,
+    );
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
+      async () => ({
+        data: [nextBundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      }),
+    );
+    const getDownloadUrl = vi.fn<StoragePlugin<TestContext>["getDownloadUrl"]>(
+      async (storageUri, context) => {
+        const storageUrl = new URL(storageUri);
+        return {
+          fileUrl: new URL(
+            storageUrl.pathname,
+            context?.env?.assetHost,
+          ).toString(),
+        };
+      },
+    );
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+
+      if (url.endsWith(`${currentBundle.id}/manifest.json`)) {
+        return new Response(
+          JSON.stringify({
+            assets: {
+              "assets/logo.png": {
+                fileHash: "hash-logo",
+              },
+              "index.ios.bundle": {
+                fileHash: "hash-old-bundle",
+              },
+            },
+            bundleId: currentBundle.id,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      if (url.endsWith(`${nextBundle.id}/manifest.json`)) {
+        return new Response(
+          JSON.stringify({
+            assets: {
+              "assets/logo.png": {
+                fileHash: "hash-logo",
+              },
+              "index.ios.bundle": {
+                fileHash: "hash-new-bundle",
+              },
+            },
+            bundleId: nextBundle.id,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        if (id === currentBundle.id) {
+          return currentBundle;
+        }
+        if (id === nextBundle.id) {
+          return nextBundle;
+        }
+        return null;
+      },
+      getBundles,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage: StoragePlugin<TestContext> = {
+      name: "testStorage",
+      supportedProtocol: "s3",
+      async upload(key) {
+        return { storageUri: `s3://test-bucket/${key}` };
+      },
+      async delete() {},
+      getDownloadUrl,
+    };
+
+    try {
+      const hotUpdater = createHotUpdater({
+        database,
+        storages: [storage],
+        basePath: "/api/check-update",
+        routes: {
+          updateCheck: true,
+          bundles: false,
+        },
+      });
+
+      const response = await hotUpdater.handler(request, {
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request,
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        changedAssets: {
+          "index.ios.bundle": {
+            fileHash: "hash-new-bundle",
+            fileUrl:
+              "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/files/index.ios.bundle",
+          },
+        },
+        fileHash: "hash123",
+        fileUrl:
+          "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
+        id: "00000000-0000-0000-0000-000000000002",
+        manifestFileHash: "sig:next-manifest",
+        manifestUrl:
+          "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/manifest.json",
+        message: "Test bundle",
+        shouldForceUpdate: false,
+        status: "UPDATE",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("does not inject the request into context unless explicitly provided", async () => {
     const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
       async () => {

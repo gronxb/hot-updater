@@ -997,7 +997,32 @@ function ensureStorePath() {
   return session.storePath;
 }
 
+async function clearIosLocalBundleState() {
+  const appDataDir = runCapture("xcrun", [
+    "simctl",
+    "get_app_container",
+    deviceId as string,
+    session.appId,
+    "data",
+  ]);
+  const documentsDir = path.join(appDataDir, "Documents");
+
+  await fsPromises.rm(path.join(documentsDir, "bundle-store"), {
+    force: true,
+    recursive: true,
+  });
+  await fsPromises.rm(path.join(documentsDir, "bundle-temp"), {
+    force: true,
+    recursive: true,
+  });
+
+  logE2e("ios local bundle state reset", {
+    documentsDir,
+  });
+}
+
 async function installIosArtifact(appPath: string) {
+  session.storePath = undefined;
   runCapture(
     "xcrun",
     ["simctl", "uninstall", deviceId as string, session.appId],
@@ -1006,6 +1031,21 @@ async function installIosArtifact(appPath: string) {
   await runLogged("xcrun", ["simctl", "install", deviceId as string, appPath], {
     logPath: path.join(session.resultsDir, "simctl-install.log"),
   });
+  await clearIosLocalBundleState();
+}
+
+const IOS_RETRYABLE_BUILD_PATTERNS = [
+  /fatal error: 'glog\/logging\.h' file not found/,
+  /fatal error: 'react\/renderer\/components\/view\/HostPlatformTouch\.h' file not found/,
+];
+
+async function shouldRetryIosReleaseBuild(logPath: string) {
+  if (!fs.existsSync(logPath)) {
+    return false;
+  }
+
+  const contents = await fsPromises.readFile(logPath, "utf8");
+  return IOS_RETRYABLE_BUILD_PATTERNS.some((pattern) => pattern.test(contents));
 }
 
 async function prepareIosRelease() {
@@ -1049,9 +1089,9 @@ async function prepareIosRelease() {
     logPath: path.join(session.resultsDir, "pod-install.log"),
   });
 
-  await runLogged(
-    "xcodebuild",
-    [
+  const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
+  const getXcodebuildArgs = (serialized: boolean) => {
+    const args = [
       "-workspace",
       path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
       "-scheme",
@@ -1064,12 +1104,43 @@ async function prepareIosRelease() {
       `id=${deviceId}`,
       "-derivedDataPath",
       session.iosDerivedDataPath,
-      "build",
-    ],
-    {
-      logPath: path.join(session.resultsDir, "xcodebuild.log"),
-    },
-  );
+    ];
+
+    if (serialized) {
+      args.push("-jobs", "1");
+    }
+
+    args.push("build");
+    return args;
+  };
+
+  try {
+    await runLogged("xcodebuild", getXcodebuildArgs(false), {
+      logPath: xcodebuildLogPath,
+    });
+  } catch (error) {
+    const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
+    if (!shouldRetry) {
+      throw error;
+    }
+
+    console.warn(
+      "[maestro-e2e] retrying iOS release build after transient header resolution failure",
+    );
+
+    await fsPromises.rename(
+      xcodebuildLogPath,
+      path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
+    ).catch(() => {});
+    await fsPromises.rm(session.iosDerivedDataPath, {
+      force: true,
+      recursive: true,
+    });
+
+    await runLogged("xcodebuild", getXcodebuildArgs(true), {
+      logPath: xcodebuildLogPath,
+    });
+  }
 
   session.builtArtifactPath = builtAppPath;
   await installIosArtifact(builtAppPath);
@@ -1088,6 +1159,7 @@ async function prepareAndroidRelease() {
   }
 
   session.builtArtifactPath = session.androidApkPath;
+  session.storePath = undefined;
 
   runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
     allowFailure: true,
@@ -1099,6 +1171,15 @@ async function prepareAndroidRelease() {
       logPath: path.join(session.resultsDir, "adb-install.log"),
     },
   );
+  runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "rm",
+    "-rf",
+    `/sdcard/Android/data/${session.appId}/files/bundle-store`,
+    `/sdcard/Android/data/${session.appId}/files/bundle-temp`,
+  ]);
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {

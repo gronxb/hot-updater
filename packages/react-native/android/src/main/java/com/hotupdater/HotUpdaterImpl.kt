@@ -282,10 +282,21 @@ class HotUpdaterImpl {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
+        manifestUrl: String?,
+        manifestFileHash: String?,
+        changedAssets: Map<String, ChangedAssetDescriptor>?,
         channel: String?,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
-        bundleStorage.updateBundle(bundleId, fileUrl, fileHash, progressCallback)
+        bundleStorage.updateBundle(
+            bundleId,
+            fileUrl,
+            fileHash,
+            manifestUrl,
+            manifestFileHash,
+            changedAssets,
+            progressCallback,
+        )
 
         if (!channel.isNullOrEmpty()) {
             if (channel == getDefaultChannel()) {

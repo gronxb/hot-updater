@@ -30,6 +30,16 @@ Options:
 
 ## Usage
 
+## Bundle Diffing
+
+New deployments automatically upload a signed or hashed `manifest.json` plus
+per-file assets alongside the archive bundle. When the app runtime supports
+manifest-based diffing, unchanged files can be reused locally and only changed
+files are downloaded.
+
+See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior,
+requirements, and fallback rules.
+
 ### Interactive Mode
 
 Interactive mode guides you through the deployment steps via keyboard inputs.

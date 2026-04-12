@@ -349,6 +349,43 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
   });
 
+  it("forwards manifest artifact parameters to native updateBundle", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.updateBundle.mockResolvedValue(true);
+
+    const { updateBundle } = await import("./native");
+
+    await updateBundle({
+      bundleId: "bundle-789",
+      changedAssets: {
+        "index.ios.bundle": {
+          fileHash: "hash-next",
+          fileUrl: "https://example.com/files/index.ios.bundle",
+        },
+      },
+      fileHash: "sig:archive",
+      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "sig:manifest",
+      manifestUrl: "https://example.com/manifest.json",
+      status: "UPDATE",
+    });
+
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
+      bundleId: "bundle-789",
+      changedAssets: {
+        "index.ios.bundle": {
+          fileHash: "hash-next",
+          fileUrl: "https://example.com/files/index.ios.bundle",
+        },
+      },
+      channel: undefined,
+      fileHash: "sig:archive",
+      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "sig:manifest",
+      manifestUrl: "https://example.com/manifest.json",
+    });
+  });
+
   it("invalidates cached bundle getters after resetChannel succeeds", async () => {
     nativeModuleMock.getConstants.mockReturnValue({
       APP_VERSION: null,
