@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  Keyboard,
   type LayoutChangeEvent,
   Modal,
   Pressable,
@@ -248,10 +249,12 @@ function App(): React.JSX.Element {
     };
 
   const scrollToTop = () => {
+    Keyboard.dismiss();
     scrollViewRef.current?.scrollTo({ animated: false, y: 0 });
   };
 
   const scrollToSection = (target: ScrollTarget) => {
+    Keyboard.dismiss();
     scrollViewRef.current?.scrollTo({
       animated: false,
       y: Math.max(sectionOffsets.current[target] - 12, 0),

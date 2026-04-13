@@ -38,7 +38,7 @@ class CohortService(
         }
 
         val generated = UUID.randomUUID().toString()
-        prefs.edit().putString(FALLBACK_IDENTIFIER_KEY, generated).apply()
+        prefs.edit().putString(FALLBACK_IDENTIFIER_KEY, generated).commit()
         return generated
     }
 
@@ -46,7 +46,8 @@ class CohortService(
         if (cohort.isEmpty()) {
             return
         }
-        prefs.edit().putString(COHORT_KEY, cohort).apply()
+        // Cohort changes can be followed immediately by a process restart during OTA flows.
+        prefs.edit().putString(COHORT_KEY, cohort).commit()
     }
 
     fun getCohort(): String {
@@ -67,7 +68,7 @@ class CohortService(
                 defaultNumericCohort(fallbackIdentifier())
             }
 
-        prefs.edit().putString(COHORT_KEY, initialCohort).apply()
+        prefs.edit().putString(COHORT_KEY, initialCohort).commit()
         return initialCohort
     }
 }

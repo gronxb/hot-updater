@@ -46,11 +46,10 @@ export function RolloutCohortsDialog({
 }: RolloutCohortsDialogProps) {
   const normalizedRolloutCount =
     normalizeRolloutCohortCount(rolloutCohortCount);
-  const hasTargetCohortOverride = (targetCohorts?.length ?? 0) > 0;
+  const normalizedTargetCohorts = targetCohorts ?? [];
+  const hasTargetCohorts = normalizedTargetCohorts.length > 0;
   const isPartialRollout =
-    normalizedRolloutCount > 0 &&
-    normalizedRolloutCount < NUMERIC_COHORT_SIZE &&
-    !hasTargetCohortOverride;
+    normalizedRolloutCount > 0 && normalizedRolloutCount < NUMERIC_COHORT_SIZE;
 
   if (!isPartialRollout) {
     return null;
@@ -89,6 +88,9 @@ export function RolloutCohortsDialog({
             {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric cohorts.
             The selected set stays stable for this bundle as you expand or
             shrink rollout.
+            {hasTargetCohorts
+              ? " Target Cohorts are added on top of this numeric rollout."
+              : ""}
           </DialogDescription>
         </DialogHeader>
 
@@ -142,6 +144,27 @@ export function RolloutCohortsDialog({
             </div>
           </CardContent>
         </Card>
+
+        {hasTargetCohorts ? (
+          <Card>
+            <CardHeader className="p-4 pb-3">
+              <CardTitle className="text-sm">Target Cohorts</CardTitle>
+              <CardDescription>
+                These cohorts are also included, even if they are outside the
+                numeric rollout.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3">
+                {normalizedTargetCohorts.map((cohort) => (
+                  <Badge key={cohort} variant="secondary" className="font-mono">
+                    {cohort}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <DialogFooter showCloseButton />
       </DialogContent>

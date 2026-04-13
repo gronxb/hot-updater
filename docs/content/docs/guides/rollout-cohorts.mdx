@@ -22,8 +22,9 @@ Hot Updater uses cohorts to decide whether a device is eligible for a bundle.
 
 <Callout type="info">
   Percentage rollout applies only to numeric cohorts. Custom cohorts do not
-  participate in partial numeric rollout unless you add them to `Target
-  Cohorts`.
+  participate in percentage rollout on their own. To keep a custom cohort such
+  as `qa` receiving the same bundle alongside numeric rollout, add it to
+  `Target Cohorts`.
 </Callout>
 
 ## Deploy a Bundle with RollOut
@@ -131,26 +132,28 @@ Cohorts` shows the exact numeric cohorts included in that rollout.
 
 ## Scenario 2: Manual Cohort Override and Target Cohorts
 
-This scenario builds on top of the existing numeric cohort system. Use it when
-you want to manually override the device cohort and explicitly target that
-value from the console.
+Use this flow when you want a fixed tester group to keep receiving the bundle
+while numeric rollout continues for the rest of the audience.
 
-This walkthrough uses `qa` as the example value because that is what the app
-screen and console screenshot show.
+This is useful because numeric rollout picks a stable but bundle-specific
+numeric cohort set. A tester device may or may not be in that set.
+`Target Cohorts` lets you keep a known group such as `qa` included throughout
+rollout.
 
-The same mechanism is not limited to custom names. It can also use the existing
-numeric cohort values from the original rollout system.
+In this example, tester devices use cohort `qa`, and the bundle keeps
+`Rollout Percentage = 50.0%` while also targeting `qa`.
 
-This is the device state after overriding the cohort to `qa`:
+You can use the same flow with a numeric cohort such as `411`.
+
+This is the device state after setting the cohort to `qa`:
 
 <img src={"/docs/rollout-cohorts/set_cohort.png"} width="320" />
 
-In this example, the app UI already shows that `HotUpdater.getCohort()` is set
-to `qa`.
+In this example, the app UI shows `HotUpdater.getCohort() = qa`.
 
-### Override the Device Cohort
+### Set the Device Cohort
 
-Use `HotUpdater.setCohort()` when you want to override the device cohort:
+Use `HotUpdater.setCohort()` to make the device act like a specific cohort:
 
 <Tabs items={["Custom name", "Numeric value"]}>
   <Tab value="Custom name">
@@ -170,8 +173,8 @@ function assignQaCohort() {
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-function assignNumericCohort(numericCohort: string) {
-  HotUpdater.setCohort(numericCohort);
+function assignNumericCohort() {
+  HotUpdater.setCohort("411");
   console.log("Active cohort:", HotUpdater.getCohort());
 }
 ```
@@ -179,70 +182,85 @@ function assignNumericCohort(numericCohort: string) {
   </Tab>
 </Tabs>
 
-This works for both custom cohort names like `qa` and numeric cohort values
-from the existing rollout system.
+You can set either kind of cohort:
 
-- `HotUpdater.setCohort("qa")` moves the device into a named tester group.
-- `HotUpdater.setCohort(numericCohort)` makes the device behave as that numeric
-  cohort.
-- Numeric override is useful when a bundle has already been deployed to a known
-  numeric cohort and you want a tester device to follow that same rollout path.
+- `HotUpdater.setCohort("qa")` puts the device in a named tester group.
+- `HotUpdater.setCohort("411")` makes the device behave like numeric cohort
+  `411`.
+- A numeric override is useful when you want a tester device to follow a bundle
+  that is already rolling out to a known numeric cohort.
 
 <Callout type="warn">
-  If you need to restore the original value later, call `HotUpdater.getCohort()`
-  first and store it before overriding.
+  If you want to restore the original cohort later, read it with
+  `HotUpdater.getCohort()` and save it before calling `setCohort()`.
 </Callout>
 
 ### Target Specific Cohorts from the Console
 
-If you want to ship a bundle to a known set of devices, deploy the bundle first,
-then edit it in the console:
+If you want numeric rollout and a fixed tester group at the same time, keep
+both on the same bundle. A common flow is:
 
-```package-install
-npx hot-updater deploy -p ios -r 0
-npx hot-updater console
-```
+1. Deploy the bundle with `-r 0`.
+2. Add `qa` to `Target Cohorts`.
+3. After QA verifies the bundle, increase the same bundle to `50%` rollout.
 
-Open the deployed bundle in the console and add `qa` to `Target Cohorts`:
+After QA verifies the bundle and you raise the same bundle to `50%`, the
+console can look like this:
 
-<img src={"/docs/rollout-cohorts/target_cohorts.png"} />
+<img src={"/docs/rollout-cohorts/target_cohorts_with50.png"} />
 
-`Target Cohorts` accepts both numeric cohort values and custom cohorts like
-`qa`. In this scenario, the bundle uses
-`Rollout Percentage = 0.0%` and `Target Cohorts = qa`.
+In this example, the bundle is configured like this:
 
-This screenshot uses `qa`, but the same flow also works with numeric target
-cohorts from the existing rollout system.
+- `Rollout Percentage = 50.0%`
+- `Target Cohorts = qa`
 
-<Callout type="warn">
-  `Target Cohorts` overrides percentage rollout. When at least one target cohort
-  is set, only matching cohorts receive the update, even if the rollout slider
-  is `0%` or would normally exclude that device.
+`Target Cohorts` supports both custom cohorts like `qa` and numeric values like
+`411`. Think of it as an explicit cohort list: you can put existing numeric
+cohorts and custom cohorts in the same place.
+
+<Callout type="info">
+  `Rollout Percentage` and `Target Cohorts` work together.
+
+  - Numeric rollout still applies to the selected numeric cohorts for this
+    bundle.
+  - `Target Cohorts` adds extra cohorts such as `qa` or `411`.
 </Callout>
+
+You may see both settings in the console at the same time, as in the screenshot
+above. In this state, the numeric `50.0%` rollout still applies to the bundle's
+selected numeric cohorts, and devices in `qa` are also included.
+
+This is useful in two common cases:
+
+- Deploy with `-r 0` and `Target Cohorts = qa` when you want to test the bundle
+  with QA first.
+- Raise the same bundle to `50%` later and keep `qa` in `Target Cohorts` so
+  the main rollout and QA testing continue together.
 
 You can read the result like this:
 
-| Check                        | Example                                                               | Result                                                                                     |
-| ---------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Device cohort override       | `HotUpdater.setCohort("qa")` or `HotUpdater.setCohort(numericCohort)` | The device can be overridden to either a custom cohort or an existing numeric cohort.      |
-| Rollout percentage           | `0.0%`                                                                | No numeric cohort receives the bundle through percentage rollout.                          |
-| Allowed target cohort values | existing numeric cohort values, `qa`                                  | `Target Cohorts` supports both the original numeric cohort system and custom cohort names. |
-| Target cohorts               | `qa` or a numeric cohort value                                        | You can explicitly include either custom or numeric cohorts.                               |
-| Non-matching device          | `HotUpdater.getCohort() = dogfood`                                    | This device does not receive the bundle.                                                   |
-| Matching device              | `HotUpdater.getCohort() = qa` or the same numeric value               | This device receives the bundle when the same value appears in `Target Cohorts`.           |
+| Check                    | Example                                                  | Result                                                          |
+| ------------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
+| Numeric rollout device   | `HotUpdater.getCohort() = 411`, and `411` is in `Preview Cohorts` | This device receives the bundle through numeric rollout. |
+| QA tester device         | `HotUpdater.getCohort() = qa`                            | This device receives the bundle because `qa` is in `Target Cohorts`. |
+| Numeric cohort outside rollout | `HotUpdater.getCohort() = 410`, and `410` is not in `Preview Cohorts` | This device does not receive the bundle unless `410` is also added to `Target Cohorts`. |
+| Other custom cohort      | `HotUpdater.getCohort() = dogfood`                       | This device does not receive the bundle unless `dogfood` is targeted. |
 
-This scenario is useful when you want to ship to a known tester group without
-opening the bundle to the full numeric rollout audience. It is also useful when
-you want to temporarily move a tester device into an already deployed numeric
-cohort from the existing rollout system.
+Use this flow when you want stable tester coverage without giving up gradual
+numeric rollout. If needed, you can do the same thing with a numeric cohort
+such as `411`.
 
-### Manual Override QA Flow
+### Manual Override Flow
 
 1. Read the current cohort on the tester device with `HotUpdater.getCohort()`.
-2. Change it to a target value such as `qa` or an existing numeric cohort value with `HotUpdater.setCohort()`.
-3. Deploy the bundle with `npx hot-updater deploy -p ios -r 0`.
-4. Open the console and set `Target Cohorts` to the same value, such as `qa` or that numeric cohort value.
-5. Save the bundle and check for updates on the device.
+2. Change it to `qa` with `HotUpdater.setCohort()`. If you want to match a
+   numeric rollout instead, use a value such as `411`.
+3. Deploy the bundle with `npx hot-updater deploy -p ios -r 0` and set
+   `Target Cohorts = qa` so only QA devices receive it first.
+4. After QA confirms the bundle, increase rollout to `50%` and keep `qa` in
+   `Target Cohorts` on the same bundle.
+5. Devices in the selected numeric rollout keep receiving the bundle, and QA
+   devices in `qa` also keep receiving it.
 
 ## Related APIs
 

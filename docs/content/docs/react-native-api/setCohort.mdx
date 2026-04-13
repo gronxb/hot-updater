@@ -31,8 +31,10 @@ function assignQaCohort() {
 - Call `HotUpdater.getCohort()` first if you need to restore the previous value
   later.
 - Percentage rollout applies only to numeric cohorts.
-- To target a custom cohort such as `qa`, add that value to
-  `Target Cohorts` in the console.
+- To keep a custom cohort such as `qa` receiving a bundle alongside numeric
+  rollout, add that value to `Target Cohorts` in the console. This lets the
+  same bundle stay available to `qa` even if you later raise numeric rollout
+  from `0%` to `50%`.
 
 ## Related APIs
 
