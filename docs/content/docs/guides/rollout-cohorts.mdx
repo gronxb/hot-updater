@@ -5,6 +5,7 @@ icon: Users
 ---
 
 import { Callout } from "fumadocs-ui/components/callout";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Overview
 
@@ -25,7 +26,7 @@ Hot Updater uses cohorts to decide whether a device is eligible for a bundle.
   Cohorts`.
 </Callout>
 
-## Gradually Roll Out a Bundle
+## Deploy a Bundle with RollOut
 
 Use `-r` during deploy:
 
@@ -79,7 +80,7 @@ npx hot-updater deploy -p ios -r 50
 
 Open the bundle in the console and click `Preview Cohorts`:
 
-<img src={"/docs/rollout-cohorts/preview.png"} />
+<img src={"/docs/rollout-cohorts/preview_411.png"} />
 
 This opens the numeric cohort preview for that bundle:
 
@@ -91,18 +92,18 @@ stable for that bundle.
 
 <Callout type="info">
   `50%` rollout does not mean cohorts `1..500`. Hot Updater uses a stable
-  shuffled set per bundle, and `Preview Cohorts` shows the exact numeric
-  cohorts selected for that rollout.
+  shuffled set per bundle, and `Preview Cohorts` shows the exact numeric cohorts
+  selected for that rollout.
 </Callout>
 
 You can read the result like this:
 
-| Check | Example | Result |
-| --- | --- | --- |
-| Device cohort | `HotUpdater.getCohort() = 411` | This device belongs to cohort `411`. |
-| Rollout percentage | `50.0%` | The bundle targets `500` of `1000` numeric cohorts. |
+| Check                        | Example                           | Result                                                 |
+| ---------------------------- | --------------------------------- | ------------------------------------------------------ |
+| Device cohort                | `HotUpdater.getCohort() = 411`    | This device belongs to cohort `411`.                   |
+| Rollout percentage           | `50.0%`                           | The bundle targets `500` of `1000` numeric cohorts.    |
 | Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not receive this bundle. |
-| Cohort included in preview | `411` is in the selected list | A device in cohort `411` does receive this bundle. |
+| Cohort included in preview   | `411` is in the selected list     | A device in cohort `411` does receive this bundle.     |
 
 Here is the direct check for cohort `411`:
 
@@ -128,14 +129,31 @@ This is why the preview is useful: percentage rollout is not a simple `1..500`
 range. Hot Updater keeps a stable shuffled set per bundle, and `Preview
 Cohorts` shows the exact numeric cohorts included in that rollout.
 
-## Scenario 2: Custom Cohort Targeting
+## Scenario 2: Manual Cohort Override and Target Cohorts
 
-This scenario is separate from normal numeric rollout. Use it when you want to
-manually place devices into named groups such as `qa` or `dogfood`.
+This scenario builds on top of the existing numeric cohort system. Use it when
+you want to manually override the device cohort and explicitly target that
+value from the console.
 
-### Assign a Custom Cohort on a Device
+This walkthrough uses `qa` as the example value because that is what the app
+screen and console screenshot show.
 
-Use `HotUpdater.setCohort()` when you want to place a device in a named group:
+The same mechanism is not limited to custom names. It can also use the existing
+numeric cohort values from the original rollout system.
+
+This is the device state after overriding the cohort to `qa`:
+
+<img src={"/docs/rollout-cohorts/set_cohort.png"} width="320" />
+
+In this example, the app UI already shows that `HotUpdater.getCohort()` is set
+to `qa`.
+
+### Override the Device Cohort
+
+Use `HotUpdater.setCohort()` when you want to override the device cohort:
+
+<Tabs items={["Custom name", "Numeric value"]}>
+  <Tab value="Custom name">
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -146,11 +164,29 @@ function assignQaCohort() {
 }
 ```
 
-- Valid values are numeric `1..1000` or lowercase slugs such as `qa` and
-  `vip-testers`.
-- Hot Updater normalizes the value before storing it.
-- The assigned cohort is persisted on the device until you change it again or
-  clear app data.
+  </Tab>
+  <Tab value="Numeric value">
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+function assignNumericCohort(numericCohort: string) {
+  HotUpdater.setCohort(numericCohort);
+  console.log("Active cohort:", HotUpdater.getCohort());
+}
+```
+
+  </Tab>
+</Tabs>
+
+This works for both custom cohort names like `qa` and numeric cohort values
+from the existing rollout system.
+
+- `HotUpdater.setCohort("qa")` moves the device into a named tester group.
+- `HotUpdater.setCohort(numericCohort)` makes the device behave as that numeric
+  cohort.
+- Numeric override is useful when a bundle has already been deployed to a known
+  numeric cohort and you want a tester device to follow that same rollout path.
 
 <Callout type="warn">
   If you need to restore the original value later, call `HotUpdater.getCohort()`
@@ -167,15 +203,16 @@ npx hot-updater deploy -p ios -r 0
 npx hot-updater console
 ```
 
-In the bundle editor:
+Open the deployed bundle in the console and add `qa` to `Target Cohorts`:
 
-1. Open the deployed bundle.
-2. Set `Rollout Percentage` if you want numeric rollout.
-3. Add one or more values under `Target Cohorts (optional)`.
-4. Click `Save Changes`.
+<img src={"/docs/rollout-cohorts/target_cohorts.png"} />
 
-`Target Cohorts` accepts both numeric cohorts like `17` and custom cohorts like
-`qa`.
+`Target Cohorts` accepts both numeric cohort values and custom cohorts like
+`qa`. In this scenario, the bundle uses
+`Rollout Percentage = 0.0%` and `Target Cohorts = qa`.
+
+This screenshot uses `qa`, but the same flow also works with numeric target
+cohorts from the existing rollout system.
 
 <Callout type="warn">
   `Target Cohorts` overrides percentage rollout. When at least one target cohort
@@ -183,21 +220,28 @@ In the bundle editor:
   is `0%` or would normally exclude that device.
 </Callout>
 
-Example:
+You can read the result like this:
 
-```text
-Device cohort: qa
-Bundle rollout: 0.0%
-Target Cohorts: qa
-Result: only devices in the qa cohort receive the bundle
-```
+| Check                        | Example                                                               | Result                                                                                     |
+| ---------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Device cohort override       | `HotUpdater.setCohort("qa")` or `HotUpdater.setCohort(numericCohort)` | The device can be overridden to either a custom cohort or an existing numeric cohort.      |
+| Rollout percentage           | `0.0%`                                                                | No numeric cohort receives the bundle through percentage rollout.                          |
+| Allowed target cohort values | existing numeric cohort values, `qa`                                  | `Target Cohorts` supports both the original numeric cohort system and custom cohort names. |
+| Target cohorts               | `qa` or a numeric cohort value                                        | You can explicitly include either custom or numeric cohorts.                               |
+| Non-matching device          | `HotUpdater.getCohort() = dogfood`                                    | This device does not receive the bundle.                                                   |
+| Matching device              | `HotUpdater.getCohort() = qa` or the same numeric value               | This device receives the bundle when the same value appears in `Target Cohorts`.           |
 
-### Custom Cohort QA Flow
+This scenario is useful when you want to ship to a known tester group without
+opening the bundle to the full numeric rollout audience. It is also useful when
+you want to temporarily move a tester device into an already deployed numeric
+cohort from the existing rollout system.
+
+### Manual Override QA Flow
 
 1. Read the current cohort on the tester device with `HotUpdater.getCohort()`.
-2. If needed, assign a known cohort such as `qa` with `HotUpdater.setCohort()`.
+2. Change it to a target value such as `qa` or an existing numeric cohort value with `HotUpdater.setCohort()`.
 3. Deploy the bundle with `npx hot-updater deploy -p ios -r 0`.
-4. Open the console and add that value to `Target Cohorts`.
+4. Open the console and set `Target Cohorts` to the same value, such as `qa` or that numeric cohort value.
 5. Save the bundle and check for updates on the device.
 
 ## Related APIs
