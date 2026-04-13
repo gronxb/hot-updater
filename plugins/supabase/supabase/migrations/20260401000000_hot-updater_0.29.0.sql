@@ -223,9 +223,10 @@ BEGIN
   END IF;
 
   IF normalized_target_cohorts IS NOT NULL
-     AND array_length(normalized_target_cohorts, 1) > 0 THEN
-    RETURN normalized_cohort IS NOT NULL
-       AND normalized_cohort = ANY(normalized_target_cohorts);
+     AND array_length(normalized_target_cohorts, 1) > 0
+     AND normalized_cohort IS NOT NULL
+     AND normalized_cohort = ANY(normalized_target_cohorts) THEN
+    RETURN TRUE;
   END IF;
 
   IF normalized_rollout_count <= 0 THEN
