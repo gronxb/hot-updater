@@ -21,8 +21,8 @@ Hot Updater uses cohorts to decide whether a device is eligible for a bundle.
 
 <Callout type="info">
   Percentage rollout applies only to numeric cohorts. Custom cohorts do not
-  participate in partial numeric rollout unless you add them to
-  `Target Cohorts`.
+  participate in partial numeric rollout unless you add them to `Target
+  Cohorts`.
 </Callout>
 
 ## Gradually Roll Out a Bundle
@@ -43,24 +43,97 @@ Hot Updater keeps the selected numeric cohort set stable per bundle. That means
 increasing a bundle from `10%` to `25%` expands the same bundle's eligible set
 instead of reshuffling everyone.
 
-## See the Current Cohort on Device
+## Scenario 1: Numeric Rollout Flow
 
-Every device already has a cohort, even if you never call `setCohort()`. You
-can read it at runtime with `HotUpdater.getCohort()`:
+This scenario covers the normal numeric rollout flow.
+
+In this scenario, assume `HotUpdater.getCohort()` returns `411`.
+
+### See the Current Cohort on Device
+
+Check the current device cohort with `HotUpdater.getCohort()`:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 import { Text } from "react-native";
 
 export function CohortStatus() {
-  return <Text>Current cohort: {HotUpdater.getCohort()}</Text>;
+  return <Text>HotUpdater.getCohort(): {HotUpdater.getCohort()}</Text>;
 }
 ```
 
-Numeric values such as `17` or `900` participate in percentage rollout. Custom
-values such as `qa` or `dogfood` are useful when you want explicit targeting.
+This is the device state before rollout:
 
-## Assign a Custom Cohort on a Device
+<img src={"/docs/rollout-cohorts/get-cohort-ios.png"} width="320" />
+
+In this example, `HotUpdater.getCohort()` returns `411`, so this device belongs
+to cohort `411`.
+
+### Preview the Selected Numeric Cohorts
+
+Assume you deploy the bundle with a `50%` rollout:
+
+```package-install
+npx hot-updater deploy -p ios -r 50
+```
+
+Open the bundle in the console and click `Preview Cohorts`:
+
+<img src={"/docs/rollout-cohorts/preview.png"} />
+
+This opens the numeric cohort preview for that bundle:
+
+<img src={"/docs/rollout-cohorts/preview_cohort.png"} />
+
+If rollout is `50.0%`, Hot Updater selects `500` numeric cohorts out of
+`1..1000`. That selection is based on the bundle's `bundleId`, so the result is
+stable for that bundle.
+
+<Callout type="info">
+  `50%` rollout does not mean cohorts `1..500`. Hot Updater uses a stable
+  shuffled set per bundle, and `Preview Cohorts` shows the exact numeric
+  cohorts selected for that rollout.
+</Callout>
+
+You can read the result like this:
+
+| Check | Example | Result |
+| --- | --- | --- |
+| Device cohort | `HotUpdater.getCohort() = 411` | This device belongs to cohort `411`. |
+| Rollout percentage | `50.0%` | The bundle targets `500` of `1000` numeric cohorts. |
+| Cohort excluded from preview | `410` is not in the selected list | A device in cohort `410` does not receive this bundle. |
+| Cohort included in preview | `411` is in the selected list | A device in cohort `411` does receive this bundle. |
+
+Here is the direct check for cohort `411`:
+
+<img src={"/docs/rollout-cohorts/preview_411.png"} />
+
+In this example, cohort `411` is included in the selected rollout set. Since
+the iOS example app above reported `HotUpdater.getCohort(): 411`, this device
+is eligible for the rollout and will receive the bundle.
+
+After the app checks for updates and applies the eligible bundle, you end up
+with the post-update state below:
+
+<img src={"/docs/rollout-cohorts/final-current-state.png"} width="320" />
+
+This walkthrough shows the normal numeric rollout flow:
+
+1. The device starts with cohort `411`.
+2. You deploy with `npx hot-updater deploy -p ios -r 50`.
+3. The preview confirms that cohort `411` is included.
+4. The device is eligible, so it receives the bundle.
+
+This is why the preview is useful: percentage rollout is not a simple `1..500`
+range. Hot Updater keeps a stable shuffled set per bundle, and `Preview
+Cohorts` shows the exact numeric cohorts included in that rollout.
+
+## Scenario 2: Custom Cohort Targeting
+
+This scenario is separate from normal numeric rollout. Use it when you want to
+manually place devices into named groups such as `qa` or `dogfood`.
+
+### Assign a Custom Cohort on a Device
 
 Use `HotUpdater.setCohort()` when you want to place a device in a named group:
 
@@ -84,7 +157,7 @@ function assignQaCohort() {
   first and store it before overriding.
 </Callout>
 
-## Target Specific Cohorts from the Console
+### Target Specific Cohorts from the Console
 
 If you want to ship a bundle to a known set of devices, deploy the bundle first,
 then edit it in the console:
@@ -119,11 +192,11 @@ Target Cohorts: qa
 Result: only devices in the qa cohort receive the bundle
 ```
 
-## Recommended QA Flow
+### Custom Cohort QA Flow
 
 1. Read the current cohort on the tester device with `HotUpdater.getCohort()`.
 2. If needed, assign a known cohort such as `qa` with `HotUpdater.setCohort()`.
-3. Deploy the bundle with `hot-updater deploy -r <percentage>`.
+3. Deploy the bundle with `npx hot-updater deploy -p ios -r 0`.
 4. Open the console and add that value to `Target Cohorts`.
 5. Save the bundle and check for updates on the device.
 
