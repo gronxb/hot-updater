@@ -1,5 +1,9 @@
 // Maestro runScript loads JavaScript files directly, so this helper stays JS.
 
+// The first iOS bootstrap can include a full release build, pod install, and app reinstall.
+// Keep the polling window long enough for that path instead of failing at 12 minutes.
+const JOB_TIMEOUT_SECONDS = 1800;
+
 function request(method, pathname, body) {
   const url = `${CONTROL_URL}${pathname}`;
   const headers = {
@@ -69,7 +73,7 @@ function startJob(pathname, body) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < 720; attempt += 1) {
+  for (let attempt = 0; attempt < JOB_TIMEOUT_SECONDS; attempt += 1) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -84,7 +88,9 @@ function startJob(pathname, body) {
     pause(1000);
   }
 
-  throw new Error(`timed out waiting for job ${jobId}`);
+  throw new Error(
+    `timed out waiting for job ${jobId} after ${JOB_TIMEOUT_SECONDS}s`,
+  );
 }
 
 function maybeNumber(value) {
