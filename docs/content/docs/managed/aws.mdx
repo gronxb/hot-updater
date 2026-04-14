@@ -206,7 +206,7 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
+The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, version: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
 </Callout>
 
 

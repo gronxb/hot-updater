@@ -207,7 +207,7 @@ With Hono `mount()`, keep `/api/check-update/app-version/*` and
 `/api/check-update/fingerprint/*` public for React Native clients.
 
 This example uses
-`routes: { updateCheck: true, bundles: false }`, so
+`routes: { updateCheck: true, version: true, bundles: false }`, so
 `/api/check-update/version` stays mounted while `/api/check-update/api/*` is
 not mounted.
 
