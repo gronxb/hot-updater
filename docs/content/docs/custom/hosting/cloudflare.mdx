@@ -206,12 +206,15 @@ export default app;
 With Hono `mount()`, keep `/api/check-update/app-version/*` and
 `/api/check-update/fingerprint/*` public for React Native clients.
 
-This example uses `routes: { updateCheck: true, bundles: false }`, so
-`/api/check-update/version` and `/api/check-update/api/*` are not mounted.
+This example uses
+`routes: { updateCheck: true, bundles: false }`, so
+`/api/check-update/version` stays mounted while `/api/check-update/api/*` is
+not mounted.
 
-If you enable bundle routes later, protect `/api/check-update/version` and
-`/api/check-update/api/*` with Hono middleware, but keep the update-check routes
-public.
+Leave `/api/check-update/version` public for diagnostics or set
+`routes.version: false` if you want update-check-only routes. If you enable
+bundle routes later, protect `/api/check-update/api/*` with Hono middleware,
+but keep the update-check routes public.
 
 The catch-all download route stays reachable, but each bundle download is still
 guarded by the signed `token` verified with `JWT_SECRET`.

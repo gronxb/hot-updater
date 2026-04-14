@@ -148,7 +148,7 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Cloudflare runtime only exposes update-check endpoints. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints and `/version` are not mounted on the public worker URL.
+The managed Cloudflare runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public worker URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

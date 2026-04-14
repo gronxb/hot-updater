@@ -61,8 +61,14 @@ export interface HandlerRoutes {
    */
   updateCheck?: boolean;
   /**
+   * Controls whether the `/version` endpoint is mounted.
+   * Useful for diagnostics and lightweight health/version checks.
+   * @default true
+   */
+  version?: boolean;
+  /**
    * Controls whether bundle management routes are mounted.
-   * This includes `/version` and `/api/bundles*`, which are used by the
+   * This includes `/api/bundles*`, which are used by the
    * CLI `standaloneRepository` plugin.
    * @default true
    */
@@ -85,7 +91,9 @@ class HandlerBadRequestError extends Error {
 
 // Route handlers
 const handleVersion: RouteHandler = async () => {
-  return new Response(JSON.stringify({ version: __VERSION__ }), {
+  const version = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
+
+  return new Response(JSON.stringify({ version }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -395,12 +403,17 @@ export function createHandler<TContext = unknown>(
 ) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
   const updateCheckEnabled = options.routes?.updateCheck ?? true;
+  const versionEnabled = options.routes?.version ?? true;
   const bundlesEnabled = options.routes?.bundles ?? true;
 
   // Create and configure router
   const router = createRouter();
 
   // Register routes
+  if (versionEnabled) {
+    addRoute(router, "GET", "/version", "version");
+  }
+
   if (updateCheckEnabled) {
     addRoute(
       router,
@@ -429,7 +442,6 @@ export function createHandler<TContext = unknown>(
   }
 
   if (bundlesEnabled) {
-    addRoute(router, "GET", "/version", "version");
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");
