@@ -1,3 +1,4 @@
+-- HotUpdater.is_cohort_eligible
 CREATE OR REPLACE FUNCTION is_cohort_eligible(
   bundle_id UUID,
   cohort TEXT,
