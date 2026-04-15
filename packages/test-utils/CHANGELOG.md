@@ -1,6 +1,6 @@
 # @hot-updater/test-utils
 
-## 1.0.0
+## 0.30.0
 
 ### Minor Changes
 
@@ -9,7 +9,7 @@
 ### Patch Changes
 
 - Updated dependencies [83c01c8]
-  - @hot-updater/core@1.0.0
+  - @hot-updater/core@0.30.0
 
 ## 0.29.8
 

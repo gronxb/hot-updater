@@ -1,6 +1,6 @@
 # @hot-updater/console
 
-## 1.0.0
+## 0.30.0
 
 ### Minor Changes
 
@@ -9,7 +9,7 @@
 ### Patch Changes
 
 - Updated dependencies [83c01c8]
-  - @hot-updater/cli-tools@1.0.0
+  - @hot-updater/cli-tools@0.30.0
 
 ## 0.29.8
 
