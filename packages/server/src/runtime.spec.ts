@@ -9,6 +9,7 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { createHotUpdater } from "./runtime";
+import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const bundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -423,7 +424,7 @@ describe("runtime createHotUpdater", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      version: expect.any(String),
+      version: HOT_UPDATER_SERVER_VERSION,
     });
   });
 

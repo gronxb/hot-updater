@@ -2,6 +2,7 @@ import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHandler, type HandlerAPI } from "./handler";
+import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 type TestEnv = {
   tenantId: string;
@@ -131,7 +132,7 @@ describe("createHandler", () => {
 
     expect(versionResponse.status).toBe(200);
     await expect(versionResponse.json()).resolves.toEqual({
-      version: expect.any(String),
+      version: HOT_UPDATER_SERVER_VERSION,
     });
     expect(bundlesResponse.status).toBe(404);
     expect(updateResponse.status).toBe(200);
@@ -189,7 +190,7 @@ describe("createHandler", () => {
 
     expect(versionResponse.status).toBe(200);
     await expect(versionResponse.json()).resolves.toEqual({
-      version: expect.any(String),
+      version: HOT_UPDATER_SERVER_VERSION,
     });
     expect(channelsResponse.status).toBe(200);
     await expect(channelsResponse.json()).resolves.toEqual({

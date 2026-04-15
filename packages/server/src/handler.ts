@@ -12,8 +12,7 @@ import type {
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
-
-declare const __VERSION__: string;
+import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 // Narrow API surface needed by the handler to avoid circular types
 export interface HandlerAPI<TContext = unknown> {
@@ -91,9 +90,7 @@ class HandlerBadRequestError extends Error {
 
 // Route handlers
 const handleVersion: RouteHandler = async () => {
-  const version = typeof __VERSION__ === "string" ? __VERSION__ : "0.0.0-dev";
-
-  return new Response(JSON.stringify({ version }), {
+  return new Response(JSON.stringify({ version: HOT_UPDATER_SERVER_VERSION }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
