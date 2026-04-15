@@ -1,5 +1,19 @@
 # @hot-updater/supabase
 
+## 0.30.0
+
+### Minor Changes
+
+- 83c01c8: fix: keep target cohorts additive to rollout
+
+### Patch Changes
+
+- Updated dependencies [83c01c8]
+  - @hot-updater/server@0.30.0
+  - @hot-updater/core@0.30.0
+  - @hot-updater/cli-tools@0.30.0
+  - @hot-updater/plugin-core@0.30.0
+
 ## 0.29.8
 
 ### Patch Changes
