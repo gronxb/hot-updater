@@ -54,6 +54,44 @@ describe("getRolledOutNumericCohorts", () => {
   });
 });
 
+describe("isCohortEligibleForUpdate", () => {
+  it("keeps numeric rollout active when target cohorts are configured", () => {
+    const bundleId = "bundle-d";
+    const rolloutCohorts = getRolledOutNumericCohorts(bundleId, 137);
+
+    expect(
+      isCohortEligibleForUpdate(bundleId, String(rolloutCohorts[0]), 137, [
+        "qa-group",
+      ]),
+    ).toBe(true);
+  });
+
+  it("includes targeted custom cohorts in addition to numeric rollout", () => {
+    expect(
+      isCohortEligibleForUpdate("bundle-e", "qa-group", 137, ["qa-group"]),
+    ).toBe(true);
+  });
+
+  it("includes targeted numeric cohorts even when rollout excludes them", () => {
+    const bundleId = "bundle-f";
+    const rolloutCohorts = new Set(getRolledOutNumericCohorts(bundleId, 10));
+    const excludedCohort = Array.from(
+      { length: NUMERIC_COHORT_SIZE },
+      (_, index) => index + 1,
+    ).find((cohortValue) => !rolloutCohorts.has(cohortValue));
+
+    if (excludedCohort === undefined) {
+      throw new Error("Expected an excluded cohort for partial rollout");
+    }
+
+    expect(
+      isCohortEligibleForUpdate(bundleId, String(excludedCohort), 10, [
+        String(excludedCohort),
+      ]),
+    ).toBe(true);
+  });
+});
+
 describe("cohort validation", () => {
   it("rejects empty cohorts and numeric strings outside 1..1000", () => {
     expect(isValidCohort("")).toBe(false);

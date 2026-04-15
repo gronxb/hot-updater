@@ -121,3 +121,4 @@ export function createHotUpdater<TContext = unknown>(
 }
 
 export { createHandler };
+export { HOT_UPDATER_SERVER_VERSION } from "./version";

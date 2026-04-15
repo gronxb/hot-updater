@@ -2,6 +2,7 @@ import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHandler, type HandlerAPI } from "./handler";
+import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 type TestEnv = {
   tenantId: string;
@@ -107,7 +108,7 @@ describe("createHandler", () => {
     );
   });
 
-  it("can mount only update-check routes", async () => {
+  it("keeps version mounted when bundle routes are disabled", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
@@ -129,12 +130,43 @@ describe("createHandler", () => {
       ),
     );
 
+    expect(versionResponse.status).toBe(200);
+    await expect(versionResponse.json()).resolves.toEqual({
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+    expect(bundlesResponse.status).toBe(404);
+    expect(updateResponse.status).toBe(200);
+  });
+
+  it("can disable the version route independently", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: {
+        updateCheck: true,
+        version: false,
+        bundles: false,
+      },
+    });
+
+    const versionResponse = await handler(
+      new Request("http://localhost/hot-updater/version"),
+    );
+    const bundlesResponse = await handler(
+      new Request("http://localhost/hot-updater/api/bundles"),
+    );
+    const updateResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
     expect(versionResponse.status).toBe(404);
     expect(bundlesResponse.status).toBe(404);
     expect(updateResponse.status).toBe(200);
   });
 
-  it("can mount only bundle routes", async () => {
+  it("can mount bundle routes without update-check routes", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
@@ -144,6 +176,9 @@ describe("createHandler", () => {
       },
     });
 
+    const versionResponse = await handler(
+      new Request("http://localhost/hot-updater/version"),
+    );
     const channelsResponse = await handler(
       new Request("http://localhost/hot-updater/api/bundles/channels"),
     );
@@ -153,6 +188,10 @@ describe("createHandler", () => {
       ),
     );
 
+    expect(versionResponse.status).toBe(200);
+    await expect(versionResponse.json()).resolves.toEqual({
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
     expect(channelsResponse.status).toBe(200);
     await expect(channelsResponse.json()).resolves.toEqual({
       data: {
