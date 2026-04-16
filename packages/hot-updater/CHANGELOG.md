@@ -1,5 +1,19 @@
 # hot-updater
 
+## 0.30.1
+
+### Patch Changes
+
+- 5a7cb26: feat(cli): check infra in hot-updater doctor
+- Updated dependencies [35b8720]
+  - @hot-updater/console@0.30.1
+  - @hot-updater/android-helper@0.30.1
+  - @hot-updater/apple-helper@0.30.1
+  - @hot-updater/cli-tools@0.30.1
+  - @hot-updater/core@0.30.1
+  - @hot-updater/server@0.30.1
+  - @hot-updater/plugin-core@0.30.1
+
 ## 0.30.0
 
 ### Minor Changes
