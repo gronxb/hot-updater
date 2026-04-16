@@ -1,5 +1,3 @@
-import fs from "fs";
-
 import { getCwd, p } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
 import { readPackageUp } from "read-package-up";
@@ -367,34 +365,6 @@ export async function doctor(
   }
 }
 
-/**
- * Fix version mismatches in package.json
- * This is a separate utility function for CLI usage
- */
-export async function fixVersionMismatches(
-  packageJsonPath: string,
-  versionMismatches: VersionMismatch[],
-): Promise<void> {
-  const packageResult = await fs.promises.readFile(packageJsonPath, "utf-8");
-  if (!packageResult) {
-    throw new Error("Could not read package.json");
-  }
-
-  const packageJson = JSON.parse(packageResult) as PackageJson;
-
-  for (const mismatch of versionMismatches) {
-    if (packageJson.dependencies?.[mismatch.packageName]) {
-      packageJson.dependencies[mismatch.packageName] = mismatch.expectedVersion;
-    } else if (packageJson.devDependencies?.[mismatch.packageName]) {
-      packageJson.devDependencies[mismatch.packageName] =
-        mismatch.expectedVersion;
-    }
-  }
-
-  const content = `${JSON.stringify(packageJson, null, 2)}\n`;
-  await fs.promises.writeFile(packageJsonPath, content);
-}
-
 const promptServerBaseUrl = async () => {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return undefined;
@@ -427,12 +397,10 @@ const promptServerBaseUrl = async () => {
 };
 
 export const handleDoctor = async ({
-  fix,
   serverBaseUrl,
 }: {
-  fix: boolean;
   serverBaseUrl?: string;
-}) => {
+} = {}) => {
   p.intro("Checking the health of Hot Updater.");
 
   const resolvedServerBaseUrl = serverBaseUrl ?? (await promptServerBaseUrl());
@@ -495,25 +463,10 @@ export const handleDoctor = async ({
       );
     }
 
-    if (fix && details.packageJsonPath) {
-      try {
-        await fixVersionMismatches(
-          details.packageJsonPath,
-          details.versionMismatches,
-        );
-        p.log.success("✅ Fixed version mismatches in package.json");
-        p.log.info("Run your package manager to install the updated versions.");
-        shouldExitWithFailure =
-          details.infrastructure?.error !== undefined ||
-          details.infrastructure?.needsUpdate === true;
-      } catch (error) {
-        p.log.error(`Failed to fix versions: ${(error as Error).message}`);
-        shouldExitWithFailure = true;
-      }
-    } else if (!fix) {
-      p.log.info("Run with --fix to automatically update versions.");
-      process.exit(1);
-    }
+    p.log.info(
+      "Update every Hot Updater package to the same compatible version, " +
+        "then run your package manager install command.",
+    );
   }
 
   if (shouldExitWithFailure) {
