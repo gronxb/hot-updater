@@ -14,6 +14,12 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
@@ -42,6 +48,9 @@ type BundleEditorFormValues = {
   rolloutCohortCount: number;
   targetCohorts: string[];
 };
+
+const MIN_ROLLOUT_COHORT_COUNT = 10;
+const MAX_ROLLOUT_COHORT_COUNT = 1000;
 
 function getTargetAppVersionValidation(value: string) {
   const normalizedValue = value.trim();
@@ -82,6 +91,109 @@ function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
 
 const formatRolloutPercentage = (rolloutCohortCount: number) =>
   (rolloutCohortCount / 10).toFixed(1);
+
+function clampRolloutCohortCount(value: number) {
+  return Math.min(
+    Math.max(value, MIN_ROLLOUT_COHORT_COUNT),
+    MAX_ROLLOUT_COHORT_COUNT,
+  );
+}
+
+function formatRolloutInputValue(value: string) {
+  const normalizedValue = value.replace(",", ".");
+  const [integerValue = "", ...decimalValues] = normalizedValue.split(".");
+  const integerDigits = integerValue.replace(/\D/g, "").slice(0, 3);
+  const decimalDigits = decimalValues.join("").replace(/\D/g, "").slice(0, 1);
+
+  if (normalizedValue.includes(".")) {
+    return `${integerDigits}.${decimalDigits}`;
+  }
+
+  return integerDigits;
+}
+
+function parseRolloutPercentageInput(value: string) {
+  const parsedValue = Number.parseFloat(value);
+
+  if (!Number.isFinite(parsedValue)) {
+    return null;
+  }
+
+  return clampRolloutCohortCount(Math.trunc(parsedValue * 10));
+}
+
+function RolloutPercentageInput({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const [inputValue, setInputValue] = useState(formatRolloutPercentage(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setInputValue(formatRolloutPercentage(value));
+    }
+  }, [isFocused, value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextInputValue = formatRolloutInputValue(e.target.value);
+    const nextRolloutCohortCount = parseRolloutPercentageInput(nextInputValue);
+
+    setInputValue(nextInputValue);
+
+    if (nextRolloutCohortCount !== null) {
+      onChange(nextRolloutCohortCount);
+    }
+  };
+
+  const handleInputBlur = () => {
+    const nextRolloutCohortCount =
+      parseRolloutPercentageInput(inputValue) ?? value;
+
+    setIsFocused(false);
+    onChange(nextRolloutCohortCount);
+    setInputValue(formatRolloutPercentage(nextRolloutCohortCount));
+  };
+
+  const handleSliderChange = ([nextValue]: number[]) => {
+    const nextRolloutCohortCount = clampRolloutCohortCount(nextValue);
+
+    onChange(nextRolloutCohortCount);
+    setInputValue(formatRolloutPercentage(nextRolloutCohortCount));
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <Slider
+        id="rolloutCohortCount"
+        value={[value]}
+        onValueChange={handleSliderChange}
+        min={MIN_ROLLOUT_COHORT_COUNT}
+        max={MAX_ROLLOUT_COHORT_COUNT}
+        step={1}
+        className="min-w-0 flex-1"
+      />
+      <InputGroup className="w-24 shrink-0">
+        <InputGroupInput
+          id="rolloutPercentage"
+          value={inputValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsFocused(true)}
+          onBlur={handleInputBlur}
+          inputMode="decimal"
+          aria-label="Rollout Percentage"
+          className="text-right tabular-nums"
+        />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>%</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
+    </div>
+  );
+}
 
 export function BundleEditorForm({
   bundle,
@@ -337,11 +449,8 @@ export function BundleEditorForm({
           {(field) => (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="rolloutCohortCount">Rollout Percentage</Label>
+                <Label htmlFor="rolloutPercentage">Rollout Percentage</Label>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {formatRolloutPercentage(field.state.value)}%
-                  </span>
                   <RolloutCohortsDialog
                     bundleId={bundle.id}
                     rolloutCohortCount={field.state.value}
@@ -352,14 +461,9 @@ export function BundleEditorForm({
                   />
                 </div>
               </div>
-              <Slider
-                id="rolloutCohortCount"
-                value={[field.state.value]}
-                onValueChange={([value]) => field.handleChange(value)}
-                min={0}
-                max={1000}
-                step={1}
-                className="mt-2"
+              <RolloutPercentageInput
+                value={field.state.value}
+                onChange={field.handleChange}
               />
             </div>
           )}
