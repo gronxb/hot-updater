@@ -156,6 +156,50 @@ describe("BundleEditorForm", () => {
     expect(saveButton.hasAttribute("disabled")).toBe(true);
   });
 
+  it("edits rollout percentage from the keyboard as one decimal place", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const rolloutPercentageInput = screen.getByLabelText("Rollout Percentage");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "33.37" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("33.3");
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          rolloutCohortCount: 333,
+        }),
+      });
+    });
+  });
+
+  it("clamps keyboard rollout edits to 1 through 100 percent", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const rolloutPercentageInput = screen.getByLabelText("Rollout Percentage");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "0.5" },
+    });
+    fireEvent.blur(rolloutPercentageInput);
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("1.0");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "150" },
+    });
+    fireEvent.blur(rolloutPercentageInput);
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("100.0");
+  });
+
   it("disables secondary actions while the save mutation is pending", () => {
     mockUpdateBundleMutation.isPending = true;
 

@@ -12,6 +12,7 @@
     "runtime-channel-switch",
     "update-strategies",
     "compression",
+    "doctor",
     "bundle-signing"
   ]
 }
