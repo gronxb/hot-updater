@@ -50,6 +50,12 @@ Required infrastructure version: x.x.x
 Doctor check complete.
 ```
 
+## Update Package Versions
+
+If `doctor` reports version mismatches, update every Hot Updater package in
+`package.json` to the same compatible version, then run your package manager
+install command.
+
 ## Update Outdated Infrastructure
 
 If your server is outdated, `doctor` prints:
@@ -65,9 +71,6 @@ How to fix it depends on how you run Hot Updater:
 - **Managed providers (`aws`, `cloudflare`, `supabase`, `firebase`)**: run
   `npx hot-updater init` again and redeploy the generated provider
   infrastructure.
-
-`--fix` only updates package versions in `package.json`. It does not update or
-redeploy infrastructure.
 
 ## Options
 
