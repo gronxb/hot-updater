@@ -1,5 +1,31 @@
 # @hot-updater/plugin-core
 
+## 0.30.0
+
+### Minor Changes
+
+- 83c01c8: fix: keep target cohorts additive to rollout
+
+### Patch Changes
+
+- Updated dependencies [83c01c8]
+  - @hot-updater/core@0.30.0
+  - @hot-updater/js@0.30.0
+
+## 0.29.8
+
+### Patch Changes
+
+- @hot-updater/core@0.29.8
+- @hot-updater/js@0.29.8
+
+## 0.29.7
+
+### Patch Changes
+
+- @hot-updater/core@0.29.7
+- @hot-updater/js@0.29.7
+
 ## 0.29.6
 
 ### Patch Changes

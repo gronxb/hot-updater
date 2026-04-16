@@ -57,12 +57,12 @@ Update-check routes must stay public for React Native clients:
 - `/hot-updater/app-version/*`
 - `/hot-updater/fingerprint/*`
 
+`/hot-updater/version` is mounted by default. You can leave it public for
+diagnostics, or disable it with `routes.version: false`.
+
 If `routes.bundles` is enabled, protect these admin routes:
 
-- `/hot-updater/version`
 - `/hot-updater/api/*`
-
-`/hot-updater/version` is used by the CLI `standaloneRepository` plugin, so it should be protected alongside bundle management endpoints.
 
 ```typescript
 import { Hono } from "hono";
@@ -79,7 +79,9 @@ app.mount("/hot-updater", hotUpdater.handler);
 export default app;
 ```
 
-If you set `routes: { updateCheck: true, bundles: false }`, `/hot-updater/version` and `/hot-updater/api/*` are not mounted, so only the public update-check routes remain.
+If you set `routes: { updateCheck: true, bundles: false }`,
+`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
+available. Set `version: false` as well if you want update-check-only routes.
 
 Set your API key in environment variables:
 

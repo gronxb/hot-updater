@@ -32,6 +32,7 @@ const hotUpdater = createHotUpdater({
   basePath: hotUpdaterBasePath,
   routes: {
     updateCheck: true,
+    version: true,
     bundles: false,
   },
 });

@@ -46,19 +46,34 @@ export function PromoteChannelDialog({
   const { setBundleId } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
   const promoteBundleMutation = usePromoteBundleMutation();
+  const isPromoting = promoteBundleMutation.isPending;
 
   const availableChannels = channels.filter((c) => c !== bundle.channel);
   const isCopy = action === "copy";
   const normalizedTargetChannel = targetChannel.trim();
   const isSameChannel = normalizedTargetChannel === bundle.channel;
   const displayedCopyBundleId = copyBundleId || "Generating bundle ID...";
+
+  const resetDialogState = () => {
+    setTargetChannel("");
+    setAction("move");
+    setCopyBundleId("");
+  };
+
+  const closeDialog = () => {
+    onOpenChange(false);
+    resetDialogState();
+  };
+
   const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isPromoting) {
+      return;
+    }
+
     onOpenChange(nextOpen);
 
     if (!nextOpen) {
-      setTargetChannel("");
-      setAction("move");
-      setCopyBundleId("");
+      resetDialogState();
     }
   };
 
@@ -101,7 +116,7 @@ export function PromoteChannelDialog({
         });
       const promotedBundleId = promotedBundle.id;
 
-      handleOpenChange(false);
+      closeDialog();
       onSuccess?.();
       toast.success(
         isCopy
@@ -126,7 +141,19 @@ export function PromoteChannelDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent
+        showCloseButton={!isPromoting}
+        onEscapeKeyDown={(event) => {
+          if (isPromoting) {
+            event.preventDefault();
+          }
+        }}
+        onInteractOutside={(event) => {
+          if (isPromoting) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Promote to Channel</DialogTitle>
           <DialogDescription>
@@ -137,8 +164,12 @@ export function PromoteChannelDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="promote-action">Action</Label>
-            <Select value={action} onValueChange={handleActionChange}>
-              <SelectTrigger id="promote-action">
+            <Select
+              value={action}
+              onValueChange={handleActionChange}
+              disabled={isPromoting}
+            >
+              <SelectTrigger id="promote-action" disabled={isPromoting}>
                 <SelectValue placeholder="Select an action" />
               </SelectTrigger>
               <SelectContent>
@@ -160,6 +191,7 @@ export function PromoteChannelDialog({
                 id="copy-bundle-id"
                 value={displayedCopyBundleId}
                 readOnly
+                disabled={isPromoting}
               />
               <p className="font-mono text-xs text-muted-foreground">
                 {displayedCopyBundleId}
@@ -176,6 +208,7 @@ export function PromoteChannelDialog({
               placeholder="Enter a channel name"
               list="available-channels"
               aria-invalid={isSameChannel}
+              disabled={isPromoting}
             />
             <datalist id="available-channels">
               {availableChannels.map((channel) => (
@@ -191,6 +224,7 @@ export function PromoteChannelDialog({
                     variant="outline"
                     size="xs"
                     onClick={() => setTargetChannel(channel)}
+                    disabled={isPromoting}
                   >
                     {channel}
                   </Button>
@@ -209,7 +243,11 @@ export function PromoteChannelDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={isPromoting}
+          >
             Cancel
           </Button>
           <Button
@@ -218,10 +256,16 @@ export function PromoteChannelDialog({
               !normalizedTargetChannel ||
               (isCopy && !copyBundleId) ||
               isSameChannel ||
-              promoteBundleMutation.isPending
+              isPromoting
             }
           >
-            {isCopy ? "Copy" : "Move"}
+            {isPromoting
+              ? isCopy
+                ? "Copying..."
+                : "Moving..."
+              : isCopy
+                ? "Copy"
+                : "Move"}
           </Button>
         </DialogFooter>
       </DialogContent>

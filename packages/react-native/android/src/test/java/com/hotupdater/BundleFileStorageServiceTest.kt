@@ -182,6 +182,53 @@ class BundleFileStorageServiceTest {
         assertEquals(stagingDir.name, report["crashedBundleId"])
     }
 
+    @Test
+    fun `getBundleId falls back to built in while staging verification is pending`() {
+        val rootDir = temporaryFolder.newFolder("pending-staging-built-in")
+        val service = createService(rootDir)
+
+        val stagingDir = createBundleDir(rootDir, "staging-bundle")
+        writeFile(stagingDir, "index.android.bundle")
+        writeManifest(stagingDir, listOf("index.android.bundle"))
+
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = null,
+                stagingBundleId = stagingDir.name,
+                verificationPending = true,
+            ),
+        )
+
+        assertNull(service.getBundleId())
+    }
+
+    @Test
+    fun `getBundleId returns launched staging bundle while verification is pending`() {
+        val rootDir = temporaryFolder.newFolder("pending-staging-active")
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+
+        val stagingDir = createBundleDir(rootDir, "staging-bundle")
+        val stagingBundleFile = writeFile(stagingDir, "index.android.bundle")
+        writeManifest(stagingDir, listOf("index.android.bundle"))
+
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = null,
+                stagingBundleId = stagingDir.name,
+                verificationPending = true,
+            ),
+        )
+
+        preferences.setItem("HotUpdaterBundleURL", stagingBundleFile.absolutePath)
+
+        assertEquals(stagingDir.name, service.getBundleId())
+    }
+
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),

@@ -22,6 +22,7 @@ import {
 
 export type { HotUpdaterClient, Migrator } from "./ormCore";
 export { HotUpdaterDB } from "./ormCore";
+export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   basePath: string;

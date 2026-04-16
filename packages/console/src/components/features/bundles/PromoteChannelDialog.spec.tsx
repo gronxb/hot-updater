@@ -51,8 +51,21 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) =>
-    open ? <div>{children}</div> : null,
+  Dialog: ({
+    open,
+    onOpenChange,
+    children,
+  }: {
+    open: boolean;
+    onOpenChange?: (open: boolean) => void;
+    children: ReactNode;
+  }) =>
+    open ? (
+      <div>
+        <button onClick={() => onOpenChange?.(false)}>Dismiss dialog</button>
+        {children}
+      </div>
+    ) : null,
   DialogContent: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -330,5 +343,26 @@ describe("PromoteChannelDialog", () => {
         "Legacy bundle without manifest.json",
       );
     });
+  });
+
+  it("ignores dismiss requests while promotion is pending", () => {
+    mockPromoteBundleMutation.isPending = true;
+    const mockOnOpenChange = vi.fn();
+
+    render(
+      <PromoteChannelDialog
+        bundle={bundle}
+        open
+        onOpenChange={mockOnOpenChange}
+        onSuccess={mockOnSuccess}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss dialog" }));
+
+    expect(mockOnOpenChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

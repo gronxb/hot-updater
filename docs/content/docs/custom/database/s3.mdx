@@ -83,7 +83,7 @@ export default app;
 ```
 
 <Callout type="warn">
-When mounting Hot Updater with Hono, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public. If `routes.bundles` is enabled, protect `/hot-updater/version` and `/hot-updater/api/*`.
+When mounting Hot Updater with Hono, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public. `/hot-updater/version` is mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` whenever `routes.bundles` is enabled.
 </Callout>
 
 ## Environment Variables

@@ -207,11 +207,11 @@ export function isCohortEligibleForUpdate(
     targetCohorts?.map((targetCohort) => normalizeCohortValue(targetCohort)) ??
     [];
 
-  if (normalizedTargetCohorts.length > 0) {
-    return (
-      normalizedCohort !== undefined &&
-      normalizedTargetCohorts.includes(normalizedCohort)
-    );
+  if (
+    normalizedCohort !== undefined &&
+    normalizedTargetCohorts.includes(normalizedCohort)
+  ) {
+    return true;
   }
 
   const normalizedRolloutCount =

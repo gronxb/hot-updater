@@ -1,5 +1,15 @@
 # @hot-updater/bsdiff
 
+## 0.30.0
+
+### Minor Changes
+
+- 83c01c8: fix: keep target cohorts additive to rollout
+
+## 0.29.8
+
+## 0.29.7
+
 ## 0.29.6
 
 ## 0.29.5

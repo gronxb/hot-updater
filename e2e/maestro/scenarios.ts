@@ -12,6 +12,7 @@ const DEFAULT_SUITE_SCENARIOS = [
   "release-ota-recovery",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
+  "target-cohorts-with-rollout",
   "targeted-cohort-switchback",
   "force-update-auto-reload",
   "disabled-bundle-rollback-to-builtin",

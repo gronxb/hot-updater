@@ -1,5 +1,47 @@
 # hot-updater
 
+## 0.30.0
+
+### Minor Changes
+
+- 83c01c8: fix: keep target cohorts additive to rollout
+
+### Patch Changes
+
+- Updated dependencies [83c01c8]
+  - @hot-updater/console@0.30.0
+  - @hot-updater/server@0.30.0
+  - @hot-updater/core@0.30.0
+  - @hot-updater/android-helper@0.30.0
+  - @hot-updater/apple-helper@0.30.0
+  - @hot-updater/cli-tools@0.30.0
+  - @hot-updater/plugin-core@0.30.0
+
+## 0.29.8
+
+### Patch Changes
+
+- Updated dependencies [28e14aa]
+  - @hot-updater/console@0.29.8
+  - @hot-updater/android-helper@0.29.8
+  - @hot-updater/apple-helper@0.29.8
+  - @hot-updater/cli-tools@0.29.8
+  - @hot-updater/core@0.29.8
+  - @hot-updater/server@0.29.8
+  - @hot-updater/plugin-core@0.29.8
+
+## 0.29.7
+
+### Patch Changes
+
+- @hot-updater/android-helper@0.29.7
+- @hot-updater/apple-helper@0.29.7
+- @hot-updater/cli-tools@0.29.7
+- @hot-updater/console@0.29.7
+- @hot-updater/core@0.29.7
+- @hot-updater/server@0.29.7
+- @hot-updater/plugin-core@0.29.7
+
 ## 0.29.6
 
 ### Patch Changes

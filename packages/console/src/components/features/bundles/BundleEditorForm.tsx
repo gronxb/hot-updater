@@ -7,7 +7,7 @@ import {
 import type { Bundle } from "@hot-updater/plugin-core";
 import { useForm, useStore } from "@tanstack/react-form";
 import { Download, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import semver from "semver";
 import { toast } from "sonner";
 
@@ -31,6 +31,7 @@ import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
 interface BundleEditorFormProps {
   bundle: Bundle;
   onClose: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 type BundleEditorFormValues = {
@@ -82,7 +83,11 @@ function getDefaultValues(bundle: Bundle): BundleEditorFormValues {
 const formatRolloutPercentage = (rolloutCohortCount: number) =>
   (rolloutCohortCount / 10).toFixed(1);
 
-export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
+export function BundleEditorForm({
+  bundle,
+  onClose,
+  onBusyChange,
+}: BundleEditorFormProps) {
   const bundleDownloadUrlMutation = useBundleDownloadUrlMutation();
   const updateBundleMutation = useUpdateBundleMutation();
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
@@ -158,6 +163,16 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
       };
   const hasTargetAppVersionError = Boolean(targetAppVersionValidation.error);
   const isDownloading = bundleDownloadUrlMutation.isPending;
+
+  useEffect(() => {
+    onBusyChange?.(isSaving);
+  }, [isSaving, onBusyChange]);
+
+  useEffect(() => {
+    return () => {
+      onBusyChange?.(false);
+    };
+  }, [onBusyChange]);
 
   const handleAddCohort = () => {
     const normalizedCohort = normalizeCohortValue(newCohort);
@@ -428,6 +443,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           size="sm"
           className="w-full"
           onClick={() => setShowPromoteDialog(true)}
+          disabled={isSaving}
         >
           Promote to Channel
         </Button>
@@ -437,7 +453,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           size="sm"
           className="w-full"
           onClick={handleDownloadBundle}
-          disabled={isDownloading}
+          disabled={isSaving || isDownloading}
         >
           <Download className="h-4 w-4" />
           {isDownloading ? "Preparing Download..." : "Download Bundle"}
@@ -448,6 +464,7 @@ export function BundleEditorForm({ bundle, onClose }: BundleEditorFormProps) {
           size="sm"
           className="w-full"
           onClick={() => setShowDeleteDialog(true)}
+          disabled={isSaving}
         >
           Delete Bundle
         </Button>

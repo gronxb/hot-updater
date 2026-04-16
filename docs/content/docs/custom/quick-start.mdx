@@ -57,11 +57,14 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-By default, `createHotUpdater` mounts both update-check routes and bundle management routes used by the CLI `standaloneRepository` plugin. If you want this server to expose only update checks, add:
+By default, `createHotUpdater` mounts update-check routes, `/version`, and the
+bundle management routes used by the CLI `standaloneRepository` plugin. If you
+want this server to keep `/version` but hide the bundle management routes, add:
 
 ```typescript title="src/hotUpdater.ts"
 routes: {
   updateCheck: true,
+  version: true,
   bundles: false,
 },
 ```
@@ -85,7 +88,7 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 ```
 
 <Callout type="warn">
-With Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for React Native clients. If `routes.bundles` is enabled, protect `/hot-updater/version` and `/hot-updater/api/*` with authentication.
+With Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for React Native clients. `/hot-updater/version` stays mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` with authentication whenever `routes.bundles` is enabled.
 </Callout>
 
 ## Schema Generation
