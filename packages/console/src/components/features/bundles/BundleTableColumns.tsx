@@ -40,16 +40,10 @@ function BundleIdCell({
 }) {
   const hasDiffBase = Boolean(bundle.metadata?.diff_base_bundle_id);
   const isExpanded = bundle.id === expandedBundleId;
-  const summary =
-    bundle.message?.trim() ||
-    bundle.targetAppVersion ||
-    (bundle.fingerprintHash
-      ? `Fingerprint ${bundle.fingerprintHash.slice(0, 8)}`
-      : `${bundle.channel} channel`);
   const panelId = `bundle-lineage-panel-${bundle.id}`;
 
   return (
-    <div className="flex min-w-[280px] items-start gap-3">
+    <div className="flex min-w-[240px] items-center gap-3">
       <Button
         type="button"
         variant="ghost"
@@ -69,14 +63,9 @@ function BundleIdCell({
           <ChevronRight aria-hidden="true" />
         )}
       </Button>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <BundleIdDisplay bundleId={bundle.id} />
-          {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
-        </div>
-        <span className="min-w-0 truncate text-xs text-muted-foreground">
-          {summary}
-        </span>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <BundleIdDisplay bundleId={bundle.id} />
+        {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
       </div>
     </div>
   );
@@ -88,32 +77,17 @@ function DiffBaseCell({ bundle, depth }: { bundle: Bundle; depth: number }) {
 
   if (!baseBundleId) {
     return (
-      <div className="flex min-w-[220px] flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">Root</Badge>
-        </div>
-        <span className="text-xs text-muted-foreground">
-          No diff base attached.
-        </span>
+      <div className="flex min-w-[180px] items-center gap-2">
+        <Badge variant="outline">Root</Badge>
       </div>
     );
   }
 
   return (
-    <div className="flex min-w-[220px] flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">Derived</Badge>
-        {patchReady ? (
-          <Badge variant="secondary">BSDIFF Ready</Badge>
-        ) : (
-          <Badge variant="outline">Base Linked</Badge>
-        )}
-        {depth > 1 ? <Badge variant="outline">L{depth}</Badge> : null}
-      </div>
-      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-        <span>From</span>
-        <BundleIdDisplay bundleId={baseBundleId} maxLength={18} />
-      </div>
+    <div className="flex min-w-[180px] items-center gap-2">
+      <BundleIdDisplay bundleId={baseBundleId} maxLength={18} />
+      {patchReady ? <Badge variant="secondary">bsdiff</Badge> : null}
+      {depth > 1 ? <Badge variant="outline">L{depth}</Badge> : null}
     </div>
   );
 }
@@ -152,7 +126,7 @@ export const createBundleColumns = ({
   }),
   columnHelper.display({
     id: "diffBase",
-    header: "Lineage",
+    header: "Base",
     cell: (info) => (
       <DiffBaseCell
         bundle={info.row.original}

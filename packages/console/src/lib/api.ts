@@ -6,6 +6,7 @@ import {
   createBundle as createBundleApi,
   deleteBundle as deleteBundleApi,
   getBundle,
+  getBundleChildCounts,
   getBundleChildren,
   getBundleDownloadUrl,
   getBundles,
@@ -41,6 +42,8 @@ export const queryKeys = {
   bundleChildren: {
     all: ["bundle-children"] as const,
     list: (baseBundleId: string) => ["bundle-children", baseBundleId] as const,
+    counts: (bundleIds: string[]) =>
+      ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
 };
@@ -110,6 +113,19 @@ export function useBundleChildrenQuery(baseBundleId: string) {
     queryFn: () => getBundleChildren({ data: { baseBundleId } }),
     staleTime: Infinity,
     enabled: !!baseBundleId,
+  });
+}
+
+export function useBundleChildCountsQuery(bundleIds: string[]) {
+  const normalizedBundleIds = [...bundleIds].sort((left, right) =>
+    left.localeCompare(right),
+  );
+
+  return useQuery({
+    queryKey: queryKeys.bundleChildren.counts(normalizedBundleIds),
+    queryFn: () => getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
+    staleTime: Infinity,
+    enabled: normalizedBundleIds.length > 0,
   });
 }
 

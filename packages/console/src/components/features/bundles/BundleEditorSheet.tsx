@@ -55,6 +55,7 @@ export function BundleEditorSheet({
   };
 
   return (
+<<<<<<< Updated upstream
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         className="w-[600px] sm:max-w-[600px] overflow-y-auto"
@@ -70,6 +71,10 @@ export function BundleEditorSheet({
           }
         }}
       >
+=======
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="w-[600px] overflow-y-auto sm:max-w-[600px]">
+>>>>>>> Stashed changes
         <SheetHeader>
           <SheetTitle>{bundle ? "Bundle Detail" : "Bundle Details"}</SheetTitle>
           <SheetDescription>

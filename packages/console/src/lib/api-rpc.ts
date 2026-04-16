@@ -20,6 +20,10 @@ type GetBundleChildrenInput = {
   baseBundleId: string;
 };
 
+type GetBundleChildCountsInput = {
+  bundleIds: string[];
+};
+
 type GetBundleDownloadUrlInput = {
   bundleId: string;
 };
@@ -167,6 +171,24 @@ export const getBundleChildren = createServerFn({ method: "GET" })
       });
     } catch (error) {
       console.error("Error during bundle children retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleChildCounts = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleChildCountsInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleChildCounts: getBundleChildCountsWithConfig } =
+        await import("./server/getBundleChildren");
+      const { databasePlugin } = await prepareConfig();
+
+      return await getBundleChildCountsWithConfig(data.bundleIds, {
+        databasePlugin,
+      });
+    } catch (error) {
+      console.error("Error during bundle child count retrieval:", error);
       throw error;
     }
   });

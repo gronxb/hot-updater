@@ -1,5 +1,4 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { GitBranchPlus, Layers3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -104,39 +103,14 @@ export function CreateBundleDiffDialog({
         <DialogHeader>
           <DialogTitle>Create BSDIFF Patch</DialogTitle>
           <DialogDescription>
-            Pick an older bundle as the base. The console generates a Hermes
-            BSDIFF patch, uploads it, and attaches the metadata to this target
-            bundle.
+            Pick the base bundle for this target bundle.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-4">
-          <div className="rounded-xl border bg-muted/30 p-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg border bg-background p-2 text-muted-foreground">
-                <Layers3 className="h-4 w-4" />
-              </div>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    Target Bundle
-                  </p>
-                  <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <GitBranchPlus className="h-3.5 w-3.5" />
-                  {selectedBaseBundle ? (
-                    <span>
-                      base {selectedBaseBundle.id.slice(0, 8)} to target{" "}
-                      {bundle.id.slice(0, 8)}
-                    </span>
-                  ) : (
-                    <span>Select a base bundle to build the stack</span>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Target</span>
+            <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -160,11 +134,18 @@ export function CreateBundleDiffDialog({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Only older bundles on the same platform are eligible as a diff
-                base.
+                Only older bundles on the same platform are eligible.
               </p>
             )}
           </div>
+
+          {selectedBaseBundle ? (
+            <div className="text-xs text-muted-foreground">
+              Base{" "}
+              <span translate="no">{selectedBaseBundle.id.slice(0, 8)}</span> to
+              Target <span translate="no">{bundle.id.slice(0, 8)}</span>
+            </div>
+          ) : null}
 
           {quickCandidates.length > 0 && (
             <div className="flex flex-col gap-2">
