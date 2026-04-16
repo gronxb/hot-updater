@@ -54,6 +54,10 @@ program
   .command("doctor")
   .description("Check the health of Hot Updater")
   .option("-f, --fix", "fix the issues", false)
+  .option(
+    "--server-base-url <url>",
+    "server base URL used by update checks (doctor appends /version)",
+  )
   .action(handleDoctor);
 
 const fingerprintCommand = program

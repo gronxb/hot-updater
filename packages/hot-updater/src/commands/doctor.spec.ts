@@ -1,7 +1,13 @@
 import { readPackageUp } from "read-package-up";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { areVersionsCompatible, doctor } from "./doctor";
+import {
+  areVersionsCompatible,
+  doctor,
+  getRequiredInfrastructureVersion,
+  isInfrastructureUpdateRequired,
+  resolveVersionEndpoint,
+} from "./doctor";
 
 vi.mock("read-package-up", () => ({
   readPackageUp: vi.fn(),
@@ -78,6 +84,42 @@ describe("areVersionsCompatible", () => {
     expect(areVersionsCompatible("1.0.0", "^1.0.0-alpha.1")).toBe(true);
     expect(areVersionsCompatible("^1.0.0-alpha.1", "1.0.0")).toBe(true);
     expect(areVersionsCompatible("2.0.0-alpha.1", "^1.0.0")).toBe(false);
+  });
+});
+
+describe("infrastructure version helpers", () => {
+  it("resolves the latest infrastructure target required by a package version", () => {
+    expect(getRequiredInfrastructureVersion("0.28.0")).toBe("0.21.0");
+    expect(getRequiredInfrastructureVersion("0.29.8")).toBe("0.29.0");
+    expect(getRequiredInfrastructureVersion("0.30.0")).toBe("0.30.0");
+    expect(getRequiredInfrastructureVersion("0.30.1")).toBe("0.30.0");
+  });
+
+  it("does not require an update just because the server package version is newer", () => {
+    expect(
+      isInfrastructureUpdateRequired({
+        serverVersion: "0.30.1",
+        requiredVersion: "0.30.0",
+      }),
+    ).toBe(false);
+  });
+
+  it("requires an update when the server is below the required infrastructure target", () => {
+    expect(
+      isInfrastructureUpdateRequired({
+        serverVersion: "0.29.8",
+        requiredVersion: "0.30.0",
+      }),
+    ).toBe(true);
+  });
+
+  it("resolves the version endpoint from the server base URL", () => {
+    expect(resolveVersionEndpoint("https://example.com/api/check-update")).toBe(
+      "https://example.com/api/check-update/version",
+    );
+    expect(
+      resolveVersionEndpoint("https://example.com/api/check-update/"),
+    ).toBe("https://example.com/api/check-update/version");
   });
 });
 
@@ -317,6 +359,149 @@ describe("doctor", () => {
     expect(result3).toEqual({
       success: false,
       error: "hot-updater CLI not found. Please install it first.",
+    });
+  });
+
+  it("should pass when server infrastructure is on the required target", async () => {
+    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.30.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response(JSON.stringify({ version: "0.30.0" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await doctor({
+      serverBaseUrl: "https://example.com/api/check-update",
+      fetch: fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://example.com/api/check-update/version",
+      {
+        headers: {
+          Accept: "application/json",
+        },
+      },
+    );
+    expect(result).toEqual({
+      success: true,
+      details: {
+        hotUpdaterVersion: "0.30.0",
+        installedHotUpdaterPackages: [],
+        packageJsonPath: "/mock/cwd/package.json",
+        infrastructure: {
+          baseUrl: "https://example.com/api/check-update",
+          versionEndpoint: "https://example.com/api/check-update/version",
+          serverVersion: "0.30.0",
+          requiredVersion: "0.30.0",
+          needsUpdate: false,
+        },
+      },
+    });
+  });
+
+  it("should pass when server version is newer than the required infrastructure target", async () => {
+    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.30.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response(JSON.stringify({ version: "0.30.1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await doctor({
+      serverBaseUrl: "https://example.com/api/check-update",
+      fetch: fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        infrastructure: {
+          serverVersion: "0.30.1",
+          requiredVersion: "0.30.0",
+          needsUpdate: false,
+        },
+      },
+    });
+  });
+
+  it("should fail when server infrastructure is below the required target", async () => {
+    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.30.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response(JSON.stringify({ version: "0.29.8" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await doctor({
+      serverBaseUrl: "https://example.com/api/check-update",
+      fetch: fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          serverVersion: "0.29.8",
+          requiredVersion: "0.30.0",
+          needsUpdate: true,
+        },
+      },
+    });
+  });
+
+  it("should require an update when server version endpoint is unavailable", async () => {
+    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.30.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await doctor({
+      serverBaseUrl: "https://example.com/api/check-update",
+      fetch: fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        infrastructure: {
+          versionEndpoint: "https://example.com/api/check-update/version",
+          requiredVersion: "0.30.0",
+          needsUpdate: true,
+          updateReason: "Version endpoint not found",
+        },
+      },
     });
   });
 });
