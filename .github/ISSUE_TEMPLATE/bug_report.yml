@@ -11,7 +11,7 @@ body:
       label: Precheck
       description: Please check youself all of the following before submitting.
       options:
-        - label: Infrastructure may have changed. Did you retry `hot-updater init`?
+        - label: Infrastructure may have changed. Did you try `hot-updater doctor`?
           required: true
         - label: Is your Node version v20 or higher?
           required: true
