@@ -472,14 +472,14 @@ export const handleDoctor = async ({
 
     if (infrastructure.needsUpdate) {
       p.log.error(
-        `❌ Infrastructure update required. ` +
+        `Infrastructure update required. ` +
           `Deploy server infrastructure version ${infrastructure.requiredVersion} or newer.`,
       );
       if (infrastructure.updateReason) {
         p.log.info(`Reason: ${infrastructure.updateReason}`);
       }
     } else if (infrastructure.error) {
-      p.log.error(`❌ Infrastructure check failed: ${infrastructure.error}`);
+      p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
     } else {
       p.log.success("✅ Server infrastructure is up to date.");
     }
