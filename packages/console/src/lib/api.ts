@@ -123,7 +123,8 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 
   return useQuery({
     queryKey: queryKeys.bundleChildren.counts(normalizedBundleIds),
-    queryFn: () => getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
+    queryFn: () =>
+      getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
   });
