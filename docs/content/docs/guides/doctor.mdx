@@ -1,0 +1,76 @@
+---
+title: "Doctor"
+description: "Check Hot Updater package versions and server infrastructure."
+icon: Stethoscope
+version: "v0.30.0"
+---
+
+## Overview
+
+Use `hot-updater doctor` to check two things:
+
+- All Hot Updater packages use compatible versions
+- Your deployed infrastructure server is not outdated
+
+Run it after upgrading Hot Updater, or when OTA updates behave differently after
+a package update.
+
+```package-install
+npx hot-updater doctor
+```
+
+In an interactive terminal, the command asks for your server base URL. Press
+Enter to skip the server check.
+
+## Check Infrastructure
+
+To check the deployed server in CI or a non-interactive shell, pass the public
+update-check base URL.
+
+```package-install
+npx hot-updater doctor --server-base-url https://updates.example.com/api/check-update
+```
+
+`doctor` appends `/version` and checks:
+
+```txt
+https://updates.example.com/api/check-update/version
+```
+
+Example success output:
+
+```txt
+Checking the health of Hot Updater.
+hot-updater CLI version: x.x.x
+Server version endpoint: https://updates.example.com/api/check-update/version
+Server version: x.x.x
+Required infrastructure version: x.x.x
+✅ Server infrastructure is up to date.
+✅ All Hot Updater checks passed!
+Doctor check complete.
+```
+
+## Update Outdated Infrastructure
+
+If your server is outdated, `doctor` prints:
+
+```txt
+Infrastructure update required. Deploy server infrastructure version x.x.x or newer.
+```
+
+How to fix it depends on how you run Hot Updater:
+
+- **Self-hosted server using `createHotUpdater`**: update all Hot Updater
+  packages together, including `@hot-updater/server`, then redeploy your server.
+- **Managed providers (`aws`, `cloudflare`, `supabase`, `firebase`)**: run
+  `npx hot-updater init` again and redeploy the generated provider
+  infrastructure.
+
+`--fix` only updates package versions in `package.json`. It does not update or
+redeploy infrastructure.
+
+## Options
+
+| Option                    | Description                                       |
+| ------------------------- | ------------------------------------------------- |
+| `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`. |
