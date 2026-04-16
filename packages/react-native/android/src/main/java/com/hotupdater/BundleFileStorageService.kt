@@ -118,6 +118,12 @@ interface BundleStorageService {
     fun getBaseURL(): String
 
     /**
+     * Gets the base URL for a specific launched bundle.
+     * Returns an empty string for the built-in bundle or when the bundle is unavailable.
+     */
+    fun getBaseURLForBundle(bundleId: String?): String
+
+    /**
      * Gets the current active bundle ID from bundle storage.
      * Reads manifest.json first and falls back to older metadata when needed.
      */
@@ -128,6 +134,12 @@ interface BundleStorageService {
      * Returns an empty map when manifest.json is missing or invalid.
      */
     fun getManifest(): Map<String, Any?>
+
+    /**
+     * Gets the manifest for a specific launched bundle.
+     * Returns an empty map for the built-in bundle or when the bundle is unavailable.
+     */
+    fun getManifestForBundle(bundleId: String?): Map<String, Any?>
 
     /**
      * Restores the original bundle and clears downloaded bundle state.
@@ -476,11 +488,13 @@ class BundleFileStorageService(
         }
 
     private fun getActiveBundleId(): String? {
+        extractBundleIdFromCurrentURL()?.let { return it }
+
         val metadata = loadMetadataOrNull()
         return when {
-            metadata?.stagingBundleId != null -> metadata.stagingBundleId
+            metadata?.stagingBundleId != null && !metadata.verificationPending -> metadata.stagingBundleId
             metadata?.stableBundleId != null -> metadata.stableBundleId
-            else -> extractBundleIdFromCurrentURL()
+            else -> null
         }
     }
 
@@ -530,6 +544,19 @@ class BundleFileStorageService(
             bundleId = manifestBundleId ?: readCompatibilityBundleIdFromBundleDir(bundleDir),
             manifest = manifest,
         )
+    }
+
+    private fun getBundleMetadataSnapshot(bundleId: String?): ActiveBundleMetadataSnapshot? {
+        if (bundleId.isNullOrBlank()) {
+            return null
+        }
+
+        val bundleDir = File(getBundleStoreDir(), bundleId)
+        if (!bundleDir.exists()) {
+            return null
+        }
+
+        return resolveActiveBundleMetadataSnapshot(bundleDir)
     }
 
     private fun readCompatibilityBundleIdFromBundleDir(bundleDir: File): String? {
@@ -1618,6 +1645,21 @@ class BundleFileStorageService(
         }
     }
 
+    override fun getBaseURLForBundle(bundleId: String?): String {
+        return try {
+            val activeBundleId = bundleId?.takeIf { it.isNotBlank() } ?: return ""
+            val bundleDir = File(getBundleStoreDir(), activeBundleId)
+            if (!bundleDir.exists()) {
+                return ""
+            }
+
+            "file://${bundleDir.absolutePath}"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting base URL for bundle $bundleId: ${e.message}")
+            ""
+        }
+    }
+
     override fun getBundleId(): String? =
         try {
             getActiveBundleMetadataSnapshot()?.bundleId
@@ -1631,6 +1673,14 @@ class BundleFileStorageService(
             getActiveBundleMetadataSnapshot()?.manifest ?: emptyMap()
         } catch (e: Exception) {
             Log.e(TAG, "Error getting manifest: ${e.message}")
+            emptyMap()
+        }
+
+    override fun getManifestForBundle(bundleId: String?): Map<String, Any?> =
+        try {
+            getBundleMetadataSnapshot(bundleId)?.manifest ?: emptyMap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting manifest for bundle $bundleId: ${e.message}")
             emptyMap()
         }
 

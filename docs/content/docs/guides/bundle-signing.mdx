@@ -173,7 +173,7 @@ The plugin automatically extracts the public key from `HOT_UPDATER_PRIVATE_KEY` 
 For simpler setup, include the keys directory in EAS builds:
 
 ```txt title=".easignore"
-!keys/
+!/keys
 ```
 
 This tells EAS to include the `keys/` directory even though it's in `.gitignore`. The plugin will use the private key file directly during prebuild.

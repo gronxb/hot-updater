@@ -100,9 +100,10 @@ export interface Bundle {
   rolloutCohortCount?: number | null;
 
   /**
-   * Target specific cohorts for this update.
-   * If provided, only these cohorts will receive the update.
-   * If empty/null, rolloutCohortCount-based rollout is used.
+   * Additional cohorts to include for this update.
+   * Matching cohorts receive the update even if they are outside the current
+   * numeric rollout.
+   * If empty/null, only rolloutCohortCount-based rollout is used.
    *
    * NOTE: This field is stored in database but should NOT be returned to
    * update-check clients for security reasons. Server uses it for rollout
@@ -150,7 +151,7 @@ export interface UpdateInfo {
    */
   rolloutCohortCount?: number | null;
   /**
-   * Target specific cohorts for this update.
+   * Additional cohorts included for this update.
    * Used internally for rollout decisions.
    */
   targetCohorts?: string[] | null;

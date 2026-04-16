@@ -398,19 +398,40 @@ class HotUpdaterImpl {
      * This is used for Expo DOM components to construct full asset paths.
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
      */
-    fun getBaseURL(): String = bundleStorage.getBaseURL()
+    fun getBaseURL(): String {
+        val launchSelection = currentLaunchSelection
+        if (launchSelection != null) {
+            return bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
+        }
+
+        return bundleStorage.getBaseURL()
+    }
 
     /**
      * Gets the current active bundle ID from bundle storage.
      * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
      * Built-in bundle fallback is handled in JS.
      */
-    fun getBundleId(): String? = bundleStorage.getBundleId()
+    fun getBundleId(): String? {
+        val launchSelection = currentLaunchSelection
+        if (launchSelection != null) {
+            return launchSelection.launchedBundleId
+        }
+
+        return bundleStorage.getBundleId()
+    }
 
     /**
      * Gets the current manifest from bundle storage.
      */
-    fun getManifest(): Map<String, Any?> = bundleStorage.getManifest()
+    fun getManifest(): Map<String, Any?> {
+        val launchSelection = currentLaunchSelection
+        if (launchSelection != null) {
+            return bundleStorage.getManifestForBundle(launchSelection.launchedBundleId)
+        }
+
+        return bundleStorage.getManifest()
+    }
 
     suspend fun resetChannel(): Boolean {
         val success = bundleStorage.resetChannel()

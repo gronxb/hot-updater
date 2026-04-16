@@ -2121,9 +2121,9 @@ export const setupGetUpdateInfoTestSuite = ({
         expect(update).toBeNull();
       });
 
-      it("applies update when cohort is in targetCohorts", async () => {
+      it("applies update when a custom cohort is in targetCohorts", async () => {
         const bundle = createRolloutBundle(strategy, {
-          rolloutCohortCount: 0,
+          rolloutCohortCount: 200,
           targetCohorts: ["qa-group"],
         });
 
@@ -2139,15 +2139,47 @@ export const setupGetUpdateInfoTestSuite = ({
         });
       });
 
-      it("gives targetCohorts priority over rolloutCohortCount", async () => {
+      it("keeps numeric rollout active when targetCohorts are configured", async () => {
+        const bundleId = "00000000-0000-0000-0000-000000000022";
+        const eligibleCohort = findNumericCohort(
+          bundleId,
+          (position) => position < 200,
+        );
+
         const bundle = createRolloutBundle(strategy, {
-          rolloutCohortCount: 0,
-          targetCohorts: ["900"],
+          id: bundleId,
+          rolloutCohortCount: 200,
+          targetCohorts: ["qa-group"],
         });
 
         const update = await getUpdateInfo([bundle], {
           ...createRolloutArgs(strategy),
-          cohort: "900",
+          cohort: eligibleCohort,
+        });
+
+        expect(update).toMatchObject({
+          id: bundle.id,
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      });
+
+      it("includes targeted numeric cohorts outside the rollout set", async () => {
+        const bundleId = "00000000-0000-0000-0000-000000000023";
+        const targetedNumericCohort = findNumericCohort(
+          bundleId,
+          (position) => position >= 200,
+        );
+
+        const bundle = createRolloutBundle(strategy, {
+          id: bundleId,
+          rolloutCohortCount: 200,
+          targetCohorts: [targetedNumericCohort],
+        });
+
+        const update = await getUpdateInfo([bundle], {
+          ...createRolloutArgs(strategy),
+          cohort: targetedNumericCohort,
         });
 
         expect(update).toMatchObject({

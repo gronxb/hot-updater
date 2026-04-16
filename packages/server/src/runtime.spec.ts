@@ -9,6 +9,7 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { createHotUpdater } from "./runtime";
+import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const bundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -569,6 +570,94 @@ describe("runtime createHotUpdater", () => {
 
     expect(response.status).toBe(200);
     expect(getBundles).toHaveBeenCalledWith(expect.any(Object), undefined);
+  });
+
+  it("keeps the version route mounted when bundle routes are disabled", async () => {
+    const database = createDatabasePlugin({
+      name: "version-enabled-plugin",
+      factory: () => ({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+      }),
+    })({});
+
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: true,
+        bundles: false,
+      },
+    });
+
+    const response = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/check-update/version"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
+  });
+
+  it("can disable the version route independently", async () => {
+    const database = createDatabasePlugin({
+      name: "version-disabled-plugin",
+      factory: () => ({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+      }),
+    })({});
+
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: true,
+        version: false,
+        bundles: false,
+      },
+    });
+
+    const response = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/check-update/version"),
+    );
+
+    expect(response.status).toBe(404);
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {

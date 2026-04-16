@@ -54,7 +54,7 @@ describe("RolloutCohortsDialog", () => {
     expect(screen.queryByRole("button", { name: "View Cohorts" })).toBeNull();
   });
 
-  it("hides the trigger when target cohorts override gradual rollout", () => {
+  it("keeps the trigger when target cohorts supplement gradual rollout", () => {
     render(
       <RolloutCohortsDialog
         bundleId="0195a408-8f13-7d9b-8df4-123456789abc"
@@ -63,6 +63,14 @@ describe("RolloutCohortsDialog", () => {
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "View Cohorts" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "View Cohorts" }));
+
+    expect(
+      screen.getByText(
+        /Target Cohorts are added on top of this numeric rollout\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Target Cohorts")).toBeTruthy();
+    expect(screen.getByText("qa-group")).toBeTruthy();
   });
 });

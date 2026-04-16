@@ -4,12 +4,12 @@ description: "Since hot-updater does not work in dev environment, you need to te
 icon: TestTube
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Checklist
+
 - Make sure `hot-updater.config.ts` is properly configured.
 - Make sure `HotUpdater.wrap` is properly implemented.
-
 
 ## Step 1: Simulator Release Mode
 
@@ -27,6 +27,7 @@ Run your app in Release mode to test hot-updater (it doesn't work in dev mode).
     ```sh
     npx react-native run-android --mode Release
     ```
+
   </Tab>
   <Tab value="Rock">
     **iOS:**
@@ -38,6 +39,7 @@ Run your app in Release mode to test hot-updater (it doesn't work in dev mode).
     ```sh
     npx rock run:android --variant Release
     ```
+
   </Tab>
   <Tab value="Expo">
     **iOS:**
@@ -49,6 +51,7 @@ Run your app in Release mode to test hot-updater (it doesn't work in dev mode).
     ```sh
     npx expo run:android --variant release
     ```
+
   </Tab>
 </Tabs>
 
@@ -60,9 +63,7 @@ When [HotUpdater.wrap](/docs/react-native-api/wrap) is set up, updates will be a
 
 You can check the update progress status using [useHotUpdaterStore](/docs/react-native-api/useHotUpdaterStore).
 
-
-<video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
-
+<video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
 ### For Normal Deployment
 
@@ -72,7 +73,6 @@ This is the standard deployment mode. After an update is created, users need to 
 npx hot-updater deploy -i
 ```
 
-
 ### For Emergency Deployment
 
 This is the emergency deployment mode. After an update is created, the bundle will automatically reload and apply the update as soon as users download it.
@@ -81,10 +81,9 @@ This is the emergency deployment mode. After an update is created, the bundle wi
 npx hot-updater deploy -i --force-update
 ```
 
-
 ## Step 3: Rollback
 
-<video src={"/docs/console/console.mov"} controls autoPlay loop muted />
+<video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
 When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.
 
