@@ -202,6 +202,8 @@ class BundleFileStorageServiceTest {
         )
 
         assertNull(service.getBundleId())
+        assertEquals("", service.getBaseURL())
+        assertTrue(service.getManifest().isEmpty())
     }
 
     @Test

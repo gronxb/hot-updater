@@ -107,3 +107,4 @@ plugins/supabase/runtime-acceptance-*/
 .codex/
 
 .env.hotupdater
+.omx/

@@ -51,7 +51,9 @@ class URLSessionDownloadService: NSObject, DownloadService {
             withIdentifier: "com.hotupdater.background.download"
         )
         backgroundConfig.isDiscretionary = false
-        backgroundConfig.sessionSendsLaunchEvents = true
+        if #available(macOS 11.0, *) {
+            backgroundConfig.sessionSendsLaunchEvents = true
+        }
         backgroundSession = URLSession(configuration: backgroundConfig, delegate: self, delegateQueue: nil)
 
         // Load persisted task states

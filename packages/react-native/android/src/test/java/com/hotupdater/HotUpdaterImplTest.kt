@@ -7,10 +7,17 @@ import org.junit.Test
 
 class HotUpdaterImplTest {
     @Test
-    fun `getBundleId falls back to bundle storage without a current launch selection`() {
-        val impl = createImpl(storageBundleId = "staged-bundle")
+    fun `getBundleId returns built in while native launch selection is missing`() {
+        val impl =
+            createImpl(
+                storageBundleId = "staged-bundle",
+                storageManifest = mapOf("bundleId" to "staged-bundle"),
+                storageBaseURL = "file:///bundle-store/staged-bundle",
+            )
 
-        assertEquals("staged-bundle", impl.getBundleId())
+        assertNull(impl.getBundleId())
+        assertTrue(impl.getManifest().isEmpty())
+        assertNull(impl.getBaseURL())
     }
 
     @Test
@@ -97,7 +104,7 @@ class HotUpdaterImplTest {
         )
 
         assertTrue(impl.getManifest().isEmpty())
-        assertEquals("", impl.getBaseURL())
+        assertNull(impl.getBaseURL())
     }
 
     private fun createImpl(
