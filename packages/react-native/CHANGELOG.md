@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.30.2
+
+### Patch Changes
+
+- 763d2b2: fix(native): launched bundle identity reporting
+  - @hot-updater/cli-tools@0.30.2
+  - @hot-updater/core@0.30.2
+  - @hot-updater/js@0.30.2
+  - @hot-updater/plugin-core@0.30.2
+
 ## 0.30.1
 
 ### Patch Changes
