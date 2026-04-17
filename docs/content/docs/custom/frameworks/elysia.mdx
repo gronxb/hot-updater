@@ -7,25 +7,66 @@ version: "v0.22.0"
 
 ## Installation
 
-Install Elysia.
+Install Elysia and its bearer token plugin.
 
 ```package-install
-npm install elysia --save-dev
+npm install elysia @elysiajs/bearer --save-dev
 ```
 
-## Setup
+## Setup and Security
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-Import the Hot Updater instance and mount it to your Elysia app:
+The Hot Updater handler does not include built-in authentication. Keep
+update-check routes public for React Native clients, but always protect bundle
+management routes before mounting the handler:
+
+- Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Optional public diagnostics: `/hot-updater/version`
+- Protected: `/hot-updater/api/*`
+
+Import the Hot Updater instance, protect `/api/*`, and mount it to your Elysia
+app:
 
 ```typescript
 import { Elysia } from "elysia";
+import { bearer } from "@elysiajs/bearer"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 new Elysia()
+  .use(bearer()) // [!code ++]
+  .onBeforeHandle(({ bearer, request }) => { // [!code ++]
+    const pathname = new URL(request.url).pathname; // [!code ++]
+    if (pathname === "/hot-updater/api" || pathname.startsWith("/hot-updater/api/")) { // [!code ++]
+      if (bearer !== process.env.API_KEY) { // [!code ++]
+        return new Response("Unauthorized", { status: 401 }); // [!code ++]
+      } // [!code ++]
+    } // [!code ++]
+  }) // [!code ++]
   .mount("/hot-updater", hotUpdater.handler) // [!code ++]
   .listen(3000);
+```
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
+
+Configure the CLI to include the API key when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
+  }),
+});
 ```
 
 ## API Endpoints
@@ -43,64 +84,6 @@ The server automatically creates these endpoints:
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
-
-## Security
-
-The Hot Updater handler does not include built-in authentication. Protect admin endpoints at the framework level.
-
-### Protecting Endpoints
-
-Update endpoints are public for React Native clients. Bundle management endpoints (`/api/*`) require protection.
-
-Install the bearer plugin:
-
-```package-install
-npm install @elysiajs/bearer --save-dev
-```
-
-```typescript
-import { Elysia } from "elysia";
-import { bearer } from "@elysiajs/bearer"; // [!code ++]
-import { hotUpdater } from "./hotUpdater";
-
-new Elysia()
-  .use(bearer()) // [!code ++]
-  // Protect /api/* endpoints // [!code ++]
-  .onBeforeHandle(({ bearer, request }) => { // [!code ++]
-    if (new URL(request.url).pathname.includes("/api/")) { // [!code ++]
-      if (bearer !== process.env.API_KEY) { // [!code ++]
-        return new Response("Unauthorized", { status: 401 }); // [!code ++]
-      } // [!code ++]
-    } // [!code ++]
-  }) // [!code ++]
-  .all("/hot-updater/*", ({ request }) => hotUpdater.handler(request))
-  .listen(3000);
-```
-
-
-Set your API key in environment variables:
-
-```bash
-API_KEY=your-secret-api-key
-```
-
-### CLI Configuration
-
-Configure the CLI to include the API key when deploying bundles:
-
-```typescript title="hot-updater.config.ts"
-import { standaloneRepository } from "@hot-updater/standalone";
-
-export default defineConfig({
-  // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
-    },
-  }),
-});
-```
 
 ## React Native Setup
 
