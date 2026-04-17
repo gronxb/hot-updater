@@ -6,23 +6,23 @@ packages:
   - examples-server/*
 
 catalog:
-  '@types/node': ^20
-  vitest: 4.1.0
+  "@types/node": ^20
+  vitest: 4.1.4
 catalogs:
   tools:
-   tsdown: 0.21.6
-   '@clack/prompts': 1.0.1
-   'execa': 9.5.2
+    tsdown: 0.21.6
+    "@clack/prompts": 1.0.1
+    "execa": 9.5.2
   hono:
     hono: 4.12.9
-    '@hono/node-server': 1.19.11
-  
+    "@hono/node-server": 1.19.11
+
 onlyBuiltDependencies:
-  - '@prisma/client'
-  - '@prisma/engines'
-  - '@firebase/util'
-  - '@sentry/cli'
-  - '@swc/core'
+  - "@prisma/client"
+  - "@prisma/engines"
+  - "@firebase/util"
+  - "@sentry/cli"
+  - "@swc/core"
   - aws-sdk
   - better-sqlite3
   - core-js
