@@ -385,19 +385,21 @@ class HotUpdaterImpl {
      * Gets the base URL for the current active bundle directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
-     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or empty string
+     * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123/") or null
      */
-    fun getBaseURL(): String {
+    fun getBaseURL(): String? {
         val launchSelection = currentLaunchSelection
         if (launchSelection != null) {
-            return bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
+            val baseURL = bundleStorage.getBaseURLForBundle(launchSelection.launchedBundleId)
+            return baseURL
+                .takeIf { it.isNotEmpty() }
         }
 
-        return bundleStorage.getBaseURL()
+        return null
     }
 
     /**
-     * Gets the current active bundle ID from bundle storage.
+     * Gets the current launched bundle ID.
      * Reads manifest.json first and falls back to the legacy BUNDLE_ID file.
      * Built-in bundle fallback is handled in JS.
      */
@@ -407,7 +409,7 @@ class HotUpdaterImpl {
             return launchSelection.launchedBundleId
         }
 
-        return bundleStorage.getBundleId()
+        return null
     }
 
     /**
@@ -419,7 +421,7 @@ class HotUpdaterImpl {
             return bundleStorage.getManifestForBundle(launchSelection.launchedBundleId)
         }
 
-        return bundleStorage.getManifest()
+        return emptyMap()
     }
 
     suspend fun resetChannel(): Boolean {
