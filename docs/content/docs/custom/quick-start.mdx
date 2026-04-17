@@ -10,7 +10,7 @@ version: "v0.22.0"
 Install all required dependencies at once.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/aws 
+npm install @hot-updater/server @hot-updater/aws
 npm install hono @hono/node-server
 npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
 ```
@@ -75,10 +75,13 @@ Create the server entry point.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { serve } from "@hono/node-server";
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
+
+app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
 
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
@@ -87,9 +90,22 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 });
 ```
 
-<Callout type="warn">
-With Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for React Native clients. `/hot-updater/version` stays mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` with authentication whenever `routes.bundles` is enabled.
-</Callout>
+## Security Settings
+
+Update-check routes must stay public for React Native clients:
+
+- `/hot-updater/app-version/*`
+- `/hot-updater/fingerprint/*`
+
+The bundle management routes under `/hot-updater/api/*` are used by the CLI and
+should be protected when `routes.bundles` is enabled. The server example above
+uses Bearer authentication for those routes.
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
 
 ## Schema Generation
 
@@ -132,12 +148,16 @@ export default defineConfig({
   }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
   }),
 });
 ```
 
 <Callout type="warn">
-The `storage` plugin here must match the `storages` in your server's `createHotUpdater` configuration. Both use `s3Storage` in this example.
+  The `storage` plugin here must match the `storages` in your server's
+  `createHotUpdater` configuration. Both use `s3Storage` in this example.
 </Callout>
 
 ## React Native Setup
@@ -163,5 +183,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB)
+- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)
