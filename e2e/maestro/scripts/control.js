@@ -68,6 +68,21 @@ function startJob(pathname, body) {
   const response = request("POST", pathname, body);
   const payload = expectOk(response, "job start");
   const jobId = payload.jobId;
+  const timeoutSeconds = (() => {
+    if (JOB_TIMEOUT_SECONDS) {
+      const parsed = Number(JOB_TIMEOUT_SECONDS);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    // Bootstrap can include a full clean release build on iOS.
+    if (pathname === "/e2e/jobs/bootstrap") {
+      return 1800;
+    }
+
+    return 720;
+  })();
 
   if (!jobId) {
     throw new Error("job start response missing jobId");

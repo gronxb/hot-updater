@@ -6,7 +6,11 @@
  */
 
 import { HOT_UPDATER_APP_BASE_URL } from "@env";
-import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import {
+  HotUpdater,
+  type HotUpdaterFallbackComponentProps,
+  useHotUpdaterStore,
+} from "@hot-updater/react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -32,7 +36,7 @@ const notify = proxy<{
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
-const E2E_SCENARIO_MARKER = "runtime-channel-beta-maestro";
+const E2E_SCENARIO_MARKER = "targeted-qa-maestro";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
 
@@ -196,6 +200,150 @@ const E2ENavButton = ({
   </Pressable>
 );
 
+const formatFallbackPercent = (value: number | null | undefined) => {
+  if (typeof value !== "number") {
+    return "pending";
+  }
+
+  return `${Math.round(value * 100)}%`;
+};
+
+const MAX_VISIBLE_COMPLETED_FILES = 5;
+
+const UpdateFallbackModal = ({
+  artifactType,
+  details,
+  message,
+  progress,
+  status,
+}: HotUpdaterFallbackComponentProps) => {
+  const isDiffUpdate = artifactType === "diff" && details !== null;
+  const statusTitle =
+    status === "UPDATING" ? "Updating..." : "Checking for Update...";
+  const stageText =
+    status === "CHECK_FOR_UPDATE"
+      ? "Looking for the latest bundle"
+      : artifactType === "diff"
+        ? "Applying diff update"
+        : "Preparing archive update";
+  const currentFiles = isDiffUpdate
+    ? details.files.filter((file) => file.status === "downloading")
+    : [];
+  const completedFiles = isDiffUpdate
+    ? details.files
+        .filter((file) => file.status === "downloaded")
+        .slice(-MAX_VISIBLE_COMPLETED_FILES)
+    : [];
+  const failedFiles = isDiffUpdate
+    ? details.files.filter((file) => file.status === "failed")
+    : [];
+  const pendingFilesCount = isDiffUpdate
+    ? details.files.filter((file) => file.status === "pending").length
+    : 0;
+
+  return (
+    <Modal transparent visible={true}>
+      <View style={styles.fallbackOverlay}>
+        <View style={styles.fallbackCard}>
+          <Text style={styles.fallbackTitle} testID="fallback-status-title">
+            {statusTitle}
+          </Text>
+          <Text
+            style={styles.fallbackProgressValue}
+            testID="fallback-total-progress"
+          >
+            {formatFallbackPercent(progress)}
+          </Text>
+          <Text style={styles.fallbackMetaText} testID="fallback-artifact-type">
+            {stageText}
+          </Text>
+          {isDiffUpdate ? (
+            <>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-total-files"
+              >
+                totalFilesCount: {details.totalFilesCount}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-completed-files"
+              >
+                completedFilesCount: {details.completedFilesCount}
+              </Text>
+              <Text
+                style={styles.fallbackMetaText}
+                testID="fallback-file-summary"
+              >
+                fileSummary: pending {pendingFilesCount} / active{" "}
+                {currentFiles.length} / failed {failedFiles.length}
+              </Text>
+              {currentFiles.length > 0 ? (
+                <>
+                  <Text
+                    style={styles.fallbackMetaText}
+                    testID="fallback-current-files-title"
+                  >
+                    currentFiles:
+                  </Text>
+                  {currentFiles.map((file) => (
+                    <Text
+                      key={`current-${file.path}`}
+                      style={styles.fallbackMetaText}
+                      testID={`fallback-current-file-${file.order}`}
+                    >
+                      - {file.path} ({formatFallbackPercent(file.progress)})
+                    </Text>
+                  ))}
+                </>
+              ) : (
+                <Text
+                  style={styles.fallbackMetaText}
+                  testID="fallback-current-files-empty"
+                >
+                  currentFiles: none
+                </Text>
+              )}
+              {completedFiles.length > 0 ? (
+                <>
+                  <Text
+                    style={styles.fallbackMetaText}
+                    testID="fallback-completed-files-title"
+                  >
+                    completedFiles (latest {completedFiles.length}/
+                    {details.completedFilesCount}):
+                  </Text>
+                  {completedFiles.map((file) => (
+                    <Text
+                      key={`completed-${file.path}`}
+                      style={styles.fallbackMetaText}
+                      testID={`fallback-completed-file-${file.order}`}
+                    >
+                      - {file.path}
+                    </Text>
+                  ))}
+                </>
+              ) : (
+                <Text
+                  style={styles.fallbackMetaText}
+                  testID="fallback-completed-files-empty"
+                >
+                  completedFiles: none yet
+                </Text>
+              )}
+            </>
+          ) : null}
+          {message ? (
+            <Text style={styles.fallbackMetaText} testID="fallback-message">
+              message: {message}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
@@ -285,6 +433,7 @@ function App(): React.JSX.Element {
     channel?: string;
   }) => {
     try {
+      setUpdateActionResult(`${actionLabel} -> checking`);
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
         ...(channel ? { channel } : {}),
@@ -854,10 +1003,28 @@ const styles = StyleSheet.create({
   fallbackOverlay: {
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
-    borderRadius: 10,
     flex: 1,
     justifyContent: "center",
     padding: 20,
+  },
+  fallbackCard: {
+    backgroundColor: "rgba(15, 23, 42, 0.9)",
+    borderRadius: 20,
+    gap: 8,
+    maxWidth: 360,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    width: "100%",
+  },
+  fallbackMetaText: {
+    color: "#e2e8f0",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  fallbackProgressValue: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "800",
   },
   fallbackTitle: {
     color: "#ffffff",
@@ -943,20 +1110,7 @@ export default HotUpdater.wrap({
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;
   },
-  fallbackComponent: ({ progress, status }) => (
-    <Modal transparent visible={true}>
-      <View style={styles.fallbackOverlay}>
-        <Text style={styles.fallbackTitle}>
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        {progress > 0 ? (
-          <Text style={styles.fallbackTitle}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
-  ),
+  fallbackComponent: UpdateFallbackModal,
   onError: (error) => {
     console.error(error);
   },

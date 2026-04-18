@@ -1,6 +1,5 @@
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-
 import { standaloneRepository } from "@hot-updater/standalone";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -54,7 +53,6 @@ export default defineConfig({
     debug: true,
   },
   updateStrategy: "appVersion",
-  compressStrategy: "tar.br",
   signing: {
     enabled: true,
     privateKeyPath: "./keys/private-key.pem",

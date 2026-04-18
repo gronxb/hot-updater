@@ -211,7 +211,31 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
+            let manifestFileHash = data["manifestFileHash"] as? String
             let channel = data["channel"] as? String
+            let manifestUrlString = data["manifestUrl"] as? String ?? ""
+            var manifestUrl: URL? = nil
+            if !manifestUrlString.isEmpty {
+                guard let url = URL(string: manifestUrlString) else {
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'manifestUrl' provided: \(manifestUrlString)"])
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
+                }
+                manifestUrl = url
+            }
+            let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
+            let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
+                guard let fileUrlString = entry.value["fileUrl"] as? String,
+                      let fileUrl = URL(string: fileUrlString),
+                      let fileHash = entry.value["fileHash"] as? String,
+                      !fileHash.isEmpty
+                else {
+                    return
+                }
+
+                partialResult[entry.key] = ChangedAssetDescriptor(fileUrl: fileUrl, fileHash: fileHash)
+            }
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
@@ -219,11 +243,16 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
-                // Call JS progress callback if provided
-                if let callback = progressCallback {
-                    DispatchQueue.main.async {
-                        callback([progress])
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .updateProgressDidChange,
+                        object: nil,
+                        userInfo: payload.userInfo
+                    )
+
+                    if let callback = progressCallback {
+                        callback([payload.progress])
                     }
                 }
             }) { [weak self] result in

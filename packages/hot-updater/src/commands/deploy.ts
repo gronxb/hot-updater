@@ -89,6 +89,49 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   }
 };
 
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
+
+const ensureUploadSourcePath = async ({
+  outputPath,
+  targetFile,
+}: {
+  outputPath: string;
+  targetFile: { path: string; name: string };
+}) => {
+  const expectedFilename = path.posix.basename(targetFile.name);
+  const actualFilename = path.basename(targetFile.path);
+
+  if (expectedFilename === actualFilename) {
+    return targetFile.path;
+  }
+
+  const aliasDir = path.join(
+    outputPath,
+    "upload-artifacts",
+    getRelativeStorageDir(targetFile.name),
+  );
+  await fs.promises.mkdir(aliasDir, { recursive: true });
+
+  const aliasPath = path.join(aliasDir, expectedFilename);
+  await fs.promises.copyFile(targetFile.path, aliasPath);
+  return aliasPath;
+};
+
 export const deploy = async (options: DeployOptions) => {
   printBanner();
 
@@ -276,6 +319,7 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let manifestFileHash: string | null = null;
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
@@ -304,9 +348,17 @@ export const deploy = async (options: DeployOptions) => {
         bundleId: string;
         stdout: string | null;
       } | null;
+      targetFiles: { path: string; name: string }[];
+      manifestPath: string | null;
+      manifestStorageUri: string | null;
+      assetBaseStorageUri: string | null;
       storageUri: string | null;
     } = {
       buildResult: null,
+      targetFiles: [],
+      manifestPath: null,
+      manifestStorageUri: null,
+      assetBaseStorageUri: null,
       storageUri: null,
     };
 
@@ -353,6 +405,8 @@ export const deploy = async (options: DeployOptions) => {
               name: "manifest.json",
             },
           ];
+          taskRef.targetFiles = targetFiles;
+          taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
             case "tar.br":
@@ -407,6 +461,22 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
+          manifestFileHash = await getFileHashFromFile(manifestPath);
+          if (config.signing?.enabled) {
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
+            const signature = await signBundle(
+              manifestFileHash,
+              config.signing.privateKeyPath,
+            );
+            manifestFileHash = createSignedFileHash(signature);
+          }
+
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
@@ -434,6 +504,36 @@ export const deploy = async (options: DeployOptions) => {
               bundlePath,
             );
             taskRef.storageUri = storageUri;
+
+            if (!taskRef.manifestPath) {
+              throw new Error("Manifest path not found");
+            }
+
+            const manifestUpload = await storagePlugin.upload(
+              bundleId,
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
+            taskRef.assetBaseStorageUri = replaceStorageUriLeaf(
+              manifestUpload.storageUri,
+              "files",
+            );
+
+            await Promise.all(
+              taskRef.targetFiles.map(async (targetFile) => {
+                const relativeDir = getRelativeStorageDir(targetFile.name);
+                const uploadKey = [bundleId, "files", relativeDir]
+                  .filter(Boolean)
+                  .join("/");
+
+                const uploadSourcePath = await ensureUploadSourcePath({
+                  outputPath: normalizeOutputPath,
+                  targetFile,
+                });
+
+                return storagePlugin.upload(uploadKey, uploadSourcePath);
+              }),
+            );
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -451,6 +551,9 @@ export const deploy = async (options: DeployOptions) => {
           }
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
+          }
+          if (!manifestFileHash) {
+            throw new Error("Manifest file hash not found");
           }
           const appVersion = await getNativeAppVersion(platform);
 
@@ -470,8 +573,19 @@ export const deploy = async (options: DeployOptions) => {
               metadata: appVersion
                 ? {
                     app_version: appVersion,
+                    asset_base_storage_uri:
+                      taskRef.assetBaseStorageUri ?? undefined,
+                    manifest_file_hash: manifestFileHash,
+                    manifest_storage_uri:
+                      taskRef.manifestStorageUri ?? undefined,
                   }
-                : {},
+                : {
+                    asset_base_storage_uri:
+                      taskRef.assetBaseStorageUri ?? undefined,
+                    manifest_file_hash: manifestFileHash,
+                    manifest_storage_uri:
+                      taskRef.manifestStorageUri ?? undefined,
+                  },
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();

@@ -4,6 +4,7 @@
   "icon": "BookOpenCheck",
   "pages": [
     "deploy",
+    "bundle-diffing",
     "rollout-cohorts",
     "console",
     "simulator-test",
