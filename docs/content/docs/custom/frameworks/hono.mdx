@@ -13,21 +13,59 @@ Install Hono.
 npm install hono --save-dev
 ```
 
-## Setup
+## Setup and Security
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-Import the Hot Updater instance and mount it to your Hono app:
+The Hot Updater handler does not include built-in authentication. Keep
+update-check routes public for React Native clients, but always protect bundle
+management routes before mounting the handler:
+
+- Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Optional public diagnostics: `/hot-updater/version`
+- Protected: `/hot-updater/api/*`
+
+Import the Hot Updater instance, protect `/api/*`, and mount it to your Hono
+app:
 
 ```typescript
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
+app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
+
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 export default app;
+```
+
+If you set `routes: { updateCheck: true, bundles: false }`,
+`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
+available. Set `version: false` as well if you want update-check-only routes.
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
+
+Configure the CLI to include the API key when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
+  }),
+});
 ```
 
 ## API Endpoints
@@ -45,67 +83,6 @@ The server automatically creates these endpoints:
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
-
-## Security
-
-The Hot Updater handler does not include built-in authentication. Protect admin endpoints at the framework level.
-
-### Protecting Endpoints
-
-Update-check routes must stay public for React Native clients:
-
-- `/hot-updater/app-version/*`
-- `/hot-updater/fingerprint/*`
-
-`/hot-updater/version` is mounted by default. You can leave it public for
-diagnostics, or disable it with `routes.version: false`.
-
-If `routes.bundles` is enabled, protect these admin routes:
-
-- `/hot-updater/api/*`
-
-```typescript
-import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
-import { hotUpdater } from "./hotUpdater";
-
-const app = new Hono();
-
-// Protect /api/* endpoints // [!code ++]
-app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
-
-app.mount("/hot-updater", hotUpdater.handler);
-
-export default app;
-```
-
-If you set `routes: { updateCheck: true, bundles: false }`,
-`/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
-available. Set `version: false` as well if you want update-check-only routes.
-
-Set your API key in environment variables:
-
-```bash
-API_KEY=your-secret-api-key
-```
-
-### CLI Configuration
-
-Configure the CLI to include the API key when deploying bundles:
-
-```typescript title="hot-updater.config.ts"
-import { standaloneRepository } from "@hot-updater/standalone";
-
-export default defineConfig({
-  // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
-    },
-  }),
-});
-```
 
 ## React Native Setup
 

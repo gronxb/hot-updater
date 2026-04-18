@@ -235,7 +235,7 @@ class HotUpdaterModule internal constructor(
         return impl.clearCrashHistory()
     }
 
-    override fun getBaseURL(): String {
+    override fun getBaseURL(): String? {
         val impl = getInstance()
         return impl.getBaseURL()
     }

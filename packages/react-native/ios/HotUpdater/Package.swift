@@ -3,12 +3,20 @@ import PackageDescription
 
 let archiveSources = [
     "ArchiveExtractionUtilities.swift",
+    "BundleFileStorageService.swift",
+    "BundleMetadata.swift",
     "DecompressService.swift",
     "DecompressionStrategy.swift",
+    "FileManagerService.swift",
+    "HashUtils.swift",
+    "NotificationExtension.swift",
+    "SignatureVerifier.swift",
     "StreamingTarArchiveExtractor.swift",
     "TarArchiveExtractor.swift",
     "TarBrDecompressionStrategy.swift",
     "TarGzDecompressionStrategy.swift",
+    "URLSessionDownloadService.swift",
+    "VersionedPreferencesService.swift",
     "ZipArchiveExtractor.swift",
     "ZipDecompressionStrategy.swift",
 ]
@@ -16,20 +24,12 @@ let archiveSources = [
 let archiveExcludedFiles = [
     "BsdiffPatchBridge.h",
     "BsdiffPatchBridge.mm",
-    "BundleFileStorageService.swift",
-    "BundleMetadata.swift",
     "CohortService.swift",
-    "FileManagerService.swift",
-    "HashUtils.swift",
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
     "HotUpdaterCrashHandler.h",
     "HotUpdaterCrashHandler.mm",
     "HotUpdaterImpl.swift",
-    "NotificationExtension.swift",
-    "SignatureVerifier.swift",
-    "URLSessionDownloadService.swift",
-    "VersionedPreferencesService.swift",
 ]
 
 let package = Package(

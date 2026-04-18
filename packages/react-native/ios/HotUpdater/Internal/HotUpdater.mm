@@ -591,11 +591,10 @@ RCT_EXPORT_MODULE();
     return @(result);
 }
 
-- (NSString *)getBaseURL {
+- (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSString *baseURL = [impl getBaseURL];
-    return baseURL ?: @"";
+    return [impl getBaseURL];
 }
 
 - (void)setCohort:(NSString *)customId {
@@ -708,8 +707,7 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    NSString *baseURL = [impl getBaseURL];
-    return baseURL ?: @"";
+    return [impl getBaseURL];
 }
 
 RCT_EXPORT_METHOD(setCohort:(NSString *)customId) {

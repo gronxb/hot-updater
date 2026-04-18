@@ -23,7 +23,7 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun clearCrashHistory(): Boolean
 
-    abstract fun getBaseURL(): String
+    abstract fun getBaseURL(): String?
 
     abstract fun setCohort(customId: String)
 

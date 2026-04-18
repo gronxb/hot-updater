@@ -394,10 +394,15 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * Gets the base URL for the current active bundle directory.
      * Returns the file:// URL to the bundle directory with trailing slash.
      * This is used for Expo DOM components to construct full asset paths.
-     * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or empty string
+     * @return Base URL string (e.g., "file:///var/.../bundle-store/abc123/") or nil
      */
-    public func getBaseURL() -> String {
-        return bundleStorage.getBaseURL()
+    public func getBaseURL() -> String? {
+        if let currentLaunchSelection {
+            let baseURL = bundleStorage.getBaseURL(forBundleId: currentLaunchSelection.launchedBundleId)
+            return baseURL.isEmpty ? nil : baseURL
+        }
+
+        return nil
     }
 
     /**
@@ -406,14 +411,22 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * Built-in bundle fallback is handled in JS.
      */
     public func getBundleId() -> String? {
-        return bundleStorage.getBundleId()
+        if let currentLaunchSelection {
+            return currentLaunchSelection.launchedBundleId
+        }
+
+        return nil
     }
 
     /**
      * Gets the current manifest from bundle storage.
      */
     public func getManifest() -> ManifestAssets {
-        return bundleStorage.getManifest()
+        if let currentLaunchSelection {
+            return bundleStorage.getManifest(forBundleId: currentLaunchSelection.launchedBundleId)
+        }
+
+        return [:]
     }
 
     public func resetLaunchPreparation() {

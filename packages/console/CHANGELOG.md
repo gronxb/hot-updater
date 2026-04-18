@@ -1,5 +1,18 @@
 # @hot-updater/console
 
+## 0.30.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.30.2
+
+## 0.30.1
+
+### Patch Changes
+
+- 35b8720: feat(console): slider with keyboard input
+  - @hot-updater/cli-tools@0.30.1
+
 ## 0.30.0
 
 ### Minor Changes
