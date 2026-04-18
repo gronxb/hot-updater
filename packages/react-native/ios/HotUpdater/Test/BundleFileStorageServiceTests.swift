@@ -4,6 +4,13 @@ import Testing
 
 @testable import HotUpdaterArchive
 
+@_silgen_name("HotUpdaterApplyBsdiffPatch")
+private func hotUpdaterApplyBsdiffPatchForTest(
+    _ patchPath: NSString,
+    _ basePath: NSString,
+    _ outputPath: NSString
+) -> ObjCBool
+
 struct BundleFileStorageServiceTests {
     @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
@@ -71,9 +78,39 @@ struct BundleFileStorageServiceTests {
         #expect(service.getManifest()["bundleId"] as? String == "stable-bundle")
         #expect(service.getManifest(forBundleId: "staging-bundle")["bundleId"] as? String == "staging-bundle")
     }
+
+    @Test
+    func appliesBsdiffPatchThroughSwiftPackageBridge() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let base = Data("console.log(\"base bundle\");\n".utf8)
+        let expected = Data("console.log(\"patched bundle\");\n".utf8)
+        let patch = try #require(Data(base64Encoded: bsdiffPatchFixtureBase64))
+
+        let baseURL = workingDirectory.appendingPathComponent("base.bundle")
+        let patchURL = workingDirectory.appendingPathComponent("patch.bsdiff")
+        let outputURL = workingDirectory.appendingPathComponent("output.bundle")
+
+        try base.write(to: baseURL)
+        try patch.write(to: patchURL)
+
+        let applied = hotUpdaterApplyBsdiffPatchForTest(
+            patchURL.path as NSString,
+            baseURL.path as NSString,
+            outputURL.path as NSString
+        )
+
+        #expect(applied.boolValue)
+        #expect(try Data(contentsOf: outputURL) == expected)
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"
+private let bsdiffPatchFixtureBase64 =
+    "QlNESUZGNDAxAAAAAAAAACcAAAAAAAAAHwAAAAAAAABCWmg2MUFZJlNZEphI+gAADsBAXIpAACAAIZNGIQwIbk3iQIFit8XckU4UJASmEj6AQlpoNjFBWSZTWQRTg8UAAABgAEAABAAgACEAgoMXckU4UJAEU4PFQlpoNjFBWSZTWZBMaVgAAAKBgC5ARAAgADEMAQGygiL4u5IpwoSEgmNKwA=="
 
 private func makeWorkingDirectory() throws -> URL {
     try FileManager.default.url(
