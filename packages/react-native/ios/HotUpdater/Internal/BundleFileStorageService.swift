@@ -207,6 +207,7 @@ public protocol BundleStorageService {
      * @return Base URL string (e.g., "file:///data/.../bundle-store/abc123") or empty string
      */
     func getBaseURL() -> String
+    func getBaseURL(forBundleId bundleId: String?) -> String
 
     /**
      * Gets the current active bundle ID from bundle storage.
@@ -219,6 +220,7 @@ public protocol BundleStorageService {
      * Returns an empty object when manifest.json is missing or invalid.
      */
     func getManifest() -> ManifestAssets
+    func getManifest(forBundleId bundleId: String?) -> ManifestAssets
 
     /**
      * Restores the original bundle and clears downloaded bundle state.
@@ -476,9 +478,14 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     private func getActiveBundleId() -> String? {
+        if let cachedBundleId = getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent {
+            return cachedBundleId
+        }
+
         let metadata = loadMetadataOrNull()
 
-        if let stagingBundleId = metadata?.stagingBundleId {
+        if let stagingBundleId = metadata?.stagingBundleId,
+           metadata?.verificationPending == false {
             return stagingBundleId
         }
 
@@ -486,7 +493,7 @@ class BundleFileStorageService: BundleStorageService {
             return stableBundleId
         }
 
-        return getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        return nil
     }
 
     private func withActiveBundleMetadataLock<T>(_ body: () -> T) -> T {
@@ -548,6 +555,24 @@ class BundleFileStorageService: BundleStorageService {
             activeBundleId: activeBundleId,
             bundleId: resolvedBundleId,
             manifest: manifest
+        )
+    }
+
+    private func getBundleMetadataSnapshot(bundleId: String?) -> ActiveBundleMetadataSnapshot? {
+        guard let activeBundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !activeBundleId.isEmpty,
+              case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(activeBundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            return nil
+        }
+
+        return resolveActiveBundleMetadataSnapshot(
+            activeBundleId: activeBundleId,
+            bundleDirectory: bundleDir
         )
     }
 
@@ -1097,7 +1122,7 @@ class BundleFileStorageService: BundleStorageService {
 
         return LaunchSelection(
             bundleURL: getFallbackBundleURL(bundle: bundle),
-            launchedBundleId: getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent,
+            launchedBundleId: nil,
             shouldRollbackOnCrash: false
         )
     }
@@ -1986,12 +2011,36 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    func getBaseURL(forBundleId bundleId: String?) -> String {
+        do {
+            guard let bundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !bundleId.isEmpty,
+                  case .success(let storeDir) = bundleStoreDir() else {
+                return ""
+            }
+
+            let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+            guard fileSystem.fileExists(atPath: bundleDir) else {
+                return ""
+            }
+
+            return "file://\(bundleDir)"
+        } catch {
+            NSLog("[BundleStorage] Error getting base URL for bundle \(bundleId ?? "nil"): \(error)")
+            return ""
+        }
+    }
+
     func getBundleId() -> String? {
         return getActiveBundleMetadataSnapshot()?.bundleId
     }
 
     func getManifest() -> ManifestAssets {
         return getActiveBundleMetadataSnapshot()?.manifest ?? [:]
+    }
+
+    func getManifest(forBundleId bundleId: String?) -> ManifestAssets {
+        return getBundleMetadataSnapshot(bundleId: bundleId)?.manifest ?? [:]
     }
 
     func resetChannel() -> Result<Bool, Error> {

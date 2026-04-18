@@ -13,11 +13,20 @@ Install Express and required dependencies.
 npm install express @types/express --save-dev
 ```
 
-## Setup
+## Setup and Security
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-Import the Hot Updater instance and mount it to your Express app:
+The Hot Updater handler does not include built-in authentication. Keep
+update-check routes public for React Native clients, but always protect bundle
+management routes before mounting the handler:
+
+- Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Optional public diagnostics: `/hot-updater/version`
+- Protected: `/hot-updater/api/*`
+
+Import the Hot Updater instance, protect `/api/*`, and mount it to your Express
+app:
 
 ```typescript
 import express from "express";
@@ -25,10 +34,43 @@ import { toNodeHandler } from "@hot-updater/server/node";
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = express();
+const handler = toNodeHandler(hotUpdater); // [!code ++]
 
-app.all("/hot-updater/*", toNodeHandler(hotUpdater)); // [!code ++]
+const authMiddleware = (req, res, next) => { // [!code ++]
+  const token = req.headers.authorization?.split(" ")[1]; // [!code ++]
+  if (token !== process.env.API_KEY) { // [!code ++]
+    return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
+  } // [!code ++]
+  next(); // [!code ++]
+}; // [!code ++]
+
+app.use("/hot-updater/api", authMiddleware); // [!code ++]
+
+app.all("/hot-updater/*", handler); // [!code ++]
 
 app.listen(3000);
+```
+
+Set your API key in environment variables:
+
+```bash
+API_KEY=your-secret-api-key
+```
+
+Configure the CLI to include the API key when deploying bundles:
+
+```typescript title="hot-updater.config.ts"
+import { standaloneRepository } from "@hot-updater/standalone";
+
+export default defineConfig({
+  // ...
+  database: standaloneRepository({
+    baseUrl: "http://localhost:3000/hot-updater",
+    commonHeaders: {
+      Authorization: `Bearer ${process.env.API_KEY}`,
+    },
+  }),
+});
 ```
 
 ## API Endpoints
@@ -46,63 +88,6 @@ The server automatically creates these endpoints:
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
-
-## Security
-
-The Hot Updater handler does not include built-in authentication. Protect admin endpoints at the framework level.
-
-### Protecting Endpoints
-
-Update endpoints are public for React Native clients. Bundle management endpoints (`/api/*`) require protection.
-
-```typescript
-import express from "express";
-import { toNodeHandler } from "@hot-updater/server/node";
-import { hotUpdater } from "./hotUpdater";
-
-const app = express();
-const handler = toNodeHandler(hotUpdater);
-
-// Auth middleware // [!code ++]
-const authMiddleware = (req, res, next) => { // [!code ++]
-  const token = req.headers.authorization?.split(" ")[1]; // [!code ++]
-  if (token !== process.env.API_KEY) { // [!code ++]
-    return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
-  } // [!code ++]
-  next(); // [!code ++]
-}; // [!code ++]
-
-// Protect /api/* endpoints // [!code ++]
-app.use("/hot-updater/api", authMiddleware); // [!code ++]
-
-app.all("/hot-updater/*", handler);
-
-app.listen(3000);
-```
-
-Set your API key in environment variables:
-
-```bash
-API_KEY=your-secret-api-key
-```
-
-### CLI Configuration
-
-Configure the CLI to include the API key when deploying bundles:
-
-```typescript title="hot-updater.config.ts"
-import { standaloneRepository } from "@hot-updater/standalone";
-
-export default defineConfig({
-  // ...
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
-    },
-  }),
-});
-```
 
 ## React Native Setup
 

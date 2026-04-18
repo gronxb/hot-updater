@@ -219,7 +219,7 @@ class HotUpdaterModule internal constructor(
     }
 
     @ReactMethod(isBlockingSynchronousMethod = true)
-    override fun getBaseURL(): String {
+    override fun getBaseURL(): String? {
         val impl = getInstance()
         return impl.getBaseURL()
     }

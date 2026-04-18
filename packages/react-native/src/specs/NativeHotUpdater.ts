@@ -120,9 +120,9 @@ export interface Spec extends TurboModule {
    * Returns the file:// URL to the bundle directory without trailing slash.
    * This is used for Expo DOM components to construct full asset paths.
    *
-   * @returns Base URL string (e.g., "file:///data/.../bundle-store/abc123") or "" if not available
+   * @returns Base URL string (e.g., "file:///data/.../bundle-store/abc123") or null if not available
    */
-  getBaseURL: () => string;
+  getBaseURL: () => string | null;
 
   /**
    * Gets the current active bundle ID from native bundle storage.

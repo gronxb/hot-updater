@@ -305,7 +305,7 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(1);
   });
 
-  it("invalidates cached bundle getters after updateBundle succeeds", async () => {
+  it("uses the launched bundle reported by native after updateBundle succeeds", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {},
@@ -324,13 +324,6 @@ describe("notifyAppReady", () => {
     });
     expect(getBaseURL()).toBe("file:///bundle-123");
 
-    nativeModuleMock.getBundleId.mockReturnValue("bundle-456");
-    nativeModuleMock.getManifest.mockReturnValue({
-      assets: {},
-      bundleId: "bundle-456",
-    });
-    nativeModuleMock.getBaseURL.mockReturnValue("file:///bundle-456");
-
     await updateBundle({
       bundleId: "bundle-456",
       fileHash: null,
@@ -338,12 +331,12 @@ describe("notifyAppReady", () => {
       status: "UPDATE",
     });
 
-    expect(getBundleId()).toBe("bundle-456");
+    expect(getBundleId()).toBe("bundle-123");
     expect(getManifest()).toEqual({
       assets: {},
-      bundleId: "bundle-456",
+      bundleId: "bundle-123",
     });
-    expect(getBaseURL()).toBe("file:///bundle-456");
+    expect(getBaseURL()).toBe("file:///bundle-123");
     expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(2);
     expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(2);
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
