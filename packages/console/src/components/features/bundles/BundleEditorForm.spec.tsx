@@ -12,11 +12,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BundleEditorForm } from "./BundleEditorForm";
 
 const {
+  mockBundlesQuery,
+  mockCreateBundleDiffMutation,
   mockUpdateBundleMutation,
   mockBundleDownloadUrlMutation,
   mockToastError,
   mockToastSuccess,
 } = vi.hoisted(() => ({
+  mockBundlesQuery: vi.fn(() => ({
+    data: {
+      data: [],
+    },
+  })),
+  mockCreateBundleDiffMutation: {
+    isPending: false,
+    mutateAsync: vi.fn(),
+  },
   mockUpdateBundleMutation: {
     isPending: false,
     mutateAsync: vi.fn(),
@@ -30,7 +41,9 @@ const {
 }));
 
 vi.mock("@/lib/api", () => ({
+  useBundlesQuery: mockBundlesQuery,
   useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
+  useCreateBundleDiffMutation: () => mockCreateBundleDiffMutation,
   useUpdateBundleMutation: () => mockUpdateBundleMutation,
 }));
 
@@ -91,6 +104,14 @@ describe("BundleEditorForm", () => {
     window.open = vi.fn(() => mockDownloadWindow as unknown as Window);
     mockBundleDownloadUrlMutation.isPending = false;
     mockBundleDownloadUrlMutation.mutateAsync.mockReset();
+    mockCreateBundleDiffMutation.isPending = false;
+    mockCreateBundleDiffMutation.mutateAsync.mockReset();
+    mockBundlesQuery.mockReset();
+    mockBundlesQuery.mockReturnValue({
+      data: {
+        data: [],
+      },
+    });
     mockUpdateBundleMutation.isPending = false;
     mockUpdateBundleMutation.mutateAsync.mockReset();
     mockToastError.mockReset();

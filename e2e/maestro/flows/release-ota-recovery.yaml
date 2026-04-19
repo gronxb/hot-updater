@@ -106,6 +106,7 @@ onFlowComplete:
       ACTION: deployBundle
       CHANNEL: ${STABLE_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.stableBundleId}
       MARKER: ${CRASH_MARKER}
       MESSAGE: Maestro recovery crash bundle
       MODE: crash
@@ -124,6 +125,13 @@ onFlowComplete:
       BUNDLE_ID: ${output.crashBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.crashBundleIdDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.stableBundleId}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:

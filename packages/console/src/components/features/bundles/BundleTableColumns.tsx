@@ -1,26 +1,138 @@
 import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { Fingerprint, Package } from "lucide-react";
+import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
-import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+interface BundleColumnsOptions {
+  depthByBundleId?: Record<string, number>;
+  expandedBundleId?: string;
+  onDetailClick: (bundle: Bundle) => void;
+  onToggleExpand: (bundle: Bundle) => void;
+}
+
 const columnHelper = createColumnHelper<Bundle>();
 
-export const bundleColumns = [
+const isPatchReady = (bundle: Bundle) =>
+  bundle.metadata?.hbc_patch_algorithm === "bsdiff" &&
+  Boolean(bundle.metadata?.hbc_patch_storage_uri);
+
+function BundleIdCell({
+  bundle,
+  expandedBundleId,
+  onToggleExpand,
+}: {
+  bundle: Bundle;
+  expandedBundleId?: string;
+  onToggleExpand: (bundle: Bundle) => void;
+}) {
+  const hasDiffBase = Boolean(bundle.metadata?.diff_base_bundle_id);
+  const isExpanded = bundle.id === expandedBundleId;
+  const panelId = `bundle-lineage-panel-${bundle.id}`;
+
+  return (
+    <div className="flex min-w-[240px] items-center gap-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 touch-manipulation"
+        aria-label={isExpanded ? "Hide Lineage" : "Show Lineage"}
+        aria-controls={panelId}
+        aria-expanded={isExpanded}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleExpand(bundle);
+        }}
+      >
+        {isExpanded ? (
+          <ChevronDown aria-hidden="true" />
+        ) : (
+          <ChevronRight aria-hidden="true" />
+        )}
+      </Button>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <BundleIdDisplay bundleId={bundle.id} />
+        {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
+      </div>
+    </div>
+  );
+}
+
+function DiffBaseCell({ bundle, depth }: { bundle: Bundle; depth: number }) {
+  const baseBundleId = bundle.metadata?.diff_base_bundle_id;
+  const patchReady = isPatchReady(bundle);
+
+  if (!baseBundleId) {
+    return (
+      <div className="flex min-w-[180px] items-center gap-2">
+        <Badge variant="outline">Root</Badge>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-[180px] items-center gap-2">
+      <BundleIdDisplay bundleId={baseBundleId} maxLength={18} />
+      {patchReady ? <Badge variant="secondary">bsdiff</Badge> : null}
+      {depth > 1 ? <Badge variant="outline">L{depth}</Badge> : null}
+    </div>
+  );
+}
+
+function StatusCell({ bundle }: { bundle: Bundle }) {
+  const patchReady = isPatchReady(bundle);
+
+  return (
+    <div className="flex min-w-[220px] flex-wrap gap-1.5">
+      <Badge variant={bundle.enabled ? "default" : "outline"}>
+        {bundle.enabled ? "Enabled" : "Disabled"}
+      </Badge>
+      <Badge variant={bundle.shouldForceUpdate ? "secondary" : "outline"}>
+        {bundle.shouldForceUpdate ? "Force Update" : "Optional"}
+      </Badge>
+      {patchReady ? <Badge variant="secondary">Hermes BSDIFF</Badge> : null}
+    </div>
+  );
+}
+
+export const createBundleColumns = ({
+  depthByBundleId = {},
+  expandedBundleId,
+  onDetailClick,
+  onToggleExpand,
+}: BundleColumnsOptions) => [
   columnHelper.accessor("id", {
     header: "Bundle ID",
-    cell: (info) => <BundleIdDisplay bundleId={info.getValue()} />,
+    cell: (info) => (
+      <BundleIdCell
+        bundle={info.row.original}
+        expandedBundleId={expandedBundleId}
+        onToggleExpand={onToggleExpand}
+      />
+    ),
+  }),
+  columnHelper.display({
+    id: "diffBase",
+    header: "Base",
+    cell: (info) => (
+      <DiffBaseCell
+        bundle={info.row.original}
+        depth={depthByBundleId[info.row.original.id] ?? 0}
+      />
+    ),
   }),
   columnHelper.accessor("channel", {
     header: "Channel",
@@ -47,13 +159,15 @@ export const bundleColumns = [
             <TooltipTrigger asChild>
               <div className="flex items-center gap-2 cursor-help">
                 <Fingerprint className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="font-mono text-xs">
+                <span translate="no" className="font-mono text-xs">
                   {row.fingerprintHash.slice(0, 8)}
                 </span>
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p className="font-mono text-xs">{row.fingerprintHash}</p>
+              <p translate="no" className="font-mono text-xs">
+                {row.fingerprintHash}
+              </p>
             </TooltipContent>
           </Tooltip>
         );
@@ -63,7 +177,9 @@ export const bundleColumns = [
         return (
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="text-sm">{row.targetAppVersion}</span>
+            <span translate="no" className="text-sm">
+              {row.targetAppVersion}
+            </span>
           </div>
         );
       }
@@ -71,15 +187,10 @@ export const bundleColumns = [
       return <span className="text-sm text-muted-foreground">-</span>;
     },
   }),
-  columnHelper.accessor("enabled", {
-    header: "Enabled",
-    cell: (info) => <EnabledStatusIcon enabled={info.getValue()} />,
-  }),
-  columnHelper.accessor("shouldForceUpdate", {
-    header: "Force Update",
-    cell: (info) => (
-      <EnabledStatusIcon enabled={info.getValue()} falseIcon="minus" />
-    ),
+  columnHelper.display({
+    id: "status",
+    header: "Status",
+    cell: (info) => <StatusCell bundle={info.row.original} />,
   }),
   columnHelper.accessor("rolloutCohortCount", {
     header: "Rollout",
@@ -91,17 +202,29 @@ export const bundleColumns = [
       return <RolloutPercentageBadge percentage={percentage} />;
     },
   }),
-  columnHelper.accessor("message", {
-    header: "Message",
-    cell: (info) => (
-      <span className="text-sm text-muted-foreground">
-        {info.getValue() || "-"}
-      </span>
-    ),
-  }),
   columnHelper.accessor("id", {
     id: "created",
     header: "Created",
     cell: (info) => <TimestampDisplay uuid={info.getValue()} />,
+  }),
+  columnHelper.display({
+    id: "detail",
+    header: "Detail",
+    cell: (info) => (
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="touch-manipulation"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDetailClick(info.row.original);
+          }}
+        >
+          Detail
+        </Button>
+      </div>
+    ),
   }),
 ];

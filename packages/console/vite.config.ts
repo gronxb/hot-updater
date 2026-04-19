@@ -25,6 +25,7 @@ const config = defineConfig({
   ssr: {
     noExternal: ["@hot-updater/core", "@hot-updater/mock"],
     external: [
+      "@hot-updater/bsdiff",
       "@hot-updater/cli-tools",
       "oxc-transform",
       "@oxc-transform/binding-darwin-arm64",
@@ -34,6 +35,7 @@ const config = defineConfig({
   build: {
     rollupOptions: {
       external: [
+        "@hot-updater/bsdiff",
         "@hot-updater/cli-tools",
         "oxc-transform",
         "@oxc-transform/binding-darwin-arm64",
