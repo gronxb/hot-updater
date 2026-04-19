@@ -89,6 +89,7 @@ onFlowComplete:
       ACTION: deployBundle
       CHANNEL: ${ROLLBACK_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.previousBundleId}
       MARKER: ${CURRENT_MARKER}
       MESSAGE: Maestro disabled current OTA bundle
       MODE: reset
@@ -106,6 +107,13 @@ onFlowComplete:
       BUNDLE_ID: ${output.currentBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.currentBundleIdDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.previousBundleId}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:

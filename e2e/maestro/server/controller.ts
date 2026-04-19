@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath, pathToFileURL } from "url";
+
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
 
 type Platform = "ios" | "android";
@@ -26,6 +27,8 @@ type DeployedBundleRecord = {
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
+  diffBaseBundleId: string | null;
+  diffPatchAssetPath: string | null;
   enabled: boolean;
   marker: string;
   mode: DeployMode;
@@ -58,6 +61,7 @@ type DeployBundleRequest = {
   bundleProfile?: BundleProfile;
   channel: string;
   disabled?: boolean;
+  diffBaseBundleId?: string;
   forceUpdate?: boolean;
   marker: string;
   message?: string;
@@ -109,6 +113,7 @@ type JsonSnapshot = {
 };
 
 type ConsoleServerFnName =
+  | "createBundleDiff"
   | "deleteBundle"
   | "getBundle"
   | "getBundles"
@@ -128,10 +133,28 @@ type ServerFnResultEnvelope<T> = {
   result?: T;
 };
 
+type BundleDiffResult = {
+  bundle?: {
+    id: string;
+    metadata?: {
+      diff_base_bundle_id?: string;
+      hbc_patch_algorithm?: string;
+      hbc_patch_asset_path?: string;
+      hbc_patch_base_file_hash?: string;
+      hbc_patch_file_hash?: string;
+      hbc_patch_storage_uri?: string;
+    } | null;
+  } | null;
+  success: true;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
 const PNPM_STORE_DIR = path.join(REPO_DIR, "node_modules/.pnpm");
-const CONSOLE_SSR_DIR = path.join(REPO_DIR, "packages/console/.output/server/_ssr");
+const CONSOLE_SSR_DIR = path.join(
+  REPO_DIR,
+  "packages/console/.output/server/_ssr",
+);
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const EMPTY_CRASH_HISTORY = {
@@ -245,9 +268,9 @@ const session: SessionState = {
 };
 
 const jobs = new Map<string, JobState>();
-let consoleServerFnIdsPromise:
-  | Promise<Record<ConsoleServerFnName, string>>
-  | null = null;
+let consoleServerFnIdsPromise: Promise<
+  Record<ConsoleServerFnName, string>
+> | null = null;
 let tanstackServerFnFetcherPromise: Promise<ServerFnFetcher> | null = null;
 
 function runCapture(
@@ -257,12 +280,14 @@ function runCapture(
     allowFailure?: boolean;
     cwd?: string;
     env?: NodeJS.ProcessEnv;
+    maxBuffer?: number;
   } = {},
 ) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     env: { ...process.env, ...options.env },
     encoding: "utf8",
+    maxBuffer: options.maxBuffer,
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -304,16 +329,22 @@ function extractConsoleServerFnId(
   const match = source.match(pattern);
 
   if (!match?.[1]) {
-    throw new Error(`Failed to resolve TanStack server function id for ${serverFnName}`);
+    throw new Error(
+      `Failed to resolve TanStack server function id for ${serverFnName}`,
+    );
   }
 
   return match[1];
 }
 
 async function loadConsoleServerFnIds() {
-  const source = await fsPromises.readFile(await findConsoleApiRpcChunkPath(), "utf8");
+  const source = await fsPromises.readFile(
+    await findConsoleApiRpcChunkPath(),
+    "utf8",
+  );
 
   return {
+    createBundleDiff: extractConsoleServerFnId(source, "createBundleDiff"),
     deleteBundle: extractConsoleServerFnId(source, "deleteBundle"),
     getBundle: extractConsoleServerFnId(source, "getBundle"),
     getBundles: extractConsoleServerFnId(source, "getBundles"),
@@ -336,7 +367,9 @@ async function loadTanstackServerFnFetcher() {
     .sort()[0];
 
   if (!packageDir) {
-    throw new Error("Failed to locate @tanstack/start-client-core in pnpm store");
+    throw new Error(
+      "Failed to locate @tanstack/start-client-core in pnpm store",
+    );
   }
 
   const modulePath = path.join(
@@ -566,7 +599,10 @@ async function ensureLargeArchiveAsset() {
     .stat(session.largeArchiveAssetPath)
     .catch(() => null);
 
-  if (existingStats?.isFile() && existingStats.size === LARGE_ARCHIVE_ASSET_SIZE_BYTES) {
+  if (
+    existingStats?.isFile() &&
+    existingStats.size === LARGE_ARCHIVE_ASSET_SIZE_BYTES
+  ) {
     return;
   }
 
@@ -621,7 +657,9 @@ async function applyAppScenario({
     throw new Error("Failed to locate E2E crash guard markers in App.tsx");
   }
   if (!DEPLOY_ASSET_GUARD_PATTERN.test(source)) {
-    throw new Error("Failed to locate E2E deploy asset guard markers in App.tsx");
+    throw new Error(
+      "Failed to locate E2E deploy asset guard markers in App.tsx",
+    );
   }
 
   const crashGuardSource =
@@ -783,12 +821,16 @@ async function fetchBundlesPage(args: {
     platform: session.platform,
   });
 
-  const response = await callConsoleServerFn<BundleListPage>("getBundles", "GET", {
-    channel: args.channel,
-    limit: String(args.limit),
-    page: Math.floor(args.offset / args.limit) + 1,
-    platform: session.platform,
-  });
+  const response = await callConsoleServerFn<BundleListPage>(
+    "getBundles",
+    "GET",
+    {
+      channel: args.channel,
+      limit: String(args.limit),
+      page: Math.floor(args.offset / args.limit) + 1,
+      platform: session.platform,
+    },
+  );
   const bundles = normalizeBundleListResponse(response);
   logE2e("console-api response", {
     count: bundles.data.length,
@@ -871,7 +913,7 @@ async function patchBundle(
       rolloutCohortCount?: number | null;
       shouldForceUpdate?: boolean;
       targetCohorts?: string[] | null;
-    },
+    };
     success: true;
   }>("updateBundle", "POST", {
     bundle: patch,
@@ -882,6 +924,53 @@ async function patchBundle(
     bundleId,
     method: "POST",
   });
+}
+
+async function createBundleDiff(baseBundleId: string, bundleId: string) {
+  logE2e("console-api request", {
+    baseBundleId,
+    bundleId,
+    method: "POST",
+    operation: "createBundleDiff",
+  });
+
+  const response = await callConsoleServerFn<BundleDiffResult>(
+    "createBundleDiff",
+    "POST",
+    {
+      baseBundleId,
+      bundleId,
+    },
+  );
+  const metadata = response.bundle?.metadata ?? null;
+  const patchAssetPath = metadata?.hbc_patch_asset_path;
+
+  if (
+    response.bundle?.id !== bundleId ||
+    metadata?.diff_base_bundle_id !== baseBundleId ||
+    metadata?.hbc_patch_algorithm !== "bsdiff" ||
+    !patchAssetPath ||
+    !metadata?.hbc_patch_base_file_hash ||
+    !metadata?.hbc_patch_file_hash ||
+    !metadata?.hbc_patch_storage_uri
+  ) {
+    throw new Error(
+      `Failed to create valid bsdiff patch metadata for bundle ${bundleId}`,
+    );
+  }
+
+  logE2e("console-api response", {
+    baseBundleId,
+    bundleId,
+    method: "POST",
+    operation: "createBundleDiff",
+    patchAssetPath,
+  });
+
+  return {
+    baseBundleId,
+    patchAssetPath,
+  };
 }
 
 async function deleteBundle(bundleId: string) {
@@ -1128,10 +1217,12 @@ async function prepareIosRelease() {
       "[maestro-e2e] retrying iOS release build after transient header resolution failure",
     );
 
-    await fsPromises.rename(
-      xcodebuildLogPath,
-      path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
-    ).catch(() => {});
+    await fsPromises
+      .rename(
+        xcodebuildLogPath,
+        path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
+      )
+      .catch(() => {});
     await fsPromises.rm(session.iosDerivedDataPath, {
       force: true,
       recursive: true,
@@ -1525,12 +1616,17 @@ function readIosWaitForMetadataDiagnostics() {
     crashHistory: readOptionalJsonSnapshot(
       path.join(storePath, "crashed-history.json"),
     ),
-    launchReport: readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
+    launchReport: readOptionalJsonSnapshot(
+      path.join(storePath, "launch-report.json"),
+    ),
     metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
   };
 }
 
-function readAndroidStoreSnapshot(remoteFileName: string, localFileName: string) {
+function readAndroidStoreSnapshot(
+  remoteFileName: string,
+  localFileName: string,
+) {
   const storePath = ensureStorePath();
   const remotePath = `${storePath}/${remoteFileName}`;
   const localPath = path.join(session.resultsDir, localFileName);
@@ -1626,7 +1722,9 @@ function readIosRecoveryDiagnostics() {
     crashMarker: readOptionalJsonSnapshot(
       path.join(storePath, "recovery-crash-marker.json"),
     ),
-    launchReport: readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
+    launchReport: readOptionalJsonSnapshot(
+      path.join(storePath, "launch-report.json"),
+    ),
     metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
   };
 }
@@ -1645,7 +1743,10 @@ function readAndroidRecoveryDiagnostics() {
       "launch-report.json",
       "recovery-launch-report.json",
     ),
-    metadata: readAndroidStoreSnapshot("metadata.json", "recovery-metadata.json"),
+    metadata: readAndroidStoreSnapshot(
+      "metadata.json",
+      "recovery-metadata.json",
+    ),
   };
 }
 
@@ -1677,16 +1778,7 @@ function launchAndroidApp() {
   });
   runCapture(
     "adb",
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "am",
-      "start",
-      "-W",
-      "-n",
-      component,
-    ],
+    ["-s", deviceId as string, "shell", "am", "start", "-W", "-n", component],
     {
       cwd: REPO_DIR,
     },
@@ -1824,7 +1916,9 @@ async function waitForCrashRecovery(
         ? readIosRecoveryDiagnostics()
         : readAndroidRecoveryDiagnostics();
     const metadataState = getMetadataState(diagnostics.metadata.value);
-    const launchReportState = getLaunchReportState(diagnostics.launchReport.value);
+    const launchReportState = getLaunchReportState(
+      diagnostics.launchReport.value,
+    );
 
     if (
       metadataState.stagingBundleId === stableBundleId &&
@@ -1963,7 +2057,10 @@ async function bootstrap() {
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
-  if (!session.largeArchiveAssetBackupPath && fs.existsSync(session.largeArchiveAssetPath)) {
+  if (
+    !session.largeArchiveAssetBackupPath &&
+    fs.existsSync(session.largeArchiveAssetPath)
+  ) {
     session.largeArchiveAssetBackupPath = await backupFile(
       session.largeArchiveAssetPath,
     );
@@ -2117,6 +2214,10 @@ async function deployBundle(request: DeployBundleRequest) {
     });
   }
 
+  const diff =
+    request.diffBaseBundleId !== undefined
+      ? await createBundleDiff(request.diffBaseBundleId, bundleId)
+      : null;
   const bundle = await fetchBundleById(bundleId);
 
   session.deployedBundles.push({
@@ -2124,6 +2225,8 @@ async function deployBundle(request: DeployBundleRequest) {
     bundleId,
     bundleProfile,
     channel: bundle.channel,
+    diffBaseBundleId: diff?.baseBundleId ?? null,
+    diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: bundle.enabled,
     marker: request.marker,
     mode: request.mode,
@@ -2137,6 +2240,8 @@ async function deployBundle(request: DeployBundleRequest) {
     bundleId,
     bundleProfile,
     channel: bundle.channel,
+    diffBaseBundleId: diff?.baseBundleId,
+    diffPatchAssetPath: diff?.patchAssetPath,
     enabled: bundle.enabled,
     marker: request.marker,
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
@@ -2208,6 +2313,83 @@ async function waitForMetadata(bundleId: string, verificationPending: boolean) {
   }
 
   return {};
+}
+
+function readBsdiffPatchLogs() {
+  if (session.platform === "ios") {
+    return runCapture(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        "10m",
+        "--predicate",
+        'eventMessage CONTAINS "HotUpdaterBsdiffPatchApplied"',
+      ],
+      { allowFailure: true },
+    );
+  }
+
+  return runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "time",
+      "BundleStorage:D",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+  )
+    .split("\n")
+    .filter((line) => line.includes("HotUpdaterBsdiffPatchApplied"))
+    .join("\n");
+}
+
+async function assertBsdiffPatchApplied(args: {
+  assetPath: string;
+  baseBundleId: string;
+}) {
+  const expectedFragments = [
+    "HotUpdaterBsdiffPatchApplied",
+    `asset=${args.assetPath}`,
+    `baseBundleId=${args.baseBundleId}`,
+  ];
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const logs = readBsdiffPatchLogs();
+    if (expectedFragments.every((fragment) => logs.includes(fragment))) {
+      logE2e("bsdiff patch applied", {
+        assetPath: args.assetPath,
+        baseBundleId: args.baseBundleId,
+        platform: session.platform,
+      });
+      return {};
+    }
+
+    await sleep(1000);
+  }
+
+  const logs = readBsdiffPatchLogs();
+  throw createEndpointError(
+    "Timed out waiting for bsdiff patch application log.",
+    {
+      assetPath: args.assetPath,
+      baseBundleId: args.baseBundleId,
+      expectedFragments,
+      logsTail: logs.split("\n").slice(-20),
+      platform: session.platform,
+    },
+  );
 }
 
 async function captureState(prefix: string) {
@@ -2457,6 +2639,13 @@ export async function handleWaitForMetadata(
   verificationPending: boolean,
 ) {
   return waitForMetadata(bundleId, verificationPending);
+}
+
+export async function handleAssertBsdiffPatchApplied(args: {
+  assetPath: string;
+  baseBundleId: string;
+}) {
+  return assertBsdiffPatchApplied(args);
 }
 
 export async function handleCaptureState(prefix: string) {

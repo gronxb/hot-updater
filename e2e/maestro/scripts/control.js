@@ -183,6 +183,7 @@ switch (ACTION) {
       bundleProfile: BUNDLE_PROFILE || undefined,
       channel: CHANNEL,
       disabled: maybeBoolean(DISABLED),
+      diffBaseBundleId: DIFF_BASE_BUNDLE_ID || undefined,
       forceUpdate: maybeBoolean(FORCE_UPDATE),
       marker: MARKER,
       message: MESSAGE || undefined,
@@ -197,6 +198,8 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Channel`, result.channel);
     assignIfPresent(`${outputKey}Enabled`, result.enabled);
     assignIfPresent(`${outputKey}Marker`, result.marker);
+    assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
+    assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
     assignIfPresent(
       `${outputKey}RolloutCohortCount`,
       result.rolloutCohortCount,
@@ -255,6 +258,15 @@ switch (ACTION) {
       prefix: PREFIX,
     });
     expectOk(response, "capture state");
+    break;
+  }
+
+  case "assertBsdiffPatchApplied": {
+    const response = request("POST", "/e2e/assert-bsdiff-patch-applied", {
+      assetPath: ASSET_PATH || "index.ios.bundle",
+      baseBundleId: BASE_BUNDLE_ID,
+    });
+    expectOk(response, "assert bsdiff patch applied");
     break;
   }
 

@@ -551,6 +551,7 @@ class BundleFileStorageService: BundleStorageService {
                     return false
                 }
 
+                NSLog("[BundleStorage] HotUpdaterBsdiffPatchApplied asset=\(assetPath) baseBundleId=\(patch.baseBundleId)")
                 return true
             case .failure:
                 resetDiffProgressFile(

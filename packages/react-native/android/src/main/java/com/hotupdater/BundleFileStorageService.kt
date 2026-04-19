@@ -337,7 +337,14 @@ class BundleFileStorageService(
                         false
                     } else {
                         BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
-                        HashUtils.verifyHash(targetFile, expectedHash)
+                        HashUtils.verifyHash(targetFile, expectedHash).also { patched ->
+                            if (patched) {
+                                Log.d(
+                                    TAG,
+                                    "HotUpdaterBsdiffPatchApplied asset=$assetPath baseBundleId=${patch.baseBundleId}",
+                                )
+                            }
+                        }
                     }
                 }
             }
