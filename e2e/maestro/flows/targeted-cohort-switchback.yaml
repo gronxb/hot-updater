@@ -61,7 +61,6 @@ onFlowComplete:
       ACTION: deployBundle
       CHANNEL: ${BASE_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
-      DIFF_BASE_BUNDLE_ID: ${output.numericBundleId}
       MARKER: ${QA_MARKER}
       MESSAGE: Maestro qa targeted bundle
       MODE: reset
@@ -148,13 +147,6 @@ onFlowComplete:
       BUNDLE_ID: ${output.qaBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- runScript:
-    file: ../scripts/control.js
-    env:
-      ACTION: assertBsdiffPatchApplied
-      ASSET_PATH: ${output.qaBundleIdDiffPatchAssetPath}
-      BASE_BUNDLE_ID: ${output.numericBundleId}
-      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-update-action-result.yaml
     env:

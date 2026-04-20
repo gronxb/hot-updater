@@ -10,6 +10,7 @@ const REPO_DIR = path.resolve(__dirname, "../..");
 const FLOWS_DIR = path.join(__dirname, "flows");
 const DEFAULT_SUITE_SCENARIOS = [
   "release-ota-recovery",
+  "bspatch-ota",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-with-rollout",
