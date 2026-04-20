@@ -80,6 +80,46 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func manifestDrivenInstallIsDisabledBeforeFirstOTA() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+
+        #expect(service.canUseManifestDrivenInstall() == false)
+    }
+
+    @Test
+    func manifestDrivenInstallIsEnabledForActiveOTABundleWithManifest() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences
+        )
+        let activeDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "active-bundle"
+        )
+        try writeBundle(in: activeDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: activeDirectory, bundleId: "active-bundle")
+        try preferences.setItem(
+            activeDirectory
+                .appendingPathComponent("index.ios.bundle")
+                .absoluteString,
+            forKey: "HotUpdaterBundleURL"
+        )
+
+        #expect(service.canUseManifestDrivenInstall())
+    }
+
+    @Test
     func appliesBsdiffPatchThroughSwiftPackageBridge() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -125,12 +165,15 @@ private func cleanupWorkingDirectory(_ workingDirectory: URL) {
     try? FileManager.default.removeItem(at: workingDirectory)
 }
 
-private func makeStorageService(documentsDirectory: URL) -> BundleFileStorageService {
+private func makeStorageService(
+    documentsDirectory: URL,
+    preferences: PreferencesService = InMemoryPreferencesService()
+) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
         downloadService: UnusedDownloadService(),
         decompressService: DecompressService(),
-        preferences: InMemoryPreferencesService(),
+        preferences: preferences,
         isolationKey: testIsolationKey
     )
 }

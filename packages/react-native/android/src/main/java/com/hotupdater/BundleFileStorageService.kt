@@ -691,6 +691,20 @@ class BundleFileStorageService(
         return bundleDir.takeIf { it.exists() }
     }
 
+    private fun canUseManifestDrivenInstall(): Boolean {
+        val activeBundleDir = getActiveBundleDir() ?: return false
+        if (!activeBundleDir.exists()) {
+            return false
+        }
+
+        val currentManifest =
+            getActiveBundleMetadataSnapshot()
+                ?.manifest
+                ?.let(::parseBundleManifestFromMap) ?: return false
+
+        return currentManifest.assets.isNotEmpty()
+    }
+
     private fun copyBundleFile(
         source: File,
         destination: File,
@@ -1043,13 +1057,18 @@ class BundleFileStorageService(
             }
         }
 
-        if (!manifestUrl.isNullOrEmpty() && !manifestFileHash.isNullOrEmpty() && changedAssets != null) {
+        val hasManifestDrivenArtifacts =
+            !manifestUrl.isNullOrEmpty() &&
+                !manifestFileHash.isNullOrEmpty() &&
+                changedAssets != null
+
+        if (hasManifestDrivenArtifacts && canUseManifestDrivenInstall()) {
             try {
                 updateBundleFromManifest(
                     bundleId = bundleId,
-                    manifestUrl = manifestUrl,
-                    manifestFileHash = manifestFileHash,
-                    changedAssets = changedAssets,
+                    manifestUrl = manifestUrl!!,
+                    manifestFileHash = manifestFileHash!!,
+                    changedAssets = changedAssets!!,
                     bundleStoreDir = bundleStoreDir,
                     finalBundleDir = finalBundleDir,
                     progressCallback = progressCallback,
@@ -1065,6 +1084,11 @@ class BundleFileStorageService(
                     e,
                 )
             }
+        } else if (hasManifestDrivenArtifacts) {
+            Log.d(
+                TAG,
+                "Skipping manifest-driven install for $bundleId because no active OTA manifest is available. Using archive.",
+            )
         }
 
         val tempDirName = "bundle-temp"

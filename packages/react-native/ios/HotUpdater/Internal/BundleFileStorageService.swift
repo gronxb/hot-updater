@@ -743,6 +743,23 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    func canUseManifestDrivenInstall() -> Bool {
+        guard let currentBundleURL = getCachedBundleURL(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            return false
+        }
+
+        let currentBundleId = currentBundleURL.deletingLastPathComponent().lastPathComponent
+        let currentBundleDir = (storeDir as NSString).appendingPathComponent(currentBundleId)
+        guard fileSystem.fileExists(atPath: currentBundleDir),
+              let snapshot = getActiveBundleMetadataSnapshot(),
+              let currentManifest = parseBundleManifest(from: snapshot.manifest) else {
+            return false
+        }
+
+        return currentManifest.assets.isEmpty == false
+    }
+
     private func resolveActiveBundleMetadataSnapshot(
         activeBundleId: String,
         bundleDirectory: String
@@ -1429,7 +1446,8 @@ class BundleFileStorageService: BundleStorageService {
                             // Continue with download process on success
                             if let manifestUrl,
                                let manifestFileHash,
-                               let changedAssets {
+                               let changedAssets,
+                               self.canUseManifestDrivenInstall() {
                                 self.updateBundleFromManifest(
                                     bundleId: bundleId,
                                     fileUrl: validFileUrl,
@@ -1442,6 +1460,9 @@ class BundleFileStorageService: BundleStorageService {
                                     completion: completion
                                 )
                             } else {
+                                if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
+                                    NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
+                                }
                                 self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                             }
                         } catch let error {
@@ -1455,7 +1476,8 @@ class BundleFileStorageService: BundleStorageService {
             } else {
                 if let manifestUrl,
                    let manifestFileHash,
-                   let changedAssets {
+                   let changedAssets,
+                   self.canUseManifestDrivenInstall() {
                     self.updateBundleFromManifest(
                         bundleId: bundleId,
                         fileUrl: validFileUrl,
@@ -1468,6 +1490,9 @@ class BundleFileStorageService: BundleStorageService {
                         completion: completion
                     )
                 } else {
+                    if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
+                        NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
+                    }
                     self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
                 }
             }
