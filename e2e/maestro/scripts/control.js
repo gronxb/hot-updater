@@ -270,6 +270,14 @@ switch (ACTION) {
     break;
   }
 
+  case "assertFirstOtaUsesArchive": {
+    const response = request("POST", "/e2e/assert-first-ota-uses-archive", {
+      bundleId: BUNDLE_ID,
+    });
+    expectOk(response, "assert first OTA uses archive");
+    break;
+  }
+
   case "assertMetadataActive": {
     const response = request("POST", "/e2e/assert-metadata-active", {
       bundleId: BUNDLE_ID,

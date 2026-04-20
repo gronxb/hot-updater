@@ -4,10 +4,11 @@ import {
   getJob,
   handleAssertBsdiffPatchApplied,
   handleAssertCrashHistory,
-  handleEnsureAppForeground,
+  handleAssertFirstOtaUsesArchive,
   handleAssertLaunchReport,
   handleAssertMetadataActive,
   handleAssertMetadataReset,
+  handleEnsureAppForeground,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
@@ -193,6 +194,15 @@ app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
       baseBundleId: payload.baseBundleId,
     }),
   );
+});
+
+app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
 });
 
 app.post("/e2e/capture-state", async (c) => {

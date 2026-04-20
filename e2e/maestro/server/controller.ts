@@ -2355,6 +2355,46 @@ function readBsdiffPatchLogs() {
     .join("\n");
 }
 
+function readFirstOtaArchiveInstallLogs() {
+  if (session.platform === "ios") {
+    return runCapture(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        "10m",
+        "--predicate",
+        'eventMessage CONTAINS "Skipping manifest-driven install"',
+      ],
+      { allowFailure: true },
+    );
+  }
+
+  return runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "time",
+      "BundleStorage:D",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+  )
+    .split("\n")
+    .filter((line) => line.includes("Skipping manifest-driven install"))
+    .join("\n");
+}
+
 async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
@@ -2385,6 +2425,39 @@ async function assertBsdiffPatchApplied(args: {
     {
       assetPath: args.assetPath,
       baseBundleId: args.baseBundleId,
+      expectedFragments,
+      logsTail: logs.split("\n").slice(-20),
+      platform: session.platform,
+    },
+  );
+}
+
+async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
+  const expectedFragments = [
+    "Skipping manifest-driven install",
+    `for ${args.bundleId}`,
+    "no active OTA manifest is available",
+    "Using archive",
+  ];
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const logs = readFirstOtaArchiveInstallLogs();
+    if (expectedFragments.every((fragment) => logs.includes(fragment))) {
+      logE2e("first OTA used archive install path", {
+        bundleId: args.bundleId,
+        platform: session.platform,
+      });
+      return {};
+    }
+
+    await sleep(1000);
+  }
+
+  const logs = readFirstOtaArchiveInstallLogs();
+  throw createEndpointError(
+    "Timed out waiting for first OTA archive install log.",
+    {
+      bundleId: args.bundleId,
       expectedFragments,
       logsTail: logs.split("\n").slice(-20),
       platform: session.platform,
@@ -2646,6 +2719,10 @@ export async function handleAssertBsdiffPatchApplied(args: {
   baseBundleId: string;
 }) {
   return assertBsdiffPatchApplied(args);
+}
+
+export async function handleAssertFirstOtaUsesArchive(bundleId: string) {
+  return assertFirstOtaUsesArchive({ bundleId });
 }
 
 export async function handleCaptureState(prefix: string) {

@@ -60,6 +60,12 @@ onFlowComplete:
       BUNDLE_ID: ${output.stableBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertFirstOtaUsesArchive
+      BUNDLE_ID: ${output.stableBundleId}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:
