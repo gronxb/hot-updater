@@ -16,7 +16,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -355,6 +358,59 @@ describe.sequential("supabase edge runtime acceptance", () => {
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles: seedRuntimeBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      await Promise.all([
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          fixture.patchPath,
+          "patch-bytes",
+          "application/octet-stream",
+        ),
+        uploadBundleObject(supabaseAdmin, fixture.currentBundleId),
+        uploadBundleObject(supabaseAdmin, fixture.nextBundleId),
+      ]);
+
+      return {
+        currentMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+          diff_base_bundle_id: fixture.currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: fixture.assetPath,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toContain(
+        `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.patchPath}`,
+      );
+    },
+  });
 
   it("serves canonical routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
