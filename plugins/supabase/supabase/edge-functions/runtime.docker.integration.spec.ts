@@ -436,7 +436,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         metadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${currentBundleId}/files`,
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${currentBundleId}/manifest.json`,
+          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${currentBundleId}/manifest.json`,
         },
       }),
     );
@@ -462,7 +462,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/manifest.json`,
+          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${nextBundleId}/manifest.json`,
         },
       }),
     );
@@ -591,7 +591,9 @@ const ensureBucketExists = async (
     return;
   }
 
-  const { error } = await supabaseAdmin.storage.createBucket(BUCKET_NAME);
+  const { error } = await supabaseAdmin.storage.createBucket(BUCKET_NAME, {
+    public: true,
+  });
 
   if (error) {
     throw error;
