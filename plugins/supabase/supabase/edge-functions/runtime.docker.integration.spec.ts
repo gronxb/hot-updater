@@ -366,18 +366,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
       await Promise.all([
         uploadStorageObject(
           supabaseAdmin,
-          `${fixture.currentBundleId}/manifest.json`,
-          JSON.stringify(fixture.currentManifest),
-          "application/json",
-        ),
-        uploadStorageObject(
-          supabaseAdmin,
-          `${fixture.nextBundleId}/manifest.json`,
-          JSON.stringify(fixture.nextManifest),
-          "application/json",
-        ),
-        uploadStorageObject(
-          supabaseAdmin,
           fixture.patchPath,
           "patch-bytes",
           "application/octet-stream",
@@ -390,7 +378,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         currentMetadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+          manifest_storage_uri: `http://127.0.0.1:8000${FUNCTION_BASE_PATH}/__hot-updater-test-fixtures/${fixture.currentBundleId}/manifest.json`,
         },
         nextMetadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
@@ -401,7 +389,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+          manifest_storage_uri: `http://127.0.0.1:8000${FUNCTION_BASE_PATH}/__hot-updater-test-fixtures/${fixture.nextBundleId}/manifest.json`,
         },
       };
     },
@@ -823,6 +811,29 @@ const writeSupabaseRuntimeFiles = async ({
     {
       FUNCTION_NAME,
     },
+  ).replace(
+    'app.get("/ping", (c) => c.text("pong"));',
+    `
+app.get("/__hot-updater-test-fixtures/:bundleId/manifest.json", (c) => {
+  const bundleId = c.req.param("bundleId");
+  const hbcHash = bundleId.endsWith("201")
+    ? "hash-old-bundle"
+    : "hash-new-bundle";
+
+  return c.json({
+    assets: {
+      "assets/logo.png": {
+        fileHash: "hash-logo",
+      },
+      "index.ios.bundle": {
+        fileHash: hbcHash,
+      },
+    },
+    bundleId,
+  });
+});
+
+app.get("/ping", (c) => c.text("pong"));`,
   );
   const importMap = {
     imports: {
