@@ -10,7 +10,6 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -130,12 +129,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayPort = 0;
   let edgePort = 0;
   let gatewayBaseUrl = "";
-  let manifestFixtureBaseUrl = "";
-  const manifestFixtures = new Map<
-    string,
-    { body: string; contentType: string }
-  >();
-  let manifestFixtureServer: Server | undefined;
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let supabaseAdmin: ReturnType<typeof createClient>;
@@ -147,12 +140,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/supabase/runtime-acceptance-"),
     );
     storageRepoPath = path.join(runtimeRoot, "storage-repo");
-    const manifestFixturePort = await findOpenPort();
-    manifestFixtureBaseUrl = `http://host.docker.internal:${manifestFixturePort}`;
-    manifestFixtureServer = await startFixtureServer(
-      manifestFixturePort,
-      manifestFixtures,
-    );
     gatewayPort = await findOpenPort();
     edgePort = await findOpenPort();
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
@@ -258,8 +245,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
         "--rm",
         "--network",
         `${composeProjectName}_default`,
-        "--add-host",
-        "host.docker.internal:host-gateway",
         "-p",
         `127.0.0.1:${edgePort}:8000`,
         "-e",
@@ -313,8 +298,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     if (error) {
       throw error;
     }
-
-    manifestFixtures.clear();
   });
 
   afterAll(async () => {
@@ -345,10 +328,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     if (runtimeRoot) {
       await rm(runtimeRoot, { recursive: true, force: true });
-    }
-
-    if (manifestFixtureServer) {
-      await closeServer(manifestFixtureServer);
     }
   }, 60_000);
 
@@ -384,20 +363,19 @@ describe.sequential("supabase edge runtime acceptance", () => {
     seedBundles: seedRuntimeBundles,
     getUpdateInfo: requestUpdateInfo,
     prepareArtifacts: async (fixture) => {
-      seedFixtureObject(
-        manifestFixtures,
-        `${fixture.currentBundleId}/manifest.json`,
-        JSON.stringify(fixture.currentManifest),
-        "application/json",
-      );
-      seedFixtureObject(
-        manifestFixtures,
-        `${fixture.nextBundleId}/manifest.json`,
-        JSON.stringify(fixture.nextManifest),
-        "application/json",
-      );
-
       await Promise.all([
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
         uploadStorageObject(
           supabaseAdmin,
           fixture.patchPath,
@@ -412,7 +390,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         currentMetadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `${manifestFixtureBaseUrl}/${fixture.currentBundleId}/manifest.json`,
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
         },
         nextMetadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
@@ -423,7 +401,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `${manifestFixtureBaseUrl}/${fixture.nextBundleId}/manifest.json`,
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
         },
       };
     },
@@ -542,57 +520,6 @@ const sleep = async (ms: number) => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-const seedFixtureObject = (
-  fixtures: Map<string, { body: string; contentType: string }>,
-  key: string,
-  body: string,
-  contentType: string,
-) => {
-  fixtures.set(key.replace(/^\/+/, ""), {
-    body,
-    contentType,
-  });
-};
-
-const startFixtureServer = async (
-  port: number,
-  fixtures: Map<string, { body: string; contentType: string }>,
-) => {
-  const server = createServer((request, response) => {
-    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
-    const key = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-    const fixture = fixtures.get(key);
-
-    if (!fixture) {
-      response.writeHead(404, { "content-type": "text/plain" });
-      response.end("not found");
-      return;
-    }
-
-    response.writeHead(200, { "content-type": fixture.contentType });
-    response.end(fixture.body);
-  });
-
-  await new Promise<void>((resolve) => {
-    server.listen(port, "127.0.0.1", resolve);
-  });
-
-  return server;
-};
-
-const closeServer = async (server: Server) => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-};
-
 const ensureBucketExists = async (
   supabaseAdmin: ReturnType<typeof createClient>,
 ) => {
@@ -607,9 +534,7 @@ const ensureBucketExists = async (
     return;
   }
 
-  const { error } = await supabaseAdmin.storage.createBucket(BUCKET_NAME, {
-    public: true,
-  });
+  const { error } = await supabaseAdmin.storage.createBucket(BUCKET_NAME);
 
   if (error) {
     throw error;

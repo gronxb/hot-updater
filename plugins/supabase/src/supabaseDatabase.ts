@@ -14,6 +14,27 @@ export interface SupabaseDatabaseConfig {
   supabaseAnonKey: string;
 }
 
+const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return normalizeMetadata(parsed);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Bundle["metadata"];
+  }
+
+  return {};
+};
+
 export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
   name: "supabaseDatabase",
   factory: (config) => {
@@ -51,7 +72,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           targetAppVersion: data.target_app_version,
           fingerprintHash: data.fingerprint_hash,
           storageUri: data.storage_uri,
-          metadata: data.metadata ?? {},
+          metadata: normalizeMetadata(data.metadata),
           rolloutCohortCount:
             data.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
           targetCohorts: data.target_cohorts ?? null,
@@ -208,7 +229,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
               targetAppVersion: bundle.target_app_version,
               fingerprintHash: bundle.fingerprint_hash,
               storageUri: bundle.storage_uri,
-              metadata: bundle.metadata ?? {},
+              metadata: normalizeMetadata(bundle.metadata),
               rolloutCohortCount:
                 bundle.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
               targetCohorts: bundle.target_cohorts ?? null,
