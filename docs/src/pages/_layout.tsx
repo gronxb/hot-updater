@@ -1,7 +1,7 @@
 import "@/styles/globals.css";
+import { Analytics } from "@vercel/analytics/react";
 import type { ReactNode } from "react";
 
-import { Analytics } from "@vercel/analytics/react";
 import { Provider } from "@/components/provider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
