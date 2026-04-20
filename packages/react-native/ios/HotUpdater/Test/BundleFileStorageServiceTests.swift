@@ -145,6 +145,34 @@ struct BundleFileStorageServiceTests {
 
         #expect(applied.boolValue)
         #expect(try Data(contentsOf: outputURL) == expected)
+        let expectedHash = try #require(HashUtils.calculateSHA256(fileURL: outputURL))
+        let baseHash = try #require(HashUtils.calculateSHA256(fileURL: baseURL))
+        #expect(HashUtils.verifyHash(fileURL: outputURL, expectedHash: expectedHash))
+        #expect(HashUtils.verifyHash(fileURL: outputURL, expectedHash: baseHash) == false)
+    }
+
+    @Test
+    func rejectsInvalidBsdiffPatchThroughSwiftPackageBridge() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let baseURL = workingDirectory.appendingPathComponent("base.bundle")
+        let patchURL = workingDirectory.appendingPathComponent("invalid.bsdiff")
+        let outputURL = workingDirectory.appendingPathComponent("output.bundle")
+
+        try Data("console.log(\"base bundle\");\n".utf8).write(to: baseURL)
+        try Data("not-a-bsdiff-patch".utf8).write(to: patchURL)
+
+        let applied = hotUpdaterApplyBsdiffPatchForTest(
+            patchURL.path as NSString,
+            baseURL.path as NSString,
+            outputURL.path as NSString
+        )
+
+        #expect(applied.boolValue == false)
+        #expect(FileManager.default.fileExists(atPath: outputURL.path) == false)
     }
 }
 
