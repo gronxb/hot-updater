@@ -138,7 +138,57 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     return requestUpdateInfo(args);
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn<typeof fetch>(async (input) => {
+            const url = String(input);
+
+            if (url.endsWith(`${fixture.currentBundleId}/manifest.json`)) {
+              return new Response(JSON.stringify(fixture.currentManifest), {
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            if (url.endsWith(`${fixture.nextBundleId}/manifest.json`)) {
+              return new Response(JSON.stringify(fixture.nextManifest), {
+                headers: { "content-type": "application/json" },
+              });
+            }
+
+            return new Response("not found", { status: 404 });
+          }),
+        );
+
+        return {
+          cleanup: () => {
+            vi.unstubAllGlobals();
+          },
+          currentMetadata: {
+            asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
+            manifest_file_hash: "sig:manifest-current",
+            manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextMetadata: {
+            asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
+            manifest_file_hash: "sig:manifest-next",
+            manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toContain(
+          `/bundles/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toContain(`/${fixture.nextBundleId}/manifest.json`);
+      },
+    },
+  });
 
   setupBsdiffManifestUpdateInfoTestSuite({
     seedBundles,

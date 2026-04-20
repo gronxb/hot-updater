@@ -327,7 +327,48 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     return requestUpdateInfo(args);
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        seedCdnObject(
+          cdnObjects,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        );
+        seedCdnObject(
+          cdnObjects,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        );
+
+        return {
+          currentMetadata: {
+            asset_base_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/files`,
+            manifest_file_hash: "sig:manifest-current",
+            manifest_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextMetadata: {
+            asset_base_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/files`,
+            manifest_file_hash: "sig:manifest-next",
+            manifest_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toBe(
+          `${cdnBaseUrl}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toBe(
+          `${cdnBaseUrl}/${fixture.nextBundleId}/manifest.json`,
+        );
+      },
+    },
+  });
 
   setupBsdiffManifestUpdateInfoTestSuite({
     seedBundles: seedRuntimeBundles,

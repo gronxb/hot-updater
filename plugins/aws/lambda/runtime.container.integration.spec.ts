@@ -392,7 +392,55 @@ describe.sequential("aws lambda runtime acceptance", () => {
     return requestUpdateInfo(args);
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        const currentManifestKey = `releases/${fixture.currentBundleId}/manifest.json`;
+        const nextManifestKey = `releases/${fixture.nextBundleId}/manifest.json`;
+
+        await Promise.all([
+          putS3Object(
+            s3Client,
+            currentManifestKey,
+            JSON.stringify(fixture.currentManifest),
+            "application/json",
+          ),
+          putS3Object(
+            s3Client,
+            nextManifestKey,
+            JSON.stringify(fixture.nextManifest),
+            "application/json",
+          ),
+        ]);
+
+        return {
+          currentMetadata: {
+            asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
+            manifest_file_hash: "sig:manifest-current",
+            manifest_storage_uri:
+              await createRuntimeReadableS3Url(currentManifestKey),
+          },
+          nextMetadata: {
+            asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
+            manifest_file_hash: "sig:manifest-next",
+            manifest_storage_uri:
+              await createRuntimeReadableS3Url(nextManifestKey),
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toContain(
+          `/releases/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toContain(
+          `/releases/${fixture.nextBundleId}/manifest.json`,
+        );
+      },
+    },
+  });
 
   setupBsdiffManifestUpdateInfoTestSuite({
     seedBundles: seedRuntimeBundles,

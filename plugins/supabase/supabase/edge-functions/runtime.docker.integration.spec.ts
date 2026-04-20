@@ -357,7 +357,50 @@ describe.sequential("supabase edge runtime acceptance", () => {
     return requestUpdateInfo(args);
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        await Promise.all([
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.currentBundleId}/manifest.json`,
+            JSON.stringify(fixture.currentManifest),
+            "application/json",
+          ),
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.nextBundleId}/manifest.json`,
+            JSON.stringify(fixture.nextManifest),
+            "application/json",
+          ),
+        ]);
+
+        return {
+          currentMetadata: {
+            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+            manifest_file_hash: "sig:manifest-current",
+            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextMetadata: {
+            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+            manifest_file_hash: "sig:manifest-next",
+            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toContain(
+          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toContain(
+          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        );
+      },
+    },
+  });
 
   setupBsdiffManifestUpdateInfoTestSuite({
     seedBundles: seedRuntimeBundles,
