@@ -166,7 +166,7 @@ describe(
         env: { TEST_DATABASE_URL: testDatabaseUrl },
       });
 
-      await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+      await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
       const db = await import("./db.js");
       hotUpdater = db.hotUpdater;

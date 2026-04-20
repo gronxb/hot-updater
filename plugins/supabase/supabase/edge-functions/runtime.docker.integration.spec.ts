@@ -214,7 +214,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       );
     }
 
-    await waitForUrlOk(`${gatewayBaseUrl}/storage/v1/status`);
+    await waitForRestApiReady(gatewayBaseUrl, 180_000);
+    await waitForUrlOk(`${gatewayBaseUrl}/storage/v1/status`, 180_000);
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
@@ -283,7 +284,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       logs: edgeRuntime.logs,
       timeoutMs: 90_000,
     });
-  }, 180_000);
+  }, 300_000);
 
   beforeEach(async () => {
     if (!supabaseAdmin) {
@@ -374,6 +375,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
             JSON.stringify(fixture.nextManifest),
             "application/json",
           ),
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+            "next-bundle-bytes",
+            "application/javascript",
+          ),
         ]);
 
         return {
@@ -418,6 +425,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
           `${fixture.nextBundleId}/manifest.json`,
           JSON.stringify(fixture.nextManifest),
           "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/files/${fixture.assetPath}`,
+          "next-bundle-bytes",
+          "application/javascript",
         ),
         uploadStorageObject(
           supabaseAdmin,
@@ -557,6 +570,36 @@ const waitForUrlOk = async (url: string, timeoutMs = 90_000) => {
   }
 
   throw new Error(`Timed out waiting for ${url}: ${lastError}`);
+};
+
+const waitForRestApiReady = async (baseUrl: string, timeoutMs = 90_000) => {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "no response";
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(
+        `${baseUrl}/rest/v1/bundles?select=id&limit=1`,
+        {
+          headers: {
+            apikey: SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          },
+        },
+      );
+      if (response.ok) {
+        return;
+      }
+
+      lastError = `${response.status} ${response.statusText}: ${await response.text()}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(500);
+  }
+
+  throw new Error(`Timed out waiting for PostgREST: ${lastError}`);
 };
 
 const sleep = async (ms: number) => {
