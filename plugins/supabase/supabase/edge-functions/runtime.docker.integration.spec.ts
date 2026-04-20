@@ -16,7 +16,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -117,18 +120,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
     storageUri: `supabase-storage://${BUCKET_NAME}/${bundle.id}/bundle.zip`,
   };
 };
-
-const createManifest = (bundleId: string, hbcHash: string) => ({
-  assets: {
-    "assets/logo.png": {
-      fileHash: "hash-logo",
-    },
-    "index.ios.bundle": {
-      fileHash: hbcHash,
-    },
-  },
-  bundleId,
-});
 
 describe.sequential("supabase edge runtime acceptance", () => {
   let runtimeRoot: string | undefined;
@@ -340,16 +331,13 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   }, 60_000);
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    if (!supabaseAdmin) {
-      throw new Error("Supabase admin client was not initialized.");
-    }
-
+  const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
-      await uploadBundleObject(supabaseAdmin, bundle.id);
       await seedHotUpdater.insertBundle(bundle);
     }
+  };
 
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
@@ -357,7 +345,72 @@ describe.sequential("supabase edge runtime acceptance", () => {
     return (await response.json()) as any;
   };
 
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    if (!supabaseAdmin) {
+      throw new Error("Supabase admin client was not initialized.");
+    }
+
+    for (const bundle of bundles) {
+      await uploadBundleObject(supabaseAdmin, bundle.id);
+    }
+    await seedRuntimeBundles(bundles);
+    return requestUpdateInfo(args);
+  };
+
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles: seedRuntimeBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      await Promise.all([
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          fixture.patchPath,
+          "patch-bytes",
+          "application/octet-stream",
+        ),
+        uploadBundleObject(supabaseAdmin, fixture.currentBundleId),
+        uploadBundleObject(supabaseAdmin, fixture.nextBundleId),
+      ]);
+
+      return {
+        currentMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+          diff_base_bundle_id: fixture.currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: fixture.assetPath,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toContain(
+        `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.patchPath}`,
+      );
+    },
+  });
 
   it("serves canonical routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
@@ -391,116 +444,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
-  });
-
-  it("returns manifest metadata and bsdiff patch descriptors from the edge function entrypoint", async () => {
-    const currentBundleId = "00000000-0000-0000-0000-000000000201";
-    const nextBundleId = "00000000-0000-0000-0000-000000000202";
-
-    await Promise.all([
-      uploadStorageObject(
-        supabaseAdmin,
-        `${currentBundleId}/manifest.json`,
-        JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
-        "application/json",
-      ),
-      uploadStorageObject(
-        supabaseAdmin,
-        `${nextBundleId}/manifest.json`,
-        JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
-        "application/json",
-      ),
-      uploadStorageObject(
-        supabaseAdmin,
-        `${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-        "patch-bytes",
-        "application/octet-stream",
-      ),
-      uploadBundleObject(supabaseAdmin, currentBundleId),
-      uploadBundleObject(supabaseAdmin, nextBundleId),
-    ]);
-
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: currentBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-current-zip",
-        gitCommitHash: null,
-        message: "current",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${currentBundleId}/manifest.json`,
-        },
-      }),
-    );
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: nextBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-next-zip",
-        gitCommitHash: null,
-        message: "next",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/files`,
-          diff_base_bundle_id: currentBundleId,
-          hbc_patch_algorithm: "bsdiff",
-          hbc_patch_asset_path: "index.ios.bundle",
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `http://gateway:8000/storage/v1/object/public/${BUCKET_NAME}/${nextBundleId}/manifest.json`,
-        },
-      }),
-    );
-
-    const response = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
-        appVersion: "1.0.0",
-        bundleId: currentBundleId,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      })}`,
-    );
-
-    expect(response.ok).toBe(true);
-    const body = (await response.json()) as {
-      changedAssets?: Record<string, any>;
-      id?: string;
-      manifestFileHash?: string;
-      status?: string;
-    };
-
-    expect(body).toMatchObject({
-      id: nextBundleId,
-      manifestFileHash: "sig:manifest-next",
-      status: "UPDATE",
-    });
-    expect(body.changedAssets?.["index.ios.bundle"]).toMatchObject({
-      fileHash: "hash-new-bundle",
-      patch: {
-        algorithm: "bsdiff",
-        baseBundleId: currentBundleId,
-        baseFileHash: "hash-old-bundle",
-        patchFileHash: "hash-bsdiff",
-      },
-    });
-    expect(body.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl).toContain(
-      `/storage/v1/object/sign/${BUCKET_NAME}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-    );
   });
 
   it("does not support the legacy exact path", async () => {

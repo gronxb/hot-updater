@@ -1,5 +1,8 @@
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import {
   beforeAll,
@@ -89,18 +92,6 @@ const seedBundles = async (bundles: Bundle[]) => {
   }
 };
 
-const createManifest = (bundleId: string, hbcHash: string) => ({
-  assets: {
-    "assets/logo.png": {
-      fileHash: "hash-logo",
-    },
-    "index.ios.bundle": {
-      fileHash: hbcHash,
-    },
-  },
-  bundleId,
-});
-
 const putR2Object = async (key: string, value: string, contentType: string) => {
   await env.BUCKET.put(key, value, {
     httpMetadata: {
@@ -132,9 +123,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await env.DB.prepare("DELETE FROM bundles").run();
   });
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    await seedBundles(bundles);
-
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
       env,
@@ -143,7 +132,83 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     return (await response.json()) as any;
   };
 
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    await seedBundles(bundles);
+
+    return requestUpdateInfo(args);
+  };
+
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      await Promise.all([
+        putR2Object(
+          fixture.patchPath,
+          "patch-bytes",
+          "application/octet-stream",
+        ),
+        putR2Object(
+          `${fixture.currentBundleId}/bundle.zip`,
+          "zip",
+          "application/zip",
+        ),
+        putR2Object(
+          `${fixture.nextBundleId}/bundle.zip`,
+          "zip",
+          "application/zip",
+        ),
+      ]);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(async (input) => {
+          const url = String(input);
+
+          if (url.endsWith(`${fixture.currentBundleId}/manifest.json`)) {
+            return new Response(JSON.stringify(fixture.currentManifest), {
+              headers: { "content-type": "application/json" },
+            });
+          }
+
+          if (url.endsWith(`${fixture.nextBundleId}/manifest.json`)) {
+            return new Response(JSON.stringify(fixture.nextManifest), {
+              headers: { "content-type": "application/json" },
+            });
+          }
+
+          return new Response("not found", { status: 404 });
+        }),
+      );
+
+      return {
+        cleanup: () => {
+          vi.unstubAllGlobals();
+        },
+        currentMetadata: {
+          asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextMetadata: {
+          asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
+          diff_base_bundle_id: fixture.currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: fixture.assetPath,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `r2://bundles/${fixture.patchPath}`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.nextBundleId}/manifest.json`,
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toContain(`/bundles/${fixture.patchPath}`);
+    },
+  });
 
   it("serves canonical routes from the worker entrypoint", async () => {
     await seedBundles([
@@ -178,137 +243,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
-  });
-
-  it("returns manifest metadata and bsdiff patch descriptors from the worker entrypoint", async () => {
-    const currentBundleId = "00000000-0000-0000-0000-000000000201";
-    const nextBundleId = "00000000-0000-0000-0000-000000000202";
-
-    await Promise.all([
-      putR2Object(
-        `${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-        "patch-bytes",
-        "application/octet-stream",
-      ),
-      putR2Object(`${currentBundleId}/bundle.zip`, "zip", "application/zip"),
-      putR2Object(`${nextBundleId}/bundle.zip`, "zip", "application/zip"),
-    ]);
-
-    await seedBundles([
-      {
-        id: currentBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-current-zip",
-        gitCommitHash: null,
-        message: "current",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `r2://bundles/${currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `https://manifest-fixtures.example.com/${currentBundleId}/manifest.json`,
-        },
-      },
-      {
-        id: nextBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-next-zip",
-        gitCommitHash: null,
-        message: "next",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `r2://bundles/${nextBundleId}/files`,
-          diff_base_bundle_id: currentBundleId,
-          hbc_patch_algorithm: "bsdiff",
-          hbc_patch_asset_path: "index.ios.bundle",
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `r2://bundles/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `https://manifest-fixtures.example.com/${nextBundleId}/manifest.json`,
-        },
-      },
-    ]);
-
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>(async (input) => {
-        const url = String(input);
-
-        if (url.endsWith(`${currentBundleId}/manifest.json`)) {
-          return new Response(
-            JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
-            {
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-
-        if (url.endsWith(`${nextBundleId}/manifest.json`)) {
-          return new Response(
-            JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
-            {
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
-    try {
-      const response = await worker.fetch(
-        new Request(
-          `${PUBLIC_BASE_URL}${createCanonicalPath({
-            appVersion: "1.0.0",
-            bundleId: currentBundleId,
-            platform: "ios",
-            _updateStrategy: "appVersion",
-          })}`,
-        ),
-        env,
-      );
-
-      expect(response.ok).toBe(true);
-      const body = (await response.json()) as {
-        changedAssets?: Record<string, any>;
-        id?: string;
-        manifestFileHash?: string;
-        status?: string;
-      };
-
-      expect(body).toMatchObject({
-        id: nextBundleId,
-        manifestFileHash: "sig:manifest-next",
-        status: "UPDATE",
-      });
-      expect(body.changedAssets?.["index.ios.bundle"]).toMatchObject({
-        fileHash: "hash-new-bundle",
-        patch: {
-          algorithm: "bsdiff",
-          baseBundleId: currentBundleId,
-          baseFileHash: "hash-old-bundle",
-          patchFileHash: "hash-bsdiff",
-        },
-      });
-      expect(
-        body.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl,
-      ).toContain(
-        `/bundles/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
   });
 
   it("does not support the legacy exact path", async () => {

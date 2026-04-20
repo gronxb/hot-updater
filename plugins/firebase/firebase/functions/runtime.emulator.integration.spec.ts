@@ -16,7 +16,10 @@ import { fileURLToPath } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import admin from "firebase-admin";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -114,18 +117,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
     storageUri: `gs://hot-updater-test/${bundle.id}/bundle.zip`,
   };
 };
-
-const createManifest = (bundleId: string, hbcHash: string) => ({
-  assets: {
-    "assets/logo.png": {
-      fileHash: "hash-logo",
-    },
-    "index.ios.bundle": {
-      fileHash: hbcHash,
-    },
-  },
-  bundleId,
-});
 
 describe.sequential("firebase functions runtime acceptance", () => {
   const cdnObjects = new Map<string, { body: string; contentType: string }>();
@@ -319,17 +310,73 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+  const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
       await seedHotUpdater.insertBundle(bundle);
     }
+  };
 
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await invokeHandler(createCanonicalPath(args));
 
     return (await response.json()) as any;
   };
 
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    await seedRuntimeBundles(bundles);
+    return requestUpdateInfo(args);
+  };
+
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles: seedRuntimeBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      seedCdnObject(
+        cdnObjects,
+        `${fixture.currentBundleId}/manifest.json`,
+        JSON.stringify(fixture.currentManifest),
+        "application/json",
+      );
+      seedCdnObject(
+        cdnObjects,
+        `${fixture.nextBundleId}/manifest.json`,
+        JSON.stringify(fixture.nextManifest),
+        "application/json",
+      );
+      seedCdnObject(
+        cdnObjects,
+        fixture.patchPath,
+        "patch-bytes",
+        "application/octet-stream",
+      );
+      seedCdnObject(cdnObjects, `${fixture.currentBundleId}/bundle.zip`, "zip");
+      seedCdnObject(cdnObjects, `${fixture.nextBundleId}/bundle.zip`, "zip");
+
+      return {
+        currentMetadata: {
+          asset_base_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextMetadata: {
+          asset_base_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/files`,
+          diff_base_bundle_id: fixture.currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: fixture.assetPath,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `gs://hot-updater-test/${fixture.patchPath}`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/manifest.json`,
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toBe(`${cdnBaseUrl}/${fixture.patchPath}`);
+    },
+  });
 
   it("serves canonical routes from the emulator entrypoint", async () => {
     await seedHotUpdater.insertBundle(
@@ -361,114 +408,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
-  });
-
-  it("returns manifest metadata and bsdiff patch descriptors from the emulator entrypoint", async () => {
-    const currentBundleId = "00000000-0000-0000-0000-000000000201";
-    const nextBundleId = "00000000-0000-0000-0000-000000000202";
-
-    seedCdnObject(
-      cdnObjects,
-      `${currentBundleId}/manifest.json`,
-      JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
-      "application/json",
-    );
-    seedCdnObject(
-      cdnObjects,
-      `${nextBundleId}/manifest.json`,
-      JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
-      "application/json",
-    );
-    seedCdnObject(
-      cdnObjects,
-      `${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-      "patch-bytes",
-      "application/octet-stream",
-    );
-    seedCdnObject(cdnObjects, `${currentBundleId}/bundle.zip`, "zip");
-    seedCdnObject(cdnObjects, `${nextBundleId}/bundle.zip`, "zip");
-
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: currentBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-current-zip",
-        gitCommitHash: null,
-        message: "current",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `gs://hot-updater-test/${currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `gs://hot-updater-test/${currentBundleId}/manifest.json`,
-        },
-      }),
-    );
-    await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: nextBundleId,
-        platform: "ios",
-        targetAppVersion: "1.0.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash-next-zip",
-        gitCommitHash: null,
-        message: "next",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri: `gs://hot-updater-test/${nextBundleId}/files`,
-          diff_base_bundle_id: currentBundleId,
-          hbc_patch_algorithm: "bsdiff",
-          hbc_patch_asset_path: "index.ios.bundle",
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `gs://hot-updater-test/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `gs://hot-updater-test/${nextBundleId}/manifest.json`,
-        },
-      }),
-    );
-
-    const response = await invokeHandler(
-      createCanonicalPath({
-        appVersion: "1.0.0",
-        bundleId: currentBundleId,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      }),
-    );
-
-    expect(response.ok).toBe(true);
-    const body = (await response.json()) as {
-      changedAssets?: Record<string, any>;
-      id?: string;
-      manifestFileHash?: string;
-      status?: string;
-    };
-
-    expect(body).toMatchObject({
-      id: nextBundleId,
-      manifestFileHash: "sig:manifest-next",
-      status: "UPDATE",
-    });
-    expect(body.changedAssets?.["index.ios.bundle"]).toMatchObject({
-      fileHash: "hash-new-bundle",
-      patch: {
-        algorithm: "bsdiff",
-        baseBundleId: currentBundleId,
-        baseFileHash: "hash-old-bundle",
-        patchFileHash: "hash-bsdiff",
-      },
-    });
-    expect(body.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl).toBe(
-      `${cdnBaseUrl}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
-    );
   });
 
   it("does not support the legacy exact path", async () => {
