@@ -118,6 +118,18 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
+const createManifest = (bundleId: string, hbcHash: string) => ({
+  assets: {
+    "assets/logo.png": {
+      fileHash: "hash-logo",
+    },
+    "index.ios.bundle": {
+      fileHash: hbcHash,
+    },
+  },
+  bundleId,
+});
+
 describe.sequential("supabase edge runtime acceptance", () => {
   let runtimeRoot: string | undefined;
   let storageRepoPath = "";
@@ -381,6 +393,116 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
+  it("returns manifest metadata and bsdiff patch descriptors from the edge function entrypoint", async () => {
+    const currentBundleId = "00000000-0000-0000-0000-000000000201";
+    const nextBundleId = "00000000-0000-0000-0000-000000000202";
+
+    await Promise.all([
+      uploadStorageObject(
+        supabaseAdmin,
+        `${currentBundleId}/manifest.json`,
+        JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
+        "application/json",
+      ),
+      uploadStorageObject(
+        supabaseAdmin,
+        `${nextBundleId}/manifest.json`,
+        JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
+        "application/json",
+      ),
+      uploadStorageObject(
+        supabaseAdmin,
+        `${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+        "patch-bytes",
+        "application/octet-stream",
+      ),
+      uploadBundleObject(supabaseAdmin, currentBundleId),
+      uploadBundleObject(supabaseAdmin, nextBundleId),
+    ]);
+
+    await seedHotUpdater.insertBundle(
+      toRuntimeBundle({
+        id: currentBundleId,
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-current-zip",
+        gitCommitHash: null,
+        message: "current",
+        channel: "production",
+        storageUri: "storage://unused",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${currentBundleId}/manifest.json`,
+        },
+      }),
+    );
+    await seedHotUpdater.insertBundle(
+      toRuntimeBundle({
+        id: nextBundleId,
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-next-zip",
+        gitCommitHash: null,
+        message: "next",
+        channel: "production",
+        storageUri: "storage://unused",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/files`,
+          diff_base_bundle_id: currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: "index.ios.bundle",
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${nextBundleId}/manifest.json`,
+        },
+      }),
+    );
+
+    const response = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
+        appVersion: "1.0.0",
+        bundleId: currentBundleId,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      })}`,
+    );
+
+    expect(response.ok).toBe(true);
+    const body = (await response.json()) as {
+      changedAssets?: Record<string, any>;
+      id?: string;
+      manifestFileHash?: string;
+      status?: string;
+    };
+
+    expect(body).toMatchObject({
+      id: nextBundleId,
+      manifestFileHash: "sig:manifest-next",
+      status: "UPDATE",
+    });
+    expect(body.changedAssets?.["index.ios.bundle"]).toMatchObject({
+      fileHash: "hash-new-bundle",
+      patch: {
+        algorithm: "bsdiff",
+        baseBundleId: currentBundleId,
+        baseFileHash: "hash-old-bundle",
+        patchFileHash: "hash-bsdiff",
+      },
+    });
+    expect(body.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl).toContain(
+      `/storage/v1/object/sign/${BUCKET_NAME}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+    );
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${LEGACY_HOT_UPDATER_BASE_PATH}`,
@@ -480,10 +602,24 @@ const uploadBundleObject = async (
   supabaseAdmin: ReturnType<typeof createClient>,
   bundleId: string,
 ) => {
+  await uploadStorageObject(
+    supabaseAdmin,
+    `${bundleId}/bundle.zip`,
+    Buffer.from("zip"),
+    "application/zip",
+  );
+};
+
+const uploadStorageObject = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+) => {
   const { error } = await supabaseAdmin.storage
     .from(BUCKET_NAME)
-    .upload(`${bundleId}/bundle.zip`, Buffer.from("zip"), {
-      contentType: "application/zip",
+    .upload(key, body, {
+      contentType,
       cacheControl: "31536000",
       upsert: true,
     });

@@ -9,6 +9,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,7 +35,6 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
-const CDN_URL = "https://cdn.example.com";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
@@ -115,7 +115,22 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
+const createManifest = (bundleId: string, hbcHash: string) => ({
+  assets: {
+    "assets/logo.png": {
+      fileHash: "hash-logo",
+    },
+    "index.ios.bundle": {
+      fileHash: hbcHash,
+    },
+  },
+  bundleId,
+});
+
 describe.sequential("firebase functions runtime acceptance", () => {
+  const cdnObjects = new Map<string, { body: string; contentType: string }>();
+  let cdnBaseUrl = "";
+  let cdnServer: Server | undefined;
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
@@ -131,6 +146,10 @@ describe.sequential("firebase functions runtime acceptance", () => {
     }
 
     await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
+
+    const cdnPort = await findOpenPort();
+    cdnBaseUrl = `http://127.0.0.1:${cdnPort}`;
+    cdnServer = await startFixtureCdn(cdnPort, cdnObjects);
 
     tempRoot = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/firebase/runtime-acceptance-"),
@@ -226,7 +245,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storages: [
         firebaseFunctionsStorage({
           ...adminOptions,
-          cdnUrl: CDN_URL,
+          cdnUrl: cdnBaseUrl,
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
@@ -255,7 +274,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       env: {
         FIRESTORE_EMULATOR_HOST: firestoreHost,
         GCLOUD_PROJECT: projectId,
-        HOT_UPDATER_CDN_URL: CDN_URL,
+        HOT_UPDATER_CDN_URL: cdnBaseUrl,
       },
     });
 
@@ -268,6 +287,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   }, 150_000);
 
   beforeEach(async () => {
+    cdnObjects.clear();
     await clearFirestoreCollection("bundles");
     await clearFirestoreCollection("channels");
     await clearFirestoreCollection("target_app_versions");
@@ -280,6 +300,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     if (tempRoot) {
       await rm(tempRoot, { recursive: true, force: true });
+    }
+
+    if (cdnServer) {
+      await closeServer(cdnServer);
     }
   });
 
@@ -339,6 +363,114 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     });
   });
 
+  it("returns manifest metadata and bsdiff patch descriptors from the emulator entrypoint", async () => {
+    const currentBundleId = "00000000-0000-0000-0000-000000000201";
+    const nextBundleId = "00000000-0000-0000-0000-000000000202";
+
+    seedCdnObject(
+      cdnObjects,
+      `${currentBundleId}/manifest.json`,
+      JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
+      "application/json",
+    );
+    seedCdnObject(
+      cdnObjects,
+      `${nextBundleId}/manifest.json`,
+      JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
+      "application/json",
+    );
+    seedCdnObject(
+      cdnObjects,
+      `${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+      "patch-bytes",
+      "application/octet-stream",
+    );
+    seedCdnObject(cdnObjects, `${currentBundleId}/bundle.zip`, "zip");
+    seedCdnObject(cdnObjects, `${nextBundleId}/bundle.zip`, "zip");
+
+    await seedHotUpdater.insertBundle(
+      toRuntimeBundle({
+        id: currentBundleId,
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-current-zip",
+        gitCommitHash: null,
+        message: "current",
+        channel: "production",
+        storageUri: "storage://unused",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri: `gs://hot-updater-test/${currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `gs://hot-updater-test/${currentBundleId}/manifest.json`,
+        },
+      }),
+    );
+    await seedHotUpdater.insertBundle(
+      toRuntimeBundle({
+        id: nextBundleId,
+        platform: "ios",
+        targetAppVersion: "1.0.0",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-next-zip",
+        gitCommitHash: null,
+        message: "next",
+        channel: "production",
+        storageUri: "storage://unused",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri: `gs://hot-updater-test/${nextBundleId}/files`,
+          diff_base_bundle_id: currentBundleId,
+          hbc_patch_algorithm: "bsdiff",
+          hbc_patch_asset_path: "index.ios.bundle",
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `gs://hot-updater-test/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `gs://hot-updater-test/${nextBundleId}/manifest.json`,
+        },
+      }),
+    );
+
+    const response = await invokeHandler(
+      createCanonicalPath({
+        appVersion: "1.0.0",
+        bundleId: currentBundleId,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    const body = (await response.json()) as {
+      changedAssets?: Record<string, any>;
+      id?: string;
+      manifestFileHash?: string;
+      status?: string;
+    };
+
+    expect(body).toMatchObject({
+      id: nextBundleId,
+      manifestFileHash: "sig:manifest-next",
+      status: "UPDATE",
+    });
+    expect(body.changedAssets?.["index.ios.bundle"]).toMatchObject({
+      fileHash: "hash-new-bundle",
+      patch: {
+        algorithm: "bsdiff",
+        baseBundleId: currentBundleId,
+        baseFileHash: "hash-old-bundle",
+        patchFileHash: "hash-bsdiff",
+      },
+    });
+    expect(body.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl).toBe(
+      `${cdnBaseUrl}/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+    );
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await invokeHandler(HOT_UPDATER_BASE_PATH);
 
@@ -369,4 +501,55 @@ const clearFirestoreCollection = async (collectionName: string) => {
     batch.delete(doc.ref);
   }
   await batch.commit();
+};
+
+const seedCdnObject = (
+  cdnObjects: Map<string, { body: string; contentType: string }>,
+  key: string,
+  body: string,
+  contentType = "application/octet-stream",
+) => {
+  cdnObjects.set(key.replace(/^\/+/, ""), {
+    body,
+    contentType,
+  });
+};
+
+const startFixtureCdn = async (
+  port: number,
+  cdnObjects: Map<string, { body: string; contentType: string }>,
+) => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    const key = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const object = cdnObjects.get(key);
+
+    if (!object) {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("not found");
+      return;
+    }
+
+    response.writeHead(200, { "content-type": object.contentType });
+    response.end(object.body);
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(port, "127.0.0.1", resolve);
+  });
+
+  return server;
+};
+
+const closeServer = async (server: Server) => {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 };

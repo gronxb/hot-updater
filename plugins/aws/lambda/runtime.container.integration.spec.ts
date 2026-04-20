@@ -6,12 +6,15 @@ import { fileURLToPath } from "node:url";
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
@@ -143,6 +146,18 @@ const createCloudFrontEvent = ({
     ],
   };
 };
+
+const createManifest = (bundleId: string, hbcHash: string) => ({
+  assets: {
+    "assets/logo.png": {
+      fileHash: "hash-logo",
+    },
+    "index.ios.bundle": {
+      fileHash: hbcHash,
+    },
+  },
+  bundleId,
+});
 
 const invokeLambda = async (port: number, event: unknown) => {
   return await fetch(
@@ -434,6 +449,139 @@ describe.sequential("aws lambda runtime acceptance", () => {
     );
   });
 
+  it("returns manifest metadata and bsdiff patch descriptors from the packaged lambda entrypoint", async () => {
+    const currentBundleId = "00000000-0000-0000-0000-000000000201";
+    const nextBundleId = "00000000-0000-0000-0000-000000000202";
+    const currentManifestKey = `releases/${currentBundleId}/manifest.json`;
+    const nextManifestKey = `releases/${nextBundleId}/manifest.json`;
+    const patchKey = `releases/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`;
+
+    await Promise.all([
+      putS3Object(
+        s3Client,
+        currentManifestKey,
+        JSON.stringify(createManifest(currentBundleId, "hash-old-bundle")),
+        "application/json",
+      ),
+      putS3Object(
+        s3Client,
+        nextManifestKey,
+        JSON.stringify(createManifest(nextBundleId, "hash-new-bundle")),
+        "application/json",
+      ),
+      putS3Object(
+        s3Client,
+        patchKey,
+        "patch-bytes",
+        "application/octet-stream",
+      ),
+      putS3Object(
+        s3Client,
+        `bundles/${currentBundleId}/bundle.zip`,
+        "zip",
+        "application/zip",
+      ),
+      putS3Object(
+        s3Client,
+        `bundles/${nextBundleId}/bundle.zip`,
+        "zip",
+        "application/zip",
+      ),
+    ]);
+
+    const currentBundle = toRuntimeBundle({
+      id: currentBundleId,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hash-current-zip",
+      gitCommitHash: null,
+      message: "current",
+      channel: "production",
+      storageUri: "storage://unused",
+      fingerprintHash: null,
+      metadata: {
+        asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${currentBundleId}/files`,
+        manifest_file_hash: "sig:manifest-current",
+        manifest_storage_uri:
+          await createRuntimeReadableS3Url(currentManifestKey),
+      },
+    });
+    const nextBundle = toRuntimeBundle({
+      id: nextBundleId,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hash-next-zip",
+      gitCommitHash: null,
+      message: "next",
+      channel: "production",
+      storageUri: "storage://unused",
+      fingerprintHash: null,
+      metadata: {
+        asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${nextBundleId}/files`,
+        diff_base_bundle_id: currentBundleId,
+        hbc_patch_algorithm: "bsdiff",
+        hbc_patch_asset_path: "index.ios.bundle",
+        hbc_patch_base_file_hash: "hash-old-bundle",
+        hbc_patch_file_hash: "hash-bsdiff",
+        hbc_patch_storage_uri: `s3://${S3_BUCKET_NAME}/${patchKey}`,
+        manifest_file_hash: "sig:manifest-next",
+        manifest_storage_uri: await createRuntimeReadableS3Url(nextManifestKey),
+      },
+    });
+
+    await seedHotUpdater.insertBundle(currentBundle);
+    await seedHotUpdater.insertBundle(nextBundle);
+
+    const response = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: createCanonicalPath({
+          appVersion: "1.0.0",
+          bundleId: currentBundleId,
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        }),
+        headers: new Headers(),
+      }),
+    );
+    expect(response.ok).toBe(true);
+
+    const payload = (await response.json()) as {
+      body?: string;
+      headers?: Record<string, { key: string; value: string }[]>;
+    };
+    const body = (await readLambdaJson(payload)) as {
+      changedAssets?: Record<string, any>;
+      id?: string;
+      manifestFileHash?: string;
+      status?: string;
+    } | null;
+
+    expect(body).toMatchObject({
+      id: nextBundleId,
+      manifestFileHash: "sig:manifest-next",
+      status: "UPDATE",
+    });
+    expect(body?.changedAssets?.["index.ios.bundle"]).toMatchObject({
+      fileHash: "hash-new-bundle",
+      patch: {
+        algorithm: "bsdiff",
+        baseBundleId: currentBundleId,
+        baseFileHash: "hash-old-bundle",
+        patchFileHash: "hash-bsdiff",
+      },
+    });
+    expect(
+      body?.changedAssets?.["index.ios.bundle"]?.patch?.patchUrl,
+    ).toContain(
+      `/releases/${nextBundleId}/patches/${currentBundleId}/index.ios.bundle.bsdiff`,
+    );
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await invokeLambda(
       lambdaPort,
@@ -479,6 +627,47 @@ const createHostS3Client = (endpoint: string) => {
       secretAccessKey: SECRET_ACCESS_KEY,
     },
   });
+};
+
+const createRuntimeS3Client = () => {
+  return new S3Client({
+    region: REGION,
+    endpoint: "http://localstack:4566",
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: ACCESS_KEY_ID,
+      secretAccessKey: SECRET_ACCESS_KEY,
+    },
+  });
+};
+
+const createRuntimeReadableS3Url = async (key: string) => {
+  return await getS3SignedUrl(
+    createRuntimeS3Client(),
+    new GetObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: key,
+    }),
+    {
+      expiresIn: 3600,
+    },
+  );
+};
+
+const putS3Object = async (
+  client: S3Client,
+  key: string,
+  body: string,
+  contentType: string,
+) => {
+  await client.send(
+    new PutObjectCommand({
+      Body: body,
+      Bucket: S3_BUCKET_NAME,
+      ContentType: contentType,
+      Key: key,
+    }),
+  );
 };
 
 const waitForLocalstackReady = async ({
