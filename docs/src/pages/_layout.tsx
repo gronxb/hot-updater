@@ -1,6 +1,7 @@
 import "@/styles/globals.css";
 import type { ReactNode } from "react";
 
+import { Analytics } from "@vercel/analytics/react";
 import { Provider } from "@/components/provider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
@@ -72,7 +73,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       />
       <meta name="twitter:image" content="https://hot-updater.dev/og.png" />
 
-      <Provider>{children}</Provider>
+      <Provider>
+        {children}
+        <Analytics />
+      </Provider>
     </>
   );
 }
