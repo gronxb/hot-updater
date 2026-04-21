@@ -32,7 +32,7 @@ class BsdiffPatchTest {
     @Test
     fun `rejects invalid bsdiff patch`() {
         val base = "console.log(\"base bundle\");\n".toByteArray()
-        val invalidPatch = "not-a-bsdiff-patch".toByteArray()
+        val invalidPatch = "not-a-bsdiff-patch-with-header".toByteArray()
 
         assertThrows(IllegalArgumentException::class.java) {
             BsdiffPatch.apply(base, invalidPatch)
