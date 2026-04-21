@@ -95,48 +95,35 @@ extern "C" BOOL HotUpdaterApplyBsdiffPatch(NSString *patchPath,
     return NO;
   }
 
-  if (patchData.length < 32 ||
-      memcmp(patchData.bytes, "BSDIFF40", 8) != 0) {
+  if (patchData.length < 24 ||
+      memcmp(patchData.bytes, "ENDSLEY/BSDIFF43", 16) != 0) {
     if (error) {
-      *error = MakePatchError(@"Invalid BSDIFF40 header");
+      *error = MakePatchError(@"Invalid ENDSLEY/BSDIFF43 header");
     }
     return NO;
   }
 
   const uint8_t *patchBytes = reinterpret_cast<const uint8_t *>(patchData.bytes);
-  int64_t ctrlLen = ReadOfft(patchBytes + 8);
-  int64_t diffLen = ReadOfft(patchBytes + 16);
-  int64_t newSize = ReadOfft(patchBytes + 24);
+  int64_t newSize = ReadOfft(patchBytes + 16);
 
-  if (ctrlLen < 0 || diffLen < 0 || newSize < 0) {
+  if (newSize < 0) {
     if (error) {
-      *error = MakePatchError(@"Negative BSDIFF40 header values");
+      *error = MakePatchError(@"Negative ENDSLEY/BSDIFF43 target size");
     }
     return NO;
   }
 
-  NSUInteger ctrlStart = 32;
-  NSUInteger ctrlEnd = ctrlStart + static_cast<NSUInteger>(ctrlLen);
-  NSUInteger diffEnd = ctrlEnd + static_cast<NSUInteger>(diffLen);
-
-  if (ctrlEnd < ctrlStart || diffEnd < ctrlEnd || diffEnd > patchData.length) {
+  if (static_cast<uint64_t>(newSize) > NSUIntegerMax) {
     if (error) {
-      *error = MakePatchError(@"BSDIFF40 block bounds are invalid");
+      *error = MakePatchError(@"Target file is too large");
     }
     return NO;
   }
 
-  NSData *ctrlCompressed =
-      [patchData subdataWithRange:NSMakeRange(ctrlStart, ctrlEnd - ctrlStart)];
-  NSData *diffCompressed =
-      [patchData subdataWithRange:NSMakeRange(ctrlEnd, diffEnd - ctrlEnd)];
-  NSData *extraCompressed =
-      [patchData subdataWithRange:NSMakeRange(diffEnd, patchData.length - diffEnd)];
-
-  NSData *ctrlData = DecompressBzip(ctrlCompressed, error);
-  NSData *diffData = DecompressBzip(diffCompressed, error);
-  NSData *extraData = DecompressBzip(extraCompressed, error);
-  if (!ctrlData || !diffData || !extraData) {
+  NSData *compressedPatch =
+      [patchData subdataWithRange:NSMakeRange(24, patchData.length - 24)];
+  NSData *patchStreamData = DecompressBzip(compressedPatch, error);
+  if (!patchStreamData) {
     return NO;
   }
 
@@ -144,28 +131,25 @@ extern "C" BOOL HotUpdaterApplyBsdiffPatch(NSString *patchPath,
       [NSMutableData dataWithLength:static_cast<NSUInteger>(newSize)];
   uint8_t *outputBytes = reinterpret_cast<uint8_t *>(output.mutableBytes);
   const uint8_t *baseBytes = reinterpret_cast<const uint8_t *>(baseData.bytes);
-  const uint8_t *ctrlBytes = reinterpret_cast<const uint8_t *>(ctrlData.bytes);
-  const uint8_t *diffBytes = reinterpret_cast<const uint8_t *>(diffData.bytes);
-  const uint8_t *extraBytes = reinterpret_cast<const uint8_t *>(extraData.bytes);
+  const uint8_t *streamBytes =
+      reinterpret_cast<const uint8_t *>(patchStreamData.bytes);
 
-  NSUInteger ctrlPos = 0;
-  NSUInteger diffPos = 0;
-  NSUInteger extraPos = 0;
+  NSUInteger streamPos = 0;
   NSUInteger outputPos = 0;
   int64_t oldPos = 0;
 
   while (outputPos < static_cast<NSUInteger>(newSize)) {
-    if (ctrlPos + 24 > ctrlData.length) {
+    if (streamPos + 24 > patchStreamData.length) {
       if (error) {
         *error = MakePatchError(@"Failed to read control block");
       }
       return NO;
     }
 
-    int64_t addLen = ReadOfft(ctrlBytes + ctrlPos);
-    int64_t copyLen = ReadOfft(ctrlBytes + ctrlPos + 8);
-    int64_t seekLen = ReadOfft(ctrlBytes + ctrlPos + 16);
-    ctrlPos += 24;
+    int64_t addLen = ReadOfft(streamBytes + streamPos);
+    int64_t copyLen = ReadOfft(streamBytes + streamPos + 8);
+    int64_t seekLen = ReadOfft(streamBytes + streamPos + 16);
+    streamPos += 24;
 
     if (addLen < 0 || copyLen < 0) {
       if (error) {
@@ -176,37 +160,35 @@ extern "C" BOOL HotUpdaterApplyBsdiffPatch(NSString *patchPath,
 
     NSUInteger addCount = static_cast<NSUInteger>(addLen);
     NSUInteger copyCount = static_cast<NSUInteger>(copyLen);
+    int64_t remainingOutput =
+        newSize - static_cast<int64_t>(outputPos);
 
-    if (diffPos + addCount > diffData.length ||
-        extraPos + copyCount > extraData.length ||
-        outputPos + addCount + copyCount > static_cast<NSUInteger>(newSize)) {
+    if (addLen > remainingOutput || copyLen > remainingOutput - addLen ||
+        addCount > patchStreamData.length - streamPos ||
+        copyCount > patchStreamData.length - streamPos - addCount) {
       if (error) {
-        *error = MakePatchError(@"BSDIFF40 stream is truncated");
+        *error = MakePatchError(@"ENDSLEY/BSDIFF43 stream is truncated");
       }
       return NO;
     }
 
     for (NSUInteger index = 0; index < addCount; index += 1) {
-      if (oldPos < 0 || oldPos >= static_cast<int64_t>(baseData.length)) {
-        if (error) {
-          *error = MakePatchError(@"Old file offset out of bounds");
-        }
-        return NO;
-      }
-
-      uint8_t oldByte = baseBytes[oldPos];
-      uint8_t deltaByte = diffBytes[diffPos + index];
+      uint8_t oldByte =
+          (oldPos >= 0 && oldPos < static_cast<int64_t>(baseData.length))
+              ? baseBytes[oldPos]
+              : 0;
+      uint8_t deltaByte = streamBytes[streamPos + index];
       outputBytes[outputPos] =
           static_cast<uint8_t>((deltaByte + oldByte) & 0xFF);
       outputPos += 1;
       oldPos += 1;
     }
-    diffPos += addCount;
+    streamPos += addCount;
 
     if (copyCount > 0) {
-      memcpy(outputBytes + outputPos, extraBytes + extraPos, copyCount);
+      memcpy(outputBytes + outputPos, streamBytes + streamPos, copyCount);
       outputPos += copyCount;
-      extraPos += copyCount;
+      streamPos += copyCount;
     }
 
     oldPos += seekLen;

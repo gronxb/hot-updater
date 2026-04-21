@@ -8,8 +8,8 @@ import java.io.File
 import java.io.InputStream
 
 object BsdiffPatch {
-    private const val HEADER = "BSDIFF40"
-    private const val HEADER_SIZE = 32
+    private const val HEADER = "ENDSLEY/BSDIFF43"
+    private const val HEADER_SIZE = 24
 
     fun apply(
         baseFile: File,
@@ -30,86 +30,80 @@ object BsdiffPatch {
     ): ByteArray {
         if (
             patchBytes.size < HEADER_SIZE ||
-            String(patchBytes, 0, 8, Charsets.US_ASCII) != HEADER
+            String(patchBytes, 0, 16, Charsets.US_ASCII) != HEADER
         ) {
-            throw IllegalArgumentException("Invalid BSDIFF40 header")
+            throw IllegalArgumentException("Invalid ENDSLEY/BSDIFF43 header")
         }
 
-        val ctrlLen = readOfft(patchBytes, 8)
-        val diffLen = readOfft(patchBytes, 16)
-        val newSize = readOfft(patchBytes, 24)
-        if (ctrlLen < 0 || diffLen < 0 || newSize < 0) {
-            throw IllegalArgumentException("Negative BSDIFF40 header values")
+        val newSize = readOfft(patchBytes, 16)
+        if (newSize < 0) {
+            throw IllegalArgumentException("Negative ENDSLEY/BSDIFF43 target size")
         }
 
-        val ctrlStart = HEADER_SIZE
-        val ctrlEnd = checkedEnd(ctrlStart, ctrlLen, "control block overflow")
-        val diffEnd = checkedEnd(ctrlEnd, diffLen, "diff block overflow")
-        if (diffEnd > patchBytes.size) {
-            throw IllegalArgumentException("BSDIFF40 block bounds are invalid")
-        }
+        val output =
+            ByteArrayOutputStream(
+                checkedInt(newSize, "new size overflow"),
+            )
+        var oldPos = 0L
 
-        createBzipStream(patchBytes, ctrlStart, ctrlEnd).use { ctrlReader ->
-            createBzipStream(patchBytes, ctrlEnd, diffEnd).use { diffReader ->
-                createBzipStream(patchBytes, diffEnd, patchBytes.size).use { extraReader ->
-                    val output = ByteArrayOutputStream(newSize.toInt())
-                    var oldPos = 0L
+        createBzipStream(patchBytes, HEADER_SIZE, patchBytes.size).use { patchReader ->
+            while (output.size() < newSize) {
+                val controlBytes = ByteArray(24)
+                readExactly(patchReader, controlBytes)
 
-                    while (output.size() < newSize) {
-                        val controlBytes = ByteArray(24)
-                        readExactly(ctrlReader, controlBytes)
-
-                        val addLen = readOfft(controlBytes, 0)
-                        val copyLen = readOfft(controlBytes, 8)
-                        val seekLen = readOfft(controlBytes, 16)
-                        if (addLen < 0 || copyLen < 0) {
-                            throw IllegalArgumentException(
-                                "Negative add/copy length in control block",
-                            )
-                        }
-
-                        val diffBytes = ByteArray(addLen.toInt())
-                        readExactly(diffReader, diffBytes)
-                        for (deltaByte in diffBytes) {
-                            if (oldPos < 0 || oldPos >= baseBytes.size) {
-                                throw IllegalArgumentException("Old file offset out of bounds")
-                            }
-                            val oldByte = baseBytes[oldPos.toInt()].toInt() and 0xFF
-                            val nextByte = ((deltaByte.toInt() and 0xFF) + oldByte) and 0xFF
-                            output.write(nextByte)
-                            oldPos += 1
-                        }
-
-                        val extraBytes = ByteArray(copyLen.toInt())
-                        readExactly(extraReader, extraBytes)
-                        output.write(extraBytes)
-
-                        oldPos += seekLen
-                        if (output.size().toLong() > newSize) {
-                            throw IllegalArgumentException("Patch output exceeds target size")
-                        }
-                    }
-
-                    if (output.size().toLong() != newSize) {
-                        throw IllegalArgumentException("Patch output length mismatch")
-                    }
-
-                    return output.toByteArray()
+                val addLen = readOfft(controlBytes, 0)
+                val copyLen = readOfft(controlBytes, 8)
+                val seekLen = readOfft(controlBytes, 16)
+                if (addLen < 0 || copyLen < 0) {
+                    throw IllegalArgumentException(
+                        "Negative add/copy length in control block",
+                    )
                 }
+
+                val addCount = checkedInt(addLen, "add length overflow")
+                val copyCount = checkedInt(copyLen, "copy length overflow")
+                val remainingOutput = newSize - output.size().toLong()
+                if (addLen > remainingOutput || copyLen > remainingOutput - addLen) {
+                    throw IllegalArgumentException("ENDSLEY/BSDIFF43 stream is truncated")
+                }
+
+                val diffBytes = ByteArray(addCount)
+                readExactly(patchReader, diffBytes)
+                for (deltaByte in diffBytes) {
+                    val oldByte =
+                        if (oldPos >= 0 && oldPos < baseBytes.size) {
+                            baseBytes[oldPos.toInt()].toInt() and 0xFF
+                        } else {
+                            0
+                        }
+                    val nextByte = ((deltaByte.toInt() and 0xFF) + oldByte) and 0xFF
+                    output.write(nextByte)
+                    oldPos += 1
+                }
+
+                val extraBytes = ByteArray(copyCount)
+                readExactly(patchReader, extraBytes)
+                output.write(extraBytes)
+
+                oldPos += seekLen
             }
         }
+
+        if (output.size().toLong() != newSize) {
+            throw IllegalArgumentException("Patch output length mismatch")
+        }
+
+        return output.toByteArray()
     }
 
-    private fun checkedEnd(
-        start: Int,
-        length: Long,
+    private fun checkedInt(
+        value: Long,
         message: String,
     ): Int {
-        val end = start.toLong() + length
-        if (end > Int.MAX_VALUE) {
+        if (value > Int.MAX_VALUE) {
             throw IllegalArgumentException(message)
         }
-        return end.toInt()
+        return value.toInt()
     }
 
     private fun createBzipStream(
@@ -130,7 +124,7 @@ object BsdiffPatch {
         while (offset < target.size) {
             val read = input.read(target, offset, target.size - offset)
             if (read < 0) {
-                throw EOFException("Unexpected end of BSDIFF40 stream")
+                throw EOFException("Unexpected end of ENDSLEY/BSDIFF43 stream")
             }
             offset += read
         }

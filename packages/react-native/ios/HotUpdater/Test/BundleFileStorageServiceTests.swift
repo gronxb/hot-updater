@@ -178,7 +178,7 @@ struct BundleFileStorageServiceTests {
 
 private let testIsolationKey = "test-isolation-key"
 private let bsdiffPatchFixtureBase64 =
-    "QlNESUZGNDAxAAAAAAAAACcAAAAAAAAAHwAAAAAAAABCWmg2MUFZJlNZEphI+gAADsBAXIpAACAAIZNGIQwIbk3iQIFit8XckU4UJASmEj6AQlpoNjFBWSZTWQRTg8UAAABgAEAABAAgACEAgoMXckU4UJAEU4PFQlpoNjFBWSZTWZBMaVgAAAKBgC5ARAAgADEMAQGygiL4u5IpwoSEgmNKwA=="
+    "RU5EU0xFWS9CU0RJRkY0Mx8AAAAAAAAAQlpoOTFBWSZTWb12MIEAAAB5gEQYAADQYQAIPsXOACAAIo0A0NAaNCgAGgZMgHAtYscVxxRtTt4nmaj70g4gQSF5+T4u5IpwoSF67GEC"
 
 private func makeWorkingDirectory() throws -> URL {
     try FileManager.default.url(
