@@ -14,16 +14,19 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  findNodeHandle,
   Image,
   Keyboard,
   type LayoutChangeEvent,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
@@ -82,6 +85,13 @@ type ScrollTarget =
   | "cohortActions"
   | "crashHistory";
 
+const SCROLL_TARGETS: ScrollTarget[] = [
+  "actionResults",
+  "actions",
+  "cohortActions",
+  "crashHistory",
+];
+
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
   baseURL: getGlobalBaseUrl(),
@@ -118,24 +128,30 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
-const Section = ({
-  children,
-  onLayout,
-  title,
-  titleTestID,
-}: {
+type SectionProps = {
   children: React.ReactNode;
   onLayout?: (event: LayoutChangeEvent) => void;
   title: string;
   titleTestID?: string;
-}) => (
-  <View onLayout={onLayout} style={styles.section}>
-    <Text style={styles.sectionTitle} testID={titleTestID}>
-      {title}
-    </Text>
-    {children}
-  </View>
+};
+
+const Section = React.forwardRef<View, SectionProps>(
+  ({ children, onLayout, title, titleTestID }, ref) => (
+    <View
+      collapsable={false}
+      onLayout={onLayout}
+      ref={ref}
+      style={styles.section}
+    >
+      <Text style={styles.sectionTitle} testID={titleTestID}>
+        {title}
+      </Text>
+      {children}
+    </View>
+  ),
 );
+
+Section.displayName = "Section";
 
 const InfoRow = ({
   label,
@@ -348,12 +364,20 @@ function App(): React.JSX.Element {
   const notifyState = useSnapshot(notify);
   const progress = useHotUpdaterStore((state) => state.progress);
   const scrollViewRef = useRef<ScrollView>(null);
-  const sectionOffsets = useRef<Record<ScrollTarget, number>>({
-    actionResults: 0,
-    actions: 0,
-    cohortActions: 0,
-    crashHistory: 0,
+  const scrollContentRef = useRef<View>(null);
+  const sectionRefs = useRef<Record<ScrollTarget, View | null>>({
+    actionResults: null,
+    actions: null,
+    cohortActions: null,
+    crashHistory: null,
   });
+  const sectionOffsets = useRef<Record<ScrollTarget, number | null>>({
+    actionResults: null,
+    actions: null,
+    cohortActions: null,
+    crashHistory: null,
+  });
+  const [sectionsReady, setSectionsReady] = useState(false);
   const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
   const [cohortInput, setCohortInput] = useState(() => initialCohort);
@@ -382,9 +406,15 @@ function App(): React.JSX.Element {
     ([fileName]) => fileName === E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH,
   );
   const statusPayload = JSON.stringify(notifyState, null, 2);
-  const launchStatusText = `Current Launch Status: ${notifyState.status ?? "null"}`;
-  const crashedBundleText = `Current Crashed Bundle ID: ${notifyState.crashedBundleId ?? "null"}`;
-  const channelSummary = `current=${runtimeSnapshot.channel} default=${runtimeSnapshot.defaultChannel} switched=${String(runtimeSnapshot.isChannelSwitched)}`;
+  const launchStatusText = `Current Launch Status: ${
+    notifyState.status ?? "null"
+  }`;
+  const crashedBundleText = `Current Crashed Bundle ID: ${
+    notifyState.crashedBundleId ?? "null"
+  }`;
+  const channelSummary = `current=${runtimeSnapshot.channel} default=${
+    runtimeSnapshot.defaultChannel
+  } switched=${String(runtimeSnapshot.isChannelSwitched)}`;
   const cohortSummary = `current=${runtimeSnapshot.cohort} initial=${initialCohort}`;
 
   const refreshRuntimeSnapshot = () => {
@@ -394,19 +424,55 @@ function App(): React.JSX.Element {
   const recordSectionOffset =
     (target: ScrollTarget) => (event: LayoutChangeEvent) => {
       sectionOffsets.current[target] = event.nativeEvent.layout.y;
+      setSectionsReady(
+        SCROLL_TARGETS.every(
+          (scrollTarget) => sectionOffsets.current[scrollTarget] !== null,
+        ),
+      );
     };
+
+  const recordSectionRef = (target: ScrollTarget) => (node: View | null) => {
+    sectionRefs.current[target] = node;
+  };
 
   const scrollToTop = () => {
     Keyboard.dismiss();
     scrollViewRef.current?.scrollTo({ animated: false, y: 0 });
   };
 
-  const scrollToSection = (target: ScrollTarget) => {
-    Keyboard.dismiss();
+  const scrollToRecordedSectionOffset = (target: ScrollTarget) => {
+    const sectionOffset = sectionOffsets.current[target];
+    if (sectionOffset === null) {
+      return;
+    }
+
     scrollViewRef.current?.scrollTo({
       animated: false,
-      y: Math.max(sectionOffsets.current[target] - 12, 0),
+      y: Math.max(sectionOffset - 12, 0),
     });
+  };
+
+  const scrollToSection = (target: ScrollTarget) => {
+    Keyboard.dismiss();
+    const sectionHandle = findNodeHandle(sectionRefs.current[target]);
+    const contentHandle = findNodeHandle(scrollContentRef.current);
+
+    if (sectionHandle !== null && contentHandle !== null) {
+      UIManager.measureLayout(
+        sectionHandle,
+        contentHandle,
+        () => scrollToRecordedSectionOffset(target),
+        (_x, y) => {
+          scrollViewRef.current?.scrollTo({
+            animated: false,
+            y: Math.max(y - 12, 0),
+          });
+        },
+      );
+      return;
+    }
+
+    scrollToRecordedSectionOffset(target);
   };
 
   const clearCrashHistory = () => {
@@ -539,337 +605,354 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.e2eNavBar}>
-        <E2ENavButton
-          onPress={scrollToTop}
-          testID="e2e-nav-top"
-          title="Jump to Top"
-        />
-        <E2ENavButton
-          onPress={() => scrollToSection("crashHistory")}
-          testID="e2e-nav-crash-history"
-          title="Jump to Crash History"
-        />
-        <E2ENavButton
-          onPress={() => scrollToSection("actions")}
-          testID="e2e-nav-actions"
-          title="Jump to Actions"
-        />
-        <E2ENavButton
-          onPress={() => scrollToSection("cohortActions")}
-          testID="e2e-nav-cohort-actions"
-          title="Jump to Cohorts"
-        />
-        <E2ENavButton
-          onPress={() => scrollToSection("actionResults")}
-          testID="e2e-nav-action-results"
-          title="Jump to Results"
-        />
-      </View>
+      {sectionsReady ? (
+        <View style={styles.e2eNavBar}>
+          <E2ENavButton
+            onPress={scrollToTop}
+            testID="e2e-nav-top"
+            title="Jump to Top"
+          />
+          <E2ENavButton
+            onPress={() => scrollToSection("crashHistory")}
+            testID="e2e-nav-crash-history"
+            title="Jump to Crash History"
+          />
+          <E2ENavButton
+            onPress={() => scrollToSection("actions")}
+            testID="e2e-nav-actions"
+            title="Jump to Actions"
+          />
+          <E2ENavButton
+            onPress={() => scrollToSection("cohortActions")}
+            testID="e2e-nav-cohort-actions"
+            title="Jump to Cohorts"
+          />
+          <E2ENavButton
+            onPress={() => scrollToSection("actionResults")}
+            testID="e2e-nav-action-results"
+            title="Jump to Results"
+          />
+        </View>
+      ) : null}
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
       >
-        <Section
-          title="Runtime Snapshot"
-          titleTestID="section-runtime-snapshot"
-        >
-          <InfoRow
-            label="Bundle ID"
-            value={runtimeSnapshot.bundleId}
-            valueTestID="runtime-bundle-id"
-          />
-          <InfoRow
-            label="Manifest Bundle ID"
-            value={runtimeSnapshot.manifest.bundleId}
-          />
-          <InfoRow
-            label="Bundle Timestamp"
-            value={extractFormatDateFromUUIDv7(runtimeSnapshot.bundleId)}
-          />
-          <InfoRow label="Min Bundle ID" value={runtimeSnapshot.minBundleId} />
-          <InfoRow
-            label="Large E2E Asset"
-            value={hasLargeE2EAsset ? "present" : "missing"}
-            valueTestID="runtime-large-e2e-asset"
-          />
-          <InfoRow
-            label="E2E Scenario Marker"
-            value={E2E_SCENARIO_MARKER}
-            valueTestID="runtime-scenario-marker"
-          />
-        </Section>
-
-        <Section title="Launch Status" titleTestID="section-launch-status">
-          <InfoRow
-            label="Download Progress"
-            value={`${Math.round(progress * 100)}%`}
-          />
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="launch-status-result"
+        <View collapsable={false} ref={scrollContentRef}>
+          <Section
+            title="Runtime Snapshot"
+            titleTestID="section-runtime-snapshot"
           >
-            {launchStatusText}
-          </Text>
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="launch-crashed-bundle-result"
-          >
-            {crashedBundleText}
-          </Text>
-          <Text selectable style={styles.codeBlock}>
-            {statusPayload}
-          </Text>
-        </Section>
+            <InfoRow
+              label="Bundle ID"
+              value={runtimeSnapshot.bundleId}
+              valueTestID="runtime-bundle-id"
+            />
+            <InfoRow
+              label="Manifest Bundle ID"
+              value={runtimeSnapshot.manifest.bundleId}
+            />
+            <InfoRow
+              label="Bundle Timestamp"
+              value={extractFormatDateFromUUIDv7(runtimeSnapshot.bundleId)}
+            />
+            <InfoRow
+              label="Min Bundle ID"
+              value={runtimeSnapshot.minBundleId}
+            />
+            <InfoRow
+              label="Large E2E Asset"
+              value={hasLargeE2EAsset ? "present" : "missing"}
+              valueTestID="runtime-large-e2e-asset"
+            />
+            <InfoRow
+              label="E2E Scenario Marker"
+              value={E2E_SCENARIO_MARKER}
+              valueTestID="runtime-scenario-marker"
+            />
+          </Section>
 
-        <Section
-          onLayout={recordSectionOffset("crashHistory")}
-          titleTestID="section-crash-history"
-          title={`Crash History (${runtimeSnapshot.crashHistory.length})`}
-        >
-          {runtimeSnapshot.crashHistory.length === 0 ? (
+          <Section title="Launch Status" titleTestID="section-launch-status">
+            <InfoRow
+              label="Download Progress"
+              value={`${Math.round(progress * 100)}%`}
+            />
             <Text
-              style={styles.emptyState}
-              testID="crash-history-empty-state"
+              selectable
+              style={styles.actionResult}
+              testID="launch-status-result"
             >
-              No crashed bundles recorded.
+              {launchStatusText}
             </Text>
-          ) : (
-            runtimeSnapshot.crashHistory.map((crash) => (
-              <Text key={crash} selectable style={styles.crashItem}>
-                {crash}
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="launch-crashed-bundle-result"
+            >
+              {crashedBundleText}
+            </Text>
+            <Text selectable style={styles.codeBlock}>
+              {statusPayload}
+            </Text>
+          </Section>
+
+          <Section
+            onLayout={recordSectionOffset("crashHistory")}
+            ref={recordSectionRef("crashHistory")}
+            titleTestID="section-crash-history"
+            title={`Crash History (${runtimeSnapshot.crashHistory.length})`}
+          >
+            {runtimeSnapshot.crashHistory.length === 0 ? (
+              <Text
+                style={styles.emptyState}
+                testID="crash-history-empty-state"
+              >
+                No crashed bundles recorded.
               </Text>
-            ))
-          )}
-        </Section>
+            ) : (
+              runtimeSnapshot.crashHistory.map((crash) => (
+                <Text key={crash} selectable style={styles.crashItem}>
+                  {crash}
+                </Text>
+              ))
+            )}
+          </Section>
 
-        <Section
-          title="OTA Asset Preview"
-          titleTestID="section-ota-asset-preview"
-        >
-          <Text style={styles.bodyText}>
-            The preview image stays in the scroll flow so snapshot-based checks
-            can compare the visual asset and the file hashes below.
-          </Text>
-          <View style={styles.imageFrame}>
-            <Image
-              source={require("./src/test/_image.png")}
-              style={styles.previewImage}
-            />
-          </View>
-        </Section>
-
-        <Section
-          title={`Manifest Assets (${manifestAssetEntries.length})`}
-          titleTestID="section-manifest-assets"
-        >
-          {manifestAssetEntries.length === 0 ? (
-            <Text style={styles.emptyState}>
-              No manifest assets were found for the active bundle.
+          <Section
+            title="OTA Asset Preview"
+            titleTestID="section-ota-asset-preview"
+          >
+            <Text style={styles.bodyText}>
+              The preview image stays in the scroll flow so snapshot-based
+              checks can compare the visual asset and the file hashes below.
             </Text>
-          ) : (
-            manifestAssetEntries.map(([fileName, asset]) => (
-              <View key={fileName} style={styles.assetCard}>
-                <Text selectable style={styles.assetName}>
-                  {fileName}
-                </Text>
-                <Text style={styles.assetLabel}>fileHash</Text>
-                <Text selectable style={styles.assetHash}>
-                  {asset.fileHash}
-                </Text>
-              </View>
-            ))
-          )}
-        </Section>
+            <View style={styles.imageFrame}>
+              <Image
+                source={require("./src/test/_image.png")}
+                style={styles.previewImage}
+              />
+            </View>
+          </Section>
 
-        <Section title="Runtime Details" titleTestID="section-runtime-details">
-          <InfoRow label="Base URL" value={HOT_UPDATER_BASE_URL} />
-          <InfoRow label="Channel" value={runtimeSnapshot.channel} />
-          <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
-          <InfoRow label="Channel Summary" value={channelSummary} />
-          <InfoRow label="Cohort Summary" value={cohortSummary} />
-          <InfoRow
-            label="Default Channel"
-            value={runtimeSnapshot.defaultChannel}
-          />
-          <InfoRow
-            label="Channel Switched"
-            value={String(runtimeSnapshot.isChannelSwitched)}
-          />
-          <InfoRow
-            label="App Version"
-            value={runtimeSnapshot.appVersion ?? "null"}
-          />
-          <InfoRow
-            label="Fingerprint"
-            value={runtimeSnapshot.fingerprintHash ?? "null"}
-          />
-          <InfoRow label="Base URL" value={runtimeSnapshot.baseURL ?? "null"} />
-        </Section>
+          <Section
+            title={`Manifest Assets (${manifestAssetEntries.length})`}
+            titleTestID="section-manifest-assets"
+          >
+            {manifestAssetEntries.length === 0 ? (
+              <Text style={styles.emptyState}>
+                No manifest assets were found for the active bundle.
+              </Text>
+            ) : (
+              manifestAssetEntries.map(([fileName, asset]) => (
+                <View key={fileName} style={styles.assetCard}>
+                  <Text selectable style={styles.assetName}>
+                    {fileName}
+                  </Text>
+                  <Text style={styles.assetLabel}>fileHash</Text>
+                  <Text selectable style={styles.assetHash}>
+                    {asset.fileHash}
+                  </Text>
+                </View>
+              ))
+            )}
+          </Section>
 
-        <Section
-          onLayout={recordSectionOffset("actions")}
-          title="Actions"
-          titleTestID="section-actions"
-        >
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="current-channel-summary"
+          <Section
+            title="Runtime Details"
+            titleTestID="section-runtime-details"
           >
-            Current Channel Summary: {channelSummary}
-          </Text>
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="current-cohort-summary"
-          >
-            Current Cohort Summary: {cohortSummary}
-          </Text>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Runtime Channel Input</Text>
-            <TextInput
-              accessibilityLabel="Runtime Channel Input"
-              autoCapitalize="none"
-              autoCorrect={false}
-              onChangeText={setRuntimeChannelInput}
-              onEndEditing={(event) =>
-                setRuntimeChannelInput(event.nativeEvent.text)
-              }
-              onSubmitEditing={(event) =>
-                setRuntimeChannelInput(event.nativeEvent.text)
-              }
-              placeholder="beta"
-              placeholderTextColor="#94a3b8"
-              style={styles.inputField}
-              testID="runtime-channel-input"
-              value={runtimeChannelInput}
+            <InfoRow label="Base URL" value={HOT_UPDATER_BASE_URL} />
+            <InfoRow label="Channel" value={runtimeSnapshot.channel} />
+            <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
+            <InfoRow label="Channel Summary" value={channelSummary} />
+            <InfoRow label="Cohort Summary" value={cohortSummary} />
+            <InfoRow
+              label="Default Channel"
+              value={runtimeSnapshot.defaultChannel}
             />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Cohort Override Input</Text>
-            <TextInput
-              accessibilityLabel="Cohort Override Input"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="default"
-              onChangeText={updateCohortInput}
-              onEndEditing={(event) =>
-                updateCohortInput(event.nativeEvent.text)
-              }
-              onSubmitEditing={(event) =>
-                submitCohortInput(event.nativeEvent.text)
-              }
-              placeholder={initialCohort}
-              placeholderTextColor="#94a3b8"
-              style={styles.inputField}
-              testID="cohort-input"
-              value={cohortInput}
+            <InfoRow
+              label="Channel Switched"
+              value={String(runtimeSnapshot.isChannelSwitched)}
             />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Refresh Runtime Snapshot"
-              onPress={refreshRuntimeSnapshot}
-              testID="action-refresh-runtime-snapshot"
+            <InfoRow
+              label="App Version"
+              value={runtimeSnapshot.appVersion ?? "null"}
             />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Reload App"
-              onPress={reloadApp}
-              testID="action-reload-app"
+            <InfoRow
+              label="Fingerprint"
+              value={runtimeSnapshot.fingerprintHash ?? "null"}
             />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Clear Crash History"
-              onPress={clearCrashHistory}
-              testID="action-clear-crash-history"
+            <InfoRow
+              label="Base URL"
+              value={runtimeSnapshot.baseURL ?? "null"}
             />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Install Current Channel Update"
-              onPress={installCurrentChannelUpdate}
-              testID="action-install-current-channel-update"
-            />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Install Runtime Channel Update"
-              onPress={installRuntimeChannelUpdate}
-              testID="action-install-runtime-channel-update"
-            />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Reset Runtime Channel"
-              onPress={resetRuntimeChannel}
-              testID="action-reset-runtime-channel"
-            />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Apply Cohort Input"
-              onPress={applyCohortInput}
-              testID="action-apply-cohort-input"
-            />
-          </View>
-        </Section>
+          </Section>
 
-        <Section
-          onLayout={recordSectionOffset("cohortActions")}
-          title="Cohort Actions"
-          titleTestID="section-cohort-actions"
-        >
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Set Cohort qa"
-              onPress={setQaCohort}
-              testID="action-set-cohort-qa"
-            />
-          </View>
-          <View style={styles.buttonBlock}>
-            <ActionButton
-              title="Restore Initial Cohort"
-              onPress={restoreInitialCohort}
-              testID="action-restore-initial-cohort"
-            />
-          </View>
-        </Section>
+          <Section
+            onLayout={recordSectionOffset("actions")}
+            ref={recordSectionRef("actions")}
+            title="Actions"
+            titleTestID="section-actions"
+          >
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="current-channel-summary"
+            >
+              Current Channel Summary: {channelSummary}
+            </Text>
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="current-cohort-summary"
+            >
+              Current Cohort Summary: {cohortSummary}
+            </Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Runtime Channel Input</Text>
+              <TextInput
+                accessibilityLabel="Runtime Channel Input"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setRuntimeChannelInput}
+                onEndEditing={(event) =>
+                  setRuntimeChannelInput(event.nativeEvent.text)
+                }
+                onSubmitEditing={(event) =>
+                  setRuntimeChannelInput(event.nativeEvent.text)
+                }
+                placeholder="beta"
+                placeholderTextColor="#94a3b8"
+                style={styles.inputField}
+                testID="runtime-channel-input"
+                value={runtimeChannelInput}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Cohort Override Input</Text>
+              <TextInput
+                accessibilityLabel="Cohort Override Input"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="default"
+                onChangeText={updateCohortInput}
+                onEndEditing={(event) =>
+                  updateCohortInput(event.nativeEvent.text)
+                }
+                onSubmitEditing={(event) =>
+                  submitCohortInput(event.nativeEvent.text)
+                }
+                placeholder={initialCohort}
+                placeholderTextColor="#94a3b8"
+                style={styles.inputField}
+                testID="cohort-input"
+                value={cohortInput}
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Refresh Runtime Snapshot"
+                onPress={refreshRuntimeSnapshot}
+                testID="action-refresh-runtime-snapshot"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Reload App"
+                onPress={reloadApp}
+                testID="action-reload-app"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Clear Crash History"
+                onPress={clearCrashHistory}
+                testID="action-clear-crash-history"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Install Current Channel Update"
+                onPress={installCurrentChannelUpdate}
+                testID="action-install-current-channel-update"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Install Runtime Channel Update"
+                onPress={installRuntimeChannelUpdate}
+                testID="action-install-runtime-channel-update"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Reset Runtime Channel"
+                onPress={resetRuntimeChannel}
+                testID="action-reset-runtime-channel"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Apply Cohort Input"
+                onPress={applyCohortInput}
+                testID="action-apply-cohort-input"
+              />
+            </View>
+          </Section>
 
-        <Section
-          onLayout={recordSectionOffset("actionResults")}
-          title="Action Results"
-          titleTestID="section-action-results"
-        >
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="channel-action-result"
+          <Section
+            onLayout={recordSectionOffset("cohortActions")}
+            ref={recordSectionRef("cohortActions")}
+            title="Cohort Actions"
+            titleTestID="section-cohort-actions"
           >
-            Channel Action Result: {channelActionResult}
-          </Text>
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="update-action-result"
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Set Cohort qa"
+                onPress={setQaCohort}
+                testID="action-set-cohort-qa"
+              />
+            </View>
+            <View style={styles.buttonBlock}>
+              <ActionButton
+                title="Restore Initial Cohort"
+                onPress={restoreInitialCohort}
+                testID="action-restore-initial-cohort"
+              />
+            </View>
+          </Section>
+
+          <Section
+            onLayout={recordSectionOffset("actionResults")}
+            ref={recordSectionRef("actionResults")}
+            title="Action Results"
+            titleTestID="section-action-results"
           >
-            Update Action Result: {updateActionResult}
-          </Text>
-          <Text
-            selectable
-            style={styles.actionResult}
-            testID="cohort-action-result"
-          >
-            Cohort Action Result: {cohortActionResult}
-          </Text>
-        </Section>
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="channel-action-result"
+            >
+              Channel Action Result: {channelActionResult}
+            </Text>
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="update-action-result"
+            >
+              Update Action Result: {updateActionResult}
+            </Text>
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="cohort-action-result"
+            >
+              Cohort Action Result: {cohortActionResult}
+            </Text>
+          </Section>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -966,8 +1049,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: 8,
+    paddingBottom: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingTop: Platform.OS === "android" ? 44 : 10,
   },
   e2eNavButton: {
     alignItems: "center",

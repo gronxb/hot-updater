@@ -1226,6 +1226,9 @@ importers:
       firebase-tools:
         specifier: ^13.35.1
         version: 13.35.1(encoding@0.1.13)
+      hermes-compiler:
+        specifier: 250829098.0.10
+        version: 250829098.0.10
       hot-updater:
         specifier: workspace:*
         version: link:../../packages/hot-updater
