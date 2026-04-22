@@ -56,7 +56,7 @@ owns build, deploy, device interaction, and evidence gathering.
   explicitly wants to include those changes. The PR diff target is
   `merge-base(base, HEAD)..HEAD`, not the unstaged local worktree.
 - Keep the scenario tight to the changed behavior. Do not default to the full
-  fixed regression in `../e2e-auto` unless the diff truly spans both stable and
+  fixed regression in `../e2e-default` unless the diff truly spans both stable and
   recovery flows.
 
 ## Script

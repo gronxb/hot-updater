@@ -1,5 +1,5 @@
 ---
-name: e2e-auto
+name: e2e-default
 description: "Run a fixed OTA regression flow for `examples/v0.85.0` with `agent-device`. Use when the caller wants a built-in end-to-end scenario instead of defining one manually: deploy a known-good OTA bundle, verify a visible UI change plus the deployed `bundleId`, then deploy an intentionally crashing OTA bundle and verify rollback to the previous stable bundle with `RECOVERED` and `crashedBundleId` evidence."
 ---
 
@@ -273,7 +273,7 @@ const AUTO_E2E_SAFE_BUNDLE_IDS = new Set([
 const AUTO_E2E_CURRENT_BUNDLE_ID = HotUpdater.getBundleId();
 
 if (!AUTO_E2E_SAFE_BUNDLE_IDS.has(AUTO_E2E_CURRENT_BUNDLE_ID)) {
-  throw new Error("hot-updater e2e-auto crash bundle");
+  throw new Error("hot-updater e2e-default crash bundle");
 }
 ```
 
