@@ -3,17 +3,17 @@
     <string name="hot_updater_fingerprint_hash" moduleConfig="true">64edb00dbbb1d97b7289937d39f5dd6d9ea5cacb</string>
     <string name="hot_updater_channel" moduleConfig="true">production</string>
     <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAupz6XZ8t4YNDgd4haFyg
-OgIw83ZatwFgPTNWz+HC0yOV5OhnuxRJoP7odJx0rMIbp1DAcmdbp55roKtQiqaK
-ebdfrsCqgXXkU/SNdQAiiPVxqSExS84MmlPXhksJj6+S0livMC+LH2vB/Zl4+i0d
-eMpDX0WAD5zU08WIgdfpXlvJ+VxG9pQPgqqBxCvSO+ysAFTMlaTEGvDa0zUYweAg
-/awppCxYOdWjMKjpqnfnKmsmGPkLC3rvxyhAydPkRAfGJN/1vtg4zne9EoV/maV2
-Yk6+Bp8cvY3h9HMlAwr5zOmrYGI6CJbmUVB9CvkAvNLXX9uXWy3GC08BiuwEQC3b
-rwuhwcKROzGeYlw+fcZMDN/4cYH3Pd7aiPZqTumwD484R5EvD/y2YDPRoEjqVMiE
-+ftVkCS7eFJC6IZJHM3yDTt//3e7+igPE+2xg+E4D6uBo29F0GkYI2Ii+N9AFTOr
-T1LZbrxMYbCCZfAginosd5DgZy+romDUVxuQlkbLmzPFxKRYCT5ixUG6mMg34LkF
-f0lbLtP8WhigPjfBXLkK97Dz04qHR6l2+/GjUVrTlmbcL1BWSv4LBHdHAV4SD74k
-XLLQPDUSL14gyOBXhVVgvXchhPc1YerfYo356GkIeuaf/gMjGCHYSVqwq9vEoc7U
-mMTj77e/2wNXaZ8gQvIclOECAwEAAQ==
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEApVhzSThZ6XfNsI9/jnc0
+BPwPunivcTZ43GmeJ/K55OyJVZ18GghkmLuDmJKG2Np6n0zRZUie4KwvlRS3uVLn
+23SSxbgTrWjefgXG3IuLLzUJ0ibXB+Sa8sSeuYwWCIpqBBazy2HNrYKVybUxqlct
+eudgdhgMyERwVdiaV/VLWnT00eea+S7YU5jhQIIp7ZuieSoeXYbtMJhxoZgoIZXx
+rZC7mlmSfU5lMDPlVaYQOHDiFipxL8Hc70WgiLaDGwTJu2rw3nEdMY0CZZD3kHSu
+iDK2kIRYyyjxw0lPqpyx50eY+LmVnDl3YtWLcsvUkOYvxEmalw7Le9FlstDWmQ7S
+2Zi8934oSxVu3I27Jai2v/m23WcUjKlzrdH5kbxcex0xzzsGnke5gaZ64vZ1+tC3
+6Mb/Y8VLFnqnkJH5rrwaqIy80wQg+EROLP4d7Ofg47rhTM+D0tNartTaTIexJBND
+Oepwrrbw7KojCLXZo17j3F3QBoc6OKwiuK1LGrV81V0oBH07o/RIAnc2VBcx3CiR
+vFiEkCY3YAaLEEf5slwlWhAWsq5skbNt19j9lT+zUWdf4w1xv1P/wN3PJe6INbjb
+hf0/kxQA9uVvWnOYtQkJEZGw3DxZfQRfOrUDMcLYGpQb9l0zFl0QIa35EyaR9kZS
+wknRmmd2t5EOdb6tziZHKsMCAwEAAQ==
 -----END PUBLIC KEY-----</string>
 </resources>

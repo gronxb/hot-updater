@@ -10,7 +10,7 @@ interface DeleteBundleDependencies {
 }
 
 interface BundleManifest {
-  assets?: Record<string, { fileHash: string }>;
+  assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
 function resolveStorageUriForDeletion(

@@ -167,6 +167,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",
@@ -181,6 +182,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",

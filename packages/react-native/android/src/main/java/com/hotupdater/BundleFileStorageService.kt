@@ -368,7 +368,12 @@ class BundleFileStorageService(
 
     private data class ParsedBundleManifest(
         val bundleId: String,
-        val assets: Map<String, String>,
+        val assets: Map<String, ParsedManifestAsset>,
+    )
+
+    private data class ParsedManifestAsset(
+        val fileHash: String,
+        val signature: String?,
     )
 
     private data class ActiveBundleMetadataSnapshot(
@@ -631,7 +636,7 @@ class BundleFileStorageService(
                 ?.takeIf { it.isNotEmpty() }
                 ?: return null
         val assetsValue = manifest["assets"] as? Map<*, *> ?: return null
-        val assets = linkedMapOf<String, String>()
+        val assets = linkedMapOf<String, ParsedManifestAsset>()
 
         for ((assetPath, assetValue) in assetsValue) {
             if (assetPath !is String) {
@@ -640,7 +645,12 @@ class BundleFileStorageService(
 
             val assetMap = assetValue as? Map<*, *> ?: return null
             val fileHash = assetMap["fileHash"] as? String ?: return null
-            assets[assetPath] = fileHash
+            val signature = assetMap["signature"] as? String
+            assets[assetPath] =
+                ParsedManifestAsset(
+                    fileHash = fileHash,
+                    signature = signature?.takeIf { it.isNotBlank() },
+                )
         }
 
         return ParsedBundleManifest(
@@ -670,10 +680,14 @@ class BundleFileStorageService(
         destination.parentFile?.mkdirs()
         val assetsObject = JSONObject()
 
-        manifest.assets.toSortedMap().forEach { (assetPath, fileHash) ->
+        manifest.assets.toSortedMap().forEach { (assetPath, asset) ->
+            val assetObject = JSONObject().put("fileHash", asset.fileHash)
+            if (!asset.signature.isNullOrBlank()) {
+                assetObject.put("signature", asset.signature)
+            }
             assetsObject.put(
                 assetPath,
-                JSONObject().put("fileHash", fileHash),
+                assetObject,
             )
         }
 
@@ -711,6 +725,40 @@ class BundleFileStorageService(
     ) {
         destination.parentFile?.mkdirs()
         source.copyTo(destination, overwrite = true)
+    }
+
+    private fun verifyManifestAssetFile(
+        file: File,
+        asset: ParsedManifestAsset,
+    ) {
+        val actualHash =
+            HashUtils.calculateSHA256(file)
+                ?: throw SignatureVerificationException.FileReadFailed()
+
+        if (!actualHash.equals(asset.fileHash, ignoreCase = true)) {
+            throw SignatureVerificationException.FileHashMismatch()
+        }
+
+        if (!SignatureVerifier.isSigningEnabled(context)) {
+            return
+        }
+
+        val signature =
+            asset.signature
+                ?: throw SignatureVerificationException.InvalidSignatureFormat()
+
+        SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+    }
+
+    private fun verifyManifestAssetFileOrThrow(
+        file: File,
+        asset: ParsedManifestAsset,
+    ) {
+        try {
+            verifyManifestAssetFile(file, asset)
+        } catch (e: SignatureVerificationException) {
+            throw HotUpdaterException.signatureVerificationFailed(e)
+        }
     }
 
     /**
@@ -1372,11 +1420,12 @@ class BundleFileStorageService(
             tmpDir.mkdirs()
 
             val targetEntries = targetManifest.assets.entries.toList()
-            targetEntries.forEachIndexed { index, (assetPath, expectedHash) ->
+            targetEntries.forEachIndexed { index, (assetPath, expectedAsset) ->
+                val expectedHash = expectedAsset.fileHash
                 val targetFile = File(tmpDir, assetPath)
-                val currentHash = currentManifest?.assets?.get(assetPath)
+                val currentAsset = currentManifest?.assets?.get(assetPath)
 
-                if (currentHash == expectedHash) {
+                if (currentAsset?.fileHash == expectedHash) {
                     val sourceDir =
                         activeBundleDir
                             ?: throw HotUpdaterException.downloadFailed(
@@ -1389,6 +1438,7 @@ class BundleFileStorageService(
                         )
                     }
                     copyBundleFile(sourceFile, targetFile)
+                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
                     return@forEachIndexed
                 }
 
@@ -1441,6 +1491,7 @@ class BundleFileStorageService(
                         progressCallback = progressCallback,
                     )
                 if (patched) {
+                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
                     updateDiffProgressFile(
                         files = diffFiles,
                         assetPath = assetPath,
@@ -1506,7 +1557,12 @@ class BundleFileStorageService(
                     }
 
                     is DownloadResult.Success -> {
-                        if (!HashUtils.verifyHash(assetDownloadResult.file, expectedHash)) {
+                        try {
+                            verifyManifestAssetFileOrThrow(
+                                assetDownloadResult.file,
+                                expectedAsset,
+                            )
+                        } catch (e: HotUpdaterException) {
                             updateDiffProgressFile(
                                 files = diffFiles,
                                 assetPath = assetPath,
@@ -1518,9 +1574,7 @@ class BundleFileStorageService(
                                 phase = "downloading",
                                 files = diffFiles,
                             )
-                            throw HotUpdaterException.signatureVerificationFailed(
-                                SignatureVerificationException.FileHashMismatch(),
-                            )
+                            throw e
                         }
                         updateDiffProgressFile(
                             files = diffFiles,

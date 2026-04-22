@@ -284,7 +284,12 @@ class BundleFileStorageService: BundleStorageService {
 
     private struct ParsedBundleManifest {
         let bundleId: String
-        let assets: [String: String]
+        let assets: [String: ParsedManifestAsset]
+    }
+
+    private struct ParsedManifestAsset {
+        let fileHash: String
+        let signature: String?
     }
 
     private enum UpdateProgress {
@@ -571,6 +576,37 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    private func verifyManifestAssetFile(
+        atPath path: String,
+        asset: ParsedManifestAsset
+    ) throws {
+        guard let actualHash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: path)) else {
+            throw BundleStorageError.signatureVerificationFailed(.fileReadFailed)
+        }
+
+        guard actualHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame else {
+            throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+        }
+
+        guard SignatureVerifier.isSigningEnabled() else {
+            return
+        }
+
+        guard let signature = asset.signature, !signature.isEmpty else {
+            throw BundleStorageError.signatureVerificationFailed(.invalidSignatureFormat)
+        }
+
+        switch SignatureVerifier.verifyHashSignature(
+            fileHash: asset.fileHash,
+            signatureBase64: signature
+        ) {
+        case .success:
+            return
+        case .failure(let error):
+            throw BundleStorageError.signatureVerificationFailed(error)
+        }
+    }
+
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
                 decompressService: DecompressService,
@@ -849,7 +885,7 @@ class BundleFileStorageService: BundleStorageService {
             return nil
         }
 
-        var assets: [String: String] = [:]
+        var assets: [String: ParsedManifestAsset] = [:]
         for (assetPath, assetValue) in rawAssets {
             guard let asset = assetValue as? [String: Any],
                   let fileHash = asset["fileHash"] as? String,
@@ -857,7 +893,12 @@ class BundleFileStorageService: BundleStorageService {
             else {
                 return nil
             }
-            assets[assetPath] = fileHash
+            let signature = (asset["signature"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            assets[assetPath] = ParsedManifestAsset(
+                fileHash: fileHash,
+                signature: signature?.isEmpty == false ? signature : nil
+            )
         }
 
         return ParsedBundleManifest(bundleId: manifestBundleId, assets: assets)
@@ -880,7 +921,11 @@ class BundleFileStorageService: BundleStorageService {
         let assets = manifest.assets
             .sorted { $0.key < $1.key }
             .reduce(into: [String: [String: String]]()) { partialResult, entry in
-                partialResult[entry.key] = ["fileHash": entry.value]
+                var assetPayload = ["fileHash": entry.value.fileHash]
+                if let signature = entry.value.signature, !signature.isEmpty {
+                    assetPayload["signature"] = signature
+                }
+                partialResult[entry.key] = assetPayload
             }
         let payload: [String: Any] = [
             "bundleId": manifest.bundleId,
@@ -1609,14 +1654,15 @@ class BundleFileStorageService: BundleStorageService {
 
             for asset in sortedAssets {
                 let assetPath = asset.key
-                let expectedHash = asset.value
+                let expectedAsset = asset.value
+                let expectedHash = expectedAsset.fileHash
                 let destinationPath = (tmpDir as NSString).appendingPathComponent(assetPath)
                 let destinationDir = (destinationPath as NSString).deletingLastPathComponent
                 guard self.fileSystem.createDirectory(atPath: destinationDir) else {
                     throw BundleStorageError.directoryCreationFailed
                 }
 
-                if currentManifest?.assets[assetPath] == expectedHash {
+                if currentManifest?.assets[assetPath]?.fileHash == expectedHash {
                     guard let currentBundleDir,
                           self.fileSystem.fileExists(atPath: currentBundleDir)
                     else {
@@ -1635,6 +1681,7 @@ class BundleFileStorageService: BundleStorageService {
                     }
 
                     try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
+                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
                     continue
                 }
 
@@ -1684,6 +1731,7 @@ class BundleFileStorageService: BundleStorageService {
                     progressHandler: progressHandler
                 )
                 if patched {
+                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
                     updateDiffProgressFile(
                         files: &diffFiles,
                         assetPath: assetPath,
@@ -1718,7 +1766,12 @@ class BundleFileStorageService: BundleStorageService {
                     }
                 ) {
                 case .success(let downloadedFileURL):
-                    guard HashUtils.verifyHash(fileURL: downloadedFileURL, expectedHash: expectedHash) else {
+                    do {
+                        try verifyManifestAssetFile(
+                            atPath: downloadedFileURL.path,
+                            asset: expectedAsset
+                        )
+                    } catch {
                         updateDiffProgressFile(
                             files: &diffFiles,
                             assetPath: assetPath,
@@ -1730,7 +1783,7 @@ class BundleFileStorageService: BundleStorageService {
                             phase: "downloading",
                             files: diffFiles
                         )
-                        throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+                        throw error
                     }
                     updateDiffProgressFile(
                         files: &diffFiles,

@@ -3,7 +3,7 @@ import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
-  assets: Record<string, { fileHash: string }>;
+  assets: Record<string, { fileHash: string; signature?: string }>;
 };
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
@@ -25,11 +25,22 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
   }
 
   return Object.values(manifest.assets as Record<string, unknown>).every(
-    (asset) =>
-      !!asset &&
-      typeof asset === "object" &&
-      !Array.isArray(asset) &&
-      typeof (asset as { fileHash?: unknown }).fileHash === "string",
+    (asset) => {
+      if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+        return false;
+      }
+
+      const manifestAsset = asset as {
+        fileHash?: unknown;
+        signature?: unknown;
+      };
+
+      return (
+        typeof manifestAsset.fileHash === "string" &&
+        (manifestAsset.signature === undefined ||
+          typeof manifestAsset.signature === "string")
+      );
+    },
   );
 };
 

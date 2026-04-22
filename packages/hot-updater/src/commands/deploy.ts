@@ -392,9 +392,16 @@ export const deploy = async (options: DeployOptions) => {
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
+          const manifestSigning =
+            config.signing?.enabled && config.signing.privateKeyPath
+              ? (assetFileHash: string) =>
+                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
+              : undefined;
+
           const { manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
+            signFileHash: manifestSigning,
             targetFiles,
           });
 

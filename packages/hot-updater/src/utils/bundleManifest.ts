@@ -10,28 +10,36 @@ export interface Manifest {
 
 export interface ManifestAsset {
   fileHash: string;
+  signature?: string;
 }
 
 export const createBundleManifest = async ({
   bundleId,
+  signFileHash,
   targetFiles,
 }: {
   bundleId: string;
+  signFileHash?: (fileHash: string) => Promise<string>;
   targetFiles: { path: string; name: string }[];
 }): Promise<Manifest> => {
   const assets = Object.fromEntries(
     await Promise.all(
       [...targetFiles]
         .sort((left, right) => left.name.localeCompare(right.name))
-        .map(
-          async (target) =>
-            [
-              target.name,
-              {
-                fileHash: await getFileHashFromFile(target.path),
-              },
-            ] as const,
-        ),
+        .map(async (target) => {
+          const fileHash = await getFileHashFromFile(target.path);
+          const signature = signFileHash
+            ? await signFileHash(fileHash)
+            : undefined;
+
+          return [
+            target.name,
+            {
+              fileHash,
+              ...(signature ? { signature } : {}),
+            },
+          ] as const;
+        }),
     ),
   );
 
@@ -44,13 +52,19 @@ export const createBundleManifest = async ({
 export const writeBundleManifest = async ({
   buildPath,
   bundleId,
+  signFileHash,
   targetFiles,
 }: {
   buildPath: string;
   bundleId: string;
+  signFileHash?: (fileHash: string) => Promise<string>;
   targetFiles: { path: string; name: string }[];
 }) => {
-  const manifest = await createBundleManifest({ bundleId, targetFiles });
+  const manifest = await createBundleManifest({
+    bundleId,
+    signFileHash,
+    targetFiles,
+  });
   const manifestPath = path.join(buildPath, "manifest.json");
 
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

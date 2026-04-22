@@ -27,7 +27,7 @@ const SIGNED_HASH_PREFIX = "sig:";
 
 interface BundleManifest {
   bundleId?: string;
-  assets?: Record<string, { fileHash: string }>;
+  assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
 export interface PromoteBundleInput {

@@ -25,6 +25,7 @@ const normalizeAndValidateCohort = (cohort: string): string => {
 
 export interface ManifestAsset {
   fileHash: string;
+  signature?: string;
 }
 
 export interface Manifest {
@@ -187,7 +188,10 @@ const cloneManifest = (manifest: Manifest): Manifest => ({
   assets: Object.fromEntries(
     Object.entries(manifest.assets).map(([key, asset]) => [
       key,
-      { fileHash: asset.fileHash },
+      {
+        fileHash: asset.fileHash,
+        ...(asset.signature ? { signature: asset.signature } : {}),
+      },
     ]),
   ),
 });
@@ -664,12 +668,25 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
         return [];
       }
 
-      const { fileHash } = entry as { fileHash?: unknown };
+      const { fileHash, signature } = entry as {
+        fileHash?: unknown;
+        signature?: unknown;
+      };
       if (typeof fileHash !== "string" || !fileHash.trim()) {
         return [];
       }
 
-      return [[trimmedKey, { fileHash: fileHash.trim() }] as const];
+      return [
+        [
+          trimmedKey,
+          {
+            fileHash: fileHash.trim(),
+            ...(typeof signature === "string" && signature.trim()
+              ? { signature: signature.trim() }
+              : {}),
+          },
+        ] as const,
+      ];
     }),
   );
 };
