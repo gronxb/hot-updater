@@ -1,0 +1,62 @@
+{
+  "name": "@hot-updater/azure",
+  "type": "module",
+  "version": "0.30.2",
+  "description": "Azure Blob Storage and Azure Functions plugin for Hot Updater",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./functions": {
+      "types": "./dist/functions/index.d.cts",
+      "import": "./dist/functions/index.mjs",
+      "require": "./dist/functions/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/mock": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "es-toolkit": "^1.32.0",
+    "mime": "^4.0.4"
+  },
+  "dependencies": {
+    "@azure/storage-blob": "^12.26.0",
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "hono": "catalog:hono"
+  },
+  "peerDependencies": {
+    "@azure/functions": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@azure/functions": {
+      "optional": true
+    }
+  }
+}
