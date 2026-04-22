@@ -1,15 +1,15 @@
 ---
 name: e2e
-description: Run end-to-end OTA verification for `examples/v0.81.0` with `agent-device`. Use when validating iOS or Android release builds, deploying OTA bundles with `pnpm hot-updater deploy`, checking stable update application, reproducing rollback after a crash bundle, or reading bundle-store metadata and crash history for the v0.81.0 example app.
+description: Run end-to-end OTA verification for `examples/v0.85.0` with `agent-device`. Use when validating iOS or Android release builds, deploying OTA bundles with `pnpm hot-updater deploy`, checking stable update application, reproducing rollback after a crash bundle, or reading bundle-store metadata and crash history for the v0.85.0 example app.
 ---
 
-# Hot Updater V0.81 E2E
+# Hot Updater V0.85 E2E
 
-Use this skill for `examples/v0.81.0` OTA verification only.
+Use this skill for `examples/v0.85.0` OTA verification only.
 
 Always load and follow [$agent-device](../agent-device/SKILL.md) for device interaction.
 
-Do not encode a fixed test scenario in this skill. The caller provides the scenario. This skill only supplies fixed targets, guardrails, command templates, and inspection helpers for `examples/v0.81.0`.
+Do not encode a fixed test scenario in this skill. The caller provides the scenario. This skill only supplies fixed targets, guardrails, command templates, and inspection helpers for `examples/v0.85.0`.
 
 ## Rules
 
@@ -35,7 +35,7 @@ Before running any caller-provided scenario:
 
 1. Run `pnpm -w build`.
 2. Confirm the standalone update server is running by checking `http://localhost:3007/hot-updater/version`.
-3. Use the exact example workspace: `examples/v0.81.0`.
+3. Use the exact example workspace: `examples/v0.85.0`.
 4. Use release artifacts only.
 5. Choose one platform first. Finish that platform end-to-end before starting the other one.
 
@@ -50,7 +50,7 @@ Run these templates for one platform at a time. Do not keep iOS and Android sess
 ```bash
 agent-device ensure-simulator --platform ios --device "iPhone 16" --boot
 
-cd <repo-root>/examples/v0.81.0/ios
+cd <repo-root>/examples/v0.85.0/ios
 
 pnpx pod-install
 
@@ -59,42 +59,42 @@ xcodebuild -workspace HotUpdaterExample.xcworkspace \
   -configuration Release \
   -sdk iphonesimulator \
   -destination 'id=<simulator-udid>' \
-  -derivedDataPath /tmp/hotupdater-v081-ios-e2e build
+  -derivedDataPath /tmp/hotupdater-v085-ios-e2e build
 
 agent-device reinstall HotUpdaterExample \
-  /tmp/hotupdater-v081-ios-e2e/Build/Products/Release-iphonesimulator/HotUpdaterExample.app \
+  /tmp/hotupdater-v085-ios-e2e/Build/Products/Release-iphonesimulator/HotUpdaterExample.app \
   --platform ios \
   --device "iPhone 16"
 
 agent-device open org.reactjs.native.example.HotUpdaterExample \
   --platform ios \
   --device "iPhone 16" \
-  --session qa-ios-v081 \
+  --session qa-ios-v085 \
   --relaunch
 ```
 
 ### Android Build And Install
 
 ```bash
-cd <repo-root>/examples/v0.81.0/android
+cd <repo-root>/examples/v0.85.0/android
 
 ./gradlew :app:assembleRelease --rerun-tasks
 
 agent-device reinstall com.hotupdaterexample \
-  <repo-root>/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk \
+  <repo-root>/examples/v0.85.0/android/app/build/outputs/apk/release/app-release.apk \
   --platform android \
   --serial <serial>
 
 agent-device open com.hotupdaterexample \
   --platform android \
   --serial <serial> \
-  --session qa-android-v081 \
+  --session qa-android-v085 \
   --relaunch
 ```
 
 ### OTA Deploy
 
-Run deploy from `<repo-root>/examples/v0.81.0`.
+Run deploy from `<repo-root>/examples/v0.85.0`.
 
 ```bash
 pnpm hot-updater deploy -p ios -t 1.0.x
@@ -179,5 +179,5 @@ If the caller asks for a report, include:
 ## Notes
 
 - In this skill, `<repo-root>` means the checked-out repository root.
-- The example app already renders launch status and crash history in `examples/v0.81.0/App.tsx`.
+- The example app already renders launch status and crash history in `examples/v0.85.0/App.tsx`.
 - The iOS installed bundle id is `org.reactjs.native.example.HotUpdaterExample`, even though `hot-updater.config.ts` uses `com.hotupdaterexample` for build config.

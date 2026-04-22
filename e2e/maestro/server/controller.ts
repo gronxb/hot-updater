@@ -155,7 +155,7 @@ const CONSOLE_SSR_DIR = path.join(
   REPO_DIR,
   "packages/console/.output/server/_ssr",
 );
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
+const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -255,7 +255,7 @@ const session: SessionState = {
     platform === "ios" ? "builtin-ios-maestro" : "builtin-android-maestro",
   iosDerivedDataPath:
     process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
-    "/tmp/hotupdater-v081-ios-maestro",
+    "/tmp/hotupdater-v085-ios-maestro",
   largeArchiveAssetBackupPath: null,
   largeArchiveAssetPath: path.join(
     EXAMPLE_DIR,

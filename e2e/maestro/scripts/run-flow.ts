@@ -42,7 +42,7 @@ const REPO_DIR = path.resolve(__dirname, "../../..");
 const E2E_DIR = path.join(REPO_DIR, "e2e");
 const E2E_MAESTRO_DIR = path.join(E2E_DIR, "maestro");
 const E2E_RUNTIME_DIR = path.join(E2E_DIR, ".runtime");
-const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
+const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const SERVER_PACKAGE_DIR = path.join(
   REPO_DIR,
   "examples-server/hono-e2e-local",
@@ -870,7 +870,7 @@ async function main() {
         HOT_UPDATER_E2E_CONSOLE_BASE_URL: consoleBaseUrl,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
         HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
-          "/tmp/hotupdater-v081-ios-maestro",
+          "/tmp/hotupdater-v085-ios-maestro",
         HOT_UPDATER_E2E_PLATFORM: platform,
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
