@@ -1664,6 +1664,52 @@ function readAndroidWaitForMetadataDiagnostics() {
   };
 }
 
+function readWaitForMetadataDiagnostics() {
+  return session.platform === "ios"
+    ? readIosWaitForMetadataDiagnostics()
+    : readAndroidWaitForMetadataDiagnostics();
+}
+
+function readBundleFileSnapshot(bundleId: string) {
+  const bundleFileName =
+    session.platform === "ios" ? "index.ios.bundle" : "index.android.bundle";
+  const storePath = ensureStorePath();
+
+  if (session.platform === "ios") {
+    const bundleFilePath = path.join(storePath, bundleId, bundleFileName);
+    return {
+      exists: fs.existsSync(bundleFilePath),
+      path: bundleFilePath,
+    };
+  }
+
+  const remotePath = `${storePath}/${bundleId}/${bundleFileName}`;
+  const exists = spawnSync(
+    "adb",
+    ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
+    {
+      stdio: "ignore",
+    },
+  );
+
+  return {
+    exists: exists.status === 0,
+    path: remotePath,
+  };
+}
+
+function readFirstOtaArchiveState(bundleId: string) {
+  const diagnostics = readWaitForMetadataDiagnostics();
+  const metadataState = getMetadataState(diagnostics.metadata.value);
+  const bundleFile = readBundleFileSnapshot(bundleId);
+
+  return {
+    bundleFile,
+    diagnostics,
+    metadataState,
+  };
+}
+
 function getLaunchReportState(report: Record<string, unknown> | null) {
   return {
     crashedBundleId:
@@ -2441,10 +2487,28 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
   ];
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
+    const state = readFirstOtaArchiveState(args.bundleId);
+    if (
+      state.metadataState.stagingBundleId === args.bundleId &&
+      state.metadataState.verificationPending === true &&
+      state.metadataState.stableBundleId === null &&
+      state.bundleFile.exists
+    ) {
+      logE2e("first OTA used archive install path", {
+        bundleId: args.bundleId,
+        bundleFilePath: state.bundleFile.path,
+        evidence: "bundle-store",
+        metadataPath: state.diagnostics.metadata.path,
+        platform: session.platform,
+      });
+      return {};
+    }
+
     const logs = readFirstOtaArchiveInstallLogs();
     if (expectedFragments.every((fragment) => logs.includes(fragment))) {
       logE2e("first OTA used archive install path", {
         bundleId: args.bundleId,
+        evidence: "native-log",
         platform: session.platform,
       });
       return {};
@@ -2454,12 +2518,24 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
   }
 
   const logs = readFirstOtaArchiveInstallLogs();
+  const state = readFirstOtaArchiveState(args.bundleId);
   throw createEndpointError(
-    "Timed out waiting for first OTA archive install log.",
+    "Timed out waiting for first OTA archive install evidence.",
     {
       bundleId: args.bundleId,
       expectedFragments,
+      expectedState: {
+        bundleFileExists: true,
+        stableBundleId: null,
+        stagingBundleId: args.bundleId,
+        verificationPending: true,
+      },
       logsTail: logs.split("\n").slice(-20),
+      observedState: {
+        bundleFile: state.bundleFile,
+        metadata: state.diagnostics.metadata,
+        metadataState: state.metadataState,
+      },
       platform: session.platform,
     },
   );
