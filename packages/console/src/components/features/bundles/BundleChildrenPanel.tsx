@@ -1,3 +1,4 @@
+import { getPatchBaseBundleId, getPatchStorageUri } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
@@ -23,8 +24,7 @@ interface BundleChildrenPanelProps {
 }
 
 const isPatchReady = (bundle: Bundle) =>
-  bundle.metadata?.hbc_patch_algorithm === "bsdiff" &&
-  Boolean(bundle.metadata?.hbc_patch_storage_uri);
+  Boolean(getPatchBaseBundleId(bundle) && getPatchStorageUri(bundle));
 
 function SummaryItem({
   label,
@@ -48,7 +48,7 @@ export function BundleChildrenPanel({
   loading,
   onDetailClick,
 }: BundleChildrenPanelProps) {
-  const baseBundleId = bundle.metadata?.diff_base_bundle_id;
+  const baseBundleId = getPatchBaseBundleId(bundle);
   const patchReady = isPatchReady(bundle);
 
   return (

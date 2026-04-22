@@ -1,3 +1,8 @@
+import {
+  getAssetBaseStorageUri,
+  getManifestStorageUri,
+  getPatchStorageUri,
+} from "@hot-updater/core";
 import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
 
 interface DeleteBundleInput {
@@ -94,8 +99,9 @@ export async function deleteBundle(
 
   const cleanupCandidates = [
     bundle.storageUri,
-    bundle.metadata?.manifest_storage_uri,
-    bundle.metadata?.asset_base_storage_uri,
+    getManifestStorageUri(bundle),
+    getAssetBaseStorageUri(bundle),
+    getPatchStorageUri(bundle),
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of cleanupCandidates) {
@@ -121,10 +127,11 @@ export async function deleteBundle(
   };
 
   addCleanupUri(bundle.storageUri);
-  addCleanupUri(bundle.metadata?.manifest_storage_uri);
+  addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
+  addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
 
-  const manifestStorageUri = bundle.metadata?.manifest_storage_uri;
-  const assetBaseStorageUri = bundle.metadata?.asset_base_storage_uri;
+  const manifestStorageUri = getManifestStorageUri(bundle);
+  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
 
   if (assetBaseStorageUri) {
     if (!manifestStorageUri) {

@@ -401,9 +401,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         metadata: {
           asset_base_storage_uri:
             "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/files",
-          diff_base_bundle_id: currentBundle.id,
-          hbc_patch_algorithm: "bsdiff",
-          hbc_patch_asset_path: "index.ios.bundle",
+          patch_base_bundle_id: currentBundle.id,
           hbc_patch_base_file_hash: "hash-old-bundle",
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri:

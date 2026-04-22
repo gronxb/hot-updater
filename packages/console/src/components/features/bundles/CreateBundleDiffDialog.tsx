@@ -1,3 +1,4 @@
+import { getPatchBaseBundleId } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -55,7 +56,7 @@ export function CreateBundleDiffDialog({
   );
   const selectedBaseBundle =
     baseCandidates.find((candidate) => candidate.id === baseBundleId) ?? null;
-  const currentBaseBundleId = bundle.metadata?.diff_base_bundle_id ?? "";
+  const currentBaseBundleId = getPatchBaseBundleId(bundle) ?? "";
   const quickCandidates = baseCandidates.slice(0, 3);
 
   useEffect(() => {

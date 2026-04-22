@@ -1,6 +1,14 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
+  getAssetBaseStorageUri,
+  getManifestFileHash,
+  getManifestStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
   type SnakeCaseBundle,
+  stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -168,7 +176,22 @@ function parseTargetCohorts(value: unknown): string[] | null {
   return null;
 }
 
+const parseMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      return parseMetadata(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value)
+    ? (value as Bundle["metadata"])
+    : undefined;
+};
+
 function transformRowToBundle(row: SnakeCaseBundle): Bundle {
+  const rawMetadata = parseMetadata(row.metadata);
   return {
     id: row.id,
     channel: row.channel,
@@ -181,7 +204,25 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     targetAppVersion: row.target_app_version,
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
-    metadata: row?.metadata ? JSON.parse(row.metadata as string) : {},
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri:
+      row.manifest_storage_uri ??
+      getManifestStorageUri({ metadata: rawMetadata }),
+    manifestFileHash:
+      row.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
+    assetBaseStorageUri:
+      row.asset_base_storage_uri ??
+      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patchBaseBundleId:
+      row.patch_base_bundle_id ??
+      getPatchBaseBundleId({ metadata: rawMetadata }),
+    patchBaseFileHash:
+      row.patch_base_file_hash ??
+      getPatchBaseFileHash({ metadata: rawMetadata }),
+    patchFileHash:
+      row.patch_file_hash ?? getPatchFileHash({ metadata: rawMetadata }),
+    patchStorageUri:
+      row.patch_storage_uri ?? getPatchStorageUri({ metadata: rawMetadata }),
     rolloutCohortCount:
       (row.rollout_cohort_count as number | null) ??
       DEFAULT_ROLLOUT_COHORT_COUNT,
@@ -408,10 +449,17 @@ export const d1WorkerDatabase = <
                   storage_uri,
                   fingerprint_hash,
                   metadata,
+                  manifest_storage_uri,
+                  manifest_file_hash,
+                  asset_base_storage_uri,
+                  patch_base_bundle_id,
+                  patch_base_file_hash,
+                  patch_file_hash,
+                  patch_storage_uri,
                   rollout_cohort_count,
                   target_cohorts
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `)
               .bind(
                 bundle.id,
@@ -425,7 +473,16 @@ export const d1WorkerDatabase = <
                 bundle.targetAppVersion,
                 bundle.storageUri,
                 bundle.fingerprintHash,
-                JSON.stringify(bundle.metadata ?? {}),
+                JSON.stringify(
+                  stripBundleArtifactMetadata(bundle.metadata) ?? {},
+                ),
+                getManifestStorageUri(bundle),
+                getManifestFileHash(bundle),
+                getAssetBaseStorageUri(bundle),
+                getPatchBaseBundleId(bundle),
+                getPatchBaseFileHash(bundle),
+                getPatchFileHash(bundle),
+                getPatchStorageUri(bundle),
                 bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
                 bundle.targetCohorts
                   ? JSON.stringify(bundle.targetCohorts)

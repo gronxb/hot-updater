@@ -1,3 +1,4 @@
+import { getPatchBaseBundleId } from "@hot-updater/core";
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 
 const CHILDREN_QUERY_LIMIT = 100;
@@ -33,7 +34,7 @@ async function collectBundleChildrenByBaseIds(
   ).filter((bundle): bundle is Bundle => Boolean(bundle));
 
   const eligibleBaseBundles = baseBundles.filter(
-    (bundle) => !bundle.metadata?.diff_base_bundle_id,
+    (bundle) => !getPatchBaseBundleId(bundle),
   );
 
   const groupMap = new Map<
@@ -73,7 +74,7 @@ async function collectBundleChildrenByBaseIds(
       } as Parameters<DatabasePlugin["getBundles"]>[0]);
 
       for (const bundle of page.data) {
-        const parentBundleId = bundle.metadata?.diff_base_bundle_id;
+        const parentBundleId = getPatchBaseBundleId(bundle);
 
         if (
           !parentBundleId ||

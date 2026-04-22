@@ -1,10 +1,24 @@
-import type { AppUpdateInfo, Bundle, ChangedAsset } from "@hot-updater/core";
+import {
+  getAssetBaseStorageUri,
+  getManifestFileHash,
+  getManifestStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
+  stripBundleArtifactMetadata,
+  type AppUpdateInfo,
+  type Bundle,
+  type ChangedAsset,
+} from "@hot-updater/core";
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
   assets: Record<string, { fileHash: string; signature?: string }>;
 };
+
+const HBC_ASSET_PATH_RE = /\.bundle$/;
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -60,6 +74,34 @@ const createChildStorageUri = (
 };
 
 export const parseBundleMetadata = (
+  value: unknown,
+): Bundle["metadata"] | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  let parsedValue: unknown = value;
+
+  if (typeof parsedValue === "string") {
+    try {
+      parsedValue = JSON.parse(parsedValue) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (
+    !parsedValue ||
+    typeof parsedValue !== "object" ||
+    Array.isArray(parsedValue)
+  ) {
+    return undefined;
+  }
+
+  return stripBundleArtifactMetadata(parsedValue as Bundle["metadata"]);
+};
+
+export const parseBundleRawMetadata = (
   value: unknown,
 ): Bundle["metadata"] | undefined => {
   if (!value) {
@@ -172,11 +214,17 @@ async function resolveChangedAssets<TContext>({
   return Object.fromEntries(changedEntries);
 }
 
+const resolveHbcAssetPath = (manifest: BundleManifest) =>
+  Object.keys(manifest.assets)
+    .sort((left, right) => left.localeCompare(right))
+    .find((candidate) => HBC_ASSET_PATH_RE.test(candidate)) ?? null;
+
 async function attachHbcPatchDescriptor<TContext>({
   changedAssets,
   currentBundle,
   resolveFileUrl,
   targetBundle,
+  targetManifest,
   context,
 }: {
   changedAssets: Record<string, ChangedAsset>;
@@ -186,15 +234,18 @@ async function attachHbcPatchDescriptor<TContext>({
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>;
   targetBundle: Bundle | null;
+  targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Record<string, ChangedAsset>> {
-  const baseBundleId = targetBundle?.metadata?.diff_base_bundle_id;
-  const patchAssetPath = targetBundle?.metadata?.hbc_patch_asset_path;
-  const patchStorageUri = targetBundle?.metadata?.hbc_patch_storage_uri;
-  const patchFileHash = targetBundle?.metadata?.hbc_patch_file_hash;
-  const patchBaseFileHash = targetBundle?.metadata?.hbc_patch_base_file_hash;
-  const patchAlgorithm =
-    targetBundle?.metadata?.hbc_patch_algorithm ?? "bsdiff";
+  const baseBundleId = targetBundle ? getPatchBaseBundleId(targetBundle) : null;
+  const patchAssetPath = resolveHbcAssetPath(targetManifest);
+  const patchStorageUri = targetBundle
+    ? getPatchStorageUri(targetBundle)
+    : null;
+  const patchFileHash = targetBundle ? getPatchFileHash(targetBundle) : null;
+  const patchBaseFileHash = targetBundle
+    ? getPatchBaseFileHash(targetBundle)
+    : null;
 
   if (
     currentBundle?.id !== baseBundleId ||
@@ -202,8 +253,7 @@ async function attachHbcPatchDescriptor<TContext>({
     !patchAssetPath ||
     !patchStorageUri ||
     !patchFileHash ||
-    !patchBaseFileHash ||
-    patchAlgorithm !== "bsdiff"
+    !patchBaseFileHash
   ) {
     return changedAssets;
   }
@@ -250,9 +300,15 @@ export async function resolveManifestArtifacts<TContext>({
   AppUpdateInfo,
   "changedAssets" | "manifestFileHash" | "manifestUrl"
 > | null> {
-  const manifestStorageUri = targetBundle?.metadata?.manifest_storage_uri;
-  const manifestFileHash = targetBundle?.metadata?.manifest_file_hash;
-  const assetBaseStorageUri = targetBundle?.metadata?.asset_base_storage_uri;
+  const manifestStorageUri = targetBundle
+    ? getManifestStorageUri(targetBundle)
+    : null;
+  const manifestFileHash = targetBundle
+    ? getManifestFileHash(targetBundle)
+    : null;
+  const assetBaseStorageUri = targetBundle
+    ? getAssetBaseStorageUri(targetBundle)
+    : null;
 
   if (!manifestStorageUri || !manifestFileHash || !assetBaseStorageUri) {
     return null;
@@ -268,9 +324,12 @@ export async function resolveManifestArtifacts<TContext>({
     return null;
   }
 
-  const currentManifestResult = currentBundle?.metadata?.manifest_storage_uri
+  const currentManifestStorageUri = currentBundle
+    ? getManifestStorageUri(currentBundle)
+    : null;
+  const currentManifestResult = currentManifestStorageUri
     ? await fetchBundleManifest(
-        currentBundle.metadata.manifest_storage_uri,
+        currentManifestStorageUri,
         resolveFileUrl,
         context,
       )
@@ -288,6 +347,7 @@ export async function resolveManifestArtifacts<TContext>({
     currentBundle,
     resolveFileUrl,
     targetBundle,
+    targetManifest: targetManifestResult.manifest,
     context,
   });
 

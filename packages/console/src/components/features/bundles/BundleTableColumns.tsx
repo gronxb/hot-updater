@@ -1,4 +1,8 @@
-import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
+import {
+  DEFAULT_ROLLOUT_COHORT_COUNT,
+  getPatchBaseBundleId,
+  getPatchStorageUri,
+} from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
@@ -26,8 +30,7 @@ interface BundleColumnsOptions {
 const columnHelper = createColumnHelper<Bundle>();
 
 const isPatchReady = (bundle: Bundle) =>
-  bundle.metadata?.hbc_patch_algorithm === "bsdiff" &&
-  Boolean(bundle.metadata?.hbc_patch_storage_uri);
+  Boolean(getPatchBaseBundleId(bundle) && getPatchStorageUri(bundle));
 
 function BundleIdCell({
   bundle,
@@ -38,7 +41,7 @@ function BundleIdCell({
   expandedBundleId?: string;
   onToggleExpand: (bundle: Bundle) => void;
 }) {
-  const hasDiffBase = Boolean(bundle.metadata?.diff_base_bundle_id);
+  const hasDiffBase = Boolean(getPatchBaseBundleId(bundle));
   const isExpanded = bundle.id === expandedBundleId;
   const panelId = `bundle-lineage-panel-${bundle.id}`;
 
@@ -72,7 +75,7 @@ function BundleIdCell({
 }
 
 function DiffBaseCell({ bundle, depth }: { bundle: Bundle; depth: number }) {
-  const baseBundleId = bundle.metadata?.diff_base_bundle_id;
+  const baseBundleId = getPatchBaseBundleId(bundle);
   const patchReady = isPatchReady(bundle);
 
   if (!baseBundleId) {

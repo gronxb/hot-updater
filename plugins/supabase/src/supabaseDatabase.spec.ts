@@ -22,6 +22,13 @@ type SupabaseBundleRow = {
   fingerprint_hash: string | null;
   storage_uri: string;
   metadata: Record<string, unknown> | null;
+  manifest_storage_uri?: string | null;
+  manifest_file_hash?: string | null;
+  asset_base_storage_uri?: string | null;
+  patch_base_bundle_id?: string | null;
+  patch_base_file_hash?: string | null;
+  patch_file_hash?: string | null;
+  patch_storage_uri?: string | null;
   rollout_cohort_count: number | null;
   target_cohorts: string[] | null;
 };
@@ -373,6 +380,13 @@ const toBundle = (row: SupabaseBundleRow) => ({
   fingerprintHash: row.fingerprint_hash,
   storageUri: row.storage_uri,
   metadata: row.metadata ?? {},
+  manifestStorageUri: row.manifest_storage_uri ?? null,
+  manifestFileHash: row.manifest_file_hash ?? null,
+  assetBaseStorageUri: row.asset_base_storage_uri ?? null,
+  patchBaseBundleId: row.patch_base_bundle_id ?? null,
+  patchBaseFileHash: row.patch_base_file_hash ?? null,
+  patchFileHash: row.patch_file_hash ?? null,
+  patchStorageUri: row.patch_storage_uri ?? null,
   rolloutCohortCount: row.rollout_cohort_count ?? 1000,
   targetCohorts: row.target_cohorts ?? null,
 });

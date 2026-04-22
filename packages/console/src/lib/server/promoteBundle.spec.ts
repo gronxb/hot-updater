@@ -288,12 +288,15 @@ describe("createCopiedBundleArchive", () => {
           `s3://bucket/bundle-copy-id/bundle.${format}`,
         );
         expect(copiedBundle.fileHash).not.toBe(baseBundle.fileHash);
-        expect(copiedBundle.metadata).toMatchObject({
-          asset_base_storage_uri: "s3://bucket/bundle-copy-id/files",
-          manifest_storage_uri: "s3://bucket/bundle-copy-id/manifest.json",
+        expect(copiedBundle).toMatchObject({
+          assetBaseStorageUri: "s3://bucket/bundle-copy-id/files",
+          manifestStorageUri: "s3://bucket/bundle-copy-id/manifest.json",
+          patchBaseBundleId: null,
+          patchStorageUri: null,
         });
-        expect(copiedBundle.metadata?.manifest_file_hash).toMatch(
-          /^[a-f0-9]{64}$/,
+        expect(copiedBundle.manifestFileHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(copiedBundle.metadata ?? {}).not.toHaveProperty(
+          "manifest_storage_uri",
         );
         expect(uploadedStorageUris).toEqual(
           expect.arrayContaining([

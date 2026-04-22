@@ -1,3 +1,4 @@
+import { getPatchBaseBundleId } from "@hot-updater/core";
 import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
 import {
   flexRender,
@@ -64,7 +65,7 @@ export function BundlesTable({
     }
 
     const bundle = bundleMap.get(bundleId);
-    const baseBundleId = bundle?.metadata?.diff_base_bundle_id;
+    const baseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
     if (!bundle || !baseBundleId || !bundleMap.has(baseBundleId)) {
       depthByBundleId[bundleId] = 0;
       return 0;

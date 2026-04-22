@@ -25,12 +25,11 @@ describe("createBundleDiff", () => {
       gitCommitHash: null,
       id: "00000000-0000-0000-0000-000000000001",
       message: "base",
-      metadata: {
-        asset_base_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
-        manifest_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/manifest.json",
-      },
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
+      manifestStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/manifest.json",
+      metadata: {},
       platform: "ios",
       shouldForceUpdate: false,
       storageUri:
@@ -41,12 +40,10 @@ describe("createBundleDiff", () => {
       ...baseBundle,
       id: "00000000-0000-0000-0000-000000000002",
       message: "target",
-      metadata: {
-        asset_base_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
-        manifest_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/manifest.json",
-      },
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
+      manifestStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/manifest.json",
       storageUri:
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
     };
@@ -166,16 +163,12 @@ describe("createBundleDiff", () => {
       );
 
       expect(upload).toHaveBeenCalledOnce();
-      expect(updatedBundle.metadata).toMatchObject({
-        diff_base_bundle_id: baseBundle.id,
-        hbc_patch_algorithm: "bsdiff",
-        hbc_patch_asset_path: "index.ios.bundle",
-        hbc_patch_base_file_hash: "hash-old",
+      expect(updatedBundle).toMatchObject({
+        patchBaseBundleId: baseBundle.id,
+        patchBaseFileHash: "hash-old",
       });
-      expect(updatedBundle.metadata?.hbc_patch_file_hash).toMatch(
-        /[a-f0-9]{64}/,
-      );
-      expect(updatedBundle.metadata?.hbc_patch_storage_uri).toContain(
+      expect(updatedBundle.patchFileHash).toMatch(/[a-f0-9]{64}/);
+      expect(updatedBundle.patchStorageUri).toContain(
         `${targetBundle.id}/patches/${baseBundle.id}`,
       );
     } finally {

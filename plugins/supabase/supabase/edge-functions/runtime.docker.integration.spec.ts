@@ -450,9 +450,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         },
         nextMetadata: {
           asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
-          diff_base_bundle_id: fixture.currentBundleId,
-          hbc_patch_algorithm: "bsdiff",
-          hbc_patch_asset_path: fixture.assetPath,
+          patch_base_bundle_id: fixture.currentBundleId,
           hbc_patch_base_file_hash: "hash-old-bundle",
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,

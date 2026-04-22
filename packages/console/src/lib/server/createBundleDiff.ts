@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { hdiff } from "@hot-updater/bsdiff";
+import {
+  getAssetBaseStorageUri,
+  getManifestStorageUri,
+  getPatchStorageUri,
+} from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePlugin,
@@ -116,7 +121,7 @@ async function fetchManifest(
   bundle: Bundle,
   storagePlugin: StoragePlugin | null,
 ): Promise<BundleManifest> {
-  const manifestStorageUri = bundle.metadata?.manifest_storage_uri;
+  const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
     throw new Error(`Bundle ${bundle.id} does not have manifest metadata`);
   }
@@ -155,7 +160,7 @@ async function fetchAssetBytes(
   assetPath: string,
   storagePlugin: StoragePlugin | null,
 ) {
-  const assetBaseStorageUri = bundle.metadata?.asset_base_storage_uri;
+  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
     throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
   }
@@ -241,7 +246,7 @@ export async function createBundleDiff(
   );
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   const patchPath = path.join(workDir, patchFilename);
-  const previousPatchStorageUri = targetBundle.metadata?.hbc_patch_storage_uri;
+  const previousPatchStorageUri = getPatchStorageUri(targetBundle);
 
   try {
     await fs.writeFile(patchPath, patchBytes);
@@ -258,15 +263,10 @@ export async function createBundleDiff(
     const patchFileHash = await getFileHash(patchPath);
 
     await deps.databasePlugin.updateBundle(targetBundle.id, {
-      metadata: {
-        ...targetBundle.metadata,
-        diff_base_bundle_id: baseBundle.id,
-        hbc_patch_algorithm: "bsdiff",
-        hbc_patch_asset_path: targetAssetPath,
-        hbc_patch_base_file_hash: baseAssetHash,
-        hbc_patch_file_hash: patchFileHash,
-        hbc_patch_storage_uri: patchUpload.storageUri,
-      },
+      patchBaseBundleId: baseBundle.id,
+      patchBaseFileHash: baseAssetHash,
+      patchFileHash,
+      patchStorageUri: patchUpload.storageUri,
     });
     await deps.databasePlugin.commitBundle();
 

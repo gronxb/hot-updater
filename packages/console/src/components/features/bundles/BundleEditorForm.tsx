@@ -1,5 +1,7 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
+  getAssetBaseStorageUri,
+  getManifestStorageUri,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -209,8 +211,8 @@ export function BundleEditorForm({
   const [newCohort, setNewCohort] = useState("");
   const shouldEditTargetAppVersion = Boolean(bundle.targetAppVersion);
   const canCreateDiff =
-    Boolean(bundle.metadata?.manifest_storage_uri) &&
-    Boolean(bundle.metadata?.asset_base_storage_uri);
+    Boolean(getManifestStorageUri(bundle)) &&
+    Boolean(getAssetBaseStorageUri(bundle));
 
   const form = useForm({
     defaultValues: getDefaultValues(bundle),

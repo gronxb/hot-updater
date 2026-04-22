@@ -8,9 +8,17 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import {
+  getAssetBaseStorageUri,
+  getManifestFileHash,
+  getManifestStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
   DEFAULT_ROLLOUT_COHORT_COUNT,
   isCohortEligibleForUpdate,
   NIL_UUID,
+  stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
   DatabaseBundleCursor,
@@ -28,10 +36,12 @@ import type { FumaDBAdapter } from "fumadb/adapters";
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";
+import { v0_31_0 } from "../schema/v0_31_0";
 import type { Paginated } from "../types";
 import type { DatabaseAPI } from "./types";
 import {
   parseBundleMetadata,
+  parseBundleRawMetadata,
   resolveManifestArtifacts,
 } from "./updateArtifacts";
 
@@ -53,7 +63,11 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
   return null;
 };
 
-const schemas: [typeof v0_21_0, typeof v0_29_0] = [v0_21_0, v0_29_0];
+const schemas: [typeof v0_21_0, typeof v0_29_0, typeof v0_31_0] = [
+  v0_21_0,
+  v0_29_0,
+  v0_31_0,
+];
 
 const getLastItem = <T extends unknown[]>(
   items: T,
@@ -263,25 +277,55 @@ export function createOrmDatabaseCore<TContext = unknown>({
     target_app_version: string | null;
     fingerprint_hash: string | null;
     metadata?: unknown;
+    manifest_storage_uri?: string | null;
+    manifest_file_hash?: string | null;
+    asset_base_storage_uri?: string | null;
+    patch_base_bundle_id?: string | null;
+    patch_base_file_hash?: string | null;
+    patch_file_hash?: string | null;
+    patch_storage_uri?: string | null;
     rollout_cohort_count?: number | null;
     target_cohorts?: unknown;
-  }): Bundle => ({
-    id: record.id,
-    platform: record.platform as Platform,
-    shouldForceUpdate: Boolean(record.should_force_update),
-    enabled: Boolean(record.enabled),
-    fileHash: record.file_hash,
-    gitCommitHash: record.git_commit_hash ?? null,
-    message: record.message ?? null,
-    channel: record.channel,
-    storageUri: record.storage_uri,
-    targetAppVersion: record.target_app_version ?? null,
-    fingerprintHash: record.fingerprint_hash ?? null,
-    metadata: parseBundleMetadata(record.metadata),
-    rolloutCohortCount:
-      record.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-    targetCohorts: parseTargetCohorts(record.target_cohorts),
-  });
+  }): Bundle => {
+    const rawMetadata = parseBundleRawMetadata(record.metadata);
+    return {
+      id: record.id,
+      platform: record.platform as Platform,
+      shouldForceUpdate: Boolean(record.should_force_update),
+      enabled: Boolean(record.enabled),
+      fileHash: record.file_hash,
+      gitCommitHash: record.git_commit_hash ?? null,
+      message: record.message ?? null,
+      channel: record.channel,
+      storageUri: record.storage_uri,
+      targetAppVersion: record.target_app_version ?? null,
+      fingerprintHash: record.fingerprint_hash ?? null,
+      metadata: parseBundleMetadata(record.metadata),
+      manifestStorageUri:
+        record.manifest_storage_uri ??
+        getManifestStorageUri({ metadata: rawMetadata }),
+      manifestFileHash:
+        record.manifest_file_hash ??
+        getManifestFileHash({ metadata: rawMetadata }),
+      assetBaseStorageUri:
+        record.asset_base_storage_uri ??
+        getAssetBaseStorageUri({ metadata: rawMetadata }),
+      patchBaseBundleId:
+        record.patch_base_bundle_id ??
+        getPatchBaseBundleId({ metadata: rawMetadata }),
+      patchBaseFileHash:
+        record.patch_base_file_hash ??
+        getPatchBaseFileHash({ metadata: rawMetadata }),
+      patchFileHash:
+        record.patch_file_hash ?? getPatchFileHash({ metadata: rawMetadata }),
+      patchStorageUri:
+        record.patch_storage_uri ??
+        getPatchStorageUri({ metadata: rawMetadata }),
+      rolloutCohortCount:
+        record.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+      targetCohorts: parseTargetCohorts(record.target_cohorts),
+    };
+  };
 
   const fetchBundleById = async (id: string): Promise<Bundle | null> => {
     const orm = await ensureORM();
@@ -299,6 +343,13 @@ export function createOrmDatabaseCore<TContext = unknown>({
         "target_app_version",
         "fingerprint_hash",
         "metadata",
+        "manifest_storage_uri",
+        "manifest_file_hash",
+        "asset_base_storage_uri",
+        "patch_base_bundle_id",
+        "patch_base_file_hash",
+        "patch_file_hash",
+        "patch_storage_uri",
         "rollout_cohort_count",
         "target_cohorts",
       ],
@@ -657,6 +708,13 @@ export function createOrmDatabaseCore<TContext = unknown>({
         | "target_app_version"
         | "fingerprint_hash"
         | "metadata"
+        | "manifest_storage_uri"
+        | "manifest_file_hash"
+        | "asset_base_storage_uri"
+        | "patch_base_bundle_id"
+        | "patch_base_file_hash"
+        | "patch_file_hash"
+        | "patch_storage_uri"
         | "rollout_cohort_count"
         | "target_cohorts"
       > = [
@@ -672,6 +730,13 @@ export function createOrmDatabaseCore<TContext = unknown>({
         "target_app_version",
         "fingerprint_hash",
         "metadata",
+        "manifest_storage_uri",
+        "manifest_file_hash",
+        "asset_base_storage_uri",
+        "patch_base_bundle_id",
+        "patch_base_file_hash",
+        "patch_file_hash",
+        "patch_storage_uri",
         "rollout_cohort_count",
         "target_cohorts",
       ];
@@ -796,7 +861,14 @@ export function createOrmDatabaseCore<TContext = unknown>({
         storage_uri: bundle.storageUri,
         target_app_version: bundle.targetAppVersion,
         fingerprint_hash: bundle.fingerprintHash,
-        metadata: bundle.metadata ?? {},
+        metadata: stripBundleArtifactMetadata(bundle.metadata) ?? {},
+        manifest_storage_uri: getManifestStorageUri(bundle),
+        manifest_file_hash: getManifestFileHash(bundle),
+        asset_base_storage_uri: getAssetBaseStorageUri(bundle),
+        patch_base_bundle_id: getPatchBaseBundleId(bundle),
+        patch_base_file_hash: getPatchBaseFileHash(bundle),
+        patch_file_hash: getPatchFileHash(bundle),
+        patch_storage_uri: getPatchStorageUri(bundle),
         rollout_cohort_count:
           bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
         target_cohorts: bundle.targetCohorts ?? null,
@@ -829,7 +901,14 @@ export function createOrmDatabaseCore<TContext = unknown>({
         storage_uri: merged.storageUri,
         target_app_version: merged.targetAppVersion,
         fingerprint_hash: merged.fingerprintHash,
-        metadata: merged.metadata ?? {},
+        metadata: stripBundleArtifactMetadata(merged.metadata) ?? {},
+        manifest_storage_uri: getManifestStorageUri(merged),
+        manifest_file_hash: getManifestFileHash(merged),
+        asset_base_storage_uri: getAssetBaseStorageUri(merged),
+        patch_base_bundle_id: getPatchBaseBundleId(merged),
+        patch_base_file_hash: getPatchBaseFileHash(merged),
+        patch_file_hash: getPatchFileHash(merged),
+        patch_storage_uri: getPatchStorageUri(merged),
         rollout_cohort_count:
           merged.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
         target_cohorts: merged.targetCohorts ?? null,

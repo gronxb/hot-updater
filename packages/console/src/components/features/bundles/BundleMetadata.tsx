@@ -1,3 +1,8 @@
+import {
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+} from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
@@ -24,21 +29,17 @@ const truncateValue = (value: string, maxLength = 16) =>
 
 export function BundleMetadata({ bundle }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
-  const diffBaseBundleId = bundle.metadata?.diff_base_bundle_id;
-  const hbcPatchAssetPath = bundle.metadata?.hbc_patch_asset_path;
-  const hbcPatchFileHash = bundle.metadata?.hbc_patch_file_hash;
-  const hbcPatchBaseFileHash = bundle.metadata?.hbc_patch_base_file_hash;
-  const hbcPatchAlgorithm = bundle.metadata?.hbc_patch_algorithm;
+  const patchBaseBundleId = getPatchBaseBundleId(bundle);
+  const hbcPatchFileHash = getPatchFileHash(bundle);
+  const hbcPatchBaseFileHash = getPatchBaseFileHash(bundle);
   const hasMetadata =
     bundle.targetAppVersion ||
     bundle.fingerprintHash ||
     bundle.gitCommitHash ||
     bundle.fileHash ||
-    diffBaseBundleId ||
-    hbcPatchAssetPath ||
+    patchBaseBundleId ||
     hbcPatchBaseFileHash ||
-    hbcPatchFileHash ||
-    hbcPatchAlgorithm;
+    hbcPatchFileHash;
   const gitCommitUrl =
     bundle.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
@@ -110,36 +111,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           />
         ) : null}
 
-        {diffBaseBundleId ? (
+        {patchBaseBundleId ? (
           <Row
-            label="Diff Base"
+            label="Patch Base"
             value={
-              <BundleIdDisplay bundleId={diffBaseBundleId} maxLength={18} />
-            }
-          />
-        ) : null}
-
-        {hbcPatchAlgorithm ? (
-          <Row
-            label="Patch Algorithm"
-            value={
-              <span translate="no" className="font-mono text-xs">
-                {hbcPatchAlgorithm}
-              </span>
-            }
-          />
-        ) : null}
-
-        {hbcPatchAssetPath ? (
-          <Row
-            label="Patch Asset"
-            value={
-              <span
-                translate="no"
-                className="block break-all font-mono text-xs text-muted-foreground"
-              >
-                {hbcPatchAssetPath}
-              </span>
+              <BundleIdDisplay bundleId={patchBaseBundleId} maxLength={18} />
             }
           />
         ) : null}

@@ -1,3 +1,4 @@
+import { getPatchBaseBundleId, getPatchStorageUri } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
@@ -9,9 +10,8 @@ interface BundleBasicInfoProps {
 }
 
 export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
-  const patchReady =
-    bundle.metadata?.hbc_patch_algorithm === "bsdiff" &&
-    Boolean(bundle.metadata?.hbc_patch_storage_uri);
+  const patchBaseBundleId = getPatchBaseBundleId(bundle);
+  const patchReady = Boolean(patchBaseBundleId && getPatchStorageUri(bundle));
 
   return (
     <div className="mt-1 flex flex-col gap-3 text-sm">
@@ -22,12 +22,8 @@ export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
             {bundle.platform === "ios" ? "iOS" : "Android"}
           </span>
         </div>
-        <Badge
-          variant={
-            bundle.metadata?.diff_base_bundle_id ? "secondary" : "outline"
-          }
-        >
-          {bundle.metadata?.diff_base_bundle_id ? "Derived" : "Root"}
+        <Badge variant={patchBaseBundleId ? "secondary" : "outline"}>
+          {patchBaseBundleId ? "Derived" : "Root"}
         </Badge>
         {patchReady ? <Badge variant="secondary">BSDIFF Ready</Badge> : null}
       </div>
