@@ -484,8 +484,7 @@ internal class HotUpdaterRecoveryManager(
             scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
         }
 
-        private fun getBundleStoreDir(context: Context): File =
-            File(context.filesDir, "bundle-store")
+        private fun getBundleStoreDir(context: Context): File = File(context.filesDir, "bundle-store")
 
         private fun getRecoveryWatchdogIntent(context: Context): Intent =
             Intent(context, HotUpdaterRecoveryReceiver::class.java).setAction(WATCHDOG_ACTION)

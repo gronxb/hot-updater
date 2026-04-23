@@ -212,7 +212,10 @@ class BundleFileStorageService(
     ): Double {
         val normalizedManifestProgress = manifestProgress.coerceIn(0.0, 1.0)
         return when (phase) {
-            "manifest" -> normalizedManifestProgress * 0.15
+            "manifest" -> {
+                normalizedManifestProgress * 0.15
+            }
+
             "downloading" -> {
                 if (files.isEmpty()) {
                     0.92
@@ -226,9 +229,18 @@ class BundleFileStorageService(
                         .coerceIn(0.2, 0.92)
                 }
             }
-            "finalizing" -> 0.97
-            "completed" -> 1.0
-            else -> 0.0
+
+            "finalizing" -> {
+                0.97
+            }
+
+            "completed" -> {
+                1.0
+            }
+
+            else -> {
+                0.0
+            }
         }
     }
 
@@ -332,6 +344,7 @@ class BundleFileStorageService(
                 is DownloadResult.Error -> {
                     false
                 }
+
                 is DownloadResult.Success -> {
                     if (!HashUtils.verifyHash(patchDownloadResult.file, patch.patchFileHash)) {
                         false
@@ -1396,7 +1409,9 @@ class BundleFileStorageService(
                     throw HotUpdaterException.downloadFailed(manifestDownloadResult.exception)
                 }
 
-                is DownloadResult.Success -> Unit
+                is DownloadResult.Success -> {
+                    Unit
+                }
             }
 
             try {
