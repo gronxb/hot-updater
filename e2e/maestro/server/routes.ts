@@ -9,6 +9,7 @@ import {
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleEnsureAppForeground,
+  handlePrepareAppLaunch,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
@@ -257,6 +258,10 @@ app.post("/e2e/assert-crash-history", async (c) => {
 
 app.post("/e2e/ensure-app-foreground", async (c) => {
   return c.json(await handleEnsureAppForeground());
+});
+
+app.post("/e2e/prepare-app-launch", async (c) => {
+  return c.json(await handlePrepareAppLaunch());
 });
 
 app.post("/e2e/wait-for-crash-recovery", async (c) => {

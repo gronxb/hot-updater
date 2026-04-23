@@ -9,6 +9,8 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.hotupdater.HotUpdater
 
 class MainApplication : Application(), ReactApplication {
+  private val isDebugBuildVariant: Boolean = BuildConfig.BUILD_TYPE == "debug"
+
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
         context = applicationContext,
@@ -17,13 +19,13 @@ class MainApplication : Application(), ReactApplication {
               add(ReloadCrashProbePackage())
             },
         jsBundleFilePath =
-            if (BuildConfig.DEBUG) {
+            if (isDebugBuildVariant) {
               null
             } else {
               HotUpdater.getJSBundleFile(applicationContext)
             },
         useDevSupport =
-            BuildConfig.DEBUG && !BuildConfig.HOT_UPDATER_E2E_DISABLE_DEV_SUPPORT,
+            isDebugBuildVariant && !BuildConfig.HOT_UPDATER_E2E_DISABLE_DEV_SUPPORT,
     )
   }
 

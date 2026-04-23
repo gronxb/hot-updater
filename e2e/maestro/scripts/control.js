@@ -316,6 +316,12 @@ switch (ACTION) {
     break;
   }
 
+  case "prepareAppLaunch": {
+    const response = request("POST", "/e2e/prepare-app-launch", {});
+    expectOk(response, "prepare app launch");
+    break;
+  }
+
   case "waitForCrashRecovery": {
     const response = request("POST", "/e2e/wait-for-crash-recovery", {
       crashedBundleId: CRASHED_BUNDLE_ID,

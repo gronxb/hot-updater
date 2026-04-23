@@ -2430,6 +2430,27 @@ async function ensureAppForeground() {
   );
 }
 
+async function prepareAppLaunch() {
+  if (session.platform !== "android") {
+    return {};
+  }
+
+  const focusedPackage = getAndroidFocusedPackage();
+  logE2e("android prepare app launch", {
+    focusedPackage,
+    targetAppId: session.appId,
+  });
+
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    { allowFailure: true },
+  );
+  await sleep(500);
+
+  return {};
+}
+
 async function bootstrap() {
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
@@ -3246,6 +3267,10 @@ export async function handleWaitForCrashRecovery(
 
 export async function handleEnsureAppForeground() {
   return ensureAppForeground();
+}
+
+export async function handlePrepareAppLaunch() {
+  return prepareAppLaunch();
 }
 
 export async function handleWriteSummary(args: {
