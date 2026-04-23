@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.30.4
+
+### Patch Changes
+
+- b2db3ca: fix(react-native): always delegate resetChannel to native
+  - @hot-updater/cli-tools@0.30.4
+  - @hot-updater/core@0.30.4
+  - @hot-updater/js@0.30.4
+  - @hot-updater/plugin-core@0.30.4
+
 ## 0.30.3
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @hot-updater/apple-helper
 
+## 0.30.4
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.30.4
+- @hot-updater/plugin-core@0.30.4
+
 ## 0.30.3
 
 ### Patch Changes
