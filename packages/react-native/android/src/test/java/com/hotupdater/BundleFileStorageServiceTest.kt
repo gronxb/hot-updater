@@ -231,6 +231,28 @@ class BundleFileStorageServiceTest {
         assertEquals(stagingDir.name, service.getBundleId())
     }
 
+    @Test
+    fun `manifest driven install is disabled before first OTA`() {
+        val rootDir = temporaryFolder.newFolder("first-ota-manifest-disabled")
+        val service = createService(rootDir)
+
+        assertFalse(invokeCanUseManifestDrivenInstall(service))
+    }
+
+    @Test
+    fun `manifest driven install is enabled for active OTA bundle with manifest`() {
+        val rootDir = temporaryFolder.newFolder("active-ota-manifest-enabled")
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+        val activeDir = createBundleDir(rootDir, "active-bundle")
+        val activeBundleFile = writeFile(activeDir, "index.android.bundle")
+        writeManifest(activeDir, listOf("index.android.bundle"))
+
+        preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
+
+        assertTrue(invokeCanUseManifestDrivenInstall(service))
+    }
+
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
@@ -306,6 +328,12 @@ class BundleFileStorageServiceTest {
         return method.invoke(service, bundleDir) as File?
     }
 
+    private fun invokeCanUseManifestDrivenInstall(service: BundleFileStorageService): Boolean {
+        val method = BundleFileStorageService::class.java.getDeclaredMethod("canUseManifestDrivenInstall")
+        method.isAccessible = true
+        return method.invoke(service) as Boolean
+    }
+
     private fun assertResolvedBundlePath(
         service: BundleFileStorageService,
         bundleDir: File,
@@ -318,7 +346,7 @@ class BundleFileStorageServiceTest {
     }
 
     private class TestFileSystemService(
-        private val externalFilesDir: File,
+        private val internalFilesDir: File,
     ) : FileSystemService {
         override fun fileExists(path: String): Boolean = File(path).exists()
 
@@ -343,7 +371,7 @@ class BundleFileStorageServiceTest {
 
         override fun contentsOfDirectory(path: String): List<String> = File(path).list()?.toList() ?: emptyList()
 
-        override fun getExternalFilesDir(): File = externalFilesDir
+        override fun getInternalFilesDir(): File = internalFilesDir
     }
 
     private class InMemoryPreferencesService : PreferencesService {

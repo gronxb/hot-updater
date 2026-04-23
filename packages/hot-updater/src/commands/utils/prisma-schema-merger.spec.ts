@@ -15,17 +15,24 @@ const HOT_UPDATER_MODELS = `model bundles {
   message             String?
   channel             String
   storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-  rollout_cohort_count Int    @default(1000)
-  target_cohorts      Json?
-}
+	  target_app_version  String?
+	  fingerprint_hash    String?
+	  metadata            Json
+	  manifest_storage_uri String?
+	  manifest_file_hash   String?
+	  asset_base_storage_uri String?
+	  patch_base_bundle_id String?
+	  patch_base_file_hash String?
+	  patch_file_hash      String?
+	  patch_storage_uri    String?
+	  rollout_cohort_count Int    @default(1000)
+	  target_cohorts      Json?
+	}
 
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}`;
+	model private_hot_updater_settings {
+	  key   String @id
+	  value String @default("0.31.0")
+	}`;
 
 describe("prisma-schema-merger", () => {
   describe("mergePrismaSchema", () => {
@@ -86,16 +93,23 @@ describe("prisma-schema-merger", () => {
   message String?
   channel String
   storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json?
-}
-model private_hot_updater_settings {
-  key String @id
-  value String @default("0.29.0")
-}`;
+	  target_app_version String?
+	  fingerprint_hash String?
+	  metadata Json
+	  manifest_storage_uri String?
+	  manifest_file_hash String?
+	  asset_base_storage_uri String?
+	  patch_base_bundle_id String?
+	  patch_base_file_hash String?
+	  patch_file_hash String?
+	  patch_storage_uri String?
+	  rollout_cohort_count Int @default(1000)
+	  target_cohorts Json?
+	}
+	model private_hot_updater_settings {
+	  key String @id
+	  value String @default("0.31.0")
+	}`;
 
       const result = mergePrismaSchema(schemaWithHotUpdater, updatedModels);
 
@@ -104,7 +118,7 @@ model private_hot_updater_settings {
       expect(result.content).toContain("model User");
       // Updated models should be present
       expect(result.content).toContain("rollout_cohort_count");
-      expect(result.content).toContain('"0.29.0"');
+      expect(result.content).toContain('"0.31.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
         result.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
@@ -187,17 +201,24 @@ model bundles {
   message             String?
   channel             String
   storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-  rollout_cohort_count Int    @default(1000)
-  target_cohorts      Json?
-}
+	  target_app_version  String?
+	  fingerprint_hash    String?
+	  metadata            Json
+	  manifest_storage_uri String?
+	  manifest_file_hash   String?
+	  asset_base_storage_uri String?
+	  patch_base_bundle_id String?
+	  patch_base_file_hash String?
+	  patch_file_hash      String?
+	  patch_storage_uri    String?
+	  rollout_cohort_count Int    @default(1000)
+	  target_cohorts      Json?
+	}
 
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}`;
+	model private_hot_updater_settings {
+	  key   String @id
+	  value String @default("0.31.0")
+	}`;
 
       // Existing schema with User model
       const existingSchemaWithUser = `generator client {

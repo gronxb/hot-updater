@@ -152,12 +152,9 @@ describe("deleteBundle", () => {
   it("deletes manifest artifacts individually when metadata is available", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
-      metadata: {
-        asset_base_storage_uri: "s3://bucket/bundles/bundle-copy-id/files",
-        manifest_file_hash: "manifest-hash",
-        manifest_storage_uri:
-          "s3://bucket/bundles/bundle-copy-id/manifest.json",
-      },
+      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
     const databasePlugin = createDatabasePlugin(bundleWithManifest);
     const deleteFromStorage = vi.fn();
@@ -165,7 +162,7 @@ describe("deleteBundle", () => {
       delete: deleteFromStorage,
       getDownloadUrl: vi.fn(async (storageUri) => ({
         fileUrl:
-          storageUri === bundleWithManifest.metadata?.manifest_storage_uri
+          storageUri === bundleWithManifest.manifestStorageUri
             ? "https://cdn.example.com/manifest.json"
             : "https://cdn.example.com/unknown",
       })),
@@ -195,7 +192,7 @@ describe("deleteBundle", () => {
       bundleWithManifest.storageUri,
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.metadata?.manifest_storage_uri,
+      bundleWithManifest.manifestStorageUri,
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
       "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
@@ -208,12 +205,9 @@ describe("deleteBundle", () => {
   it("falls back to deleting the asset base uri when manifest cleanup lookup fails", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
-      metadata: {
-        asset_base_storage_uri: "s3://bucket/bundles/bundle-copy-id/files",
-        manifest_file_hash: "manifest-hash",
-        manifest_storage_uri:
-          "s3://bucket/bundles/bundle-copy-id/manifest.json",
-      },
+      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
     const databasePlugin = createDatabasePlugin(bundleWithManifest);
     const deleteFromStorage = vi.fn();
@@ -246,10 +240,10 @@ describe("deleteBundle", () => {
       bundleWithManifest.storageUri,
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.metadata?.manifest_storage_uri,
+      bundleWithManifest.manifestStorageUri,
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
-      bundleWithManifest.metadata?.asset_base_storage_uri,
+      bundleWithManifest.assetBaseStorageUri,
     );
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to load bundle manifest for storage cleanup:",

@@ -87,4 +87,33 @@ describe("bundleManifest", () => {
     });
     expect(writtenManifest.assets).not.toHaveProperty("manifest.json");
   });
+
+  it("writes asset signatures next to file hashes when signing is provided", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+
+    const bundlePath = path.join(buildPath, "index.ios.bundle");
+    await fs.writeFile(bundlePath, "bundle-content");
+
+    const signFileHash = async (fileHash: string) => `signed:${fileHash}`;
+    const { manifest, manifestPath } = await writeBundleManifest({
+      buildPath,
+      bundleId: "bundle-signed",
+      signFileHash,
+      targetFiles: [{ path: bundlePath, name: "index.ios.bundle" }],
+    });
+
+    const expectedHash = hash("bundle-content");
+    const writtenManifest = JSON.parse(
+      await fs.readFile(manifestPath, "utf-8"),
+    );
+
+    expect(manifest).toEqual(writtenManifest);
+    expect(writtenManifest.assets["index.ios.bundle"]).toEqual({
+      fileHash: expectedHash,
+      signature: `signed:${expectedHash}`,
+    });
+  });
 });

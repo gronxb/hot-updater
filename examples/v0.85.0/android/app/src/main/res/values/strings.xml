@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">HotUpdaterExample</string>
+    <string name="hot_updater_fingerprint_hash" moduleConfig="true">64edb00dbbb1d97b7289937d39f5dd6d9ea5cacb</string>
+    <string name="hot_updater_channel" moduleConfig="true">production</string>
+    <string name="hot_updater_public_key" moduleConfig="true">-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA7pt5Ffe8MWJ/925yH7py
+Iw2NH8OQ9gl7yTzogYTQLBvq7T/t4DN0vGVduIhtI7TJfOHqngSK5swAM5fBzv20
+YgyAJ5hfEbAzwFHWpZZZxEboDke95Mv5osYGwNqP4FuLORaEcGPk3mfVU13TAd0C
+qsNDfQlFOaszlvAiQU4UGP8sKmpjyb5Z0a26LXeTEvUz7Z2lKNA7zF5K4FuYHXP6
+upLymCDP74neGr0iNWbNw/tZ0vTpyRIvSGl6W3ly4hJYdeZ6/iUrihJ5Diqwco5v
+oiiZr/UylVaYVYhYmH9bmIz+mnoCalkchGLOEPgoVXQs+8P/yfigwTxgzwVZKpCb
+RoZPdZIvl4jGkwJQG+vRH4WuW0cu1MTVs/ZnXWI4Jec/Q4Qggpc1Z0DRKZzZzLe4
+t1/g2nZJ85/WmnYLCi7/ucFpCQPIpYXD7d00Re7K4RaNTdIRIEqWrQx+lQFHcXpn
+ofVX7yPCkabUB+XBFok9a3aKg4JA9f2LKWwQXZ2PrAvTvwp3ytSUWPD3cO3z1v20
+71Xf5swd5ckLPqhkv3aEEMXzvUmyn1VDNgci4+wZFoW3vSxa4UFPuuhcsnLXz4O7
+1PUGgb3r2OGxmWialcwq6xgDysDdxIowk6pU7C7R4CfUyZSmibWrzazfN1mOWzmx
++W9h/HskPxrDnx3oy7NNuG8CAwEAAQ==
+-----END PUBLIC KEY-----</string>
+</resources>

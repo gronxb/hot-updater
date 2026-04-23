@@ -11,7 +11,7 @@ import {
 } from "./test-helpers.js";
 
 describe("hdiff", () => {
-  it("generates a BSPATCH-compatible BSDIFF40 patch for fixture one -> two", async () => {
+  it("generates a BSPATCH-compatible ENDSLEY BSDIFF43 patch for fixture one -> two", async () => {
     const base = await readFixtureHbc("one");
     const next = await readFixtureHbc("two");
 

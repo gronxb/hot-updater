@@ -410,11 +410,11 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(3);
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
+        assetBaseStorageUri: "s3://bundles/bundle-123/files",
+        manifestFileHash: "file-hash",
+        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
         metadata: expect.objectContaining({
           app_version: "1.0",
-          asset_base_storage_uri: "s3://bundles/bundle-123/files",
-          manifest_file_hash: "file-hash",
-          manifest_storage_uri: "s3://bundles/bundle-123/manifest.json",
         }),
       }),
     );

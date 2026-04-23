@@ -10,6 +10,10 @@ import {
   createTarGzTargetFiles,
   createZipTargetFiles,
 } from "@hot-updater/cli-tools";
+import {
+  getManifestFileHash,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePlugin,
@@ -27,7 +31,7 @@ const SIGNED_HASH_PREFIX = "sig:";
 
 interface BundleManifest {
   bundleId?: string;
-  assets?: Record<string, { fileHash: string }>;
+  assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
 export interface PromoteBundleInput {
@@ -305,10 +309,7 @@ export async function createCopiedBundleArchive({
 
     const fileHash = await getFileHash(outputArchivePath);
     const manifestHash = await getFileHash(manifestPath);
-    const requiresSigningKey = [
-      bundle.fileHash,
-      bundle.metadata?.manifest_file_hash,
-    ]
+    const requiresSigningKey = [bundle.fileHash, getManifestFileHash(bundle)]
       .filter((hash): hash is string => Boolean(hash))
       .some((hash) => isSignedFileHash(hash));
 
@@ -368,12 +369,14 @@ export async function createCopiedBundleArchive({
         channel: targetChannel,
         storageUri: archiveUpload.storageUri,
         fileHash: nextFileHash,
-        metadata: {
-          ...bundle.metadata,
-          asset_base_storage_uri: assetBaseStorageUri,
-          manifest_file_hash: nextManifestFileHash,
-          manifest_storage_uri: manifestUpload.storageUri,
-        },
+        metadata: stripBundleArtifactMetadata(bundle.metadata),
+        assetBaseStorageUri,
+        patchBaseBundleId: null,
+        manifestFileHash: nextManifestFileHash,
+        manifestStorageUri: manifestUpload.storageUri,
+        patchBaseFileHash: null,
+        patchFileHash: null,
+        patchStorageUri: null,
       } satisfies Bundle,
       uploadedStorageUris,
     };

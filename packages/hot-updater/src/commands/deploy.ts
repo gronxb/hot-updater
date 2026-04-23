@@ -392,9 +392,16 @@ export const deploy = async (options: DeployOptions) => {
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
+          const manifestSigning =
+            config.signing?.enabled && config.signing.privateKeyPath
+              ? (assetFileHash: string) =>
+                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
+              : undefined;
+
           const { manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
+            signFileHash: manifestSigning,
             targetFiles,
           });
 
@@ -570,22 +577,10 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
-              metadata: appVersion
-                ? {
-                    app_version: appVersion,
-                    asset_base_storage_uri:
-                      taskRef.assetBaseStorageUri ?? undefined,
-                    manifest_file_hash: manifestFileHash,
-                    manifest_storage_uri:
-                      taskRef.manifestStorageUri ?? undefined,
-                  }
-                : {
-                    asset_base_storage_uri:
-                      taskRef.assetBaseStorageUri ?? undefined,
-                    manifest_file_hash: manifestFileHash,
-                    manifest_storage_uri:
-                      taskRef.manifestStorageUri ?? undefined,
-                  },
+              metadata: appVersion ? { app_version: appVersion } : {},
+              assetBaseStorageUri: taskRef.assetBaseStorageUri,
+              manifestFileHash,
+              manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();

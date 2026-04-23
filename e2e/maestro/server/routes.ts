@@ -1,11 +1,14 @@
 import { Hono } from "hono";
+
 import {
   getJob,
+  handleAssertBsdiffPatchApplied,
   handleAssertCrashHistory,
-  handleEnsureAppForeground,
+  handleAssertFirstOtaUsesArchive,
   handleAssertLaunchReport,
   handleAssertMetadataActive,
   handleAssertMetadataReset,
+  handleEnsureAppForeground,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
@@ -48,6 +51,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     bundleProfile?: "archive300mb" | "default";
     channel?: string;
     disabled?: boolean;
+    diffBaseBundleId?: string;
     forceUpdate?: boolean;
     marker?: string;
     message?: string;
@@ -86,6 +90,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
       disabled: payload.disabled,
+      diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
       marker: payload.marker,
       message: payload.message,
@@ -171,6 +176,33 @@ app.post("/e2e/wait-for-metadata", async (c) => {
   return c.json(
     await handleWaitForMetadata(payload.bundleId, payload.verificationPending),
   );
+});
+
+app.post("/e2e/assert-bsdiff-patch-applied", async (c) => {
+  const payload = (await c.req.json()) as {
+    assetPath?: string;
+    baseBundleId?: string;
+  };
+
+  if (!payload.baseBundleId) {
+    return c.json({ error: "baseBundleId is required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertBsdiffPatchApplied({
+      assetPath: payload.assetPath || "index.ios.bundle",
+      baseBundleId: payload.baseBundleId,
+    }),
+  );
+});
+
+app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
+  const payload = (await c.req.json()) as { bundleId?: string };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
 });
 
 app.post("/e2e/capture-state", async (c) => {

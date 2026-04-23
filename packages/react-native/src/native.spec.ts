@@ -167,6 +167,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",
@@ -181,6 +182,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",
@@ -354,6 +356,13 @@ describe("notifyAppReady", () => {
         "index.ios.bundle": {
           fileHash: "hash-next",
           fileUrl: "https://example.com/files/index.ios.bundle",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-123",
+            baseFileHash: "hash-prev",
+            patchFileHash: "hash-patch",
+            patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+          },
         },
       },
       fileHash: "sig:archive",
@@ -369,6 +378,13 @@ describe("notifyAppReady", () => {
         "index.ios.bundle": {
           fileHash: "hash-next",
           fileUrl: "https://example.com/files/index.ios.bundle",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-123",
+            baseFileHash: "hash-prev",
+            patchFileHash: "hash-patch",
+            patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+          },
         },
       },
       channel: undefined,

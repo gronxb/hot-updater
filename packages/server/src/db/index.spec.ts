@@ -362,6 +362,145 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "https://s3.example.com/test-bucket/fp-bundle.zip",
       );
     });
+
+    it("returns manifest metadata and hbc patch descriptors for createHotUpdater", async () => {
+      const currentBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000101",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-current-zip",
+        gitCommitHash: null,
+        message: "Current bundle",
+        channel: "production",
+        storageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/bundle.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/files",
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/manifest.json",
+        },
+      };
+      const nextBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000102",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-next-zip",
+        gitCommitHash: null,
+        message: "Next bundle",
+        channel: "production",
+        storageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/bundle.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/files",
+          patch_base_bundle_id: currentBundle.id,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json",
+        },
+      };
+      const fetchMock = vi.fn<typeof fetch>(async (input) => {
+        const url = String(input);
+
+        if (url.endsWith(`${currentBundle.id}/manifest.json`)) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "assets/logo.png": {
+                  fileHash: "hash-logo",
+                },
+                "index.ios.bundle": {
+                  fileHash: "hash-old-bundle",
+                },
+              },
+              bundleId: currentBundle.id,
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+
+        if (url.endsWith(`${nextBundle.id}/manifest.json`)) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "assets/logo.png": {
+                  fileHash: "hash-logo",
+                },
+                "index.ios.bundle": {
+                  fileHash: "hash-new-bundle",
+                },
+              },
+              bundleId: nextBundle.id,
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+
+        return new Response("not found", { status: 404 });
+      });
+
+      await hotUpdater.insertBundle(currentBundle);
+      await hotUpdater.insertBundle(nextBundle);
+      vi.stubGlobal("fetch", fetchMock);
+
+      try {
+        await expect(
+          hotUpdater.getAppUpdateInfo({
+            appVersion: "1.0.0",
+            bundleId: currentBundle.id,
+            channel: "production",
+            platform: "ios",
+            _updateStrategy: "appVersion",
+          }),
+        ).resolves.toEqual({
+          changedAssets: {
+            "index.ios.bundle": {
+              fileHash: "hash-new-bundle",
+              patch: {
+                algorithm: "bsdiff",
+                baseBundleId: currentBundle.id,
+                baseFileHash: "hash-old-bundle",
+                patchFileHash: "hash-bsdiff",
+                patchUrl:
+                  "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+              },
+              fileUrl:
+                "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/files/index.ios.bundle",
+            },
+          },
+          fileHash: "hash-next-zip",
+          fileUrl:
+            "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/bundle.zip",
+          id: nextBundle.id,
+          manifestFileHash: "sig:manifest-next",
+          manifestUrl:
+            "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json",
+          message: "Next bundle",
+          shouldForceUpdate: false,
+          status: "UPDATE",
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 
   describe("database plugin factories", () => {

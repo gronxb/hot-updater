@@ -17,17 +17,28 @@ export function BundleIdDisplay({
   const truncated =
     bundleId.length > maxLength ? bundleId.slice(-maxLength) : bundleId;
   if (bundleId.length <= maxLength) {
-    return <span className="font-mono text-xs">{bundleId}</span>;
+    return (
+      <span translate="no" className="font-mono text-xs tabular-nums">
+        {bundleId}
+      </span>
+    );
   }
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="font-mono text-xs cursor-help">{truncated}</span>
+          <span
+            translate="no"
+            className="cursor-help font-mono text-xs tabular-nums"
+          >
+            {truncated}
+          </span>
         </TooltipTrigger>
         <TooltipContent>
-          <p className="font-mono text-xs">{bundleId}</p>
+          <p translate="no" className="font-mono text-xs tabular-nums">
+            {bundleId}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

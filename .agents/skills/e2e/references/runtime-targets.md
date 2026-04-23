@@ -1,11 +1,11 @@
 # Runtime Targets
 
-Use these fixed values for `examples/v0.81.0`.
+Use these fixed values for `examples/v0.85.0`.
 
 ## Workspace
 
 - Repo root: `<repo-root>`
-- Example root: `<repo-root>/examples/v0.81.0`
+- Example root: `<repo-root>/examples/v0.85.0`
 - E2E policy: use release binaries only. Do not validate OTA with debug builds or Metro-attached sessions.
 
 ## OTA Server
@@ -19,9 +19,9 @@ Use these fixed values for `examples/v0.81.0`.
 
 - Preferred simulator: `iPhone 16`
 - Built app identifier used by `agent-device` and `simctl`: `org.reactjs.native.example.HotUpdaterExample`
-- Xcode workspace: `<repo-root>/examples/v0.81.0/ios/HotUpdaterExample.xcworkspace`
+- Xcode workspace: `<repo-root>/examples/v0.85.0/ios/HotUpdaterExample.xcworkspace`
 - Scheme: `HotUpdaterExample`
-- Release derived data default for E2E: `/tmp/hotupdater-v081-ios-e2e`
+- Release derived data default for E2E: `/tmp/hotupdater-v085-ios-e2e`
 
 Important:
 
@@ -32,8 +32,8 @@ Important:
 ## Android
 
 - Package name: `com.hotupdaterexample`
-- App module dir: `<repo-root>/examples/v0.81.0/android`
-- Release APK path: `<repo-root>/examples/v0.81.0/android/app/build/outputs/apk/release/app-release.apk`
+- App module dir: `<repo-root>/examples/v0.85.0/android`
+- Release APK path: `<repo-root>/examples/v0.85.0/android/app/build/outputs/apk/release/app-release.apk`
 
 ## UI Assertions
 

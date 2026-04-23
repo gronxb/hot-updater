@@ -1,3 +1,13 @@
+import {
+  getAssetBaseStorageUri,
+  getManifestFileHash,
+  getManifestStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/core";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -10,6 +20,88 @@ import { getUpdateInfo } from "./getUpdateInfo";
 import type { Database } from "./types";
 
 export interface PostgresConfig extends PoolConfig {}
+
+const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return normalizeMetadata(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Bundle["metadata"];
+  }
+
+  return undefined;
+};
+
+const mapRowToBundle = (data: Database["bundles"]): Bundle => {
+  const rawMetadata = normalizeMetadata(data.metadata);
+  return {
+    enabled: data.enabled,
+    shouldForceUpdate: data.should_force_update,
+    fileHash: data.file_hash,
+    gitCommitHash: data.git_commit_hash,
+    id: data.id,
+    message: data.message,
+    platform: data.platform,
+    targetAppVersion: data.target_app_version,
+    channel: data.channel,
+    storageUri: data.storage_uri,
+    fingerprintHash: data.fingerprint_hash,
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri:
+      data.manifest_storage_uri ??
+      getManifestStorageUri({ metadata: rawMetadata }),
+    manifestFileHash:
+      data.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
+    assetBaseStorageUri:
+      data.asset_base_storage_uri ??
+      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patchBaseBundleId:
+      data.patch_base_bundle_id ??
+      getPatchBaseBundleId({ metadata: rawMetadata }),
+    patchBaseFileHash:
+      data.patch_base_file_hash ??
+      getPatchBaseFileHash({ metadata: rawMetadata }),
+    patchFileHash:
+      data.patch_file_hash ?? getPatchFileHash({ metadata: rawMetadata }),
+    patchStorageUri:
+      data.patch_storage_uri ?? getPatchStorageUri({ metadata: rawMetadata }),
+    rolloutCohortCount: data.rollout_cohort_count,
+    targetCohorts: data.target_cohorts,
+  };
+};
+
+const bundleToRowValues = (bundle: Bundle): Database["bundles"] => ({
+  id: bundle.id,
+  enabled: bundle.enabled,
+  should_force_update: bundle.shouldForceUpdate,
+  file_hash: bundle.fileHash,
+  git_commit_hash: bundle.gitCommitHash,
+  message: bundle.message,
+  platform: bundle.platform,
+  target_app_version: bundle.targetAppVersion,
+  channel: bundle.channel,
+  storage_uri: bundle.storageUri,
+  fingerprint_hash: bundle.fingerprintHash,
+  metadata: stripBundleArtifactMetadata(bundle.metadata) ?? {},
+  manifest_storage_uri: getManifestStorageUri(bundle),
+  manifest_file_hash: getManifestFileHash(bundle),
+  asset_base_storage_uri: getAssetBaseStorageUri(bundle),
+  patch_base_bundle_id: getPatchBaseBundleId(bundle),
+  patch_base_file_hash: getPatchBaseFileHash(bundle),
+  patch_file_hash: getPatchFileHash(bundle),
+  patch_storage_uri: getPatchStorageUri(bundle),
+  rollout_cohort_count: bundle.rolloutCohortCount ?? null,
+  target_cohorts: bundle.targetCohorts ?? null,
+});
 
 export const postgres = createDatabasePlugin<PostgresConfig>({
   name: "postgres",
@@ -36,19 +128,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
         if (!data) {
           return null;
         }
-        return {
-          enabled: data.enabled,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-          channel: data.channel,
-          storageUri: data.storage_uri,
-          fingerprintHash: data.fingerprint_hash,
-        } as Bundle;
+        return mapRowToBundle(data);
       },
 
       async getBundles(options) {
@@ -190,19 +270,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
 
         const data = await query.selectAll().execute();
 
-        const bundles = data.map((bundle) => ({
-          enabled: bundle.enabled,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
-          channel: bundle.channel,
-          storageUri: bundle.storage_uri,
-          fingerprintHash: bundle.fingerprint_hash,
-        })) as Bundle[];
+        const bundles = data.map(mapRowToBundle);
 
         const pagination = calculatePagination(total, { limit, offset });
 
@@ -243,35 +311,12 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             } else if (op.operation === "insert" || op.operation === "update") {
               // Handle insert and update operations
               const bundle = op.data;
+              const values = bundleToRowValues(bundle);
+              const { id: _id, ...updateValues } = values;
               await tx
                 .insertInto("bundles")
-                .values({
-                  id: bundle.id,
-                  enabled: bundle.enabled,
-                  should_force_update: bundle.shouldForceUpdate,
-                  file_hash: bundle.fileHash,
-                  git_commit_hash: bundle.gitCommitHash,
-                  message: bundle.message,
-                  platform: bundle.platform,
-                  target_app_version: bundle.targetAppVersion,
-                  channel: bundle.channel,
-                  storage_uri: bundle.storageUri,
-                  fingerprint_hash: bundle.fingerprintHash,
-                })
-                .onConflict((oc) =>
-                  oc.column("id").doUpdateSet({
-                    enabled: bundle.enabled,
-                    should_force_update: bundle.shouldForceUpdate,
-                    file_hash: bundle.fileHash,
-                    git_commit_hash: bundle.gitCommitHash,
-                    message: bundle.message,
-                    platform: bundle.platform,
-                    target_app_version: bundle.targetAppVersion,
-                    channel: bundle.channel,
-                    storage_uri: bundle.storageUri,
-                    fingerprint_hash: bundle.fingerprintHash,
-                  }),
-                )
+                .values(values)
+                .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
                 .execute();
             }
           }

@@ -20,6 +20,13 @@ type D1Row = {
   storage_uri: string;
   fingerprint_hash: string | null;
   metadata: string;
+  manifest_storage_uri?: string | null;
+  manifest_file_hash?: string | null;
+  asset_base_storage_uri?: string | null;
+  patch_base_bundle_id?: string | null;
+  patch_base_file_hash?: string | null;
+  patch_file_hash?: string | null;
+  patch_storage_uri?: string | null;
   rollout_cohort_count: number | null;
   target_cohorts: string | null;
 };
@@ -228,8 +235,15 @@ vi.mock("cloudflare", () => ({
               storage_uri: params[9],
               fingerprint_hash: params[10],
               metadata: params[11],
-              rollout_cohort_count: params[12],
-              target_cohorts: params[13],
+              manifest_storage_uri: params[12],
+              manifest_file_hash: params[13],
+              asset_base_storage_uri: params[14],
+              patch_base_bundle_id: params[15],
+              patch_base_file_hash: params[16],
+              patch_file_hash: params[17],
+              patch_storage_uri: params[18],
+              rollout_cohort_count: params[19],
+              target_cohorts: params[20],
             };
             rows.set(row.id, row);
             return createPage([]);
