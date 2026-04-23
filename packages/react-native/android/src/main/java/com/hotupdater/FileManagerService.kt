@@ -44,11 +44,6 @@ interface FileSystemService {
     fun contentsOfDirectory(path: String): List<String>
 
     /**
-     * Gets the external files directory for the application
-     */
-    fun getExternalFilesDir(): File?
-
-    /**
      * Gets the internal files directory for the application
      */
     fun getInternalFilesDir(): File?
@@ -104,8 +99,6 @@ class FileManagerService(
         val directory = File(path)
         return directory.listFiles()?.map { it.name } ?: listOf()
     }
-
-    override fun getExternalFilesDir(): File? = context.getExternalFilesDir(null)
 
     override fun getInternalFilesDir(): File? = context.filesDir
 }

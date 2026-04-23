@@ -71,6 +71,7 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def hotUpdaterE2eDebuggable = project.findProperty("HOT_UPDATER_E2E_DEBUGGABLE") == "true"
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -84,6 +85,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        buildConfigField "boolean", "HOT_UPDATER_E2E_DISABLE_DEV_SUPPORT", hotUpdaterE2eDebuggable.toString()
     }
     signingConfigs {
         debug {
@@ -101,6 +103,7 @@ android {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
+            debuggable hotUpdaterE2eDebuggable
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

@@ -4,6 +4,12 @@ appId: ${APP_ID}
     file: navigate-actions.yaml
     env:
       APP_ID: ${APP_ID}
+- scrollUntilVisible:
+    direction: DOWN
+    element:
+      id: ${BUTTON_ID}
+    timeout: 10000
+    visibilityPercentage: 50
 - extendedWaitUntil:
     visible:
       id: ${BUTTON_ID}
