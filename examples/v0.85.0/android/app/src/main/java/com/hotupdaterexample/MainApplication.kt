@@ -22,6 +22,8 @@ class MainApplication : Application(), ReactApplication {
             } else {
               HotUpdater.getJSBundleFile(applicationContext)
             },
+        useDevSupport =
+            BuildConfig.DEBUG && !BuildConfig.HOT_UPDATER_E2E_DISABLE_DEV_SUPPORT,
     )
   }
 

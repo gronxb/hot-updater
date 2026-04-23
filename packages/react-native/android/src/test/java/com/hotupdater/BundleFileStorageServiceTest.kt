@@ -346,7 +346,7 @@ class BundleFileStorageServiceTest {
     }
 
     private class TestFileSystemService(
-        private val externalFilesDir: File,
+        private val internalFilesDir: File,
     ) : FileSystemService {
         override fun fileExists(path: String): Boolean = File(path).exists()
 
@@ -371,9 +371,7 @@ class BundleFileStorageServiceTest {
 
         override fun contentsOfDirectory(path: String): List<String> = File(path).list()?.toList() ?: emptyList()
 
-        override fun getExternalFilesDir(): File = externalFilesDir
-
-        override fun getInternalFilesDir(): File = externalFilesDir
+        override fun getInternalFilesDir(): File = internalFilesDir
     }
 
     private class InMemoryPreferencesService : PreferencesService {
