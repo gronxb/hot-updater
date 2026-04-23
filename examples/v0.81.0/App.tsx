@@ -14,6 +14,7 @@ import {
   Keyboard,
   type LayoutChangeEvent,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -483,10 +484,7 @@ function App(): React.JSX.Element {
           title={`Crash History (${runtimeSnapshot.crashHistory.length})`}
         >
           {runtimeSnapshot.crashHistory.length === 0 ? (
-            <Text
-              style={styles.emptyState}
-              testID="crash-history-empty-state"
-            >
+            <Text style={styles.emptyState} testID="crash-history-empty-state">
               No crashed bundles recorded.
             </Text>
           ) : (
@@ -819,6 +817,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    paddingTop: Platform.OS === "android" ? 44 : 10,
   },
   e2eNavButton: {
     alignItems: "center",
