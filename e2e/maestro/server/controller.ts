@@ -134,6 +134,8 @@ const PNPM_STORE_DIR = path.join(REPO_DIR, "node_modules/.pnpm");
 const CONSOLE_SSR_DIR = path.join(REPO_DIR, "packages/console/.output/server/_ssr");
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.81.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
+const DEFAULT_ANDROID_APK_RELATIVE_PATH =
+  "android/app/build/outputs/apk/release/app-release.apk";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -212,13 +214,13 @@ if (!consoleBaseUrl) {
 const session: SessionState = {
   androidApkPath: path.isAbsolute(
     process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
-      "android/app/build/outputs/apk/release/app-release.apk",
+      DEFAULT_ANDROID_APK_RELATIVE_PATH,
   )
     ? (process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH as string)
     : path.join(
         EXAMPLE_DIR,
         process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
-          "android/app/build/outputs/apk/release/app-release.apk",
+          DEFAULT_ANDROID_APK_RELATIVE_PATH,
       ),
   appBackupPath: null,
   appId,
@@ -993,7 +995,7 @@ function ensureStorePath() {
     return session.storePath;
   }
 
-  session.storePath = `/sdcard/Android/data/${session.appId}/files/bundle-store`;
+  session.storePath = `/data/data/${session.appId}/files/bundle-store`;
   return session.storePath;
 }
 
@@ -1076,11 +1078,13 @@ async function prepareIosRelease() {
 }
 
 async function prepareAndroidRelease() {
+  const defaultAndroidApkPath = path.join(
+    session.exampleDir,
+    DEFAULT_ANDROID_APK_RELATIVE_PATH,
+  );
+
   if (!session.reuseApp) {
-    await runLogged("./gradlew", [":app:assembleRelease", "--rerun-tasks"], {
-      cwd: path.join(session.exampleDir, "android"),
-      logPath: path.join(session.resultsDir, "gradle-release.log"),
-    });
+    await buildDebuggableAndroidRelease("gradle-release.log");
   } else if (!fs.existsSync(session.androidApkPath)) {
     throw new Error(
       `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
@@ -1092,24 +1096,105 @@ async function prepareAndroidRelease() {
   runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
     allowFailure: true,
   });
+  await installAndroidArtifact("adb-install.log");
+
+  if (session.reuseApp && !canRunAsAndroidApp()) {
+    if (
+      path.resolve(session.androidApkPath) !== path.resolve(defaultAndroidApkPath)
+    ) {
+      throw new Error(
+        `Cannot reuse Android app because ${session.androidApkPath} is not debuggable. Rebuild it with HOT_UPDATER_E2E_DEBUGGABLE=true or run without --reuse-app.`,
+      );
+    }
+
+    logE2e("android reused apk is not debuggable; rebuilding release apk");
+    await buildDebuggableAndroidRelease("gradle-release-reuse.log");
+    session.builtArtifactPath = defaultAndroidApkPath;
+    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
+      allowFailure: true,
+    });
+    await installAndroidArtifact("adb-install-reuse.log");
+  }
+
+  if (!canRunAsAndroidApp()) {
+    throw new Error(
+      "Android app must be debuggable so Maestro can inspect internal app files with run-as.",
+    );
+  }
+}
+
+async function buildDebuggableAndroidRelease(logFileName: string) {
   await runLogged(
-    "adb",
-    ["-s", deviceId as string, "install", "-r", session.builtArtifactPath],
+    "./gradlew",
+    [
+      ":app:assembleRelease",
+      "--rerun-tasks",
+      "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    ],
     {
-      logPath: path.join(session.resultsDir, "adb-install.log"),
+      cwd: path.join(session.exampleDir, "android"),
+      logPath: path.join(session.resultsDir, logFileName),
     },
   );
 }
 
-function copyAndroidFile(remotePath: string, localPath: string) {
+async function installAndroidArtifact(logFileName: string) {
+  await runLogged(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "install",
+      "-r",
+      session.builtArtifactPath as string,
+    ],
+    {
+      logPath: path.join(session.resultsDir, logFileName),
+    },
+  );
+}
+
+function canRunAsAndroidApp() {
   const result = spawnSync(
     "adb",
-    ["-s", deviceId as string, "shell", "cat", remotePath],
+    ["-s", deviceId as string, "shell", "run-as", session.appId, "true"],
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+
+  return result.status === 0;
+}
+
+function copyAndroidFile(remotePath: string, localPath: string) {
+  let result = spawnSync(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "cat",
+      remotePath,
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (result.status !== 0) {
+    result = spawnSync(
+      "adb",
+      ["-s", deviceId as string, "shell", "cat", remotePath],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  }
 
   if (result.status !== 0) {
     throw new Error(`Failed to read ${remotePath} from Android device`);
@@ -1118,16 +1203,35 @@ function copyAndroidFile(remotePath: string, localPath: string) {
   fs.writeFileSync(localPath, result.stdout);
 }
 
-function copyAndroidFileIfExists(remotePath: string, localPath: string) {
-  const exists = spawnSync(
+function androidFileExists(remotePath: string) {
+  let exists = spawnSync(
     "adb",
-    ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
-    {
-      stdio: "ignore",
-    },
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "test",
+      "-f",
+      remotePath,
+    ],
+    { stdio: "ignore" },
   );
 
   if (exists.status !== 0) {
+    exists = spawnSync(
+      "adb",
+      ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
+      { stdio: "ignore" },
+    );
+  }
+
+  return exists.status === 0;
+}
+
+function copyAndroidFileIfExists(remotePath: string, localPath: string) {
+  if (!androidFileExists(remotePath)) {
     return false;
   }
 
