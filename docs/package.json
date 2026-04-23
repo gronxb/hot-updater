@@ -15,6 +15,7 @@
   "dependencies": {
     "@orama/orama": "^3.1.16",
     "@radix-ui/react-slot": "^1.2.4",
+    "@vercel/analytics": "^2.0.1",
     "@xterm/xterm": "^5.5.0",
     "arktype": "^2.1.27",
     "class-variance-authority": "^0.7.1",

@@ -399,7 +399,7 @@ class BundleFileStorageService(
     // MARK: - Bundle Store Directory
 
     private fun getBundleStoreDir(): File {
-        val baseDir = fileSystem.getExternalFilesDir()
+        val baseDir = fileSystem.getInternalFilesDir()
         return File(baseDir, "bundle-store")
     }
 
@@ -1072,7 +1072,7 @@ class BundleFileStorageService(
                 Log.d(TAG, "Created initial metadata during updateBundle")
             }
 
-        val baseDir = fileSystem.getExternalFilesDir()
+        val baseDir = fileSystem.getInternalFilesDir()
         val bundleStoreDir = getBundleStoreDir()
         if (!bundleStoreDir.exists()) {
             bundleStoreDir.mkdirs()
