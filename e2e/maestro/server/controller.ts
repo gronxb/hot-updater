@@ -1396,7 +1396,6 @@ async function buildDebuggableAndroidRelease(logFileName: string) {
 function ensureAndroidFilesDir() {
   return `/data/data/${session.appId}/files`;
 }
-
 async function installAndroidArtifact(logFileName: string) {
   await runLogged(
     "adb",
@@ -1482,13 +1481,7 @@ function copyAndroidFile(remotePath: string, localPath: string) {
   if (result.status !== 0) {
     result = spawnSync(
       "adb",
-      [
-        "-s",
-        deviceId as string,
-        "shell",
-        "cat",
-        remotePath,
-      ],
+      ["-s", deviceId as string, "shell", "cat", remotePath],
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],

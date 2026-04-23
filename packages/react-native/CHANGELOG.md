@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.30.3
+
+### Patch Changes
+
+- 2f32e43: feat: add internal files directory retrieval in FileManagerService
+  - @hot-updater/cli-tools@0.30.3
+  - @hot-updater/core@0.30.3
+  - @hot-updater/js@0.30.3
+  - @hot-updater/plugin-core@0.30.3
+
 ## 0.30.2
 
 ### Patch Changes

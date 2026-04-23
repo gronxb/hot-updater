@@ -438,6 +438,22 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
   });
 
+  it("delegates resetChannel to native even when exported channel constants already match", async () => {
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: null,
+      CHANNEL: "beta",
+      DEFAULT_CHANNEL: "beta",
+      FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "min-bundle-id",
+    });
+    nativeModuleMock.resetChannel.mockResolvedValue(true);
+
+    const { resetChannel } = await import("./native");
+
+    await expect(resetChannel()).resolves.toBe(true);
+    expect(nativeModuleMock.resetChannel).toHaveBeenCalledTimes(1);
+  });
+
   it("parses crash history from legacy JSON payloads", async () => {
     nativeModuleMock.getCrashHistory.mockReturnValue(
       JSON.stringify(["bundle-1", "bundle-2"]),

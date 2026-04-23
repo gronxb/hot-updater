@@ -1,5 +1,12 @@
 # @hot-updater/rnef
 
+## 0.30.3
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.30.3
+- @hot-updater/plugin-core@0.30.3
+
 ## 0.30.2
 
 ### Patch Changes
