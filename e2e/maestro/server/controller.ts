@@ -1174,7 +1174,7 @@ function ensureStorePath() {
     return session.storePath;
   }
 
-  session.storePath = `/sdcard/Android/data/${session.appId}/files/bundle-store`;
+  session.storePath = `/data/data/${session.appId}/files/bundle-store`;
   return session.storePath;
 }
 
@@ -1331,10 +1331,18 @@ async function prepareIosRelease() {
 
 async function prepareAndroidRelease() {
   if (!session.reuseApp) {
-    await runLogged("./gradlew", [":app:assembleRelease", "--rerun-tasks"], {
-      cwd: path.join(session.exampleDir, "android"),
-      logPath: path.join(session.resultsDir, "gradle-release.log"),
-    });
+    await runLogged(
+      "./gradlew",
+      [
+        ":app:assembleRelease",
+        "--rerun-tasks",
+        "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+      ],
+      {
+        cwd: path.join(session.exampleDir, "android"),
+        logPath: path.join(session.resultsDir, "gradle-release.log"),
+      },
+    );
   } else if (!fs.existsSync(session.androidApkPath)) {
     throw new Error(
       `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
@@ -1354,26 +1362,56 @@ async function prepareAndroidRelease() {
       logPath: path.join(session.resultsDir, "adb-install.log"),
     },
   );
-  runCapture("adb", [
-    "-s",
-    deviceId as string,
-    "shell",
-    "rm",
-    "-rf",
-    `/sdcard/Android/data/${session.appId}/files/bundle-store`,
-    `/sdcard/Android/data/${session.appId}/files/bundle-temp`,
-  ]);
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "rm",
+      "-rf",
+      `${ensureAndroidFilesDir()}/bundle-store`,
+      `${ensureAndroidFilesDir()}/bundle-temp`,
+      `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+    ],
+    { allowFailure: true },
+  );
+}
+
+function ensureAndroidFilesDir() {
+  return `/data/data/${session.appId}/files`;
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
-  const result = spawnSync(
+  let result = spawnSync(
     "adb",
-    ["-s", deviceId as string, "shell", "cat", remotePath],
+    [
+      "-s",
+      deviceId as string,
+      "exec-out",
+      "run-as",
+      session.appId,
+      "cat",
+      remotePath,
+    ],
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+
+  if (result.status !== 0) {
+    result = spawnSync(
+      "adb",
+      ["-s", deviceId as string, "shell", "cat", remotePath],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  }
 
   if (result.status !== 0) {
     throw new Error(`Failed to read ${remotePath} from Android device`);
@@ -1382,16 +1420,39 @@ function copyAndroidFile(remotePath: string, localPath: string) {
   fs.writeFileSync(localPath, result.stdout);
 }
 
-function copyAndroidFileIfExists(remotePath: string, localPath: string) {
-  const exists = spawnSync(
+function androidFileExists(remotePath: string) {
+  let exists = spawnSync(
     "adb",
-    ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
-    {
-      stdio: "ignore",
-    },
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "test",
+      "-f",
+      remotePath,
+    ],
+    { stdio: "ignore" },
   );
 
   if (exists.status !== 0) {
+    exists = spawnSync(
+      "adb",
+      ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
+      { stdio: "ignore" },
+    );
+  }
+
+  if (exists.status !== 0) {
+    return false;
+  }
+
+  return true;
+}
+
+function copyAndroidFileIfExists(remotePath: string, localPath: string) {
+  if (!androidFileExists(remotePath)) {
     return false;
   }
 
@@ -1776,16 +1837,9 @@ function readBundleFileSnapshot(bundleId: string) {
   }
 
   const remotePath = `${storePath}/${bundleId}/${bundleFileName}`;
-  const exists = spawnSync(
-    "adb",
-    ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
-    {
-      stdio: "ignore",
-    },
-  );
 
   return {
-    exists: exists.status === 0,
+    exists: androidFileExists(remotePath),
     path: remotePath,
   };
 }
@@ -1851,14 +1905,33 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
   const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
-  const result = spawnSync(
+  let result = spawnSync(
     "adb",
-    ["-s", deviceId as string, "shell", "sha256sum", remotePath],
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "sha256sum",
+      remotePath,
+    ],
     {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+
+  if (result.status !== 0) {
+    result = spawnSync(
+      "adb",
+      ["-s", deviceId as string, "shell", "sha256sum", remotePath],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+  }
 
   if (result.status !== 0) {
     return {

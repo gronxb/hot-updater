@@ -372,6 +372,8 @@ class BundleFileStorageServiceTest {
         override fun contentsOfDirectory(path: String): List<String> = File(path).list()?.toList() ?: emptyList()
 
         override fun getExternalFilesDir(): File = externalFilesDir
+
+        override fun getInternalFilesDir(): File = externalFilesDir
     }
 
     private class InMemoryPreferencesService : PreferencesService {

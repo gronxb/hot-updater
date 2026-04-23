@@ -1350,7 +1350,8 @@ class BundleFileStorageService(
         val currentBundleId = getBundleId()
         val currentManifest =
             getActiveBundleMetadataSnapshot()?.manifest?.let(::parseBundleManifestFromMap)
-        val baseDir = fileSystem.getExternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
+        val baseDir =
+            fileSystem.getInternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
         val tempDir = File(baseDir, "bundle-manifest-temp")
         val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
 
