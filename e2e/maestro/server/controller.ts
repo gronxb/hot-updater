@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "child_process";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
 import os from "os";
@@ -7,7 +7,15 @@ import path from "path";
 import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath, pathToFileURL } from "url";
 
+import {
+  getAssetBaseStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
+} from "../../../packages/core/src/bundleArtifacts.js";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
+import type { Bundle } from "../../../packages/core/src/types.js";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default";
@@ -24,9 +32,11 @@ type DeployMode = "crash" | "reset";
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
+  assetBaseStorageUri: string | null;
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
+  disabledFullAssetBaseStorageUri: string | null;
   diffBaseBundleId: string | null;
   diffPatchAssetPath: string | null;
   enabled: boolean;
@@ -134,17 +144,7 @@ type ServerFnResultEnvelope<T> = {
 };
 
 type BundleDiffResult = {
-  bundle?: {
-    id: string;
-    metadata?: {
-      diff_base_bundle_id?: string;
-      hbc_patch_algorithm?: string;
-      hbc_patch_asset_path?: string;
-      hbc_patch_base_file_hash?: string;
-      hbc_patch_file_hash?: string;
-      hbc_patch_storage_uri?: string;
-    } | null;
-  } | null;
+  bundle?: Bundle | null;
   success: true;
 };
 
@@ -890,15 +890,7 @@ async function fetchBundleById(bundleId: string) {
   return bundle;
 }
 
-async function patchBundle(
-  bundleId: string,
-  patch: {
-    enabled?: boolean;
-    rolloutCohortCount?: number | null;
-    shouldForceUpdate?: boolean;
-    targetCohorts?: string[] | null;
-  },
-) {
+async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
   logE2e("console-api request", {
     body: { bundle: patch },
     bundleId,
@@ -926,6 +918,77 @@ async function patchBundle(
   });
 }
 
+function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
+  const patchAssetPath = bundle?.metadata?.hbc_patch_asset_path;
+  return typeof patchAssetPath === "string" && patchAssetPath.length > 0
+    ? patchAssetPath
+    : null;
+}
+
+function inferPatchAssetPathFromStorageUri({
+  baseBundleId,
+  patchStorageUri,
+}: {
+  baseBundleId: string;
+  patchStorageUri: string;
+}) {
+  let pathname: string;
+  try {
+    pathname = new URL(patchStorageUri).pathname;
+  } catch {
+    return null;
+  }
+
+  const segments = pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+  const patchesIndex = segments.findIndex(
+    (segment, index) =>
+      segment === "patches" && segments[index + 1] === baseBundleId,
+  );
+  if (patchesIndex === -1) {
+    return null;
+  }
+
+  const patchPath = segments.slice(patchesIndex + 2).join("/");
+  return patchPath.endsWith(".bsdiff")
+    ? patchPath.slice(0, -".bsdiff".length)
+    : null;
+}
+
+function resolvePatchAssetPath(
+  bundle: Bundle | null | undefined,
+  baseBundleId: string,
+) {
+  const patchStorageUri = bundle ? getPatchStorageUri(bundle) : null;
+  if (!patchStorageUri) {
+    return readLegacyPatchAssetPath(bundle);
+  }
+
+  return (
+    readLegacyPatchAssetPath(bundle) ??
+    inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
+  );
+}
+
+function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
+  try {
+    const url = new URL(assetBaseStorageUri);
+    const pathname = url.pathname.replace(/\/+$/, "");
+    url.pathname = `${pathname}/__e2e_bspatch_full_asset_fallback_disabled__`;
+    return url.toString();
+  } catch {
+    return `${assetBaseStorageUri.replace(/\/+$/, "")}/__e2e_bspatch_full_asset_fallback_disabled__`;
+  }
+}
+
 async function createBundleDiff(baseBundleId: string, bundleId: string) {
   logE2e("console-api request", {
     baseBundleId,
@@ -942,33 +1005,62 @@ async function createBundleDiff(baseBundleId: string, bundleId: string) {
       bundleId,
     },
   );
-  const metadata = response.bundle?.metadata ?? null;
-  const patchAssetPath = metadata?.hbc_patch_asset_path;
+  const bundle = response.bundle ?? null;
+  const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
+  const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
+  const patchBaseFileHash = bundle ? getPatchBaseFileHash(bundle) : null;
+  const patchFileHash = bundle ? getPatchFileHash(bundle) : null;
+  const patchStorageUri = bundle ? getPatchStorageUri(bundle) : null;
+  const assetBaseStorageUri = bundle ? getAssetBaseStorageUri(bundle) : null;
 
   if (
-    response.bundle?.id !== bundleId ||
-    metadata?.diff_base_bundle_id !== baseBundleId ||
-    metadata?.hbc_patch_algorithm !== "bsdiff" ||
+    bundle?.id !== bundleId ||
+    patchBaseBundleId !== baseBundleId ||
     !patchAssetPath ||
-    !metadata?.hbc_patch_base_file_hash ||
-    !metadata?.hbc_patch_file_hash ||
-    !metadata?.hbc_patch_storage_uri
+    !patchBaseFileHash ||
+    !patchFileHash ||
+    !patchStorageUri ||
+    !assetBaseStorageUri
   ) {
-    throw new Error(
+    throw createEndpointError(
       `Failed to create valid bsdiff patch metadata for bundle ${bundleId}`,
+      {
+        baseBundleId,
+        bundleId,
+        observed: {
+          bundleId: bundle?.id ?? null,
+          patchAssetPath,
+          patchBaseBundleId,
+          patchBaseFileHash,
+          patchFileHash,
+          patchStorageUri,
+          assetBaseStorageUri,
+        },
+      },
     );
   }
+
+  const disabledFullAssetBaseStorageUri =
+    createDisabledFullAssetBaseStorageUri(assetBaseStorageUri);
+  await patchBundle(bundleId, {
+    assetBaseStorageUri: disabledFullAssetBaseStorageUri,
+  });
 
   logE2e("console-api response", {
     baseBundleId,
     bundleId,
+    disabledFullAssetBaseStorageUri,
     method: "POST",
     operation: "createBundleDiff",
     patchAssetPath,
+    patchBaseBundleId,
+    patchStorageUri,
   });
 
   return {
+    assetBaseStorageUri,
     baseBundleId,
+    disabledFullAssetBaseStorageUri,
     patchAssetPath,
   };
 }
@@ -1698,6 +1790,100 @@ function readBundleFileSnapshot(bundleId: string) {
   };
 }
 
+function readBundleManifestSnapshot(bundleId: string) {
+  if (session.platform === "ios") {
+    return readOptionalJsonSnapshot(
+      path.join(ensureStorePath(), bundleId, "manifest.json"),
+    );
+  }
+
+  return readAndroidStoreSnapshot(
+    `${bundleId}/manifest.json`,
+    `bundle-${bundleId}-manifest.json`,
+  );
+}
+
+function getManifestAssetFileHash(manifest: JsonSnapshot, assetPath: string) {
+  const assets = manifest.value?.assets;
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return null;
+  }
+
+  const asset = (assets as Record<string, unknown>)[assetPath];
+  if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+    return null;
+  }
+
+  const fileHash = (asset as { fileHash?: unknown }).fileHash;
+  return typeof fileHash === "string" && fileHash.length > 0 ? fileHash : null;
+}
+
+function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
+  const filePath = path.join(ensureStorePath(), bundleId, assetPath);
+  if (!fs.existsSync(filePath)) {
+    return {
+      exists: false,
+      fileHash: null,
+      path: filePath,
+      readError: null,
+    };
+  }
+
+  try {
+    const fileHash = createHash("sha256")
+      .update(fs.readFileSync(filePath))
+      .digest("hex");
+    return {
+      exists: true,
+      fileHash,
+      path: filePath,
+      readError: null,
+    };
+  } catch (error) {
+    return {
+      exists: true,
+      fileHash: null,
+      path: filePath,
+      readError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
+  const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
+  const result = spawnSync(
+    "adb",
+    ["-s", deviceId as string, "shell", "sha256sum", remotePath],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  if (result.status !== 0) {
+    return {
+      exists: false,
+      fileHash: null,
+      path: remotePath,
+      readError: result.stderr.trim() || `sha256sum exited ${result.status}`,
+    };
+  }
+
+  const fileHash = result.stdout.trim().split(/\s+/)[0] ?? null;
+  return {
+    exists: typeof fileHash === "string" && fileHash.length > 0,
+    fileHash,
+    path: remotePath,
+    readError: null,
+  };
+}
+
+function readBundleAssetFileHash(bundleId: string, assetPath: string) {
+  return session.platform === "ios"
+    ? readIosBundleAssetFileHash(bundleId, assetPath)
+    : readAndroidBundleAssetFileHash(bundleId, assetPath);
+}
+
 function readFirstOtaArchiveState(bundleId: string) {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
@@ -2268,9 +2454,12 @@ async function deployBundle(request: DeployBundleRequest) {
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
+    assetBaseStorageUri: diff?.assetBaseStorageUri ?? null,
     bundleId,
     bundleProfile,
     channel: bundle.channel,
+    disabledFullAssetBaseStorageUri:
+      diff?.disabledFullAssetBaseStorageUri ?? null,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: bundle.enabled,
@@ -2441,6 +2630,51 @@ function readFirstOtaArchiveInstallLogs() {
     .join("\n");
 }
 
+function readBsdiffPatchStoreEvidence(args: {
+  assetPath: string;
+  baseBundleId: string;
+}) {
+  const record = session.deployedBundles.find(
+    (entry) =>
+      entry.diffBaseBundleId === args.baseBundleId &&
+      entry.diffPatchAssetPath === args.assetPath &&
+      entry.disabledFullAssetBaseStorageUri,
+  );
+  if (!record) {
+    return {
+      ok: false,
+      reason: "tracked diff bundle with disabled full-asset fallback not found",
+    };
+  }
+
+  const diagnostics = readWaitForMetadataDiagnostics();
+  const metadataState = getMetadataState(diagnostics.metadata.value);
+  const manifest = readBundleManifestSnapshot(record.bundleId);
+  const expectedHash = getManifestAssetFileHash(manifest, args.assetPath);
+  const assetFile = readBundleAssetFileHash(record.bundleId, args.assetPath);
+  const ok =
+    metadataState.stableBundleId === args.baseBundleId &&
+    metadataState.stagingBundleId === record.bundleId &&
+    metadataState.verificationPending === true &&
+    manifest.exists &&
+    manifest.readError === null &&
+    expectedHash !== null &&
+    assetFile.exists &&
+    assetFile.readError === null &&
+    assetFile.fileHash === expectedHash;
+
+  return {
+    assetFile,
+    diagnostics,
+    expectedHash,
+    manifest,
+    metadataState,
+    ok,
+    record,
+    reason: ok ? null : "bundle-store state did not match patch evidence",
+  };
+}
+
 async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
@@ -2452,6 +2686,18 @@ async function assertBsdiffPatchApplied(args: {
   ];
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
+    const evidence = readBsdiffPatchStoreEvidence(args);
+    if (evidence.ok) {
+      logE2e("bsdiff patch applied", {
+        assetPath: args.assetPath,
+        baseBundleId: args.baseBundleId,
+        bundleId: evidence.record.bundleId,
+        evidence: "bundle-store-with-disabled-full-asset-fallback",
+        platform: session.platform,
+      });
+      return {};
+    }
+
     const logs = readBsdiffPatchLogs();
     if (expectedFragments.every((fragment) => logs.includes(fragment))) {
       logE2e("bsdiff patch applied", {
@@ -2466,12 +2712,14 @@ async function assertBsdiffPatchApplied(args: {
   }
 
   const logs = readBsdiffPatchLogs();
+  const evidence = readBsdiffPatchStoreEvidence(args);
   throw createEndpointError(
     "Timed out waiting for bsdiff patch application log.",
     {
       assetPath: args.assetPath,
       baseBundleId: args.baseBundleId,
       expectedFragments,
+      evidence,
       logsTail: logs.split("\n").slice(-20),
       platform: session.platform,
     },
@@ -2727,6 +2975,27 @@ async function writeSummary({
 async function cleanup() {
   if (!session.appBackupPath) {
     return {};
+  }
+
+  const restoredFullAssetFallbackBundleIds: string[] = [];
+  for (const record of session.deployedBundles) {
+    if (
+      !record.assetBaseStorageUri ||
+      !record.disabledFullAssetBaseStorageUri
+    ) {
+      continue;
+    }
+
+    await patchBundle(record.bundleId, {
+      assetBaseStorageUri: record.assetBaseStorageUri,
+    });
+    restoredFullAssetFallbackBundleIds.push(record.bundleId);
+  }
+  if (restoredFullAssetFallbackBundleIds.length > 0) {
+    logE2e("restored bsdiff full asset fallback", {
+      bundleIds: restoredFullAssetFallbackBundleIds,
+      platform: session.platform,
+    });
   }
 
   if (session.appBackupPath) {
