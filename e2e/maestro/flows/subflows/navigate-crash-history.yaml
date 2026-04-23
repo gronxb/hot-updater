@@ -10,19 +10,6 @@ appId: ${APP_ID}
     waitToSettleTimeoutMs: 2000
 - waitForAnimationToEnd:
     timeout: 2000
-- scrollUntilVisible:
-    direction: UP
-    element:
-      id: section-crash-history
-    optional: true
-    timeout: 10000
-    visibilityPercentage: 1
-- scrollUntilVisible:
-    direction: DOWN
-    element:
-      id: section-crash-history
-    timeout: 20000
-    visibilityPercentage: 1
 - extendedWaitUntil:
     visible:
       id: section-crash-history

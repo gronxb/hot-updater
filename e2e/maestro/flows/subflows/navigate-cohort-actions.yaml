@@ -10,19 +10,6 @@ appId: ${APP_ID}
     waitToSettleTimeoutMs: 2000
 - waitForAnimationToEnd:
     timeout: 2000
-- scrollUntilVisible:
-    direction: DOWN
-    element:
-      id: section-cohort-actions
-    optional: true
-    timeout: 10000
-    visibilityPercentage: 1
-- scrollUntilVisible:
-    direction: UP
-    element:
-      id: section-cohort-actions
-    timeout: 20000
-    visibilityPercentage: 1
 - extendedWaitUntil:
     visible:
       id: section-cohort-actions
