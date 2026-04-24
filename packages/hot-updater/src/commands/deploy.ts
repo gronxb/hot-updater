@@ -732,13 +732,18 @@ export const deploy = async (options: DeployOptions) => {
     if (!bundleId) {
       throw new Error("Bundle ID not found");
     }
+    const confirmedBundleId = bundleId;
 
     if (config.patch.enabled) {
       let patchSummary: {
         candidateCount: number;
         createdCount: number;
         failures: { baseBundleId: string; message: string }[];
-      } | null = null;
+      } = {
+        candidateCount: 0,
+        createdCount: 0,
+        failures: [],
+      };
 
       await p.tasks([
         {
@@ -746,7 +751,7 @@ export const deploy = async (options: DeployOptions) => {
           task: async () => {
             try {
               patchSummary = await createAutoPatches({
-                bundleId,
+                bundleId: confirmedBundleId,
                 channel,
                 databasePlugin,
                 maxBaseBundles: maxPatchBaseBundles,
@@ -780,7 +785,7 @@ export const deploy = async (options: DeployOptions) => {
         },
       ]);
 
-      for (const failure of patchSummary?.failures ?? []) {
+      for (const failure of patchSummary.failures) {
         p.log.warn(
           `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
         );
@@ -794,7 +799,7 @@ export const deploy = async (options: DeployOptions) => {
       const openUrl = new URL(`http://localhost:${port}`);
       openUrl.searchParams.set("channel", channel);
       openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", bundleId);
+      openUrl.searchParams.set("bundleId", confirmedBundleId);
 
       const url = openUrl.toString();
 
@@ -815,7 +820,7 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
-    p.outro(`🚀 Deployment Successful (${bundleId})`);
+    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
