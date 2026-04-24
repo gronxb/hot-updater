@@ -54,6 +54,8 @@ type SessionState = {
   appSourceFile: string;
   builtArtifactPath: string | null;
   builtInBundleId: string | null;
+  configBackupPath: string | null;
+  configSourceFile: string;
   consoleApiBaseUrl: string;
   deployedBundles: DeployedBundleRecord[];
   exampleDir: string;
@@ -68,6 +70,7 @@ type SessionState = {
 };
 
 type DeployBundleRequest = {
+  autoPatch?: boolean;
   bundleProfile?: BundleProfile;
   channel: string;
   disabled?: boolean;
@@ -76,6 +79,7 @@ type DeployBundleRequest = {
   marker: string;
   message?: string;
   mode: DeployMode;
+  patchMaxBaseBundles?: number;
   rollout?: number;
   safeBundleIds: string[];
   targetAppVersion: string;
@@ -155,8 +159,13 @@ const CONSOLE_SSR_DIR = path.join(
   REPO_DIR,
   "packages/console/.output/server/_ssr",
 );
+const HOT_UPDATER_CLI_PATH = path.join(
+  REPO_DIR,
+  "packages/hot-updater/dist/index.mjs",
+);
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
+const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
 const EMPTY_CRASH_HISTORY = {
@@ -171,6 +180,10 @@ const DEPLOY_ASSET_GUARD_START = "/* E2E_DEPLOY_ASSET_GUARD_START */";
 const DEPLOY_ASSET_GUARD_END = "/* E2E_DEPLOY_ASSET_GUARD_END */";
 const DEPLOY_ASSET_GUARD_PATTERN =
   /\/\* E2E_DEPLOY_ASSET_GUARD_START \*\/[\s\S]*?\/\* E2E_DEPLOY_ASSET_GUARD_END \*\//;
+const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
+const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
+const AUTO_PATCH_CONFIG_PATTERN =
+  /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
@@ -250,6 +263,8 @@ const session: SessionState = {
   appSourceFile: APP_SOURCE_FILE,
   builtArtifactPath: null,
   builtInBundleId: null,
+  configBackupPath: null,
+  configSourceFile: HOT_UPDATER_CONFIG_FILE,
   consoleApiBaseUrl: consoleBaseUrl,
   deployedBundles: [],
   exampleDir: EXAMPLE_DIR,
@@ -708,6 +723,45 @@ async function applyAppScenario({
   });
 }
 
+async function applyDeployConfig({
+  autoPatch,
+  patchMaxBaseBundles,
+}: {
+  autoPatch: boolean;
+  patchMaxBaseBundles?: number;
+}) {
+  const source = await fsPromises.readFile(session.configSourceFile, "utf8");
+
+  if (!AUTO_PATCH_CONFIG_PATTERN.test(source)) {
+    throw new Error(
+      "Failed to locate E2E auto patch config markers in hot-updater.config.ts",
+    );
+  }
+
+  const autoPatchSource = autoPatch
+    ? [
+        AUTO_PATCH_CONFIG_GUARD_START,
+        "  patch: {",
+        "    enabled: true,",
+        ...(typeof patchMaxBaseBundles === "number"
+          ? [`    maxBaseBundles: ${patchMaxBaseBundles},`]
+          : []),
+        "  },",
+        `  ${AUTO_PATCH_CONFIG_GUARD_END}`,
+      ].join("\n")
+    : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
+
+  await fsPromises.writeFile(
+    session.configSourceFile,
+    source.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
+  );
+  logE2e("deploy config applied", {
+    autoPatch,
+    patchMaxBaseBundles: patchMaxBaseBundles ?? null,
+    sourceFile: path.relative(REPO_DIR, session.configSourceFile),
+  });
+}
+
 async function waitForFile(filePath: string, attempts = 90) {
   for (let index = 0; index < attempts; index += 1) {
     if (fs.existsSync(filePath)) {
@@ -866,14 +920,7 @@ async function fetchBundleById(bundleId: string) {
     method: "GET",
   });
 
-  const bundle = await callConsoleServerFn<{
-    channel: string;
-    enabled: boolean;
-    id: string;
-    rolloutCohortCount?: number | null;
-    shouldForceUpdate?: boolean;
-    targetCohorts?: string[] | null;
-  } | null>("getBundle", "GET", {
+  const bundle = await callConsoleServerFn<Bundle | null>("getBundle", "GET", {
     bundleId,
   });
 
@@ -1057,6 +1104,69 @@ async function createBundleDiff(baseBundleId: string, bundleId: string) {
     patchAssetPath,
     patchBaseBundleId,
     patchStorageUri,
+  });
+
+  return {
+    assetBaseStorageUri,
+    baseBundleId,
+    disabledFullAssetBaseStorageUri,
+    patchAssetPath,
+  };
+}
+
+async function resolveAutoPatchBundleDiff(
+  baseBundleId: string,
+  bundleId: string,
+) {
+  const bundle = await fetchBundleById(bundleId);
+  const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
+  const patchBaseBundleId = getPatchBaseBundleId(bundle);
+  const patchBaseFileHash = getPatchBaseFileHash(bundle);
+  const patchFileHash = getPatchFileHash(bundle);
+  const patchStorageUri = getPatchStorageUri(bundle);
+  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
+
+  if (
+    bundle.id !== bundleId ||
+    patchBaseBundleId !== baseBundleId ||
+    !patchAssetPath ||
+    !patchBaseFileHash ||
+    !patchFileHash ||
+    !patchStorageUri ||
+    !assetBaseStorageUri
+  ) {
+    throw createEndpointError(
+      `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
+      {
+        autoPatch: true,
+        baseBundleId,
+        bundleId,
+        observed: {
+          bundleId: bundle.id,
+          patchAssetPath,
+          patchBaseBundleId,
+          patchBaseFileHash,
+          patchFileHash,
+          patchStorageUri,
+          assetBaseStorageUri,
+        },
+      },
+    );
+  }
+
+  const disabledFullAssetBaseStorageUri =
+    createDisabledFullAssetBaseStorageUri(assetBaseStorageUri);
+  await patchBundle(bundleId, {
+    assetBaseStorageUri: disabledFullAssetBaseStorageUri,
+  });
+
+  logE2e("auto patch metadata resolved", {
+    baseBundleId,
+    bundleId,
+    disabledFullAssetBaseStorageUri,
+    patchAssetPath,
+    patchStorageUri,
+    platform: session.platform,
   });
 
   return {
@@ -1355,7 +1465,8 @@ async function prepareAndroidRelease() {
 
   if (session.reuseApp && !canRunAsAndroidApp()) {
     if (
-      path.resolve(session.androidApkPath) !== path.resolve(defaultAndroidApkPath)
+      path.resolve(session.androidApkPath) !==
+      path.resolve(defaultAndroidApkPath)
     ) {
       throw new Error(
         `Cannot reuse Android app because ${session.androidApkPath} is not debuggable. Rebuild it with HOT_UPDATER_E2E_DEBUGGABLE=true or run without --reuse-app.`,
@@ -2455,6 +2566,9 @@ async function bootstrap() {
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
+  if (!session.configBackupPath) {
+    session.configBackupPath = await backupFile(session.configSourceFile);
+  }
   if (
     !session.largeArchiveAssetBackupPath &&
     fs.existsSync(session.largeArchiveAssetPath)
@@ -2473,6 +2587,7 @@ async function bootstrap() {
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
   );
+  await restoreFile(session.configBackupPath, session.configSourceFile);
   await applyAppScenario({
     bundleProfile: "default",
     marker: session.initialMarker,
@@ -2507,6 +2622,10 @@ async function deployBundle(request: DeployBundleRequest) {
     await ensureLargeArchiveAsset();
   }
 
+  await applyDeployConfig({
+    autoPatch: request.autoPatch ?? false,
+    patchMaxBaseBundles: request.patchMaxBaseBundles,
+  });
   await applyAppScenario({
     bundleProfile,
     marker: request.marker,
@@ -2518,7 +2637,7 @@ async function deployBundle(request: DeployBundleRequest) {
     path.join(os.tmpdir(), "hu-maestro-deploy-"),
   );
   const args = [
-    "hot-updater",
+    HOT_UPDATER_CLI_PATH,
     "deploy",
     "-p",
     session.platform,
@@ -2553,14 +2672,14 @@ async function deployBundle(request: DeployBundleRequest) {
   logE2e("deploy start", {
     bundleProfile,
     channel: request.channel,
-    command: `pnpm ${args.join(" ")}`,
+    command: `node ${args.join(" ")}`,
     logPath: path.relative(REPO_DIR, deployLogPath),
     marker: request.marker,
     mode: request.mode,
     platform: session.platform,
     targetAppVersion: request.targetAppVersion,
   });
-  await runLogged("pnpm", args, {
+  await runLogged("node", args, {
     cwd: session.exampleDir,
     logPath: deployLogPath,
   });
@@ -2614,7 +2733,9 @@ async function deployBundle(request: DeployBundleRequest) {
 
   const diff =
     request.diffBaseBundleId !== undefined
-      ? await createBundleDiff(request.diffBaseBundleId, bundleId)
+      ? request.autoPatch
+        ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
+        : await createBundleDiff(request.diffBaseBundleId, bundleId)
       : null;
   const bundle = await fetchBundleById(bundleId);
 
@@ -3167,12 +3288,16 @@ async function cleanup() {
   if (session.appBackupPath) {
     await restoreFile(session.appBackupPath, session.appSourceFile);
   }
+  if (session.configBackupPath) {
+    await restoreFile(session.configBackupPath, session.configSourceFile);
+  }
   await restoreFile(
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
   );
 
   session.appBackupPath = null;
+  session.configBackupPath = null;
   session.largeArchiveAssetBackupPath = null;
   return {};
 }

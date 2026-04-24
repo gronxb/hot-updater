@@ -49,6 +49,7 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
+    autoPatch?: boolean;
     bundleProfile?: "archive300mb" | "default";
     channel?: string;
     disabled?: boolean;
@@ -57,6 +58,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     marker?: string;
     message?: string;
     mode?: "crash" | "reset";
+    patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
     targetAppVersion?: string;
@@ -85,9 +87,21 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
+  if (
+    payload.patchMaxBaseBundles !== undefined &&
+    (!Number.isInteger(payload.patchMaxBaseBundles) ||
+      payload.patchMaxBaseBundles < 1 ||
+      payload.patchMaxBaseBundles > 5)
+  ) {
+    return c.json(
+      { error: "patchMaxBaseBundles must be an integer between 1 and 5" },
+      400,
+    );
+  }
 
   return c.json({
     jobId: startDeployBundleJob({
+      autoPatch: payload.autoPatch,
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
       disabled: payload.disabled,
@@ -96,6 +110,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       marker: payload.marker,
       message: payload.message,
       mode: payload.mode,
+      patchMaxBaseBundles: payload.patchMaxBaseBundles,
       rollout: payload.rollout,
       safeBundleIds: payload.safeBundleIds ?? [],
       targetAppVersion: payload.targetAppVersion,

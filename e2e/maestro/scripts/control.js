@@ -180,6 +180,7 @@ switch (ACTION) {
   case "deployBundle": {
     const outputKey = OUTPUT_KEY || "bundleId";
     const result = startJob("/e2e/jobs/deploy-bundle", {
+      autoPatch: maybeBoolean(AUTO_PATCH),
       bundleProfile: BUNDLE_PROFILE || undefined,
       channel: CHANNEL,
       disabled: maybeBoolean(DISABLED),
@@ -188,6 +189,7 @@ switch (ACTION) {
       marker: MARKER,
       message: MESSAGE || undefined,
       mode: MODE,
+      patchMaxBaseBundles: maybeNumber(PATCH_MAX_BASE_BUNDLES),
       rollout: maybeNumber(ROLLOUT),
       safeBundleIds: parseCsv(SAFE_BUNDLE_IDS),
       targetAppVersion: TARGET_APP_VERSION || "1.0.x",

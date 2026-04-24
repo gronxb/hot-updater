@@ -92,6 +92,7 @@ onFlowComplete:
     file: ../scripts/control.js
     env:
       ACTION: deployBundle
+      AUTO_PATCH: "true"
       CHANNEL: ${PATCH_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
       DIFF_BASE_BUNDLE_ID: ${output.baseBundleId}
@@ -99,6 +100,7 @@ onFlowComplete:
       MESSAGE: Maestro bspatch target bundle
       MODE: reset
       OUTPUT_KEY: patchBundleId
+      PATCH_MAX_BASE_BUNDLES: "1"
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
     file: subflows/launch-app-home.yaml
