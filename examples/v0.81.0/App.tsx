@@ -5,7 +5,6 @@
  * @format
  */
 
-import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -32,7 +31,8 @@ const notify = proxy<{
 }>({});
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
-const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
+const HOT_UPDATER_BASE_URL =
+  import.meta.env.HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
 const E2E_SCENARIO_MARKER = "runtime-channel-beta-maestro";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";

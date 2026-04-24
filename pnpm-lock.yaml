@@ -1236,8 +1236,8 @@ importers:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
       rollipop:
-        specifier: latest
-        version: 0.1.0-alpha.16(@types/node@25.5.0)(babel-plugin-macros@3.1.0)(typescript@6.0.2)(vite@7.2.2(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1))
+        specifier: 0.1.0-alpha.17
+        version: 0.1.0-alpha.17(@types/node@25.5.0)(babel-plugin-macros@3.1.0)(typescript@6.0.2)(vite@7.2.2(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1))
       typescript:
         specifier: ^6.0.2
         version: 6.0.2
@@ -18773,8 +18773,8 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
 
-  rollipop@0.1.0-alpha.16:
-    resolution: {integrity: sha512-p4SPmRRXGx8J7Ksx2pTD+ff+iqb8WXNbLUnde+kIbseBVECqOoQCJmMLigs+/MzkIYIh/9mO3GcDse/DC2cJqw==}
+  rollipop@0.1.0-alpha.17:
+    resolution: {integrity: sha512-Newj0B+Xve7+hVoAvT9OS4THwmgeIVSx0Te8MDymmpZSQq/bR3r/TD3quaiWcSz25p/VuoI6cVyX9UUGLFbJaQ==}
     hasBin: true
 
   rollup@4.52.5:
@@ -21263,10 +21263,6 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
-
-  yocto-queue@1.0.0:
-    resolution: {integrity: sha512-9bnSc/HEW2uRy67wc+T8UwauLuPJVn28jb+GtJY16iiKWyvmYJRXVT4UamsAEGQfPohgr2q4Tq0sQbQlxTfi1g==}
-    engines: {node: '>=12.20'}
 
   yocto-queue@1.2.2:
     resolution: {integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==}
@@ -38200,7 +38196,7 @@ snapshots:
     dependencies:
       citty: 0.1.6
       consola: 3.4.2
-      defu: 6.1.4
+      defu: 6.1.7
       node-fetch-native: 1.6.7
       nypm: 0.6.2
       pathe: 2.0.3
@@ -42991,7 +42987,7 @@ snapshots:
 
   p-limit@4.0.0:
     dependencies:
-      yocto-queue: 1.0.0
+      yocto-queue: 1.2.2
 
   p-limit@7.3.0:
     dependencies:
@@ -43769,7 +43765,7 @@ snapshots:
 
   rc9@2.1.2:
     dependencies:
-      defu: 6.1.4
+      defu: 6.1.7
       destr: 2.0.5
 
   rc9@3.0.1:
@@ -44870,7 +44866,7 @@ snapshots:
       '@rolldown/binding-win32-arm64-msvc': 1.0.0-rc.15
       '@rolldown/binding-win32-x64-msvc': 1.0.0-rc.15
 
-  rollipop@0.1.0-alpha.16(@types/node@25.5.0)(babel-plugin-macros@3.1.0)(typescript@6.0.2)(vite@7.2.2(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1)):
+  rollipop@0.1.0-alpha.17(@types/node@25.5.0)(babel-plugin-macros@3.1.0)(typescript@6.0.2)(vite@7.2.2(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass-embedded@1.83.0)(terser@5.31.0)(tsx@4.21.0)(yaml@2.6.1)):
     dependencies:
       '@babel/code-frame': 7.29.0
       '@babel/core': 7.29.0
@@ -47578,7 +47574,7 @@ snapshots:
 
   wrap-ansi@8.1.0:
     dependencies:
-      ansi-styles: 6.2.1
+      ansi-styles: 6.2.3
       string-width: 5.1.2
       strip-ansi: 7.2.0
 
@@ -47749,8 +47745,6 @@ snapshots:
     optional: true
 
   yocto-queue@0.1.0: {}
-
-  yocto-queue@1.0.0: {}
 
   yocto-queue@1.2.2: {}
 

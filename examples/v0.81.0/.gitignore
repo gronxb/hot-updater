@@ -86,3 +86,7 @@ keys/
 # hot-updater
 .hot-updater/log
 src/test/_fixture-archive-300mb-random.bmp
+
+
+.rollipop/
+config/
