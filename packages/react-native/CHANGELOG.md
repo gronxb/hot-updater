@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.30.5
+
+### Patch Changes
+
+- 6e2892f: fix(android): export resetChannel in old arch
+  - @hot-updater/cli-tools@0.30.5
+  - @hot-updater/core@0.30.5
+  - @hot-updater/js@0.30.5
+  - @hot-updater/plugin-core@0.30.5
+
 ## 0.30.4
 
 ### Patch Changes
