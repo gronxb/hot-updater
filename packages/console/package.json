@@ -22,6 +22,7 @@
     "@hot-updater/cli-tools": "workspace:*"
   },
   "dependencies": {
+    "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/server": "workspace:*"
   },
   "devDependencies": {
