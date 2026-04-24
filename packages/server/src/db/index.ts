@@ -4,6 +4,7 @@ import type {
   StoragePlugin,
 } from "@hot-updater/plugin-core";
 
+export * from "./createBundleDiff";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import {

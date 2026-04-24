@@ -1373,9 +1373,9 @@ importers:
 
   packages/console:
     dependencies:
-      '@hot-updater/bsdiff':
+      '@hot-updater/server':
         specifier: workspace:*
-        version: link:../bsdiff
+        version: link:../server
     devDependencies:
       '@base-ui/react':
         specifier: ^1.3.0
@@ -1688,6 +1688,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@hot-updater/bsdiff':
+        specifier: workspace:*
+        version: link:../bsdiff
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../core

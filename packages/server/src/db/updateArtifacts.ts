@@ -1,11 +1,8 @@
 import {
   getAssetBaseStorageUri,
+  getBundlePatch,
   getManifestFileHash,
   getManifestStorageUri,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
   stripBundleArtifactMetadata,
   type AppUpdateInfo,
   type Bundle,
@@ -237,23 +234,19 @@ async function attachHbcPatchDescriptor<TContext>({
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Record<string, ChangedAsset>> {
-  const baseBundleId = targetBundle ? getPatchBaseBundleId(targetBundle) : null;
+  const matchingPatch =
+    targetBundle && currentBundle
+      ? getBundlePatch(targetBundle, currentBundle.id)
+      : null;
   const patchAssetPath = resolveHbcAssetPath(targetManifest);
-  const patchStorageUri = targetBundle
-    ? getPatchStorageUri(targetBundle)
-    : null;
-  const patchFileHash = targetBundle ? getPatchFileHash(targetBundle) : null;
-  const patchBaseFileHash = targetBundle
-    ? getPatchBaseFileHash(targetBundle)
-    : null;
 
   if (
-    currentBundle?.id !== baseBundleId ||
-    !baseBundleId ||
+    !currentBundle ||
+    !matchingPatch ||
     !patchAssetPath ||
-    !patchStorageUri ||
-    !patchFileHash ||
-    !patchBaseFileHash
+    !matchingPatch.patchStorageUri ||
+    !matchingPatch.patchFileHash ||
+    !matchingPatch.baseFileHash
   ) {
     return changedAssets;
   }
@@ -263,7 +256,7 @@ async function attachHbcPatchDescriptor<TContext>({
     return changedAssets;
   }
 
-  const patchUrl = await resolveFileUrl(patchStorageUri, context);
+  const patchUrl = await resolveFileUrl(matchingPatch.patchStorageUri, context);
   if (!patchUrl) {
     return changedAssets;
   }
@@ -274,9 +267,9 @@ async function attachHbcPatchDescriptor<TContext>({
       ...changedAsset,
       patch: {
         algorithm: "bsdiff",
-        baseBundleId,
-        baseFileHash: patchBaseFileHash,
-        patchFileHash,
+        baseBundleId: matchingPatch.baseBundleId,
+        baseFileHash: matchingPatch.baseFileHash,
+        patchFileHash: matchingPatch.patchFileHash,
         patchUrl,
       },
     },

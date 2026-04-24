@@ -401,15 +401,29 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         metadata: {
           asset_base_storage_uri:
             "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/files",
-          patch_base_bundle_id: currentBundle.id,
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+          patches: {
+            [currentBundle.id]: {
+              base_file_hash: "hash-old-bundle",
+              patch_file_hash: "hash-bsdiff",
+              patch_storage_uri:
+                "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+            },
+            "00000000-0000-0000-0000-000000000100": {
+              base_file_hash: "hash-older-bundle",
+              patch_file_hash: "hash-older-bsdiff",
+              patch_storage_uri:
+                "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
+            },
+          },
           manifest_file_hash: "sig:manifest-next",
           manifest_storage_uri:
             "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json",
         },
+        patchBaseBundleId: "00000000-0000-0000-0000-000000000100",
+        patchBaseFileHash: "hash-older-bundle",
+        patchFileHash: "hash-older-bsdiff",
+        patchStorageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
       };
       const fetchMock = vi.fn<typeof fetch>(async (input) => {
         const url = String(input);

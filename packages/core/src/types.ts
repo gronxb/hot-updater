@@ -22,6 +22,20 @@ export type BundleMetadata = {
   hbc_patch_file_hash?: string;
   /** @deprecated Use Bundle.patchStorageUri. */
   hbc_patch_storage_uri?: string;
+  patches?: Record<string, BundlePatchArtifactMetadata>;
+};
+
+export interface BundlePatchArtifact {
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchStorageUri: string;
+}
+
+export type BundlePatchArtifactMetadata = {
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
 };
 
 export interface ChangedAssetPatch {
