@@ -1703,6 +1703,12 @@ importers:
       fumadb:
         specifier: 0.2.2
         version: 0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20260313.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.9)(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(prisma@6.18.0(typescript@6.0.2)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(prisma@6.18.0(typescript@6.0.2))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.21))(@types/node@20.19.11)(typescript@6.0.2)))
+      kysely:
+        specifier: ^0.28.9
+        version: 0.28.9
+      mongodb:
+        specifier: 6.20.0
+        version: 6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4)
       rou3:
         specifier: 0.7.9
         version: 0.7.9
@@ -1728,9 +1734,6 @@ importers:
       execa:
         specifier: catalog:tools
         version: 9.5.2
-      kysely:
-        specifier: ^0.28.9
-        version: 0.28.9
       kysely-pglite-dialect:
         specifier: ^1.2.0
         version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)

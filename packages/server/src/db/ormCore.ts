@@ -29,14 +29,13 @@ import type {
 import { semverSatisfies } from "@hot-updater/plugin-core";
 import type { InferFumaDB } from "fumadb";
 import { fumadb } from "fumadb";
-import type { FumaDBAdapter } from "fumadb/adapters";
 
 import { calculatePagination } from "../calculatePagination";
 import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";
 import { v0_31_0 } from "../schema/v0_31_0";
 import type { Paginated } from "../types";
-import type { DatabaseAPI } from "./types";
+import type { DatabaseAPI, ORMDatabaseAdapter } from "./types";
 import {
   parseBundleMetadata,
   parseBundleRawMetadata,
@@ -216,7 +215,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
   database,
   resolveFileUrl,
 }: {
-  database: FumaDBAdapter;
+  database: ORMDatabaseAdapter;
   resolveFileUrl: (
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,
@@ -227,7 +226,9 @@ export function createOrmDatabaseCore<TContext = unknown>({
   createMigrator: () => Migrator;
   generateSchema: HotUpdaterClient["generateSchema"];
 } {
-  const client = HotUpdaterDB.client(database);
+  const client = HotUpdaterDB.client(
+    database as Parameters<typeof HotUpdaterDB.client>[0],
+  );
   const UPDATE_CHECK_PAGE_SIZE = 100;
   const isMongoAdapter = client.adapter.name.toLowerCase().includes("mongodb");
 

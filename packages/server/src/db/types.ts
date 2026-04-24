@@ -10,15 +10,29 @@ import type {
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
-import type { FumaDBAdapter } from "fumadb/adapters";
 
 import type { PaginatedResult } from "../types";
 
 export type DatabasePluginFactory<TContext = unknown> =
   () => DatabasePlugin<TContext>;
 
+export interface ORMDatabaseAdapter {
+  name: string;
+  createORM(this: any, schema: any): unknown;
+  getSchemaVersion(this: any): Promise<string | undefined>;
+  generateSchema?: (
+    this: any,
+    schema: any,
+    schemaName: string,
+  ) => {
+    code: string;
+    path: string;
+  };
+  createMigrationEngine?: (this: any) => unknown;
+}
+
 export type DatabaseAdapter<TContext = unknown> =
-  | FumaDBAdapter
+  | ORMDatabaseAdapter
   | DatabasePlugin<TContext>
   | DatabasePluginFactory<TContext>;
 
@@ -42,7 +56,7 @@ export function isDatabasePlugin<TContext = unknown>(
 
 export function isFumaAdapter<TContext = unknown>(
   adapter: DatabaseAdapter<TContext>,
-): adapter is FumaDBAdapter {
+): adapter is ORMDatabaseAdapter {
   return !isDatabasePluginFactory(adapter) && !isDatabasePlugin(adapter);
 }
 

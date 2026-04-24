@@ -481,7 +481,7 @@ async function generateStandaloneSQL(options: {
     // Create Kysely instance with appropriate dialect
     // The dummy connection won't be used for SQL generation in from-schema mode
     const db = new Kysely({ dialect: createDialect(dbType) });
-    const [{ HotUpdaterDB }, { kyselyAdapter }] = await Promise.all([
+    const [{ createHotUpdater }, { kyselyAdapter }] = await Promise.all([
       import("@hot-updater/server"),
       import("@hot-updater/server/adapters/kysely"),
     ]);
@@ -492,10 +492,9 @@ async function generateStandaloneSQL(options: {
       provider: dbType,
     });
 
-    const client = HotUpdaterDB.client(adapter);
-
-    // Create migrator
-    const migrator = client.createMigrator();
+    const migrator = createHotUpdater({
+      database: adapter,
+    }).createMigrator();
 
     // Generate SQL from schema
     const result = await migrator.migrateToLatest({

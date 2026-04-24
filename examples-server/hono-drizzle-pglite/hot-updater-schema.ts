@@ -16,12 +16,18 @@ export const bundles = pgTable("bundles", {
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri"),
-  patch_base_bundle_id: text("patch_base_bundle_id"),
-  patch_base_file_hash: text("patch_base_file_hash"),
-  patch_file_hash: text("patch_file_hash"),
-  patch_storage_uri: text("patch_storage_uri"),
   rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
   target_cohorts: json("target_cohorts")
+})
+
+export const bundle_patches = pgTable("bundle_patches", {
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
+  bundle_id: uuid("bundle_id").notNull(),
+  base_bundle_id: uuid("base_bundle_id").notNull(),
+  base_file_hash: text("base_file_hash").notNull(),
+  patch_file_hash: text("patch_file_hash").notNull(),
+  patch_storage_uri: text("patch_storage_uri").notNull(),
+  order_index: integer("order_index").notNull().default(0)
 })
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {

@@ -59,6 +59,8 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "fumadb": "0.2.2",
+    "kysely": "^0.28.9",
+    "mongodb": "6.20.0",
     "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
@@ -69,9 +71,14 @@
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "execa": "catalog:tools",
-    "kysely": "^0.28.9",
     "kysely-pglite-dialect": "^1.2.0",
     "msw": "^2.7.0",
     "uuidv7": "^1.0.2"
+  },
+  "inlinedDependencies": {
+    "@noble/hashes": "1.8.0",
+    "@paralleldrive/cuid2": "2.3.1",
+    "drizzle-orm": "0.44.7",
+    "fumadb": "0.2.2"
   }
 }

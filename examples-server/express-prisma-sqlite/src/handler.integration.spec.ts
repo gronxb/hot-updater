@@ -49,12 +49,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       "dist/index.cjs",
     );
 
-    // Generate Prisma Client first from existing schema
-    await execa("npx", ["prisma", "generate"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-    });
-
     // Generate Prisma schema from hotUpdater instance
     await execa(
       "node",
@@ -89,6 +83,12 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     if (!schemaContent.includes("BEGIN HOT-UPDATER MODELS")) {
       throw new Error("HOT-UPDATER marker not found in schema after generate");
     }
+
+    // Regenerate Prisma Client after hot-updater updates the Prisma schema.
+    await execa("npx", ["prisma", "generate"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+    });
 
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
