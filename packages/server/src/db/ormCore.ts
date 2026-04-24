@@ -2,6 +2,7 @@ import type {
   AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
+  BundlePatchArtifact,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
   Platform,
@@ -9,12 +10,9 @@ import type {
 } from "@hot-updater/core";
 import {
   getAssetBaseStorageUri,
+  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
   DEFAULT_ROLLOUT_COHORT_COUNT,
   isCohortEligibleForUpdate,
   NIL_UUID,
@@ -75,6 +73,70 @@ const getLastItem = <T extends unknown[]>(
   items.at(-1) as T extends [...infer _, infer Last] ? Last : never;
 
 const DEFAULT_BUNDLE_ORDER = { field: "id", direction: "desc" } as const;
+
+type BundleRecord = {
+  id: string;
+  platform: string;
+  should_force_update: unknown;
+  enabled: unknown;
+  file_hash: string;
+  git_commit_hash: string | null;
+  message: string | null;
+  channel: string;
+  storage_uri: string;
+  target_app_version: string | null;
+  fingerprint_hash: string | null;
+  metadata?: unknown;
+  manifest_storage_uri?: string | null;
+  manifest_file_hash?: string | null;
+  asset_base_storage_uri?: string | null;
+  rollout_cohort_count?: number | null;
+  target_cohorts?: unknown;
+};
+
+type BundlePatchRecord = {
+  id: string;
+  bundle_id: string;
+  base_bundle_id: string;
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
+  order_index?: number | null;
+};
+
+const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
+  `${bundleId}:${baseBundleId}`;
+
+const toBundlePatchRecords = (
+  bundle: Pick<
+    Bundle,
+    | "id"
+    | "patches"
+    | "patchBaseBundleId"
+    | "patchBaseFileHash"
+    | "patchFileHash"
+    | "patchStorageUri"
+    | "metadata"
+  >,
+): BundlePatchRecord[] =>
+  getBundlePatches(bundle).map((patch, index) => ({
+    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: index,
+  }));
+
+const mapPatchRecordToPatch = (
+  record: BundlePatchRecord,
+): BundlePatchArtifact => ({
+  baseBundleId: record.base_bundle_id,
+  baseFileHash: record.base_file_hash,
+  patchFileHash: record.patch_file_hash,
+  patchStorageUri: record.patch_storage_uri,
+});
 
 const mergeIdFilter = (
   base: DatabaseBundleIdFilter | undefined,
@@ -264,30 +326,21 @@ export function createOrmDatabaseCore<TContext = unknown>({
     return conditions.length > 0 ? b.and(...conditions) : true;
   };
 
-  const mapBundleRecordToBundle = (record: {
-    id: string;
-    platform: string;
-    should_force_update: unknown;
-    enabled: unknown;
-    file_hash: string;
-    git_commit_hash: string | null;
-    message: string | null;
-    channel: string;
-    storage_uri: string;
-    target_app_version: string | null;
-    fingerprint_hash: string | null;
-    metadata?: unknown;
-    manifest_storage_uri?: string | null;
-    manifest_file_hash?: string | null;
-    asset_base_storage_uri?: string | null;
-    patch_base_bundle_id?: string | null;
-    patch_base_file_hash?: string | null;
-    patch_file_hash?: string | null;
-    patch_storage_uri?: string | null;
-    rollout_cohort_count?: number | null;
-    target_cohorts?: unknown;
-  }): Bundle => {
+  const mapBundleRecordToBundle = (
+    record: BundleRecord,
+    patchRecords: BundlePatchRecord[] = [],
+  ): Bundle => {
     const rawMetadata = parseBundleRawMetadata(record.metadata);
+    const patches = patchRecords
+      .slice()
+      .sort(
+        (left, right) =>
+          (left.order_index ?? 0) - (right.order_index ?? 0) ||
+          left.base_bundle_id.localeCompare(right.base_bundle_id),
+      )
+      .map(mapPatchRecordToPatch);
+    const primaryPatch = patches[0] ?? null;
+
     return {
       id: record.id,
       platform: record.platform as Platform,
@@ -310,21 +363,47 @@ export function createOrmDatabaseCore<TContext = unknown>({
       assetBaseStorageUri:
         record.asset_base_storage_uri ??
         getAssetBaseStorageUri({ metadata: rawMetadata }),
-      patchBaseBundleId:
-        record.patch_base_bundle_id ??
-        getPatchBaseBundleId({ metadata: rawMetadata }),
-      patchBaseFileHash:
-        record.patch_base_file_hash ??
-        getPatchBaseFileHash({ metadata: rawMetadata }),
-      patchFileHash:
-        record.patch_file_hash ?? getPatchFileHash({ metadata: rawMetadata }),
-      patchStorageUri:
-        record.patch_storage_uri ??
-        getPatchStorageUri({ metadata: rawMetadata }),
+      patches,
+      patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+      patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+      patchFileHash: primaryPatch?.patchFileHash ?? null,
+      patchStorageUri: primaryPatch?.patchStorageUri ?? null,
       rolloutCohortCount:
         record.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
       targetCohorts: parseTargetCohorts(record.target_cohorts),
     };
+  };
+
+  const fetchBundlePatchMap = async (
+    orm: Awaited<ReturnType<typeof ensureORM>>,
+    bundleIds: string[],
+  ): Promise<Map<string, BundlePatchRecord[]>> => {
+    const patchMap = new Map<string, BundlePatchRecord[]>();
+
+    if (bundleIds.length === 0) {
+      return patchMap;
+    }
+
+    const patchRows = await orm.findMany("bundle_patches", {
+      select: [
+        "id",
+        "bundle_id",
+        "base_bundle_id",
+        "base_file_hash",
+        "patch_file_hash",
+        "patch_storage_uri",
+        "order_index",
+      ],
+      where: (b) => b("bundle_id", "in", bundleIds),
+    });
+
+    for (const row of patchRows) {
+      const current = patchMap.get(row.bundle_id) ?? [];
+      current.push(row);
+      patchMap.set(row.bundle_id, current);
+    }
+
+    return patchMap;
   };
 
   const fetchBundleById = async (id: string): Promise<Bundle | null> => {
@@ -346,17 +425,18 @@ export function createOrmDatabaseCore<TContext = unknown>({
         "manifest_storage_uri",
         "manifest_file_hash",
         "asset_base_storage_uri",
-        "patch_base_bundle_id",
-        "patch_base_file_hash",
-        "patch_file_hash",
-        "patch_storage_uri",
         "rollout_cohort_count",
         "target_cohorts",
       ],
       where: (b) => b("id", "=", id),
     });
 
-    return result ? mapBundleRecordToBundle(result) : null;
+    if (!result) {
+      return null;
+    }
+
+    const patchMap = await fetchBundlePatchMap(orm, [id]);
+    return mapBundleRecordToBundle(result, patchMap.get(id) ?? []);
   };
 
   const api: DatabaseAPI<TContext> = {
@@ -711,10 +791,6 @@ export function createOrmDatabaseCore<TContext = unknown>({
         | "manifest_storage_uri"
         | "manifest_file_hash"
         | "asset_base_storage_uri"
-        | "patch_base_bundle_id"
-        | "patch_base_file_hash"
-        | "patch_file_hash"
-        | "patch_storage_uri"
         | "rollout_cohort_count"
         | "target_cohorts"
       > = [
@@ -733,10 +809,6 @@ export function createOrmDatabaseCore<TContext = unknown>({
         "manifest_storage_uri",
         "manifest_file_hash",
         "asset_base_storage_uri",
-        "patch_base_bundle_id",
-        "patch_base_file_hash",
-        "patch_file_hash",
-        "patch_storage_uri",
         "rollout_cohort_count",
         "target_cohorts",
       ];
@@ -772,7 +844,14 @@ export function createOrmDatabaseCore<TContext = unknown>({
               offset,
             });
 
-        return rows.map(mapBundleRecordToBundle);
+        const patchMap = await fetchBundlePatchMap(
+          orm,
+          rows.map((row) => row.id),
+        );
+
+        return rows.map((row) =>
+          mapBundleRecordToBundle(row, patchMap.get(row.id) ?? []),
+        );
       };
 
       if (!options.cursor?.after && !options.cursor?.before) {
@@ -865,10 +944,6 @@ export function createOrmDatabaseCore<TContext = unknown>({
         manifest_storage_uri: getManifestStorageUri(bundle),
         manifest_file_hash: getManifestFileHash(bundle),
         asset_base_storage_uri: getAssetBaseStorageUri(bundle),
-        patch_base_bundle_id: getPatchBaseBundleId(bundle),
-        patch_base_file_hash: getPatchBaseFileHash(bundle),
-        patch_file_hash: getPatchFileHash(bundle),
-        patch_storage_uri: getPatchStorageUri(bundle),
         rollout_cohort_count:
           bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
         target_cohorts: bundle.targetCohorts ?? null,
@@ -879,6 +954,13 @@ export function createOrmDatabaseCore<TContext = unknown>({
         create: values,
         update: updateValues,
       });
+      await orm.deleteMany("bundle_patches", {
+        where: (b) => b("bundle_id", "=", bundle.id),
+      });
+      const patchValues = toBundlePatchRecords(bundle);
+      if (patchValues.length > 0) {
+        await orm.createMany("bundle_patches", patchValues);
+      }
     },
 
     async updateBundleById(
@@ -905,10 +987,6 @@ export function createOrmDatabaseCore<TContext = unknown>({
         manifest_storage_uri: getManifestStorageUri(merged),
         manifest_file_hash: getManifestFileHash(merged),
         asset_base_storage_uri: getAssetBaseStorageUri(merged),
-        patch_base_bundle_id: getPatchBaseBundleId(merged),
-        patch_base_file_hash: getPatchBaseFileHash(merged),
-        patch_file_hash: getPatchFileHash(merged),
-        patch_storage_uri: getPatchStorageUri(merged),
         rollout_cohort_count:
           merged.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
         target_cohorts: merged.targetCohorts ?? null,
@@ -919,10 +997,23 @@ export function createOrmDatabaseCore<TContext = unknown>({
         create: values,
         update: updateValues2,
       });
+      await orm.deleteMany("bundle_patches", {
+        where: (b) => b("bundle_id", "=", merged.id),
+      });
+      const patchValues = toBundlePatchRecords(merged);
+      if (patchValues.length > 0) {
+        await orm.createMany("bundle_patches", patchValues);
+      }
     },
 
     async deleteBundleById(bundleId: string): Promise<void> {
       const orm = await ensureORM();
+      await orm.deleteMany("bundle_patches", {
+        where: (b) => b("bundle_id", "=", bundleId),
+      });
+      await orm.deleteMany("bundle_patches", {
+        where: (b) => b("base_bundle_id", "=", bundleId),
+      });
       await orm.deleteMany("bundles", { where: (b) => b("id", "=", bundleId) });
     },
   };

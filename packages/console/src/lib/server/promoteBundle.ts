@@ -371,6 +371,7 @@ export async function createCopiedBundleArchive({
         fileHash: nextFileHash,
         metadata: stripBundleArtifactMetadata(bundle.metadata),
         assetBaseStorageUri,
+        patches: [],
         patchBaseBundleId: null,
         manifestFileHash: nextManifestFileHash,
         manifestStorageUri: manifestUpload.storageUri,

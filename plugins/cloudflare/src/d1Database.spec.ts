@@ -23,16 +23,23 @@ type D1Row = {
   manifest_storage_uri?: string | null;
   manifest_file_hash?: string | null;
   asset_base_storage_uri?: string | null;
-  patch_base_bundle_id?: string | null;
-  patch_base_file_hash?: string | null;
-  patch_file_hash?: string | null;
-  patch_storage_uri?: string | null;
   rollout_cohort_count: number | null;
   target_cohorts: string | null;
 };
 
-const { rows } = vi.hoisted(() => ({
+type D1PatchRow = {
+  id: string;
+  bundle_id: string;
+  base_bundle_id: string;
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
+  order_index: number | null;
+};
+
+const { rows, patchRows } = vi.hoisted(() => ({
   rows: new Map<string, D1Row>(),
+  patchRows: new Map<string, D1PatchRow>(),
 }));
 
 vi.mock("pg-minify", () => ({
@@ -177,6 +184,25 @@ vi.mock("cloudflare", () => ({
             return createPage(row ? [row] : []);
           }
 
+          if (
+            normalizedSql.startsWith(
+              "select * from bundle_patches where bundle_id in",
+            )
+          ) {
+            const selectedBundleIds = new Set(
+              params.map((value) => String(value)),
+            );
+            const result = Array.from(patchRows.values())
+              .filter((row) => selectedBundleIds.has(row.bundle_id))
+              .sort(
+                (a, b) =>
+                  Number(a.order_index ?? 0) - Number(b.order_index ?? 0) ||
+                  a.base_bundle_id.localeCompare(b.base_bundle_id),
+              );
+
+            return createPage(result);
+          }
+
           if (normalizedSql.startsWith("select * from bundles")) {
             const { filteredRows, index } = getFilteredRows(sql, params);
             const limit = Number(params[index] ?? filteredRows.length);
@@ -221,6 +247,34 @@ vi.mock("cloudflare", () => ({
             return createPage([]);
           }
 
+          if (
+            normalizedSql.startsWith(
+              "delete from bundle_patches where bundle_id = ?",
+            )
+          ) {
+            const bundleId = String(params[0]);
+            for (const [id, row] of patchRows.entries()) {
+              if (row.bundle_id === bundleId) {
+                patchRows.delete(id);
+              }
+            }
+            return createPage([]);
+          }
+
+          if (
+            normalizedSql.startsWith(
+              "delete from bundle_patches where base_bundle_id = ?",
+            )
+          ) {
+            const baseBundleId = String(params[0]);
+            for (const [id, row] of patchRows.entries()) {
+              if (row.base_bundle_id === baseBundleId) {
+                patchRows.delete(id);
+              }
+            }
+            return createPage([]);
+          }
+
           if (normalizedSql.startsWith("insert or replace into bundles")) {
             const row: D1Row = {
               id: params[0],
@@ -238,14 +292,26 @@ vi.mock("cloudflare", () => ({
               manifest_storage_uri: params[12],
               manifest_file_hash: params[13],
               asset_base_storage_uri: params[14],
-              patch_base_bundle_id: params[15],
-              patch_base_file_hash: params[16],
-              patch_file_hash: params[17],
-              patch_storage_uri: params[18],
-              rollout_cohort_count: params[19],
-              target_cohorts: params[20],
+              rollout_cohort_count: params[15],
+              target_cohorts: params[16],
             };
             rows.set(row.id, row);
+            return createPage([]);
+          }
+
+          if (
+            normalizedSql.startsWith("insert or replace into bundle_patches")
+          ) {
+            const row: D1PatchRow = {
+              id: params[0],
+              bundle_id: params[1],
+              base_bundle_id: params[2],
+              base_file_hash: params[3],
+              patch_file_hash: params[4],
+              patch_storage_uri: params[5],
+              order_index: Number(params[6] ?? 0),
+            };
+            patchRows.set(row.id, row);
             return createPage([]);
           }
 
@@ -261,6 +327,7 @@ describe("d1Database plugin", () => {
 
   beforeEach(() => {
     rows.clear();
+    patchRows.clear();
     plugin = d1Database({
       databaseId: "test-db-id",
       accountId: "test-account-id",
@@ -293,6 +360,7 @@ describe("d1Database plugin", () => {
   setupGetUpdateInfoTestSuite({
     getUpdateInfo: async (bundles, args) => {
       rows.clear();
+      patchRows.clear();
 
       for (const bundle of bundles) {
         await plugin.appendBundle(bundle);

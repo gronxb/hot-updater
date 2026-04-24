@@ -32,14 +32,20 @@ model bundles {
   manifest_storage_uri String?
   manifest_file_hash   String?
   asset_base_storage_uri String?
-  patch_base_bundle_id String?
-  patch_base_file_hash String?
-  patch_file_hash      String?
-  patch_storage_uri    String?
+}
+
+model bundle_patches {
+  id                String @id
+  bundle_id         String
+  base_bundle_id    String
+  base_file_hash    String
+  patch_file_hash   String
+  patch_storage_uri String
+  order_index       Int    @default(0)
 }
 
 model private_hot_updater_settings {
   key   String @id
-  value String @default("0.21.0")
+  value String @default("0.31.0")
 }
 // --- END HOT-UPDATER MODELS ---

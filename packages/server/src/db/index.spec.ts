@@ -96,6 +96,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   beforeEach(async () => {
+    await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
   });
 

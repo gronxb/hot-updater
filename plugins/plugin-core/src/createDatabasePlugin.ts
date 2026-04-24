@@ -56,7 +56,7 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
   config: TConfig,
 ) => DatabasePluginMethods<TContext>;
 
-const REPLACE_ON_UPDATE_KEYS = ["targetCohorts"] as const;
+const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
 function normalizePage(value: number | undefined): number | undefined {

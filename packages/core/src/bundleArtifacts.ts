@@ -16,6 +16,7 @@ const ARTIFACT_METADATA_KEYS = [
   "hbc_patch_base_file_hash",
   "hbc_patch_file_hash",
   "hbc_patch_storage_uri",
+  "patches",
 ] as const;
 
 type ArtifactMetadataKey = (typeof ARTIFACT_METADATA_KEYS)[number];
@@ -120,6 +121,33 @@ const createLegacyPatch = (
   };
 };
 
+const isBundlePatchArtifact = (
+  value: unknown,
+): value is BundlePatchArtifact => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    typeof candidate.baseBundleId === "string" &&
+    typeof candidate.baseFileHash === "string" &&
+    typeof candidate.patchFileHash === "string" &&
+    typeof candidate.patchStorageUri === "string"
+  );
+};
+
+const readBundlePatchArray = (
+  patches: Bundle["patches"] | null | undefined,
+): BundlePatchArtifact[] => {
+  if (!Array.isArray(patches)) {
+    return [];
+  }
+
+  return patches.filter(isBundlePatchArtifact);
+};
+
 const readPatchMetadataEntries = (
   metadata: LegacyArtifactMetadata | undefined,
 ): BundlePatchArtifact[] => {
@@ -144,6 +172,7 @@ const readPatchMetadataEntries = (
 export const getBundlePatches = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -152,6 +181,7 @@ export const getBundlePatches = (
   >,
 ): BundlePatchArtifact[] => {
   const patches = [
+    ...readBundlePatchArray(bundle.patches),
     createLegacyPatch(bundle),
     ...readPatchMetadataEntries(bundle.metadata),
   ].filter((patch): patch is BundlePatchArtifact => Boolean(patch));
@@ -171,6 +201,7 @@ export const getBundlePatches = (
 export const getBundlePatch = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -189,6 +220,7 @@ export const getBundlePatch = (
 const getPrimaryPatch = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -202,6 +234,7 @@ const getPrimaryPatch = (
 export const getPatchBaseBundleId = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -218,6 +251,7 @@ export const getPatchBaseBundleId = (
 export const getPatchBaseFileHash = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -233,6 +267,7 @@ export const getPatchBaseFileHash = (
 export const getPatchFileHash = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"
@@ -248,6 +283,7 @@ export const getPatchFileHash = (
 export const getPatchStorageUri = (
   bundle: Pick<
     Bundle,
+    | "patches"
     | "patchBaseBundleId"
     | "patchBaseFileHash"
     | "patchFileHash"

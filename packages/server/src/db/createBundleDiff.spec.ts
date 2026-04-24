@@ -170,13 +170,14 @@ describe("createBundleDiff", () => {
       expect(updatedBundle.patchStorageUri).toContain(
         `${targetBundle.id}/patches/${baseBundle.id}`,
       );
-      expect(updatedBundle.metadata?.patches).toEqual({
-        [baseBundle.id]: {
-          base_file_hash: "hash-old",
-          patch_file_hash: updatedBundle.patchFileHash,
-          patch_storage_uri: updatedBundle.patchStorageUri,
+      expect(updatedBundle.patches).toEqual([
+        {
+          baseBundleId: baseBundle.id,
+          baseFileHash: "hash-old",
+          patchFileHash: updatedBundle.patchFileHash,
+          patchStorageUri: updatedBundle.patchStorageUri,
         },
-      });
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -190,15 +191,14 @@ describe("createBundleDiff", () => {
       "00000000-0000-0000-0000-000000000002",
     );
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000003", {
-      metadata: {
-        patches: {
-          [primaryBaseBundle.id]: {
-            base_file_hash: "hash-primary-old",
-            patch_file_hash: "hash-primary-patch",
-            patch_storage_uri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
-          },
+      patches: [
+        {
+          baseBundleId: primaryBaseBundle.id,
+          baseFileHash: "hash-primary-old",
+          patchFileHash: "hash-primary-patch",
+          patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
         },
-      },
+      ],
       patchBaseBundleId: primaryBaseBundle.id,
       patchBaseFileHash: "hash-primary-old",
       patchFileHash: "hash-primary-patch",
@@ -272,20 +272,22 @@ describe("createBundleDiff", () => {
       );
 
       expect(updatedBundle.patchBaseBundleId).toBe(primaryBaseBundle.id);
-      expect(updatedBundle.metadata?.patches).toMatchObject({
-        [primaryBaseBundle.id]: {
-          base_file_hash: "hash-primary-old",
-          patch_file_hash: "hash-primary-patch",
-          patch_storage_uri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
+      expect(updatedBundle.patches).toMatchObject([
+        {
+          baseBundleId: primaryBaseBundle.id,
+          baseFileHash: "hash-primary-old",
+          patchFileHash: "hash-primary-patch",
+          patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
         },
-        [secondaryBaseBundle.id]: {
-          base_file_hash: "hash-secondary-old",
-          patch_file_hash: expect.any(String),
-          patch_storage_uri: expect.stringContaining(
+        {
+          baseBundleId: secondaryBaseBundle.id,
+          baseFileHash: "hash-secondary-old",
+          patchFileHash: expect.any(String),
+          patchStorageUri: expect.stringContaining(
             `${targetBundle.id}/patches/${secondaryBaseBundle.id}`,
           ),
         },
-      });
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }

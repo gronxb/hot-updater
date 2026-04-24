@@ -1,14 +1,10 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
+  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
-  getPatchBaseBundleId,
-  getPatchBaseFileHash,
-  getPatchFileHash,
-  getPatchStorageUri,
   stripBundleArtifactMetadata,
-  type SnakeCaseBundle,
 } from "@hot-updater/core";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
@@ -18,7 +14,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 
 import { getUpdateInfo } from "./getUpdateInfo";
-import type { Database } from "./types";
+import type { SupabaseBundlePatchRow, SupabaseBundleRow } from "./types";
 
 export interface SupabaseDatabaseConfig {
   supabaseUrl: string;
@@ -47,10 +43,31 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
 };
 
 const BUNDLE_SELECT_COLUMNS =
-  "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, manifest_storage_uri, manifest_file_hash, asset_base_storage_uri, patch_base_bundle_id, patch_base_file_hash, patch_file_hash, patch_storage_uri, rollout_cohort_count, target_cohorts";
+  "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, manifest_storage_uri, manifest_file_hash, asset_base_storage_uri, rollout_cohort_count, target_cohorts";
 
-const mapRowToBundle = (row: SnakeCaseBundle): Bundle => {
+const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
+  `${bundleId}:${baseBundleId}`;
+
+const mapRowToBundle = (
+  row: SupabaseBundleRow,
+  patchRows: SupabaseBundlePatchRow[] = [],
+): Bundle => {
   const rawMetadata = normalizeMetadata(row.metadata);
+  const patches = patchRows
+    .slice()
+    .sort(
+      (left, right) =>
+        left.order_index - right.order_index ||
+        left.base_bundle_id.localeCompare(right.base_bundle_id),
+    )
+    .map((patch) => ({
+      baseBundleId: patch.base_bundle_id,
+      baseFileHash: patch.base_file_hash,
+      patchFileHash: patch.patch_file_hash,
+      patchStorageUri: patch.patch_storage_uri,
+    }));
+  const primaryPatch = patches[0] ?? null;
+
   return {
     channel: row.channel,
     enabled: Boolean(row.enabled),
@@ -72,23 +89,18 @@ const mapRowToBundle = (row: SnakeCaseBundle): Bundle => {
     assetBaseStorageUri:
       row.asset_base_storage_uri ??
       getAssetBaseStorageUri({ metadata: rawMetadata }),
-    patchBaseBundleId:
-      row.patch_base_bundle_id ??
-      getPatchBaseBundleId({ metadata: rawMetadata }),
-    patchBaseFileHash:
-      row.patch_base_file_hash ??
-      getPatchBaseFileHash({ metadata: rawMetadata }),
-    patchFileHash:
-      row.patch_file_hash ?? getPatchFileHash({ metadata: rawMetadata }),
-    patchStorageUri:
-      row.patch_storage_uri ?? getPatchStorageUri({ metadata: rawMetadata }),
+    patches,
+    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+    patchFileHash: primaryPatch?.patchFileHash ?? null,
+    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
     rolloutCohortCount:
       row.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
     targetCohorts: row.target_cohorts ?? null,
   };
 };
 
-const bundleToRow = (bundle: Bundle): SnakeCaseBundle => ({
+const bundleToRow = (bundle: Bundle): SupabaseBundleRow => ({
   id: bundle.id,
   channel: bundle.channel,
   enabled: bundle.enabled,
@@ -104,22 +116,51 @@ const bundleToRow = (bundle: Bundle): SnakeCaseBundle => ({
   manifest_storage_uri: getManifestStorageUri(bundle),
   manifest_file_hash: getManifestFileHash(bundle),
   asset_base_storage_uri: getAssetBaseStorageUri(bundle),
-  patch_base_bundle_id: getPatchBaseBundleId(bundle),
-  patch_base_file_hash: getPatchBaseFileHash(bundle),
-  patch_file_hash: getPatchFileHash(bundle),
-  patch_storage_uri: getPatchStorageUri(bundle),
   rollout_cohort_count:
     bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
   target_cohorts: bundle.targetCohorts ?? null,
 });
 
+const bundleToPatchRows = (bundle: Bundle): SupabaseBundlePatchRow[] =>
+  getBundlePatches(bundle).map((patch, index) => ({
+    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: index,
+  }));
+
 export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
   name: "supabaseDatabase",
   factory: (config) => {
-    const supabase = createClient<Database>(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
-    );
+    const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+    const fetchPatchMap = async (bundleIds: string[]) => {
+      const patchMap = new Map<string, SupabaseBundlePatchRow[]>();
+
+      if (bundleIds.length === 0) {
+        return patchMap;
+      }
+
+      const { data, error } = await supabase
+        .from("bundle_patches")
+        .select("*")
+        .in("bundle_id", bundleIds)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      for (const row of data ?? []) {
+        const current = patchMap.get(row.bundle_id) ?? [];
+        current.push(row);
+        patchMap.set(row.bundle_id, current);
+      }
+
+      return patchMap;
+    };
 
     return {
       async getUpdateInfo(args) {
@@ -127,16 +168,19 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
       },
 
       async getBundleById(bundleId) {
-        const { data, error } = await supabase
-          .from("bundles")
-          .select(BUNDLE_SELECT_COLUMNS)
-          .eq("id", bundleId)
-          .single();
+        const [{ data, error }, patchMap] = await Promise.all([
+          supabase
+            .from("bundles")
+            .select(BUNDLE_SELECT_COLUMNS)
+            .eq("id", bundleId)
+            .single(),
+          fetchPatchMap([bundleId]),
+        ]);
 
         if (!data || error) {
           return null;
         }
-        return mapRowToBundle(data);
+        return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
       },
 
       async getBundles(options) {
@@ -274,7 +318,12 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
         const { data } = await query;
 
-        const bundles = data ? data.map(mapRowToBundle) : [];
+        const patchMap = await fetchPatchMap(
+          (data ?? []).map((bundle) => bundle.id),
+        );
+        const bundles = (data ?? []).map((bundle) =>
+          mapRowToBundle(bundle, patchMap.get(bundle.id) ?? []),
+        );
 
         const pagination = calculatePagination(total ?? 0, { limit, offset });
 
@@ -301,6 +350,28 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         for (const op of changedSets) {
           if (op.operation === "delete") {
             // Handle delete operation
+            const { error: patchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("bundle_id", op.data.id);
+
+            if (patchDeleteError) {
+              throw new Error(
+                `Failed to delete bundle patches: ${patchDeleteError.message}`,
+              );
+            }
+
+            const { error: basePatchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("base_bundle_id", op.data.id);
+
+            if (basePatchDeleteError) {
+              throw new Error(
+                `Failed to delete base bundle patches: ${basePatchDeleteError.message}`,
+              );
+            }
+
             const { error } = await supabase
               .from("bundles")
               .delete()
@@ -312,12 +383,32 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           } else if (op.operation === "insert" || op.operation === "update") {
             // Handle insert and update operations
             const bundle = op.data;
+            const patchRows = bundleToPatchRows(bundle);
             const { error } = await supabase
               .from("bundles")
               .upsert(bundleToRow(bundle), { onConflict: "id" });
 
             if (error) {
               throw error;
+            }
+
+            const { error: patchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("bundle_id", bundle.id);
+
+            if (patchDeleteError) {
+              throw patchDeleteError;
+            }
+
+            if (patchRows.length > 0) {
+              const { error: patchInsertError } = await supabase
+                .from("bundle_patches")
+                .upsert(patchRows, { onConflict: "id" });
+
+              if (patchInsertError) {
+                throw patchInsertError;
+              }
             }
           }
         }

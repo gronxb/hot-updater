@@ -9,7 +9,6 @@ import {
   getBundlePatch,
   getBundlePatches,
   getManifestStorageUri,
-  type BundleMetadata,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -191,20 +190,6 @@ async function getFileHash(filePath: string) {
   return crypto.createHash("sha256").update(file).digest("hex");
 }
 
-const toPatchMetadataMap = (
-  patches: ReturnType<typeof getBundlePatches>,
-): NonNullable<BundleMetadata["patches"]> =>
-  Object.fromEntries(
-    patches.map((patch) => [
-      patch.baseBundleId,
-      {
-        base_file_hash: patch.baseFileHash,
-        patch_file_hash: patch.patchFileHash,
-        patch_storage_uri: patch.patchStorageUri,
-      },
-    ]),
-  );
-
 function buildNextPatchState({
   currentBundle,
   nextPatch,
@@ -223,10 +208,7 @@ function buildNextPatchState({
   const primaryPatch = orderedPatches[0] ?? nextPatch;
 
   return {
-    metadata: {
-      ...currentBundle.metadata,
-      patches: toPatchMetadataMap(orderedPatches),
-    } satisfies BundleMetadata,
+    patches: orderedPatches,
     primaryPatch,
   };
 }
@@ -322,7 +304,7 @@ export async function createBundleDiff(
     });
 
     await deps.databasePlugin.updateBundle(targetBundle.id, {
-      metadata: nextState.metadata,
+      patches: nextState.patches,
       patchBaseBundleId: nextState.primaryPatch.baseBundleId,
       patchBaseFileHash: nextState.primaryPatch.baseFileHash,
       patchFileHash: nextState.primaryPatch.patchFileHash,
