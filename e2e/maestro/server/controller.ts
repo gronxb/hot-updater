@@ -8,7 +8,9 @@ import { setTimeout as sleep } from "timers/promises";
 import { fileURLToPath, pathToFileURL } from "url";
 
 import {
+  getBundlePatch,
   getAssetBaseStorageUri,
+  getBundlePatches,
   getPatchBaseBundleId,
   getPatchBaseFileHash,
   getPatchFileHash,
@@ -42,6 +44,7 @@ type DeployedBundleRecord = {
   enabled: boolean;
   marker: string;
   mode: DeployMode;
+  patchBaseBundleIds: string[];
   rolloutCohortCount: number | null;
   shouldForceUpdate: boolean;
   targetCohorts: string[] | null;
@@ -1016,7 +1019,10 @@ function resolvePatchAssetPath(
   bundle: Bundle | null | undefined,
   baseBundleId: string,
 ) {
-  const patchStorageUri = bundle ? getPatchStorageUri(bundle) : null;
+  const patchStorageUri = bundle
+    ? getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
+      getPatchStorageUri(bundle)
+    : null;
   if (!patchStorageUri) {
     return readLegacyPatchAssetPath(bundle);
   }
@@ -1025,6 +1031,14 @@ function resolvePatchAssetPath(
     readLegacyPatchAssetPath(bundle) ??
     inferPatchAssetPathFromStorageUri({ baseBundleId, patchStorageUri })
   );
+}
+
+function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
+  if (!bundle) {
+    return [];
+  }
+
+  return getBundlePatches(bundle).map((patch) => patch.baseBundleId);
 }
 
 function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
@@ -1119,11 +1133,16 @@ async function resolveAutoPatchBundleDiff(
   bundleId: string,
 ) {
   const bundle = await fetchBundleById(bundleId);
+  const matchingPatch = getBundlePatch(bundle, baseBundleId);
   const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
-  const patchBaseBundleId = getPatchBaseBundleId(bundle);
-  const patchBaseFileHash = getPatchBaseFileHash(bundle);
-  const patchFileHash = getPatchFileHash(bundle);
-  const patchStorageUri = getPatchStorageUri(bundle);
+  const patchBaseBundleId =
+    matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
+  const patchBaseFileHash =
+    matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
+  const patchFileHash =
+    matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
+  const patchStorageUri =
+    matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
 
   if (
@@ -1641,83 +1660,6 @@ function copyAndroidFileIfExists(remotePath: string, localPath: string) {
 
   copyAndroidFile(remotePath, localPath);
   return true;
-}
-
-async function readBundleIdFromUiDump(
-  expectedMarker: string,
-  outputPath: string,
-  attempts = 30,
-) {
-  for (let index = 0; index < attempts; index += 1) {
-    runCapture(
-      "adb",
-      [
-        "-s",
-        deviceId as string,
-        "shell",
-        "uiautomator",
-        "dump",
-        "/sdcard/window_dump.xml",
-      ],
-      { allowFailure: true },
-    );
-
-    const xml = runCapture(
-      "adb",
-      ["-s", deviceId as string, "exec-out", "cat", "/sdcard/window_dump.xml"],
-      { allowFailure: true },
-    );
-
-    fs.writeFileSync(outputPath, xml);
-
-    if (expectedMarker && !xml.includes(expectedMarker)) {
-      await sleep(1000);
-      continue;
-    }
-
-    const match = xml.match(/text="BUNDLE ID"[\s\S]*?text="([0-9a-f-]{36})"/i);
-    if (match?.[1]) {
-      return match[1];
-    }
-
-    await sleep(1000);
-  }
-
-  throw new Error("Timed out reading bundle id from Android UI dump");
-}
-
-async function readCurrentBundleIdFromMetadata(
-  outputPath: string,
-  attempts = 90,
-) {
-  const metadataPath = path.join(ensureStorePath(), "metadata.json");
-
-  for (let index = 0; index < attempts; index += 1) {
-    let metadata: Record<string, unknown> | null = null;
-
-    if (session.platform === "ios") {
-      if (fs.existsSync(metadataPath)) {
-        await fsPromises.copyFile(metadataPath, outputPath);
-        metadata = readJson(outputPath);
-      }
-    } else if (copyAndroidFileIfExists(metadataPath, outputPath)) {
-      metadata = readJson(outputPath);
-    }
-
-    const bundleId =
-      (metadata?.stagingBundleId as string | undefined) ??
-      (metadata?.staging_bundle_id as string | undefined) ??
-      (metadata?.stableBundleId as string | undefined) ??
-      (metadata?.stable_bundle_id as string | undefined);
-
-    if (bundleId) {
-      return bundleId;
-    }
-
-    await sleep(1000);
-  }
-
-  throw new Error(`Timed out reading bundle id from ${metadataPath}`);
 }
 
 function readJson(filePath: string) {
@@ -2738,6 +2680,7 @@ async function deployBundle(request: DeployBundleRequest) {
         : await createBundleDiff(request.diffBaseBundleId, bundleId)
       : null;
   const bundle = await fetchBundleById(bundleId);
+  const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
@@ -2752,6 +2695,7 @@ async function deployBundle(request: DeployBundleRequest) {
     enabled: bundle.enabled,
     marker: request.marker,
     mode: request.mode,
+    patchBaseBundleIds,
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
     targetCohorts: bundle.targetCohorts ?? null,
@@ -2766,6 +2710,7 @@ async function deployBundle(request: DeployBundleRequest) {
     diffPatchAssetPath: diff?.patchAssetPath,
     enabled: bundle.enabled,
     marker: request.marker,
+    patchBaseBundleIds,
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
     targetCohorts: bundle.targetCohorts ?? null,
@@ -2917,6 +2862,10 @@ function readFirstOtaArchiveInstallLogs() {
     .join("\n");
 }
 
+function includesAllFragments(logs: string, fragments: string[]) {
+  return fragments.every((fragment) => logs.includes(fragment));
+}
+
 function readBsdiffPatchStoreEvidence(args: {
   assetPath: string;
   baseBundleId: string;
@@ -2962,6 +2911,71 @@ function readBsdiffPatchStoreEvidence(args: {
   };
 }
 
+function getPrimaryBundleAssetPath() {
+  return session.platform === "ios"
+    ? "index.ios.bundle"
+    : "index.android.bundle";
+}
+
+function readManifestDiffState(args: {
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  const diagnostics = readWaitForMetadataDiagnostics();
+  const metadataState = getMetadataState(diagnostics.metadata.value);
+  const bundleFile = readBundleFileSnapshot(args.bundleId);
+  const manifest = readBundleManifestSnapshot(args.bundleId);
+  const assetPath = getPrimaryBundleAssetPath();
+  const expectedHash = getManifestAssetFileHash(manifest, assetPath);
+  const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
+  const archiveLogs = readFirstOtaArchiveInstallLogs();
+  const bsdiffLogs = readBsdiffPatchLogs();
+  const archiveFragments = [
+    "Skipping manifest-driven install",
+    `for ${args.bundleId}`,
+    "no active OTA manifest is available",
+    "Using archive",
+  ];
+  const bsdiffFragments = [
+    "HotUpdaterBsdiffPatchApplied",
+    `asset=${assetPath}`,
+    `baseBundleId=${args.previousBundleId}`,
+  ];
+  const record =
+    session.deployedBundles.find((entry) => entry.bundleId === args.bundleId) ??
+    null;
+  const ok =
+    metadataState.stableBundleId === args.previousBundleId &&
+    metadataState.stagingBundleId === args.bundleId &&
+    metadataState.verificationPending === true &&
+    bundleFile.exists &&
+    manifest.exists &&
+    manifest.readError === null &&
+    expectedHash !== null &&
+    assetFile.exists &&
+    assetFile.readError === null &&
+    assetFile.fileHash === expectedHash &&
+    !includesAllFragments(archiveLogs, archiveFragments) &&
+    !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
+    !record?.disabledFullAssetBaseStorageUri;
+
+  return {
+    archiveFragments,
+    archiveLogs,
+    assetFile,
+    assetPath,
+    bsdiffFragments,
+    bsdiffLogs,
+    bundleFile,
+    diagnostics,
+    expectedHash,
+    manifest,
+    metadataState,
+    ok,
+    record,
+  };
+}
+
 async function assertBsdiffPatchApplied(args: {
   assetPath: string;
   baseBundleId: string;
@@ -2986,7 +3000,7 @@ async function assertBsdiffPatchApplied(args: {
     }
 
     const logs = readBsdiffPatchLogs();
-    if (expectedFragments.every((fragment) => logs.includes(fragment))) {
+    if (includesAllFragments(logs, expectedFragments)) {
       logE2e("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
@@ -3009,6 +3023,52 @@ async function assertBsdiffPatchApplied(args: {
       evidence,
       logsTail: logs.split("\n").slice(-20),
       platform: session.platform,
+    },
+  );
+}
+
+async function assertManifestDiffApplied(args: {
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const state = readManifestDiffState(args);
+    if (state.ok) {
+      logE2e("manifest diff applied without bsdiff patch", {
+        bundleId: args.bundleId,
+        evidence: "bundle-store-without-bsdiff-or-archive-log",
+        platform: session.platform,
+        previousBundleId: args.previousBundleId,
+      });
+      return {};
+    }
+
+    await sleep(1000);
+  }
+
+  const state = readManifestDiffState(args);
+  throw createEndpointError(
+    "Timed out waiting for manifest diff install evidence.",
+    {
+      archiveLogMatched: includesAllFragments(
+        state.archiveLogs,
+        state.archiveFragments,
+      ),
+      assetFile: state.assetFile,
+      assetPath: state.assetPath,
+      bsdiffLogMatched: includesAllFragments(
+        state.bsdiffLogs,
+        state.bsdiffFragments,
+      ),
+      bundleFile: state.bundleFile,
+      bundleId: args.bundleId,
+      diagnostics: state.diagnostics,
+      expectedHash: state.expectedHash,
+      manifest: state.manifest,
+      metadataState: state.metadataState,
+      platform: session.platform,
+      previousBundleId: args.previousBundleId,
+      trackedBundleRecord: state.record,
     },
   );
 }
@@ -3040,7 +3100,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     const logs = readFirstOtaArchiveInstallLogs();
-    if (expectedFragments.every((fragment) => logs.includes(fragment))) {
+    if (includesAllFragments(logs, expectedFragments)) {
       logE2e("first OTA used archive install path", {
         bundleId: args.bundleId,
         evidence: "native-log",
@@ -3135,6 +3195,110 @@ async function captureState(prefix: string) {
   );
 
   return {};
+}
+
+async function reinstallBuiltInApp() {
+  if (!session.builtArtifactPath) {
+    throw new Error("builtArtifactPath is not available");
+  }
+
+  session.storePath = null;
+
+  if (session.platform === "ios") {
+    await installIosArtifact(session.builtArtifactPath);
+  } else {
+    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
+      allowFailure: true,
+    });
+    await installAndroidArtifact("adb-install-reset.log");
+  }
+
+  logE2e("built-in app reinstalled", {
+    appId: session.appId,
+    artifactPath: path.relative(REPO_DIR, session.builtArtifactPath),
+    platform: session.platform,
+  });
+
+  return {};
+}
+
+async function resetRemoteBundles() {
+  await clearRemoteBundles();
+
+  logE2e("remote bundles reset on demand", {
+    platform: session.platform,
+  });
+
+  return {};
+}
+
+async function assertBundlePatchBases(args: {
+  absentBaseBundleIds?: string[];
+  bundleId: string;
+  expectedBaseBundleIds?: string[];
+}) {
+  const bundle = await fetchBundleById(args.bundleId);
+  const observedBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
+  const expectedBaseBundleIds = args.expectedBaseBundleIds ?? [];
+  const absentBaseBundleIds = args.absentBaseBundleIds ?? [];
+
+  if (
+    expectedBaseBundleIds.length > 0 &&
+    observedBaseBundleIds.length !== expectedBaseBundleIds.length
+  ) {
+    throw createEndpointError(
+      "Observed patch base bundle count did not match",
+      {
+        bundleId: args.bundleId,
+        expectedBaseBundleIds,
+        observedBaseBundleIds,
+        platform: session.platform,
+      },
+    );
+  }
+
+  if (
+    expectedBaseBundleIds.some(
+      (bundleId, index) => observedBaseBundleIds[index] !== bundleId,
+    )
+  ) {
+    throw createEndpointError(
+      "Observed patch base bundle order did not match",
+      {
+        bundleId: args.bundleId,
+        expectedBaseBundleIds,
+        observedBaseBundleIds,
+        platform: session.platform,
+      },
+    );
+  }
+
+  const unexpectedBaseBundleIds = absentBaseBundleIds.filter((bundleId) =>
+    observedBaseBundleIds.includes(bundleId),
+  );
+
+  if (unexpectedBaseBundleIds.length > 0) {
+    throw createEndpointError(
+      "Observed unexpected patch base bundle ids on target bundle",
+      {
+        absentBaseBundleIds,
+        bundleId: args.bundleId,
+        observedBaseBundleIds,
+        platform: session.platform,
+        unexpectedBaseBundleIds,
+      },
+    );
+  }
+
+  logE2e("bundle patch bases verified", {
+    bundleId: args.bundleId,
+    observedBaseBundleIds,
+    platform: session.platform,
+  });
+
+  return {
+    observedBaseBundleIds,
+  };
 }
 
 async function assertMetadataActive(bundleId: string) {
@@ -3273,9 +3437,25 @@ async function cleanup() {
       continue;
     }
 
-    await patchBundle(record.bundleId, {
-      assetBaseStorageUri: record.assetBaseStorageUri,
-    });
+    try {
+      await patchBundle(record.bundleId, {
+        assetBaseStorageUri: record.assetBaseStorageUri,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("targetBundleId not found")
+      ) {
+        logE2e("skipped restoring bsdiff full asset fallback", {
+          bundleId: record.bundleId,
+          platform: session.platform,
+          reason: "bundle already deleted",
+        });
+        continue;
+      }
+
+      throw error;
+    }
     restoredFullAssetFallbackBundleIds.push(record.bundleId);
   }
   if (restoredFullAssetFallbackBundleIds.length > 0) {
@@ -3363,6 +3543,29 @@ export async function handleAssertFirstOtaUsesArchive(bundleId: string) {
 
 export async function handleCaptureState(prefix: string) {
   return captureState(prefix);
+}
+
+export async function handleReinstallBuiltInApp() {
+  return reinstallBuiltInApp();
+}
+
+export async function handleResetRemoteBundles() {
+  return resetRemoteBundles();
+}
+
+export async function handleAssertBundlePatchBases(args: {
+  absentBaseBundleIds?: string[];
+  bundleId: string;
+  expectedBaseBundleIds?: string[];
+}) {
+  return assertBundlePatchBases(args);
+}
+
+export async function handleAssertManifestDiffApplied(args: {
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  return assertManifestDiffApplied(args);
 }
 
 export async function handleAssertMetadataActive(bundleId: string) {

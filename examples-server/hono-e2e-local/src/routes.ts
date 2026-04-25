@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
+
 import { Hono } from "hono";
+
 import { hotUpdater } from "./db.js";
 
 const app = new Hono();
@@ -9,26 +11,31 @@ const publicBaseUrl = (
   process.env.HOT_UPDATER_PUBLIC_BASE_URL ?? `http://127.0.0.1:${port}`
 ).replace(/\/$/, "");
 const storageRoot = path.resolve(
-  process.env.HOT_UPDATER_E2E_STORAGE_DIR ?? path.join(process.cwd(), "storage"),
+  process.env.HOT_UPDATER_E2E_STORAGE_DIR ??
+    path.join(process.cwd(), "storage"),
 );
 
 function resolveWithinStorage(relativePath: string) {
   const resolvedPath = path.resolve(storageRoot, relativePath);
   const storagePrefix = `${storageRoot}${path.sep}`;
   if (resolvedPath !== storageRoot && !resolvedPath.startsWith(storagePrefix)) {
-    throw new Error(`Refusing to access path outside storage root: ${relativePath}`);
+    throw new Error(
+      `Refusing to access path outside storage root: ${relativePath}`,
+    );
   }
   return resolvedPath;
 }
 
-function storageFileForKey(key: string) {
+function storageFileForKey(key: string, filename: string) {
   const normalizedKey = key.split("/").filter(Boolean).join(path.sep);
-  return resolveWithinStorage(path.join(normalizedKey, "bundle.tar.br"));
+  const normalizedFilename = path.basename(filename);
+  return resolveWithinStorage(path.join(normalizedKey, normalizedFilename));
 }
 
-function storageUriForKey(key: string) {
+function storageUriForKey(key: string, filename: string) {
   const encodedKey = key.split("/").filter(Boolean).join("/");
-  return `${publicBaseUrl}/storage/${encodedKey}/bundle.tar.br`;
+  const encodedFilename = encodeURIComponent(path.basename(filename));
+  return `${publicBaseUrl}/storage/${encodedKey}/${encodedFilename}`;
 }
 
 function relativeStoragePathFromUri(storageUri: string) {
@@ -38,6 +45,24 @@ function relativeStoragePathFromUri(storageUri: string) {
     throw new Error(`Unexpected storage URI: ${storageUri}`);
   }
   return decodeURIComponent(url.pathname.slice(prefix.length));
+}
+
+async function removeEmptyStorageParents(targetPath: string) {
+  let currentPath = path.dirname(targetPath);
+
+  while (currentPath.startsWith(storageRoot) && currentPath !== storageRoot) {
+    try {
+      const entries = await fs.readdir(currentPath);
+      if (entries.length > 0) {
+        return;
+      }
+      await fs.rmdir(currentPath);
+    } catch {
+      return;
+    }
+
+    currentPath = path.dirname(currentPath);
+  }
 }
 
 app.on(["GET", "POST", "PATCH", "DELETE"], "/hot-updater/*", async (c) => {
@@ -53,11 +78,11 @@ app.post("/upload", async (c) => {
     return c.json({ error: "Missing upload key or file" }, 400);
   }
 
-  const targetPath = storageFileForKey(key);
+  const targetPath = storageFileForKey(key, file.name);
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, Buffer.from(await file.arrayBuffer()));
 
-  return c.json({ storageUri: storageUriForKey(key) });
+  return c.json({ storageUri: storageUriForKey(key, file.name) });
 });
 
 app.delete("/delete", async (c) => {
@@ -68,7 +93,8 @@ app.delete("/delete", async (c) => {
 
   const relativeStoragePath = relativeStoragePathFromUri(payload.storageUri);
   const targetPath = resolveWithinStorage(relativeStoragePath);
-  await fs.rm(path.dirname(targetPath), { force: true, recursive: true });
+  await fs.rm(targetPath, { force: true, recursive: true });
+  await removeEmptyStorageParents(targetPath);
 
   return c.json({ ok: true });
 });
