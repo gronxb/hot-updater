@@ -2,7 +2,41 @@ export type Platform = "ios" | "android";
 
 export type BundleMetadata = {
   app_version?: string;
+  /** @deprecated Use Bundle.manifestStorageUri. */
+  manifest_storage_uri?: string;
+  /** @deprecated Use Bundle.manifestFileHash. */
+  manifest_file_hash?: string;
+  /** @deprecated Use Bundle.assetBaseStorageUri. */
+  asset_base_storage_uri?: string;
+  /** @deprecated Use Bundle.patchBaseBundleId. */
+  patch_base_bundle_id?: string;
+  /** @deprecated Use Bundle.patchBaseBundleId. */
+  diff_base_bundle_id?: string;
+  /** @deprecated Patch algorithm is implicit. */
+  hbc_patch_algorithm?: "bsdiff";
+  /** @deprecated Patch asset path is derived from the manifest. */
+  hbc_patch_asset_path?: string;
+  /** @deprecated Use Bundle.patchBaseFileHash. */
+  hbc_patch_base_file_hash?: string;
+  /** @deprecated Use Bundle.patchFileHash. */
+  hbc_patch_file_hash?: string;
+  /** @deprecated Use Bundle.patchStorageUri. */
+  hbc_patch_storage_uri?: string;
 };
+
+export interface ChangedAssetPatch {
+  algorithm: "bsdiff";
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchUrl: string;
+}
+
+export interface ChangedAsset {
+  fileUrl: string;
+  fileHash: string;
+  patch?: ChangedAssetPatch | null;
+}
 
 export interface Bundle {
   /**
@@ -65,6 +99,41 @@ export interface Bundle {
    * The metadata of the bundle.
    */
   metadata?: BundleMetadata;
+
+  /**
+   * Storage URI for the bundle manifest artifact.
+   */
+  manifestStorageUri?: string | null;
+
+  /**
+   * SHA256 hash of the manifest artifact, optionally signed as sig:<signature>.
+   */
+  manifestFileHash?: string | null;
+
+  /**
+   * Storage URI prefix for manifest assets.
+   */
+  assetBaseStorageUri?: string | null;
+
+  /**
+   * Base bundle id used to generate this bundle's binary patch.
+   */
+  patchBaseBundleId?: string | null;
+
+  /**
+   * Expected hash of the base asset before patch application.
+   */
+  patchBaseFileHash?: string | null;
+
+  /**
+   * Expected hash of the binary patch artifact.
+   */
+  patchFileHash?: string | null;
+
+  /**
+   * Storage URI for the binary patch artifact.
+   */
+  patchStorageUri?: string | null;
 
   /**
    * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
@@ -147,6 +216,24 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    * The client parses this to extract signature for native verification.
    */
   fileHash: string | null;
+  /**
+   * Optional manifest artifact for manifest-driven updates.
+   * When present with `changedAssets`, native can download and verify a signed
+   * manifest, then assemble the next bundle directory from reused and changed
+   * files while keeping archive fallback available through `fileUrl`.
+   */
+  manifestUrl?: string | null;
+  /**
+   * SHA256 hash of the manifest file, optionally with embedded signature.
+   * Follows the same `sig:<base64_signature>` or plain hex format as `fileHash`.
+   */
+  manifestFileHash?: string | null;
+  /**
+   * Per-file download URLs for assets whose hash differs from the client's
+   * current manifest, or for all assets when the server cannot reuse a base
+   * manifest. Keys are manifest-relative file paths.
+   */
+  changedAssets?: Record<string, ChangedAsset> | null;
 }
 
 export type UpdateStrategy = "fingerprint" | "appVersion";

@@ -82,6 +82,7 @@ vi.mock("fs", async () => {
       existsSync: vi.fn(),
       promises: {
         ...actual.promises,
+        copyFile: vi.fn(),
         mkdir: vi.fn(),
         readdir: vi.fn(),
         rm: vi.fn(),
@@ -91,6 +92,7 @@ vi.mock("fs", async () => {
     existsSync: vi.fn(),
     promises: {
       ...actual.promises,
+      copyFile: vi.fn(),
       mkdir: vi.fn(),
       readdir: vi.fn(),
       rm: vi.fn(),
@@ -287,6 +289,7 @@ describe("deploy rollout wiring", () => {
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
     vi.mocked(fs.promises.readdir).mockResolvedValue([
       "index.bundle",
     ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
@@ -380,6 +383,75 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
+  });
+
+  it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
+    mockStoragePlugin.upload.mockImplementation(async (key, filePath) => {
+      const filename =
+        filePath === "/mock/build/manifest.json"
+          ? "manifest.json"
+          : filePath === "/mock/build/index.bundle"
+            ? "index.bundle"
+            : "bundle.tar.br";
+
+      return {
+        storageUri: `s3://bundles/${key}/${filename}`,
+      };
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(3);
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetBaseStorageUri: "s3://bundles/bundle-123/files",
+        manifestFileHash: "file-hash",
+        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+        metadata: expect.objectContaining({
+          app_version: "1.0",
+        }),
+      }),
+    );
+  });
+
+  it("uploads hermes bundle artifacts using the manifest filename", async () => {
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "index.ios.bundle",
+        path: "/mock/build/index.ios.bundle.hbc",
+      },
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(fs.promises.copyFile).toHaveBeenCalledWith(
+      "/mock/build/index.ios.bundle.hbc",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
+    );
+    expect(mockStoragePlugin.upload).toHaveBeenCalledWith(
+      "bundle-123/files",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
+    );
+    expect(mockStoragePlugin.upload).toHaveBeenCalledWith(
+      "bundle-123/files/assets/src",
+      "/mock/build/assets/src/logo.png",
+    );
   });
 
   it("does not create a nested spinner when signing is enabled", async () => {

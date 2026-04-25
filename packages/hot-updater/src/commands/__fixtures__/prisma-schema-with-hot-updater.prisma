@@ -29,6 +29,13 @@ model bundles {
   target_app_version  String?
   fingerprint_hash    String?
   metadata            Json
+  manifest_storage_uri String?
+  manifest_file_hash   String?
+  asset_base_storage_uri String?
+  patch_base_bundle_id String?
+  patch_base_file_hash String?
+  patch_file_hash      String?
+  patch_storage_uri    String?
 }
 
 model private_hot_updater_settings {

@@ -8,6 +8,39 @@ import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
+data class ChangedAssetDescriptor(
+    val fileUrl: String,
+    val fileHash: String,
+    val patch: BsdiffPatchDescriptor? = null,
+)
+
+data class BsdiffPatchDescriptor(
+    val algorithm: String,
+    val baseBundleId: String,
+    val baseFileHash: String,
+    val patchFileHash: String,
+    val patchUrl: String,
+)
+
+data class UpdateProgressPayload(
+    val progress: Double,
+    val artifactType: String,
+    val details: DiffProgressDetails? = null,
+)
+
+data class DiffProgressFileSnapshot(
+    val path: String,
+    val status: String,
+    val progress: Double,
+    val order: Int,
+)
+
+data class DiffProgressDetails(
+    val totalFilesCount: Int,
+    val completedFilesCount: Int,
+    val files: List<DiffProgressFileSnapshot> = emptyList(),
+)
+
 /**
  * Interface for bundle storage operations
  */
@@ -50,7 +83,10 @@ interface BundleStorageService {
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
-        progressCallback: (Double) -> Unit,
+        manifestUrl: String?,
+        manifestFileHash: String?,
+        changedAssets: Map<String, ChangedAssetDescriptor>?,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     )
 
     /**
@@ -126,6 +162,232 @@ class BundleFileStorageService(
     companion object {
         private const val TAG = "BundleStorage"
     }
+
+    private fun emitArchiveProgress(
+        progressCallback: (UpdateProgressPayload) -> Unit,
+        progress: Double,
+    ) {
+        progressCallback(
+            UpdateProgressPayload(
+                progress = progress.coerceIn(0.0, 1.0),
+                artifactType = "archive",
+            ),
+        )
+    }
+
+    private fun createDiffProgressFiles(changedAssets: Map<String, ChangedAssetDescriptor>): MutableList<DiffProgressFileSnapshot> =
+        changedAssets.keys
+            .sorted()
+            .mapIndexed { order, path ->
+                DiffProgressFileSnapshot(
+                    path = path,
+                    status = "pending",
+                    progress = 0.0,
+                    order = order,
+                )
+            }.toMutableList()
+
+    private fun updateDiffProgressFile(
+        files: MutableList<DiffProgressFileSnapshot>,
+        assetPath: String,
+        status: String,
+        progress: Double,
+    ) {
+        val fileIndex = files.indexOfFirst { it.path == assetPath }
+        if (fileIndex == -1) {
+            return
+        }
+
+        files[fileIndex] =
+            files[fileIndex].copy(
+                status = status,
+                progress = progress.coerceIn(0.0, 1.0),
+            )
+    }
+
+    private fun calculateDiffOverallProgress(
+        phase: String,
+        files: List<DiffProgressFileSnapshot>,
+        manifestProgress: Double = 0.0,
+    ): Double {
+        val normalizedManifestProgress = manifestProgress.coerceIn(0.0, 1.0)
+        return when (phase) {
+            "manifest" -> {
+                normalizedManifestProgress * 0.15
+            }
+
+            "downloading" -> {
+                if (files.isEmpty()) {
+                    0.92
+                } else {
+                    val completedFilesCount = files.count { it.status == "downloaded" }
+                    val activeProgressUnits =
+                        files
+                            .filter { it.status == "downloading" }
+                            .sumOf { it.progress.coerceIn(0.0, 1.0) }
+                    (0.2 + ((completedFilesCount + activeProgressUnits) / files.size) * 0.72)
+                        .coerceIn(0.2, 0.92)
+                }
+            }
+
+            "finalizing" -> {
+                0.97
+            }
+
+            "completed" -> {
+                1.0
+            }
+
+            else -> {
+                0.0
+            }
+        }
+    }
+
+    private fun emitDiffProgress(
+        progressCallback: (UpdateProgressPayload) -> Unit,
+        phase: String,
+        files: List<DiffProgressFileSnapshot>,
+        manifestProgress: Double = 0.0,
+    ) {
+        progressCallback(
+            UpdateProgressPayload(
+                progress =
+                    calculateDiffOverallProgress(
+                        phase = phase,
+                        files = files,
+                        manifestProgress = manifestProgress,
+                    ),
+                artifactType = "diff",
+                details =
+                    DiffProgressDetails(
+                        totalFilesCount = files.size,
+                        completedFilesCount = files.count { it.status == "downloaded" },
+                        files = files.toList(),
+                    ),
+            ),
+        )
+    }
+
+    private fun resetDiffProgressFile(
+        files: MutableList<DiffProgressFileSnapshot>,
+        assetPath: String,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ) {
+        updateDiffProgressFile(
+            files = files,
+            assetPath = assetPath,
+            status = "pending",
+            progress = 0.0,
+        )
+        emitDiffProgress(
+            progressCallback = progressCallback,
+            phase = "downloading",
+            files = files,
+        )
+    }
+
+    private fun patchTempFile(
+        tempDir: File,
+        assetPath: String,
+    ): File {
+        val safeName = assetPath.replace("/", "__").replace("\\", "__")
+        val patchDir = File(tempDir, "patches")
+        patchDir.mkdirs()
+        return File(patchDir, "$safeName.bsdiff")
+    }
+
+    private suspend fun applyPatchAssetIfPossible(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        activeBundleDir: File?,
+        targetFile: File,
+        expectedHash: String,
+        tempDir: File,
+        diffFiles: MutableList<DiffProgressFileSnapshot>,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ): Boolean {
+        val patch = changedAsset.patch ?: return false
+        if (patch.algorithm != "bsdiff" || currentBundleId != patch.baseBundleId) {
+            return false
+        }
+
+        val sourceDir = activeBundleDir ?: return false
+        val sourceFile = File(sourceDir, assetPath)
+        if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, patch.baseFileHash)) {
+            return false
+        }
+
+        val patchFile = patchTempFile(tempDir, assetPath)
+
+        return try {
+            when (
+                val patchDownloadResult =
+                    downloadService.downloadFile(
+                        URL(patch.patchUrl),
+                        patchFile,
+                    ) { downloadProgress ->
+                        updateDiffProgressFile(
+                            files = diffFiles,
+                            assetPath = assetPath,
+                            status = "downloading",
+                            progress = downloadProgress,
+                        )
+                        emitDiffProgress(
+                            progressCallback = progressCallback,
+                            phase = "downloading",
+                            files = diffFiles,
+                        )
+                    }
+            ) {
+                is DownloadResult.Error -> {
+                    false
+                }
+
+                is DownloadResult.Success -> {
+                    if (!HashUtils.verifyHash(patchDownloadResult.file, patch.patchFileHash)) {
+                        false
+                    } else {
+                        BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        HashUtils.verifyHash(targetFile, expectedHash).also { patched ->
+                            if (patched) {
+                                Log.d(
+                                    TAG,
+                                    "HotUpdaterBsdiffPatchApplied asset=$assetPath baseBundleId=${patch.baseBundleId}",
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            patchFile.delete()
+            if (!targetFile.exists() || !HashUtils.verifyHash(targetFile, expectedHash)) {
+                targetFile.delete()
+            }
+        }.also { patched ->
+            if (!patched) {
+                resetDiffProgressFile(
+                    files = diffFiles,
+                    assetPath = assetPath,
+                    progressCallback = progressCallback,
+                )
+            }
+        }
+    }
+
+    private data class ParsedBundleManifest(
+        val bundleId: String,
+        val assets: Map<String, ParsedManifestAsset>,
+    )
+
+    private data class ParsedManifestAsset(
+        val fileHash: String,
+        val signature: String?,
+    )
 
     private data class ActiveBundleMetadataSnapshot(
         val activeBundleId: String,
@@ -379,6 +641,138 @@ class BundleFileStorageService(
             is org.json.JSONArray -> jsonArrayToList(value)
             else -> value
         }
+
+    private fun parseBundleManifestFromMap(manifest: Map<String, Any?>): ParsedBundleManifest? {
+        val manifestBundleId =
+            (manifest["bundleId"] as? String)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+        val assetsValue = manifest["assets"] as? Map<*, *> ?: return null
+        val assets = linkedMapOf<String, ParsedManifestAsset>()
+
+        for ((assetPath, assetValue) in assetsValue) {
+            if (assetPath !is String) {
+                return null
+            }
+
+            val assetMap = assetValue as? Map<*, *> ?: return null
+            val fileHash = assetMap["fileHash"] as? String ?: return null
+            val signature = assetMap["signature"] as? String
+            assets[assetPath] =
+                ParsedManifestAsset(
+                    fileHash = fileHash,
+                    signature = signature?.takeIf { it.isNotBlank() },
+                )
+        }
+
+        return ParsedBundleManifest(
+            bundleId = manifestBundleId,
+            assets = assets,
+        )
+    }
+
+    private fun parseBundleManifestFromFile(manifestFile: File): ParsedBundleManifest? {
+        if (!manifestFile.exists()) {
+            return null
+        }
+
+        return try {
+            val parsed = JSONObject(manifestFile.readText()).let(::jsonObjectToMap)
+            parseBundleManifestFromMap(parsed)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse manifest ${manifestFile.absolutePath}: ${e.message}")
+            null
+        }
+    }
+
+    private fun writeBundleManifestFile(
+        destination: File,
+        manifest: ParsedBundleManifest,
+    ) {
+        destination.parentFile?.mkdirs()
+        val assetsObject = JSONObject()
+
+        manifest.assets.toSortedMap().forEach { (assetPath, asset) ->
+            val assetObject = JSONObject().put("fileHash", asset.fileHash)
+            if (!asset.signature.isNullOrBlank()) {
+                assetObject.put("signature", asset.signature)
+            }
+            assetsObject.put(
+                assetPath,
+                assetObject,
+            )
+        }
+
+        val manifestObject =
+            JSONObject()
+                .put("bundleId", manifest.bundleId)
+                .put("assets", assetsObject)
+
+        destination.writeText("${manifestObject}\n")
+    }
+
+    private fun getActiveBundleDir(): File? {
+        val activeBundleId = getActiveBundleId() ?: return null
+        val bundleDir = File(getBundleStoreDir(), activeBundleId)
+        return bundleDir.takeIf { it.exists() }
+    }
+
+    private fun canUseManifestDrivenInstall(): Boolean {
+        val activeBundleDir = getActiveBundleDir() ?: return false
+        if (!activeBundleDir.exists()) {
+            return false
+        }
+
+        val currentManifest =
+            getActiveBundleMetadataSnapshot()
+                ?.manifest
+                ?.let(::parseBundleManifestFromMap) ?: return false
+
+        return currentManifest.assets.isNotEmpty()
+    }
+
+    private fun copyBundleFile(
+        source: File,
+        destination: File,
+    ) {
+        destination.parentFile?.mkdirs()
+        source.copyTo(destination, overwrite = true)
+    }
+
+    private fun verifyManifestAssetFile(
+        file: File,
+        asset: ParsedManifestAsset,
+    ) {
+        val actualHash =
+            HashUtils.calculateSHA256(file)
+                ?: throw SignatureVerificationException.FileReadFailed()
+
+        if (!actualHash.equals(asset.fileHash, ignoreCase = true)) {
+            throw SignatureVerificationException.FileHashMismatch()
+        }
+
+        if (!SignatureVerifier.isSigningEnabled(context)) {
+            return
+        }
+
+        val signature =
+            asset.signature
+                ?: throw SignatureVerificationException.InvalidSignatureFormat()
+
+        SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+    }
+
+    private fun verifyManifestAssetFileOrThrow(
+        file: File,
+        asset: ParsedManifestAsset,
+    ) {
+        try {
+            verifyManifestAssetFile(file, asset)
+        } catch (e: SignatureVerificationException) {
+            throw HotUpdaterException.signatureVerificationFailed(e)
+        }
+    }
 
     /**
      * Checks if isolationKey has changed and cleans up old bundles if needed.
@@ -639,11 +1033,14 @@ class BundleFileStorageService(
         bundleId: String,
         fileUrl: String?,
         fileHash: String?,
-        progressCallback: (Double) -> Unit,
+        manifestUrl: String?,
+        manifestFileHash: String?,
+        changedAssets: Map<String, ChangedAssetDescriptor>?,
+        progressCallback: (UpdateProgressPayload) -> Unit,
     ) {
         Log.d(
             TAG,
-            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash",
+            "updateBundle bundleId $bundleId fileUrl $fileUrl fileHash $fileHash manifestUrl $manifestUrl",
         )
 
         // If no URL is provided, reset to fallback and clean up all bundles
@@ -721,6 +1118,40 @@ class BundleFileStorageService(
             }
         }
 
+        val hasManifestDrivenArtifacts =
+            !manifestUrl.isNullOrEmpty() &&
+                !manifestFileHash.isNullOrEmpty() &&
+                changedAssets != null
+
+        if (hasManifestDrivenArtifacts && canUseManifestDrivenInstall()) {
+            try {
+                updateBundleFromManifest(
+                    bundleId = bundleId,
+                    manifestUrl = manifestUrl!!,
+                    manifestFileHash = manifestFileHash!!,
+                    changedAssets = changedAssets!!,
+                    bundleStoreDir = bundleStoreDir,
+                    finalBundleDir = finalBundleDir,
+                    progressCallback = progressCallback,
+                )
+                return
+            } catch (e: Exception) {
+                if (fileUrl.isNullOrEmpty()) {
+                    throw e
+                }
+                Log.w(
+                    TAG,
+                    "Manifest-driven install failed for $bundleId. Falling back to archive: ${e.message}",
+                    e,
+                )
+            }
+        } else if (hasManifestDrivenArtifacts) {
+            Log.d(
+                TAG,
+                "Skipping manifest-driven install for $bundleId because no active OTA manifest is available. Using archive.",
+            )
+        }
+
         val tempDirName = "bundle-temp"
         val tempDir = File(baseDir, tempDirName)
         if (tempDir.exists()) {
@@ -772,7 +1203,7 @@ class BundleFileStorageService(
                     },
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
-                    progressCallback(downloadProgress * 0.8)
+                    emitArchiveProgress(progressCallback, downloadProgress * 0.8)
                 }
 
             // Check for disk space error first before processing download result
@@ -827,7 +1258,10 @@ class BundleFileStorageService(
                             tmpDir.absolutePath,
                         ) { unzipProgress ->
                             // Map unzip progress (0.0 - 1.0) to overall progress (0.8 - 1.0)
-                            progressCallback(0.8 + (unzipProgress * 0.2))
+                            emitArchiveProgress(
+                                progressCallback,
+                                0.8 + (unzipProgress * 0.2),
+                            )
                         }
                     ) {
                         Log.d("BundleStorage", "Failed to extract archive into tmpDir.")
@@ -916,6 +1350,324 @@ class BundleFileStorageService(
     /**
      * Removes old bundles except for the specified bundle IDs, and any leftover .tmp directories
      */
+    private suspend fun updateBundleFromManifest(
+        bundleId: String,
+        manifestUrl: String,
+        manifestFileHash: String,
+        changedAssets: Map<String, ChangedAssetDescriptor>,
+        bundleStoreDir: File,
+        finalBundleDir: File,
+        progressCallback: (UpdateProgressPayload) -> Unit,
+    ) {
+        val activeBundleDir = getActiveBundleDir()
+        val currentBundleId = getBundleId()
+        val currentManifest =
+            getActiveBundleMetadataSnapshot()?.manifest?.let(::parseBundleManifestFromMap)
+        val baseDir =
+            fileSystem.getInternalFilesDir() ?: bundleStoreDir.parentFile ?: bundleStoreDir
+        val tempDir = File(baseDir, "bundle-manifest-temp")
+        val tmpDir = File(bundleStoreDir, "$bundleId.tmp")
+
+        if (tempDir.exists()) {
+            tempDir.deleteRecursively()
+        }
+        tempDir.mkdirs()
+
+        val diffFiles = createDiffProgressFiles(changedAssets)
+
+        try {
+            val manifestFile = File(tempDir, "manifest.json")
+            emitDiffProgress(
+                progressCallback = progressCallback,
+                phase = "manifest",
+                files = diffFiles,
+                manifestProgress = 0.0,
+            )
+            when (
+                val manifestDownloadResult =
+                    downloadService.downloadFile(
+                        URL(manifestUrl),
+                        manifestFile,
+                    ) { downloadProgress ->
+                        emitDiffProgress(
+                            progressCallback = progressCallback,
+                            phase = "manifest",
+                            files = diffFiles,
+                            manifestProgress = downloadProgress,
+                        )
+                    }
+            ) {
+                is DownloadResult.Error -> {
+                    if (manifestDownloadResult.exception is IncompleteDownloadException) {
+                        val incompleteEx =
+                            manifestDownloadResult.exception as IncompleteDownloadException
+                        throw HotUpdaterException.incompleteDownload(
+                            incompleteEx.expectedSize,
+                            incompleteEx.actualSize,
+                        )
+                    }
+                    throw HotUpdaterException.downloadFailed(manifestDownloadResult.exception)
+                }
+
+                is DownloadResult.Success -> {
+                    Unit
+                }
+            }
+
+            try {
+                SignatureVerifier.verifyBundle(context, manifestFile, manifestFileHash)
+            } catch (e: SignatureVerificationException) {
+                throw HotUpdaterException.signatureVerificationFailed(e)
+            }
+
+            val targetManifest = parseBundleManifestFromFile(manifestFile) ?: throw HotUpdaterException.invalidBundle()
+            if (targetManifest.bundleId != bundleId) {
+                throw HotUpdaterException.invalidBundle()
+            }
+            emitDiffProgress(
+                progressCallback = progressCallback,
+                phase = if (diffFiles.isEmpty()) "finalizing" else "downloading",
+                files = diffFiles,
+            )
+
+            if (tmpDir.exists()) {
+                tmpDir.deleteRecursively()
+            }
+            tmpDir.mkdirs()
+
+            val targetEntries = targetManifest.assets.entries.toList()
+            targetEntries.forEachIndexed { index, (assetPath, expectedAsset) ->
+                val expectedHash = expectedAsset.fileHash
+                val targetFile = File(tmpDir, assetPath)
+                val currentAsset = currentManifest?.assets?.get(assetPath)
+
+                if (currentAsset?.fileHash == expectedHash) {
+                    val sourceDir =
+                        activeBundleDir
+                            ?: throw HotUpdaterException.downloadFailed(
+                                IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
+                            )
+                    val sourceFile = File(sourceDir, assetPath)
+                    if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, expectedHash)) {
+                        throw HotUpdaterException.downloadFailed(
+                            IllegalStateException("Reusable asset missing or corrupted: $assetPath"),
+                        )
+                    }
+                    copyBundleFile(sourceFile, targetFile)
+                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+                    return@forEachIndexed
+                }
+
+                val changedAsset =
+                    changedAssets[assetPath]
+                        ?: run {
+                            updateDiffProgressFile(
+                                files = diffFiles,
+                                assetPath = assetPath,
+                                status = "failed",
+                                progress = 0.0,
+                            )
+                            emitDiffProgress(
+                                progressCallback = progressCallback,
+                                phase = "downloading",
+                                files = diffFiles,
+                            )
+                            throw HotUpdaterException.downloadFailed(
+                                IllegalStateException("Changed asset missing from update response: $assetPath"),
+                            )
+                        }
+
+                if (!changedAsset.fileHash.equals(expectedHash, ignoreCase = true)) {
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "failed",
+                        progress = 0.0,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase = "downloading",
+                        files = diffFiles,
+                    )
+                    throw HotUpdaterException.signatureVerificationFailed(
+                        SignatureVerificationException.FileHashMismatch(),
+                    )
+                }
+
+                val patched =
+                    applyPatchAssetIfPossible(
+                        assetPath = assetPath,
+                        changedAsset = changedAsset,
+                        currentBundleId = currentBundleId,
+                        activeBundleDir = activeBundleDir,
+                        targetFile = targetFile,
+                        expectedHash = expectedHash,
+                        tempDir = tempDir,
+                        diffFiles = diffFiles,
+                        progressCallback = progressCallback,
+                    )
+                if (patched) {
+                    verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
+                    updateDiffProgressFile(
+                        files = diffFiles,
+                        assetPath = assetPath,
+                        status = "downloaded",
+                        progress = 1.0,
+                    )
+                    emitDiffProgress(
+                        progressCallback = progressCallback,
+                        phase =
+                            if (diffFiles.all { it.status == "downloaded" }) {
+                                "finalizing"
+                            } else {
+                                "downloading"
+                            },
+                        files = diffFiles,
+                    )
+                    return@forEachIndexed
+                }
+
+                when (
+                    val assetDownloadResult =
+                        downloadService.downloadFile(
+                            URL(changedAsset.fileUrl),
+                            targetFile,
+                        ) { downloadProgress ->
+                            updateDiffProgressFile(
+                                files = diffFiles,
+                                assetPath = assetPath,
+                                status = "downloading",
+                                progress = downloadProgress,
+                            )
+                            emitDiffProgress(
+                                progressCallback = progressCallback,
+                                phase = "downloading",
+                                files = diffFiles,
+                            )
+                        }
+                ) {
+                    is DownloadResult.Error -> {
+                        updateDiffProgressFile(
+                            files = diffFiles,
+                            assetPath = assetPath,
+                            status = "failed",
+                            progress =
+                                diffFiles
+                                    .firstOrNull { it.path == assetPath }
+                                    ?.progress ?: 0.0,
+                        )
+                        emitDiffProgress(
+                            progressCallback = progressCallback,
+                            phase = "downloading",
+                            files = diffFiles,
+                        )
+                        if (assetDownloadResult.exception is IncompleteDownloadException) {
+                            val incompleteEx =
+                                assetDownloadResult.exception as IncompleteDownloadException
+                            throw HotUpdaterException.incompleteDownload(
+                                incompleteEx.expectedSize,
+                                incompleteEx.actualSize,
+                            )
+                        }
+                        throw HotUpdaterException.downloadFailed(assetDownloadResult.exception)
+                    }
+
+                    is DownloadResult.Success -> {
+                        try {
+                            verifyManifestAssetFileOrThrow(
+                                assetDownloadResult.file,
+                                expectedAsset,
+                            )
+                        } catch (e: HotUpdaterException) {
+                            updateDiffProgressFile(
+                                files = diffFiles,
+                                assetPath = assetPath,
+                                status = "failed",
+                                progress = 1.0,
+                            )
+                            emitDiffProgress(
+                                progressCallback = progressCallback,
+                                phase = "downloading",
+                                files = diffFiles,
+                            )
+                            throw e
+                        }
+                        updateDiffProgressFile(
+                            files = diffFiles,
+                            assetPath = assetPath,
+                            status = "downloaded",
+                            progress = 1.0,
+                        )
+                        emitDiffProgress(
+                            progressCallback = progressCallback,
+                            phase = if (diffFiles.all { it.status == "downloaded" }) "finalizing" else "downloading",
+                            files = diffFiles,
+                        )
+                    }
+                }
+            }
+
+            emitDiffProgress(
+                progressCallback = progressCallback,
+                phase = "finalizing",
+                files = diffFiles,
+            )
+
+            writeBundleManifestFile(File(tmpDir, "manifest.json"), targetManifest)
+
+            val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
+            if (extractedIndex == null) {
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            if (finalBundleDir.exists()) {
+                finalBundleDir.deleteRecursively()
+            }
+
+            val renamed = tmpDir.renameTo(finalBundleDir)
+            if (!renamed) {
+                if (!fileSystem.moveItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                    if (!fileSystem.copyItem(tmpDir.absolutePath, finalBundleDir.absolutePath)) {
+                        throw HotUpdaterException.moveOperationFailed()
+                    }
+                    tmpDir.deleteRecursively()
+                }
+            }
+
+            val finalIndexFile = finalBundleDir.walk().find { it.name == "index.android.bundle" }
+            if (finalIndexFile == null) {
+                finalBundleDir.deleteRecursively()
+                throw HotUpdaterException.invalidBundle()
+            }
+
+            finalBundleDir.setLastModified(System.currentTimeMillis())
+
+            val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
+            val updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
+            saveMetadata(updatedMetadata)
+            setBundleURL(finalIndexFile.absolutePath)
+
+            tempDir.deleteRecursively()
+            cleanupOldBundles(bundleStoreDir, updatedMetadata.stableBundleId, bundleId)
+            progressCallback(
+                UpdateProgressPayload(
+                    progress = 1.0,
+                    artifactType = "diff",
+                    details =
+                        DiffProgressDetails(
+                            totalFilesCount = diffFiles.size,
+                            completedFilesCount = diffFiles.count { it.status == "downloaded" },
+                            files = diffFiles.toList(),
+                        ),
+                ),
+            )
+        } catch (e: Exception) {
+            tempDir.deleteRecursively()
+            tmpDir.deleteRecursively()
+            throw e
+        }
+    }
+
     private fun cleanupOldBundles(
         bundleStoreDir: File,
         currentBundleId: String?,

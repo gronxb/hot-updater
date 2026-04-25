@@ -11,6 +11,8 @@ import type { HotUpdaterResolver, ResolverCheckUpdateParams } from "./types";
  * @returns A HotUpdaterResolver that uses the baseURL
  */
 export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
+  const normalizedBaseURL = baseURL.replace(/\/+$/, "");
+
   return {
     checkUpdate: async (
       params: ResolverCheckUpdateParams,
@@ -22,9 +24,9 @@ export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
         if (!params.fingerprintHash) {
           throw new Error("Fingerprint hash is required");
         }
-        url = `${baseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
+        url = `${normalizedBaseURL}/fingerprint/${params.platform}/${params.fingerprintHash}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
       } else {
-        url = `${baseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
+        url = `${normalizedBaseURL}/app-version/${params.platform}/${params.appVersion}/${params.channel}/${params.minBundleId}/${params.bundleId}${cohortPath}`;
       }
 
       return fetchUpdateInfo({

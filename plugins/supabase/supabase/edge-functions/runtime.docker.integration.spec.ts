@@ -16,7 +16,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -211,7 +214,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       );
     }
 
-    await waitForUrlOk(`${gatewayBaseUrl}/storage/v1/status`);
+    await waitForRestApiReady(gatewayBaseUrl, 180_000);
+    await waitForUrlOk(`${gatewayBaseUrl}/storage/v1/status`, 180_000);
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
@@ -280,7 +284,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       logs: edgeRuntime.logs,
       timeoutMs: 90_000,
     });
-  }, 180_000);
+  }, 300_000);
 
   beforeEach(async () => {
     if (!supabaseAdmin) {
@@ -328,16 +332,13 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   }, 60_000);
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    if (!supabaseAdmin) {
-      throw new Error("Supabase admin client was not initialized.");
-    }
-
+  const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
-      await uploadBundleObject(supabaseAdmin, bundle.id);
       await seedHotUpdater.insertBundle(bundle);
     }
+  };
 
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
@@ -345,7 +346,125 @@ describe.sequential("supabase edge runtime acceptance", () => {
     return (await response.json()) as any;
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    if (!supabaseAdmin) {
+      throw new Error("Supabase admin client was not initialized.");
+    }
+
+    for (const bundle of bundles) {
+      await uploadBundleObject(supabaseAdmin, bundle.id);
+    }
+    await seedRuntimeBundles(bundles);
+    return requestUpdateInfo(args);
+  };
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        await Promise.all([
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.currentBundleId}/manifest.json`,
+            JSON.stringify(fixture.currentManifest),
+            "application/json",
+          ),
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.nextBundleId}/manifest.json`,
+            JSON.stringify(fixture.nextManifest),
+            "application/json",
+          ),
+          uploadStorageObject(
+            supabaseAdmin,
+            `${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+            "next-bundle-bytes",
+            "application/javascript",
+          ),
+        ]);
+
+        return {
+          currentMetadata: {
+            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+            manifest_file_hash: "sig:manifest-current",
+            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextMetadata: {
+            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+            manifest_file_hash: "sig:manifest-next",
+            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toContain(
+          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toContain(
+          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        );
+      },
+    },
+  });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles: seedRuntimeBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      await Promise.all([
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          `${fixture.nextBundleId}/files/${fixture.assetPath}`,
+          "next-bundle-bytes",
+          "application/javascript",
+        ),
+        uploadStorageObject(
+          supabaseAdmin,
+          fixture.patchPath,
+          "patch-bytes",
+          "application/octet-stream",
+        ),
+        uploadBundleObject(supabaseAdmin, fixture.currentBundleId),
+        uploadBundleObject(supabaseAdmin, fixture.nextBundleId),
+      ]);
+
+      return {
+        currentMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+          manifest_file_hash: "sig:manifest-current",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextMetadata: {
+          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+          patch_base_bundle_id: fixture.currentBundleId,
+          hbc_patch_base_file_hash: "hash-old-bundle",
+          hbc_patch_file_hash: "hash-bsdiff",
+          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toContain(
+        `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.patchPath}`,
+      );
+    },
+  });
 
   it("serves canonical routes from the edge function entrypoint", async () => {
     const bundle = toRuntimeBundle({
@@ -451,6 +570,36 @@ const waitForUrlOk = async (url: string, timeoutMs = 90_000) => {
   throw new Error(`Timed out waiting for ${url}: ${lastError}`);
 };
 
+const waitForRestApiReady = async (baseUrl: string, timeoutMs = 90_000) => {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "no response";
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(
+        `${baseUrl}/rest/v1/bundles?select=id&limit=1`,
+        {
+          headers: {
+            apikey: SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          },
+        },
+      );
+      if (response.ok) {
+        return;
+      }
+
+      lastError = `${response.status} ${response.statusText}: ${await response.text()}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(500);
+  }
+
+  throw new Error(`Timed out waiting for PostgREST: ${lastError}`);
+};
+
 const sleep = async (ms: number) => {
   await new Promise((resolve) => setTimeout(resolve, ms));
 };
@@ -480,10 +629,24 @@ const uploadBundleObject = async (
   supabaseAdmin: ReturnType<typeof createClient>,
   bundleId: string,
 ) => {
+  await uploadStorageObject(
+    supabaseAdmin,
+    `${bundleId}/bundle.zip`,
+    Buffer.from("zip"),
+    "application/zip",
+  );
+};
+
+const uploadStorageObject = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  key: string,
+  body: string | Buffer,
+  contentType: string,
+) => {
   const { error } = await supabaseAdmin.storage
     .from(BUCKET_NAME)
-    .upload(`${bundleId}/bundle.zip`, Buffer.from("zip"), {
-      contentType: "application/zip",
+    .upload(key, body, {
+      contentType,
       cacheControl: "31536000",
       upsert: true,
     });

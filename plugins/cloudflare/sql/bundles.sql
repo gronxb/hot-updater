@@ -13,6 +13,13 @@ CREATE TABLE bundles (
     storage_uri TEXT,
     fingerprint_hash TEXT,
     metadata JSONB DEFAULT '{}',
+    manifest_storage_uri TEXT,
+    manifest_file_hash TEXT,
+    asset_base_storage_uri TEXT,
+    patch_base_bundle_id TEXT,
+    patch_base_file_hash TEXT,
+    patch_file_hash TEXT,
+    patch_storage_uri TEXT,
     rollout_cohort_count INTEGER DEFAULT 1000
       CHECK (rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000),
     target_cohorts TEXT
@@ -20,3 +27,4 @@ CREATE TABLE bundles (
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
+CREATE INDEX bundles_patch_base_bundle_id_idx ON bundles(patch_base_bundle_id);

@@ -1,5 +1,10 @@
 appId: ${APP_ID}
 ---
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: prepareAppLaunch
+      CONTROL_URL: ${CONTROL_URL}
 - launchApp
 - waitForAnimationToEnd:
     timeout: 3000

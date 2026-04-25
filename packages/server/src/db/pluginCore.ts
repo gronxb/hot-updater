@@ -18,6 +18,7 @@ import {
 } from "@hot-updater/plugin-core";
 
 import type { DatabaseAPI } from "./types";
+import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const PAGE_SIZE = 100;
 const DESC_ORDER = { field: "id", direction: "desc" } as const;
@@ -345,7 +346,35 @@ export function createPluginDatabaseCore<TContext = unknown>(
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      return { ...rest, fileUrl };
+      const baseResponse: AppUpdateInfo = { ...rest, fileUrl };
+
+      if (info.id === NIL_UUID) {
+        return baseResponse;
+      }
+
+      const targetBundle = await getPlugin().getBundleById(info.id, context);
+      try {
+        const currentBundle =
+          args.bundleId !== NIL_UUID
+            ? await getPlugin().getBundleById(args.bundleId, context)
+            : null;
+        const manifestArtifacts = await resolveManifestArtifacts({
+          currentBundle,
+          resolveFileUrl,
+          targetBundle,
+          context,
+        });
+        if (!manifestArtifacts) {
+          return baseResponse;
+        }
+
+        return {
+          ...baseResponse,
+          ...manifestArtifacts,
+        };
+      } catch {
+        return baseResponse;
+      }
     },
 
     async getChannels(
