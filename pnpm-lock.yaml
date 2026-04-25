@@ -49,6 +49,9 @@ importers:
       '@swc/helpers':
         specifier: ^0.5.17
         version: 0.5.17
+      deno-bin:
+        specifier: 2.2.7
+        version: 2.2.7
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -12235,6 +12238,10 @@ packages:
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
     engines: {node: '>=0.4.0'}
+
+  deno-bin@2.2.7:
+    resolution: {integrity: sha512-ANCqji3OqD0Voji5OtUElCFRhcp1Wt6d2LUMR+jlOXkIN/MqL8BgzHFMi3a5e8YnB7IEpxsR/O3Yd+wkQXcc9g==}
+    hasBin: true
 
   denodeify@1.2.1:
     resolution: {integrity: sha512-KNTihKNmQENUZeKu5fzfpzRqR5S2VMp4gl9RFHiWzj9DfvYQPMJ6XHKNaQxaGCXwPk6y9yme3aUoaiAe+KX+vg==}
@@ -35548,6 +35555,10 @@ snapshots:
       slash: 5.1.0
 
   delayed-stream@1.0.0: {}
+
+  deno-bin@2.2.7:
+    dependencies:
+      adm-zip: 0.5.16
 
   denodeify@1.2.1: {}
 
