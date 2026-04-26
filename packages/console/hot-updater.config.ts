@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import type { Bundle } from "@hot-updater/plugin-core";
 
@@ -12,17 +14,34 @@ type BundleSeed = Omit<Bundle, "storageUri"> &
     >
   >;
 
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
+
+const sha256 = (value: string) =>
+  createHash("sha256").update(value).digest("hex");
+
+const toSeedHash = (kind: string, value: string) => {
+  if (value.startsWith("sig:")) {
+    return value;
+  }
+
+  if (SHA256_HEX_RE.test(value)) {
+    return value.toLowerCase();
+  }
+
+  return sha256(`${kind}:${value}`);
+};
+
+const createReleaseRootUri = (bundleId: string) =>
+  `storage://my-app/releases/${bundleId}`;
+
 const createBundleUri = (bundleId: string) =>
-  `s3://hot-updater/mock/${bundleId}/bundle.zip`;
+  `${createReleaseRootUri(bundleId)}/bundle.zip`;
 
 const createManifestUri = (bundleId: string) =>
-  `s3://hot-updater/mock/${bundleId}/manifest.json`;
+  `${createReleaseRootUri(bundleId)}/manifest.json`;
 
 const createAssetBaseUri = (bundleId: string) =>
-  `s3://hot-updater/mock/${bundleId}/assets`;
-
-const createPatchUri = (bundleId: string, baseBundleId: string) =>
-  `s3://hot-updater/mock/${bundleId}/patches/${baseBundleId}.bsdiff`;
+  `${createReleaseRootUri(bundleId)}/files`;
 
 const createPatchArtifact = (
   bundleId: string,
@@ -31,22 +50,35 @@ const createPatchArtifact = (
 ): NonNullable<Bundle["patches"]>[number] => ({
   baseBundleId: baseBundle.id,
   baseFileHash: baseBundle.fileHash,
-  patchFileHash: `patch-${patchKey}`,
-  patchStorageUri: createPatchUri(bundleId, baseBundle.id),
+  patchFileHash: toSeedHash("patch", patchKey),
+  patchStorageUri:
+    `${createReleaseRootUri(bundleId)}/patches/${baseBundle.id}/` +
+    `index.${baseBundle.platform}.bundle.bsdiff`,
 });
 
-const createBundle = (bundle: BundleSeed): Bundle => ({
-  storageUri: createBundleUri(bundle.id),
-  manifestStorageUri: bundle.manifestStorageUri ?? createManifestUri(bundle.id),
-  manifestFileHash: bundle.manifestFileHash ?? `manifest-${bundle.fileHash}`,
-  assetBaseStorageUri:
-    bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
-  rolloutCohortCount: 1000,
-  targetCohorts: null,
-  patches: null,
-  metadata: undefined,
-  ...bundle,
-});
+const createBundle = (bundle: BundleSeed): Bundle => {
+  const fileHash = toSeedHash("file", bundle.fileHash);
+
+  return {
+    rolloutCohortCount: 1000,
+    targetCohorts: null,
+    patches: null,
+    metadata: undefined,
+    ...bundle,
+    storageUri: bundle.storageUri ?? createBundleUri(bundle.id),
+    manifestStorageUri:
+      bundle.manifestStorageUri ?? createManifestUri(bundle.id),
+    assetBaseStorageUri:
+      bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
+    fileHash,
+    manifestFileHash: bundle.manifestFileHash
+      ? toSeedHash("manifest", bundle.manifestFileHash)
+      : toSeedHash("manifest", bundle.id),
+    fingerprintHash: bundle.fingerprintHash
+      ? toSeedHash("fingerprint", bundle.fingerprintHash)
+      : null,
+  };
+};
 
 const iosProdCoreBase = createBundle({
   id: "01971f10-1aa1-7445-8b8c-010101010101",
