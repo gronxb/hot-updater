@@ -21,12 +21,18 @@ const HOT_UPDATER_MODELS = `model bundles {
 	  manifest_storage_uri String?
 	  manifest_file_hash   String?
 	  asset_base_storage_uri String?
-	  patch_base_bundle_id String?
-	  patch_base_file_hash String?
-	  patch_file_hash      String?
-	  patch_storage_uri    String?
 	  rollout_cohort_count Int    @default(1000)
 	  target_cohorts      Json?
+	}
+
+	model bundle_patches {
+	  id               String @id
+	  bundle_id        String
+	  base_bundle_id   String
+	  base_file_hash   String
+	  patch_file_hash  String
+	  patch_storage_uri String
+	  order_index      Int    @default(0)
 	}
 
 	model private_hot_updater_settings {
@@ -99,12 +105,17 @@ describe("prisma-schema-merger", () => {
 	  manifest_storage_uri String?
 	  manifest_file_hash String?
 	  asset_base_storage_uri String?
-	  patch_base_bundle_id String?
-	  patch_base_file_hash String?
-	  patch_file_hash String?
-	  patch_storage_uri String?
 	  rollout_cohort_count Int @default(1000)
 	  target_cohorts Json?
+	}
+	model bundle_patches {
+	  id String @id
+	  bundle_id String
+	  base_bundle_id String
+	  base_file_hash String
+	  patch_file_hash String
+	  patch_storage_uri String
+	  order_index Int @default(0)
 	}
 	model private_hot_updater_settings {
 	  key String @id
@@ -207,12 +218,18 @@ model bundles {
 	  manifest_storage_uri String?
 	  manifest_file_hash   String?
 	  asset_base_storage_uri String?
-	  patch_base_bundle_id String?
-	  patch_base_file_hash String?
-	  patch_file_hash      String?
-	  patch_storage_uri    String?
 	  rollout_cohort_count Int    @default(1000)
 	  target_cohorts      Json?
+	}
+
+	model bundle_patches {
+	  id                String @id
+	  bundle_id         String
+	  base_bundle_id    String
+	  base_file_hash    String
+	  patch_file_hash   String
+	  patch_storage_uri String
+	  order_index       Int    @default(0)
 	}
 
 	model private_hot_updater_settings {

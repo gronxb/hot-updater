@@ -1,7 +1,5 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
-  getAssetBaseStorageUri,
-  getManifestStorageUri,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -32,7 +30,6 @@ import {
   useUpdateBundleMutation,
 } from "@/lib/api";
 
-import { CreateBundleDiffDialog } from "./CreateBundleDiffDialog";
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
 import { PromoteChannelDialog } from "./PromoteChannelDialog";
 import { RolloutCohortsDialog } from "./RolloutCohortsDialog";
@@ -205,14 +202,10 @@ export function BundleEditorForm({
 }: BundleEditorFormProps) {
   const bundleDownloadUrlMutation = useBundleDownloadUrlMutation();
   const updateBundleMutation = useUpdateBundleMutation();
-  const [showCreateDiffDialog, setShowCreateDiffDialog] = useState(false);
   const [showPromoteDialog, setShowPromoteDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newCohort, setNewCohort] = useState("");
   const shouldEditTargetAppVersion = Boolean(bundle.targetAppVersion);
-  const canCreateDiff =
-    Boolean(getManifestStorageUri(bundle)) &&
-    Boolean(getAssetBaseStorageUri(bundle));
 
   const form = useForm({
     defaultValues: getDefaultValues(bundle),
@@ -553,16 +546,6 @@ export function BundleEditorForm({
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={() => setShowCreateDiffDialog(true)}
-          disabled={!canCreateDiff}
-        >
-          Create HBC Diff
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
           onClick={() => setShowPromoteDialog(true)}
           disabled={isSaving}
         >
@@ -590,12 +573,6 @@ export function BundleEditorForm({
           Delete Bundle
         </Button>
       </div>
-
-      <CreateBundleDiffDialog
-        bundle={bundle}
-        open={showCreateDiffDialog}
-        onOpenChange={setShowCreateDiffDialog}
-      />
 
       <PromoteChannelDialog
         bundle={bundle}

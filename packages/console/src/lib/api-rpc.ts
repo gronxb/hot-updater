@@ -44,11 +44,6 @@ type DeleteBundleInput = {
   bundleId: string;
 };
 
-type CreateBundleDiffInput = {
-  baseBundleId: string;
-  bundleId: string;
-};
-
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
   try {
@@ -315,27 +310,6 @@ export const deleteBundle = createServerFn({ method: "POST" })
       return { success: true };
     } catch (error) {
       console.error("Error during bundle deletion:", error);
-      throw error;
-    }
-  });
-
-export const createBundleDiff = createServerFn({ method: "POST" })
-  .inputValidator((input: CreateBundleDiffInput) => input)
-  .handler(async ({ data }) => {
-    try {
-      const { prepareConfig } = await import("./server/config.server");
-      const { createBundleDiff: createBundleDiffWithStorage } =
-        await import("./server/createBundleDiff");
-      const { databasePlugin, storagePlugin } = await prepareConfig();
-
-      const bundle = await createBundleDiffWithStorage(data, {
-        databasePlugin,
-        storagePlugin,
-      });
-
-      return { success: true, bundle };
-    } catch (error) {
-      console.error("Error during bundle diff creation:", error);
       throw error;
     }
   });

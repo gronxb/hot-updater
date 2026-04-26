@@ -2,10 +2,12 @@ import { Hono } from "hono";
 
 import {
   getJob,
+  handleAssertBundlePatchBases,
   handleAssertBsdiffPatchApplied,
   handleAssertCrashHistory,
   handleAssertFirstOtaUsesArchive,
   handleAssertLaunchReport,
+  handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleEnsureAppForeground,
@@ -14,6 +16,8 @@ import {
   handleCaptureState,
   handleCleanup,
   handleComputeRolloutSample,
+  handleReinstallBuiltInApp,
+  handleResetRemoteBundles,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
@@ -57,6 +61,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     marker?: string;
     message?: string;
     mode?: "crash" | "reset";
+    patchMaxBaseBundles?: number;
     rollout?: number;
     safeBundleIds?: string[];
     targetAppVersion?: string;
@@ -85,6 +90,17 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (!payload.targetAppVersion) {
     return c.json({ error: "targetAppVersion is required" }, 400);
   }
+  if (
+    payload.patchMaxBaseBundles !== undefined &&
+    (!Number.isInteger(payload.patchMaxBaseBundles) ||
+      payload.patchMaxBaseBundles < 1 ||
+      payload.patchMaxBaseBundles > 5)
+  ) {
+    return c.json(
+      { error: "patchMaxBaseBundles must be an integer between 1 and 5" },
+      400,
+    );
+  }
 
   return c.json({
     jobId: startDeployBundleJob({
@@ -96,6 +112,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       marker: payload.marker,
       message: payload.message,
       mode: payload.mode,
+      patchMaxBaseBundles: payload.patchMaxBaseBundles,
       rollout: payload.rollout,
       safeBundleIds: payload.safeBundleIds ?? [],
       targetAppVersion: payload.targetAppVersion,
@@ -206,6 +223,14 @@ app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
   return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
 });
 
+app.post("/e2e/reinstall-built-in-app", async (c) => {
+  return c.json(await handleReinstallBuiltInApp());
+});
+
+app.post("/e2e/reset-remote-bundles", async (c) => {
+  return c.json(await handleResetRemoteBundles());
+});
+
 app.post("/e2e/capture-state", async (c) => {
   const payload = (await c.req.json()) as { prefix?: string };
   if (!payload.prefix) {
@@ -213,6 +238,42 @@ app.post("/e2e/capture-state", async (c) => {
   }
 
   return c.json(await handleCaptureState(payload.prefix));
+});
+
+app.post("/e2e/assert-bundle-patch-bases", async (c) => {
+  const payload = (await c.req.json()) as {
+    absentBaseBundleIds?: string[];
+    bundleId?: string;
+    expectedBaseBundleIds?: string[];
+  };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertBundlePatchBases({
+      absentBaseBundleIds: payload.absentBaseBundleIds,
+      bundleId: payload.bundleId,
+      expectedBaseBundleIds: payload.expectedBaseBundleIds,
+    }),
+  );
+});
+
+app.post("/e2e/assert-manifest-diff-applied", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    previousBundleId?: string;
+  };
+  if (!payload.bundleId || !payload.previousBundleId) {
+    return c.json({ error: "bundleId and previousBundleId are required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertManifestDiffApplied({
+      bundleId: payload.bundleId,
+      previousBundleId: payload.previousBundleId,
+    }),
+  );
 });
 
 app.post("/e2e/assert-metadata-active", async (c) => {

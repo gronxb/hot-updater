@@ -1,27 +1,29 @@
-import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  getPatchBaseBundleId,
-  getPatchStorageUri,
-} from "@hot-updater/core";
+import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Fingerprint,
+  Package,
+  PanelRightOpen,
+} from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
+import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface BundleColumnsOptions {
-  depthByBundleId?: Record<string, number>;
   expandedBundleId?: string;
   onDetailClick: (bundle: Bundle) => void;
   onToggleExpand: (bundle: Bundle) => void;
@@ -29,19 +31,17 @@ interface BundleColumnsOptions {
 
 const columnHelper = createColumnHelper<Bundle>();
 
-const isPatchReady = (bundle: Bundle) =>
-  Boolean(getPatchBaseBundleId(bundle) && getPatchStorageUri(bundle));
-
 function BundleIdCell({
   bundle,
   expandedBundleId,
+  onDetailClick,
   onToggleExpand,
 }: {
   bundle: Bundle;
   expandedBundleId?: string;
+  onDetailClick: (bundle: Bundle) => void;
   onToggleExpand: (bundle: Bundle) => void;
 }) {
-  const hasDiffBase = Boolean(getPatchBaseBundleId(bundle));
   const isExpanded = bundle.id === expandedBundleId;
   const panelId = `bundle-lineage-panel-${bundle.id}`;
 
@@ -66,53 +66,32 @@ function BundleIdCell({
           <ChevronRight aria-hidden="true" />
         )}
       </Button>
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <BundleIdDisplay bundleId={bundle.id} />
-        {hasDiffBase ? <Badge variant="secondary">Patch</Badge> : null}
-      </div>
-    </div>
-  );
-}
-
-function DiffBaseCell({ bundle, depth }: { bundle: Bundle; depth: number }) {
-  const baseBundleId = getPatchBaseBundleId(bundle);
-  const patchReady = isPatchReady(bundle);
-
-  if (!baseBundleId) {
-    return (
-      <div className="flex min-w-[180px] items-center gap-2">
-        <Badge variant="outline">Root</Badge>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex min-w-[180px] items-center gap-2">
-      <BundleIdDisplay bundleId={baseBundleId} maxLength={18} />
-      {patchReady ? <Badge variant="secondary">bsdiff</Badge> : null}
-      {depth > 1 ? <Badge variant="outline">L{depth}</Badge> : null}
-    </div>
-  );
-}
-
-function StatusCell({ bundle }: { bundle: Bundle }) {
-  const patchReady = isPatchReady(bundle);
-
-  return (
-    <div className="flex min-w-[220px] flex-wrap gap-1.5">
-      <Badge variant={bundle.enabled ? "default" : "outline"}>
-        {bundle.enabled ? "Enabled" : "Disabled"}
-      </Badge>
-      <Badge variant={bundle.shouldForceUpdate ? "secondary" : "outline"}>
-        {bundle.shouldForceUpdate ? "Force Update" : "Optional"}
-      </Badge>
-      {patchReady ? <Badge variant="secondary">Hermes BSDIFF</Badge> : null}
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-col items-start rounded-sm text-left transition-colors",
+          "focus-visible:ring-ring/30 focus-visible:ring-[2px] outline-none",
+          "text-muted-foreground hover:text-foreground",
+        )}
+        aria-label={`Open details for bundle ${bundle.id}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDetailClick(bundle);
+        }}
+      >
+        <span className="min-w-0 text-foreground">
+          <BundleIdDisplay bundleId={bundle.id} fullOnMobile />
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium">
+          Open details
+          <PanelRightOpen className="h-3 w-3" />
+        </span>
+      </button>
     </div>
   );
 }
 
 export const createBundleColumns = ({
-  depthByBundleId = {},
   expandedBundleId,
   onDetailClick,
   onToggleExpand,
@@ -123,17 +102,8 @@ export const createBundleColumns = ({
       <BundleIdCell
         bundle={info.row.original}
         expandedBundleId={expandedBundleId}
+        onDetailClick={onDetailClick}
         onToggleExpand={onToggleExpand}
-      />
-    ),
-  }),
-  columnHelper.display({
-    id: "diffBase",
-    header: "Base",
-    cell: (info) => (
-      <DiffBaseCell
-        bundle={info.row.original}
-        depth={depthByBundleId[info.row.original.id] ?? 0}
       />
     ),
   }),
@@ -190,10 +160,15 @@ export const createBundleColumns = ({
       return <span className="text-sm text-muted-foreground">-</span>;
     },
   }),
-  columnHelper.display({
-    id: "status",
-    header: "Status",
-    cell: (info) => <StatusCell bundle={info.row.original} />,
+  columnHelper.accessor("enabled", {
+    header: "Enabled",
+    cell: (info) => <EnabledStatusIcon enabled={info.getValue()} />,
+  }),
+  columnHelper.accessor("shouldForceUpdate", {
+    header: "Force Update",
+    cell: (info) => (
+      <EnabledStatusIcon enabled={info.getValue()} falseIcon="minus" />
+    ),
   }),
   columnHelper.accessor("rolloutCohortCount", {
     header: "Rollout",
@@ -205,29 +180,17 @@ export const createBundleColumns = ({
       return <RolloutPercentageBadge percentage={percentage} />;
     },
   }),
+  columnHelper.accessor("message", {
+    header: "Message",
+    cell: (info) => (
+      <span className="text-sm text-muted-foreground">
+        {info.getValue() || "-"}
+      </span>
+    ),
+  }),
   columnHelper.accessor("id", {
     id: "created",
     header: "Created",
     cell: (info) => <TimestampDisplay uuid={info.getValue()} />,
-  }),
-  columnHelper.display({
-    id: "detail",
-    header: "Detail",
-    cell: (info) => (
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="touch-manipulation"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDetailClick(info.row.original);
-          }}
-        >
-          Detail
-        </Button>
-      </div>
-    ),
   }),
 ];

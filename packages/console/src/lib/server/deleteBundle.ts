@@ -1,5 +1,6 @@
 import {
   getAssetBaseStorageUri,
+  getBundlePatches,
   getManifestStorageUri,
   getPatchStorageUri,
 } from "@hot-updater/core";
@@ -102,6 +103,7 @@ export async function deleteBundle(
     getManifestStorageUri(bundle),
     getAssetBaseStorageUri(bundle),
     getPatchStorageUri(bundle),
+    ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of cleanupCandidates) {
@@ -129,6 +131,9 @@ export async function deleteBundle(
   addCleanupUri(bundle.storageUri);
   addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
   addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
+  for (const patch of getBundlePatches(bundle)) {
+    addCleanupUri(patch.patchStorageUri);
+  }
 
   const manifestStorageUri = getManifestStorageUri(bundle);
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);

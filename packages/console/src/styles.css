@@ -20,6 +20,7 @@ code {
 }
 
 :root {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.147 0.004 49.25);
   --card: oklch(1 0 0);
@@ -55,6 +56,7 @@ code {
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.147 0.004 49.25);
   --foreground: oklch(0.985 0.001 106.423);
   --card: oklch(0.216 0.006 56.043);
@@ -139,5 +141,10 @@ code {
   }
   html {
     @apply font-sans;
+  }
+  html,
+  body {
+    min-height: 100%;
+    background-color: var(--background);
   }
 }

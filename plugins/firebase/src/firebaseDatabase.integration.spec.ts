@@ -105,6 +105,7 @@ describe("firebaseDatabase plugin", () => {
       patchBaseFileHash: null,
       patchFileHash: null,
       patchStorageUri: null,
+      patches: [],
       rolloutCohortCount: 1000,
       targetCohorts: null,
     });

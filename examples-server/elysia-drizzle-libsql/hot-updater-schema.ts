@@ -16,12 +16,18 @@ export const bundles = sqliteTable("bundles", {
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri"),
-  patch_base_bundle_id: text("patch_base_bundle_id"),
-  patch_base_file_hash: text("patch_base_file_hash"),
-  patch_file_hash: text("patch_file_hash"),
-  patch_storage_uri: text("patch_storage_uri"),
   rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
   target_cohorts: blob("target_cohorts", { mode: "json" })
+})
+
+export const bundle_patches = sqliteTable("bundle_patches", {
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  bundle_id: text("bundle_id").notNull(),
+  base_bundle_id: text("base_bundle_id").notNull(),
+  base_file_hash: text("base_file_hash").notNull(),
+  patch_file_hash: text("patch_file_hash").notNull(),
+  patch_storage_uri: text("patch_storage_uri").notNull(),
+  order_index: integer("order_index").notNull().default(0)
 })
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {

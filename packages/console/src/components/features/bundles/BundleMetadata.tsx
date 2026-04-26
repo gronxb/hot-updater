@@ -17,9 +17,9 @@ interface BundleMetadataProps {
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <span className="text-muted-foreground">{label}</span>
-      <div className="min-w-0 text-right text-sm">{value}</div>
+      <div className="min-w-0 text-left text-sm sm:text-right">{value}</div>
     </div>
   );
 }
@@ -86,7 +86,7 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
                   href={gitCommitUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-end gap-1 font-mono text-xs text-primary hover:underline"
+                  className="flex items-center justify-start gap-1 font-mono text-xs text-primary hover:underline sm:justify-end"
                 >
                   <span translate="no">{bundle.gitCommitHash.slice(0, 8)}</span>
                   <ExternalLink aria-hidden="true" className="h-3 w-3" />
@@ -115,7 +115,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Patch Base"
             value={
-              <BundleIdDisplay bundleId={patchBaseBundleId} maxLength={18} />
+              <BundleIdDisplay
+                bundleId={patchBaseBundleId}
+                maxLength={18}
+                fullOnMobile
+              />
             }
           />
         ) : null}

@@ -2208,7 +2208,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 22e2265d86a4e871e5e858f4e7ef1c8d01103680
   ReactCodegen: 1414e414993c0c325ab86eddafa661100d7e4a8c
   ReactCommon: a804bb8d1dcf3ecdec3a77eb8bba19b7863bbbdb
-  ReactNativeDependencies: 33408f48006aca1d0fe30c95fa23f9a56f612253
+  ReactNativeDependencies: 9807d528532ae6e34ea215759a3f98f511a7a708
   RNBootSplash: babee2ef72807044d765c75e651896f0ce15a996
   SwiftyRSA: 8c6dd1ea7db1b8dc4fb517a202f88bb1354bc2c6
   Yoga: 04bb4bfeb02c0000b940c1e6e89e856cd8de5a71
