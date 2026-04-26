@@ -180,7 +180,6 @@ switch (ACTION) {
   case "deployBundle": {
     const outputKey = OUTPUT_KEY || "bundleId";
     const result = startJob("/e2e/jobs/deploy-bundle", {
-      autoPatch: maybeBoolean(AUTO_PATCH),
       bundleProfile: BUNDLE_PROFILE || undefined,
       channel: CHANNEL,
       disabled: maybeBoolean(DISABLED),

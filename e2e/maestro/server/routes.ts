@@ -53,7 +53,6 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    autoPatch?: boolean;
     bundleProfile?: "archive300mb" | "default";
     channel?: string;
     disabled?: boolean;
@@ -105,7 +104,6 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
 
   return c.json({
     jobId: startDeployBundleJob({
-      autoPatch: payload.autoPatch,
       bundleProfile: payload.bundleProfile,
       channel: payload.channel,
       disabled: payload.disabled,

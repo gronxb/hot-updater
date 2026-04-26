@@ -112,7 +112,6 @@ onFlowComplete:
     file: ../scripts/control.js
     env:
       ACTION: deployBundle
-      AUTO_PATCH: "true"
       CHANNEL: ${PATCH_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
       DIFF_BASE_BUNDLE_ID: ${output.phase1A}
@@ -293,7 +292,6 @@ onFlowComplete:
     file: ../scripts/control.js
     env:
       ACTION: deployBundle
-      AUTO_PATCH: "true"
       CHANNEL: ${PATCH_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
       DIFF_BASE_BUNDLE_ID: ${output.phase2B}
@@ -447,7 +445,6 @@ onFlowComplete:
     file: ../scripts/control.js
     env:
       ACTION: deployBundle
-      AUTO_PATCH: "true"
       CHANNEL: ${PATCH_CHANNEL}
       CONTROL_URL: ${CONTROL_URL}
       MARKER: ${PHASE3_C_MARKER}

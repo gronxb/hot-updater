@@ -73,7 +73,6 @@ type SessionState = {
 };
 
 type DeployBundleRequest = {
-  autoPatch?: boolean;
   bundleProfile?: BundleProfile;
   channel: string;
   disabled?: boolean;
@@ -755,10 +754,10 @@ async function applyAppScenario({
 }
 
 async function applyDeployConfig({
-  autoPatch,
+  patchEnabled,
   patchMaxBaseBundles,
 }: {
-  autoPatch: boolean;
+  patchEnabled: boolean;
   patchMaxBaseBundles?: number;
 }) {
   const source = await fsPromises.readFile(session.configSourceFile, "utf8");
@@ -769,7 +768,7 @@ async function applyDeployConfig({
     );
   }
 
-  const autoPatchSource = autoPatch
+  const autoPatchSource = patchEnabled
     ? [
         AUTO_PATCH_CONFIG_GUARD_START,
         "  patch: {",
@@ -787,7 +786,7 @@ async function applyDeployConfig({
     source.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logE2e("deploy config applied", {
-    autoPatch,
+    patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
     sourceFile: path.relative(REPO_DIR, session.configSourceFile),
   });
@@ -1080,108 +1079,13 @@ function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
   }
 }
 
-async function createBundlePatchArtifact(
-  baseBundleId: string,
-  bundleId: string,
-  channel: string,
-) {
-  const patchLogPath = path.join(
-    session.resultsDir,
-    `patch-${channel}-${baseBundleId.slice(0, 8)}-${bundleId.slice(0, 8)}.log`,
-  );
-  const args = [
-    HOT_UPDATER_CLI_PATH,
-    "patch",
-    "--base-bundle-id",
-    baseBundleId,
-    "-b",
-    bundleId,
-    "-p",
-    session.platform,
-    "-c",
-    channel,
-  ];
-
-  logE2e("patch start", {
-    baseBundleId,
-    bundleId,
-    channel,
-    command: `node ${args.join(" ")}`,
-    logPath: path.relative(REPO_DIR, patchLogPath),
-    platform: session.platform,
-  });
-  await runLogged("node", args, {
-    cwd: session.exampleDir,
-    logPath: patchLogPath,
-  });
-
-  const bundle = await fetchBundleById(bundleId);
-  const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
-  const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
-  const patchBaseFileHash = bundle ? getPatchBaseFileHash(bundle) : null;
-  const patchFileHash = bundle ? getPatchFileHash(bundle) : null;
-  const patchStorageUri = bundle ? getPatchStorageUri(bundle) : null;
-  const assetBaseStorageUri = bundle ? getAssetBaseStorageUri(bundle) : null;
-
-  if (
-    bundle?.id !== bundleId ||
-    patchBaseBundleId !== baseBundleId ||
-    !patchAssetPath ||
-    !patchBaseFileHash ||
-    !patchFileHash ||
-    !patchStorageUri ||
-    !assetBaseStorageUri
-  ) {
-    throw createEndpointError(
-      `Failed to create valid bsdiff patch metadata for bundle ${bundleId}`,
-      {
-        baseBundleId,
-        bundleId,
-        observed: {
-          bundleId: bundle?.id ?? null,
-          patchAssetPath,
-          patchBaseBundleId,
-          patchBaseFileHash,
-          patchFileHash,
-          patchStorageUri,
-          assetBaseStorageUri,
-        },
-      },
-    );
-  }
-
-  const disabledFullAssetBaseStorageUri =
-    createDisabledFullAssetBaseStorageUri(assetBaseStorageUri);
-  await patchBundle(bundleId, {
-    assetBaseStorageUri: disabledFullAssetBaseStorageUri,
-  });
-
-  logE2e("patch done", {
-    baseBundleId,
-    bundleId,
-    channel,
-    disabledFullAssetBaseStorageUri,
-    patchAssetPath,
-    patchBaseBundleId,
-    patchLogPath: path.relative(REPO_DIR, patchLogPath),
-    patchStorageUri,
-  });
-
-  return {
-    assetBaseStorageUri,
-    baseBundleId,
-    disabledFullAssetBaseStorageUri,
-    patchAssetPath,
-  };
-}
-
 async function resolveAutoPatchBundleDiff(
   baseBundleId: string,
   bundleId: string,
 ) {
   const bundle = await fetchBundleById(bundleId);
-  const matchingPatch = getBundlePatch(bundle, baseBundleId);
   const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
+  const matchingPatch = getBundlePatch(bundle, baseBundleId);
   const patchBaseBundleId =
     matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
   const patchBaseFileHash =
@@ -2634,13 +2538,16 @@ async function captureBuiltInBundleId() {
 
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
+  const patchEnabled =
+    request.diffBaseBundleId !== undefined ||
+    request.patchMaxBaseBundles !== undefined;
 
   if (bundleProfile === "archive300mb") {
     await ensureLargeArchiveAsset();
   }
 
   await applyDeployConfig({
-    autoPatch: request.autoPatch ?? false,
+    patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
   });
   await applyAppScenario({
@@ -2750,13 +2657,7 @@ async function deployBundle(request: DeployBundleRequest) {
 
   const diff =
     request.diffBaseBundleId !== undefined
-      ? request.autoPatch
-        ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
-        : await createBundlePatchArtifact(
-            request.diffBaseBundleId,
-            bundleId,
-            request.channel,
-          )
+      ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
       : null;
   const bundle = await fetchBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
