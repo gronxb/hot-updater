@@ -1,10 +1,11 @@
+import { cn } from "@/lib/utils";
+
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "./ui/tooltip";
-import { cn } from "@/lib/utils";
 
 interface BundleIdDisplayProps {
   bundleId: string;

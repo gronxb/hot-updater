@@ -78,7 +78,7 @@ function BundleIdCell({
           event.stopPropagation();
           onDetailClick(bundle);
         }}
-        >
+      >
         <span className="min-w-0 text-foreground">
           <BundleIdDisplay bundleId={bundle.id} fullOnMobile />
         </span>
