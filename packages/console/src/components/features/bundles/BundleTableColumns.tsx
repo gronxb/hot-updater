@@ -78,9 +78,9 @@ function BundleIdCell({
           event.stopPropagation();
           onDetailClick(bundle);
         }}
-      >
+        >
         <span className="min-w-0 text-foreground">
-          <BundleIdDisplay bundleId={bundle.id} />
+          <BundleIdDisplay bundleId={bundle.id} fullOnMobile />
         </span>
         <span className="inline-flex items-center gap-1 text-[11px] font-medium">
           Open details

@@ -19,10 +19,10 @@ export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-start gap-2">
         <span className="font-medium text-muted-foreground">Bundle</span>
-        <span className="min-w-0">
-          <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
+        <span className="min-w-0 basis-full sm:basis-auto">
+          <BundleIdDisplay bundleId={bundle.id} maxLength={18} fullOnMobile />
         </span>
       </div>
 

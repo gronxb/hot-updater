@@ -186,6 +186,7 @@ export function BundlesTable({
                             <BundleIdDisplay
                               bundleId={bundle.id}
                               maxLength={18}
+                              fullOnMobile
                             />
                           </div>
                         </div>

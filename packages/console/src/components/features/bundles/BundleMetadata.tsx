@@ -86,7 +86,7 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
                   href={gitCommitUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-end gap-1 font-mono text-xs text-primary hover:underline"
+                  className="flex items-center justify-start gap-1 font-mono text-xs text-primary hover:underline sm:justify-end"
                 >
                   <span translate="no">{bundle.gitCommitHash.slice(0, 8)}</span>
                   <ExternalLink aria-hidden="true" className="h-3 w-3" />
@@ -115,7 +115,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Patch Base"
             value={
-              <BundleIdDisplay bundleId={patchBaseBundleId} maxLength={18} />
+              <BundleIdDisplay
+                bundleId={patchBaseBundleId}
+                maxLength={18}
+                fullOnMobile
+              />
             }
           />
         ) : null}
