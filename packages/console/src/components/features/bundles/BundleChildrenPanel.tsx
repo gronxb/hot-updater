@@ -38,9 +38,9 @@ export function BundleChildrenPanel({
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-sm">
+          <div className="flex min-w-0 items-start gap-2 text-sm sm:items-center">
             <span className="text-muted-foreground">Base bundle</span>
-            <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
+            <BundleIdDisplay bundleId={bundle.id} maxLength={18} fullOnMobile />
           </div>
           <Badge variant="outline">
             {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
@@ -77,18 +77,21 @@ export function BundleChildrenPanel({
                         <BundleIdDisplay
                           bundleId={childBundle.id}
                           maxLength={18}
+                          fullOnMobile
                         />
                       </TableCell>
                       <TableCell>
-                        <div className="flex min-w-[280px] items-center gap-2">
+                        <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
                           <BundleIdDisplay
                             bundleId={bundle.id}
                             maxLength={12}
+                            fullOnMobile
                           />
-                          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
                           <BundleIdDisplay
                             bundleId={childBundle.id}
                             maxLength={12}
+                            fullOnMobile
                           />
                         </div>
                       </TableCell>

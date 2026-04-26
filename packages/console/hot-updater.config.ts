@@ -56,13 +56,22 @@ const createPatchArtifact = (
     `index.${baseBundle.platform}.bundle.bsdiff`,
 });
 
+const normalizePatchArtifact = (
+  patch: NonNullable<Bundle["patches"]>[number],
+): NonNullable<Bundle["patches"]>[number] => ({
+  ...patch,
+  baseFileHash: toSeedHash("file", patch.baseFileHash),
+  patchFileHash: toSeedHash("patch", patch.patchFileHash),
+});
+
 const createBundle = (bundle: BundleSeed): Bundle => {
   const fileHash = toSeedHash("file", bundle.fileHash);
+  const patches = bundle.patches?.map(normalizePatchArtifact) ?? null;
+  const primaryPatch = patches?.[0] ?? null;
 
   return {
     rolloutCohortCount: 1000,
     targetCohorts: null,
-    patches: null,
     metadata: undefined,
     ...bundle,
     storageUri: bundle.storageUri ?? createBundleUri(bundle.id),
@@ -70,6 +79,17 @@ const createBundle = (bundle: BundleSeed): Bundle => {
       bundle.manifestStorageUri ?? createManifestUri(bundle.id),
     assetBaseStorageUri:
       bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
+    patches,
+    patchBaseBundleId:
+      bundle.patchBaseBundleId ?? primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: bundle.patchBaseFileHash
+      ? toSeedHash("file", bundle.patchBaseFileHash)
+      : (primaryPatch?.baseFileHash ?? null),
+    patchFileHash: bundle.patchFileHash
+      ? toSeedHash("patch", bundle.patchFileHash)
+      : (primaryPatch?.patchFileHash ?? null),
+    patchStorageUri:
+      bundle.patchStorageUri ?? primaryPatch?.patchStorageUri ?? null,
     fileHash,
     manifestFileHash: bundle.manifestFileHash
       ? toSeedHash("manifest", bundle.manifestFileHash)
