@@ -1,4 +1,3 @@
-import { getPatchBaseBundleId } from "@hot-updater/core";
 import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
 import {
   flexRender,
@@ -49,40 +48,10 @@ export function BundlesTable({
 }: BundlesTableProps) {
   const { setFilters } = useFilterParams();
   const cursorPagination = pagination as CursorPaginationInfo | undefined;
-  const bundleMap = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-  const depthByBundleId: Record<string, number> = {};
   const { data: childBundles = [], isLoading: isChildBundlesLoading } =
     useBundleChildrenQuery(expandedBundleId ?? "");
 
-  const getDepth = (bundleId: string, stack = new Set<string>()): number => {
-    if (depthByBundleId[bundleId] !== undefined) {
-      return depthByBundleId[bundleId];
-    }
-
-    if (stack.has(bundleId)) {
-      depthByBundleId[bundleId] = 0;
-      return 0;
-    }
-
-    const bundle = bundleMap.get(bundleId);
-    const baseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
-    if (!bundle || !baseBundleId || !bundleMap.has(baseBundleId)) {
-      depthByBundleId[bundleId] = 0;
-      return 0;
-    }
-
-    const nextStack = new Set(stack);
-    nextStack.add(bundleId);
-    depthByBundleId[bundleId] = getDepth(baseBundleId, nextStack) + 1;
-    return depthByBundleId[bundleId];
-  };
-
-  for (const bundle of bundles) {
-    getDepth(bundle.id);
-  }
-
   const bundleColumns = createBundleColumns({
-    depthByBundleId,
     expandedBundleId,
     onDetailClick,
     onToggleExpand: (bundle) =>
