@@ -29,8 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useFilterParams } from "@/hooks/useFilterParams";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useFilterParams } from "@/hooks/useFilterParams";
 import { useBundleChildrenQuery } from "@/lib/api";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -184,7 +184,9 @@ export function BundlesTable({
                           <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
                             Rollout
                           </div>
-                          <RolloutPercentageBadge percentage={rolloutPercentage} />
+                          <RolloutPercentageBadge
+                            percentage={rolloutPercentage}
+                          />
                         </div>
                         <div className="rounded-md bg-muted/40 p-3">
                           <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
@@ -256,10 +258,7 @@ export function BundlesTable({
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4" aria-hidden="true" />
                         ) : (
-                          <ChevronDown
-                            className="h-4 w-4"
-                            aria-hidden="true"
-                          />
+                          <ChevronDown className="h-4 w-4" aria-hidden="true" />
                         )}
                       </Button>
                     </div>
