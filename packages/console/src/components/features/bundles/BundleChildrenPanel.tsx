@@ -31,7 +31,11 @@ export function BundleChildrenPanel({
   onDetailClick,
 }: BundleChildrenPanelProps) {
   return (
-    <div id={panelId} className="border-t bg-muted/10 p-4" aria-live="polite">
+    <div
+      id={panelId}
+      className="border-t bg-muted/10 p-3 sm:p-4"
+      aria-live="polite"
+    >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2 text-sm">
@@ -53,7 +57,7 @@ export function BundleChildrenPanel({
             <div className="text-xs font-semibold uppercase text-muted-foreground/70">
               Patch bundles from this base
             </div>
-            <div className="overflow-hidden rounded-md border bg-background">
+            <div className="overflow-x-auto rounded-md border bg-background">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">

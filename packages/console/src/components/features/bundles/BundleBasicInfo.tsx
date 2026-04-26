@@ -19,19 +19,21 @@ export function BundleBasicInfo({ bundle }: BundleBasicInfoProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-muted-foreground">Bundle</span>
-        <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
+        <span className="min-w-0">
+          <BundleIdDisplay bundleId={bundle.id} maxLength={18} />
+        </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-muted-foreground">Channel</span>
         <span className="text-xs text-foreground" translate="no">
           {bundle.channel}
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-muted-foreground">Platform</span>
         <span className="text-xs text-foreground">
           {bundle.platform === "ios" ? "iOS" : "Android"}

@@ -17,9 +17,9 @@ interface BundleMetadataProps {
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <span className="text-muted-foreground">{label}</span>
-      <div className="min-w-0 text-right text-sm">{value}</div>
+      <div className="min-w-0 text-left text-sm sm:text-right">{value}</div>
     </div>
   );
 }
