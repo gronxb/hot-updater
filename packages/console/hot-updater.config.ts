@@ -1,119 +1,591 @@
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import type { Bundle } from "@hot-updater/plugin-core";
 
+type BundleSeed = Omit<Bundle, "storageUri"> &
+  Partial<
+    Pick<
+      Bundle,
+      | "storageUri"
+      | "manifestStorageUri"
+      | "manifestFileHash"
+      | "assetBaseStorageUri"
+    >
+  >;
+
+const createBundleUri = (bundleId: string) =>
+  `s3://hot-updater/mock/${bundleId}/bundle.zip`;
+
+const createManifestUri = (bundleId: string) =>
+  `s3://hot-updater/mock/${bundleId}/manifest.json`;
+
+const createAssetBaseUri = (bundleId: string) =>
+  `s3://hot-updater/mock/${bundleId}/assets`;
+
+const createPatchUri = (bundleId: string, baseBundleId: string) =>
+  `s3://hot-updater/mock/${bundleId}/patches/${baseBundleId}.bsdiff`;
+
+const createPatchArtifact = (
+  bundleId: string,
+  baseBundle: Bundle,
+  patchKey: string,
+): NonNullable<Bundle["patches"]>[number] => ({
+  baseBundleId: baseBundle.id,
+  baseFileHash: baseBundle.fileHash,
+  patchFileHash: `patch-${patchKey}`,
+  patchStorageUri: createPatchUri(bundleId, baseBundle.id),
+});
+
+const createBundle = (bundle: BundleSeed): Bundle => ({
+  storageUri: createBundleUri(bundle.id),
+  manifestStorageUri: bundle.manifestStorageUri ?? createManifestUri(bundle.id),
+  manifestFileHash: bundle.manifestFileHash ?? `manifest-${bundle.fileHash}`,
+  assetBaseStorageUri:
+    bundle.assetBaseStorageUri ?? createAssetBaseUri(bundle.id),
+  rolloutCohortCount: 1000,
+  targetCohorts: null,
+  patches: null,
+  metadata: undefined,
+  ...bundle,
+});
+
+const iosProdCoreBase = createBundle({
+  id: "01971f10-1aa1-7445-8b8c-010101010101",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-core-1400",
+  gitCommitHash: "9c12ab40",
+  platform: "ios",
+  targetAppVersion: "1.4.x",
+  message: "iOS 1.4 baseline with startup and navigation fixes",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+});
+
+const iosProdPaymentsBase = createBundle({
+  id: "01971f20-1aa1-7445-8b8c-020202020202",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-payments-1400",
+  gitCommitHash: "7f3412ac",
+  platform: "ios",
+  targetAppVersion: ">=1.4.0 <2.0.0",
+  message: "Payments baseline with refreshed receipt screens",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+});
+
+const androidProdBase = createBundle({
+  id: "01971f30-1aa1-7445-8b8c-030303030303",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-prod-core-1320",
+  gitCommitHash: "cf8302de",
+  platform: "android",
+  targetAppVersion: "1.3.x",
+  message: "Android production baseline for 1.3.x",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+});
+
+const iosStagingBase = createBundle({
+  id: "01971f40-1aa1-7445-8b8c-040404040404",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-staging-1500",
+  gitCommitHash: "ad4e71b2",
+  platform: "ios",
+  targetAppVersion: "1.5.x",
+  message: "Staging baseline for the iOS 1.5 train",
+  channel: "staging",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+});
+
+const androidStagingVisionBase = createBundle({
+  id: "01971f50-1aa1-7445-8b8c-050505050505",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-staging-vision",
+  gitCommitHash: "3bf7aa12",
+  platform: "android",
+  targetAppVersion: null,
+  message: "Fingerprint cohort for the camera rewrite",
+  channel: "staging",
+  fingerprintHash: "fp-android-camera-v2",
+  rolloutCohortCount: 200,
+  targetCohorts: ["qa-android", "camera-lab"],
+});
+
+const iosDevBase = createBundle({
+  id: "01971f60-1aa1-7445-8b8c-060606060606",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-dev-navigation",
+  gitCommitHash: "11da82ff",
+  platform: "ios",
+  targetAppVersion: "1.6.x",
+  message: "Development baseline for navigation experiments",
+  channel: "dev",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+});
+
+const androidDevBase = createBundle({
+  id: "01971f70-1aa1-7445-8b8c-070707070707",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-dev-feed",
+  gitCommitHash: "6e20c1da",
+  platform: "android",
+  targetAppVersion: null,
+  message: "Development baseline for feed rendering work",
+  channel: "dev",
+  fingerprintHash: "fp-android-feed-dev",
+  rolloutCohortCount: 300,
+  targetCohorts: ["dev-team"],
+});
+
+const androidBetaBase = createBundle({
+  id: "01971f80-1aa1-7445-8b8c-080808080808",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-beta-tablet",
+  gitCommitHash: "5ae2114c",
+  platform: "android",
+  targetAppVersion: ">=2.0.0-beta.1",
+  message: "Tablet beta baseline for Android 2.0",
+  channel: "beta",
+  fingerprintHash: null,
+  rolloutCohortCount: 100,
+});
+
+const iosCanaryBase = createBundle({
+  id: "01971f90-1aa1-7445-8b8c-090909090909",
+  enabled: false,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-canary-gesture",
+  gitCommitHash: "0cb8fa71",
+  platform: "ios",
+  targetAppVersion: null,
+  message: "Canary branch for new gesture responder",
+  channel: "canary",
+  fingerprintHash: "fp-ios-gesture-lab",
+  rolloutCohortCount: 25,
+  targetCohorts: ["design-review"],
+});
+
+const iosProdCorePatchA = createBundle({
+  id: "01972010-1aa1-7445-8b8c-101010101010",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-core-1401",
+  gitCommitHash: "40bb1cde",
+  platform: "ios",
+  targetAppVersion: "1.4.x",
+  message: "Incremental iOS patch for startup memory pressure",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 250,
+  patches: [
+    createPatchArtifact(
+      "01972010-1aa1-7445-8b8c-101010101010",
+      iosProdCoreBase,
+      "ios-prod-core-a",
+    ),
+  ],
+  targetCohorts: ["staff-ios"],
+});
+
+const iosProdCorePatchB = createBundle({
+  id: "01972020-1aa1-7445-8b8c-111111111111",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-core-1402",
+  gitCommitHash: "6a901fbc",
+  platform: "ios",
+  targetAppVersion: "1.4.x",
+  message: "Expanded rollout with deep link restore fixes",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 700,
+  patches: [
+    createPatchArtifact(
+      "01972020-1aa1-7445-8b8c-111111111111",
+      iosProdCorePatchA,
+      "ios-prod-core-b",
+    ),
+  ],
+});
+
+const iosProdCoreHotfix = createBundle({
+  id: "01972030-1aa1-7445-8b8c-121212121212",
+  enabled: true,
+  shouldForceUpdate: true,
+  fileHash: "file-ios-prod-core-1403",
+  gitCommitHash: "31fd6aa0",
+  platform: "ios",
+  targetAppVersion: "1.4.x",
+  message: "Emergency hotfix for offline launch and restore flow",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+  patches: [
+    createPatchArtifact(
+      "01972030-1aa1-7445-8b8c-121212121212",
+      iosProdCoreBase,
+      "ios-prod-core-hotfix-root",
+    ),
+    createPatchArtifact(
+      "01972030-1aa1-7445-8b8c-121212121212",
+      iosProdCorePatchB,
+      "ios-prod-core-hotfix-b",
+    ),
+  ],
+});
+
+const iosProdPaymentsPatchA = createBundle({
+  id: "01972040-1aa1-7445-8b8c-131313131313",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-payments-1401",
+  gitCommitHash: "9e1d27ab",
+  platform: "ios",
+  targetAppVersion: ">=1.4.0 <2.0.0",
+  message: "Receipt rendering patch for payments surface",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 400,
+  patches: [
+    createPatchArtifact(
+      "01972040-1aa1-7445-8b8c-131313131313",
+      iosProdPaymentsBase,
+      "ios-prod-payments-a",
+    ),
+  ],
+});
+
+const iosProdPaymentsPatchB = createBundle({
+  id: "01972050-1aa1-7445-8b8c-141414141414",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-prod-payments-1402",
+  gitCommitHash: "c1d2ef45",
+  platform: "ios",
+  targetAppVersion: ">=1.4.0 <2.0.0",
+  message: "Checkout patch with wallet retry logic",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 850,
+  patches: [
+    createPatchArtifact(
+      "01972050-1aa1-7445-8b8c-141414141414",
+      iosProdPaymentsPatchA,
+      "ios-prod-payments-b",
+    ),
+    createPatchArtifact(
+      "01972050-1aa1-7445-8b8c-141414141414",
+      iosProdPaymentsBase,
+      "ios-prod-payments-b-root",
+    ),
+  ],
+});
+
+const androidProdPatchA = createBundle({
+  id: "01972060-1aa1-7445-8b8c-151515151515",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-prod-core-1321",
+  gitCommitHash: "ff21ab89",
+  platform: "android",
+  targetAppVersion: "1.3.x",
+  message: "First Android production patch for image decode",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 300,
+  patches: [
+    createPatchArtifact(
+      "01972060-1aa1-7445-8b8c-151515151515",
+      androidProdBase,
+      "android-prod-a",
+    ),
+  ],
+});
+
+const androidProdPatchB = createBundle({
+  id: "01972070-1aa1-7445-8b8c-161616161616",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-prod-core-1322",
+  gitCommitHash: "12ee4a71",
+  platform: "android",
+  targetAppVersion: "1.3.x",
+  message: "Follow-up Android patch for cached asset reuse",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 600,
+  patches: [
+    createPatchArtifact(
+      "01972070-1aa1-7445-8b8c-161616161616",
+      androidProdPatchA,
+      "android-prod-b",
+    ),
+  ],
+});
+
+const androidProdEmergency = createBundle({
+  id: "01972080-1aa1-7445-8b8c-171717171717",
+  enabled: true,
+  shouldForceUpdate: true,
+  fileHash: "file-android-prod-core-1323",
+  gitCommitHash: "abce5510",
+  platform: "android",
+  targetAppVersion: "1.3.x",
+  message: "Emergency Android rollback-prevention patch",
+  channel: "production",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+  patches: [
+    createPatchArtifact(
+      "01972080-1aa1-7445-8b8c-171717171717",
+      androidProdBase,
+      "android-prod-emergency-root",
+    ),
+    createPatchArtifact(
+      "01972080-1aa1-7445-8b8c-171717171717",
+      androidProdPatchB,
+      "android-prod-emergency-b",
+    ),
+  ],
+});
+
+const iosStagingPatchA = createBundle({
+  id: "01972090-1aa1-7445-8b8c-181818181818",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-staging-1501",
+  gitCommitHash: "8cb550f1",
+  platform: "ios",
+  targetAppVersion: "1.5.x",
+  message: "Staging patch for profile composer polish",
+  channel: "staging",
+  fingerprintHash: null,
+  rolloutCohortCount: 500,
+  patches: [
+    createPatchArtifact(
+      "01972090-1aa1-7445-8b8c-181818181818",
+      iosStagingBase,
+      "ios-staging-a",
+    ),
+  ],
+});
+
+const iosStagingPatchB = createBundle({
+  id: "019720a0-1aa1-7445-8b8c-191919191919",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-staging-1502",
+  gitCommitHash: "d31be972",
+  platform: "ios",
+  targetAppVersion: "1.5.x",
+  message: "Staging patch for keyboard and modal overlap",
+  channel: "staging",
+  fingerprintHash: null,
+  rolloutCohortCount: 800,
+  patches: [
+    createPatchArtifact(
+      "019720a0-1aa1-7445-8b8c-191919191919",
+      iosStagingPatchA,
+      "ios-staging-b",
+    ),
+  ],
+});
+
+const androidStagingVisionPatchA = createBundle({
+  id: "019720b0-1aa1-7445-8b8c-202020202020",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-staging-vision-a",
+  gitCommitHash: "20be7311",
+  platform: "android",
+  targetAppVersion: null,
+  message: "Camera rewrite patch for staged QA cohort",
+  channel: "staging",
+  fingerprintHash: "fp-android-camera-v2",
+  rolloutCohortCount: 450,
+  patches: [
+    createPatchArtifact(
+      "019720b0-1aa1-7445-8b8c-202020202020",
+      androidStagingVisionBase,
+      "android-staging-vision-a",
+    ),
+  ],
+  targetCohorts: ["qa-android", "camera-lab", "staff-android"],
+});
+
+const androidStagingVisionPatchB = createBundle({
+  id: "019720c0-1aa1-7445-8b8c-212121212121",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-staging-vision-b",
+  gitCommitHash: "f0a9bb37",
+  platform: "android",
+  targetAppVersion: null,
+  message: "Extended camera patch with recovery guardrails",
+  channel: "staging",
+  fingerprintHash: "fp-android-camera-v2",
+  rolloutCohortCount: 900,
+  patches: [
+    createPatchArtifact(
+      "019720c0-1aa1-7445-8b8c-212121212121",
+      androidStagingVisionPatchA,
+      "android-staging-vision-b",
+    ),
+    createPatchArtifact(
+      "019720c0-1aa1-7445-8b8c-212121212121",
+      androidStagingVisionBase,
+      "android-staging-vision-b-root",
+    ),
+  ],
+});
+
+const iosDevPatchA = createBundle({
+  id: "019720d0-1aa1-7445-8b8c-222222222222",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-dev-navigation-a",
+  gitCommitHash: "512be6ac",
+  platform: "ios",
+  targetAppVersion: "1.6.x",
+  message: "Dev patch for stack reset and tab restoration",
+  channel: "dev",
+  fingerprintHash: null,
+  rolloutCohortCount: 650,
+  patches: [
+    createPatchArtifact(
+      "019720d0-1aa1-7445-8b8c-222222222222",
+      iosDevBase,
+      "ios-dev-a",
+    ),
+  ],
+});
+
+const iosDevPatchB = createBundle({
+  id: "019720e0-1aa1-7445-8b8c-232323232323",
+  enabled: false,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-dev-navigation-b",
+  gitCommitHash: "4ffad810",
+  platform: "ios",
+  targetAppVersion: "1.6.x",
+  message: "Paused dev patch after regression in modal dismissal",
+  channel: "dev",
+  fingerprintHash: null,
+  rolloutCohortCount: 150,
+  patches: [
+    createPatchArtifact(
+      "019720e0-1aa1-7445-8b8c-232323232323",
+      iosDevPatchA,
+      "ios-dev-b",
+    ),
+  ],
+});
+
+const androidDevPatchA = createBundle({
+  id: "019720f0-1aa1-7445-8b8c-242424242424",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-dev-feed-a",
+  gitCommitHash: "e8124bc2",
+  platform: "android",
+  targetAppVersion: null,
+  message: "Dev patch for feed card recycling",
+  channel: "dev",
+  fingerprintHash: "fp-android-feed-dev",
+  rolloutCohortCount: 750,
+  patches: [
+    createPatchArtifact(
+      "019720f0-1aa1-7445-8b8c-242424242424",
+      androidDevBase,
+      "android-dev-a",
+    ),
+  ],
+});
+
+const androidBetaPatchA = createBundle({
+  id: "01972100-1aa1-7445-8b8c-252525252525",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "file-android-beta-tablet-a",
+  gitCommitHash: "2dcab671",
+  platform: "android",
+  targetAppVersion: ">=2.0.0-beta.1",
+  message: "Tablet beta patch for split-screen persistence",
+  channel: "beta",
+  fingerprintHash: null,
+  rolloutCohortCount: 500,
+  patches: [
+    createPatchArtifact(
+      "01972100-1aa1-7445-8b8c-252525252525",
+      androidBetaBase,
+      "android-beta-a",
+    ),
+  ],
+});
+
+const iosCanaryPatchA = createBundle({
+  id: "01972110-1aa1-7445-8b8c-262626262626",
+  enabled: false,
+  shouldForceUpdate: false,
+  fileHash: "file-ios-canary-gesture-a",
+  gitCommitHash: "8120de44",
+  platform: "ios",
+  targetAppVersion: null,
+  message: "Canary patch for gesture responder edge cases",
+  channel: "canary",
+  fingerprintHash: "fp-ios-gesture-lab",
+  rolloutCohortCount: 50,
+  patches: [
+    createPatchArtifact(
+      "01972110-1aa1-7445-8b8c-262626262626",
+      iosCanaryBase,
+      "ios-canary-a",
+    ),
+  ],
+  targetCohorts: ["design-review", "ios-lab"],
+});
+
+// Seed lineages so filters, pagination, detail sheets, and patch tables all
+// have enough variety to be useful during local development.
 const bundles: Bundle[] = [
-  {
-    id: "0195c7c0-8bbe-7885-ae58-09bcab7f7a87",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "abc123hash",
-    gitCommitHash: "a1b2c3d",
-    platform: "ios" as const,
-    targetAppVersion: "1.2.x",
-    message: "Fix: Crash on startup for iPhone 12",
-    channel: "production",
-    storageUri: "s3://hot-updater/0195c7c0-8bbe-7885-ae58-09bcab7f7a87.zip",
-    fingerprintHash: null,
-    rolloutCohortCount: 1000,
-  },
-  {
-    id: "0195c7bf-e8f2-7546-8aba-8bad8243afeb",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "def456hash",
-    gitCommitHash: "e4f5g6h",
-    platform: "ios" as const,
-    targetAppVersion: "1.2.x",
-    message: "Feature: New onboarding flow",
-    channel: "production",
-    storageUri: "s3://hot-updater/0195c7bf-e8f2-7546-8aba-8bad8243afeb.zip",
-    fingerprintHash: null,
-    rolloutCohortCount: 500,
-  },
-  {
-    id: "0195c7bf-d48d-7785-9295-15b154d271a3",
-    enabled: true,
-    shouldForceUpdate: true,
-    fileHash: "ghi789hash",
-    gitCommitHash: "i7j8k9l",
-    platform: "android" as const,
-    targetAppVersion: "1.1.x",
-    message: "Security: Patch CVE-2024-1234",
-    channel: "production",
-    storageUri: "s3://hot-updater/0195c7bf-d48d-7785-9295-15b154d271a3.zip",
-    fingerprintHash: null,
-    rolloutCohortCount: 1000,
-  },
-  {
-    id: "0195c7be-a123-7785-9295-15b154d271a4",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "jkl012hash",
-    gitCommitHash: "m0n1o2p",
-    platform: "android" as const,
-    targetAppVersion: null,
-    message: "Perf: Optimize image loading for fingerprint rollout",
-    channel: "staging",
-    storageUri: "s3://hot-updater/0195c7be-a123-7785-9295-15b154d271a4.zip",
-    fingerprintHash: "fp-jkl012",
-    rolloutCohortCount: 1000,
-  },
-  {
-    id: "0195c7bd-b234-7785-9295-15b154d271a5",
-    enabled: false,
-    shouldForceUpdate: false,
-    fileHash: "mno345hash",
-    gitCommitHash: "q3r4s5t",
-    platform: "ios" as const,
-    targetAppVersion: null,
-    message: "WIP: Dark mode support for fingerprint cohort",
-    channel: "dev",
-    storageUri: "s3://hot-updater/0195c7bd-b234-7785-9295-15b154d271a5.zip",
-    fingerprintHash: "fp-mno345",
-    rolloutCohortCount: 100,
-  },
-  {
-    id: "0195c7bc-c345-7785-9295-15b154d271a6",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "pqr678hash",
-    gitCommitHash: "u6v7w8x",
-    platform: "android" as const,
-    targetAppVersion: null,
-    message: "Fix: Memory leak in list view for fingerprint devices",
-    channel: "dev",
-    storageUri: "s3://hot-updater/0195c7bc-c345-7785-9295-15b154d271a6.zip",
-    fingerprintHash: "fp-pqr678",
-    rolloutCohortCount: 1000,
-  },
-  {
-    id: "0195c7bb-d456-7785-9295-15b154d271a7",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "stu901hash",
-    gitCommitHash: "y9z0a1b",
-    platform: "ios" as const,
-    targetAppVersion: ">=1.4.0 <2.0.0",
-    message: "Compatibility: iOS release for 1.4.x and newer",
-    channel: "staging",
-    storageUri: "s3://hot-updater/0195c7bb-d456-7785-9295-15b154d271a7.zip",
-    fingerprintHash: null,
-    rolloutCohortCount: 750,
-  },
-  {
-    id: "0195c7ba-e567-7785-9295-15b154d271a8",
-    enabled: true,
-    shouldForceUpdate: false,
-    fileHash: "vwx234hash",
-    gitCommitHash: "c2d3e4f",
-    platform: "android" as const,
-    targetAppVersion: null,
-    message: "Experiment: fingerprint-only Android canary",
-    channel: "production",
-    storageUri: "s3://hot-updater/0195c7ba-e567-7785-9295-15b154d271a8.zip",
-    fingerprintHash: "fp-stu901",
-    rolloutCohortCount: 200,
-  },
+  iosCanaryPatchA,
+  androidBetaPatchA,
+  androidDevPatchA,
+  iosDevPatchB,
+  iosDevPatchA,
+  androidStagingVisionPatchB,
+  androidStagingVisionPatchA,
+  iosStagingPatchB,
+  iosStagingPatchA,
+  androidProdEmergency,
+  androidProdPatchB,
+  androidProdPatchA,
+  iosProdPaymentsPatchB,
+  iosProdPaymentsPatchA,
+  iosProdCoreHotfix,
+  iosProdCorePatchB,
+  iosProdCorePatchA,
+  iosCanaryBase,
+  androidBetaBase,
+  androidDevBase,
+  iosDevBase,
+  androidStagingVisionBase,
+  iosStagingBase,
+  androidProdBase,
+  iosProdPaymentsBase,
+  iosProdCoreBase,
 ];
 
 export default {
@@ -122,7 +594,7 @@ export default {
   build: async () => null,
   storage: mockStorage({}),
   database: mockDatabase({
-    latency: { min: 200, max: 400 },
+    latency: { min: 150, max: 320 },
     initialBundles: bundles,
   }),
   console: {

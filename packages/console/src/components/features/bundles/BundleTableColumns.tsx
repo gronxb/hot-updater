@@ -1,7 +1,13 @@
 import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Fingerprint,
+  Package,
+  PanelRightOpen,
+} from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -15,6 +21,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface BundleColumnsOptions {
   expandedBundleId?: string;
@@ -27,10 +34,12 @@ const columnHelper = createColumnHelper<Bundle>();
 function BundleIdCell({
   bundle,
   expandedBundleId,
+  onDetailClick,
   onToggleExpand,
 }: {
   bundle: Bundle;
   expandedBundleId?: string;
+  onDetailClick: (bundle: Bundle) => void;
   onToggleExpand: (bundle: Bundle) => void;
 }) {
   const isExpanded = bundle.id === expandedBundleId;
@@ -57,9 +66,27 @@ function BundleIdCell({
           <ChevronRight aria-hidden="true" />
         )}
       </Button>
-      <div className="min-w-0">
-        <BundleIdDisplay bundleId={bundle.id} />
-      </div>
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-col items-start rounded-sm text-left transition-colors",
+          "focus-visible:ring-ring/30 focus-visible:ring-[2px] outline-none",
+          "text-muted-foreground hover:text-foreground",
+        )}
+        aria-label={`Open details for bundle ${bundle.id}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDetailClick(bundle);
+        }}
+      >
+        <span className="min-w-0 text-foreground">
+          <BundleIdDisplay bundleId={bundle.id} />
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium">
+          Open details
+          <PanelRightOpen className="h-3 w-3" />
+        </span>
+      </button>
     </div>
   );
 }
@@ -75,6 +102,7 @@ export const createBundleColumns = ({
       <BundleIdCell
         bundle={info.row.original}
         expandedBundleId={expandedBundleId}
+        onDetailClick={onDetailClick}
         onToggleExpand={onToggleExpand}
       />
     ),
