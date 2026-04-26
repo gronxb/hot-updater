@@ -8,6 +8,8 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const LIGHT_THEME_COLOR = "#fbfbfa";
+const DARK_THEME_COLOR = "#242221";
 
 export function ThemeProvider({
   children,
@@ -31,12 +33,27 @@ export function ThemeProvider({
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
 
+    const resolvedTheme =
+      theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : theme;
+
+    root.style.colorScheme = resolvedTheme;
+
+    const themeColorMeta = window.document.querySelector(
+      'meta[name="theme-color"]:not([media])',
+    );
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute(
+        "content",
+        resolvedTheme === "dark" ? DARK_THEME_COLOR : LIGHT_THEME_COLOR,
+      );
+    }
+
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
-      root.classList.add(systemTheme);
+      root.classList.add(resolvedTheme);
     } else {
       root.classList.add(theme);
     }
