@@ -52,6 +52,43 @@ type CursorPaginationInfo = PaginationInfo & {
   previousCursor?: string | null;
 };
 
+function MobileStatusBadge({
+  enabled,
+  trueLabel,
+  falseLabel,
+  falseIcon = "x",
+  trueTone = "success",
+}: {
+  enabled: boolean;
+  trueLabel: string;
+  falseLabel: string;
+  falseIcon?: "minus" | "x";
+  trueTone?: "success" | "warning";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+        enabled
+          ? trueTone === "warning"
+            ? "bg-amber-500/14 text-amber-700 dark:text-amber-300"
+            : "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+          : falseIcon === "minus"
+            ? "bg-muted text-muted-foreground"
+            : "bg-red-500/12 text-red-700 dark:text-red-300",
+      )}
+    >
+      <EnabledStatusIcon
+        enabled={enabled}
+        falseIcon={falseIcon}
+        colorMode="inherit"
+        className="h-3.5 w-3.5"
+      />
+      <span>{enabled ? trueLabel : falseLabel}</span>
+    </span>
+  );
+}
+
 export function BundlesTable({
   bundles,
   pagination,
@@ -192,12 +229,21 @@ export function BundlesTable({
                           <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
                             Status
                           </div>
-                          <div className="flex items-center gap-3">
-                            <EnabledStatusIcon enabled={bundle.enabled} />
-                            <EnabledStatusIcon
-                              enabled={bundle.shouldForceUpdate}
-                              falseIcon="minus"
+                          <div className="flex flex-wrap items-center gap-2">
+                            <MobileStatusBadge
+                              enabled={bundle.enabled}
+                              trueLabel="Enabled"
+                              falseLabel="Disabled"
                             />
+                            {bundle.shouldForceUpdate ? (
+                              <MobileStatusBadge
+                                enabled={bundle.shouldForceUpdate}
+                                trueLabel="Force update"
+                                falseLabel="Optional"
+                                falseIcon="minus"
+                                trueTone="warning"
+                              />
+                            ) : null}
                           </div>
                         </div>
                       </div>
