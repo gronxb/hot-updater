@@ -141,11 +141,7 @@ export function BundlesTable({
                         "cursor-pointer transition-colors hover:bg-muted/10 focus-within:bg-muted/15 data-[state=selected]:bg-muted/15",
                         isExpanded && "bg-primary/5",
                       )}
-                      onClick={() =>
-                        onExpandedBundleChange(
-                          isExpanded ? undefined : row.original.id,
-                        )
-                      }
+                      onClick={() => onDetailClick(row.original)}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id} className="py-3">

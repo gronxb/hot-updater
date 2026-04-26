@@ -35,6 +35,7 @@
     "@hono/node-server": "catalog:hono",
     "@nx/js": "22.6.3",
     "@swc/helpers": "^0.5.17",
+    "bun": "1.3.13",
     "deno-bin": "2.2.7",
     "execa": "catalog:tools",
     "hono": "catalog:hono",

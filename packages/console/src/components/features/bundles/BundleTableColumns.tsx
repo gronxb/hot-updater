@@ -193,24 +193,4 @@ export const createBundleColumns = ({
     header: "Created",
     cell: (info) => <TimestampDisplay uuid={info.getValue()} />,
   }),
-  columnHelper.display({
-    id: "detail",
-    header: "Detail",
-    cell: (info) => (
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="touch-manipulation"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDetailClick(info.row.original);
-          }}
-        >
-          Detail
-        </Button>
-      </div>
-    ),
-  }),
 ];
