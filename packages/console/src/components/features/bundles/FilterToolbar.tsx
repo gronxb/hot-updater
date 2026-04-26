@@ -19,7 +19,7 @@ export function FilterToolbar() {
   const hasActiveFilters = filters.channel || filters.platform;
 
   return (
-    <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-card/50 px-3 py-3 backdrop-blur-sm sm:h-12 sm:flex-nowrap sm:px-4 sm:py-0">
+    <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
 
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">

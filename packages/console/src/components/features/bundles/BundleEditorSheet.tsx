@@ -46,6 +46,21 @@ export function BundleEditorSheet({
     }
   }, [open]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const refreshThemeChrome = () => {
+      window.dispatchEvent(new Event("hot-updater:refresh-theme-chrome"));
+    };
+
+    refreshThemeChrome();
+    const timeoutId = window.setTimeout(refreshThemeChrome, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [open]);
+
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && isSaving) {
       return;
