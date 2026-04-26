@@ -130,7 +130,6 @@ type JsonSnapshot = {
 };
 
 type ConsoleServerFnName =
-  | "createBundleDiff"
   | "deleteBundle"
   | "getBundle"
   | "getBundles"
@@ -148,11 +147,6 @@ type ServerFnFetcher = (
 type ServerFnResultEnvelope<T> = {
   error?: unknown;
   result?: T;
-};
-
-type BundleDiffResult = {
-  bundle?: Bundle | null;
-  success: true;
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -202,6 +196,7 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
+const DEFAULT_UPDATE_SERVER_BASE_URL = "http://localhost:3007/hot-updater";
 
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
@@ -228,11 +223,45 @@ function logE2e(event: string, details?: unknown) {
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
+function parseEnvFile(source: string) {
+  return Object.fromEntries(
+    source
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith("#"))
+      .map((line) => {
+        const separatorIndex = line.indexOf("=");
+        if (separatorIndex === -1) {
+          return null;
+        }
+
+        return [
+          line.slice(0, separatorIndex).trim(),
+          line.slice(separatorIndex + 1).trim(),
+        ] as const;
+      })
+      .filter((entry): entry is readonly [string, string] => entry !== null),
+  );
+}
+
+function resolveUpdateServerBaseUrl() {
+  const envPath = path.join(EXAMPLE_DIR, ".env.hotupdater");
+  const envSource = fs.existsSync(envPath)
+    ? fs.readFileSync(envPath, "utf8")
+    : "";
+  const parsedEnv = parseEnvFile(envSource);
+
+  return (
+    parsedEnv.HOT_UPDATER_APP_BASE_URL ?? DEFAULT_UPDATE_SERVER_BASE_URL
+  ).replace(/\/+$/, "");
+}
+
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
 const consoleBaseUrl = process.env.HOT_UPDATER_E2E_CONSOLE_BASE_URL;
 const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
+const updateServerBaseUrl = resolveUpdateServerBaseUrl();
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
   throw new Error("HOT_UPDATER_E2E_PLATFORM must be ios or android");
@@ -364,7 +393,6 @@ async function loadConsoleServerFnIds() {
   );
 
   return {
-    createBundleDiff: extractConsoleServerFnId(source, "createBundleDiff"),
     deleteBundle: extractConsoleServerFnId(source, "deleteBundle"),
     getBundle: extractConsoleServerFnId(source, "getBundle"),
     getBundles: extractConsoleServerFnId(source, "getBundles"),
@@ -1052,23 +1080,42 @@ function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
   }
 }
 
-async function createBundleDiff(baseBundleId: string, bundleId: string) {
-  logE2e("console-api request", {
+async function createBundlePatchArtifact(
+  baseBundleId: string,
+  bundleId: string,
+  channel: string,
+) {
+  const patchLogPath = path.join(
+    session.resultsDir,
+    `patch-${channel}-${baseBundleId.slice(0, 8)}-${bundleId.slice(0, 8)}.log`,
+  );
+  const args = [
+    HOT_UPDATER_CLI_PATH,
+    "patch",
+    "--base-bundle-id",
+    baseBundleId,
+    "-b",
+    bundleId,
+    "-p",
+    session.platform,
+    "-c",
+    channel,
+  ];
+
+  logE2e("patch start", {
     baseBundleId,
     bundleId,
-    method: "POST",
-    operation: "createBundleDiff",
+    channel,
+    command: `node ${args.join(" ")}`,
+    logPath: path.relative(REPO_DIR, patchLogPath),
+    platform: session.platform,
+  });
+  await runLogged("node", args, {
+    cwd: session.exampleDir,
+    logPath: patchLogPath,
   });
 
-  const response = await callConsoleServerFn<BundleDiffResult>(
-    "createBundleDiff",
-    "POST",
-    {
-      baseBundleId,
-      bundleId,
-    },
-  );
-  const bundle = response.bundle ?? null;
+  const bundle = await fetchBundleById(bundleId);
   const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
   const patchBaseBundleId = bundle ? getPatchBaseBundleId(bundle) : null;
   const patchBaseFileHash = bundle ? getPatchBaseFileHash(bundle) : null;
@@ -1109,14 +1156,14 @@ async function createBundleDiff(baseBundleId: string, bundleId: string) {
     assetBaseStorageUri: disabledFullAssetBaseStorageUri,
   });
 
-  logE2e("console-api response", {
+  logE2e("patch done", {
     baseBundleId,
     bundleId,
+    channel,
     disabledFullAssetBaseStorageUri,
-    method: "POST",
-    operation: "createBundleDiff",
     patchAssetPath,
     patchBaseBundleId,
+    patchLogPath: path.relative(REPO_DIR, patchLogPath),
     patchStorageUri,
   });
 
@@ -1202,9 +1249,37 @@ async function deleteBundle(bundleId: string) {
     method: "POST",
   });
 
-  await callConsoleServerFn<{ success: true }>("deleteBundle", "POST", {
-    bundleId,
-  });
+  try {
+    await callConsoleServerFn<{ success: true }>("deleteBundle", "POST", {
+      bundleId,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes("No storage plugin for protocol")
+    ) {
+      throw error;
+    }
+
+    logE2e("console-api delete fallback", {
+      bundleId,
+      reason: "unsupported-storage-protocol",
+      updateServerBaseUrl,
+    });
+
+    const response = await fetch(
+      `${updateServerBaseUrl}/api/bundles/${encodeURIComponent(bundleId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Fallback delete failed for bundle ${bundleId}: ${response.status} ${response.statusText}`,
+      );
+    }
+  }
 
   logE2e("console-api response", {
     bundleId,
@@ -2677,7 +2752,11 @@ async function deployBundle(request: DeployBundleRequest) {
     request.diffBaseBundleId !== undefined
       ? request.autoPatch
         ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
-        : await createBundleDiff(request.diffBaseBundleId, bundleId)
+        : await createBundlePatchArtifact(
+            request.diffBaseBundleId,
+            bundleId,
+            request.channel,
+          )
       : null;
   const bundle = await fetchBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
