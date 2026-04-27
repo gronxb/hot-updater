@@ -23,7 +23,9 @@ import {
   vi,
 } from "vitest";
 
+import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
+import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "./index";
 
 function createTestStoragePlugin(
@@ -84,6 +86,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       ),
     ],
   });
+  const prismaSchemaHotUpdater = createHotUpdater({
+    database: prismaAdapter({
+      provider: "postgresql",
+    }),
+  });
+  const drizzleSchemaHotUpdater = createHotUpdater({
+    database: drizzleAdapter({
+      provider: "postgresql",
+    }),
+  });
 
   beforeAll(async () => {
     // Initialize FumaDB schema to latest (creates tables under the hood)
@@ -124,6 +136,122 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     getBundles: hotUpdater.getBundles.bind(hotUpdater),
     updateBundleById: hotUpdater.updateBundleById.bind(hotUpdater),
     deleteBundleById: hotUpdater.deleteBundleById.bind(hotUpdater),
+  });
+
+  describe("schema generation", () => {
+    it("includes relations, defaults, and indexes in Prisma output", () => {
+      const code = prismaSchemaHotUpdater.generateSchema("latest").code;
+
+      expect(code).toContain('channel String @default("production")');
+      expect(code).toContain('metadata Json @default("{}")');
+      expect(code).toContain(
+        'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
+      );
+      expect(code).toContain(
+        'baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")',
+      );
+      expect(code).toContain(
+        'bundle bundles @relation("bundle_patches_bundles_patches"',
+      );
+      expect(code).toContain(
+        'baseBundle bundles @relation("bundle_patches_bundles_baseForPatches"',
+      );
+      expect(code).toContain('@@index([channel], map: "bundles_channel_idx")');
+      expect(code).toContain(
+        '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
+      );
+    });
+
+    it("includes foreign keys and indexes in Drizzle output", () => {
+      const code = drizzleSchemaHotUpdater.generateSchema("latest").code;
+      const bundlesBlock = code.match(
+        /export const bundles = [\s\S]*?(?=\n\nexport const bundle_patches = )/,
+      )?.[0];
+      const bundlePatchesBlock = code.match(
+        /export const bundle_patches = [\s\S]*?(?=\n\nexport const bundle_patchesRelations = )/,
+      )?.[0];
+
+      expect(code).toContain(
+        'channel: text("channel").notNull().default("production")',
+      );
+      expect(code).toContain(
+        'metadata: json("metadata").notNull().default({})',
+      );
+      expect(code).toContain('name: "bundle_patches_bundle_id_fk"');
+      expect(code).toContain('name: "bundle_patches_base_bundle_id_fk"');
+      expect(bundlesBlock).toContain(
+        'index("bundles_channel_idx").on(table.channel)',
+      );
+      expect(bundlesBlock).toContain(
+        'index("bundles_target_app_version_idx").on(table.target_app_version)',
+      );
+      expect(bundlesBlock).not.toContain(
+        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
+      );
+      expect(bundlePatchesBlock).toContain(
+        'index("bundle_patches_bundle_id_idx").on(table.bundle_id)',
+      );
+      expect(bundlePatchesBlock).not.toContain(
+        'index("bundles_target_app_version_idx").on(table.target_app_version)',
+      );
+    });
+  });
+
+  describe("migrator enhancements", () => {
+    it("adds custom indexes and constraints to generated SQL", async () => {
+      const migrationDb = new PGlite();
+      const migrationKysely = new Kysely({
+        dialect: new PGliteDialect(migrationDb),
+      });
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({
+          db: migrationKysely,
+          provider: "postgresql",
+        }),
+      });
+
+      try {
+        const migrator = migrationHotUpdater.createMigrator();
+        const result = await migrator.migrateToLatest({
+          mode: "from-schema",
+          updateSettings: false,
+        });
+        const sql = result.getSQL?.() ?? "";
+
+        expect(sql).toContain("create index bundles_channel_idx on bundles");
+        expect(sql).toContain(
+          "add constraint check_version_or_fingerprint check",
+        );
+        expect(sql).toContain(
+          "create index bundle_patches_bundle_id_idx on bundle_patches",
+        );
+      } finally {
+        await migrationKysely.destroy();
+        await migrationDb.close();
+      }
+    });
+  });
+
+  describe("bundle validation", () => {
+    it("rejects bundles without targeting information", async () => {
+      await expect(
+        hotUpdater.insertBundle({
+          id: "00000000-0000-0000-0000-000000000999",
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "missing-target",
+          gitCommitHash: null,
+          message: null,
+          channel: "production",
+          storageUri: "s3://test-bucket/missing-target.zip",
+          targetAppVersion: null,
+          fingerprintHash: null,
+        }),
+      ).rejects.toThrow(
+        "Bundle must define either targetAppVersion or fingerprintHash.",
+      );
+    });
   });
 
   describe("getBundleById", () => {
@@ -365,6 +493,20 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("returns manifest metadata and hbc patch descriptors for createHotUpdater", async () => {
+      const olderBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000100",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-older-zip",
+        gitCommitHash: null,
+        message: "Older bundle",
+        channel: "production",
+        storageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000100/bundle.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      };
       const currentBundle: Bundle = {
         id: "00000000-0000-0000-0000-000000000101",
         platform: "ios",
@@ -472,6 +614,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         return new Response("not found", { status: 404 });
       });
 
+      await hotUpdater.insertBundle(olderBundle);
       await hotUpdater.insertBundle(currentBundle);
       await hotUpdater.insertBundle(nextBundle);
       vi.stubGlobal("fetch", fetchMock);

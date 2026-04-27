@@ -9,8 +9,8 @@ CREATE TABLE bundles (
     file_hash TEXT NOT NULL,
     git_commit_hash TEXT,
     message TEXT,
-    channel TEXT NOT NULL,
-    storage_uri TEXT,
+    channel TEXT NOT NULL DEFAULT 'production',
+    storage_uri TEXT NOT NULL,
     fingerprint_hash TEXT,
     metadata JSONB DEFAULT '{}',
     manifest_storage_uri TEXT,
@@ -18,7 +18,8 @@ CREATE TABLE bundles (
     asset_base_storage_uri TEXT,
     rollout_cohort_count INTEGER DEFAULT 1000
       CHECK (rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000),
-    target_cohorts TEXT
+    target_cohorts TEXT,
+    CHECK ((target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL))
 );
 
 CREATE TABLE bundle_patches (
@@ -35,5 +36,7 @@ CREATE TABLE bundle_patches (
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
+CREATE INDEX bundles_channel_idx ON bundles(channel);
+CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
 CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);

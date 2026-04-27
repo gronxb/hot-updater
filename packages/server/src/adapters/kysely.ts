@@ -14,6 +14,11 @@ export interface KyselyConfig<TDatabase extends object = object> {
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyConfig<TDatabase>,
 ): ORMDatabaseAdapter =>
-  fumadbKyselyAdapter(
-    config as unknown as Parameters<typeof fumadbKyselyAdapter>[0],
-  ) as unknown as ORMDatabaseAdapter;
+  Object.assign(
+    fumadbKyselyAdapter(
+      config as unknown as Parameters<typeof fumadbKyselyAdapter>[0],
+    ) as unknown as ORMDatabaseAdapter,
+    {
+      __hotUpdaterProvider: config.provider,
+    },
+  );

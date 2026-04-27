@@ -35,6 +35,11 @@ import { v0_21_0 } from "../schema/v0_21_0";
 import { v0_29_0 } from "../schema/v0_29_0";
 import { v0_31_0 } from "../schema/v0_31_0";
 import type { Paginated } from "../types";
+import {
+  assertBundlePersistenceConstraints,
+  enhanceGeneratedSchema,
+  wrapKyselyMigrator,
+} from "./schemaEnhancements";
 import type { DatabaseAPI, ORMDatabaseAdapter } from "./types";
 import {
   parseBundleMetadata,
@@ -231,11 +236,10 @@ export function createOrmDatabaseCore<TContext = unknown>({
   );
   const UPDATE_CHECK_PAGE_SIZE = 100;
   const isMongoAdapter = client.adapter.name.toLowerCase().includes("mongodb");
+  const latestSchema = getLastItem(schemas);
+  const lastSchemaVersion = latestSchema.version;
 
   const ensureORM = async () => {
-    const latestSchema = getLastItem(schemas);
-    const lastSchemaVersion = latestSchema.version;
-
     try {
       const migrator = client.createMigrator();
       const currentVersion = await migrator.getVersion();
@@ -928,6 +932,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
     },
 
     async insertBundle(bundle: Bundle): Promise<void> {
+      assertBundlePersistenceConstraints(bundle);
       const orm = await ensureORM();
       const values = {
         id: bundle.id,
@@ -972,6 +977,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
       const current = await this.getBundleById(bundleId);
       if (!current) throw new Error("targetBundleId not found");
       const merged: Bundle = { ...current, ...newBundle };
+      assertBundlePersistenceConstraints(merged);
       const values = {
         id: merged.id,
         platform: merged.platform,
@@ -1022,7 +1028,22 @@ export function createOrmDatabaseCore<TContext = unknown>({
   return {
     api,
     adapterName: client.adapter.name,
-    createMigrator: () => client.createMigrator(),
-    generateSchema: client.generateSchema,
+    createMigrator: () =>
+      wrapKyselyMigrator(
+        client.createMigrator(),
+        (
+          database as ORMDatabaseAdapter & {
+            __hotUpdaterProvider?: "postgresql" | "mysql" | "sqlite";
+          }
+        ).__hotUpdaterProvider,
+        lastSchemaVersion,
+      ) as Migrator,
+    generateSchema: (version, name) => {
+      const result = client.generateSchema(version, name);
+      return {
+        ...result,
+        code: enhanceGeneratedSchema(client.adapter.name, result.code),
+      };
+    },
   };
 }

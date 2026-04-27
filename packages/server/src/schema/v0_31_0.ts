@@ -11,7 +11,7 @@ export const v0_31_0 = schema({
       file_hash: column("file_hash", "string"),
       git_commit_hash: column("git_commit_hash", "string").nullable(),
       message: column("message", "string").nullable(),
-      channel: column("channel", "string"),
+      channel: column("channel", "string").defaultTo("production"),
       storage_uri: column("storage_uri", "string"),
       target_app_version: column("target_app_version", "string").nullable(),
       fingerprint_hash: column("fingerprint_hash", "string").nullable(),
@@ -37,5 +37,22 @@ export const v0_31_0 = schema({
       order_index: column("order_index", "integer").defaultTo(0),
     }),
   },
-  relations: {},
+  relations: {
+    bundle_patches: (builder) => ({
+      bundle: builder
+        .one("bundles", ["bundle_id", "id"])
+        .imply("patches")
+        .foreignKey({
+          name: "bundle_patches_bundle_id_fk",
+          onDelete: "CASCADE",
+        }),
+      baseBundle: builder
+        .one("bundles", ["base_bundle_id", "id"])
+        .imply("baseForPatches")
+        .foreignKey({
+          name: "bundle_patches_base_bundle_id_fk",
+          onDelete: "CASCADE",
+        }),
+    }),
+  },
 });
