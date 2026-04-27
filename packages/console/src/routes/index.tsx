@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
@@ -36,13 +37,10 @@ export const Route = createFileRoute("/")({
 });
 
 function BundlesPage() {
-  const {
-    filters,
-    bundleId,
-    expandedBundleId,
-    setBundleId,
-    setExpandedBundleId,
-  } = useFilterParams();
+  const { filters, bundleId, setBundleId } = useFilterParams();
+  const [expandedBundleId, setExpandedBundleId] = useState<
+    string | undefined
+  >();
   const activeBundleId = bundleId ?? "";
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
@@ -65,6 +63,15 @@ function BundlesPage() {
     selectedBundleFromQuery ?? selectedBundleFromList;
   const isSelectedBundleLoading =
     Boolean(activeBundleId) && !selectedBundle && isSelectedBundlePending;
+
+  useEffect(() => {
+    if (
+      expandedBundleId &&
+      !bundles.some((bundle) => bundle.id === expandedBundleId)
+    ) {
+      setExpandedBundleId(undefined);
+    }
+  }, [bundles, expandedBundleId]);
 
   if (isLoading) {
     return (
@@ -90,7 +97,10 @@ function BundlesPage() {
           expandedBundleId={expandedBundleId}
           selectedBundleId={bundleId}
           onExpandedBundleChange={setExpandedBundleId}
-          onDetailClick={(bundle) => setBundleId(bundle.id)}
+          onDetailClick={(bundle) => {
+            setExpandedBundleId(undefined);
+            setBundleId(bundle.id);
+          }}
         />
       </div>
 

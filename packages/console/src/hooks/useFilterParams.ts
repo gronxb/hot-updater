@@ -32,10 +32,14 @@ export function useFilterParams() {
   const bundleId = search.bundleId as string | undefined;
   const expandedBundleId = search.expandedBundleId as string | undefined;
 
-  const navigateWithSearch = (nextSearch: BundleSearchParams) => {
+  const navigateWithSearch = (
+    nextSearch: BundleSearchParams,
+    options?: { resetScroll?: boolean },
+  ) => {
     void navigate({
       to: "/",
       search: nextSearch,
+      resetScroll: options?.resetScroll,
     });
   };
 
@@ -84,22 +88,32 @@ export function useFilterParams() {
     nextBundleId: string | undefined,
     newFilters: Partial<BundleFilters> = {},
   ) => {
-    navigateWithSearch({
-      ...getNextFilters(newFilters),
-      bundleId: nextBundleId,
-      expandedBundleId,
-    });
+    navigateWithSearch(
+      {
+        ...getNextFilters(newFilters),
+        bundleId: nextBundleId,
+        expandedBundleId: undefined,
+      },
+      {
+        resetScroll: false,
+      },
+    );
   };
 
   const setExpandedBundleId = (
     nextExpandedBundleId: string | undefined,
     newFilters: Partial<BundleFilters> = {},
   ) => {
-    navigateWithSearch({
-      ...getNextFilters(newFilters),
-      bundleId,
-      expandedBundleId: nextExpandedBundleId,
-    });
+    navigateWithSearch(
+      {
+        ...getNextFilters(newFilters),
+        bundleId,
+        expandedBundleId: nextExpandedBundleId,
+      },
+      {
+        resetScroll: false,
+      },
+    );
   };
 
   const resetFilters = () => {
