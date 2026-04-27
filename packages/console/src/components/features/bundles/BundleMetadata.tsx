@@ -24,9 +24,6 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-const truncateValue = (value: string, maxLength = 16) =>
-  value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
-
 export function BundleMetadata({ bundle }: BundleMetadataProps) {
   const { data: configData, isFetched } = useConfigQuery();
   const patchBaseBundleId = getPatchBaseBundleId(bundle);
@@ -70,8 +67,8 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Fingerprint"
             value={
-              <span translate="no" className="font-mono text-xs">
-                {truncateValue(bundle.fingerprintHash)}
+              <span translate="no" className="break-all font-mono text-xs">
+                {bundle.fingerprintHash}
               </span>
             }
           />
@@ -88,12 +85,14 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
                   rel="noopener noreferrer"
                   className="flex items-center justify-start gap-1 font-mono text-xs text-primary hover:underline sm:justify-end"
                 >
-                  <span translate="no">{bundle.gitCommitHash.slice(0, 8)}</span>
+                  <span translate="no" className="break-all">
+                    {bundle.gitCommitHash}
+                  </span>
                   <ExternalLink aria-hidden="true" className="h-3 w-3" />
                 </a>
               ) : (
-                <span translate="no" className="font-mono text-xs">
-                  {bundle.gitCommitHash.slice(0, 8)}
+                <span translate="no" className="break-all font-mono text-xs">
+                  {bundle.gitCommitHash}
                 </span>
               )
             }
@@ -104,8 +103,8 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Bundle Hash"
             value={
-              <span translate="no" className="font-mono text-xs">
-                {truncateValue(bundle.fileHash)}
+              <span translate="no" className="break-all font-mono text-xs">
+                {bundle.fileHash}
               </span>
             }
           />
@@ -128,8 +127,8 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Base Hash"
             value={
-              <span translate="no" className="font-mono text-xs">
-                {truncateValue(hbcPatchBaseFileHash)}
+              <span translate="no" className="break-all font-mono text-xs">
+                {hbcPatchBaseFileHash}
               </span>
             }
           />
@@ -139,8 +138,8 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Patch Hash"
             value={
-              <span translate="no" className="font-mono text-xs">
-                {truncateValue(hbcPatchFileHash)}
+              <span translate="no" className="break-all font-mono text-xs">
+                {hbcPatchFileHash}
               </span>
             }
           />

@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useFilterParams } from "@/hooks/useFilterParams";
-import { useBundleChildrenQuery } from "@/lib/api";
+import { useBundleChildCountsQuery, useBundleChildrenQuery } from "@/lib/api";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -100,11 +100,15 @@ export function BundlesTable({
   const { setFilters } = useFilterParams();
   const isMobile = useIsMobile();
   const cursorPagination = pagination as CursorPaginationInfo | undefined;
+  const bundleIds = bundles.map((bundle) => bundle.id);
+  const { data: patchCountsByBundleId = {} } =
+    useBundleChildCountsQuery(bundleIds);
   const { data: childBundles = [], isLoading: isChildBundlesLoading } =
     useBundleChildrenQuery(expandedBundleId ?? "");
 
   const bundleColumns = createBundleColumns({
     expandedBundleId,
+    patchCountsByBundleId,
     onDetailClick,
     onToggleExpand: (bundle) =>
       onExpandedBundleChange(
@@ -160,6 +164,7 @@ export function BundlesTable({
                 const panelId = `bundle-lineage-panel-${bundle.id}`;
                 const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
                 const rolloutPercentage = rolloutCohortCount / 10;
+                const patchCount = patchCountsByBundleId[bundle.id];
 
                 return (
                   <div
@@ -228,6 +233,20 @@ export function BundlesTable({
                         </div>
                         <div className="rounded-md bg-muted/40 p-3">
                           <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
+                            Patches
+                          </div>
+                          <div className="text-xs text-foreground">
+                            {patchCount === undefined
+                              ? "Checking"
+                              : patchCount > 0
+                                ? `${patchCount} ${
+                                    patchCount === 1 ? "patch" : "patches"
+                                  }`
+                                : "-"}
+                          </div>
+                        </div>
+                        <div className="rounded-md bg-muted/40 p-3">
+                          <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground/70">
                             Status
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
@@ -256,10 +275,12 @@ export function BundlesTable({
                             {bundle.fingerprintHash ? (
                               <span
                                 translate="no"
-                                className="inline-flex items-center gap-2 font-mono text-xs"
+                                className="inline-flex min-w-0 items-start gap-2 font-mono text-xs"
                               >
-                                <Fingerprint className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                {bundle.fingerprintHash.slice(0, 8)}
+                                <Fingerprint className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className="break-all">
+                                  {bundle.fingerprintHash}
+                                </span>
                               </span>
                             ) : bundle.targetAppVersion ? (
                               <span

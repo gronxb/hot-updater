@@ -1,13 +1,7 @@
 import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import {
-  ChevronDown,
-  ChevronRight,
-  Fingerprint,
-  Package,
-  PanelRightOpen,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -15,16 +9,13 @@ import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 interface BundleColumnsOptions {
   expandedBundleId?: string;
+  patchCountsByBundleId: Record<string, number | undefined>;
   onDetailClick: (bundle: Bundle) => void;
   onToggleExpand: (bundle: Bundle) => void;
 }
@@ -82,10 +73,6 @@ function BundleIdCell({
         <span className="min-w-0 text-foreground">
           <BundleIdDisplay bundleId={bundle.id} fullOnMobile />
         </span>
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium">
-          Open details
-          <PanelRightOpen className="h-3 w-3" />
-        </span>
       </button>
     </div>
   );
@@ -93,6 +80,7 @@ function BundleIdCell({
 
 export const createBundleColumns = ({
   expandedBundleId,
+  patchCountsByBundleId,
   onDetailClick,
   onToggleExpand,
 }: BundleColumnsOptions) => [
@@ -121,6 +109,27 @@ export const createBundleColumns = ({
     ),
   }),
   columnHelper.display({
+    id: "patches",
+    header: "Patches",
+    cell: (info) => {
+      const count = patchCountsByBundleId[info.row.original.id];
+
+      if (count === undefined) {
+        return <span className="text-sm text-muted-foreground">Checking</span>;
+      }
+
+      if (count === 0) {
+        return <span className="text-sm text-muted-foreground">-</span>;
+      }
+
+      return (
+        <Badge variant="secondary">
+          {count} {count === 1 ? "patch" : "patches"}
+        </Badge>
+      );
+    },
+  }),
+  columnHelper.display({
     id: "target",
     header: "Target",
     cell: (info) => {
@@ -128,21 +137,12 @@ export const createBundleColumns = ({
 
       if (row.fingerprintHash) {
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 cursor-help">
-                <Fingerprint className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span translate="no" className="font-mono text-xs">
-                  {row.fingerprintHash.slice(0, 8)}
-                </span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p translate="no" className="font-mono text-xs">
-                {row.fingerprintHash}
-              </p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex min-w-[220px] items-start gap-2">
+            <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <span translate="no" className="break-all font-mono text-xs">
+              {row.fingerprintHash}
+            </span>
+          </div>
         );
       }
 
