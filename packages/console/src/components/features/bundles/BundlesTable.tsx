@@ -17,6 +17,7 @@ import { Fragment } from "react";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
@@ -278,9 +279,10 @@ export function BundlesTable({
                                 className="inline-flex min-w-0 items-start gap-2 font-mono text-xs"
                               >
                                 <Fingerprint className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span className="break-all">
-                                  {bundle.fingerprintHash}
-                                </span>
+                                <HashValueDisplay
+                                  value={bundle.fingerprintHash}
+                                  maxLength={12}
+                                />
                               </span>
                             ) : bundle.targetAppVersion ? (
                               <span

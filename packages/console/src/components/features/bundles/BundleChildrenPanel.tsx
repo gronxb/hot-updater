@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface BundleChildrenPanelProps {
   panelId: string;
@@ -30,6 +31,8 @@ export function BundleChildrenPanel({
   loading,
   onDetailClick,
 }: BundleChildrenPanelProps) {
+  const isMobile = useIsMobile();
+
   return (
     <div
       id={panelId}
@@ -57,65 +60,132 @@ export function BundleChildrenPanel({
             <div className="text-xs font-semibold uppercase text-muted-foreground/70">
               Patch bundles from this base
             </div>
-            <div className="overflow-x-auto rounded-md border bg-background">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Patch Bundle</TableHead>
-                    <TableHead>Relation</TableHead>
-                    <TableHead>Artifact</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead className="w-[96px] text-right">
-                      Detail
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {bundles.map((childBundle) => (
-                    <TableRow key={childBundle.id}>
-                      <TableCell>
+            {isMobile ? (
+              <div className="flex flex-col gap-2">
+                {bundles.map((childBundle) => (
+                  <div
+                    key={childBundle.id}
+                    className="rounded-md border bg-background p-3"
+                  >
+                    <div className="flex flex-col gap-3">
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                          Patch Bundle
+                        </div>
                         <BundleIdDisplay
                           bundleId={childBundle.id}
                           maxLength={18}
                           fullOnMobile
                         />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                          Relation
+                        </div>
+                        <div className="flex flex-col items-start gap-1 text-sm">
                           <BundleIdDisplay
                             bundleId={bundle.id}
                             maxLength={12}
                             fullOnMobile
                           />
-                          <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
+                          <ArrowRight className="h-4 w-4 rotate-90 text-muted-foreground" />
                           <BundleIdDisplay
                             bundleId={childBundle.id}
                             maxLength={12}
                             fullOnMobile
                           />
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">bsdiff</Badge>
-                      </TableCell>
-                      <TableCell className="tabular-nums">
-                        <TimestampDisplay uuid={childBundle.id} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onDetailClick(childBundle)}
-                        >
-                          Detail
-                        </Button>
-                      </TableCell>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                            Artifact
+                          </div>
+                          <Badge variant="secondary">bsdiff</Badge>
+                        </div>
+                        <div className="space-y-1 text-right">
+                          <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                            Created
+                          </div>
+                          <div className="text-xs tabular-nums text-foreground">
+                            <TimestampDisplay uuid={childBundle.id} />
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => onDetailClick(childBundle)}
+                      >
+                        Detail
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-md border bg-background">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Patch Bundle</TableHead>
+                      <TableHead>Relation</TableHead>
+                      <TableHead>Artifact</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="w-[96px] text-right">
+                        Detail
+                      </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                  </TableHeader>
+                  <TableBody>
+                    {bundles.map((childBundle) => (
+                      <TableRow key={childBundle.id}>
+                        <TableCell>
+                          <BundleIdDisplay
+                            bundleId={childBundle.id}
+                            maxLength={18}
+                            fullOnMobile
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex min-w-[280px] flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                            <BundleIdDisplay
+                              bundleId={bundle.id}
+                              maxLength={12}
+                              fullOnMobile
+                            />
+                            <ArrowRight className="h-4 w-4 shrink-0 rotate-90 text-muted-foreground sm:rotate-0" />
+                            <BundleIdDisplay
+                              bundleId={childBundle.id}
+                              maxLength={12}
+                              fullOnMobile
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">bsdiff</Badge>
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          <TimestampDisplay uuid={childBundle.id} />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onDetailClick(childBundle)}
+                          >
+                            Detail
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
