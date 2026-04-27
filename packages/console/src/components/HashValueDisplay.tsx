@@ -16,7 +16,7 @@ export function HashValueDisplay({
   className,
 }: HashValueDisplayProps) {
   const isTruncated = value.length > maxLength;
-  const truncated = isTruncated ? `${value.slice(0, maxLength)}...` : value;
+  const truncated = isTruncated ? value.slice(0, maxLength) : value;
 
   const copyValue = async () => {
     try {
