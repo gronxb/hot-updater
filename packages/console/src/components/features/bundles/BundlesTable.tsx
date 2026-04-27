@@ -322,7 +322,11 @@ export function BundlesTable({
                           )
                         }
                       >
-                        <span>Patch lineage</span>
+                        <span>
+                          {patchCount === undefined
+                            ? "Patch lineage"
+                            : `Patch lineage (${patchCount})`}
+                        </span>
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4" aria-hidden="true" />
                         ) : (
