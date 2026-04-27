@@ -40,7 +40,11 @@ import {
   enhanceGeneratedSchema,
   wrapKyselyMigrator,
 } from "./schemaEnhancements";
-import type { DatabaseAPI, ORMDatabaseAdapter } from "./types";
+import {
+  getSQLProvider,
+  type DatabaseAPI,
+  type ORMDatabaseAdapter,
+} from "./types";
 import {
   parseBundleMetadata,
   parseBundleRawMetadata,
@@ -1040,26 +1044,17 @@ export function createOrmDatabaseCore<TContext = unknown>({
     createMigrator: () =>
       wrapKyselyMigrator(
         client.createMigrator(),
-        (
-          database as ORMDatabaseAdapter & {
-            __hotUpdaterProvider?: "postgresql" | "mysql" | "sqlite";
-          }
-        ).__hotUpdaterProvider,
+        getSQLProvider(database.provider),
         lastSchemaVersion,
       ) as Migrator,
     generateSchema: (version, name) => {
       const result = client.generateSchema(version, name);
-      const provider = (
-        database as ORMDatabaseAdapter & {
-          __hotUpdaterProvider?: "postgresql" | "mysql" | "sqlite";
-        }
-      ).__hotUpdaterProvider;
       return {
         ...result,
         code: enhanceGeneratedSchema(
           client.adapter.name,
           result.code,
-          provider,
+          database.provider,
         ),
       };
     },

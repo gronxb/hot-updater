@@ -9,6 +9,11 @@ export interface MongoDBConfig<TClient extends object = object> {
 export const mongoAdapter = <TClient extends object>(
   options: MongoDBConfig<TClient>,
 ): ORMDatabaseAdapter =>
-  fumadbMongoAdapter(
-    options as unknown as Parameters<typeof fumadbMongoAdapter>[0],
-  ) as unknown as ORMDatabaseAdapter;
+  Object.assign(
+    fumadbMongoAdapter(
+      options as unknown as Parameters<typeof fumadbMongoAdapter>[0],
+    ) as unknown as ORMDatabaseAdapter,
+    {
+      provider: "mongodb",
+    },
+  );

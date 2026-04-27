@@ -23,10 +23,118 @@ import {
   vi,
 } from "vitest";
 
-import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
-import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "./index";
+import type { ORMDatabaseAdapter, ORMProvider } from "./types";
+
+const RAW_PRISMA_SCHEMA = `model bundles {
+  id String @id
+  platform String
+  should_force_update Boolean
+  enabled Boolean
+  file_hash String
+  git_commit_hash String?
+  message String?
+  channel String @default("production")
+  storage_uri String
+  target_app_version String?
+  fingerprint_hash String?
+  metadata Json
+  manifest_storage_uri String?
+  manifest_file_hash String?
+  asset_base_storage_uri String?
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
+}
+model bundle_patches {
+  id String @id
+  bundle_id String
+  base_bundle_id String
+  base_file_hash String
+  patch_file_hash String
+  patch_storage_uri String
+  order_index Int @default(0)
+  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+}
+model private_hot_updater_settings {
+  key String @id
+  value String @default("0.31.0")
+}`;
+
+const RAW_DRIZZLE_SCHEMA = `import { relations } from "drizzle-orm";
+import {
+  pgTable,
+  uuid,
+  text,
+  boolean,
+  json,
+  integer,
+  varchar,
+  foreignKey,
+} from "drizzle-orm/pg-core";
+
+export const bundles = pgTable("bundles", {
+  id: uuid("id").primaryKey().notNull(),
+  platform: text("platform").notNull(),
+  should_force_update: boolean("should_force_update").notNull(),
+  enabled: boolean("enabled").notNull(),
+  file_hash: text("file_hash").notNull(),
+  git_commit_hash: text("git_commit_hash"),
+  message: text("message"),
+  channel: text("channel").notNull().default("production"),
+  storage_uri: text("storage_uri").notNull(),
+  target_app_version: text("target_app_version"),
+  fingerprint_hash: text("fingerprint_hash"),
+  metadata: json("metadata").notNull(),
+  manifest_storage_uri: text("manifest_storage_uri"),
+  manifest_file_hash: text("manifest_file_hash"),
+  asset_base_storage_uri: text("asset_base_storage_uri"),
+  rollout_cohort_count: integer("rollout_cohort_count")
+    .notNull()
+    .default(1000),
+  target_cohorts: json("target_cohorts"),
+})
+
+export const bundle_patches = pgTable(
+  "bundle_patches",
+  {
+    id: varchar("id", { length: 255 }).primaryKey().notNull(),
+    bundle_id: uuid("bundle_id").notNull(),
+    base_bundle_id: uuid("base_bundle_id").notNull(),
+    base_file_hash: text("base_file_hash").notNull(),
+    patch_file_hash: text("patch_file_hash").notNull(),
+    patch_storage_uri: text("patch_storage_uri").notNull(),
+    order_index: integer("order_index").notNull().default(0),
+  }, (table) => [
+    foreignKey({
+      columns: [table.bundle_id],
+      foreignColumns: [bundles.id],
+      name: "bundle_patches_bundle_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("cascade"),
+    foreignKey({
+      columns: [table.base_bundle_id],
+      foreignColumns: [bundles.id],
+      name: "bundle_patches_base_bundle_id_fk",
+    })
+      .onUpdate("restrict")
+      .onDelete("cascade"),
+])
+
+export const bundle_patchesRelations = relations(bundle_patches, ({ one, many }) => ({
+  bundle: one(bundles, {
+    relationName: "bundle_patches_bundles_patches",
+    fields: [bundle_patches.bundle_id],
+    references: [bundles.id],
+  }),
+  baseBundle: one(bundles, {
+    relationName: "bundle_patches_bundles_baseForPatches",
+    fields: [bundle_patches.base_bundle_id],
+    references: [bundles.id],
+  }),
+}));`;
 
 function createTestStoragePlugin(
   protocol: string,
@@ -46,6 +154,35 @@ function createTestStoragePlugin(
     async delete() {},
     async getDownloadUrl(storageUri, context) {
       return { fileUrl: resolveFileUrl(storageUri, context) };
+    },
+  };
+}
+
+function createSchemaOnlyAdapter({
+  code,
+  name,
+  provider,
+  path,
+}: {
+  code: string;
+  name: string;
+  provider: ORMProvider;
+  path: string;
+}): ORMDatabaseAdapter {
+  return {
+    name,
+    provider,
+    createORM() {
+      throw new Error("Schema-only adapter cannot create ORM");
+    },
+    async getSchemaVersion() {
+      return undefined;
+    },
+    generateSchema(_schema, schemaName) {
+      return {
+        code,
+        path: path || schemaName,
+      };
     },
   };
 }
@@ -86,26 +223,27 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       ),
     ],
   });
-  const schemaOnlyPrismaClient = {
-    $transaction: async <T>(
-      callback: (tx: never) => T | Promise<T>,
-    ): Promise<T> => callback(undefined as never),
-  } as unknown as Parameters<typeof prismaAdapter>[0]["prisma"];
   const prismaSchemaHotUpdater = createHotUpdater({
-    database: prismaAdapter({
-      prisma: schemaOnlyPrismaClient,
+    database: createSchemaOnlyAdapter({
+      code: RAW_PRISMA_SCHEMA,
+      name: "prisma",
+      path: "schema.prisma",
       provider: "postgresql",
     }),
   });
   const sqlitePrismaSchemaHotUpdater = createHotUpdater({
-    database: prismaAdapter({
-      prisma: schemaOnlyPrismaClient,
+    database: createSchemaOnlyAdapter({
+      code: RAW_PRISMA_SCHEMA,
+      name: "prisma",
+      path: "schema.prisma",
       provider: "sqlite",
     }),
   });
   const drizzleSchemaHotUpdater = createHotUpdater({
-    database: drizzleAdapter({
-      db: {},
+    database: createSchemaOnlyAdapter({
+      code: RAW_DRIZZLE_SCHEMA,
+      name: "drizzle",
+      path: "hot-updater-schema.ts",
       provider: "postgresql",
     }),
   });

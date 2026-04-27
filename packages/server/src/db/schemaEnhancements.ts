@@ -6,8 +6,9 @@ import {
 } from "@hot-updater/core";
 import semver from "semver";
 
+import type { ORMProvider, ORMSQLProvider } from "./types";
+
 type AdapterName = "drizzle" | "prisma" | string;
-type KyselyProvider = "postgresql" | "mysql" | "sqlite";
 
 type MigrationResultLike = {
   execute: () => Promise<void>;
@@ -20,14 +21,17 @@ type SchemaVersionLike = {
 };
 
 type MigratorLike = {
-  down: (options?: any) => Promise<MigrationResultLike>;
+  down: (options?: undefined) => Promise<MigrationResultLike>;
   getNameVariants: () => Promise<unknown>;
   getVersion: () => Promise<string | undefined>;
-  migrateTo: (version: string, options?: any) => Promise<MigrationResultLike>;
-  migrateToLatest: (options?: any) => Promise<MigrationResultLike>;
+  migrateTo: (
+    version: string,
+    options?: undefined,
+  ) => Promise<MigrationResultLike>;
+  migrateToLatest: (options?: undefined) => Promise<MigrationResultLike>;
   next: () => Promise<SchemaVersionLike | undefined>;
   previous: () => Promise<SchemaVersionLike | undefined>;
-  up: (options?: any) => Promise<MigrationResultLike>;
+  up: (options?: undefined) => Promise<MigrationResultLike>;
 };
 
 const normalizeNullableString = (value: string | null | undefined) => {
@@ -81,11 +85,11 @@ const appendPrismaModelLines = (
   });
 };
 
-const getPrismaDatasourceProvider = (code: string) => {
+const getPrismaDatasourceProvider = (code: string): ORMProvider | null => {
   const match = code.match(
     /datasource\s+\w+\s+\{[\s\S]*?provider\s*=\s*"([^"]+)"[\s\S]*?\}/m,
   );
-  return match?.[1] ?? null;
+  return (match?.[1] as ORMProvider | undefined) ?? null;
 };
 
 const ensureDrizzleIndexImport = (code: string) =>
@@ -219,7 +223,7 @@ const addCustomSqlOperation = (
 };
 
 const getMigrationCustomSql = (
-  provider: KyselyProvider,
+  provider: ORMSQLProvider,
   targetVersion: string,
 ): string[] => {
   const statements: string[] = [];
@@ -300,7 +304,7 @@ const getMigrationCustomSql = (
 
 const enhanceUpwardMigrationResult = (
   result: MigrationResultLike,
-  provider: KyselyProvider,
+  provider: ORMSQLProvider,
   targetVersion: string,
 ) => {
   for (const sql of getMigrationCustomSql(provider, targetVersion)) {
@@ -353,7 +357,7 @@ export const assertBundlePersistenceConstraints = (
 export const enhanceGeneratedSchema = (
   adapterName: AdapterName,
   code: string,
-  provider?: KyselyProvider,
+  provider?: ORMProvider,
 ) => {
   if (adapterName === "prisma") {
     const datasourceProvider = provider ?? getPrismaDatasourceProvider(code);
@@ -409,20 +413,20 @@ export const enhanceGeneratedSchema = (
   return code;
 };
 
-export const wrapKyselyMigrator = (
-  migrator: MigratorLike,
-  provider: KyselyProvider | undefined,
+export const wrapKyselyMigrator = <TMigrator extends MigratorLike>(
+  migrator: TMigrator,
+  provider: ORMSQLProvider | undefined,
   latestVersion: string,
-): MigratorLike => {
+): TMigrator => {
   if (!provider) {
     return migrator;
   }
 
   return {
     ...migrator,
-    async up(options?: unknown) {
+    async up(...args: Parameters<TMigrator["up"]>) {
       const next = await migrator.next();
-      const result = await migrator.up(options);
+      const result = await migrator.up(...args);
 
       if (next) {
         enhanceUpwardMigrationResult(result, provider, next.version);
@@ -430,7 +434,9 @@ export const wrapKyselyMigrator = (
 
       return result;
     },
-    async migrateTo(version: string, options?: unknown) {
+    async migrateTo(...args: Parameters<TMigrator["migrateTo"]>) {
+      const version = args[0];
+      const options = args[1];
       const currentVersion = await migrator.getVersion();
       const result = await migrator.migrateTo(version, options);
 
@@ -440,9 +446,9 @@ export const wrapKyselyMigrator = (
 
       return result;
     },
-    async migrateToLatest(options?: unknown) {
+    async migrateToLatest(...args: Parameters<TMigrator["migrateToLatest"]>) {
       const currentVersion = await migrator.getVersion();
-      const result = await migrator.migrateToLatest(options);
+      const result = await migrator.migrateToLatest(...args);
 
       if (!currentVersion || semver.gt(latestVersion, currentVersion)) {
         enhanceUpwardMigrationResult(result, provider, latestVersion);
@@ -450,5 +456,5 @@ export const wrapKyselyMigrator = (
 
       return result;
     },
-  };
+  } as TMigrator;
 };

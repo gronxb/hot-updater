@@ -19,6 +19,6 @@ export const kyselyAdapter = <TDatabase extends object>(
       config as unknown as Parameters<typeof fumadbKyselyAdapter>[0],
     ) as unknown as ORMDatabaseAdapter,
     {
-      __hotUpdaterProvider: config.provider,
+      provider: config.provider,
     },
   );
