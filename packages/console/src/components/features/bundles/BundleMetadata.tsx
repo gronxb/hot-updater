@@ -7,7 +7,13 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useConfigQuery } from "@/lib/api";
 import { getCommitUrl } from "@/lib/git";
 
@@ -41,6 +47,8 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
     bundle.gitCommitHash && isFetched
       ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
       : null;
+  const isGitCommitTruncated =
+    bundle.gitCommitHash !== null && bundle.gitCommitHash.length > 12;
 
   if (!hasMetadata) {
     return null;
@@ -67,9 +75,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Fingerprint"
             value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {bundle.fingerprintHash}
-              </span>
+              <HashValueDisplay
+                value={bundle.fingerprintHash}
+                maxLength={16}
+                fullOnMobile
+              />
             }
           />
         ) : null}
@@ -79,21 +89,40 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
             label="Git Commit"
             value={
               gitCommitUrl ? (
-                <a
-                  href={gitCommitUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-start gap-1 font-mono text-xs text-primary hover:underline sm:justify-end"
-                >
-                  <span translate="no" className="break-all">
-                    {bundle.gitCommitHash}
-                  </span>
-                  <ExternalLink aria-hidden="true" className="h-3 w-3" />
-                </a>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a
+                      href={gitCommitUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-start gap-1 font-mono text-xs text-primary hover:underline sm:justify-end"
+                    >
+                      <span translate="no" className="break-all sm:hidden">
+                        {bundle.gitCommitHash}
+                      </span>
+                      <span translate="no" className="hidden sm:inline">
+                        {isGitCommitTruncated
+                          ? `${bundle.gitCommitHash.slice(0, 12)}...`
+                          : bundle.gitCommitHash}
+                      </span>
+                      <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p
+                      translate="no"
+                      className="break-all font-mono text-xs tabular-nums"
+                    >
+                      {bundle.gitCommitHash}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
               ) : (
-                <span translate="no" className="break-all font-mono text-xs">
-                  {bundle.gitCommitHash}
-                </span>
+                <HashValueDisplay
+                  value={bundle.gitCommitHash}
+                  maxLength={12}
+                  fullOnMobile
+                />
               )
             }
           />
@@ -103,9 +132,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Bundle Hash"
             value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {bundle.fileHash}
-              </span>
+              <HashValueDisplay
+                value={bundle.fileHash}
+                maxLength={16}
+                fullOnMobile
+              />
             }
           />
         ) : null}
@@ -127,9 +158,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Base Hash"
             value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {hbcPatchBaseFileHash}
-              </span>
+              <HashValueDisplay
+                value={hbcPatchBaseFileHash}
+                maxLength={16}
+                fullOnMobile
+              />
             }
           />
         ) : null}
@@ -138,9 +171,11 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
           <Row
             label="Patch Hash"
             value={
-              <span translate="no" className="break-all font-mono text-xs">
-                {hbcPatchFileHash}
-              </span>
+              <HashValueDisplay
+                value={hbcPatchFileHash}
+                maxLength={16}
+                fullOnMobile
+              />
             }
           />
         ) : null}

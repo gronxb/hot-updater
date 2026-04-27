@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
@@ -139,9 +140,7 @@ export const createBundleColumns = ({
         return (
           <div className="flex min-w-[220px] items-start gap-2">
             <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-            <span translate="no" className="break-all font-mono text-xs">
-              {row.fingerprintHash}
-            </span>
+            <HashValueDisplay value={row.fingerprintHash} maxLength={12} />
           </div>
         );
       }
