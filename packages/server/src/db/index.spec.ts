@@ -86,13 +86,26 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       ),
     ],
   });
+  const schemaOnlyPrismaClient = {
+    $transaction: async <T>(
+      callback: (tx: never) => T | Promise<T>,
+    ): Promise<T> => callback(undefined as never),
+  } as unknown as Parameters<typeof prismaAdapter>[0]["prisma"];
   const prismaSchemaHotUpdater = createHotUpdater({
     database: prismaAdapter({
+      prisma: schemaOnlyPrismaClient,
       provider: "postgresql",
+    }),
+  });
+  const sqlitePrismaSchemaHotUpdater = createHotUpdater({
+    database: prismaAdapter({
+      prisma: schemaOnlyPrismaClient,
+      provider: "sqlite",
     }),
   });
   const drizzleSchemaHotUpdater = createHotUpdater({
     database: drizzleAdapter({
+      db: {},
       provider: "postgresql",
     }),
   });
@@ -160,6 +173,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain(
         '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
       );
+    });
+
+    it("omits the metadata JSON default for SQLite Prisma output", () => {
+      const code = sqlitePrismaSchemaHotUpdater.generateSchema("latest").code;
+
+      expect(code).toContain("metadata Json");
+      expect(code).not.toContain('metadata Json @default("{}")');
     });
 
     it("includes foreign keys and indexes in Drizzle output", () => {

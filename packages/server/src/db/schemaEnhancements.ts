@@ -20,17 +20,14 @@ type SchemaVersionLike = {
 };
 
 type MigratorLike = {
-  down: (options?: unknown) => Promise<MigrationResultLike>;
+  down: (options?: any) => Promise<MigrationResultLike>;
   getNameVariants: () => Promise<unknown>;
   getVersion: () => Promise<string | undefined>;
-  migrateTo: (
-    version: string,
-    options?: unknown,
-  ) => Promise<MigrationResultLike>;
-  migrateToLatest: (options?: unknown) => Promise<MigrationResultLike>;
+  migrateTo: (version: string, options?: any) => Promise<MigrationResultLike>;
+  migrateToLatest: (options?: any) => Promise<MigrationResultLike>;
   next: () => Promise<SchemaVersionLike | undefined>;
   previous: () => Promise<SchemaVersionLike | undefined>;
-  up: (options?: unknown) => Promise<MigrationResultLike>;
+  up: (options?: any) => Promise<MigrationResultLike>;
 };
 
 const normalizeNullableString = (value: string | null | undefined) => {
@@ -82,6 +79,13 @@ const appendPrismaModelLines = (
 
     return `model ${modelName} {\n${body}\n${additions.join("\n")}\n}`;
   });
+};
+
+const getPrismaDatasourceProvider = (code: string) => {
+  const match = code.match(
+    /datasource\s+\w+\s+\{[\s\S]*?provider\s*=\s*"([^"]+)"[\s\S]*?\}/m,
+  );
+  return match?.[1] ?? null;
 };
 
 const ensureDrizzleIndexImport = (code: string) =>
@@ -349,12 +353,19 @@ export const assertBundlePersistenceConstraints = (
 export const enhanceGeneratedSchema = (
   adapterName: AdapterName,
   code: string,
+  provider?: KyselyProvider,
 ) => {
   if (adapterName === "prisma") {
-    let nextCode = code.replace(
-      /^(\s*metadata\s+Json)(?!\s+@default\("?\{\}"?\))(.*)$/m,
-      '$1 @default("{}")$2',
-    );
+    const datasourceProvider = provider ?? getPrismaDatasourceProvider(code);
+    let nextCode = code;
+
+    if (datasourceProvider !== "sqlite") {
+      nextCode = nextCode.replace(
+        /^(\s*metadata\s+Json)(?!\s+@default\("?\{\}"?\))(.*)$/m,
+        '$1 @default("{}")$2',
+      );
+    }
+
     nextCode = appendPrismaModelLines(
       nextCode,
       "bundles",

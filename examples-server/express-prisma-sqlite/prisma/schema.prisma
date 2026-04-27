@@ -33,7 +33,7 @@ model bundles {
   storage_uri String
   target_app_version String?
   fingerprint_hash String?
-  metadata Json @default("{}")
+  metadata Json
   manifest_storage_uri String?
   manifest_file_hash String?
   asset_base_storage_uri String?

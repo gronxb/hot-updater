@@ -1015,6 +1015,15 @@ export function createOrmDatabaseCore<TContext = unknown>({
 
     async deleteBundleById(bundleId: string): Promise<void> {
       const orm = await ensureORM();
+      const existingBundle = await orm.findFirst("bundles", {
+        select: ["id"],
+        where: (b) => b("id", "=", bundleId),
+      });
+
+      if (!existingBundle) {
+        return;
+      }
+
       await orm.deleteMany("bundle_patches", {
         where: (b) => b("bundle_id", "=", bundleId),
       });
@@ -1040,9 +1049,18 @@ export function createOrmDatabaseCore<TContext = unknown>({
       ) as Migrator,
     generateSchema: (version, name) => {
       const result = client.generateSchema(version, name);
+      const provider = (
+        database as ORMDatabaseAdapter & {
+          __hotUpdaterProvider?: "postgresql" | "mysql" | "sqlite";
+        }
+      ).__hotUpdaterProvider;
       return {
         ...result,
-        code: enhanceGeneratedSchema(client.adapter.name, result.code),
+        code: enhanceGeneratedSchema(
+          client.adapter.name,
+          result.code,
+          provider,
+        ),
       };
     },
   };
