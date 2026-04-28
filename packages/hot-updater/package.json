@@ -47,7 +47,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@expo/fingerprint": "0.15.4",
+    "@expo/fingerprint": "^0.15.4",
     "@hot-updater/android-helper": "workspace:*",
     "@hot-updater/apple-helper": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
