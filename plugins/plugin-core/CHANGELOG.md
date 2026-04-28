@@ -1,5 +1,12 @@
 # @hot-updater/plugin-core
 
+## 0.30.6
+
+### Patch Changes
+
+- @hot-updater/core@0.30.6
+- @hot-updater/js@0.30.6
+
 ## 0.30.5
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.30.6
+
+### Patch Changes
+
+- 82de1c6: fix(deps): widen `@expo/fingerprint` to caret range to allow dedupe with Expo SDK
+  - @hot-updater/android-helper@0.30.6
+  - @hot-updater/apple-helper@0.30.6
+  - @hot-updater/cli-tools@0.30.6
+  - @hot-updater/console@0.30.6
+  - @hot-updater/core@0.30.6
+  - @hot-updater/server@0.30.6
+  - @hot-updater/plugin-core@0.30.6
+
 ## 0.30.5
 
 ### Patch Changes

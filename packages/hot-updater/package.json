@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.30.5",
+  "version": "0.30.6",
   "bin": {
     "hot-updater": "./dist/index.cjs"
   },
