@@ -1,4 +1,4 @@
-import { getPatchBaseBundleId } from "@hot-updater/core";
+import { getBundlePatches } from "@hot-updater/core";
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 
 const CHILDREN_QUERY_LIMIT = 100;
@@ -33,16 +33,12 @@ async function collectBundleChildrenByBaseIds(
     )
   ).filter((bundle): bundle is Bundle => Boolean(bundle));
 
-  const eligibleBaseBundles = baseBundles.filter(
-    (bundle) => !getPatchBaseBundleId(bundle),
-  );
-
   const groupMap = new Map<
     string,
     { channel: string; platform: Bundle["platform"]; bundleIds: Set<string> }
   >();
 
-  for (const baseBundle of eligibleBaseBundles) {
+  for (const baseBundle of baseBundles) {
     const groupKey = `${baseBundle.channel}:${baseBundle.platform}`;
     const existingGroup = groupMap.get(groupKey);
 
@@ -74,18 +70,24 @@ async function collectBundleChildrenByBaseIds(
       } as Parameters<DatabasePlugin["getBundles"]>[0]);
 
       for (const bundle of page.data) {
-        const parentBundleId = getPatchBaseBundleId(bundle);
+        const parentBundleIds = getBundlePatches(bundle).map(
+          (patch) => patch.baseBundleId,
+        );
+        const matchedParentBundleIds = parentBundleIds.filter((bundleId) =>
+          group.bundleIds.has(bundleId),
+        );
 
         if (
-          !parentBundleId ||
-          !group.bundleIds.has(parentBundleId) ||
+          matchedParentBundleIds.length === 0 ||
           seenBundleIds.has(bundle.id)
         ) {
           continue;
         }
 
         seenBundleIds.add(bundle.id);
-        bundlesByBaseId[parentBundleId]?.push(bundle);
+        for (const parentBundleId of matchedParentBundleIds) {
+          bundlesByBaseId[parentBundleId]?.push(bundle);
+        }
       }
 
       const pagination = page.pagination as CursorPaginationInfo;

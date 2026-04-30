@@ -158,17 +158,29 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(callCount).toBe(2);
   });
 
-  it("getBundles: forwards console filters through query parameters", async () => {
+  it("getBundles: forwards bundle filters through query parameters", async () => {
     let requestedChannel: string | null = null;
     let requestedPlatform: string | null = null;
+    let requestedEnabled: string | null = null;
     let requestedLimit: string | null = null;
+    let requestedIdLt: string | null = null;
+    let requestedTargetAppVersion: string | null = null;
+    let requestedTargetAppVersionNotNull: string | null = null;
+    let requestedFingerprintHash: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
         requestedChannel = url.searchParams.get("channel");
         requestedPlatform = url.searchParams.get("platform");
+        requestedEnabled = url.searchParams.get("enabled");
         requestedLimit = url.searchParams.get("limit");
+        requestedIdLt = url.searchParams.get("idLt");
+        requestedTargetAppVersion = url.searchParams.get("targetAppVersion");
+        requestedTargetAppVersionNotNull = url.searchParams.get(
+          "targetAppVersionNotNull",
+        );
+        requestedFingerprintHash = url.searchParams.get("fingerprintHash");
 
         return HttpResponse.json(
           createPaginatedResult([], { limit: 10, offset: 0 }),
@@ -180,13 +192,25 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       where: {
         channel: "production",
         platform: "ios",
+        enabled: true,
+        id: {
+          lt: "bundle9",
+        },
+        targetAppVersion: "1.0.x",
+        targetAppVersionNotNull: true,
+        fingerprintHash: null,
       },
       limit: 10,
     });
 
     expect(requestedChannel).toBe("production");
     expect(requestedPlatform).toBe("ios");
+    expect(requestedEnabled).toBe("true");
     expect(requestedLimit).toBe("10");
+    expect(requestedIdLt).toBe("bundle9");
+    expect(requestedTargetAppVersion).toBe("1.0.x");
+    expect(requestedTargetAppVersionNotNull).toBe("true");
+    expect(requestedFingerprintHash).toBe("null");
   });
 
   it("getBundles: forwards cursor query params without offset", async () => {

@@ -78,6 +78,10 @@ const getDefaultConfig = (): ConfigInput => {
     fingerprint: {
       extraSources: [],
     },
+    patch: {
+      enabled: false,
+      maxBaseBundles: 5,
+    },
     console: {
       port: 1422,
     },

@@ -247,6 +247,47 @@ describe("createHandler", () => {
     );
   });
 
+  it("passes advanced bundle filters through to getBundles", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&enabled=true&idLt=bundle-9&targetAppVersion=1.0.x&targetAppVersionNotNull=true&fingerprintHash=null&limit=5",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+          platform: "ios",
+          enabled: true,
+          id: {
+            lt: "bundle-9",
+          },
+          targetAppVersion: "1.0.x",
+          targetAppVersionNotNull: true,
+          fingerprintHash: null,
+        },
+        limit: 5,
+        page: undefined,
+      },
+      undefined,
+    );
+  });
+
   it("passes cursor pagination params through to getBundles", async () => {
     const api = createApi();
     api.getBundles.mockResolvedValue({

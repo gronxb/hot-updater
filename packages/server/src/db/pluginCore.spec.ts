@@ -169,4 +169,97 @@ describe("createPluginDatabaseCore", () => {
     });
     expect(getBundles).toHaveBeenCalledOnce();
   });
+
+  it("rejects invalid bundles before appendBundle is called", async () => {
+    const appendBundle = vi.fn<DatabasePlugin["appendBundle"]>();
+    const commitBundle = vi.fn<DatabasePlugin["commitBundle"]>();
+
+    const plugin: DatabasePlugin = {
+      name: "validation-plugin",
+      appendBundle,
+      commitBundle,
+      async deleteBundle() {},
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async () => null,
+    );
+
+    await expect(
+      core.api.insertBundle({
+        ...baseBundle,
+        targetAppVersion: null,
+        fingerprintHash: null,
+      }),
+    ).rejects.toThrow(
+      "Bundle must define either targetAppVersion or fingerprintHash.",
+    );
+    expect(appendBundle).not.toHaveBeenCalled();
+    expect(commitBundle).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid updates before plugin.updateBundle is called", async () => {
+    const updateBundle = vi.fn<DatabasePlugin["updateBundle"]>();
+
+    const plugin: DatabasePlugin = {
+      name: "update-validation-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(bundleId) {
+        return bundleId === baseBundle.id ? baseBundle : null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      updateBundle,
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async () => null,
+    );
+
+    await expect(
+      core.api.updateBundleById(baseBundle.id, {
+        targetAppVersion: null,
+        fingerprintHash: null,
+      }),
+    ).rejects.toThrow(
+      "Bundle must define either targetAppVersion or fingerprintHash.",
+    );
+    expect(updateBundle).not.toHaveBeenCalled();
+  });
 });

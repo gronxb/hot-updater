@@ -1,4 +1,9 @@
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  getBundlePatches,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+} from "@hot-updater/core";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -79,6 +84,35 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   `;
 };
 
+const createInsertBundlePatchQueries = (bundle: Bundle) =>
+  getBundlePatches(bundle).map(
+    (patch, index) => `
+    INSERT INTO bundle_patches (
+      id,
+      bundle_id,
+      base_bundle_id,
+      base_file_hash,
+      patch_file_hash,
+      patch_storage_uri,
+      order_index
+    ) VALUES (
+      ${sqlString(`${bundle.id}:${patch.baseBundleId}`)},
+      ${sqlString(bundle.id)},
+      ${sqlString(patch.baseBundleId)},
+      ${sqlString(patch.baseFileHash)},
+      ${sqlString(patch.patchFileHash)},
+      ${sqlString(patch.patchStorageUri)},
+      ${index}
+    ) ON CONFLICT(id) DO UPDATE SET
+      bundle_id = excluded.bundle_id,
+      base_bundle_id = excluded.base_bundle_id,
+      base_file_hash = excluded.base_file_hash,
+      patch_file_hash = excluded.patch_file_hash,
+      patch_storage_uri = excluded.patch_storage_uri,
+      order_index = excluded.order_index;
+  `,
+  );
+
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
     ...bundle,
@@ -89,6 +123,9 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
     await env.DB.prepare(createInsertBundleQuery(bundle)).run();
+    for (const patchSql of createInsertBundlePatchQueries(bundle)) {
+      await env.DB.prepare(patchSql).run();
+    }
   }
 };
 
@@ -120,6 +157,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   });
 
   beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
   });
 

@@ -136,12 +136,6 @@ describe(
         "dist/index.cjs",
       );
 
-      // Generate Prisma Client first from existing schema
-      await execa("npx", ["prisma", "generate"], {
-        cwd: projectRoot,
-        env: { DATABASE_URL: testDatabaseUrl },
-      });
-
       // Generate Prisma schema from hotUpdater instance
       await execa(
         "node",
@@ -151,6 +145,12 @@ describe(
           env: { TEST_DATABASE_URL: testDatabaseUrl },
         },
       );
+
+      // Regenerate Prisma Client after hot-updater updates the Prisma schema.
+      await execa("npx", ["prisma", "generate"], {
+        cwd: projectRoot,
+        env: { DATABASE_URL: testDatabaseUrl },
+      });
 
       // Apply schema to database using prisma db push
       await execa("npx", ["prisma", "db", "push", "--skip-generate"], {

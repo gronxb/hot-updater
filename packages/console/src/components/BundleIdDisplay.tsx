@@ -1,46 +1,18 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface BundleIdDisplayProps {
   bundleId: string;
   maxLength?: number;
+  className?: string;
+  fullOnMobile?: boolean;
 }
-export function BundleIdDisplay({
-  bundleId,
-  maxLength = 12,
-}: BundleIdDisplayProps) {
-  // UUIDv7: show last characters (more unique) instead of first (timestamp)
-  const truncated =
-    bundleId.length > maxLength ? bundleId.slice(-maxLength) : bundleId;
-  if (bundleId.length <= maxLength) {
-    return (
-      <span translate="no" className="font-mono text-xs tabular-nums">
-        {bundleId}
-      </span>
-    );
-  }
-
+export function BundleIdDisplay({ bundleId, className }: BundleIdDisplayProps) {
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            translate="no"
-            className="cursor-help font-mono text-xs tabular-nums"
-          >
-            {truncated}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p translate="no" className="font-mono text-xs tabular-nums">
-            {bundleId}
-          </p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <span
+      translate="no"
+      className={cn("break-all font-mono text-xs tabular-nums", className)}
+    >
+      {bundleId}
+    </span>
   );
 }

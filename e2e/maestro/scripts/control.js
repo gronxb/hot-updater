@@ -188,6 +188,7 @@ switch (ACTION) {
       marker: MARKER,
       message: MESSAGE || undefined,
       mode: MODE,
+      patchMaxBaseBundles: maybeNumber(PATCH_MAX_BASE_BUNDLES),
       rollout: maybeNumber(ROLLOUT),
       safeBundleIds: parseCsv(SAFE_BUNDLE_IDS),
       targetAppVersion: TARGET_APP_VERSION || "1.0.x",
@@ -200,6 +201,7 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Marker`, result.marker);
     assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
     assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
+    assignIfPresent(`${outputKey}PatchBaseBundleIds`, result.patchBaseBundleIds);
     assignIfPresent(
       `${outputKey}RolloutCohortCount`,
       result.rolloutCohortCount,
@@ -278,6 +280,18 @@ switch (ACTION) {
     break;
   }
 
+  case "reinstallBuiltInApp": {
+    const response = request("POST", "/e2e/reinstall-built-in-app", {});
+    expectOk(response, "reinstall built-in app");
+    break;
+  }
+
+  case "resetRemoteBundles": {
+    const response = request("POST", "/e2e/reset-remote-bundles", {});
+    expectOk(response, "reset remote bundles");
+    break;
+  }
+
   case "assertMetadataActive": {
     const response = request("POST", "/e2e/assert-metadata-active", {
       bundleId: BUNDLE_ID,
@@ -307,6 +321,26 @@ switch (ACTION) {
       bundleId: BUNDLE_ID,
     });
     expectOk(response, "assert crash history");
+    break;
+  }
+
+  case "assertBundlePatchBases": {
+    const response = request("POST", "/e2e/assert-bundle-patch-bases", {
+      absentBaseBundleIds: maybeCsv(ABSENT_BASE_BUNDLE_IDS),
+      bundleId: BUNDLE_ID,
+      expectedBaseBundleIds: maybeCsv(EXPECTED_BASE_BUNDLE_IDS),
+    });
+    const result = expectOk(response, "assert bundle patch bases");
+    assignIfPresent("observedBaseBundleIds", result.observedBaseBundleIds);
+    break;
+  }
+
+  case "assertManifestDiffApplied": {
+    const response = request("POST", "/e2e/assert-manifest-diff-applied", {
+      bundleId: BUNDLE_ID,
+      previousBundleId: PREVIOUS_BUNDLE_ID,
+    });
+    expectOk(response, "assert manifest diff applied");
     break;
   }
 

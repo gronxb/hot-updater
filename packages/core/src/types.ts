@@ -22,6 +22,21 @@ export type BundleMetadata = {
   hbc_patch_file_hash?: string;
   /** @deprecated Use Bundle.patchStorageUri. */
   hbc_patch_storage_uri?: string;
+  /** @deprecated Use Bundle.patches. */
+  patches?: Record<string, BundlePatchArtifactMetadata>;
+};
+
+export interface BundlePatchArtifact {
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchStorageUri: string;
+}
+
+export type BundlePatchArtifactMetadata = {
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
 };
 
 export interface ChangedAssetPatch {
@@ -116,22 +131,32 @@ export interface Bundle {
   assetBaseStorageUri?: string | null;
 
   /**
+   * Binary patch artifacts keyed by base bundle in array order.
+   * Earlier entries take precedence when a single "primary" patch is needed.
+   */
+  patches?: BundlePatchArtifact[] | null;
+
+  /**
    * Base bundle id used to generate this bundle's binary patch.
+   * @deprecated Use Bundle.patches.
    */
   patchBaseBundleId?: string | null;
 
   /**
    * Expected hash of the base asset before patch application.
+   * @deprecated Use Bundle.patches.
    */
   patchBaseFileHash?: string | null;
 
   /**
    * Expected hash of the binary patch artifact.
+   * @deprecated Use Bundle.patches.
    */
   patchFileHash?: string | null;
 
   /**
    * Storage URI for the binary patch artifact.
+   * @deprecated Use Bundle.patches.
    */
   patchStorageUri?: string | null;
 

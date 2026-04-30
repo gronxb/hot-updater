@@ -18,6 +18,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import appCss from "../styles.css?url";
 
+const LOCAL_DEBUG_HOSTS = new Set(["127.0.0.1", "localhost"]);
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -26,7 +28,16 @@ export const Route = createRootRoute({
       },
       {
         name: "viewport",
-        content: "width=device-width, initial-scale=1",
+        content:
+          "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+      },
+      {
+        name: "theme-color",
+        content: "#1f1d1c",
+      },
+      {
+        name: "color-scheme",
+        content: "dark light",
       },
       {
         title: "Hot Updater Console",
@@ -47,9 +58,17 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  const [isLocalDebugHost, setIsLocalDebugHost] = useState(false);
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (!import.meta.env.DEV || typeof window === "undefined") {
+      return;
+    }
+
+    const isDebugHost = LOCAL_DEBUG_HOSTS.has(window.location.hostname);
+    setIsLocalDebugHost(isDebugHost);
+
+    if (isDebugHost) {
       void import("react-grab/core").then(({ init }) => {
         init({
           activationKey: (event) =>
@@ -69,17 +88,19 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <TooltipProvider>
               {children}
               <Toaster />
-              <TanStackDevtools
-                config={{
-                  position: "bottom-right",
-                }}
-                plugins={[
-                  {
-                    name: "Tanstack Router",
-                    render: <TanStackRouterDevtoolsPanel />,
-                  },
-                ]}
-              />
+              {import.meta.env.DEV && isLocalDebugHost ? (
+                <TanStackDevtools
+                  config={{
+                    position: "bottom-right",
+                  }}
+                  plugins={[
+                    {
+                      name: "Tanstack Router",
+                      render: <TanStackRouterDevtoolsPanel />,
+                    },
+                  ]}
+                />
+              ) : null}
             </TooltipProvider>
           </QueryClientProvider>
         </ThemeProvider>
@@ -91,7 +112,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 
 function RootLayout() {
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (
+      import.meta.env.DEV &&
+      typeof window !== "undefined" &&
+      LOCAL_DEBUG_HOSTS.has(window.location.hostname)
+    ) {
       void import("react-grab");
     }
   }, []);

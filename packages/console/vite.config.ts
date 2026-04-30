@@ -19,6 +19,9 @@ const config = defineConfig({
     viteReact(),
   ],
   assetsInclude: ["**/*.node"],
+  server: {
+    allowedHosts: ["gronxb-macmini.taild999d7.ts.net"],
+  },
   optimizeDeps: {
     exclude: ["oxc-transform", "@oxc-transform/binding-darwin-arm64"],
   },

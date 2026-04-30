@@ -1,6 +1,7 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
+  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   getPatchBaseBundleId,
@@ -155,6 +156,23 @@ const chunkValues = <T>(values: T[], size: number) => {
 
 const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
   const rawMetadata = firestoreData.metadata;
+  const storedPatches = (
+    firestoreData as SnakeCaseBundle & {
+      patches?: Bundle["patches"];
+    }
+  ).patches;
+  const patches =
+    storedPatches && Array.isArray(storedPatches)
+      ? storedPatches
+      : getBundlePatches({
+          metadata: rawMetadata,
+          patchBaseBundleId: firestoreData.patch_base_bundle_id ?? null,
+          patchBaseFileHash: firestoreData.patch_base_file_hash ?? null,
+          patchFileHash: firestoreData.patch_file_hash ?? null,
+          patchStorageUri: firestoreData.patch_storage_uri ?? null,
+        });
+  const primaryPatch = patches[0] ?? null;
+
   return {
     channel: firestoreData.channel,
     enabled: Boolean(firestoreData.enabled),
@@ -177,16 +195,21 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
     assetBaseStorageUri:
       firestoreData.asset_base_storage_uri ??
       getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patches,
     patchBaseBundleId:
+      primaryPatch?.baseBundleId ??
       firestoreData.patch_base_bundle_id ??
       getPatchBaseBundleId({ metadata: rawMetadata }),
     patchBaseFileHash:
+      primaryPatch?.baseFileHash ??
       firestoreData.patch_base_file_hash ??
       getPatchBaseFileHash({ metadata: rawMetadata }),
     patchFileHash:
+      primaryPatch?.patchFileHash ??
       firestoreData.patch_file_hash ??
       getPatchFileHash({ metadata: rawMetadata }),
     patchStorageUri:
+      primaryPatch?.patchStorageUri ??
       firestoreData.patch_storage_uri ??
       getPatchStorageUri({ metadata: rawMetadata }),
     rolloutCohortCount:
@@ -409,6 +432,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 manifest_storage_uri: getManifestStorageUri(data),
                 manifest_file_hash: getManifestFileHash(data),
                 asset_base_storage_uri: getAssetBaseStorageUri(data),
+                patches: data.patches ?? null,
                 patch_base_bundle_id: getPatchBaseBundleId(data),
                 patch_base_file_hash: getPatchBaseFileHash(data),
                 patch_file_hash: getPatchFileHash(data),
@@ -473,6 +497,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   manifest_storage_uri: getManifestStorageUri(data),
                   manifest_file_hash: getManifestFileHash(data),
                   asset_base_storage_uri: getAssetBaseStorageUri(data),
+                  patches: data.patches ?? null,
                   patch_base_bundle_id: getPatchBaseBundleId(data),
                   patch_base_file_hash: getPatchBaseFileHash(data),
                   patch_file_hash: getPatchFileHash(data),

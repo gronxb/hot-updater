@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
@@ -36,13 +37,10 @@ export const Route = createFileRoute("/")({
 });
 
 function BundlesPage() {
-  const {
-    filters,
-    bundleId,
-    expandedBundleId,
-    setBundleId,
-    setExpandedBundleId,
-  } = useFilterParams();
+  const { filters, bundleId, setBundleId } = useFilterParams();
+  const [expandedBundleId, setExpandedBundleId] = useState<
+    string | undefined
+  >();
   const activeBundleId = bundleId ?? "";
 
   const { data: bundlesData, isLoading } = useBundlesQuery({
@@ -66,11 +64,20 @@ function BundlesPage() {
   const isSelectedBundleLoading =
     Boolean(activeBundleId) && !selectedBundle && isSelectedBundlePending;
 
+  useEffect(() => {
+    if (
+      expandedBundleId &&
+      !bundles.some((bundle) => bundle.id === expandedBundleId)
+    ) {
+      setExpandedBundleId(undefined);
+    }
+  }, [bundles, expandedBundleId]);
+
   if (isLoading) {
     return (
       <div className="flex flex-col h-full">
         <FilterToolbar />
-        <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-6">
+        <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
@@ -83,14 +90,17 @@ function BundlesPage() {
   return (
     <div className="flex flex-col h-full">
       <FilterToolbar />
-      <div className="flex flex-1 flex-col gap-6 bg-muted/5 p-6">
+      <div className="flex flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
         <BundlesTable
           bundles={bundles}
           pagination={pagination}
           expandedBundleId={expandedBundleId}
           selectedBundleId={bundleId}
           onExpandedBundleChange={setExpandedBundleId}
-          onDetailClick={(bundle) => setBundleId(bundle.id)}
+          onDetailClick={(bundle) => {
+            setExpandedBundleId(undefined);
+            setBundleId(bundle.id);
+          }}
         />
       </div>
 

@@ -6,8 +6,9 @@ import path from "node:path";
 import { hdiff } from "@hot-updater/bsdiff";
 import {
   getAssetBaseStorageUri,
+  getBundlePatch,
+  getBundlePatches,
   getManifestStorageUri,
-  getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -28,6 +29,10 @@ export interface CreateBundleDiffInput {
 export interface CreateBundleDiffDependencies {
   databasePlugin: DatabasePlugin;
   storagePlugin: StoragePlugin | null;
+}
+
+export interface CreateBundleDiffOptions {
+  makePrimary?: boolean;
 }
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
@@ -185,9 +190,33 @@ async function getFileHash(filePath: string) {
   return crypto.createHash("sha256").update(file).digest("hex");
 }
 
+function buildNextPatchState({
+  currentBundle,
+  nextPatch,
+  makePrimary,
+}: {
+  currentBundle: Bundle;
+  nextPatch: NonNullable<ReturnType<typeof getBundlePatch>>;
+  makePrimary: boolean;
+}) {
+  const existingPatches = getBundlePatches(currentBundle).filter(
+    (patch) => patch.baseBundleId !== nextPatch.baseBundleId,
+  );
+  const orderedPatches = makePrimary
+    ? [nextPatch, ...existingPatches]
+    : [...existingPatches, nextPatch];
+  const primaryPatch = orderedPatches[0] ?? nextPatch;
+
+  return {
+    patches: orderedPatches,
+    primaryPatch,
+  };
+}
+
 export async function createBundleDiff(
   { baseBundleId, bundleId }: CreateBundleDiffInput,
   deps: CreateBundleDiffDependencies,
+  options: CreateBundleDiffOptions = {},
 ) {
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");
@@ -246,7 +275,7 @@ export async function createBundleDiff(
   );
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   const patchPath = path.join(workDir, patchFilename);
-  const previousPatchStorageUri = getPatchStorageUri(targetBundle);
+  const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 
   try {
     await fs.writeFile(patchPath, patchBytes);
@@ -262,19 +291,36 @@ export async function createBundleDiff(
     const patchUpload = await deps.storagePlugin.upload(uploadKey, patchPath);
     const patchFileHash = await getFileHash(patchPath);
 
-    await deps.databasePlugin.updateBundle(targetBundle.id, {
-      patchBaseBundleId: baseBundle.id,
-      patchBaseFileHash: baseAssetHash,
+    const nextPatch = {
+      baseBundleId: baseBundle.id,
+      baseFileHash: baseAssetHash,
       patchFileHash,
       patchStorageUri: patchUpload.storageUri,
+    };
+    const nextState = buildNextPatchState({
+      currentBundle: targetBundle,
+      nextPatch,
+      makePrimary: options.makePrimary ?? true,
+    });
+
+    await deps.databasePlugin.updateBundle(targetBundle.id, {
+      patches: nextState.patches,
+      patchBaseBundleId: nextState.primaryPatch.baseBundleId,
+      patchBaseFileHash: nextState.primaryPatch.baseFileHash,
+      patchFileHash: nextState.primaryPatch.patchFileHash,
+      patchStorageUri: nextState.primaryPatch.patchStorageUri,
     });
     await deps.databasePlugin.commitBundle();
 
     if (
-      previousPatchStorageUri &&
-      previousPatchStorageUri !== patchUpload.storageUri
+      previousPatch?.patchStorageUri &&
+      previousPatch.patchStorageUri !== patchUpload.storageUri
     ) {
-      await deps.storagePlugin.delete(previousPatchStorageUri).catch(() => {});
+      await deps.storagePlugin
+        .delete(previousPatch.patchStorageUri)
+        .catch(() => {
+          return;
+        });
     }
 
     const updatedBundle = await deps.databasePlugin.getBundleById(

@@ -9,8 +9,6 @@ import { filterCompatibleAppVersions } from "@hot-updater/plugin-core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import camelcaseKeys from "camelcase-keys";
 
-import type { Database } from "./types";
-
 type UpdateInfoRow = {
   id: string;
   should_force_update: boolean;
@@ -21,7 +19,7 @@ type UpdateInfoRow = {
 };
 
 export const appVersionStrategy = async (
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient<any>,
   {
     platform,
     appVersion,
@@ -67,7 +65,7 @@ export const appVersionStrategy = async (
 };
 
 export const fingerprintStrategy = async (
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient<any>,
   {
     platform,
     fingerprintHash,
@@ -98,7 +96,7 @@ export const fingerprintStrategy = async (
 };
 
 export const getUpdateInfo = (
-  supabase: SupabaseClient<Database>,
+  supabase: SupabaseClient<any>,
   args: GetBundlesArgs,
 ) => {
   if (args._updateStrategy === "appVersion") {

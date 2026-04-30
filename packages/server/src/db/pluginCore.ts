@@ -17,6 +17,7 @@ import {
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 
+import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
@@ -391,6 +392,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
         await plugin.appendBundle(bundle, context);
         await plugin.commitBundle(context);
@@ -403,6 +405,11 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await runWithMutationPlugin(async (plugin) => {
+        const current = await plugin.getBundleById(bundleId, context);
+        if (!current) {
+          throw new Error("targetBundleId not found");
+        }
+        assertBundlePersistenceConstraints({ ...current, ...newBundle });
         await plugin.updateBundle(bundleId, newBundle, context);
         await plugin.commitBundle(context);
       });
