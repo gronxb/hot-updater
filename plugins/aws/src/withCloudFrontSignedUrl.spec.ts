@@ -20,6 +20,7 @@ const createBaseStorage = (): StoragePlugin<TestContext> => ({
     return { storageUri: `s3://test-bucket/${key}` };
   },
   async delete() {},
+  async download() {},
   async getDownloadUrl(storageUri) {
     return {
       fileUrl: storageUri.replace("s3://", "https://s3.example.com/"),

@@ -105,7 +105,23 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
   return entryPath;
 }
 
-async function downloadArchive(fileUrl: string, archivePath: string) {
+async function downloadArchive(
+  storageUri: string,
+  storagePlugin: StoragePlugin | null,
+  archivePath: string,
+) {
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+
+  if (protocol === "http" || protocol === "https") {
+    const archiveBuffer = await downloadFromUrl(storageUri);
+    await fs.writeFile(archivePath, archiveBuffer);
+    return;
+  }
+
+  await downloadFromStorage(storageUri, storagePlugin, archivePath);
+}
+
+async function downloadFromUrl(fileUrl: string) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -113,8 +129,24 @@ async function downloadArchive(fileUrl: string, archivePath: string) {
     );
   }
 
-  const archiveBuffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(archivePath, archiveBuffer);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function downloadFromStorage(
+  storageUri: string,
+  storagePlugin: StoragePlugin | null,
+  filePath: string,
+) {
+  if (!storagePlugin) {
+    throw new Error("Storage plugin is not configured");
+  }
+
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+  if (storagePlugin.supportedProtocol !== protocol) {
+    throw new Error(`No storage plugin for protocol: ${protocol}`);
+  }
+
+  await storagePlugin.download(storageUri, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -241,32 +273,6 @@ async function rewriteManifestBundleId(
   };
 }
 
-async function resolveBundleDownloadUrl(
-  storageUri: string,
-  storagePlugin: StoragePlugin | null,
-) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-
-  if (protocol === "http" || protocol === "https") {
-    return storageUri;
-  }
-
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  if (storagePlugin.supportedProtocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
-  if (!fileUrl) {
-    throw new Error("Storage plugin returned empty fileUrl");
-  }
-
-  return fileUrl;
-}
-
 export async function createCopiedBundleArchive({
   bundle,
   config,
@@ -280,10 +286,6 @@ export async function createCopiedBundleArchive({
   storagePlugin: StoragePlugin;
   targetChannel: string;
 }) {
-  const downloadUrl = await resolveBundleDownloadUrl(
-    bundle.storageUri,
-    storagePlugin,
-  );
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
   const archiveFilename = getArchiveFilename(bundle.storageUri);
   const workDir = await fs.mkdtemp(
@@ -297,7 +299,7 @@ export async function createCopiedBundleArchive({
   await fs.mkdir(extractDir, { recursive: true });
 
   try {
-    await downloadArchive(downloadUrl, sourceArchivePath);
+    await downloadArchive(bundle.storageUri, storagePlugin, sourceArchivePath);
     const format = await extractArchive(sourceArchivePath, extractDir);
 
     const { manifest, manifestPath } = await rewriteManifestBundleId(

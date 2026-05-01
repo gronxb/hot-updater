@@ -37,7 +37,7 @@ export interface CreateStoragePluginOptions<TConfig, TContext = unknown> {
    */
   supportedProtocol: string;
   /**
-   * Function that creates the storage plugin methods (upload, delete, getDownloadUrl)
+   * Function that creates the storage plugin methods (upload, delete, download, getDownloadUrl)
    */
   factory: StoragePluginFactory<TConfig, TContext>;
 }
@@ -62,6 +62,7 @@ export interface CreateStoragePluginOptions<TConfig, TContext = unknown> {
  *     return {
  *       async upload(key, filePath) { ... },
  *       async delete(storageUri) { ... },
+ *       async download(storageUri, filePath) { ... },
  *       async getDownloadUrl(storageUri, context) { ... }
  *     };
  *   }
@@ -94,6 +95,10 @@ export const createStoragePlugin = <TConfig, TContext = unknown>(
 
         async delete(storageUri) {
           return getMethods().delete(storageUri);
+        },
+
+        async download(storageUri: string, filePath: string) {
+          return getMethods().download(storageUri, filePath);
         },
 
         async getDownloadUrl(

@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+
 import type {
   Bundle,
   DatabasePlugin,
@@ -82,6 +84,13 @@ const createStoragePlugin = (
     return {
       fileUrl: `https://assets.example.com${storageUrl.pathname}`,
     };
+  },
+  async download(storageUri, filePath) {
+    const storageUrl = new URL(storageUri);
+    const response = await fetch(
+      `https://assets.example.com${storageUrl.pathname}`,
+    );
+    await fs.writeFile(filePath, new Uint8Array(await response.arrayBuffer()));
   },
   upload,
 });

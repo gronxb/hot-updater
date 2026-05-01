@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import {
   getAssetBaseStorageUri,
   getBundlePatches,
@@ -19,6 +23,8 @@ interface BundleManifest {
   assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
+const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
+
 function resolveStorageUriForDeletion(
   storageUri: string,
   storagePlugin: StoragePlugin,
@@ -36,22 +42,41 @@ function resolveStorageUriForDeletion(
   return storageUri;
 }
 
-async function resolveStorageDownloadUrl(
+async function downloadStorageBytes(
   storageUri: string,
   storagePlugin: StoragePlugin,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (protocol === "http" || protocol === "https") {
-    return storageUri;
+    const response = await fetch(storageUri);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to download bundle manifest: ${response.statusText}`,
+      );
+    }
+
+    return new Uint8Array(await response.arrayBuffer());
   }
 
-  const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
-  if (!fileUrl) {
-    throw new Error("Storage plugin returned empty fileUrl");
+  if (storagePlugin.supportedProtocol !== protocol) {
+    throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  return fileUrl;
+  const downloadRoot = path.join(process.cwd(), ".hot-updater");
+  await fs.mkdir(downloadRoot, { recursive: true });
+  const workDir = await fs.mkdtemp(
+    path.join(downloadRoot, HOT_UPDATER_DOWNLOAD_DIR_PREFIX),
+  );
+  const filename = path.basename(new URL(storageUri).pathname) || randomUUID();
+  const filePath = path.join(workDir, filename);
+
+  try {
+    await storagePlugin.download(storageUri, filePath);
+    return new Uint8Array(await fs.readFile(filePath));
+  } finally {
+    await fs.rm(workDir, { force: true, recursive: true });
+  }
 }
 
 function createStorageUriWithRelativePath(
@@ -74,19 +99,12 @@ async function loadBundleManifest(
   manifestStorageUri: string,
   storagePlugin: StoragePlugin,
 ) {
-  const manifestUrl = await resolveStorageDownloadUrl(
+  const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
     storagePlugin,
   );
-  const response = await fetch(manifestUrl);
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download bundle manifest: ${response.statusText}`,
-    );
-  }
-
-  return JSON.parse(await response.text()) as BundleManifest;
+  return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
 }
 
 export async function deleteBundle(

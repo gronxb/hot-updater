@@ -368,6 +368,8 @@ export interface StoragePlugin<TContext = unknown> {
 
   delete: (storageUri: string) => Promise<void>;
 
+  download: (storageUri: string, filePath: string) => Promise<void>;
+
   getDownloadUrl: (
     storageUri: string,
     context?: StorageResolveContext<TContext>,

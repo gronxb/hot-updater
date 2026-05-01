@@ -236,6 +236,9 @@ describe("createCopiedBundleArchive", () => {
         name: "mockStorage",
         supportedProtocol: "s3",
         delete: vi.fn(),
+        download: vi.fn(async (_storageUri, filePath) => {
+          await fs.copyFile(archivePath, filePath);
+        }),
         getDownloadUrl: vi.fn(),
         upload: vi.fn(async (key, filePath) => {
           const uploadPath = path.join(
@@ -337,6 +340,9 @@ describe("createCopiedBundleArchive", () => {
       name: "mockStorage",
       supportedProtocol: "s3",
       delete: vi.fn(),
+      download: vi.fn(async (_storageUri, filePath) => {
+        await fs.copyFile(archivePath, filePath);
+      }),
       getDownloadUrl: vi.fn(),
       upload: vi.fn(),
     };
@@ -384,6 +390,9 @@ describe("createCopiedBundleArchive", () => {
       name: "mockStorage",
       supportedProtocol: "s3",
       delete: deleteFromStorage,
+      download: vi.fn(async (_storageUri, filePath) => {
+        await fs.copyFile(archivePath, filePath);
+      }),
       getDownloadUrl: vi.fn(),
       upload: vi.fn(async (key, filePath) => {
         return {

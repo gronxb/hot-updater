@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import type { StoragePlugin } from "@hot-updater/plugin-core";
 
 export const mockStorage = (_: any) => (): StoragePlugin => {
@@ -9,6 +12,10 @@ export const mockStorage = (_: any) => (): StoragePlugin => {
         storageUri: `storage://my-app/${key}/bundle.zip`,
       }),
     delete: (_storageUri: string) => Promise.resolve(),
+    async download(storageUri: string, filePath: string) {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, storageUri);
+    },
     async getDownloadUrl(storageUri: string) {
       try {
         const url = new URL(storageUri);

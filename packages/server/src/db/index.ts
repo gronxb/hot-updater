@@ -51,6 +51,21 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
   routes?: HandlerRoutes;
 }
 
+const assertRemoteDownloadUrl = (fileUrl: string) => {
+  try {
+    const protocol = new URL(fileUrl).protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") {
+      return fileUrl;
+    }
+  } catch {
+    // Fall through to the runtime-specific error below.
+  }
+
+  throw new Error(
+    "Storage plugin returned a local file path; runtime update checks require an HTTP(S) download URL.",
+  );
+};
+
 export function createHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
 ): HotUpdaterAPI<TContext> {
@@ -78,11 +93,12 @@ export function createHotUpdater<TContext = unknown>(
     if (!plugin) {
       throw new Error(`No storage plugin for protocol: ${protocol}`);
     }
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri, context);
+    const downloadTarget = await plugin.getDownloadUrl(storageUri, context);
+    const { fileUrl } = downloadTarget;
     if (!fileUrl) {
       throw new Error("Storage plugin returned empty fileUrl");
     }
-    return fileUrl;
+    return assertRemoteDownloadUrl(fileUrl);
   };
 
   const resolveFileUrl = async (

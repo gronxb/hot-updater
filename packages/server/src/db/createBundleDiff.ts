@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -36,6 +36,7 @@ export interface CreateBundleDiffOptions {
 }
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
+const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -96,14 +97,23 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-async function resolveStorageDownloadUrl(
+async function downloadFromUrl(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download storage object: ${response.status}`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function downloadStorageBytes(
   storageUri: string,
   storagePlugin: StoragePlugin | null,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (protocol === "http" || protocol === "https") {
-    return storageUri;
+    return downloadFromUrl(storageUri);
   }
 
   if (!storagePlugin) {
@@ -114,12 +124,20 @@ async function resolveStorageDownloadUrl(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
-  if (!fileUrl) {
-    throw new Error("Storage plugin returned empty fileUrl");
-  }
+  const downloadRoot = path.join(process.cwd(), ".hot-updater");
+  await fs.mkdir(downloadRoot, { recursive: true });
+  const workDir = await fs.mkdtemp(
+    path.join(downloadRoot, HOT_UPDATER_DOWNLOAD_DIR_PREFIX),
+  );
+  const filename = path.basename(new URL(storageUri).pathname) || randomUUID();
+  const filePath = path.join(workDir, filename);
 
-  return fileUrl;
+  try {
+    await storagePlugin.download(storageUri, filePath);
+    return new Uint8Array(await fs.readFile(filePath));
+  } finally {
+    await fs.rm(workDir, { force: true, recursive: true });
+  }
 }
 
 async function fetchManifest(
@@ -131,16 +149,14 @@ async function fetchManifest(
     throw new Error(`Bundle ${bundle.id} does not have manifest metadata`);
   }
 
-  const manifestUrl = await resolveStorageDownloadUrl(
+  const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
     storagePlugin,
   );
-  const response = await fetch(manifestUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download manifest for bundle ${bundle.id}`);
-  }
 
-  const payload = (await response.json()) as unknown;
+  const payload = JSON.parse(
+    new TextDecoder().decode(manifestBytes),
+  ) as unknown;
   if (!isBundleManifest(payload)) {
     throw new Error(`Invalid manifest payload for bundle ${bundle.id}`);
   }
@@ -171,18 +187,7 @@ async function fetchAssetBytes(
   }
 
   const assetStorageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
-  const assetUrl = await resolveStorageDownloadUrl(
-    assetStorageUri,
-    storagePlugin,
-  );
-  const response = await fetch(assetUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download asset ${assetPath} for bundle ${bundle.id}`,
-    );
-  }
-
-  return new Uint8Array(await response.arrayBuffer());
+  return downloadStorageBytes(assetStorageUri, storagePlugin);
 }
 
 async function getFileHash(filePath: string) {

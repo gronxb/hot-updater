@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import fs from "node:fs/promises";
+
 import type {
   Bundle,
   DatabasePlugin,
@@ -42,14 +44,24 @@ function createStoragePlugin(
   supportedProtocol = "s3",
   overrides?: Partial<StoragePlugin>,
 ) {
-  return {
+  const storagePlugin = {
     name: "mockStorage",
     supportedProtocol,
     upload: vi.fn(),
     delete: vi.fn(),
+    download: vi.fn(async (storageUri: string, filePath: string) => {
+      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
+      const response = await fetch(fileUrl);
+      await fs.writeFile(
+        filePath,
+        new Uint8Array(await response.arrayBuffer()),
+      );
+    }),
     getDownloadUrl: vi.fn(),
     ...overrides,
-  } satisfies StoragePlugin;
+  };
+
+  return storagePlugin satisfies StoragePlugin;
 }
 
 afterEach(() => {

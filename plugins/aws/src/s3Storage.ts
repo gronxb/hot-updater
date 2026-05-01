@@ -96,6 +96,28 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           storageUri: `s3://${bucketName}/${Key}`,
         };
       },
+      async download(storageUri: string, filePath: string) {
+        const { bucket, key } = parseStorageUri(storageUri, "s3");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
+        const response = await client.send(
+          new GetObjectCommand({ Bucket: bucket, Key: key }),
+        );
+
+        if (!response.Body) {
+          throw new Error("S3 object body is empty");
+        }
+
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(
+          filePath,
+          await response.Body.transformToByteArray(),
+        );
+      },
       async getDownloadUrl(storageUri: string) {
         // Simple validation: supported protocol must match
         const u = new URL(storageUri);

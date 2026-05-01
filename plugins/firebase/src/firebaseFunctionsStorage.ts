@@ -53,6 +53,15 @@ export const firebaseFunctionsStorage = (
 
         return fallbackStorage.delete(storageUri);
       },
+      async download(storageUri, filePath) {
+        if (!fallbackStorage) {
+          throw new Error(
+            "firebaseFunctionsStorage requires storageBucket to support download().",
+          );
+        }
+
+        return fallbackStorage.download(storageUri, filePath);
+      },
       async getDownloadUrl(storageUri, context) {
         if (config.cdnUrl) {
           const storageUrl = new URL(storageUri);

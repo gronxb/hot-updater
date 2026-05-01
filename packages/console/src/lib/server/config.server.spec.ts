@@ -30,6 +30,7 @@ function createStoragePlugin(): StoragePlugin {
     supportedProtocol: "s3",
     upload: vi.fn(),
     delete: vi.fn(),
+    download: vi.fn(),
     getDownloadUrl: vi.fn(),
   };
 }

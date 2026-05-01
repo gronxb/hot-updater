@@ -63,6 +63,11 @@ export const r2WorkerStorage = <
           "r2WorkerStorage does not support delete() in the worker runtime.",
         );
       },
+      async download() {
+        throw new Error(
+          "r2WorkerStorage does not support download() in the worker runtime.",
+        );
+      },
       async getDownloadUrl(storageUri, context) {
         const storageUrl = new URL(storageUri);
 

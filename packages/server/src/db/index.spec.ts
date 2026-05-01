@@ -152,6 +152,7 @@ function createTestStoragePlugin(
       };
     },
     async delete() {},
+    async download() {},
     async getDownloadUrl(storageUri, context) {
       return { fileUrl: resolveFileUrl(storageUri, context) };
     },

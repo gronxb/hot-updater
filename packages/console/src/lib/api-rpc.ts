@@ -44,6 +44,21 @@ type DeleteBundleInput = {
   bundleId: string;
 };
 
+const assertRemoteDownloadUrl = (fileUrl: string) => {
+  try {
+    const protocol = new URL(fileUrl).protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") {
+      return fileUrl;
+    }
+  } catch {
+    // Fall through to the browser-facing error below.
+  }
+
+  throw new Error(
+    "Storage plugin returned a local file path; browser downloads require an HTTP(S) download URL.",
+  );
+};
+
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
   try {
@@ -220,13 +235,14 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
         throw new Error(`No storage plugin for protocol: ${protocol}`);
       }
 
-      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
+      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
+      const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {
         throw new Error("Storage plugin returned empty fileUrl");
       }
 
-      return { fileUrl };
+      return { fileUrl: assertRemoteDownloadUrl(fileUrl) };
     } catch (error) {
       console.error("Error during bundle download URL retrieval:", error);
       throw error;

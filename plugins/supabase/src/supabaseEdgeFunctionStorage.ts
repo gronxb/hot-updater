@@ -26,6 +26,11 @@ export const supabaseEdgeFunctionStorage = (
           "supabaseEdgeFunctionStorage does not support upload() in the edge runtime.",
         );
       },
+      async download() {
+        throw new Error(
+          "supabaseEdgeFunctionStorage does not support download() in the edge runtime.",
+        );
+      },
       async delete(storageUri) {
         const storageUrl = new URL(storageUri);
 

@@ -78,6 +78,28 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
           storageUri: `supabase-storage://${fullPath}`,
         };
       },
+      async download(storageUri: string, filePath: string) {
+        const { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
+
+        const { data, error } = await bucket.download(key);
+        if (error) {
+          throw new Error(`Failed to download bundle: ${error.message}`);
+        }
+        if (!data) {
+          throw new Error("Failed to download bundle");
+        }
+
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, new Uint8Array(await data.arrayBuffer()));
+      },
       async getDownloadUrl(storageUri: string) {
         // Simple validation: supported protocol must match
         const u = new URL(storageUri);

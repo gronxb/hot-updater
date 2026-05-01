@@ -79,6 +79,7 @@ describe("runtime createHotUpdater", () => {
         return { storageUri: `s3://test-bucket/${key}` };
       },
       async delete() {},
+      async download() {},
       getDownloadUrl,
     };
 
@@ -186,6 +187,7 @@ describe("runtime createHotUpdater", () => {
         return { storageUri: `s3://test-bucket/${key}` };
       },
       async delete() {},
+      async download() {},
       getDownloadUrl,
     };
 
@@ -373,6 +375,7 @@ describe("runtime createHotUpdater", () => {
         return { storageUri: `s3://test-bucket/${key}` };
       },
       async delete() {},
+      async download() {},
       getDownloadUrl,
     };
 
@@ -464,6 +467,7 @@ describe("runtime createHotUpdater", () => {
         return { storageUri: `s3://test-bucket/${key}` };
       },
       async delete() {},
+      async download() {},
       async getDownloadUrl() {
         return { fileUrl: "https://assets.example.com/bundle.zip" };
       },
@@ -537,6 +541,7 @@ describe("runtime createHotUpdater", () => {
         return { storageUri: `s3://test-bucket/${key}` };
       },
       async delete() {},
+      async download() {},
       async getDownloadUrl() {
         return { fileUrl: "https://assets.example.com/bundle.zip" };
       },
