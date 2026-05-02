@@ -39,6 +39,7 @@ const areDiffDetailsEqual = (
   return left.files.every((leftFile, index) => {
     const rightFile = right.files[index];
     return (
+      rightFile !== undefined &&
       leftFile.order === rightFile.order &&
       leftFile.path === rightFile.path &&
       leftFile.progress === rightFile.progress &&
