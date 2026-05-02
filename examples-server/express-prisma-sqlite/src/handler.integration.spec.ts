@@ -46,7 +46,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
     const hotUpdaterCli = path.join(
       path.dirname(hotUpdaterPkgPath),
-      "dist/index.cjs",
+      "dist/index.mjs",
     );
 
     // Generate Prisma Client first from existing schema

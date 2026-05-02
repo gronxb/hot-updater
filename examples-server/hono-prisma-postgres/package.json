@@ -20,7 +20,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "@prisma/client": "^6.18.0",
+    "@prisma/client": "catalog:db",
     "dotenv": "^16.6.1",
     "hono": "catalog:hono"
   },
@@ -29,7 +29,7 @@
     "@types/node": "^20.11.17",
     "execa": "catalog:tools",
     "hot-updater": "workspace:*",
-    "prisma": "^6.4.1",
+    "prisma": "catalog:db",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2"
   }

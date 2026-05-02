@@ -57,19 +57,19 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "fumadb": "0.2.2",
+    "fumadb": "catalog:db",
     "rou3": "0.7.9",
     "semver": "^7.7.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.2.17",
+    "@electric-sql/pglite": "catalog:db",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "execa": "catalog:tools",
-    "kysely": "^0.28.9",
-    "kysely-pglite-dialect": "^1.2.0",
+    "kysely": "catalog:db",
+    "kysely-pglite-dialect": "catalog:db",
     "msw": "^2.7.0",
     "uuidv7": "^1.0.2"
   }
