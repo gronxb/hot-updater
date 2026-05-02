@@ -58,7 +58,7 @@ describe(
       const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");
       const hotUpdaterCli = path.join(
         path.dirname(hotUpdaterPkgPath),
-        "dist/index.cjs",
+        "dist/index.mjs",
       );
 
       await execa(

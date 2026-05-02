@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/bsdiff",
-  "version": "0.30.6",
+  "version": "0.30.7",
   "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
   "license": "MIT AND BSD-2-Clause AND bzip2-1.0.6",
   "type": "module",

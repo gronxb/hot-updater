@@ -15,14 +15,68 @@ vi.mock("./native", () => ({
   ),
 }));
 
+const importStore = async () => {
+  const { hotUpdaterStore } = await import("./store");
+  return hotUpdaterStore;
+};
+
 describe("hotUpdaterStore", () => {
   beforeEach(() => {
     listeners.clear();
     vi.resetModules();
   });
 
+  it("does not notify subscribers when state values are unchanged", async () => {
+    const store = await importStore();
+    const listener = vi.fn();
+
+    const unsubscribe = store.subscribe(listener);
+
+    store.setState({});
+    store.setState({ progress: 0 });
+    store.setState({ isUpdateDownloaded: false });
+
+    expect(listener).not.toHaveBeenCalled();
+
+    unsubscribe();
+  });
+
+  it("notifies subscribers only when progress events change the snapshot", async () => {
+    const store = await importStore();
+    const listener = vi.fn();
+    const emitProgress = listeners.get("onProgress");
+
+    expect(emitProgress).toBeTypeOf("function");
+
+    const unsubscribe = store.subscribe(listener);
+
+    emitProgress?.({
+      artifactType: "archive",
+      progress: 0.5,
+    });
+    emitProgress?.({
+      artifactType: "archive",
+      progress: 0.5,
+    });
+    emitProgress?.({
+      artifactType: "archive",
+      progress: 1,
+    });
+    store.setState({ isUpdateDownloaded: true });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot()).toEqual({
+      artifactType: "archive",
+      details: null,
+      isUpdateDownloaded: true,
+      progress: 1,
+    });
+
+    unsubscribe();
+  });
+
   it("stores manifest progress metadata while keeping overall progress", async () => {
-    const { hotUpdaterStore } = await import("./store");
+    const store = await importStore();
     const emitProgress = listeners.get("onProgress");
 
     expect(emitProgress).toBeTypeOf("function");
@@ -50,7 +104,7 @@ describe("hotUpdaterStore", () => {
       progress: 0.42,
     });
 
-    expect(hotUpdaterStore.getSnapshot()).toEqual({
+    expect(store.getSnapshot()).toEqual({
       artifactType: "diff",
       details: {
         completedFilesCount: 1,
@@ -76,7 +130,7 @@ describe("hotUpdaterStore", () => {
   });
 
   it("stores diff snapshot transitions from downloading to downloaded", async () => {
-    const { hotUpdaterStore } = await import("./store");
+    const store = await importStore();
     const emitProgress = listeners.get("onProgress");
 
     emitProgress?.({
@@ -125,7 +179,7 @@ describe("hotUpdaterStore", () => {
       progress: 0.6,
     });
 
-    expect(hotUpdaterStore.getSnapshot()).toEqual({
+    expect(store.getSnapshot()).toEqual({
       artifactType: "diff",
       details: {
         completedFilesCount: 1,
@@ -151,7 +205,7 @@ describe("hotUpdaterStore", () => {
   });
 
   it("clears manifest metadata when archive progress events arrive", async () => {
-    const { hotUpdaterStore } = await import("./store");
+    const store = await importStore();
     const emitProgress = listeners.get("onProgress");
 
     emitProgress?.({
@@ -188,7 +242,7 @@ describe("hotUpdaterStore", () => {
       progress: 0.25,
     });
 
-    expect(hotUpdaterStore.getSnapshot()).toEqual({
+    expect(store.getSnapshot()).toEqual({
       artifactType: "archive",
       details: null,
       isUpdateDownloaded: false,
@@ -197,7 +251,7 @@ describe("hotUpdaterStore", () => {
   });
 
   it("clears stale manifest metadata even when archive events omit optional fields", async () => {
-    const { hotUpdaterStore } = await import("./store");
+    const store = await importStore();
     const emitProgress = listeners.get("onProgress");
 
     emitProgress?.({
@@ -222,7 +276,7 @@ describe("hotUpdaterStore", () => {
       progress: 0.4,
     });
 
-    expect(hotUpdaterStore.getSnapshot()).toEqual({
+    expect(store.getSnapshot()).toEqual({
       artifactType: "archive",
       details: null,
       isUpdateDownloaded: false,

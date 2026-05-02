@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/postgres",
   "type": "module",
-  "version": "0.30.6",
+  "version": "0.30.7",
   "description": "React Native OTA solution for self-hosted",
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -35,11 +35,11 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
-    "kysely": "^0.28.5",
-    "pg": "^8.13.1"
+    "kysely": "catalog:db",
+    "pg": "catalog:db"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.2.15",
+    "@electric-sql/pglite": "catalog:db",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",

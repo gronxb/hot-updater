@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/firebase",
   "type": "module",
-  "version": "0.30.6",
+  "version": "0.30.7",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "types": "dist/index.d.cts",
@@ -57,7 +57,7 @@
     "@types/node": "catalog:",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
-    "firebase-admin": "^13.2.0",
+    "firebase-admin": "catalog:firebase",
     "firebase-functions": "^6.3.2",
     "firebase-functions-test": "^3.4.0",
     "firebase-tools": "^13.32.0",

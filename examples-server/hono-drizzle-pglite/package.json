@@ -12,14 +12,14 @@
     "db:push": "npx drizzle-kit push"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.2.17",
+    "@electric-sql/pglite": "catalog:db",
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.6.1",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "catalog:db",
     "hono": "catalog:hono"
   },
   "devDependencies": {

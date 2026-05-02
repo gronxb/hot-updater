@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "path";
 
-import { loadConfig } from "@hot-updater/cli-tools";
 import type { ExpoConfig } from "expo/config";
 import {
   createRunOncePlugin,
@@ -11,24 +10,26 @@ import {
   withPlugins,
   withStringsXml,
 } from "expo/config-plugins";
-import {
-  createFingerprintJSON,
-  generateFingerprints,
-  getPublicKeyFromPrivate,
-  loadPrivateKey,
-} from "hot-updater";
 
 import pkg from "../../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 
-let fingerprintCache: Awaited<ReturnType<typeof generateFingerprints>> | null =
-  null;
+const loadCliTools = () => import("@hot-updater/cli-tools");
+const loadHotUpdater = () => import("hot-updater");
+
+type Fingerprints = Awaited<
+  ReturnType<Awaited<ReturnType<typeof loadHotUpdater>>["generateFingerprints"]>
+>;
+
+let fingerprintCache: Fingerprints | null = null;
 
 const getFingerprint = async () => {
   if (fingerprintCache) {
     return fingerprintCache;
   }
 
+  const { createFingerprintJSON, generateFingerprints } =
+    await loadHotUpdater();
   fingerprintCache = await generateFingerprints();
   await createFingerprintJSON(fingerprintCache);
   return fingerprintCache;
@@ -54,6 +55,7 @@ const getPublicKeyFromConfig = async (
   const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
   if (envPrivateKey) {
     try {
+      const { getPublicKeyFromPrivate } = await loadHotUpdater();
       const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKey);
       console.log(
         "[hot-updater] Using public key extracted from HOT_UPDATER_PRIVATE_KEY environment variable",
@@ -89,6 +91,7 @@ const getPublicKeyFromConfig = async (
 
   try {
     // Priority 2: Private key file (existing method)
+    const { getPublicKeyFromPrivate, loadPrivateKey } = await loadHotUpdater();
     const privateKeyPEM = await loadPrivateKey(privateKeyPath);
     const publicKeyPEM = getPublicKeyFromPrivate(privateKeyPEM);
     console.log(`[hot-updater] Extracted public key from ${privateKeyPath}`);
@@ -165,6 +168,7 @@ const withHotUpdaterConfigAsync =
     // === iOS: Add channel and fingerprint to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
       let fingerprintHash = null;
+      const { loadConfig } = await loadCliTools();
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
         const fingerprint = await getFingerprint();
@@ -187,6 +191,7 @@ const withHotUpdaterConfigAsync =
     // === Android: Add channel and fingerprint to strings.xml ===
     modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
       let fingerprintHash = null;
+      const { loadConfig } = await loadCliTools();
       const config = await loadConfig(null);
       if (config.updateStrategy !== "appVersion") {
         const fingerprint = await getFingerprint();

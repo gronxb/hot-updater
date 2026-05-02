@@ -10,7 +10,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.2.17",
+    "@electric-sql/pglite": "catalog:db",
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
@@ -18,8 +18,8 @@
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.4.7",
     "hono": "catalog:hono",
-    "kysely": "0.28.9",
-    "kysely-pglite-dialect": "^1.2.0"
+    "kysely": "catalog:db",
+    "kysely-pglite-dialect": "catalog:db"
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",

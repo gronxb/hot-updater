@@ -20,8 +20,8 @@
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.4.7",
     "hono": "catalog:hono",
-    "kysely": "0.28.9",
-    "mysql2": "^3.11.5"
+    "kysely": "catalog:db",
+    "mysql2": "catalog:db"
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",

@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
 
 import type {
   HotUpdaterDiffFileSnapshot,
@@ -12,6 +12,48 @@ export type HotUpdaterState = {
   isUpdateDownloaded: boolean;
   artifactType: "archive" | "diff" | null;
   details: HotUpdaterDiffProgressDetails | null;
+};
+
+const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
+
+const areDiffDetailsEqual = (
+  left: HotUpdaterDiffProgressDetails | null,
+  right: HotUpdaterDiffProgressDetails | null,
+) => {
+  if (left === right) {
+    return true;
+  }
+
+  if (left === null || right === null) {
+    return false;
+  }
+
+  if (
+    left.totalFilesCount !== right.totalFilesCount ||
+    left.completedFilesCount !== right.completedFilesCount ||
+    left.files.length !== right.files.length
+  ) {
+    return false;
+  }
+
+  return left.files.every((leftFile, index) => {
+    const rightFile = right.files[index];
+    return (
+      leftFile.order === rightFile.order &&
+      leftFile.path === rightFile.path &&
+      leftFile.progress === rightFile.progress &&
+      leftFile.status === rightFile.status
+    );
+  });
+};
+
+const areStatesEqual = (left: HotUpdaterState, right: HotUpdaterState) => {
+  return (
+    left.progress === right.progress &&
+    left.isUpdateDownloaded === right.isUpdateDownloaded &&
+    left.artifactType === right.artifactType &&
+    areDiffDetailsEqual(left.details, right.details)
+  );
 };
 
 const createHotUpdaterStore = () => {
@@ -57,25 +99,8 @@ const createHotUpdaterStore = () => {
     };
   };
 
-  const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
-    const nextProgress = Math.max(0, Math.min(event.progress, 1));
-    const nextDetails =
-      event.artifactType === "diff"
-        ? normalizeDiffDetails(event.details)
-        : null;
-
-    state = {
-      artifactType: event.artifactType,
-      details: nextDetails,
-      isUpdateDownloaded: nextProgress >= 1,
-      progress: nextProgress,
-    };
-
-    emitChange();
-  };
-
   const setState = (newState: Partial<HotUpdaterState>) => {
-    // Merge first, then normalize derived fields
+    // Merge first, then normalize derived fields.
     const nextState: HotUpdaterState = {
       ...state,
       ...newState,
@@ -85,7 +110,8 @@ const createHotUpdaterStore = () => {
     // If `progress` is not provided but `isUpdateDownloaded` is,
     // honor the explicit value.
     if ("progress" in newState && typeof newState.progress === "number") {
-      nextState.isUpdateDownloaded = newState.progress >= 1;
+      nextState.progress = Math.max(0, Math.min(newState.progress, 1));
+      nextState.isUpdateDownloaded = nextState.progress >= 1;
     } else if (
       "isUpdateDownloaded" in newState &&
       typeof newState.isUpdateDownloaded === "boolean"
@@ -101,8 +127,23 @@ const createHotUpdaterStore = () => {
       nextState.details = null;
     }
 
+    if (areStatesEqual(state, nextState)) {
+      return;
+    }
+
     state = nextState;
     emitChange();
+  };
+
+  const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
+    setState({
+      artifactType: event.artifactType,
+      details:
+        event.artifactType === "diff"
+          ? normalizeDiffDetails(event.details)
+          : null,
+      progress: event.progress,
+    });
   };
 
   const subscribe = (listener: () => void) => {
@@ -122,11 +163,10 @@ export const hotUpdaterStore = createHotUpdaterStore();
 export const useHotUpdaterStore = <T = HotUpdaterState>(
   selector: (snapshot: HotUpdaterState) => T = (snapshot) => snapshot as T,
 ) => {
-  const snapshot = useSyncExternalStore(
+  return useSyncExternalStoreWithSelector(
     hotUpdaterStore.subscribe,
     hotUpdaterStore.getSnapshot,
     hotUpdaterStore.getSnapshot,
+    selector,
   );
-
-  return selector(snapshot);
 };

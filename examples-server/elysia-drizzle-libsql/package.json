@@ -17,9 +17,9 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "@libsql/client": "^0.15.15",
+    "@libsql/client": "catalog:db",
     "dotenv": "^16.6.1",
-    "drizzle-orm": "^0.44.7",
+    "drizzle-orm": "catalog:db",
     "elysia": "^1.2.17",
     "memoirist": "^0.4.0"
   },
@@ -29,7 +29,7 @@
     "drizzle-kit": "^0.31.6",
     "execa": "catalog:tools",
     "hot-updater": "workspace:*",
-    "prisma": "^6.4.1",
+    "prisma": "catalog:db",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2"
   }

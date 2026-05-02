@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/apple-helper",
-  "version": "0.30.6",
+  "version": "0.30.7",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -31,7 +31,7 @@
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "execa": "catalog:tools",
-    "fast-xml-parser": "5.4.1"
+    "fast-xml-parser": "5.7.2"
   },
   "devDependencies": {
     "@types/node": "catalog:"
