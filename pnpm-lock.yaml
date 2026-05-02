@@ -7,23 +7,17 @@ settings:
 catalogs:
   db:
     '@electric-sql/pglite':
-      specifier: ^0.2.17
+      specifier: 0.2.17
       version: 0.2.17
     '@libsql/client':
-      specifier: ^0.15.15
+      specifier: 0.15.15
       version: 0.15.15
     '@prisma/client':
-      specifier: ^6.18.0
+      specifier: 6.18.0
       version: 6.18.0
-    '@supabase/supabase-js':
-      specifier: ^2.76.1
-      version: 2.76.1
     drizzle-orm:
-      specifier: ^0.44.7
+      specifier: 0.44.7
       version: 0.44.7
-    firebase-admin:
-      specifier: 13.6.0
-      version: 13.6.0
     fumadb:
       specifier: 0.2.2
       version: 0.2.2
@@ -31,19 +25,19 @@ catalogs:
       specifier: 0.28.16
       version: 0.28.16
     kysely-pglite-dialect:
-      specifier: ^1.2.0
+      specifier: 1.2.0
       version: 1.2.0
     mongodb:
-      specifier: ^6.20.0
+      specifier: 6.20.0
       version: 6.20.0
     mysql2:
-      specifier: ^3.19.1
+      specifier: 3.19.1
       version: 3.19.1
     pg:
-      specifier: ^8.13.1
+      specifier: 8.13.1
       version: 8.13.1
     prisma:
-      specifier: ^6.18.0
+      specifier: 6.18.0
       version: 6.18.0
   default:
     '@types/node':
@@ -52,6 +46,10 @@ catalogs:
     vitest:
       specifier: 4.1.4
       version: 4.1.4
+  firebase:
+    firebase-admin:
+      specifier: 13.6.0
+      version: 13.6.0
   hono:
     '@hono/node-server':
       specifier: 1.19.11
@@ -59,6 +57,10 @@ catalogs:
     hono:
       specifier: 4.12.9
       version: 4.12.9
+  supabase:
+    '@supabase/supabase-js':
+      specifier: 2.76.1
+      version: 2.76.1
   tools:
     '@clack/prompts':
       specifier: 1.0.1
@@ -541,7 +543,7 @@ importers:
         specifier: ^16.6.1
         version: 16.6.1
       firebase-admin:
-        specifier: catalog:db
+        specifier: catalog:firebase
         version: 13.6.0(encoding@0.1.13)
       hono:
         specifier: catalog:hono
@@ -1252,7 +1254,7 @@ importers:
         specifier: ^8.19.0
         version: 8.57.0
       firebase-admin:
-        specifier: catalog:db
+        specifier: catalog:firebase
         version: 13.6.0(encoding@0.1.13)
       firebase-tools:
         specifier: ^13.35.1
@@ -2042,7 +2044,7 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       firebase-admin:
-        specifier: catalog:db
+        specifier: catalog:firebase
         version: 13.6.0(encoding@0.1.13)
       firebase-functions:
         specifier: ^6.3.2
@@ -2250,7 +2252,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@supabase/supabase-js':
-        specifier: catalog:db
+        specifier: catalog:supabase
         version: 2.76.1
       hono:
         specifier: catalog:hono
@@ -12336,9 +12338,6 @@ packages:
 
   encoding@0.1.13:
     resolution: {integrity: sha512-ETBauow1T35Y/WZMkio9jiM0Z5xjHHmJ4XmjZOq1l/dXz3lr2sRn87nJy20RupqSh1F2m3HHPSp8ShIPQJrJ3A==}
-
-  end-of-stream@1.4.4:
-    resolution: {integrity: sha512-+uw1inIHVPQoaVuHzRyXd21icM+cnt4CzD5rW+NC1wjOUSTOs+Te7FOv7AhN7vS9x/oIyhLP5PR1H+phQAHu5Q==}
 
   end-of-stream@1.4.5:
     resolution: {integrity: sha512-ooEGc6HP26xXq/N+GCGOT0JKCLDGrq2bQUZrQ7gyrJiZANJ/8YDTxTpQBXGMn+WbIQXNVpyWymm7KYVICQnyOg==}
@@ -34698,7 +34697,7 @@ snapshots:
 
   duplexify@4.1.3:
     dependencies:
-      end-of-stream: 1.4.4
+      end-of-stream: 1.4.5
       inherits: 2.0.4
       readable-stream: 3.6.2
       stream-shift: 1.0.3
@@ -34772,10 +34771,6 @@ snapshots:
     dependencies:
       iconv-lite: 0.6.3
     optional: true
-
-  end-of-stream@1.4.4:
-    dependencies:
-      once: 1.4.0
 
   end-of-stream@1.4.5:
     dependencies:
