@@ -46,6 +46,13 @@ const createHotUpdaterStore = () => {
       nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
     }
 
+    if (
+      state.progress === nextState.progress &&
+      state.isUpdateDownloaded === nextState.isUpdateDownloaded
+    ) {
+      return;
+    }
+
     state = nextState;
     emitChange();
   };
