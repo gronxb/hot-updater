@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.30.6",
+  "version": "0.30.7",
   "engines": {
     "node": ">=20.19.0"
   },

@@ -1,5 +1,29 @@
 # @hot-updater/react-native
 
+## 0.30.7
+
+### Patch Changes
+
+- f22ab70: Prevent duplicate progress events from notifying the React Native store when
+  the computed update state has not changed.
+- 03fd179: Run the `hot-updater` CLI from native ESM on Node 20 so TypeScript config
+  files load through ESM import conditions.
+
+  Require Node.js 20.19.0 or newer for the CLI package surface.
+
+  Run the `hot-updater` CLI bin from the native ESM entrypoint and stop emitting
+  a CommonJS build for the CLI entry.
+
+  Bump the `hot-updater` CLI package's vulnerable `kysely` and
+  `fast-xml-parser` dependency entries to patched versions without pnpm
+  overrides.
+
+- Updated dependencies [03fd179]
+  - @hot-updater/cli-tools@0.30.7
+  - @hot-updater/core@0.30.7
+  - @hot-updater/js@0.30.7
+  - @hot-updater/plugin-core@0.30.7
+
 ## 0.30.6
 
 ### Patch Changes
