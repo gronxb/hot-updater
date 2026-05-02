@@ -53,12 +53,12 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "@supabase/supabase-js": "^2.76.1",
+    "@supabase/supabase-js": "catalog:db",
     "hono": "catalog:hono",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.2.15",
+    "@electric-sql/pglite": "catalog:db",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",

@@ -58,7 +58,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "jiti": "2.6.1",
-    "kysely": "0.28.16",
+    "kysely": "catalog:db",
     "sql-formatter": "15.6.10"
   },
   "devDependencies": {

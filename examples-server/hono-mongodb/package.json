@@ -21,9 +21,9 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "dotenv": "^16.6.1",
-    "firebase-admin": "13.6.0",
+    "firebase-admin": "catalog:db",
     "hono": "catalog:hono",
-    "mongodb": "^6.12.0"
+    "mongodb": "catalog:db"
   },
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",

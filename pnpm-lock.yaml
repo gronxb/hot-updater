@@ -5,6 +5,46 @@ settings:
   excludeLinksFromLockfile: false
 
 catalogs:
+  db:
+    '@electric-sql/pglite':
+      specifier: ^0.2.17
+      version: 0.2.17
+    '@libsql/client':
+      specifier: ^0.15.15
+      version: 0.15.15
+    '@prisma/client':
+      specifier: ^6.18.0
+      version: 6.18.0
+    '@supabase/supabase-js':
+      specifier: ^2.76.1
+      version: 2.76.1
+    drizzle-orm:
+      specifier: ^0.44.7
+      version: 0.44.7
+    firebase-admin:
+      specifier: 13.6.0
+      version: 13.6.0
+    fumadb:
+      specifier: 0.2.2
+      version: 0.2.2
+    kysely:
+      specifier: 0.28.16
+      version: 0.28.16
+    kysely-pglite-dialect:
+      specifier: ^1.2.0
+      version: 1.2.0
+    mongodb:
+      specifier: ^6.20.0
+      version: 6.20.0
+    mysql2:
+      specifier: ^3.19.1
+      version: 3.19.1
+    pg:
+      specifier: ^8.13.1
+      version: 8.13.1
+    prisma:
+      specifier: ^6.18.0
+      version: 6.18.0
   default:
     '@types/node':
       specifier: ^20
@@ -186,13 +226,13 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@libsql/client':
-        specifier: ^0.15.15
+        specifier: catalog:db
         version: 0.15.15
       dotenv:
         specifier: ^16.6.1
         version: 16.6.1
       drizzle-orm:
-        specifier: ^0.44.7
+        specifier: catalog:db
         version: 0.44.7(@cloudflare/workers-types@4.20260313.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.16)(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(prisma@6.18.0(typescript@6.0.2))
       elysia:
         specifier: ^1.2.17
@@ -217,7 +257,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/hot-updater
       prisma:
-        specifier: ^6.4.1
+        specifier: catalog:db
         version: 6.18.0(typescript@6.0.2)
       tsx:
         specifier: ^4.20.6
@@ -241,7 +281,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@prisma/client':
-        specifier: ^6.18.0
+        specifier: catalog:db
         version: 6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2)
       cors:
         specifier: ^2.8.5
@@ -272,7 +312,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/hot-updater
       prisma:
-        specifier: ^6.4.1
+        specifier: catalog:db
         version: 6.18.0(typescript@6.0.2)
       tsx:
         specifier: ^4.20.6
@@ -284,7 +324,7 @@ importers:
   examples-server/hono-drizzle-pglite:
     dependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.17
+        specifier: catalog:db
         version: 0.2.17
       '@hono/node-server':
         specifier: catalog:hono
@@ -305,7 +345,7 @@ importers:
         specifier: ^16.6.1
         version: 16.6.1
       drizzle-orm:
-        specifier: ^0.44.7
+        specifier: catalog:db
         version: 0.44.7(@cloudflare/workers-types@4.20260313.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.16)(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(prisma@6.18.0(typescript@6.0.2))
       hono:
         specifier: catalog:hono
@@ -336,7 +376,7 @@ importers:
   examples-server/hono-e2e-local:
     dependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.17
+        specifier: catalog:db
         version: 0.2.17
       '@hono/node-server':
         specifier: catalog:hono
@@ -351,11 +391,11 @@ importers:
         specifier: catalog:hono
         version: 4.12.9
       kysely:
-        specifier: 0.28.9
-        version: 0.28.9
+        specifier: catalog:db
+        version: 0.28.16
       kysely-pglite-dialect:
-        specifier: ^1.2.0
-        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)
+        specifier: catalog:db
+        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.16)
     devDependencies:
       '@types/node':
         specifier: ^20.11.17
@@ -394,10 +434,10 @@ importers:
         specifier: catalog:hono
         version: 4.12.9
       kysely:
-        specifier: 0.28.9
-        version: 0.28.9
+        specifier: catalog:db
+        version: 0.28.16
       mysql2:
-        specifier: ^3.11.5
+        specifier: catalog:db
         version: 3.19.1(@types/node@20.19.11)
     devDependencies:
       '@hot-updater/test-utils':
@@ -422,7 +462,7 @@ importers:
   examples-server/hono-kysely-pglite:
     dependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.17
+        specifier: catalog:db
         version: 0.2.17
       '@hono/node-server':
         specifier: catalog:hono
@@ -446,11 +486,11 @@ importers:
         specifier: catalog:hono
         version: 4.12.9
       kysely:
-        specifier: 0.28.9
-        version: 0.28.9
+        specifier: catalog:db
+        version: 0.28.16
       kysely-pglite-dialect:
-        specifier: ^1.2.0
-        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9)
+        specifier: catalog:db
+        version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.16)
     devDependencies:
       '@hot-updater/test-utils':
         specifier: workspace:*
@@ -501,13 +541,13 @@ importers:
         specifier: ^16.6.1
         version: 16.6.1
       firebase-admin:
-        specifier: 13.6.0
+        specifier: catalog:db
         version: 13.6.0(encoding@0.1.13)
       hono:
         specifier: catalog:hono
         version: 4.12.9
       mongodb:
-        specifier: ^6.12.0
+        specifier: catalog:db
         version: 6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4)
     devDependencies:
       '@hot-updater/test-utils':
@@ -547,7 +587,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@prisma/client':
-        specifier: ^6.18.0
+        specifier: catalog:db
         version: 6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2)
       dotenv:
         specifier: ^16.6.1
@@ -569,7 +609,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/hot-updater
       prisma:
-        specifier: ^6.4.1
+        specifier: catalog:db
         version: 6.18.0(typescript@6.0.2)
       tsx:
         specifier: ^4.20.6
@@ -1212,7 +1252,7 @@ importers:
         specifier: ^8.19.0
         version: 8.57.0
       firebase-admin:
-        specifier: 13.6.0
+        specifier: catalog:db
         version: 13.6.0(encoding@0.1.13)
       firebase-tools:
         specifier: ^13.35.1
@@ -1542,7 +1582,7 @@ importers:
         specifier: 2.6.1
         version: 2.6.1
       kysely:
-        specifier: 0.28.16
+        specifier: catalog:db
         version: 0.28.16
       sql-formatter:
         specifier: 15.6.10
@@ -1679,7 +1719,7 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/plugin-core
       fumadb:
-        specifier: 0.2.2
+        specifier: catalog:db
         version: 0.2.2(drizzle-orm@0.44.7(@cloudflare/workers-types@4.20260313.1)(@electric-sql/pglite@0.2.17)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.0)(@prisma/client@6.18.0(prisma@6.18.0(typescript@6.0.2))(typescript@6.0.2))(@types/better-sqlite3@7.6.13)(@types/pg@8.11.10)(better-sqlite3@11.10.0)(kysely@0.28.16)(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(prisma@6.18.0(typescript@6.0.2)))(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(prisma@6.18.0(typescript@6.0.2))(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@6.0.2)))
       rou3:
         specifier: 0.7.9
@@ -1689,7 +1729,7 @@ importers:
         version: 7.7.2
     devDependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.17
+        specifier: catalog:db
         version: 0.2.17
       '@hot-updater/standalone':
         specifier: workspace:*
@@ -1707,10 +1747,10 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       kysely:
-        specifier: 0.28.16
+        specifier: catalog:db
         version: 0.28.16
       kysely-pglite-dialect:
-        specifier: ^1.2.0
+        specifier: catalog:db
         version: 1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.16)
       msw:
         specifier: ^2.7.0
@@ -2002,7 +2042,7 @@ importers:
         specifier: catalog:tools
         version: 9.5.2
       firebase-admin:
-        specifier: ^13.2.0
+        specifier: catalog:db
         version: 13.6.0(encoding@0.1.13)
       firebase-functions:
         specifier: ^6.3.2
@@ -2098,14 +2138,14 @@ importers:
         specifier: workspace:*
         version: link:../plugin-core
       kysely:
-        specifier: ^0.28.5
-        version: 0.28.8
+        specifier: catalog:db
+        version: 0.28.16
       pg:
-        specifier: ^8.13.1
+        specifier: catalog:db
         version: 8.13.1
     devDependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.15
+        specifier: catalog:db
         version: 0.2.17
       '@hot-updater/js':
         specifier: workspace:*
@@ -2210,7 +2250,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/server
       '@supabase/supabase-js':
-        specifier: ^2.76.1
+        specifier: catalog:db
         version: 2.76.1
       hono:
         specifier: catalog:hono
@@ -2220,7 +2260,7 @@ importers:
         version: 1.0.2
     devDependencies:
       '@electric-sql/pglite':
-        specifier: ^0.2.15
+        specifier: catalog:db
         version: 0.2.17
       '@hot-updater/js':
         specifier: workspace:*
@@ -11549,9 +11589,6 @@ packages:
   concat-map@0.0.1:
     resolution: {integrity: sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg==}
 
-  confbox@0.2.2:
-    resolution: {integrity: sha512-1NB+BKqhtNipMsov4xI/NnhCKp9XG9NamYp5PVm9klAT0fsrNPjaFICsCFhNhwZJKNh7zB/3q8qXz0E9oaMNtQ==}
-
   confbox@0.2.4:
     resolution: {integrity: sha512-ysOGlgTFbN2/Y6Cg3Iye8YKulHw+R2fNXHrgSmXISQdMnomY6eNDprVdW9R5xBguEqI954+S6709UyiO7B+6OQ==}
 
@@ -14867,14 +14904,6 @@ packages:
     resolution: {integrity: sha512-3i5pmOiZvMDj00qhrIVbH0AnioVTx22DMP7Vn5At4yJO46iy+FM8Y/g61ltenLVSo3fiO8h8Q3QOFgf/gQ72ww==}
     engines: {node: '>=20.0.0'}
 
-  kysely@0.28.8:
-    resolution: {integrity: sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA==}
-    engines: {node: '>=20.0.0'}
-
-  kysely@0.28.9:
-    resolution: {integrity: sha512-3BeXMoiOhpOwu62CiVpO6lxfq4eS6KMYfQdMsN/2kUCRNuF2YiEr7u0HLHaQU+O4Xu8YXE3bHVkwaQ85i72EuA==}
-    engines: {node: '>=20.0.0'}
-
   launch-editor@2.12.0:
     resolution: {integrity: sha512-giOHXoOtifjdHqUamwKq6c49GzBdLjvxrd2D+Q4V6uOHopJv7p9VJxikDsQ/CBXZbEITgUqSVHXLTG3VhPP1Dg==}
 
@@ -15366,9 +15395,6 @@ packages:
   logkitty@0.7.1:
     resolution: {integrity: sha512-/3ER20CTTbahrCrpYfPn7Xavv9diBROZpoXGVZDWMw4b/X4uuUwAC0ki85tgsdMRONURyIJbcOvS94QsUBYPbQ==}
     hasBin: true
-
-  long@5.3.1:
-    resolution: {integrity: sha512-ka87Jz3gcx/I7Hal94xaN2tZEOPoUOEVftkQqZx2EeQRN7LGdfLlI3FvZ+7WDplm+vK2Urx9ULrvSowtdCieng==}
 
   long@5.3.2:
     resolution: {integrity: sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA==}
@@ -25881,7 +25907,7 @@ snapshots:
   '@grpc/proto-loader@0.7.13':
     dependencies:
       lodash.camelcase: 4.3.0
-      long: 5.3.1
+      long: 5.3.2
       protobufjs: 7.4.0
       yargs: 17.7.2
 
@@ -33664,7 +33690,7 @@ snapshots:
   c12@3.1.0:
     dependencies:
       chokidar: 4.0.3
-      confbox: 0.2.2
+      confbox: 0.2.4
       defu: 6.1.4
       dotenv: 16.6.1
       exsolve: 1.0.8
@@ -34121,8 +34147,6 @@ snapshots:
   compute-scroll-into-view@3.1.1: {}
 
   concat-map@0.0.1: {}
-
-  confbox@0.2.2: {}
 
   confbox@0.2.4: {}
 
@@ -38495,21 +38519,12 @@ snapshots:
       '@electric-sql/pglite': 0.2.17
       kysely: 0.28.16
 
-  kysely-pglite-dialect@1.2.0(@electric-sql/pglite@0.2.17)(kysely@0.28.9):
-    dependencies:
-      '@electric-sql/pglite': 0.2.17
-      kysely: 0.28.9
-
   kysely-typeorm@0.3.0(kysely@0.28.16)(typeorm@0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@6.0.2))):
     dependencies:
       kysely: 0.28.16
       typeorm: 0.3.27(babel-plugin-macros@3.1.0)(better-sqlite3@11.10.0)(mongodb@6.20.0(@aws-sdk/credential-providers@3.1008.0)(socks@2.8.4))(mysql2@3.19.1(@types/node@20.19.11))(pg@8.13.1)(reflect-metadata@0.2.2)(ts-node@10.9.2(@swc/core@1.15.3(@swc/helpers@0.5.17))(@types/node@20.19.11)(typescript@6.0.2))
 
   kysely@0.28.16: {}
-
-  kysely@0.28.8: {}
-
-  kysely@0.28.9: {}
 
   launch-editor@2.12.0:
     dependencies:
@@ -38889,8 +38904,6 @@ snapshots:
       ansi-fragments: 0.2.1
       dayjs: 1.11.20
       yargs: 15.4.1
-
-  long@5.3.1: {}
 
   long@5.3.2: {}
 
@@ -41921,7 +41934,7 @@ snapshots:
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
       '@types/node': 25.5.0
-      long: 5.3.1
+      long: 5.3.2
 
   protocols@1.4.8: {}
 

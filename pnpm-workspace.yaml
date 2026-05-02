@@ -16,6 +16,20 @@ catalogs:
   hono:
     hono: 4.12.9
     "@hono/node-server": 1.19.11
+  db:
+    "@electric-sql/pglite": ^0.2.17
+    "@libsql/client": ^0.15.15
+    "@prisma/client": ^6.18.0
+    "@supabase/supabase-js": ^2.76.1
+    drizzle-orm: ^0.44.7
+    firebase-admin: 13.6.0
+    fumadb: 0.2.2
+    kysely: 0.28.16
+    kysely-pglite-dialect: ^1.2.0
+    mongodb: ^6.20.0
+    mysql2: ^3.19.1
+    pg: ^8.13.1
+    prisma: ^6.18.0
 
 onlyBuiltDependencies:
   - "@prisma/client"
