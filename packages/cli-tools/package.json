@@ -2,15 +2,19 @@
   "name": "@hot-updater/cli-tools",
   "version": "0.30.6",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "description": "CLI utilities for Hot Updater",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
-  "types": "./dist/index.d.cts",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "require": "./dist/index.mjs"
     },
     "./package.json": "./package.json"
   },

@@ -68,7 +68,7 @@
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "execa": "catalog:tools",
-    "kysely": "^0.28.9",
+    "kysely": "0.28.16",
     "kysely-pglite-dialect": "^1.2.0",
     "msw": "^2.7.0",
     "uuidv7": "^1.0.2"

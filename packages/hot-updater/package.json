@@ -2,18 +2,20 @@
   "name": "hot-updater",
   "type": "module",
   "version": "0.30.6",
-  "bin": {
-    "hot-updater": "./dist/index.cjs"
+  "engines": {
+    "node": ">=20.19.0"
   },
-  "main": "dist/config.cjs",
+  "bin": {
+    "hot-updater": "./dist/index.mjs"
+  },
+  "main": "dist/config.mjs",
   "module": "dist/config.mjs",
-  "types": "dist/config.d.cts",
+  "types": "dist/config.d.mts",
   "exports": {
     ".": {
-      "node": "./dist/config.cjs",
+      "types": "./dist/config.d.mts",
       "import": "./dist/config.mjs",
-      "require": "./dist/config.cjs",
-      "types": "./dist/config.d.cts"
+      "require": "./dist/config.mjs"
     },
     "./package.json": "./package.json"
   },
@@ -56,7 +58,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "jiti": "2.6.1",
-    "kysely": "0.28.9",
+    "kysely": "0.28.16",
     "sql-formatter": "15.6.10"
   },
   "devDependencies": {
@@ -76,7 +78,7 @@
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
-    "fast-xml-parser": "5.4.1",
+    "fast-xml-parser": "5.7.2",
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "plist": "^3.1.0",
