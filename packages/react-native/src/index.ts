@@ -387,8 +387,10 @@ function createHotUpdaterClient() {
         hotUpdaterStore.setState({
           artifactType: null,
           details: null,
+          downloadedBytes: undefined,
           isUpdateDownloaded: false,
           progress: 0,
+          totalBytes: undefined,
         });
       }
       return ok;

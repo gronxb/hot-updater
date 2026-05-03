@@ -396,7 +396,7 @@ class BundleFileStorageServiceTest {
             fileUrl: URL,
             destination: File,
             fileSizeCallback: ((Long) -> Unit)?,
-            progressCallback: (Double) -> Unit,
+            progressCallback: (DownloadProgress) -> Unit,
         ): DownloadResult = error("downloadFile should not be called in these tests")
     }
 

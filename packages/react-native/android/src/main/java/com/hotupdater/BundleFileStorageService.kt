@@ -25,6 +25,8 @@ data class BsdiffPatchDescriptor(
 data class UpdateProgressPayload(
     val progress: Double,
     val artifactType: String,
+    val downloadedBytes: Long? = null,
+    val totalBytes: Long? = null,
     val details: DiffProgressDetails? = null,
 )
 
@@ -33,6 +35,8 @@ data class DiffProgressFileSnapshot(
     val status: String,
     val progress: Double,
     val order: Int,
+    val downloadedBytes: Long? = null,
+    val totalBytes: Long? = null,
 )
 
 data class DiffProgressDetails(
@@ -166,11 +170,15 @@ class BundleFileStorageService(
     private fun emitArchiveProgress(
         progressCallback: (UpdateProgressPayload) -> Unit,
         progress: Double,
+        downloadedBytes: Long? = null,
+        totalBytes: Long? = null,
     ) {
         progressCallback(
             UpdateProgressPayload(
                 progress = progress.coerceIn(0.0, 1.0),
                 artifactType = "archive",
+                downloadedBytes = downloadedBytes,
+                totalBytes = totalBytes,
             ),
         )
     }
@@ -192,6 +200,8 @@ class BundleFileStorageService(
         assetPath: String,
         status: String,
         progress: Double,
+        downloadedBytes: Long? = null,
+        totalBytes: Long? = null,
     ) {
         val fileIndex = files.indexOfFirst { it.path == assetPath }
         if (fileIndex == -1) {
@@ -202,6 +212,8 @@ class BundleFileStorageService(
             files[fileIndex].copy(
                 status = status,
                 progress = progress.coerceIn(0.0, 1.0),
+                downloadedBytes = downloadedBytes ?: files[fileIndex].downloadedBytes,
+                totalBytes = totalBytes ?: files[fileIndex].totalBytes,
             )
     }
 
@@ -332,7 +344,9 @@ class BundleFileStorageService(
                             files = diffFiles,
                             assetPath = assetPath,
                             status = "downloading",
-                            progress = downloadProgress,
+                            progress = downloadProgress.progress,
+                            downloadedBytes = downloadProgress.downloadedBytes,
+                            totalBytes = downloadProgress.totalBytes,
                         )
                         emitDiffProgress(
                             progressCallback = progressCallback,
@@ -1203,7 +1217,12 @@ class BundleFileStorageService(
                     },
                 ) { downloadProgress ->
                     // Map download progress to 0.0 - 0.8
-                    emitArchiveProgress(progressCallback, downloadProgress * 0.8)
+                    emitArchiveProgress(
+                        progressCallback,
+                        downloadProgress.progress * 0.8,
+                        downloadProgress.downloadedBytes,
+                        downloadProgress.totalBytes,
+                    )
                 }
 
             // Check for disk space error first before processing download result
@@ -1393,7 +1412,7 @@ class BundleFileStorageService(
                             progressCallback = progressCallback,
                             phase = "manifest",
                             files = diffFiles,
-                            manifestProgress = downloadProgress,
+                            manifestProgress = downloadProgress.progress,
                         )
                     }
             ) {
@@ -1537,7 +1556,9 @@ class BundleFileStorageService(
                                 files = diffFiles,
                                 assetPath = assetPath,
                                 status = "downloading",
-                                progress = downloadProgress,
+                                progress = downloadProgress.progress,
+                                downloadedBytes = downloadProgress.downloadedBytes,
+                                totalBytes = downloadProgress.totalBytes,
                             )
                             emitDiffProgress(
                                 progressCallback = progressCallback,

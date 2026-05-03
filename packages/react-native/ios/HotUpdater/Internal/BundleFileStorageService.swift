@@ -62,6 +62,8 @@ public struct BsdiffPatchDescriptor {
 public struct UpdateProgressPayload {
     public let progress: Double
     public let artifactType: String
+    public let downloadedBytes: Int64?
+    public let totalBytes: Int64?
     public let details: DiffProgressDetails?
     
     public struct DiffProgressFileSnapshot {
@@ -69,26 +71,39 @@ public struct UpdateProgressPayload {
         public let status: String
         public let progress: Double
         public let order: Int
+        public let downloadedBytes: Int64?
+        public let totalBytes: Int64?
 
         public init(
             path: String,
             status: String,
             progress: Double,
-            order: Int
+            order: Int,
+            downloadedBytes: Int64? = nil,
+            totalBytes: Int64? = nil
         ) {
             self.path = path
             self.status = status
             self.progress = progress
             self.order = order
+            self.downloadedBytes = downloadedBytes
+            self.totalBytes = totalBytes
         }
 
         public var userInfo: [String: Any] {
-            return [
+            var info: [String: Any] = [
                 "path": path,
                 "status": status,
                 "progress": progress,
                 "order": order
             ]
+            if let downloadedBytes {
+                info["downloadedBytes"] = downloadedBytes
+            }
+            if let totalBytes {
+                info["totalBytes"] = totalBytes
+            }
+            return info
         }
     }
 
@@ -119,19 +134,30 @@ public struct UpdateProgressPayload {
     public init(
         progress: Double,
         artifactType: String,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil,
         details: DiffProgressDetails? = nil
     ) {
         self.progress = progress
         self.artifactType = artifactType
+        self.downloadedBytes = downloadedBytes
+        self.totalBytes = totalBytes
         self.details = details
     }
 
     public var userInfo: [String: Any] {
-        return [
+        var info: [String: Any] = [
             "artifactType": artifactType,
             "progress": progress,
             "details": details?.userInfo ?? NSNull()
         ]
+        if let downloadedBytes {
+            info["downloadedBytes"] = downloadedBytes
+        }
+        if let totalBytes {
+            info["totalBytes"] = totalBytes
+        }
+        return info
     }
 }
 
@@ -322,12 +348,16 @@ class BundleFileStorageService: BundleStorageService {
 
     private func emitArchiveProgress(
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
-        progress: Double
+        progress: Double,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil
     ) {
         progressHandler(
             UpdateProgressPayload(
                 progress: max(0, min(progress, 1)),
-                artifactType: "archive"
+                artifactType: "archive",
+                downloadedBytes: downloadedBytes,
+                totalBytes: totalBytes
             )
         )
     }
@@ -349,7 +379,9 @@ class BundleFileStorageService: BundleStorageService {
         files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
         assetPath: String,
         status: String,
-        progress: Double
+        progress: Double,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil
     ) {
         guard let fileIndex = files.firstIndex(where: { $0.path == assetPath }) else {
             return
@@ -359,7 +391,9 @@ class BundleFileStorageService: BundleStorageService {
             path: files[fileIndex].path,
             status: status,
             progress: max(0, min(progress, 1)),
-            order: files[fileIndex].order
+            order: files[fileIndex].order,
+            downloadedBytes: downloadedBytes ?? files[fileIndex].downloadedBytes,
+            totalBytes: totalBytes ?? files[fileIndex].totalBytes
         )
     }
 
@@ -508,7 +542,9 @@ class BundleFileStorageService: BundleStorageService {
                         files: &updatedFiles,
                         assetPath: assetPath,
                         status: "downloading",
-                        progress: progress
+                        progress: progress.progress,
+                        downloadedBytes: progress.downloadedBytes,
+                        totalBytes: progress.totalBytes
                     )
                     self.emitDiffProgress(
                         progressHandler: progressHandler,
@@ -1158,7 +1194,7 @@ class BundleFileStorageService: BundleStorageService {
     private func downloadFileSynchronously(
         from url: URL,
         to destination: String,
-        progressHandler: @escaping (Double) -> Void
+        progressHandler: @escaping (DownloadProgress) -> Void
     ) -> Result<URL, Error> {
         let semaphore = DispatchSemaphore(value: 0)
         var finalResult: Result<URL, Error> = .failure(BundleStorageError.unknown(nil))
@@ -1601,7 +1637,7 @@ class BundleFileStorageService: BundleStorageService {
                         progressHandler: progressHandler,
                         phase: "manifest",
                         files: diffFiles,
-                        manifestProgress: progress
+                        manifestProgress: progress.progress
                     )
                 }
             ) {
@@ -1756,7 +1792,9 @@ class BundleFileStorageService: BundleStorageService {
                             files: &diffFiles,
                             assetPath: assetPath,
                             status: "downloading",
-                            progress: progress
+                            progress: progress.progress,
+                            downloadedBytes: progress.downloadedBytes,
+                            totalBytes: progress.totalBytes
                         )
                         self.emitDiffProgress(
                             progressHandler: progressHandler,
@@ -1955,10 +1993,12 @@ class BundleFileStorageService: BundleStorageService {
                 self.emitArchiveProgress(
                     progressHandler: progressHandler,
                     progress: Self.mapProgress(
-                        downloadProgress,
+                        downloadProgress.progress,
                         start: 0,
                         end: UpdateProgress.downloadEnd
-                    )
+                    ),
+                    downloadedBytes: downloadProgress.downloadedBytes,
+                    totalBytes: downloadProgress.totalBytes
                 )
             },
             completion: { [weak self] result in

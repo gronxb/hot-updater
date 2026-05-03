@@ -68,8 +68,43 @@ describe("hotUpdaterStore", () => {
     expect(store.getSnapshot()).toEqual({
       artifactType: "archive",
       details: null,
+      downloadedBytes: undefined,
       isUpdateDownloaded: true,
       progress: 1,
+      totalBytes: undefined,
+    });
+
+    unsubscribe();
+  });
+
+  it("stores archive byte metadata and notifies when only bytes change", async () => {
+    const store = await importStore();
+    const listener = vi.fn();
+    const emitProgress = listeners.get("onProgress");
+
+    const unsubscribe = store.subscribe(listener);
+
+    emitProgress?.({
+      artifactType: "archive",
+      downloadedBytes: 100.4,
+      progress: 0.5,
+      totalBytes: 1_000,
+    });
+    emitProgress?.({
+      artifactType: "archive",
+      downloadedBytes: 250,
+      progress: 0.5,
+      totalBytes: 1_000,
+    });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot()).toEqual({
+      artifactType: "archive",
+      details: null,
+      downloadedBytes: 250,
+      isUpdateDownloaded: false,
+      progress: 0.5,
+      totalBytes: 1_000,
     });
 
     unsubscribe();
@@ -124,8 +159,10 @@ describe("hotUpdaterStore", () => {
         ],
         totalFilesCount: 2,
       },
+      downloadedBytes: undefined,
       isUpdateDownloaded: false,
       progress: 0.42,
+      totalBytes: undefined,
     });
   });
 
@@ -199,8 +236,10 @@ describe("hotUpdaterStore", () => {
         ],
         totalFilesCount: 2,
       },
+      downloadedBytes: undefined,
       isUpdateDownloaded: false,
       progress: 0.6,
+      totalBytes: undefined,
     });
   });
 
@@ -245,8 +284,10 @@ describe("hotUpdaterStore", () => {
     expect(store.getSnapshot()).toEqual({
       artifactType: "archive",
       details: null,
+      downloadedBytes: undefined,
       isUpdateDownloaded: false,
       progress: 0.25,
+      totalBytes: undefined,
     });
   });
 
@@ -279,8 +320,10 @@ describe("hotUpdaterStore", () => {
     expect(store.getSnapshot()).toEqual({
       artifactType: "archive",
       details: null,
+      downloadedBytes: undefined,
       isUpdateDownloaded: false,
       progress: 0.4,
+      totalBytes: undefined,
     });
   });
 });

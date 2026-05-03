@@ -163,6 +163,8 @@ class HotUpdaterModule internal constructor(
                                 Arguments.createMap().apply {
                                     putDouble("progress", progress.progress)
                                     putString("artifactType", progress.artifactType)
+                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
                                     progress.details?.let { details ->
                                         val files = Arguments.createArray()
                                         details.files.forEach { file ->
@@ -172,6 +174,8 @@ class HotUpdaterModule internal constructor(
                                                     putString("status", file.status)
                                                     putDouble("progress", file.progress)
                                                     putInt("order", file.order)
+                                                    file.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                                    file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
                                                 },
                                             )
                                         }

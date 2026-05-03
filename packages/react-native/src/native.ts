@@ -219,6 +219,8 @@ export interface HotUpdaterDiffFileSnapshot {
   status: HotUpdaterDiffFileStatus;
   progress: number;
   order: number;
+  downloadedBytes?: number;
+  totalBytes?: number;
 }
 
 export interface HotUpdaterDiffProgressDetails {
@@ -231,6 +233,8 @@ export type HotUpdaterProgressEvent =
   | {
       progress: number;
       artifactType: "archive";
+      downloadedBytes?: number;
+      totalBytes?: number;
     }
   | {
       progress: number;

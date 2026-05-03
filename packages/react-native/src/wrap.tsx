@@ -27,6 +27,8 @@ type UpdateStatus =
 export type HotUpdaterFallbackComponentProps = {
   status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
   progress: number;
+  downloadedBytes: HotUpdaterState["downloadedBytes"];
+  totalBytes: HotUpdaterState["totalBytes"];
   message: string | null;
   artifactType: HotUpdaterState["artifactType"];
   details: HotUpdaterState["details"];
@@ -359,9 +361,11 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
           <Fallback
             artifactType={progressState.artifactType}
             details={progressState.details}
+            downloadedBytes={progressState.downloadedBytes}
             progress={progress}
             status={updateStatus}
             message={message}
+            totalBytes={progressState.totalBytes}
           />
         );
       }

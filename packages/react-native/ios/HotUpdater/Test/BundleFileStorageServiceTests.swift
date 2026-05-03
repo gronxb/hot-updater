@@ -319,7 +319,7 @@ private final class UnusedDownloadService: DownloadService {
         from url: URL,
         to destination: String,
         fileSizeHandler: ((Int64) -> Void)?,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (DownloadProgress) -> Void,
         completion: @escaping (Result<URL, Error>) -> Void
     ) -> URLSessionDownloadTask? {
         Issue.record("downloadFile should not be called")

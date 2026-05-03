@@ -3,6 +3,12 @@ import Foundation
 import UIKit
 #endif
 
+struct DownloadProgress {
+    let progress: Double
+    let downloadedBytes: Int64
+    let totalBytes: Int64?
+}
+
 protocol DownloadService {
     /**
      * Downloads a file from a URL.
@@ -13,7 +19,7 @@ protocol DownloadService {
      * @param completion Callback with downloaded file URL or error
      * @return The download task (optional)
      */
-    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
+    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
 }
 
 
@@ -33,7 +39,7 @@ struct TaskState: Codable {
 class URLSessionDownloadService: NSObject, DownloadService {
     private var session: URLSession!
     private var backgroundSession: URLSession!
-    private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
+    private var progressHandlers: [URLSessionTask: (DownloadProgress) -> Void] = [:]
     private var completionHandlers: [URLSessionTask: (Result<URL, Error>) -> Void] = [:]
     private var destinations: [URLSessionTask: String] = [:]
     private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
@@ -91,7 +97,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
         }
     }
 
-    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (DownloadProgress) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
         // Determine if we should use background session
         #if !os(macOS)
         let appState = UIApplication.shared.applicationState
@@ -224,7 +230,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
 
         if totalBytesExpectedToWrite > 0 {
             let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-            progressHandler?(progress)
+            progressHandler?(DownloadProgress(progress: progress, downloadedBytes: totalBytesWritten, totalBytes: totalBytesExpectedToWrite))
 
             let progressInfo: [String: Any] = [
                 "progress": progress,
@@ -233,7 +239,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             ]
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: progressInfo)
         } else {
-            progressHandler?(0)
+            progressHandler?(DownloadProgress(progress: 0, downloadedBytes: totalBytesWritten, totalBytes: nil))
 
             NotificationCenter.default.post(name: .downloadProgressUpdate, object: downloadTask, userInfo: ["progress": 0.0, "totalBytesReceived": 0, "totalBytesExpected": 0])
         }
