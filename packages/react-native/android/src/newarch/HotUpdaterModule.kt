@@ -178,7 +178,12 @@ class HotUpdaterModule internal constructor(
                                                                     putString("status", file.status)
                                                                     putDouble("progress", file.progress)
                                                                     putInt("order", file.order)
-                                                                    file.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                                                    file.downloadedBytes?.let {
+                                                                        putDouble(
+                                                                            "downloadedBytes",
+                                                                            it.toDouble(),
+                                                                        )
+                                                                    }
                                                                     file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
                                                                 },
                                                             )
