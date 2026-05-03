@@ -19,12 +19,16 @@ const config = defineConfig({
     viteReact(),
   ],
   assetsInclude: ["**/*.node"],
+  server: {
+    allowedHosts: ["gronxb-macmini.taild999d7.ts.net"],
+  },
   optimizeDeps: {
     exclude: ["oxc-transform", "@oxc-transform/binding-darwin-arm64"],
   },
   ssr: {
     noExternal: ["@hot-updater/core", "@hot-updater/mock"],
     external: [
+      "@hot-updater/bsdiff",
       "@hot-updater/cli-tools",
       "oxc-transform",
       "@oxc-transform/binding-darwin-arm64",
@@ -34,6 +38,7 @@ const config = defineConfig({
   build: {
     rollupOptions: {
       external: [
+        "@hot-updater/bsdiff",
         "@hot-updater/cli-tools",
         "oxc-transform",
         "@oxc-transform/binding-darwin-arm64",

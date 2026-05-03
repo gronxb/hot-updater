@@ -41,9 +41,11 @@ onlyBuiltDependencies:
   - "@swc/core"
   - aws-sdk
   - better-sqlite3
+  - bun
   - core-js
   - core-js-pure
   - cpu-features
+  - deno-bin
   - esbuild
   - msw
   - nx

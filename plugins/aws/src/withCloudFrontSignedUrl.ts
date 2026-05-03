@@ -138,6 +138,9 @@ export const withCloudFrontSignedUrl = <TContext = unknown>(
     return {
       ...baseStorage,
       name: `${baseStorage.name}WithCloudFrontSignedUrl`,
+      async download(storageUri, filePath) {
+        return baseStorage.download(storageUri, filePath);
+      },
       async getDownloadUrl(storageUri, context) {
         const storageUrl = new URL(storageUri);
 

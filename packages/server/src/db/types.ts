@@ -10,15 +10,34 @@ import type {
   HotUpdaterContext,
   StoragePlugin,
 } from "@hot-updater/plugin-core";
-import type { FumaDBAdapter } from "fumadb/adapters";
+import { sqlProviders, type Provider, type SQLProvider } from "fumadb";
 
 import type { PaginatedResult } from "../types";
 
 export type DatabasePluginFactory<TContext = unknown> =
   () => DatabasePlugin<TContext>;
 
+export type ORMProvider = Provider;
+export type ORMSQLProvider = SQLProvider;
+
+export interface ORMDatabaseAdapter {
+  name: string;
+  provider?: ORMProvider;
+  createORM(this: any, schema: any): unknown;
+  getSchemaVersion(this: any): Promise<string | undefined>;
+  generateSchema?: (
+    this: any,
+    schema: any,
+    schemaName: string,
+  ) => {
+    code: string;
+    path: string;
+  };
+  createMigrationEngine?: (this: any) => unknown;
+}
+
 export type DatabaseAdapter<TContext = unknown> =
-  | FumaDBAdapter
+  | ORMDatabaseAdapter
   | DatabasePlugin<TContext>
   | DatabasePluginFactory<TContext>;
 
@@ -42,8 +61,20 @@ export function isDatabasePlugin<TContext = unknown>(
 
 export function isFumaAdapter<TContext = unknown>(
   adapter: DatabaseAdapter<TContext>,
-): adapter is FumaDBAdapter {
+): adapter is ORMDatabaseAdapter {
   return !isDatabasePluginFactory(adapter) && !isDatabasePlugin(adapter);
+}
+
+export function getSQLProvider(
+  provider: ORMProvider | undefined,
+): ORMSQLProvider | undefined {
+  if (!provider) {
+    return undefined;
+  }
+
+  return sqlProviders.includes(provider as ORMSQLProvider)
+    ? (provider as ORMSQLProvider)
+    : undefined;
 }
 
 export interface DatabaseAPI<TContext = unknown> {

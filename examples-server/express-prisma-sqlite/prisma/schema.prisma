@@ -29,16 +29,38 @@ model bundles {
   file_hash String
   git_commit_hash String?
   message String?
-  channel String
+  channel String @default("production")
   storage_uri String
   target_app_version String?
   fingerprint_hash String?
   metadata Json
+  manifest_storage_uri String?
+  manifest_file_hash String?
+  asset_base_storage_uri String?
   rollout_cohort_count Int @default(1000)
   target_cohorts Json?
+  patches bundle_patches[] @relation("bundle_patches_bundles_patches")
+  baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
+  @@index([target_app_version], map: "bundles_target_app_version_idx")
+  @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
+  @@index([channel], map: "bundles_channel_idx")
+  @@index([rollout_cohort_count], map: "bundles_rollout_idx")
+}
+model bundle_patches {
+  id String @id
+  bundle_id String
+  base_bundle_id String
+  base_file_hash String
+  patch_file_hash String
+  patch_storage_uri String
+  order_index Int @default(0)
+  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
+  @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
 }
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.29.0")
+  value String @default("0.31.0")
 }
 // --- END HOT-UPDATER MODELS ---

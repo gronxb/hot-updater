@@ -84,6 +84,10 @@ export const INFRASTRUCTURE_UPDATE_TARGETS = [
     version: "0.30.0",
     note: "Target cohort rollout behavior",
   },
+  {
+    version: "0.31.0",
+    note: "Bundle artifact storage fields",
+  },
 ] as const satisfies readonly [
   InfrastructureUpdateTarget,
   ...InfrastructureUpdateTarget[],

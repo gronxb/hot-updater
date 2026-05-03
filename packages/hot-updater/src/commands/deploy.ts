@@ -10,7 +10,13 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  Platform,
+  StoragePlugin,
+} from "@hot-updater/plugin-core";
+import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import semverValid from "semver/ranges/valid";
@@ -76,6 +82,132 @@ export const getRolloutCohortCountFromPercentage = (
   return rolloutPercentage * 10;
 };
 
+export const normalizePatchMaxBaseBundles = (
+  maxBaseBundles: number | undefined,
+): number => {
+  if (maxBaseBundles === undefined) {
+    return 5;
+  }
+
+  if (
+    !Number.isInteger(maxBaseBundles) ||
+    maxBaseBundles < 1 ||
+    maxBaseBundles > 5
+  ) {
+    throw new Error("Patch maxBaseBundles must be an integer between 1 and 5");
+  }
+
+  return maxBaseBundles;
+};
+
+const getPatchBaseBundles = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<Bundle[]> => {
+  const where = {
+    channel,
+    enabled: true,
+    id: { lt: bundleId },
+    platform,
+    ...(target.fingerprintHash
+      ? {
+          fingerprintHash: target.fingerprintHash,
+        }
+      : {
+          targetAppVersion: target.appVersion,
+          targetAppVersionNotNull: true,
+        }),
+  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  const { data } = await databasePlugin.getBundles({
+    limit: maxBaseBundles,
+    orderBy: {
+      direction: "desc",
+      field: "id",
+    },
+    where,
+  });
+
+  return data
+    .filter((bundle) => bundle.id !== bundleId)
+    .slice(0, maxBaseBundles);
+};
+
+const createAutoPatches = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  storagePlugin,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  storagePlugin: StoragePlugin;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}) => {
+  const baseBundles = await getPatchBaseBundles({
+    bundleId,
+    channel,
+    databasePlugin,
+    maxBaseBundles,
+    platform,
+    target,
+  });
+  const failures: { baseBundleId: string; message: string }[] = [];
+  let createdCount = 0;
+
+  for (const baseBundle of baseBundles) {
+    try {
+      await createBundleDiff(
+        {
+          baseBundleId: baseBundle.id,
+          bundleId,
+        },
+        {
+          databasePlugin,
+          storagePlugin,
+        },
+        {
+          makePrimary: createdCount === 0,
+        },
+      );
+      createdCount += 1;
+    } catch (error) {
+      failures.push({
+        baseBundleId: baseBundle.id,
+        message: error instanceof Error ? error.message : "Unknown patch error",
+      });
+    }
+  }
+
+  return {
+    candidateCount: baseBundles.length,
+    createdCount,
+    failures,
+  };
+};
+
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
@@ -87,6 +219,49 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
     default:
       throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
   }
+};
+
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
+
+const ensureUploadSourcePath = async ({
+  outputPath,
+  targetFile,
+}: {
+  outputPath: string;
+  targetFile: { path: string; name: string };
+}) => {
+  const expectedFilename = path.posix.basename(targetFile.name);
+  const actualFilename = path.basename(targetFile.path);
+
+  if (expectedFilename === actualFilename) {
+    return targetFile.path;
+  }
+
+  const aliasDir = path.join(
+    outputPath,
+    "upload-artifacts",
+    getRelativeStorageDir(targetFile.name),
+  );
+  await fs.promises.mkdir(aliasDir, { recursive: true });
+
+  const aliasPath = path.join(aliasDir, expectedFilename);
+  await fs.promises.copyFile(targetFile.path, aliasPath);
+  return aliasPath;
 };
 
 export const deploy = async (options: DeployOptions) => {
@@ -127,6 +302,9 @@ export const deploy = async (options: DeployOptions) => {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
   }
+  const maxPatchBaseBundles = config.patch.enabled
+    ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
+    : 0;
 
   // Validate signing configuration
   const signingValidation = await validateSigningConfig(config);
@@ -276,6 +454,7 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let manifestFileHash: string | null = null;
 
   const normalizeOutputPath = path.isAbsolute(outputPath)
     ? outputPath
@@ -304,9 +483,17 @@ export const deploy = async (options: DeployOptions) => {
         bundleId: string;
         stdout: string | null;
       } | null;
+      targetFiles: { path: string; name: string }[];
+      manifestPath: string | null;
+      manifestStorageUri: string | null;
+      assetBaseStorageUri: string | null;
       storageUri: string | null;
     } = {
       buildResult: null,
+      targetFiles: [],
+      manifestPath: null,
+      manifestStorageUri: null,
+      assetBaseStorageUri: null,
       storageUri: null,
     };
 
@@ -340,9 +527,16 @@ export const deploy = async (options: DeployOptions) => {
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
+          const manifestSigning =
+            config.signing?.enabled && config.signing.privateKeyPath
+              ? (assetFileHash: string) =>
+                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
+              : undefined;
+
           const { manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
+            signFileHash: manifestSigning,
             targetFiles,
           });
 
@@ -353,6 +547,8 @@ export const deploy = async (options: DeployOptions) => {
               name: "manifest.json",
             },
           ];
+          taskRef.targetFiles = targetFiles;
+          taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
             case "tar.br":
@@ -407,6 +603,22 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
+          manifestFileHash = await getFileHashFromFile(manifestPath);
+          if (config.signing?.enabled) {
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
+            const signature = await signBundle(
+              manifestFileHash,
+              config.signing.privateKeyPath,
+            );
+            manifestFileHash = createSignedFileHash(signature);
+          }
+
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
@@ -434,6 +646,36 @@ export const deploy = async (options: DeployOptions) => {
               bundlePath,
             );
             taskRef.storageUri = storageUri;
+
+            if (!taskRef.manifestPath) {
+              throw new Error("Manifest path not found");
+            }
+
+            const manifestUpload = await storagePlugin.upload(
+              bundleId,
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
+            taskRef.assetBaseStorageUri = replaceStorageUriLeaf(
+              manifestUpload.storageUri,
+              "files",
+            );
+
+            await Promise.all(
+              taskRef.targetFiles.map(async (targetFile) => {
+                const relativeDir = getRelativeStorageDir(targetFile.name);
+                const uploadKey = [bundleId, "files", relativeDir]
+                  .filter(Boolean)
+                  .join("/");
+
+                const uploadSourcePath = await ensureUploadSourcePath({
+                  outputPath: normalizeOutputPath,
+                  targetFile,
+                });
+
+                return storagePlugin.upload(uploadKey, uploadSourcePath);
+              }),
+            );
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -452,6 +694,9 @@ export const deploy = async (options: DeployOptions) => {
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
           }
+          if (!manifestFileHash) {
+            throw new Error("Manifest file hash not found");
+          }
           const appVersion = await getNativeAppVersion(platform);
 
           try {
@@ -467,11 +712,10 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
-              metadata: appVersion
-                ? {
-                    app_version: appVersion,
-                  }
-                : {},
+              metadata: appVersion ? { app_version: appVersion } : {},
+              assetBaseStorageUri: taskRef.assetBaseStorageUri,
+              manifestFileHash,
+              manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();
@@ -481,14 +725,71 @@ export const deploy = async (options: DeployOptions) => {
             }
             throw e;
           }
-          await databasePlugin.onUnmount?.();
-
           return `✅ Update Complete (${databasePlugin.name})`;
         },
       },
     ]);
     if (!bundleId) {
       throw new Error("Bundle ID not found");
+    }
+    const confirmedBundleId = bundleId;
+
+    if (config.patch.enabled) {
+      let patchSummary: {
+        candidateCount: number;
+        createdCount: number;
+        failures: { baseBundleId: string; message: string }[];
+      } = {
+        candidateCount: 0,
+        createdCount: 0,
+        failures: [],
+      };
+
+      await p.tasks([
+        {
+          title: "⚡ Optimizing Delivery",
+          task: async () => {
+            try {
+              patchSummary = await createAutoPatches({
+                bundleId: confirmedBundleId,
+                channel,
+                databasePlugin,
+                maxBaseBundles: maxPatchBaseBundles,
+                platform,
+                storagePlugin,
+                target,
+              });
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown patch optimization error";
+              p.log.warn(`Partial updates unavailable: ${message}`);
+              patchSummary = {
+                candidateCount: 0,
+                createdCount: 0,
+                failures: [],
+              };
+            }
+
+            if (!patchSummary.candidateCount) {
+              return "Skipped (no compatible base bundles)";
+            }
+
+            if (!patchSummary.createdCount) {
+              return "Skipped (no patch artifacts created)";
+            }
+
+            return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
+          },
+        },
+      ]);
+
+      for (const failure of patchSummary.failures) {
+        p.log.warn(
+          `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+        );
+      }
     }
 
     if (options.interactive) {
@@ -498,7 +799,7 @@ export const deploy = async (options: DeployOptions) => {
       const openUrl = new URL(`http://localhost:${port}`);
       openUrl.searchParams.set("channel", channel);
       openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", bundleId);
+      openUrl.searchParams.set("bundleId", confirmedBundleId);
 
       const url = openUrl.toString();
 
@@ -519,7 +820,7 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
-    p.outro(`🚀 Deployment Successful (${bundleId})`);
+    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });

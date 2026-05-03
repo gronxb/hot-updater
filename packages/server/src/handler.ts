@@ -121,6 +121,43 @@ const requireRouteParam = (
   return value;
 };
 
+const parseBooleanSearchParam = (
+  url: URL,
+  key: string,
+): boolean | undefined => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+
+  throw new HandlerBadRequestError(
+    `The '${key}' query parameter must be 'true' or 'false'.`,
+  );
+};
+
+const parseNullableStringSearchParam = (
+  url: URL,
+  key: string,
+): string | null | undefined => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return undefined;
+  }
+
+  return value === "null" ? null : value;
+};
+
+const parseStringArraySearchParam = (url: URL, key: string) => {
+  const values = url.searchParams.getAll(key);
+  return values.length > 0 ? values : undefined;
+};
+
 const requirePlatformParam = (params: Record<string, string>): Platform => {
   const platform = requireRouteParam(params, "platform");
 
@@ -252,6 +289,29 @@ const handleGetBundles: RouteHandler = async (
   const offset = url.searchParams.get("offset");
   const after = url.searchParams.get("after") ?? undefined;
   const before = url.searchParams.get("before") ?? undefined;
+  const enabled = parseBooleanSearchParam(url, "enabled");
+  const targetAppVersion = parseNullableStringSearchParam(
+    url,
+    "targetAppVersion",
+  );
+  const targetAppVersionIn = parseStringArraySearchParam(
+    url,
+    "targetAppVersionIn",
+  );
+  const targetAppVersionNotNull = parseBooleanSearchParam(
+    url,
+    "targetAppVersionNotNull",
+  );
+  const fingerprintHash = parseNullableStringSearchParam(
+    url,
+    "fingerprintHash",
+  );
+  const idEq = url.searchParams.get("idEq") ?? undefined;
+  const idGt = url.searchParams.get("idGt") ?? undefined;
+  const idGte = url.searchParams.get("idGte") ?? undefined;
+  const idLt = url.searchParams.get("idLt") ?? undefined;
+  const idLte = url.searchParams.get("idLte") ?? undefined;
+  const idIn = parseStringArraySearchParam(url, "idIn");
   const page =
     pageParam === null
       ? undefined
@@ -282,6 +342,25 @@ const handleGetBundles: RouteHandler = async (
       where: {
         ...(channel && { channel }),
         ...(platform && { platform }),
+        ...(enabled !== undefined && { enabled }),
+        ...(idEq || idGt || idGte || idLt || idLte || (idIn && idIn.length > 0)
+          ? {
+              id: {
+                ...(idEq && { eq: idEq }),
+                ...(idGt && { gt: idGt }),
+                ...(idGte && { gte: idGte }),
+                ...(idLt && { lt: idLt }),
+                ...(idLte && { lte: idLte }),
+                ...(idIn && idIn.length > 0 && { in: idIn }),
+              },
+            }
+          : {}),
+        ...(targetAppVersion !== undefined && { targetAppVersion }),
+        ...(targetAppVersionIn && { targetAppVersionIn }),
+        ...(targetAppVersionNotNull !== undefined && {
+          targetAppVersionNotNull,
+        }),
+        ...(fingerprintHash !== undefined && { fingerprintHash }),
       },
       limit,
       page,

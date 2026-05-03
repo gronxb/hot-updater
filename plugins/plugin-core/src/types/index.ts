@@ -368,6 +368,8 @@ export interface StoragePlugin<TContext = unknown> {
 
   delete: (storageUri: string) => Promise<void>;
 
+  download: (storageUri: string, filePath: string) => Promise<void>;
+
   getDownloadUrl: (
     storageUri: string,
     context?: StorageResolveContext<TContext>,
@@ -466,6 +468,30 @@ export type ConfigInput = {
      * When debug mode is enabled, more detailed information will be exposed in fingerprint.json.
      */
     debug?: boolean;
+  };
+  /**
+   * Optional pre-generated patch artifacts for faster OTA delivery.
+   *
+   * When enabled, `hot-updater deploy` tries to prepare binary patches against
+   * up to `maxBaseBundles` recent compatible bundles. Patch generation is an
+   * optimization only; archive delivery remains the fallback path.
+   *
+   * @default { enabled: false, maxBaseBundles: 5 }
+   */
+  patch?: {
+    /**
+     * Enable automatic patch generation during deploy.
+     *
+     * @default false
+     */
+    enabled?: boolean;
+    /**
+     * Maximum number of compatible older bundles to prepare patches for.
+     * Must be an integer between 1 and 5.
+     *
+     * @default 5
+     */
+    maxBaseBundles?: number;
   };
   console?: {
     /**

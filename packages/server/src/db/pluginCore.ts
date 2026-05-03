@@ -17,7 +17,9 @@ import {
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 
+import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
+import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const PAGE_SIZE = 100;
 const DESC_ORDER = { field: "id", direction: "desc" } as const;
@@ -345,7 +347,35 @@ export function createPluginDatabaseCore<TContext = unknown>(
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      return { ...rest, fileUrl };
+      const baseResponse: AppUpdateInfo = { ...rest, fileUrl };
+
+      if (info.id === NIL_UUID) {
+        return baseResponse;
+      }
+
+      const targetBundle = await getPlugin().getBundleById(info.id, context);
+      try {
+        const currentBundle =
+          args.bundleId !== NIL_UUID
+            ? await getPlugin().getBundleById(args.bundleId, context)
+            : null;
+        const manifestArtifacts = await resolveManifestArtifacts({
+          currentBundle,
+          resolveFileUrl,
+          targetBundle,
+          context,
+        });
+        if (!manifestArtifacts) {
+          return baseResponse;
+        }
+
+        return {
+          ...baseResponse,
+          ...manifestArtifacts,
+        };
+      } catch {
+        return baseResponse;
+      }
     },
 
     async getChannels(
@@ -362,6 +392,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
         await plugin.appendBundle(bundle, context);
         await plugin.commitBundle(context);
@@ -374,6 +405,11 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await runWithMutationPlugin(async (plugin) => {
+        const current = await plugin.getBundleById(bundleId, context);
+        if (!current) {
+          throw new Error("targetBundleId not found");
+        }
+        assertBundlePersistenceConstraints({ ...current, ...newBundle });
         await plugin.updateBundle(bundleId, newBundle, context);
         await plugin.commitBundle(context);
       });

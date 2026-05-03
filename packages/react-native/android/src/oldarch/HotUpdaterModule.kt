@@ -3,11 +3,11 @@ package com.hotupdater
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.bridge.WritableNativeMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +36,55 @@ class HotUpdaterModule internal constructor(
      * Gets the singleton HotUpdaterImpl instance
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
+
+    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+            return null
+        }
+
+        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
+        val iterator = changedAssetsMap.keySetIterator()
+
+        while (iterator.hasNextKey()) {
+            val assetPath = iterator.nextKey()
+            val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
+            val assetUrl = assetMap.getString("fileUrl") ?: continue
+            val assetHash = assetMap.getString("fileHash") ?: continue
+            val patchMap = assetMap.getMap("patch")
+            val patch =
+                if (patchMap != null) {
+                    val algorithm = patchMap.getString("algorithm")
+                    val baseBundleId = patchMap.getString("baseBundleId")
+                    val baseFileHash = patchMap.getString("baseFileHash")
+                    val patchFileHash = patchMap.getString("patchFileHash")
+                    val patchUrl = patchMap.getString("patchUrl")
+
+                    if (
+                        algorithm != null &&
+                        baseBundleId != null &&
+                        baseFileHash != null &&
+                        patchFileHash != null &&
+                        patchUrl != null
+                    ) {
+                        BsdiffPatchDescriptor(
+                            algorithm = algorithm,
+                            baseBundleId = baseBundleId,
+                            baseFileHash = baseFileHash,
+                            patchFileHash = patchFileHash,
+                            patchUrl = patchUrl,
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash, patch)
+        }
+
+        return parsedAssets
+    }
 
     @ReactMethod
     override fun reload(promise: Promise) {
@@ -91,6 +140,9 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val manifestUrl = params.getString("manifestUrl")
+                val manifestFileHash = params.getString("manifestFileHash")
+                val changedAssets = parseChangedAssets(params)
                 val channel = params.getString("channel")
 
                 val impl = getInstance()
@@ -99,14 +151,44 @@ class HotUpdaterModule internal constructor(
                     bundleId,
                     fileUrl,
                     fileHash,
+                    manifestUrl,
+                    manifestFileHash,
+                    changedAssets,
                     channel,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
                     Handler(Looper.getMainLooper()).post {
                         try {
                             val progressParams =
-                                WritableNativeMap().apply {
-                                    putDouble("progress", progress)
+                                Arguments.createMap().apply {
+                                    putDouble("progress", progress.progress)
+                                    putString("artifactType", progress.artifactType)
+                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                    progress.details?.let { details ->
+                                        val files = Arguments.createArray()
+                                        details.files.forEach { file ->
+                                            files.pushMap(
+                                                Arguments.createMap().apply {
+                                                    putString("path", file.path)
+                                                    putString("status", file.status)
+                                                    putDouble("progress", file.progress)
+                                                    putInt("order", file.order)
+                                                    file.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                                    file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                                },
+                                            )
+                                        }
+
+                                        putMap(
+                                            "details",
+                                            Arguments.createMap().apply {
+                                                putInt("totalFilesCount", details.totalFilesCount)
+                                                putInt("completedFilesCount", details.completedFilesCount)
+                                                putArray("files", files)
+                                            },
+                                        )
+                                    }
                                 }
 
                             this@HotUpdaterModule

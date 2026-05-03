@@ -14,6 +14,15 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    deps: {
+      alwaysBundle: (id) =>
+        id.startsWith("fumadb") && !id.startsWith("fumadb/adapters/mongodb"),
+      neverBundle: [
+        /^bson(?:\/.*)?$/,
+        /^kysely(?:\/.*)?$/,
+        /^mongodb(?:\/.*)?$/,
+      ],
+    },
     unbundle: true,
     exports: true,
     failOnWarn: true,

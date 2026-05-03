@@ -38,7 +38,90 @@ const INIT_BUNDLE_ROLLBACK_UPDATE_INFO = {
   status: "ROLLBACK",
 } as const;
 
+type ManifestUpdateInfoFixture = {
+  changedAssetPath: "index.ios.bundle";
+  currentBundleId: string;
+  currentManifest: {
+    assets: Record<string, { fileHash: string }>;
+    bundleId: string;
+  };
+  nextBundleId: string;
+  nextManifest: {
+    assets: Record<string, { fileHash: string }>;
+    bundleId: string;
+  };
+  unchangedAssetPath: "assets/logo.png";
+};
+
+type PreparedManifestArtifacts = {
+  cleanup?: () => Promise<void> | void;
+  currentMetadata: NonNullable<Bundle["metadata"]>;
+  nextMetadata: NonNullable<Bundle["metadata"]>;
+};
+
+type SetupManifestUpdateInfoTestOptions = {
+  expectFileUrl: (
+    fileUrl: string,
+    fixture: ManifestUpdateInfoFixture,
+  ) => Promise<void> | void;
+  expectManifestUrl?: (
+    manifestUrl: string,
+    fixture: ManifestUpdateInfoFixture,
+  ) => Promise<void> | void;
+  prepareArtifacts: (
+    fixture: ManifestUpdateInfoFixture,
+  ) => Promise<PreparedManifestArtifacts>;
+};
+
 type RolloutStrategy = "appVersion" | "fingerprint";
+
+const createManifest = (bundleId: string, hbcHash: string) => ({
+  assets: {
+    "assets/logo.png": {
+      fileHash: "hash-logo",
+    },
+    "index.ios.bundle": {
+      fileHash: hbcHash,
+    },
+  },
+  bundleId,
+});
+
+const DEFAULT_MANIFEST_FIXTURE: ManifestUpdateInfoFixture = {
+  changedAssetPath: "index.ios.bundle",
+  currentBundleId: "00000000-0000-0000-0000-000000000301",
+  currentManifest: createManifest(
+    "00000000-0000-0000-0000-000000000301",
+    "hash-old-bundle",
+  ),
+  nextBundleId: "00000000-0000-0000-0000-000000000302",
+  nextManifest: createManifest(
+    "00000000-0000-0000-0000-000000000302",
+    "hash-new-bundle",
+  ),
+  unchangedAssetPath: "assets/logo.png",
+};
+
+const createManifestBundle = (
+  id: string,
+  metadata: NonNullable<Bundle["metadata"]>,
+): Bundle => ({
+  id,
+  platform: "ios",
+  targetAppVersion: "1.0.0",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash:
+    id === DEFAULT_MANIFEST_FIXTURE.currentBundleId
+      ? "hash-current-zip"
+      : "hash-next-zip",
+  gitCommitHash: null,
+  message: id === DEFAULT_MANIFEST_FIXTURE.currentBundleId ? "current" : "next",
+  channel: "production",
+  storageUri: "storage://unused",
+  fingerprintHash: null,
+  metadata,
+});
 
 const createRolloutBundle = (
   strategy: RolloutStrategy,
@@ -103,11 +186,13 @@ const findNumericCohort = (
 
 export const setupGetUpdateInfoTestSuite = ({
   getUpdateInfo,
+  manifestArtifacts,
 }: {
   getUpdateInfo: (
     bundles: Bundle[],
     options: GetBundlesArgs,
   ) => Promise<UpdateInfo | AppUpdateInfo | null>;
+  manifestArtifacts?: SetupManifestUpdateInfoTestOptions;
 }) => {
   describe("app version strategy", () => {
     it("applies an update when a '*' bundle is available", async () => {
@@ -2299,4 +2384,62 @@ export const setupGetUpdateInfoTestSuite = ({
 
   describeRolloutBehavior("appVersion");
   describeRolloutBehavior("fingerprint");
+
+  if (manifestArtifacts) {
+    describe("manifest artifacts", () => {
+      it("returns changed asset URLs without patch metadata when manifest artifacts are available", async () => {
+        const fixture = DEFAULT_MANIFEST_FIXTURE;
+        const prepared = await manifestArtifacts.prepareArtifacts(fixture);
+
+        try {
+          const updateInfo = (await getUpdateInfo(
+            [
+              createManifestBundle(
+                fixture.currentBundleId,
+                prepared.currentMetadata,
+              ),
+              createManifestBundle(fixture.nextBundleId, prepared.nextMetadata),
+            ],
+            {
+              appVersion: "1.0.0",
+              bundleId: fixture.currentBundleId,
+              platform: "ios",
+              _updateStrategy: "appVersion",
+            },
+          )) as AppUpdateInfo | null;
+
+          expect(updateInfo).toMatchObject({
+            id: fixture.nextBundleId,
+            manifestFileHash: "sig:manifest-next",
+            status: "UPDATE",
+          });
+
+          const changedAsset =
+            updateInfo?.changedAssets?.[fixture.changedAssetPath];
+
+          expect(changedAsset).toMatchObject({
+            fileHash: "hash-new-bundle",
+          });
+          expect(changedAsset?.patch).toBeUndefined();
+          expect(
+            updateInfo?.changedAssets?.[fixture.unchangedAssetPath],
+          ).toBeUndefined();
+
+          await manifestArtifacts.expectFileUrl(
+            changedAsset?.fileUrl ?? "",
+            fixture,
+          );
+
+          if (manifestArtifacts.expectManifestUrl) {
+            await manifestArtifacts.expectManifestUrl(
+              updateInfo?.manifestUrl ?? "",
+              fixture,
+            );
+          }
+        } finally {
+          await prepared.cleanup?.();
+        }
+      });
+    });
+  }
 };

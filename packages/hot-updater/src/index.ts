@@ -23,6 +23,7 @@ import {
   normalizeRolloutPercentage,
 } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
@@ -181,6 +182,29 @@ program
   )
   .action(async (options: DeployOptions) => {
     deploy(options);
+  });
+
+program
+  .command("patch")
+  .description("create patch artifacts for a deployed bundle")
+  .requiredOption(
+    "-b, --bundle-id <bundleId>",
+    "target bundle id that should receive the patch artifact",
+  )
+  .requiredOption(
+    "--base-bundle-id <baseBundleId>",
+    "older bundle id to use as the patch base",
+  )
+  .addOption(platformCommandOption)
+  .addOption(interactiveCommandOption)
+  .addOption(
+    new Option(
+      "-c, --channel <channel>",
+      "specify the channel used to load config",
+    ).default(DEFAULT_CHANNEL),
+  )
+  .action(async (options: PatchOptions) => {
+    await createPatch(options);
   });
 
 program

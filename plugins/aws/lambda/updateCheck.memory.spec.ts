@@ -168,6 +168,7 @@ const createMemoryHotUpdater = () => {
           throw new Error("Upload is not supported in memory benchmark mode.");
         },
         async delete() {},
+        async download() {},
         async getDownloadUrl(storageUri) {
           const url = new URL("https://assets.example.com");
           url.pathname = new URL(storageUri).pathname;

@@ -26,30 +26,66 @@ private fun WritableMap.putReactValue(
     value: Any?,
 ) {
     when (value) {
-        null -> putNull(key)
-        is Boolean -> putBoolean(key, value)
-        is Number -> putDouble(key, value.toDouble())
-        is String -> putString(key, value)
+        null -> {
+            putNull(key)
+        }
+
+        is Boolean -> {
+            putBoolean(key, value)
+        }
+
+        is Number -> {
+            putDouble(key, value.toDouble())
+        }
+
+        is String -> {
+            putString(key, value)
+        }
+
         is Map<*, *> -> {
             @Suppress("UNCHECKED_CAST")
             putMap(key, (value as Map<String, Any?>).toWritableNativeMap())
         }
-        is List<*> -> putArray(key, value.toWritableNativeArray())
-        else -> putString(key, value.toString())
+
+        is List<*> -> {
+            putArray(key, value.toWritableNativeArray())
+        }
+
+        else -> {
+            putString(key, value.toString())
+        }
     }
 }
 
 private fun WritableArray.pushReactValue(value: Any?) {
     when (value) {
-        null -> pushNull()
-        is Boolean -> pushBoolean(value)
-        is Number -> pushDouble(value.toDouble())
-        is String -> pushString(value)
+        null -> {
+            pushNull()
+        }
+
+        is Boolean -> {
+            pushBoolean(value)
+        }
+
+        is Number -> {
+            pushDouble(value.toDouble())
+        }
+
+        is String -> {
+            pushString(value)
+        }
+
         is Map<*, *> -> {
             @Suppress("UNCHECKED_CAST")
             pushMap((value as Map<String, Any?>).toWritableNativeMap())
         }
-        is List<*> -> pushArray(value.toWritableNativeArray())
-        else -> pushString(value.toString())
+
+        is List<*> -> {
+            pushArray(value.toWritableNativeArray())
+        }
+
+        else -> {
+            pushString(value.toString())
+        }
     }
 }

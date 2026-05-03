@@ -137,6 +137,19 @@ export const standaloneStorage =
           storageUri: result.storageUri,
         };
       },
+      async download(storageUri: string, filePath: string) {
+        const { fileUrl } = await this.getDownloadUrl(storageUri);
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to download bundle: ${response.statusText}`);
+        }
+
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(
+          filePath,
+          new Uint8Array(await response.arrayBuffer()),
+        );
+      },
       async getDownloadUrl(storageUri: string) {
         const { path: routePath, headers: routeHeaders } =
           routes.getDownloadUrl(storageUri);

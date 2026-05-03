@@ -167,6 +167,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",
@@ -181,6 +182,7 @@ describe("notifyAppReady", () => {
       assets: {
         "assets/logo.png": {
           fileHash: "hash-logo",
+          signature: "sig-logo",
         },
         "index.android.bundle": {
           fileHash: "hash-bundle",
@@ -340,6 +342,57 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(2);
     expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(2);
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("forwards manifest artifact parameters to native updateBundle", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    nativeModuleMock.updateBundle.mockResolvedValue(true);
+
+    const { updateBundle } = await import("./native");
+
+    await updateBundle({
+      bundleId: "bundle-789",
+      changedAssets: {
+        "index.ios.bundle": {
+          fileHash: "hash-next",
+          fileUrl: "https://example.com/files/index.ios.bundle",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-123",
+            baseFileHash: "hash-prev",
+            patchFileHash: "hash-patch",
+            patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+          },
+        },
+      },
+      fileHash: "sig:archive",
+      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "sig:manifest",
+      manifestUrl: "https://example.com/manifest.json",
+      status: "UPDATE",
+    });
+
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
+      bundleId: "bundle-789",
+      changedAssets: {
+        "index.ios.bundle": {
+          fileHash: "hash-next",
+          fileUrl: "https://example.com/files/index.ios.bundle",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-123",
+            baseFileHash: "hash-prev",
+            patchFileHash: "hash-patch",
+            patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+          },
+        },
+      },
+      channel: undefined,
+      fileHash: "sig:archive",
+      fileUrl: "https://example.com/bundle.zip",
+      manifestFileHash: "sig:manifest",
+      manifestUrl: "https://example.com/manifest.json",
+    });
   });
 
   it("invalidates cached bundle getters after resetChannel succeeds", async () => {

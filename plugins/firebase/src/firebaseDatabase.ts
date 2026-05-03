@@ -1,6 +1,15 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestFileHash,
+  getManifestStorageUri,
+  getPatchBaseBundleId,
+  getPatchBaseFileHash,
+  getPatchFileHash,
+  getPatchStorageUri,
   type SnakeCaseBundle,
+  stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -145,23 +154,69 @@ const chunkValues = <T>(values: T[], size: number) => {
   return chunks;
 };
 
-const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => ({
-  channel: firestoreData.channel,
-  enabled: Boolean(firestoreData.enabled),
-  shouldForceUpdate: Boolean(firestoreData.should_force_update),
-  fileHash: firestoreData.file_hash,
-  gitCommitHash: firestoreData.git_commit_hash,
-  id: firestoreData.id,
-  message: firestoreData.message,
-  platform: firestoreData.platform,
-  targetAppVersion: firestoreData.target_app_version,
-  storageUri: firestoreData.storage_uri,
-  fingerprintHash: firestoreData.fingerprint_hash,
-  metadata: firestoreData?.metadata ?? {},
-  rolloutCohortCount:
-    firestoreData.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-  targetCohorts: firestoreData.target_cohorts ?? null,
-});
+const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
+  const rawMetadata = firestoreData.metadata;
+  const storedPatches = (
+    firestoreData as SnakeCaseBundle & {
+      patches?: Bundle["patches"];
+    }
+  ).patches;
+  const patches =
+    storedPatches && Array.isArray(storedPatches)
+      ? storedPatches
+      : getBundlePatches({
+          metadata: rawMetadata,
+          patchBaseBundleId: firestoreData.patch_base_bundle_id ?? null,
+          patchBaseFileHash: firestoreData.patch_base_file_hash ?? null,
+          patchFileHash: firestoreData.patch_file_hash ?? null,
+          patchStorageUri: firestoreData.patch_storage_uri ?? null,
+        });
+  const primaryPatch = patches[0] ?? null;
+
+  return {
+    channel: firestoreData.channel,
+    enabled: Boolean(firestoreData.enabled),
+    shouldForceUpdate: Boolean(firestoreData.should_force_update),
+    fileHash: firestoreData.file_hash,
+    gitCommitHash: firestoreData.git_commit_hash,
+    id: firestoreData.id,
+    message: firestoreData.message,
+    platform: firestoreData.platform,
+    targetAppVersion: firestoreData.target_app_version,
+    storageUri: firestoreData.storage_uri,
+    fingerprintHash: firestoreData.fingerprint_hash,
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri:
+      firestoreData.manifest_storage_uri ??
+      getManifestStorageUri({ metadata: rawMetadata }),
+    manifestFileHash:
+      firestoreData.manifest_file_hash ??
+      getManifestFileHash({ metadata: rawMetadata }),
+    assetBaseStorageUri:
+      firestoreData.asset_base_storage_uri ??
+      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patches,
+    patchBaseBundleId:
+      primaryPatch?.baseBundleId ??
+      firestoreData.patch_base_bundle_id ??
+      getPatchBaseBundleId({ metadata: rawMetadata }),
+    patchBaseFileHash:
+      primaryPatch?.baseFileHash ??
+      firestoreData.patch_base_file_hash ??
+      getPatchBaseFileHash({ metadata: rawMetadata }),
+    patchFileHash:
+      primaryPatch?.patchFileHash ??
+      firestoreData.patch_file_hash ??
+      getPatchFileHash({ metadata: rawMetadata }),
+    patchStorageUri:
+      primaryPatch?.patchStorageUri ??
+      firestoreData.patch_storage_uri ??
+      getPatchStorageUri({ metadata: rawMetadata }),
+    rolloutCohortCount:
+      firestoreData.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+    targetCohorts: firestoreData.target_cohorts ?? null,
+  };
+};
 
 export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
   name: "firebaseDatabase",
@@ -373,7 +428,15 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 target_app_version: data.targetAppVersion,
                 storage_uri: data.storageUri,
                 fingerprint_hash: data.fingerprintHash,
-                metadata: data.metadata ?? {},
+                metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
+                manifest_storage_uri: getManifestStorageUri(data),
+                manifest_file_hash: getManifestFileHash(data),
+                asset_base_storage_uri: getAssetBaseStorageUri(data),
+                patches: data.patches ?? null,
+                patch_base_bundle_id: getPatchBaseBundleId(data),
+                patch_base_file_hash: getPatchBaseFileHash(data),
+                patch_file_hash: getPatchFileHash(data),
+                patch_storage_uri: getPatchStorageUri(data),
                 rollout_cohort_count:
                   data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
                 target_cohorts: data.targetCohorts ?? null,
@@ -430,7 +493,15 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   target_app_version: data.targetAppVersion || null,
                   storage_uri: data.storageUri,
                   fingerprint_hash: data.fingerprintHash,
-                  metadata: data.metadata ?? {},
+                  metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
+                  manifest_storage_uri: getManifestStorageUri(data),
+                  manifest_file_hash: getManifestFileHash(data),
+                  asset_base_storage_uri: getAssetBaseStorageUri(data),
+                  patches: data.patches ?? null,
+                  patch_base_bundle_id: getPatchBaseBundleId(data),
+                  patch_base_file_hash: getPatchBaseFileHash(data),
+                  patch_file_hash: getPatchFileHash(data),
+                  patch_storage_uri: getPatchStorageUri(data),
                   rollout_cohort_count:
                     data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
                   target_cohorts: data.targetCohorts ?? null,

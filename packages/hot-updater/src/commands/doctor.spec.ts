@@ -93,6 +93,7 @@ describe("infrastructure version helpers", () => {
     expect(getRequiredInfrastructureVersion("0.29.8")).toBe("0.29.0");
     expect(getRequiredInfrastructureVersion("0.30.0")).toBe("0.30.0");
     expect(getRequiredInfrastructureVersion("0.30.1")).toBe("0.30.0");
+    expect(getRequiredInfrastructureVersion("0.31.0")).toBe("0.31.0");
   });
 
   it("does not require an update just because the server package version is newer", () => {
@@ -109,6 +110,12 @@ describe("infrastructure version helpers", () => {
       isInfrastructureUpdateRequired({
         serverVersion: "0.29.8",
         requiredVersion: "0.30.0",
+      }),
+    ).toBe(true);
+    expect(
+      isInfrastructureUpdateRequired({
+        serverVersion: "0.30.2",
+        requiredVersion: "0.31.0",
       }),
     ).toBe(true);
   });

@@ -2,6 +2,18 @@ import type { TurboModule } from "react-native";
 import { TurboModuleRegistry } from "react-native";
 import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
+export interface ChangedAsset {
+  fileUrl: string;
+  fileHash: string;
+  patch?: {
+    algorithm: "bsdiff";
+    baseBundleId: string;
+    baseFileHash: string;
+    patchFileHash: string;
+    patchUrl: string;
+  } | null;
+}
+
 export interface UpdateBundleParams {
   bundleId: string;
   channel?: string;
@@ -16,6 +28,19 @@ export interface UpdateBundleParams {
    * Native determines verification mode by checking for "sig:" prefix.
    */
   fileHash: string | null;
+  /**
+   * Optional signed manifest URL for manifest-driven installation.
+   */
+  manifestUrl?: string | null;
+  /**
+   * File hash/signature for the manifest file itself.
+   */
+  manifestFileHash?: string | null;
+  /**
+   * Per-file URLs for assets that must be downloaded instead of reused from
+   * the currently active bundle.
+   */
+  changedAssets?: UnsafeObject | null;
 }
 
 export interface Spec extends TurboModule {

@@ -75,6 +75,17 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
           throw error;
         }
       },
+      async download(storageUri: string, filePath: string) {
+        const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
+        if (bucketName !== config.storageBucket) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.storageBucket}", but found "${bucketName}".`,
+          );
+        }
+
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await bucket.file(key).download({ destination: filePath });
+      },
       async getDownloadUrl(storageUri: string) {
         // Simple validation: supported protocol must match
         const u = new URL(storageUri);

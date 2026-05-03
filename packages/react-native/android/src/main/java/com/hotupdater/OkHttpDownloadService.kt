@@ -44,6 +44,12 @@ sealed class DownloadResult {
 /**
  * Interface for download operations
  */
+data class DownloadProgress(
+    val progress: Double,
+    val downloadedBytes: Long,
+    val totalBytes: Long? = null,
+)
+
 interface DownloadService {
     /**
      * Downloads a file from a URL
@@ -57,7 +63,7 @@ interface DownloadService {
         fileUrl: URL,
         destination: File,
         fileSizeCallback: ((Long) -> Unit)? = null,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult
 }
 
@@ -66,7 +72,7 @@ interface DownloadService {
  */
 private class ProgressResponseBody(
     private val responseBody: ResponseBody,
-    private val progressCallback: (Double) -> Unit,
+    private val progressCallback: (DownloadProgress) -> Unit,
 ) : ResponseBody() {
     private var bufferedSource: BufferedSource? = null
 
@@ -95,8 +101,25 @@ private class ProgressResponseBody(
                 val currentTime = System.currentTimeMillis()
 
                 if (currentTime - lastProgressTime >= 100) {
-                    val progress = totalBytesRead.toDouble() / contentLength()
-                    progressCallback.invoke(progress)
+                    val totalBytes = contentLength()
+                    if (totalBytes > 0) {
+                        val progress = totalBytesRead.toDouble() / totalBytes
+                        progressCallback.invoke(
+                            DownloadProgress(
+                                progress = progress,
+                                downloadedBytes = totalBytesRead,
+                                totalBytes = totalBytes,
+                            ),
+                        )
+                    } else {
+                        progressCallback.invoke(
+                            DownloadProgress(
+                                progress = 0.0,
+                                downloadedBytes = totalBytesRead,
+                                totalBytes = null,
+                            ),
+                        )
+                    }
                     lastProgressTime = currentTime
                 }
                 return bytesRead
@@ -127,7 +150,7 @@ class OkHttpDownloadService : DownloadService {
         fileUrl: URL,
         destination: File,
         fileSizeCallback: ((Long) -> Unit)?,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
             var attempt = 0
@@ -166,7 +189,7 @@ class OkHttpDownloadService : DownloadService {
         fileUrl: URL,
         destination: File,
         fileSizeCallback: ((Long) -> Unit)?,
-        progressCallback: (Double) -> Unit,
+        progressCallback: (DownloadProgress) -> Unit,
     ): DownloadResult =
         withContext(Dispatchers.IO) {
             // Make sure parent directories exist
@@ -235,7 +258,7 @@ class OkHttpDownloadService : DownloadService {
 
                 // Verify file size
                 val finalSize = destination.length()
-                if (totalSize > 0 && finalSize != totalSize) {
+                if (totalSize >= 0 && finalSize != totalSize) {
                     Log.d(TAG, "Download incomplete: $finalSize / $totalSize bytes")
 
                     // Delete incomplete file
@@ -249,7 +272,13 @@ class OkHttpDownloadService : DownloadService {
                 }
 
                 Log.d(TAG, "Download completed successfully: $finalSize bytes")
-                progressCallback.invoke(1.0)
+                progressCallback.invoke(
+                    DownloadProgress(
+                        progress = 1.0,
+                        downloadedBytes = finalSize,
+                        totalBytes = if (totalSize > 0) totalSize else null,
+                    ),
+                )
                 DownloadResult.Success(destination)
             } catch (e: Exception) {
                 response.close()

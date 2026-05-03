@@ -25,8 +25,10 @@ import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
 const WORKSPACE_PACKAGE_PREFIX = "@hot-updater/";
-const IMPORT_SPECIFIER_PATTERN =
-  /from\s+["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)/g;
+const STATIC_IMPORT_SPECIFIER_PATTERN =
+  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
+const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
+  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -155,8 +157,13 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
     visitedFiles.add(currentFile);
     const source = await fs.readFile(currentFile, "utf8");
 
-    for (const match of source.matchAll(IMPORT_SPECIFIER_PATTERN)) {
-      const specifier = match[1] ?? match[2];
+    const matches = [
+      ...source.matchAll(STATIC_IMPORT_SPECIFIER_PATTERN),
+      ...source.matchAll(DYNAMIC_IMPORT_SPECIFIER_PATTERN),
+    ];
+
+    for (const match of matches) {
+      const specifier = match[1];
       if (!specifier) {
         continue;
       }

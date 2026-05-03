@@ -1,6 +1,10 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
-  type SnakeCaseBundle,
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestFileHash,
+  getManifestStorageUri,
+  stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -46,6 +50,36 @@ type QueryConditions = DatabaseBundleQueryWhere;
 interface BuildQueryResult {
   sql: string;
   params: unknown[];
+}
+
+interface D1WorkerBundleRow {
+  id: string;
+  channel: string;
+  enabled: number | boolean;
+  should_force_update: number | boolean;
+  file_hash: string;
+  git_commit_hash: string | null;
+  message: string | null;
+  platform: "ios" | "android";
+  target_app_version: string | null;
+  storage_uri: string;
+  fingerprint_hash: string | null;
+  metadata: unknown;
+  manifest_storage_uri?: string | null;
+  manifest_file_hash?: string | null;
+  asset_base_storage_uri?: string | null;
+  rollout_cohort_count: number | null;
+  target_cohorts: string | null;
+}
+
+interface D1WorkerBundlePatchRow {
+  id: string;
+  bundle_id: string;
+  base_bundle_id: string;
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
+  order_index: number | null;
 }
 
 function buildWhereClause(
@@ -168,7 +202,54 @@ function parseTargetCohorts(value: unknown): string[] | null {
   return null;
 }
 
-function transformRowToBundle(row: SnakeCaseBundle): Bundle {
+const parseMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      return parseMetadata(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value)
+    ? (value as Bundle["metadata"])
+    : undefined;
+};
+
+const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
+  `${bundleId}:${baseBundleId}`;
+
+const bundleToPatchRows = (bundle: Bundle): D1WorkerBundlePatchRow[] =>
+  getBundlePatches(bundle).map((patch, index) => ({
+    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: index,
+  }));
+
+function transformRowToBundle(
+  row: D1WorkerBundleRow,
+  patchRows: D1WorkerBundlePatchRow[] = [],
+): Bundle {
+  const rawMetadata = parseMetadata(row.metadata);
+  const patches = patchRows
+    .slice()
+    .sort(
+      (left, right) =>
+        (left.order_index ?? 0) - (right.order_index ?? 0) ||
+        left.base_bundle_id.localeCompare(right.base_bundle_id),
+    )
+    .map((patch) => ({
+      baseBundleId: patch.base_bundle_id,
+      baseFileHash: patch.base_file_hash,
+      patchFileHash: patch.patch_file_hash,
+      patchStorageUri: patch.patch_storage_uri,
+    }));
+  const primaryPatch = patches[0] ?? null;
+
   return {
     id: row.id,
     channel: row.channel,
@@ -181,7 +262,20 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     targetAppVersion: row.target_app_version,
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
-    metadata: row?.metadata ? JSON.parse(row.metadata as string) : {},
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri:
+      row.manifest_storage_uri ??
+      getManifestStorageUri({ metadata: rawMetadata }),
+    manifestFileHash:
+      row.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
+    assetBaseStorageUri:
+      row.asset_base_storage_uri ??
+      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patches,
+    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+    patchFileHash: primaryPatch?.patchFileHash ?? null,
+    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
     rolloutCohortCount:
       (row.rollout_cohort_count as number | null) ??
       DEFAULT_ROLLOUT_COHORT_COUNT,
@@ -236,12 +330,43 @@ export const d1WorkerDatabase = <
         return result ?? null;
       };
 
+      const getPatchMap = async (
+        bundleIds: string[],
+        context?: HotUpdaterContext<TContext>,
+      ) => {
+        const patchMap = new Map<string, D1WorkerBundlePatchRow[]>();
+
+        if (bundleIds.length === 0) {
+          return patchMap;
+        }
+
+        const placeholders = bundleIds.map(() => "?").join(", ");
+        const rows = await queryAll<D1WorkerBundlePatchRow>(
+          `
+            SELECT *
+            FROM bundle_patches
+            WHERE bundle_id IN (${placeholders})
+            ORDER BY order_index ASC, base_bundle_id ASC
+          `,
+          bundleIds,
+          context,
+        );
+
+        for (const row of rows) {
+          const current = patchMap.get(row.bundle_id) ?? [];
+          current.push(row);
+          patchMap.set(row.bundle_id, current);
+        }
+
+        return patchMap;
+      };
+
       const queryBundlesForUpdateInfo = async (
         conditions: QueryConditions,
         context?: HotUpdaterContext<TContext>,
       ): Promise<Bundle[]> => {
         const { sql: whereClause, params } = buildWhereClause(conditions);
-        const rows = await queryAll<SnakeCaseBundle>(
+        const rows = await queryAll<D1WorkerBundleRow>(
           `
             SELECT * FROM bundles
             ${whereClause}
@@ -249,8 +374,14 @@ export const d1WorkerDatabase = <
           params,
           context,
         );
+        const patchMap = await getPatchMap(
+          rows.map((row) => row.id),
+          context,
+        );
 
-        return rows.map(transformRowToBundle);
+        return rows.map((row) =>
+          transformRowToBundle(row, patchMap.get(row.id)),
+        );
       };
 
       const getTargetAppVersionsForUpdateInfo = async (
@@ -324,13 +455,16 @@ export const d1WorkerDatabase = <
         }),
 
         async getBundleById(bundleId, context) {
-          const row = await queryFirst<SnakeCaseBundle>(
-            "SELECT * FROM bundles WHERE id = ? LIMIT 1",
-            [bundleId],
-            context,
-          );
+          const [row, patchMap] = await Promise.all([
+            queryFirst<D1WorkerBundleRow>(
+              "SELECT * FROM bundles WHERE id = ? LIMIT 1",
+              [bundleId],
+              context,
+            ),
+            getPatchMap([bundleId], context),
+          ]);
 
-          return row ? transformRowToBundle(row) : null;
+          return row ? transformRowToBundle(row, patchMap.get(bundleId)) : null;
         },
 
         async getBundles(options, context) {
@@ -352,13 +486,19 @@ export const d1WorkerDatabase = <
           );
           const total = countRows[0]?.total ?? 0;
 
-          const rows = await queryAll<SnakeCaseBundle>(
+          const rows = await queryAll<D1WorkerBundleRow>(
             `SELECT * FROM bundles${whereClause} ${orderSql} LIMIT ? OFFSET ?`,
             [...params, limit, offset],
             context,
           );
 
-          const bundles = rows.map(transformRowToBundle);
+          const patchMap = await getPatchMap(
+            rows.map((row) => row.id),
+            context,
+          );
+          const bundles = rows.map((row) =>
+            transformRowToBundle(row, patchMap.get(row.id)),
+          );
 
           const paginationOptions: PaginationOptions = { limit, offset };
           return {
@@ -386,6 +526,14 @@ export const d1WorkerDatabase = <
           for (const operation of changedSets) {
             if (operation.operation === "delete") {
               await db
+                .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
+                .bind(operation.data.id)
+                .run();
+              await db
+                .prepare("DELETE FROM bundle_patches WHERE base_bundle_id = ?")
+                .bind(operation.data.id)
+                .run();
+              await db
                 .prepare("DELETE FROM bundles WHERE id = ?")
                 .bind(operation.data.id)
                 .run();
@@ -408,10 +556,13 @@ export const d1WorkerDatabase = <
                   storage_uri,
                   fingerprint_hash,
                   metadata,
+                  manifest_storage_uri,
+                  manifest_file_hash,
+                  asset_base_storage_uri,
                   rollout_cohort_count,
                   target_cohorts
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `)
               .bind(
                 bundle.id,
@@ -425,13 +576,50 @@ export const d1WorkerDatabase = <
                 bundle.targetAppVersion,
                 bundle.storageUri,
                 bundle.fingerprintHash,
-                JSON.stringify(bundle.metadata ?? {}),
+                JSON.stringify(
+                  stripBundleArtifactMetadata(bundle.metadata) ?? {},
+                ),
+                getManifestStorageUri(bundle),
+                getManifestFileHash(bundle),
+                getAssetBaseStorageUri(bundle),
                 bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
                 bundle.targetCohorts
                   ? JSON.stringify(bundle.targetCohorts)
                   : null,
               )
               .run();
+
+            await db
+              .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
+              .bind(bundle.id)
+              .run();
+
+            const patchRows = bundleToPatchRows(bundle);
+            for (const patchRow of patchRows) {
+              await db
+                .prepare(`
+                  INSERT OR REPLACE INTO bundle_patches (
+                    id,
+                    bundle_id,
+                    base_bundle_id,
+                    base_file_hash,
+                    patch_file_hash,
+                    patch_storage_uri,
+                    order_index
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?, ?)
+                `)
+                .bind(
+                  patchRow.id,
+                  patchRow.bundle_id,
+                  patchRow.base_bundle_id,
+                  patchRow.base_file_hash,
+                  patchRow.patch_file_hash,
+                  patchRow.patch_storage_uri,
+                  patchRow.order_index ?? 0,
+                )
+                .run();
+            }
           }
         },
       };

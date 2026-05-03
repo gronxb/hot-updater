@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import fs from "node:fs/promises";
+
 import type {
   Bundle,
   DatabasePlugin,
@@ -42,14 +44,24 @@ function createStoragePlugin(
   supportedProtocol = "s3",
   overrides?: Partial<StoragePlugin>,
 ) {
-  return {
+  const storagePlugin = {
     name: "mockStorage",
     supportedProtocol,
     upload: vi.fn(),
     delete: vi.fn(),
+    download: vi.fn(async (storageUri: string, filePath: string) => {
+      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
+      const response = await fetch(fileUrl);
+      await fs.writeFile(
+        filePath,
+        new Uint8Array(await response.arrayBuffer()),
+      );
+    }),
     getDownloadUrl: vi.fn(),
     ...overrides,
-  } satisfies StoragePlugin;
+  };
+
+  return storagePlugin satisfies StoragePlugin;
 }
 
 afterEach(() => {
@@ -147,5 +159,127 @@ describe("deleteBundle", () => {
       "Failed to delete bundle from storage:",
       expect.any(Error),
     );
+  });
+
+  it("deletes manifest artifacts individually when metadata is available", async () => {
+    const bundleWithManifest: Bundle = {
+      ...baseBundle,
+      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
+    };
+    const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+      getDownloadUrl: vi.fn(async (storageUri) => ({
+        fileUrl:
+          storageUri === bundleWithManifest.manifestStorageUri
+            ? "https://cdn.example.com/manifest.json"
+            : "https://cdn.example.com/unknown",
+      })),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            assets: {
+              "assets/logo.png": { fileHash: "logo-hash" },
+              "index.js": { fileHash: "bundle-hash" },
+            },
+          }),
+        );
+      }),
+    );
+
+    await deleteBundle(
+      { bundleId: bundleWithManifest.id },
+      { databasePlugin, storagePlugin },
+    );
+
+    expect(deleteFromStorage).toHaveBeenCalledTimes(4);
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.storageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.manifestStorageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/bundles/bundle-copy-id/files/index.js",
+    );
+  });
+
+  it("falls back to deleting the asset base uri when manifest cleanup lookup fails", async () => {
+    const bundleWithManifest: Bundle = {
+      ...baseBundle,
+      assetBaseStorageUri: "s3://bucket/bundles/bundle-copy-id/files",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
+    };
+    const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+      getDownloadUrl: vi.fn(async () => ({
+        fileUrl: "https://cdn.example.com/manifest.json",
+      })),
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response("not found", {
+          status: 404,
+          statusText: "Not Found",
+        });
+      }),
+    );
+
+    await deleteBundle(
+      { bundleId: bundleWithManifest.id },
+      { databasePlugin, storagePlugin },
+    );
+
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.storageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.manifestStorageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.assetBaseStorageUri,
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Failed to load bundle manifest for storage cleanup:",
+      expect.any(Error),
+    );
+  });
+
+  it("throws before database deletion when manifest metadata uses an unsupported storage protocol", async () => {
+    const databasePlugin = createDatabasePlugin({
+      ...baseBundle,
+      metadata: {
+        manifest_storage_uri: "r2://bucket/bundle/manifest.json",
+      },
+    });
+    const storagePlugin = createStoragePlugin("s3");
+
+    await expect(
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { databasePlugin, storagePlugin },
+      ),
+    ).rejects.toThrow("No storage plugin for protocol: r2");
+
+    expect(databasePlugin.deleteBundle).not.toHaveBeenCalled();
+    expect(databasePlugin.commitBundle).not.toHaveBeenCalled();
   });
 });

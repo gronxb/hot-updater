@@ -9,7 +9,7 @@ import {
   notifyAppReady as nativeNotifyAppReady,
   reload,
 } from "./native";
-import { useHotUpdaterStore } from "./store";
+import { type HotUpdaterState, useHotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
 
 export interface RunUpdateProcessResponse {
@@ -23,6 +23,16 @@ type UpdateStatus =
   | "CHECK_FOR_UPDATE"
   | "UPDATING"
   | "UPDATE_PROCESS_COMPLETED";
+
+export type HotUpdaterFallbackComponentProps = {
+  status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
+  progress: number;
+  downloadedBytes: HotUpdaterState["downloadedBytes"];
+  totalBytes: HotUpdaterState["totalBytes"];
+  message: string | null;
+  artifactType: HotUpdaterState["artifactType"];
+  details: HotUpdaterState["details"];
+};
 
 /**
  * Common options shared between auto and manual update modes
@@ -140,11 +150,7 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      *
      * If not defined, the bundle will download in the background without blocking the screen.
      */
-    fallbackComponent?: React.FC<{
-      status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
-      progress: number;
-      message: string | null;
-    }>;
+    fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
 
     onProgress?: (progress: number) => void;
 
@@ -190,11 +196,7 @@ type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
   onError?: (error: HotUpdaterError | Error | unknown) => void;
-  fallbackComponent?: React.FC<{
-    status: Exclude<UpdateStatus, "UPDATE_PROCESS_COMPLETED">;
-    progress: number;
-    message: string | null;
-  }>;
+  fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
   onProgress?: (progress: number) => void;
   reloadOnForceUpdate?: boolean;
   onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
@@ -262,7 +264,8 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
 
   return (WrappedComponent: React.ComponentType<P>) => {
     const HotUpdaterHOC: React.FC<P> = (props: P) => {
-      const progress = useHotUpdaterStore((state) => state.progress);
+      const progressState = useHotUpdaterStore((state) => state);
+      const progress = progressState.progress;
 
       const [message, setMessage] = useState<string | null>(null);
       const [updateStatus, setUpdateStatus] =
@@ -356,9 +359,13 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
         const Fallback = restOptions.fallbackComponent;
         return (
           <Fallback
+            artifactType={progressState.artifactType}
+            details={progressState.details}
+            downloadedBytes={progressState.downloadedBytes}
             progress={progress}
             status={updateStatus}
             message={message}
+            totalBytes={progressState.totalBytes}
           />
         );
       }

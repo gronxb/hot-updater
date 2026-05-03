@@ -1,4 +1,5 @@
-import path from "path";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import {
   createStorageKeyBuilder,
@@ -22,26 +23,6 @@ export interface R2StorageConfig {
 
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
- *
- * Note: This plugin does not support `getDownloadUrl()`.
- * If you need download URL generation, use `s3Storage` from `@hot-updater/aws` instead,
- * which is fully compatible with Cloudflare R2.
- *
- * @example
- * ```typescript
- * // Using s3Storage with Cloudflare R2 for download URL support
- * import { s3Storage } from "@hot-updater/aws";
- *
- * s3Storage({
- *   region: "auto",
- *   endpoint: "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
- *   credentials: {
- *     accessKeyId: "YOUR_ACCESS_KEY_ID",
- *     secretAccessKey: "YOUR_SECRET_ACCESS_KEY",
- *   },
- *   bucketName: "YOUR_BUCKET_NAME",
- * })
- * ```
  */
 export const r2Storage = createStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
@@ -110,20 +91,47 @@ export const r2Storage = createStoragePlugin<R2StorageConfig>({
           storageUri: `r2://${bucketName}/${Key}`,
         };
       },
-      async getDownloadUrl() {
+      async getDownloadUrl(storageUri) {
+        const { bucket } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
         throw new Error(
-          "`r2Storage` does not support `getDownloadUrl()`. Use `s3Storage` from `@hot-updater/aws` instead (compatible with Cloudflare R2).\n\n" +
-            "Example:\n" +
-            "s3Storage({\n" +
-            "  region: 'auto',\n" +
-            "  endpoint: 'https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com',\n" +
-            "  credentials: {\n" +
-            "    accessKeyId: 'YOUR_ACCESS_KEY_ID',\n" +
-            "    secretAccessKey: 'YOUR_SECRET_ACCESS_KEY',\n" +
-            "  },\n" +
-            "  bucketName: 'YOUR_BUCKET_NAME',\n" +
-            "})",
+          "`r2Storage` does not support `getDownloadUrl()` outside deploy-time tooling. Use the Cloudflare worker storage from `@hot-updater/cloudflare/worker` in serverless runtimes, or use `s3Storage` from `@hot-updater/aws` with Cloudflare R2 S3 API credentials for presigned URLs.",
         );
+      },
+      async download(storageUri, filePath) {
+        const { bucket, key } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
+        try {
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          const { stderr, exitCode } = await wrangler(
+            "r2",
+            "object",
+            "get",
+            [bucketName, key].join("/"),
+            "--file",
+            filePath,
+            "--remote",
+          );
+          if (exitCode !== 0 && stderr) {
+            throw new Error(stderr);
+          }
+        } catch (error) {
+          if (error instanceof ExecaError) {
+            throw new Error(error.stderr || error.stdout);
+          }
+
+          throw error;
+        }
       },
     };
   },

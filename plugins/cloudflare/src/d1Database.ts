@@ -1,6 +1,10 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
-  type SnakeCaseBundle,
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestFileHash,
+  getManifestStorageUri,
+  stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
   Bundle,
@@ -28,6 +32,36 @@ type QueryConditions = DatabaseBundleQueryWhere;
 interface BuildQueryResult {
   sql: string;
   params: any[];
+}
+
+interface D1BundleRow {
+  id: string;
+  channel: string;
+  enabled: number | boolean;
+  should_force_update: number | boolean;
+  file_hash: string;
+  git_commit_hash: string | null;
+  message: string | null;
+  platform: "ios" | "android";
+  target_app_version: string | null;
+  storage_uri: string;
+  fingerprint_hash: string | null;
+  metadata: unknown;
+  manifest_storage_uri?: string | null;
+  manifest_file_hash?: string | null;
+  asset_base_storage_uri?: string | null;
+  rollout_cohort_count: number | null;
+  target_cohorts: string | null;
+}
+
+interface D1BundlePatchRow {
+  id: string;
+  bundle_id: string;
+  base_bundle_id: string;
+  base_file_hash: string;
+  patch_file_hash: string;
+  patch_storage_uri: string;
+  order_index: number | null;
 }
 
 async function resolvePage<T>(singlePage: any): Promise<T[]> {
@@ -152,8 +186,54 @@ function parseTargetCohorts(value: unknown): string[] | null {
   return null;
 }
 
-// Helper function to transform snake_case row to Bundle
-function transformRowToBundle(row: SnakeCaseBundle): Bundle {
+const parseMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      return parseMetadata(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+  return typeof value === "object" && !Array.isArray(value)
+    ? (value as Bundle["metadata"])
+    : undefined;
+};
+
+const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
+  `${bundleId}:${baseBundleId}`;
+
+const bundleToPatchRows = (bundle: Bundle): D1BundlePatchRow[] =>
+  getBundlePatches(bundle).map((patch, index) => ({
+    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: index,
+  }));
+
+function transformRowToBundle(
+  row: D1BundleRow,
+  patchRows: D1BundlePatchRow[] = [],
+): Bundle {
+  const rawMetadata = parseMetadata(row.metadata);
+  const patches = patchRows
+    .slice()
+    .sort(
+      (left, right) =>
+        (left.order_index ?? 0) - (right.order_index ?? 0) ||
+        left.base_bundle_id.localeCompare(right.base_bundle_id),
+    )
+    .map((patch) => ({
+      baseBundleId: patch.base_bundle_id,
+      baseFileHash: patch.base_file_hash,
+      patchFileHash: patch.patch_file_hash,
+      patchStorageUri: patch.patch_storage_uri,
+    }));
+  const primaryPatch = patches[0] ?? null;
+
   return {
     id: row.id,
     channel: row.channel,
@@ -166,7 +246,20 @@ function transformRowToBundle(row: SnakeCaseBundle): Bundle {
     targetAppVersion: row.target_app_version,
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
-    metadata: row?.metadata ? JSON.parse(row?.metadata as string) : {},
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri:
+      row.manifest_storage_uri ??
+      getManifestStorageUri({ metadata: rawMetadata }),
+    manifestFileHash:
+      row.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
+    assetBaseStorageUri:
+      row.asset_base_storage_uri ??
+      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    patches,
+    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+    patchFileHash: primaryPatch?.patchFileHash ?? null,
+    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
     rolloutCohortCount:
       (row.rollout_cohort_count as number | null) ??
       DEFAULT_ROLLOUT_COHORT_COUNT,
@@ -180,6 +273,36 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
     const cf = new Cloudflare({
       apiToken: config.cloudflareApiToken,
     });
+    const getPatchMap = async (bundleIds: string[]) => {
+      const patchMap = new Map<string, D1BundlePatchRow[]>();
+
+      if (bundleIds.length === 0) {
+        return patchMap;
+      }
+
+      const placeholders = bundleIds.map(() => "?").join(", ");
+      const sql = minify(`
+        SELECT *
+        FROM bundle_patches
+        WHERE bundle_id IN (${placeholders})
+        ORDER BY order_index ASC, base_bundle_id ASC
+      `);
+
+      const result = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params: bundleIds,
+      });
+      const rows = await resolvePage<D1BundlePatchRow>(result);
+
+      for (const row of rows) {
+        const current = patchMap.get(row.bundle_id) ?? [];
+        current.push(row);
+        patchMap.set(row.bundle_id, current);
+      }
+
+      return patchMap;
+    };
 
     // Helper function to get total count
     async function getTotalCount(conditions: QueryConditions): Promise<number> {
@@ -227,8 +350,9 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         params,
       });
 
-      const rows = await resolvePage<SnakeCaseBundle>(result);
-      return rows.map(transformRowToBundle);
+      const rows = await resolvePage<D1BundleRow>(result);
+      const patchMap = await getPatchMap(rows.map((row) => row.id));
+      return rows.map((row) => transformRowToBundle(row, patchMap.get(row.id)));
     }
 
     async function queryBundlesForUpdateInfo(
@@ -246,8 +370,9 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         params,
       });
 
-      const rows = await resolvePage<SnakeCaseBundle>(result);
-      return rows.map(transformRowToBundle);
+      const rows = await resolvePage<D1BundleRow>(result);
+      const patchMap = await getPatchMap(rows.map((row) => row.id));
+      return rows.map((row) => transformRowToBundle(row, patchMap.get(row.id)));
     }
 
     async function getTargetAppVersionsForUpdateInfo({
@@ -318,19 +443,22 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       async getBundleById(bundleId) {
         const sql = minify(/* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`);
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [bundleId],
-        });
+        const [singlePage, patchMap] = await Promise.all([
+          cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql,
+            params: [bundleId],
+          }),
+          getPatchMap([bundleId]),
+        ]);
 
-        const rows = await resolvePage<SnakeCaseBundle>(singlePage);
+        const rows = await resolvePage<D1BundleRow>(singlePage);
 
         if (rows.length === 0) {
           return null;
         }
 
-        return transformRowToBundle(rows[0]);
+        return transformRowToBundle(rows[0], patchMap.get(bundleId));
       },
 
       async getBundles(options) {
@@ -388,6 +516,24 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               DELETE FROM bundles WHERE id = ?
             `);
 
+            const deletePatchSql = minify(/* sql */ `
+              DELETE FROM bundle_patches WHERE bundle_id = ?
+            `);
+            await cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: deletePatchSql,
+              params: [op.data.id],
+            });
+
+            const deleteBasePatchSql = minify(/* sql */ `
+              DELETE FROM bundle_patches WHERE base_bundle_id = ?
+            `);
+            await cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: deleteBasePatchSql,
+              params: [op.data.id],
+            });
+
             await cf.d1.database.query(config.databaseId, {
               account_id: config.accountId,
               sql: deleteSql,
@@ -410,10 +556,13 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 storage_uri,
                 fingerprint_hash,
                 metadata,
+                manifest_storage_uri,
+                manifest_file_hash,
+                asset_base_storage_uri,
                 rollout_cohort_count,
                 target_cohorts
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             const params = [
@@ -428,9 +577,12 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               bundle.targetAppVersion,
               bundle.storageUri,
               bundle.fingerprintHash,
-              bundle.metadata
-                ? JSON.stringify(bundle.metadata)
-                : JSON.stringify({}),
+              JSON.stringify(
+                stripBundleArtifactMetadata(bundle.metadata) ?? {},
+              ),
+              getManifestStorageUri(bundle),
+              getManifestFileHash(bundle),
+              getAssetBaseStorageUri(bundle),
               bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
               bundle.targetCohorts
                 ? JSON.stringify(bundle.targetCohorts)
@@ -442,6 +594,46 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               sql: upsertSql,
               params: params as string[],
             });
+
+            await cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql: minify(`
+                DELETE FROM bundle_patches WHERE bundle_id = ?
+              `),
+              params: [bundle.id],
+            });
+
+            const patchRows = bundleToPatchRows(bundle);
+            if (patchRows.length > 0) {
+              const patchInsertSql = minify(`
+                INSERT OR REPLACE INTO bundle_patches (
+                  id,
+                  bundle_id,
+                  base_bundle_id,
+                  base_file_hash,
+                  patch_file_hash,
+                  patch_storage_uri,
+                  order_index
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `);
+
+              for (const patchRow of patchRows) {
+                await cf.d1.database.query(config.databaseId, {
+                  account_id: config.accountId,
+                  sql: patchInsertSql,
+                  params: [
+                    patchRow.id,
+                    patchRow.bundle_id,
+                    patchRow.base_bundle_id,
+                    patchRow.base_file_hash,
+                    patchRow.patch_file_hash,
+                    patchRow.patch_storage_uri,
+                    String(patchRow.order_index ?? 0),
+                  ],
+                });
+              }
+            }
           }
         }
       },
