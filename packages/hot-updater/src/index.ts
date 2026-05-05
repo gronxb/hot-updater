@@ -38,6 +38,7 @@ import {
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -182,6 +183,32 @@ program
   .action(async (options: DeployOptions) => {
     deploy(options);
   });
+
+program
+  .command("rollback")
+  .description("Disable the most recent enabled bundle on a channel")
+  .argument("<channel>", "the channel to roll back")
+  .addOption(
+    new Option(
+      "-p, --platform <platform>",
+      "limit to a single platform (default: both)",
+    ).choices(["ios", "android"]),
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .option(
+    "--confirm-revert-to-binary",
+    "allow rollback even when no other enabled bundle exists for that platform",
+  )
+  .action(
+    (
+      channel: string,
+      options: {
+        platform?: "ios" | "android";
+        yes?: boolean;
+        confirmRevertToBinary?: boolean;
+      },
+    ) => handleRollback(channel, options),
+  );
 
 program
   .command("console")
