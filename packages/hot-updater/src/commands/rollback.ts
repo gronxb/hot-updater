@@ -7,10 +7,13 @@ import type {
 
 import { printBanner } from "@/utils/printBanner";
 
+import { PLATFORMS } from "../commandOptions";
+
 export interface RollbackOptions {
   platform?: Platform;
   yes?: boolean;
   confirmRevertToBinary?: boolean;
+  target?: string;
 }
 
 interface RollbackTarget {
@@ -19,13 +22,29 @@ interface RollbackTarget {
   fallbackId: string | null;
 }
 
-const PLATFORMS: readonly Platform[] = ["ios", "android"];
-
 const summarizeTarget = (target: RollbackTarget): string => {
   const fallback = target.fallbackId
-    ? `next: ${target.fallbackId}`
+    ? `next-most-recent enabled bundle: ${target.fallbackId}` +
+      ` (actual active bundle per app version may differ — depends on` +
+      ` targetAppVersion / fingerprint match)`
     : "next: (would revert to binary-shipped JS)";
   return `  - ${target.platform}: disable ${target.bundle.id} (${fallback})`;
+};
+
+const formatRetryHint = (channel: string, target: RollbackTarget): string =>
+  `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
+
+const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+  try {
+    await databasePlugin.onUnmount?.();
+  } catch (err) {
+    // Cleanup errors must never mask the originating mutation error.
+    p.log.warn(
+      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+        (err as Error)?.message ?? String(err)
+      }`,
+    );
+  }
 };
 
 export const handleRollback = async (
@@ -40,10 +59,6 @@ export const handleRollback = async (
   }
 
   const config = await loadConfig(null);
-  if (!config) {
-    p.log.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
 
   const platforms = options.platform ? [options.platform] : PLATFORMS;
 
@@ -53,25 +68,69 @@ export const handleRollback = async (
     const skippedPlatforms: Platform[] = [];
     const wouldRevertToBinary: Platform[] = [];
 
-    for (const platform of platforms) {
-      const result = await databasePlugin.getBundles({
-        where: { channel, platform, enabled: true },
+    if (options.target) {
+      // Scoped retry path: roll back exactly the named bundle.
+      const targetBundle = await databasePlugin.getBundleById(options.target);
+      if (!targetBundle) {
+        p.log.error(`No bundle with id ${options.target}.`);
+        process.exit(1);
+      }
+      if (targetBundle.channel !== channel) {
+        p.log.error(
+          `Bundle ${options.target} is on channel "${targetBundle.channel}", not "${channel}".`,
+        );
+        process.exit(1);
+      }
+      if (options.platform && targetBundle.platform !== options.platform) {
+        p.log.error(
+          `Bundle ${options.target} is on platform "${targetBundle.platform}", not "${options.platform}".`,
+        );
+        process.exit(1);
+      }
+      if (!targetBundle.enabled) {
+        p.log.info(`Bundle ${options.target} is already disabled. No changes.`);
+        return;
+      }
+      const fallbackResult = await databasePlugin.getBundles({
+        where: {
+          channel,
+          platform: targetBundle.platform,
+          enabled: true,
+        },
         limit: 2,
       });
-      const [target, fallback] = result.data;
-      if (!target) {
-        p.log.info(`No enabled bundle on ${channel}/${platform}; skipping.`);
-        skippedPlatforms.push(platform);
-        continue;
-      }
+      const fallback = fallbackResult.data.find(
+        (b) => b.id !== targetBundle.id,
+      );
       if (!fallback) {
-        wouldRevertToBinary.push(platform);
+        wouldRevertToBinary.push(targetBundle.platform);
       }
       targets.push({
-        platform,
-        bundle: target,
+        platform: targetBundle.platform,
+        bundle: targetBundle,
         fallbackId: fallback?.id ?? null,
       });
+    } else {
+      for (const platform of platforms) {
+        const result = await databasePlugin.getBundles({
+          where: { channel, platform, enabled: true },
+          limit: 2,
+        });
+        const [target, fallback] = result.data;
+        if (!target) {
+          p.log.info(`No enabled bundle on ${channel}/${platform}; skipping.`);
+          skippedPlatforms.push(platform);
+          continue;
+        }
+        if (!fallback) {
+          wouldRevertToBinary.push(platform);
+        }
+        targets.push({
+          platform,
+          bundle: target,
+          fallbackId: fallback?.id ?? null,
+        });
+      }
     }
 
     if (targets.length === 0) {
@@ -81,19 +140,27 @@ export const handleRollback = async (
       process.exit(1);
     }
 
-    p.log.info(`Rollback plan for channel "${channel}":`);
+    p.log.message(`Rollback plan for channel "${channel}":`);
     for (const t of targets) {
-      console.log(summarizeTarget(t));
+      p.log.message(summarizeTarget(t));
     }
 
     if (wouldRevertToBinary.length > 0 && !options.confirmRevertToBinary) {
+      const safePlatforms = targets
+        .map((t) => t.platform)
+        .filter((pl) => !wouldRevertToBinary.includes(pl));
+      const safePlatformsHint = safePlatforms.length
+        ? ` Re-run with -p ${safePlatforms.join("/")} to skip the platforms above,`
+        : "";
       p.log.error(
         `Rollback would leave channel "${channel}" with NO enabled bundles for: ${wouldRevertToBinary.join(", ")}.`,
       );
       p.log.info(
         "Affected platforms would fall back to the binary-shipped JS.",
       );
-      p.log.info("Re-run with --confirm-revert-to-binary to proceed.");
+      p.log.info(
+        `${safePlatformsHint} or --confirm-revert-to-binary to also revert ${wouldRevertToBinary.join(", ")} to binary-shipped JS.`,
+      );
       process.exit(1);
     }
 
@@ -122,35 +189,50 @@ export const handleRollback = async (
     }
 
     // Mutate phase: queue updates, then flush via a single commitBundle.
-    // Note: DatabasePlugin.commitBundle runs ops sequentially in the
-    // underlying provider, so atomicity across platforms is not guaranteed.
-    // The verify phase below catches partial-failure state explicitly.
-    for (const t of targets) {
-      await databasePlugin.updateBundle(t.bundle.id, { enabled: false });
+    // commitBundle is sequential in the underlying provider; if it throws
+    // partway, we still run the verify phase below to surface per-platform
+    // state rather than hiding it behind the raw error.
+    let commitError: unknown = null;
+    try {
+      for (const t of targets) {
+        await databasePlugin.updateBundle(t.bundle.id, { enabled: false });
+      }
+      await databasePlugin.commitBundle();
+    } catch (err) {
+      commitError = err;
+      p.log.error(
+        `commitBundle threw: ${(err as Error)?.message ?? String(err)}`,
+      );
+      p.log.info("Running verify phase to surface per-platform state...");
     }
-    await databasePlugin.commitBundle();
 
-    // Verify phase: re-read each target. Surface failures per-platform.
+    // Verify phase: re-read each target. Distinguish three states —
+    // disabled (success), still-enabled (failure), and gone (success: a
+    // deleted bundle satisfies the rollback intent).
     const failures: RollbackTarget[] = [];
     for (const t of targets) {
       const refetched = await databasePlugin.getBundleById(t.bundle.id);
-      if (!refetched || refetched.enabled) {
+      if (!refetched) {
+        p.log.warn(
+          `${t.platform} ${t.bundle.id} was deleted between commit and verify; treating as rolled back.`,
+        );
+      } else if (refetched.enabled) {
         failures.push(t);
         p.log.error(
-          `FAILED: ${t.platform} ${t.bundle.id} is still enabled after rollback.`,
+          `FAILED: ${t.platform} ${t.bundle.id} is still enabled after rollback. ${formatRetryHint(channel, t)}`,
         );
       } else {
         p.log.success(`rolled back ${t.platform} ${t.bundle.id}`);
       }
     }
 
-    if (failures.length > 0) {
+    if (commitError || failures.length > 0) {
       p.log.error(
         `Rollback completed with ${failures.length} failed platform(s) out of ${targets.length}.`,
       );
       process.exit(1);
     }
   } finally {
-    await databasePlugin.onUnmount?.();
+    await safeOnUnmount(databasePlugin);
   }
 };
