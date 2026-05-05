@@ -21,6 +21,7 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
       log: {
         error: vi.fn(),
         info: vi.fn(),
+        message: vi.fn(),
         success: vi.fn(),
         warn: vi.fn(),
       },

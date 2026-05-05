@@ -72,14 +72,22 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
+const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+  try {
+    await databasePlugin.onUnmount?.();
+  } catch (err) {
+    p.log.warn(
+      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+        (err as Error)?.message ?? String(err)
+      }`,
+    );
+  }
+};
+
 export const handleBundleList = async (options: BundleListOptions = {}) => {
   printBanner();
 
   const config = await loadConfig(null);
-  if (!config) {
-    p.log.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
 
   const databasePlugin: DatabasePlugin = await config.database();
   try {
@@ -96,7 +104,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
     });
     console.log(tabulate(result.data));
   } finally {
-    await databasePlugin.onUnmount?.();
+    await safeOnUnmount(databasePlugin);
   }
 };
 
@@ -109,10 +117,6 @@ export const handleBundleSetEnabled = async (
   printBanner();
 
   const config = await loadConfig(null);
-  if (!config) {
-    p.log.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
 
   const databasePlugin: DatabasePlugin = await config.database();
   try {
@@ -147,15 +151,19 @@ export const handleBundleSetEnabled = async (
     await databasePlugin.commitBundle();
 
     const refetched = await databasePlugin.getBundleById(bundleId);
-    if (!refetched || refetched.enabled !== nextEnabled) {
+    if (!refetched) {
+      p.log.warn(
+        `${bundleId} was deleted between commit and verify; treating as ${action}d.`,
+      );
+    } else if (refetched.enabled !== nextEnabled) {
       p.log.error(
         `Verification failed: ${bundleId} is not ${action}d after update.`,
       );
       process.exit(1);
+    } else {
+      p.log.success(`${action}d ${bundleId}.`);
     }
-
-    p.log.success(`${action}d ${bundleId}.`);
   } finally {
-    await databasePlugin.onUnmount?.();
+    await safeOnUnmount(databasePlugin);
   }
 };
