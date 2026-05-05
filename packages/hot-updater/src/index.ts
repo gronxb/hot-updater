@@ -29,6 +29,7 @@ import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -81,6 +82,50 @@ channelCommand
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const bundleCommand = program.command("bundle").description("Manage bundles");
+
+bundleCommand
+  .command("list")
+  .description("List bundles, most recent first")
+  .option("-c, --channel <channel>", "filter by channel")
+  .addOption(
+    new Option("-p, --platform <platform>", "filter by platform").choices([
+      "ios",
+      "android",
+    ]),
+  )
+  .option(
+    "--limit <n>",
+    "limit the number of results (default: 20)",
+    (value) => {
+      const n = Number.parseInt(value, 10);
+      if (!Number.isInteger(n) || n <= 0) {
+        p.log.error("--limit must be a positive integer");
+        process.exit(1);
+      }
+      return n;
+    },
+  )
+  .action(handleBundleList);
+
+bundleCommand
+  .command("disable")
+  .description("Disable a bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to disable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, false, options),
+  );
+
+bundleCommand
+  .command("enable")
+  .description("Re-enable a previously disabled bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to enable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, true, options),
+  );
 
 const keysCommand = program
   .command("keys")
