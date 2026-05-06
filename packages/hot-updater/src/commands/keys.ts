@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
@@ -12,6 +12,8 @@ import {
   loadPrivateKey,
   saveKeyPair,
 } from "@/utils/signing";
+
+import { ui } from "../utils/cli-ui";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -35,19 +37,14 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
   const keySize = options.keySize ?? 4096;
 
-  p.log.info(`Generating ${keySize}-bit RSA key pair...`);
-
   const spinner = p.spinner();
-  spinner.start("Generating keys");
+  spinner.start(`Generating ${keySize}-bit RSA keys`);
 
   try {
     const keyPair = await generateKeyPair(keySize);
     await saveKeyPair(keyPair, outputDir);
 
-    spinner.stop("Keys generated successfully");
-
-    p.log.success(`Private key: ${path.join(outputDir, "private-key.pem")}`);
-    p.log.success(`Public key: ${path.join(outputDir, "public-key.pem")}`);
+    spinner.stop("Keys generated");
 
     // Add keys directory to .gitignore
     const keysDir = path.basename(outputDir);
@@ -56,22 +53,25 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       globLines: [`${keysDir}/`],
     });
 
-    if (gitignoreUpdated) {
-      p.log.success(`Added ${keysDir}/ to .gitignore`);
-    }
-
-    console.log("");
-    p.log.warn("⚠️  Keep private key secure!");
-    p.log.warn("   - Use secure storage for CI/CD (AWS Secrets Manager, etc.)");
-    console.log("");
-    p.log.info("Next steps:");
-    p.log.info("1. Add to hot-updater.config.ts:");
-    p.log.info(
-      '   signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+    p.log.message(
+      ui.block("Keys", [
+        ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
+        ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
+        ui.kv("Gitignore", gitignoreUpdated ? `${keysDir}/` : "unchanged"),
+      ]),
     );
-    p.log.info("2. Run: npx hot-updater keys export-public");
-    p.log.info("3. Embed public key in iOS Info.plist and Android strings.xml");
-    p.log.info("4. Rebuild native app");
+    p.log.message(
+      ui.block("Config", [
+        ui.kv(
+          "Code",
+          ui.code(
+            'signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+          ),
+        ),
+        ui.kv("Run", ui.command("hot-updater keys export-public")),
+      ]),
+    );
+    p.log.warn("Keep private key secure.");
   } catch (error) {
     spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
@@ -150,31 +150,28 @@ async function writePublicKeyToIos(
 
 function printPublicKeyInstructions(publicKeyPEM: string): void {
   console.log("");
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
-  console.log(colors.cyan("Public Key (embed in native configuration)"));
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
+  console.log(ui.title("Public key"));
   console.log("");
   console.log(publicKeyPEM);
   console.log("");
-  console.log(colors.yellow("iOS Configuration (Info.plist):"));
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(ui.title("iOS"));
   console.log("<key>HOT_UPDATER_PUBLIC_KEY</key>");
   console.log(`<string>${publicKeyPEM.trim().replace(/\n/g, "\\n")}</string>`);
   console.log("");
-  console.log(colors.yellow("Android Configuration (res/values/strings.xml):"));
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(ui.title("Android"));
   console.log('<string name="hot_updater_public_key">');
   console.log(publicKeyPEM.trim());
   console.log("</string>");
-  console.log("");
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
 }
+
+const formatNativeTarget = (
+  platform: "android" | "ios",
+  paths: string[],
+): string =>
+  ui.block(
+    platform,
+    paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
+  );
 
 /**
  * Export public key for embedding in native configuration.
@@ -220,11 +217,6 @@ export const keysExportPublic = async (
       return;
     }
 
-    // WRITE MODE (default): Write to native files
-    p.log.info(
-      "Preparing to write public key to native configuration files...",
-    );
-
     // Check which files exist (config already loaded above)
     const androidParser = new AndroidConfigParser(
       config.platform.android.stringResourcePaths,
@@ -242,37 +234,25 @@ export const keysExportPublic = async (
       process.exit(1);
     }
 
-    // Show preview of what will be updated
-    console.log("");
-    p.log.step("Files to be updated:");
+    p.log.message(ui.title("Native files"));
     if (androidExists) {
-      const androidPaths = config.platform.android.stringResourcePaths;
-      if (androidPaths.length === 1) {
-        p.log.info(`  Android: ${androidPaths[0]} (${ANDROID_KEY})`);
-      } else {
-        p.log.info(`  Android (${ANDROID_KEY}):`);
-        for (const androidPath of androidPaths) {
-          p.log.info(`    - ${androidPath}`);
-        }
-      }
+      p.log.message(
+        formatNativeTarget(
+          "android",
+          config.platform.android.stringResourcePaths,
+        ),
+      );
     }
     if (iosExists) {
-      const iosPaths = config.platform.ios.infoPlistPaths;
-      if (iosPaths.length === 1) {
-        p.log.info(`  iOS: ${iosPaths[0]} (${IOS_KEY})`);
-      } else {
-        p.log.info(`  iOS (${IOS_KEY}):`);
-        for (const iosPath of iosPaths) {
-          p.log.info(`    - ${iosPath}`);
-        }
-      }
+      p.log.message(
+        formatNativeTarget("ios", config.platform.ios.infoPlistPaths),
+      );
     }
-    console.log("");
 
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
       const shouldContinue = await p.confirm({
-        message: "Write public key to native files?",
+        message: "Write public key?",
         initialValue: true,
       });
 
@@ -302,11 +282,14 @@ export const keysExportPublic = async (
       );
     }
 
-    // Report results
-    console.log("");
     for (const result of results) {
       if (result.success) {
-        p.log.success(`${result.platform}: Updated ${result.paths.join(", ")}`);
+        p.log.success(
+          ui.line([
+            ui.platform(result.platform),
+            `${result.paths.length} file(s) updated`,
+          ]),
+        );
       } else {
         p.log.error(`${result.platform}: ${result.error}`);
       }
@@ -314,14 +297,12 @@ export const keysExportPublic = async (
 
     // Summary
     const successCount = results.filter((r) => r.success).length;
-    console.log("");
     if (successCount === results.length) {
-      p.log.success("Public key written to all native files!");
-      p.log.info("Next step: Rebuild your native app to apply the changes.");
+      p.log.success("Public key exported.");
     } else if (successCount > 0) {
-      p.log.warn("Public key written to some files. Check errors above.");
+      p.log.warn("Public key exported partially.");
     } else {
-      p.log.error("Failed to write public key to any native files.");
+      p.log.error("Public key export failed.");
       process.exit(1);
     }
   } catch (error) {
@@ -467,10 +448,20 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   const foundKeys: string[] = [];
   if (iosKey.value) {
-    foundKeys.push(`iOS: ${iosKey.paths.join(", ")}`);
+    foundKeys.push(
+      ui.kv(
+        "iOS",
+        iosKey.paths.map((targetPath) => ui.path(targetPath)).join(", "),
+      ),
+    );
   }
   if (androidKey.value) {
-    foundKeys.push(`Android: ${androidKey.paths.join(", ")}`);
+    foundKeys.push(
+      ui.kv(
+        "Android",
+        androidKey.paths.map((targetPath) => ui.path(targetPath)).join(", "),
+      ),
+    );
   }
 
   if (foundKeys.length === 0) {
@@ -478,13 +469,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     return;
   }
 
-  // Show what will be removed
-  console.log("");
-  p.log.step("Found public keys in:");
-  for (const key of foundKeys) {
-    p.log.info(`  • ${key}`);
-  }
-  console.log("");
+  p.log.message(ui.block("Public keys", foundKeys));
 
   // Confirmation prompt (unless --yes)
   if (!options.yes) {
@@ -515,12 +500,14 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     );
   }
 
-  // Report results
-  console.log("");
   for (const result of results) {
     if (result.success && result.found) {
       p.log.success(
-        `Removed ${result.platform === "ios" ? IOS_KEY : ANDROID_KEY} from ${result.paths.join(", ")}`,
+        ui.line([
+          "Removed",
+          ui.platform(result.platform),
+          ui.path(result.paths.join(", ")),
+        ]),
       );
     } else if (!result.success) {
       p.log.error(`${result.platform}: ${result.error}`);
@@ -529,13 +516,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   // Summary
   const successCount = results.filter((r) => r.success && r.found).length;
-  console.log("");
   if (successCount > 0) {
-    p.log.success("Public keys removed from native files!");
-    console.log("");
-    p.log.info("Next steps:");
-    p.log.info("  1. Rebuild your native apps");
-    p.log.info("  2. Release to app stores");
-    p.log.info("  3. Deploy unsigned bundles with `npx hot-updater deploy`");
+    p.log.success("Public keys removed.");
   }
 };

@@ -7,6 +7,8 @@ import type {
 
 import { printBanner } from "@/utils/printBanner";
 
+import { ui } from "../utils/cli-ui";
+
 const LIST_FIELDS = [
   "id",
   "channel",
@@ -18,8 +20,36 @@ const LIST_FIELDS = [
   "message",
 ] as const satisfies readonly (keyof Bundle)[];
 
+type ListField = (typeof LIST_FIELDS)[number];
+
+const LIST_COLUMNS = [
+  { key: "id", label: "ID", format: ui.id },
+  { key: "channel", label: "Channel", format: ui.channel },
+  { key: "platform", label: "Platform", format: ui.platform },
+  {
+    key: "enabled",
+    label: "Enabled",
+    format: (value: string) =>
+      value.trim() === "yes" ? ui.success(value) : ui.danger(value),
+  },
+  { key: "targetAppVersion", label: "Version", format: ui.version },
+  {
+    key: "shouldForceUpdate",
+    label: "Force Update",
+    format: (value: string) =>
+      value.trim() === "yes" ? ui.warning(value) : ui.muted(value),
+  },
+  { key: "gitCommitHash", label: "Commit", format: ui.muted },
+  { key: "message", label: "Message" },
+] as const satisfies readonly {
+  key: ListField;
+  label: string;
+  format?: (value: string) => string;
+}[];
+
 export interface BundleListOptions {
   channel?: string;
+  json?: boolean;
   platform?: Platform;
   limit?: number;
 }
@@ -30,8 +60,8 @@ export interface BundleMutationOptions {
 
 const DEFAULT_LIMIT = 20;
 
-const formatRow = (bundle: Bundle): Record<string, string> => {
-  const out: Record<string, string> = {};
+const formatRow = (bundle: Bundle): Record<ListField, string> => {
+  const out = {} as Record<ListField, string>;
   for (const field of LIST_FIELDS) {
     const v = bundle[field];
     if (field === "enabled" || field === "shouldForceUpdate") {
@@ -51,18 +81,26 @@ const formatRow = (bundle: Bundle): Record<string, string> => {
 
 const tabulate = (bundles: Bundle[]): string => {
   if (bundles.length === 0) {
-    return "(no bundles)";
+    return ui.muted("(no bundles)");
   }
-  const rows = bundles.map(formatRow);
-  const widths: Record<string, number> = {};
-  for (const field of LIST_FIELDS) {
-    widths[field] = Math.max(field.length, ...rows.map((r) => r[field].length));
-  }
-  const header = LIST_FIELDS.map((f) => f.padEnd(widths[f])).join("  ");
-  const body = rows.map((r) =>
-    LIST_FIELDS.map((f) => r[f].padEnd(widths[f])).join("  "),
-  );
-  return [header, ...body].join("\n");
+  return ui.table(LIST_COLUMNS, bundles.map(formatRow));
+};
+
+const formatBundleSummary = (bundle: Bundle, nextEnabled?: boolean): string => {
+  const status =
+    nextEnabled === undefined || bundle.enabled === nextEnabled
+      ? ui.status(bundle.enabled)
+      : `${ui.status(bundle.enabled)} -> ${ui.status(nextEnabled)}`;
+  const lines = [
+    `  ${ui.platform(bundle.platform)} / ${ui.channel(bundle.channel)}`,
+    ui.kv("ID", ui.id(bundle.id)),
+    ui.kv("Status", status),
+    bundle.targetAppVersion
+      ? ui.kv("Version", ui.version(bundle.targetAppVersion))
+      : null,
+    bundle.message ? ui.kv("Message", bundle.message) : null,
+  ].filter((line): line is string => line !== null);
+  return ui.block("Bundle", lines);
 };
 
 const refuseNonInteractiveMutation = (action: string): never => {
@@ -85,7 +123,9 @@ const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
 };
 
 export const handleBundleList = async (options: BundleListOptions = {}) => {
-  printBanner();
+  if (!options.json) {
+    printBanner();
+  }
 
   const config = await loadConfig(null);
 
@@ -102,7 +142,9 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       },
       limit,
     });
-    console.log(tabulate(result.data));
+    console.log(
+      options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
+    );
   } finally {
     await safeOnUnmount(databasePlugin);
   }
@@ -126,7 +168,7 @@ export const handleBundleSetEnabled = async (
       process.exit(1);
     }
 
-    console.log(tabulate([bundle]));
+    p.log.message(formatBundleSummary(bundle, nextEnabled));
 
     if (bundle.enabled === nextEnabled) {
       p.log.info(`Bundle is already ${action}d. No changes.`);
@@ -138,7 +180,7 @@ export const handleBundleSetEnabled = async (
         refuseNonInteractiveMutation(action);
       }
       const confirmed = await p.confirm({
-        message: `${action} this bundle?`,
+        message: `${nextEnabled ? "Enable" : "Disable"} this bundle?`,
         initialValue: false,
       });
       if (p.isCancel(confirmed) || !confirmed) {
@@ -161,7 +203,8 @@ export const handleBundleSetEnabled = async (
       );
       process.exit(1);
     } else {
-      p.log.success(`${action}d ${bundleId}.`);
+      p.log.success(`${nextEnabled ? "Enabled" : "Disabled"} bundle.`);
+      p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
     await safeOnUnmount(databasePlugin);

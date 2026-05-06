@@ -3,6 +3,8 @@ import { merge } from "es-toolkit";
 import { readPackageUp } from "read-package-up";
 import * as semver from "semver";
 
+import { ui } from "../utils/cli-ui";
+
 interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -401,14 +403,14 @@ export const handleDoctor = async ({
 }: {
   serverBaseUrl?: string;
 } = {}) => {
-  p.intro("Checking the health of Hot Updater.");
+  p.intro("Hot Updater doctor");
 
   const resolvedServerBaseUrl = serverBaseUrl ?? (await promptServerBaseUrl());
   const result = await doctor({ serverBaseUrl: resolvedServerBaseUrl });
 
   if (result === true) {
-    p.log.success("✅ All Hot Updater checks passed!");
-    p.outro("Hot Updater is healthy.");
+    p.log.success("All checks passed.");
+    p.outro("Healthy.");
     return;
   }
 
@@ -424,24 +426,26 @@ export const handleDoctor = async ({
   let shouldExitWithFailure = !result.success;
 
   if (details?.hotUpdaterVersion) {
-    p.log.info(`hot-updater CLI version: ${details.hotUpdaterVersion}`);
+    p.log.message(
+      ui.block("Version", [
+        ui.kv("CLI", ui.version(details.hotUpdaterVersion)),
+      ]),
+    );
   }
 
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
-    p.log.info(`Server version endpoint: ${infrastructure.versionEndpoint}`);
+    const lines = [ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint))];
 
     if (infrastructure.serverVersion) {
-      p.log.info(`Server version: ${infrastructure.serverVersion}`);
-      p.log.info(
-        `Required infrastructure version: ${infrastructure.requiredVersion}`,
-      );
+      lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));
+      lines.push(ui.kv("Required", ui.version(infrastructure.requiredVersion)));
     }
+    p.log.message(ui.block("Infrastructure", lines));
 
     if (infrastructure.needsUpdate) {
       p.log.error(
-        `Infrastructure update required. ` +
-          `Deploy server infrastructure version ${infrastructure.requiredVersion} or newer.`,
+        `Infrastructure update required: ${infrastructure.requiredVersion}+`,
       );
       if (infrastructure.updateReason) {
         p.log.info(`Reason: ${infrastructure.updateReason}`);
@@ -449,7 +453,7 @@ export const handleDoctor = async ({
     } else if (infrastructure.error) {
       p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
     } else {
-      p.log.success("✅ Server infrastructure is up to date.");
+      p.log.success("Infrastructure is up to date.");
     }
   }
 
@@ -458,21 +462,16 @@ export const handleDoctor = async ({
 
     for (const mismatch of details.versionMismatches) {
       p.log.error(
-        `❌ ${mismatch.packageName}: ${mismatch.currentVersion} ` +
+        `${mismatch.packageName}: ${mismatch.currentVersion} ` +
           `(expected ${mismatch.expectedVersion})`,
       );
     }
-
-    p.log.info(
-      "Update every Hot Updater package to the same compatible version, " +
-        "then run your package manager install command.",
-    );
   }
 
   if (shouldExitWithFailure) {
     process.exit(1);
   }
 
-  p.log.success("✅ All Hot Updater checks passed!");
-  p.outro("Doctor check complete.");
+  p.log.success("All checks passed.");
+  p.outro("Doctor complete.");
 };

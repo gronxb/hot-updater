@@ -101,7 +101,10 @@ describe("handleBundleList", () => {
     const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("B1");
     expect(output).toContain("B2");
-    expect(output).toMatch(/^id\s+channel\s+platform/);
+    expect(output).toContain("┌");
+    expect(output).toContain("│ ID");
+    expect(output).toContain("Channel");
+    expect(output).toContain("Platform");
   });
 
   it("prints empty-state marker when no bundles exist", async () => {
@@ -112,7 +115,24 @@ describe("handleBundleList", () => {
     });
     const { handleBundleList } = await import("./bundle");
     await handleBundleList({});
-    expect(logSpy).toHaveBeenCalledWith("(no bundles)");
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("(no bundles)"),
+    );
+  });
+
+  it("prints raw paginated JSON and skips the banner when --json is passed", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const result = {
+      data: [buildBundle({ id: "B1" })],
+      pagination: { total: 1 },
+    };
+    mockDatabasePlugin.getBundles.mockResolvedValue(result);
+
+    const { handleBundleList } = await import("./bundle");
+    await handleBundleList({ json: true });
+
+    expect(mockPrintBanner).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(result, null, 2));
   });
 
   it("forwards channel/platform/limit options to getBundles", async () => {
@@ -160,8 +180,12 @@ describe("handleBundleSetEnabled", () => {
       enabled: false,
     });
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      expect.stringContaining("disabled B1"),
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("Status:"),
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith("Disabled bundle.");
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("B1"),
     );
   });
 
@@ -175,6 +199,7 @@ describe("handleBundleSetEnabled", () => {
     expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
       enabled: true,
     });
+    expect(mockCli.p.log.success).toHaveBeenCalledWith("Enabled bundle.");
   });
 
   it("short-circuits with info log when bundle is already in target state", async () => {

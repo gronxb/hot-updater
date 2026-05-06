@@ -13,6 +13,7 @@ import {
 } from "kysely";
 import { format } from "sql-formatter";
 
+import { ui } from "../utils/cli-ui";
 import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,
@@ -141,7 +142,7 @@ async function generateWithMigrator(
   const sql = result.getSQL();
 
   if (!sql || sql.trim() === "") {
-    p.log.info("No changes needed - schema is up to date");
+    p.log.success("Schema is up to date.");
     return;
   }
 
@@ -179,9 +180,7 @@ async function generateWithMigrator(
         .digest("hex");
 
       if (existingHash === newSqlHash) {
-        p.log.warn(
-          `Identical migration already exists: ${file}\nNo new migration file created.`,
-        );
+        p.log.warn(`Identical migration already exists: ${file}`);
         p.outro("Done");
         return;
       }
@@ -211,7 +210,7 @@ async function generateWithMigrator(
   // Write SQL file
   await writeFile(outputPath, formattedSql, "utf-8");
 
-  p.log.success(`Migration file created: ${filename}`);
+  p.log.success(ui.line(["Created", ui.path(outputPath)]));
 }
 
 /**
@@ -242,7 +241,7 @@ async function generateWithSchemaGenerator(
 
   const schemaCode = schemaResult.code;
   if (!schemaCode || schemaCode.trim() === "") {
-    p.log.info("No schema generated");
+    p.log.info("No schema generated.");
     return;
   }
 
@@ -271,9 +270,7 @@ async function generateWithSchemaGenerator(
         .digest("hex");
 
       if (existingHash === newSchemaHash) {
-        p.log.warn(
-          `Identical schema already exists: ${file}\nNo new schema file created.`,
-        );
+        p.log.warn(`Identical schema already exists: ${file}`);
         p.outro("Done");
         return;
       }
@@ -302,7 +299,7 @@ async function generateWithSchemaGenerator(
   // Write schema file
   await writeFile(outputPath, schemaCode, "utf-8");
 
-  p.log.success(`Schema file created: ${filename}`);
+  p.log.success(ui.line(["Created", ui.path(outputPath)]));
 }
 
 /**
@@ -331,10 +328,7 @@ async function generatePrismaSchema(
 
   if (!schemaExists) {
     // Warn about missing generator and datasource blocks
-    p.log.warn(
-      "The generated schema only contains model definitions.\n" +
-        "You need to add 'generator client' and 'datasource db' blocks to prisma/schema.prisma.",
-    );
+    p.log.warn("Generated schema only contains model definitions.");
 
     // Use the complete schema from generateSchema for initial creation
     finalContent = schemaCode;
@@ -372,12 +366,13 @@ async function generatePrismaSchema(
   await writeFile(prismaSchemaPath, finalContent, "utf-8");
 
   p.log.success(
-    schemaExists
-      ? "Updated prisma/schema.prisma"
-      : "Created prisma/schema.prisma",
+    ui.line([schemaExists ? "Updated" : "Created", ui.path(prismaSchemaPath)]),
   );
-  p.log.info(
-    "Next steps:\n  1. Run: npx prisma generate\n  2. Run: npx prisma migrate dev",
+  p.log.message(
+    ui.block("Run", [
+      ui.kv("Prisma", ui.command("npx prisma generate")),
+      ui.kv("Migrate", ui.command("npx prisma migrate dev")),
+    ]),
   );
 }
 
@@ -547,12 +542,12 @@ async function generateStandaloneSQL(options: {
     // Confirm before writing SQL file
     if (!skipConfirm) {
       // Show SQL preview before confirmation
-      p.log.info("\nGenerated SQL preview:\n");
+      p.log.message(ui.title("SQL preview"));
       console.log(formattedSql);
       console.log("");
 
       if (fileExists) {
-        p.log.warn(`File ${filename} already exists and will be overwritten.`);
+        p.log.warn(`${filename} already exists and will be overwritten.`);
       }
 
       const shouldContinue = await p.confirm({
@@ -566,13 +561,13 @@ async function generateStandaloneSQL(options: {
       }
     } else if (fileExists) {
       // When skipping confirmation, still show a warning about overwriting
-      p.log.warn(`Overwriting existing file: ${outputPath}`);
+      p.log.warn(ui.line(["Overwriting", ui.path(outputPath)]));
     }
 
     // Write SQL file
     await writeFile(outputPath, formattedSql, "utf-8");
 
-    p.log.success(`SQL file created: ${outputPath}`);
+    p.log.success(ui.line(["Created", ui.path(outputPath)]));
   } catch (error) {
     p.log.error("Failed to generate standalone SQL");
     if (error instanceof Error) {

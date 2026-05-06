@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, log, p } from "@hot-updater/cli-tools";
+import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
@@ -29,6 +29,7 @@ import {
 import { init } from "@/commands/init";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
+import { ui } from "@/utils/cli-ui";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -94,6 +95,7 @@ bundleCommand
   .command("list")
   .description("List bundles, most recent first")
   .option("-c, --channel <channel>", "filter by channel")
+  .option("--json", "output raw bundle data as JSON")
   .addOption(platformCommandOption)
   .option(
     "--limit <n>",
@@ -107,10 +109,6 @@ bundleCommand
     },
     20,
   )
-  .addHelpText(
-    "after",
-    `\nExit codes:\n  0  success\n  1  configuration error or DB error\n`,
-  )
   .action(handleBundleList);
 
 bundleCommand
@@ -118,10 +116,6 @@ bundleCommand
   .description("Disable a bundle by id")
   .argument("<bundle-id>", "the id of the bundle to disable")
   .option("-y, --yes", "skip confirmation prompt")
-  .addHelpText(
-    "after",
-    `\nDisables a bundle and re-reads its state to confirm the change.\n\nExit codes:\n  0  bundle is disabled (or was already disabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running disable on an already-disabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
-  )
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, false, options),
   );
@@ -131,10 +125,6 @@ bundleCommand
   .description("Re-enable a previously disabled bundle by id")
   .argument("<bundle-id>", "the id of the bundle to enable")
   .option("-y, --yes", "skip confirmation prompt")
-  .addHelpText(
-    "after",
-    `\nRe-enables a previously disabled bundle and re-reads its state to confirm.\n\nExit codes:\n  0  bundle is enabled (or was already enabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running enable on an already-enabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
-  )
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, true, options),
   );
@@ -247,16 +237,8 @@ program
   .addOption(platformCommandOption)
   .option("-y, --yes", "skip confirmation prompt")
   .option(
-    "--confirm-revert-to-binary",
-    "allow rollback even when no other enabled bundle exists for that platform",
-  )
-  .option(
     "--target <bundle-id>",
     "scope rollback to exactly this bundle id (use to retry a failed rollback)",
-  )
-  .addHelpText(
-    "after",
-    `\nFour phases: read (pull up to two most-recent enabled bundles per platform),\nvalidate (refuse if a platform would have no enabled bundle, unless\n--confirm-revert-to-binary), mutate (one commitBundle for all platforms\n— note: commit is sequential, not atomic across platforms), verify\n(re-read each target).\n\nExit codes:\n  0  rollback succeeded and verified\n  1  validation, mutation, or post-mutate verification failed\n  2  user declined the interactive confirmation\n\nWhen rollback partially fails, the FAILED line names the exact bundle id;\nretry the failed platform with: hot-updater rollback <channel> -p <platform> --target <bundle-id>\n\nExamples:\n  hot-updater rollback production -y\n  hot-updater rollback production -p ios --confirm-revert-to-binary -y\n  hot-updater rollback production -p android --target 0195a408-... -y\n`,
   )
   .action(
     (
@@ -264,7 +246,6 @@ program
       options: {
         platform?: "ios" | "android";
         yes?: boolean;
-        confirmRevertToBinary?: boolean;
         target?: string;
       },
     ) => handleRollback(channel, options),
@@ -288,8 +269,12 @@ program
     const androidVersion = await getNativeAppVersion("android");
     const iosVersion = await getNativeAppVersion("ios");
 
-    log.info(`Android version: ${androidVersion}`);
-    log.info(`iOS version: ${iosVersion}`);
+    p.log.message(
+      ui.block("App version", [
+        ui.kv("Android", ui.version(androidVersion)),
+        ui.kv("iOS", ui.version(iosVersion)),
+      ]),
+    );
   });
 
 // Database migration commands

@@ -8,11 +8,11 @@ import type {
 import { printBanner } from "@/utils/printBanner";
 
 import { PLATFORMS } from "../commandOptions";
+import { ui } from "../utils/cli-ui";
 
 export interface RollbackOptions {
   platform?: Platform;
   yes?: boolean;
-  confirmRevertToBinary?: boolean;
   target?: string;
 }
 
@@ -22,14 +22,13 @@ interface RollbackTarget {
   fallbackId: string | null;
 }
 
-const summarizeTarget = (target: RollbackTarget): string => {
-  const fallback = target.fallbackId
-    ? `next-most-recent enabled bundle: ${target.fallbackId}` +
-      ` (actual active bundle per app version may differ — depends on` +
-      ` targetAppVersion / fingerprint match)`
-    : "next: (would revert to binary-shipped JS)";
-  return `  - ${target.platform}: disable ${target.bundle.id} (${fallback})`;
-};
+const summarizeTarget = (target: RollbackTarget): string =>
+  ui.block(`${target.platform}`, [
+    ui.kv("Disable", ui.id(target.bundle.id)),
+    target.fallbackId
+      ? ui.kv("Fallback", ui.id(target.fallbackId))
+      : ui.kv("Fallback", ui.warning("binary-shipped JS")),
+  ]);
 
 const formatRetryHint = (channel: string, target: RollbackTarget): string =>
   `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
@@ -66,7 +65,6 @@ export const handleRollback = async (
   try {
     const targets: RollbackTarget[] = [];
     const skippedPlatforms: Platform[] = [];
-    const wouldRevertToBinary: Platform[] = [];
 
     if (options.target) {
       // Scoped retry path: roll back exactly the named bundle.
@@ -102,9 +100,6 @@ export const handleRollback = async (
       const fallback = fallbackResult.data.find(
         (b) => b.id !== targetBundle.id,
       );
-      if (!fallback) {
-        wouldRevertToBinary.push(targetBundle.platform);
-      }
       targets.push({
         platform: targetBundle.platform,
         bundle: targetBundle,
@@ -122,9 +117,6 @@ export const handleRollback = async (
           skippedPlatforms.push(platform);
           continue;
         }
-        if (!fallback) {
-          wouldRevertToBinary.push(platform);
-        }
         targets.push({
           platform,
           bundle: target,
@@ -140,28 +132,9 @@ export const handleRollback = async (
       process.exit(1);
     }
 
-    p.log.message(`Rollback plan for channel "${channel}":`);
+    p.log.message(ui.title(`Rollback ${channel}`));
     for (const t of targets) {
       p.log.message(summarizeTarget(t));
-    }
-
-    if (wouldRevertToBinary.length > 0 && !options.confirmRevertToBinary) {
-      const safePlatforms = targets
-        .map((t) => t.platform)
-        .filter((pl) => !wouldRevertToBinary.includes(pl));
-      const safePlatformsHint = safePlatforms.length
-        ? ` Re-run with -p ${safePlatforms.join("/")} to skip the platforms above,`
-        : "";
-      p.log.error(
-        `Rollback would leave channel "${channel}" with NO enabled bundles for: ${wouldRevertToBinary.join(", ")}.`,
-      );
-      p.log.info(
-        "Affected platforms would fall back to the binary-shipped JS.",
-      );
-      p.log.info(
-        `${safePlatformsHint} or --confirm-revert-to-binary to also revert ${wouldRevertToBinary.join(", ")} to binary-shipped JS.`,
-      );
-      process.exit(1);
     }
 
     if (skippedPlatforms.length > 0 && !options.yes) {
@@ -177,9 +150,8 @@ export const handleRollback = async (
         );
         process.exit(1);
       }
-      const ids = targets.map((t) => t.bundle.id).join(", ");
       const confirmed = await p.confirm({
-        message: `Disable ${ids} on ${channel}?`,
+        message: `Apply this rollback plan to ${channel}?`,
         initialValue: false,
       });
       if (p.isCancel(confirmed) || !confirmed) {
