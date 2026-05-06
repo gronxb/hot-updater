@@ -1,0 +1,224 @@
+---
+title: "Custom Update Logic"
+description: "Build a custom Hot Updater client flow with init, checkForUpdate, updateBundle, reload, and custom resolvers."
+icon: Settings2
+---
+
+## Overview
+
+Hot Updater can manage updates automatically with `HotUpdater.wrap`, but you can
+also build the client flow yourself. A custom flow is useful when you want to
+check only after login, gate updates by app state, use your own network layer,
+or let another runtime own the root component.
+
+The custom flow has four parts:
+
+1. Initialize Hot Updater with `HotUpdater.init` or manual `HotUpdater.wrap`.
+2. Decide when to call `HotUpdater.checkForUpdate`.
+3. Download the bundle with `updateInfo.updateBundle()` or
+   `HotUpdater.updateBundle`.
+4. Reload immediately, later, or with your own reload behavior.
+
+## Initialize
+
+Use `HotUpdater.init` when you do not want to wrap the root component.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+void HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+  requestHeaders: {
+    Authorization: "Bearer <your-access-token>",
+  },
+});
+```
+
+<Callout>
+`HotUpdater.init` has the same initialization effect as manual `wrap`.
+
+```tsx
+export default HotUpdater.wrap({
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+})(App);
+```
+
+Both options configure the shared resolver and notify the update server that the
+current app launch is ready, which keeps crash recovery and rollback tracking
+working.
+</Callout>
+
+## Check on Your Schedule
+
+Call `checkForUpdate` only when your app is ready for the decision.
+
+```tsx
+async function checkForAppUpdate() {
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+  });
+
+  if (!updateInfo) {
+    return { status: "UP_TO_DATE" as const };
+  }
+
+  return updateInfo;
+}
+```
+
+Common places to check:
+
+- After authentication finishes
+- After the first screen becomes interactive
+- When the app returns to foreground
+- Behind a remote-config or staged rollout gate
+- From a user-facing "Check for updates" action
+
+## Download and Apply
+
+The return value includes an `updateBundle` helper with all required update
+metadata pre-filled.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (updateInfo) {
+  const downloaded = await updateInfo.updateBundle();
+
+  if (downloaded && updateInfo.shouldForceUpdate) {
+    await HotUpdater.reload();
+  }
+}
+```
+
+For non-force updates, you can download in the background and reload later.
+
+```tsx
+if (updateInfo && !updateInfo.shouldForceUpdate) {
+  await updateInfo.updateBundle();
+
+  // Later, after navigation is idle or the user accepts a prompt:
+  await HotUpdater.reload();
+}
+```
+
+## Customize Reload Behavior
+
+By default, `HotUpdater.reload()` uses a process restart on Android and a normal
+React Native reload on iOS. Configure it once if your app needs different
+behavior.
+
+```tsx
+HotUpdater.setReloadBehavior("custom", async () => {
+  await flushAnalytics();
+  await restartAppShell();
+});
+```
+
+See [`HotUpdater.setReloadBehavior`](/docs/react-native-api/setReloadBehavior)
+for all reload modes.
+
+## Use a Custom Resolver
+
+Use a resolver when your backend is not using the default Hot Updater endpoint
+shape, or when you want to use GraphQL, RPC, signed requests, or a shared API
+client.
+
+```tsx
+void HotUpdater.init({
+  updateMode: "manual",
+  resolver: {
+    async checkUpdate(params) {
+      const response = await apiClient.post("/updates/check", params);
+
+      if (response.status === 204) {
+        return null;
+      }
+
+      return response.data;
+    },
+    async notifyAppReady(params) {
+      await apiClient.post("/updates/ready", params);
+      return undefined;
+    },
+  },
+});
+```
+
+The resolver receives the native runtime context Hot Updater needs for update
+decisions: platform, app version, current bundle ID, minimum bundle ID, channel,
+cohort, fingerprint hash, request headers, and request timeout.
+
+## Runtime Channel Checks
+
+Custom flows can switch channels at check time. The switch is persisted only
+after the returned update is applied.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  channel: "beta",
+  updateStrategy: "appVersion",
+});
+
+if (updateInfo) {
+  await updateInfo.updateBundle();
+  await HotUpdater.reload();
+}
+```
+
+To return to the build-time channel, call `HotUpdater.resetChannel()`.
+
+```tsx
+const reset = await HotUpdater.resetChannel();
+
+if (reset) {
+  await HotUpdater.reload();
+}
+```
+
+## Error Handling
+
+Wrap your custom flow in one boundary and keep the app usable when an update
+check fails.
+
+```tsx
+async function runUpdateFlow() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!updateInfo) {
+      return;
+    }
+
+    const downloaded = await updateInfo.updateBundle();
+
+    if (downloaded && updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
+```
+
+## Checklist
+
+- Call `HotUpdater.init` or manual `HotUpdater.wrap` before update APIs.
+- Keep `notifyAppReady` wired through `baseURL` or a custom resolver.
+- Choose the check timing based on your app state, not module import order.
+- Download with `updateInfo.updateBundle()` unless you need direct control.
+- Use `reload()` immediately only for force updates or explicit user consent.
+- Add error reporting around the full flow.
+
+## Related
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.reload()`](/docs/react-native-api/reload)

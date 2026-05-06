@@ -1,0 +1,118 @@
+---
+title: "init"
+description: "`HotUpdater.init` initializes HotUpdater for manual update flows without wrapping a React component."
+icon: Settings2
+---
+
+## Usage
+
+Use `HotUpdater.init` when you want a fully custom update flow and cannot, or do
+not want to, wrap your root component with `HotUpdater.wrap`. Call it once when
+your runtime considers the app ready.
+
+`HotUpdater.init` has the same initialization effect as
+`HotUpdater.wrap({ updateMode: "manual" })(App)`: it configures the resolver,
+stores shared request options, and runs the app-ready notification used by crash
+recovery and rollback tracking.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+void HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+  requestHeaders: {
+    Authorization: "Bearer <your-access-token>",
+  },
+});
+```
+
+After initialization, call `HotUpdater.checkForUpdate()` wherever your runtime
+or app state says it is safe to check.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (!updateInfo) {
+  return;
+}
+
+await updateInfo.updateBundle();
+
+if (updateInfo.shouldForceUpdate) {
+  await HotUpdater.reload();
+}
+```
+
+## With a Custom Resolver
+
+Use `resolver` when your update check or app-ready notification does not use the
+default Hot Updater endpoint shape.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+void HotUpdater.init({
+  updateMode: "manual",
+  resolver: {
+    async checkUpdate(params) {
+      const response = await fetch("https://api.example.com/updates/check", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...params.requestHeaders,
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return response.json();
+    },
+    async notifyAppReady(params) {
+      await fetch("https://api.example.com/updates/ready", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...params.requestHeaders,
+        },
+        body: JSON.stringify(params),
+      });
+
+      return undefined;
+    },
+  },
+});
+```
+
+## Configuration Reference
+
+| Option | Type | Required | Description |
+|--------|------|----------|-------------|
+| `baseURL` | `string` | Yes* | Your update server URL |
+| `resolver` | `HotUpdaterResolver` | Yes* | Custom update-check and app-ready behavior |
+| `updateMode` | `"manual"` | Yes | `init` is only for manual flows |
+| `requestHeaders` | `Record<string, string>` | No | Shared headers used by update checks and app-ready notifications |
+| `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
+| `onNotifyAppReady` | `(result) => void` | No | Callback invoked after native app-ready state is read |
+
+\*Either `baseURL` or `resolver` must be provided.
+
+## When to Use init
+
+Use `HotUpdater.init` when another runtime owns the root component, when you
+need to initialize before rendering, or when your app has a custom shell that
+does not make a root HOC convenient.
+
+Use `HotUpdater.wrap` when you want Hot Updater to manage the root component
+lifecycle directly, especially for automatic update checks with a fallback UI.
+
+## Related
+
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [Custom Update Logic](/docs/guides/custom-update-logic)
