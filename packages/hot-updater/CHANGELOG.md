@@ -1,5 +1,47 @@
 # hot-updater
 
+## 0.30.8
+
+### Patch Changes
+
+- 655b97c: feat(cli): add `bundle list/disable/enable` commands
+
+  Adds three subcommands under a new top-level `bundle` namespace:
+
+  - `hot-updater bundle list [-c <channel>] [-p <ios|android>] [--limit <n>]` — tabulated listing of bundles, most recent first. `--limit` validation uses commander's idiomatic `InvalidArgumentError` shape.
+  - `hot-updater bundle disable <bundle-id> [-y]` — disable a single bundle. Refuses to mutate without `-y` in a non-TTY shell. Re-reads the bundle after `commitBundle` and exits non-zero if the change did not take effect; treats a mid-flight deletion as success.
+  - `hot-updater bundle enable <bundle-id> [-y]` — re-enable a previously disabled bundle.
+
+  All three commands load config via `loadConfig(null)` (matching the `console` command's idiom) since they are not platform-scoped operations. They use the existing `DatabasePlugin` interface (`getBundles`, `getBundleById`, `updateBundle`, `commitBundle`), so they work against every supported provider with no plugin-side changes. The `--platform` option is the shared `platformCommandOption` already used by `deploy`. `onUnmount` is wrapped in its own try/catch so cleanup errors never mask the originating mutation error. Help text documents the read-mutate-verify contract and exit codes (0 = success, 1 = error, 2 = user-aborted).
+
+- 8318094: feat(cli): add `rollback <channel>` command
+
+  Disables the most recent enabled bundle on a channel for each requested platform.
+
+  ```
+  hot-updater rollback <channel> [-p ios|android] [-y] [--confirm-revert-to-binary] [--target <bundle-id>]
+  ```
+
+  Behavior:
+
+  - **Read phase** loads up to two most-recent enabled bundles per (channel, platform) so the operator can see what would become active after rollback.
+  - **Validate phase** refuses with non-zero exit if any (channel, platform) would have **no** enabled bundles after the rollback unless `--confirm-revert-to-binary` is passed. The error message names both safe escape hatches in priority order: `-p <unaffected>` first, then `--confirm-revert-to-binary`.
+  - **Mutate phase** queues `updateBundle({ enabled: false })` for each target and commits once. Note: `DatabasePlugin.commitBundle` runs ops sequentially in the underlying provider, so atomicity across platforms is **not** guaranteed. The mutate is wrapped in a try/catch so a mid-commit throw still falls through to the verify phase.
+  - **Verify phase** re-reads each target. Distinguishes three states — disabled (success), still-enabled (failure), and gone (success: a deleted bundle satisfies the rollback intent). Surfaces partial-failure state explicitly with non-zero exit and per-platform `FAILED` lines naming the exact retry command, including a `--target <bundle-id>` flag for scoped retry.
+
+  Refuses to mutate without `-y` in a non-TTY shell. `onUnmount` is wrapped in its own try/catch so cleanup errors never mask the originating mutation error. Help text documents the four-phase contract and exit codes (0 = success, 1 = error, 2 = user-aborted).
+
+- deff7ab: feat(cli): cli design system
+- 8318094: Feature - CLI Rollback
+- Updated dependencies [6019156]
+  - @hot-updater/cli-tools@0.30.8
+  - @hot-updater/plugin-core@0.30.8
+  - @hot-updater/console@0.30.8
+  - @hot-updater/android-helper@0.30.8
+  - @hot-updater/apple-helper@0.30.8
+  - @hot-updater/server@0.30.8
+  - @hot-updater/core@0.30.8
+
 ## 0.30.7
 
 ### Patch Changes
