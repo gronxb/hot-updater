@@ -19,6 +19,7 @@ import {
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
+import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import {
@@ -29,10 +30,8 @@ import {
 import { init } from "@/commands/init";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
-import { ui } from "@/utils/cli-ui";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
-import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
@@ -265,17 +264,8 @@ program
 program
   .command("app-version")
   .description("get the current app version")
-  .action(async () => {
-    const androidVersion = await getNativeAppVersion("android");
-    const iosVersion = await getNativeAppVersion("ios");
-
-    p.log.message(
-      ui.block("App version", [
-        ui.kv("Android", ui.version(androidVersion)),
-        ui.kv("iOS", ui.version(iosVersion)),
-      ]),
-    );
-  });
+  .option("--json", "output app versions as JSON")
+  .action(handleAppVersion);
 
 // Database migration commands
 const dbCommand = program

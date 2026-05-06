@@ -7,6 +7,7 @@
     "custom-update-logic",
     "rollout-cohorts",
     "console",
+    "ai-agents",
     "simulator-test",
     "channel-management",
     "runtime-channel-switch",

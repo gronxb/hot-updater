@@ -1,0 +1,59 @@
+---
+title: "AI Agent Guide"
+description: "Install the Hot Updater skill for AI coding agents and ask for OTA operations in natural language."
+icon: Bot
+---
+
+## Install the Skill
+
+Agent skills are packaged capabilities that give AI coding agents structured
+instructions for a production workflow. Install the Hot Updater skill with
+`npx skills`:
+
+```sh
+npx skills add gronxb/hot-updater --skill hot-updater
+```
+
+Install it globally if you want the same skill available outside the current
+project:
+
+```sh
+npx skills add gronxb/hot-updater --skill hot-updater --global
+```
+
+The `skills` CLI can also install from a full GitHub URL or a direct path to a
+skill directory. Pass `--agent <agent-name>` only when you need to target a
+specific supported agent.
+
+## Ask With `$hot-updater`
+
+After installing the skill, ask your agent in natural language:
+
+```txt
+$hot-updater deploy using the current app version
+$hot-updater deploy the current iOS app version to production
+$hot-updater roll back the most recently deployed bundle
+$hot-updater list iOS bundles on the production channel
+$hot-updater run doctor with server URL https://updates.example.com/api/check-update
+```
+
+The skill gives the agent enough CLI context to translate those requests into
+safe `npx hot-updater ...` flows.
+
+## Safety Rules
+
+- The agent should not run `npx hot-updater init` for you. `init` is
+  interactive and asks for project-specific provider and build choices, so run
+  it directly in your terminal.
+- The agent should ask for the update server URL before running
+  `npx hot-updater doctor` unless you already provided it or it is obvious from
+  local configuration.
+- The agent should not edit provider credentials unless you explicitly ask it
+  to. Credentials are commonly stored in `.env.hotupdater`, but projects may
+  use a different environment-loading setup.
+- If a deploy fails, the agent should not keep trying fixes or mutate project
+  setup automatically. It should summarize the failed command, the likely
+  cause, and the next checks for you to decide.
+- For state-changing operations such as deploy, rollback, enable, disable, or
+  database migration, the agent should identify the target first and verify the
+  result afterward.

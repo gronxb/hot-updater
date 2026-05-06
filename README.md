@@ -22,7 +22,27 @@
 
   Full documentation is available at:
   https://hot-updater.dev
-  
+
+  ## AI Skills
+
+  Install the Hot Updater agent skill with
+  [`npx skills`](https://github.com/vercel-labs/skills) so AI coding agents can
+  use concise CLI context for deploys, bundle management, rollbacks, and
+  verification.
+
+  ```sh
+  npx skills add gronxb/hot-updater --skill hot-updater
+  ```
+
+  Then ask your agent with prompts like
+  `$hot-updater deploy using the current app version` or
+  `$hot-updater roll back the most recently deployed bundle`.
+
+  See the [AI Agent Guide](https://hot-updater.dev/docs/guides/ai-agents) for
+  the full workflow.
+
+  Add `--global` if you want the skill available outside the current project.
+
   ## Key Features
 
   - **Self-Hosted**: Complete control over your update infrastructure
@@ -148,5 +168,3 @@ export default defineConfig({
   }),
 });
 ```
-
-
