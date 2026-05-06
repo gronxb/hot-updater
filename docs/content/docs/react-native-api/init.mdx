@@ -1,0 +1,70 @@
+---
+title: "init"
+description: "`HotUpdater.init` initializes HotUpdater for manual update flows without wrapping a React component."
+icon: Settings2
+---
+
+## Usage
+
+Use `HotUpdater.init` when you want a fully custom update flow and cannot, or do
+not want to, wrap your root component with `HotUpdater.wrap`. Call it once when
+your runtime considers the app ready. This API exists for apps that only need
+Hot Updater initialization and do not need the extra React HOC created by
+manual `HotUpdater.wrap`.
+
+`HotUpdater.init` is equivalent to
+`HotUpdater.wrap({ updateMode: "manual" })(App)` without the HOC.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    Authorization: "Bearer <your-access-token>",
+  },
+});
+```
+
+After initialization, call `HotUpdater.checkForUpdate()` wherever your runtime
+or app state says it is safe to check.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (!updateInfo) {
+  return;
+}
+
+await updateInfo.updateBundle();
+
+if (updateInfo.shouldForceUpdate) {
+  await HotUpdater.reload();
+}
+```
+
+## Configuration Reference
+
+| Option             | Type                     | Required | Description                                                      |
+| ------------------ | ------------------------ | -------- | ---------------------------------------------------------------- |
+| `baseURL`          | `string`                 | Yes      | Your update server URL                                           |
+| `requestHeaders`   | `Record<string, string>` | No       | Shared headers used by update checks and app-ready notifications |
+| `requestTimeout`   | `number`                 | No       | Request timeout in milliseconds (default: 5000)                  |
+| `onNotifyAppReady` | `(result) => void`       | No       | Callback invoked after native app-ready state is read            |
+
+## When to Use init
+
+Use `HotUpdater.init` when another runtime owns the root component, when you
+need to initialize before rendering, or when your app has a custom shell that
+does not make a root HOC convenient.
+
+Use `HotUpdater.wrap` when you want Hot Updater to manage the root component
+lifecycle directly, especially for automatic update checks with a fallback UI.
+
+## Related
+
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [Custom Update](/docs/guides/custom-update)

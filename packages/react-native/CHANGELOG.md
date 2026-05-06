@@ -1,5 +1,25 @@
 # @hot-updater/react-native
 
+## 0.30.9
+
+### Patch Changes
+
+- e10d15f: fix(react-native): HotUpdater.init type
+  - @hot-updater/cli-tools@0.30.9
+  - @hot-updater/core@0.30.9
+  - @hot-updater/js@0.30.9
+  - @hot-updater/plugin-core@0.30.9
+
+## 0.30.8
+
+### Patch Changes
+
+- Updated dependencies [6019156]
+  - @hot-updater/cli-tools@0.30.8
+  - @hot-updater/plugin-core@0.30.8
+  - @hot-updater/core@0.30.8
+  - @hot-updater/js@0.30.8
+
 ## 0.30.7
 
 ### Patch Changes

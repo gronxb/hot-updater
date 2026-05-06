@@ -1,6 +1,7 @@
-import { colors, p } from "@hot-updater/cli-tools";
+import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 
+import { ui } from "../utils/cli-ui";
 import {
   showMigrateUnsupportedError,
   validateMigratorSupport,
@@ -76,7 +77,7 @@ function formatOperations(operations: MigrationOperation[]): string[] {
             for (const col of columns) {
               const paddedName = col.name.padEnd(maxNameLength);
               changes.push(
-                `    ${colors.cyan(paddedName)}  ${colors.yellow(col.type)}`,
+                `    ${ui.platform(paddedName)}  ${ui.warning(col.type)}`,
               );
             }
           }
@@ -235,10 +236,10 @@ async function migrateWithMigrator(
   s.stop("Analysis complete");
 
   // Show current version after analysis
-  p.log.info(
-    currentVersion
-      ? `Current version: ${currentVersion}`
-      : "Database is empty (initial migration)",
+  p.log.message(
+    ui.block("Migration", [
+      ui.kv("Current", currentVersion ? ui.version(currentVersion) : "empty"),
+    ]),
   );
 
   // Check if there are any operations to perform
@@ -246,7 +247,7 @@ async function migrateWithMigrator(
     .operations;
 
   if (!operations || operations.length === 0) {
-    p.log.info("No changes needed - schema is up to date");
+    p.log.success("Schema is up to date.");
     process.exit(0);
   }
 
@@ -255,14 +256,16 @@ async function migrateWithMigrator(
 
   // Double-check: if operations exist but produce no changes, schema is up to date
   if (changes.length === 0) {
-    p.log.info("No changes needed - schema is up to date");
+    p.log.success("Schema is up to date.");
     process.exit(0);
   }
 
-  p.log.step("Changes to apply:");
-  for (const change of changes) {
-    p.log.info(`  ${change}`);
-  }
+  p.log.message(
+    ui.block(
+      "Changes",
+      changes.map((change) => `    ${change}`),
+    ),
+  );
 
   // Confirmation
   if (!skipConfirm) {
@@ -281,7 +284,7 @@ async function migrateWithMigrator(
   await result.execute();
 
   const newVersion = await migrator.getVersion();
-  p.log.success(`Migrated to version ${newVersion}`);
+  p.log.success(ui.line(["Migrated to", ui.version(newVersion)]));
 
   // Exit process to ensure all connections are closed
   // This is especially important for MongoDB and other databases

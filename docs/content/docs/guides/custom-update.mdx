@@ -1,0 +1,326 @@
+---
+title: "Custom Update"
+description: "Build a custom Hot Updater client flow with init, checkForUpdate, updateBundle, and reload."
+icon: Settings2
+---
+
+## Overview
+
+Hot Updater can manage updates automatically with `HotUpdater.wrap`, but you can
+also build the client flow yourself. A custom flow is useful when you want to
+check only after login, gate updates by app state, coordinate with navigation
+state, or let another runtime own the root component.
+
+The custom flow has four parts:
+
+1. Initialize Hot Updater with `HotUpdater.init`.
+2. Decide when to call `HotUpdater.checkForUpdate`.
+3. Download the bundle with `updateInfo.updateBundle()` or
+   `HotUpdater.updateBundle`.
+4. Reload immediately or later.
+
+## Initialize
+
+Use `HotUpdater.init` when you do not want to wrap the root component.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: {
+    Authorization: "Bearer <your-access-token>",
+  },
+});
+```
+
+<Callout>
+`HotUpdater.init` has the same initialization effect as manual `wrap`, without
+creating an unnecessary React HOC.
+
+```tsx
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+
+export default App;
+```
+
+This configures Hot Updater and notifies the update server that the current app
+launch is ready.
+</Callout>
+
+## Check on Your Schedule
+
+Call `checkForUpdate` only when your app is ready for the decision.
+
+```tsx
+async function checkForAppUpdate() {
+  const updateInfo = await HotUpdater.checkForUpdate({
+    updateStrategy: "appVersion",
+  });
+
+  if (!updateInfo) {
+    return { status: "UP_TO_DATE" as const };
+  }
+
+  return updateInfo;
+}
+```
+
+Common places to check:
+
+- After authentication finishes
+- After the first screen becomes interactive
+- When the app returns to foreground
+- Behind a remote-config or staged rollout gate
+- From a user-facing "Check for updates" action
+
+## Download and Apply
+
+The return value includes an `updateBundle` helper with all required update
+metadata pre-filled.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (updateInfo) {
+  const downloaded = await updateInfo.updateBundle();
+
+  if (downloaded && updateInfo.shouldForceUpdate) {
+    await HotUpdater.reload();
+  }
+}
+```
+
+For non-force updates, you can download in the background and reload later.
+
+```tsx
+if (updateInfo && !updateInfo.shouldForceUpdate) {
+  await updateInfo.updateBundle();
+
+  // Later, after navigation is idle or the user accepts a prompt:
+  await HotUpdater.reload();
+}
+```
+
+## Show Update Progress
+
+Use `useHotUpdaterStore` when you want to render download progress in a
+component. The store is updated from Hot Updater progress events.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { useEffect, useState } from "react";
+import { Pressable, Text, View } from "react-native";
+
+type AppUpdateInfo = Awaited<ReturnType<typeof HotUpdater.checkForUpdate>>;
+
+type AppUpdateState = {
+  status: "checking" | "current" | "downloading" | "ready" | "updating" | "error";
+  updateInfo: AppUpdateInfo;
+};
+
+function SettingsUpdateRow() {
+  const progress = useHotUpdaterStore((state) => state.progress);
+  const [appVersion] = useState(() => HotUpdater.getAppVersion() ?? "1.0.0");
+  const [appUpdate, setAppUpdate] = useState<AppUpdateState>({
+    status: "checking",
+    updateInfo: null,
+  });
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function prepareUpdate() {
+      try {
+        const updateInfo = await HotUpdater.checkForUpdate({
+          updateStrategy: "appVersion",
+        });
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!updateInfo) {
+          setAppUpdate({ status: "current", updateInfo: null });
+          return;
+        }
+
+        setAppUpdate({ status: "downloading", updateInfo });
+
+        const didDownload = await updateInfo.updateBundle();
+
+        if (!isActive) {
+          return;
+        }
+
+        setAppUpdate({
+          status: didDownload ? "ready" : "error",
+          updateInfo: didDownload ? updateInfo : null,
+        });
+      } catch {
+        if (isActive) {
+          setAppUpdate({ status: "error", updateInfo: null });
+        }
+      }
+    }
+
+    void prepareUpdate();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function applyUpdate() {
+    if (appUpdate.status !== "ready") {
+      return;
+    }
+
+    setAppUpdate((current) => ({ ...current, status: "updating" }));
+
+    try {
+      await HotUpdater.reload();
+    } catch {
+      setAppUpdate((current) => ({ ...current, status: "error" }));
+    }
+  }
+
+  const statusText =
+    appUpdate.status === "checking"
+      ? "checking"
+      : appUpdate.status === "current"
+        ? "current"
+        : appUpdate.status === "downloading"
+          ? `downloading ${Math.round(progress * 100)}%`
+          : appUpdate.status === "ready"
+            ? "restart ready"
+            : appUpdate.status === "updating"
+              ? "restarting"
+              : "check failed";
+
+  return (
+    <View>
+      <View>
+        <Text>Version {appVersion}</Text>
+        <Text>{statusText}</Text>
+      </View>
+      {appUpdate.status === "downloading" ||
+      appUpdate.status === "ready" ||
+      appUpdate.status === "updating" ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            appUpdate.status === "ready" ? "Restart app" : "Preparing app update"
+          }
+          disabled={appUpdate.status !== "ready"}
+          onPress={() => void applyUpdate()}
+        >
+          <Text>{appUpdate.status === "updating" ? "Restarting" : "Restart"}</Text>
+        </Pressable>
+      ) : null}
+      {appUpdate.status === "ready" && appUpdate.updateInfo?.message ? (
+        <Text>{appUpdate.updateInfo.message}</Text>
+      ) : null}
+    </View>
+  );
+}
+```
+
+Use `addListener` when you need to react to the raw event directly.
+
+```tsx
+import { useEffect, useState } from "react";
+import { HotUpdater } from "@hot-updater/react-native";
+import { Text } from "react-native";
+
+function UpdateProgressLabel() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+      setProgress(event.progress);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return <Text>{Math.round(progress * 100)}%</Text>;
+}
+```
+
+## Runtime Channel Checks
+
+Custom flows can switch channels at check time. The switch is persisted only
+after the returned update is applied.
+
+```tsx
+const updateInfo = await HotUpdater.checkForUpdate({
+  channel: "beta",
+  updateStrategy: "appVersion",
+});
+
+if (updateInfo) {
+  await updateInfo.updateBundle();
+  await HotUpdater.reload();
+}
+```
+
+To return to the build-time channel, call `HotUpdater.resetChannel()`.
+
+```tsx
+const reset = await HotUpdater.resetChannel();
+
+if (reset) {
+  await HotUpdater.reload();
+}
+```
+
+## Error Handling
+
+Wrap your custom flow in one boundary and keep the app usable when an update
+check fails.
+
+```tsx
+async function runUpdateFlow() {
+  try {
+    const updateInfo = await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    if (!updateInfo) {
+      return;
+    }
+
+    const downloaded = await updateInfo.updateBundle();
+
+    if (downloaded && updateInfo.shouldForceUpdate) {
+      await HotUpdater.reload();
+    }
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
+```
+
+## Checklist
+
+- Call `HotUpdater.init` before update APIs.
+- Keep `notifyAppReady` wired through `baseURL`.
+- Choose the check timing based on your app state, not module import order.
+- Download with `updateInfo.updateBundle()` unless you need direct control.
+- Use `useHotUpdaterStore` or `addListener` to show update progress.
+- Use `reload()` immediately only for force updates or explicit user consent.
+- Add error reporting around the full flow.
+
+## Related
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`HotUpdater.reload()`](/docs/react-native-api/reload)
+- [`HotUpdater.addListener()`](/docs/react-native-api/addListener)
+- [`useHotUpdaterStore()`](/docs/react-native-api/useHotUpdaterStore)

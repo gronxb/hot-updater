@@ -11,7 +11,9 @@ Automatic rollback is the safety mechanism that prevents a bad OTA bundle from t
 
 When a new bundle is installed, Hot Updater does not trust it immediately. It launches that bundle in a temporary state first, keeps the last known-good bundle as a fallback, and only treats the new bundle as safe after startup succeeds.
 
-This happens automatically when you use `HotUpdater.wrap()`.
+This happens automatically when you use `HotUpdater.wrap()`. For custom manual
+flows without a root wrapper, call [`HotUpdater.init()`](/docs/react-native-api/init)
+when your runtime considers the app ready.
 
 ## Core Mechanism
 
@@ -46,7 +48,9 @@ Typical examples include:
 - a native crash while the new bundle is loading
 - a fatal error before the first screen appears
 
-This is why `HotUpdater.wrap()` is required for rollback support. It connects bundle verification to the app lifecycle automatically.
+This is why Hot Updater must be configured with `HotUpdater.wrap()` or
+`HotUpdater.init()` for rollback support. These APIs connect bundle verification
+to the app lifecycle.
 
 ## What Happens During Rollback?
 

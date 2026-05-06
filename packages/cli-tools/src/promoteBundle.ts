@@ -4,12 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 
-import type { ConfigResponse } from "@hot-updater/cli-tools";
-import {
-  createTarBrTargetFiles,
-  createTarGzTargetFiles,
-  createZipTargetFiles,
-} from "@hot-updater/cli-tools";
 import {
   getManifestFileHash,
   stripBundleArtifactMetadata,
@@ -19,11 +13,17 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { detectCompressionFormat } from "@hot-updater/plugin-core";
+import {
+  createUUIDv7,
+  detectCompressionFormat,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
 
-import { createUUIDv7 } from "../extract-timestamp-from-uuidv7";
+import { createTarBrTargetFiles } from "./createTarBr";
+import { createTarGzTargetFiles } from "./createTarGz";
+import { createZipTargetFiles } from "./createZip";
+import type { ConfigResponse } from "./loadConfig";
 
 const LEGACY_BUNDLE_ERROR =
   "This OTA bundle was created by a version that does not support manifest.json. Copy bundle is not available.";

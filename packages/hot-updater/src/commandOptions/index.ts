@@ -1,4 +1,7 @@
 import { Option } from "@commander-js/extra-typings";
+import type { Platform } from "@hot-updater/plugin-core";
+
+export const PLATFORMS: readonly Platform[] = ["ios", "android"];
 
 export const platformCommandOption = new Option(
   "-p, --platform <platform>",

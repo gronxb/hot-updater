@@ -1,5 +1,20 @@
 # @hot-updater/postgres
 
+## 0.30.9
+
+### Patch Changes
+
+- @hot-updater/core@0.30.9
+- @hot-updater/plugin-core@0.30.9
+
+## 0.30.8
+
+### Patch Changes
+
+- Updated dependencies [6019156]
+  - @hot-updater/plugin-core@0.30.8
+  - @hot-updater/core@0.30.8
+
 ## 0.30.7
 
 ### Patch Changes

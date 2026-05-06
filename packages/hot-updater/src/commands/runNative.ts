@@ -10,6 +10,8 @@ import { ExecaError } from "execa";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 
+import { ui } from "../utils/cli-ui";
+
 const runNativeInternal = async <
   T extends AndroidNativeRunOptions | IosNativeRunOptions,
 >({
@@ -32,7 +34,7 @@ const runNativeInternal = async <
   const platformName = platform === "android" ? "Android" : "iOS";
 
   try {
-    p.log.info(`📦 Running ${platformName} Started`);
+    p.log.info(ui.line(["Running", ui.platform(platformName)]));
 
     if (platform === "android") {
       await runAndroid({
@@ -46,7 +48,7 @@ const runNativeInternal = async <
       });
     }
 
-    p.log.success(`📦 ${platformName} Run Complete`);
+    p.log.success(ui.line(["Ran", ui.platform(platformName)]));
   } catch (e) {
     cleanup(e);
   }

@@ -1,6 +1,7 @@
 import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 
+import { ui } from "../../utils/cli-ui";
 import type { HotUpdaterInstance } from "./load-hot-updater";
 
 /**
@@ -26,10 +27,7 @@ export function validateMigratorSupport(
     !("createMigrator" in hotUpdater) ||
     typeof hotUpdater.createMigrator !== "function"
   ) {
-    p.log.error(
-      `The ${adapterName} adapter does not support the createMigrator() method. ` +
-        "This is required for SQL-based migrations.",
-    );
+    p.log.error(`${adapterName}: createMigrator() is required.`);
     process.exit(1);
   }
 }
@@ -50,10 +48,7 @@ export function validateSchemaGeneratorSupport(
     !("generateSchema" in hotUpdater) ||
     typeof hotUpdater.generateSchema !== "function"
   ) {
-    p.log.error(
-      `The ${adapterName} adapter does not support the generateSchema() method. ` +
-        "Schema generation is not available for this adapter.",
-    );
+    p.log.error(`${adapterName}: generateSchema() is required.`);
     process.exit(1);
   }
 }
@@ -62,40 +57,24 @@ export function validateSchemaGeneratorSupport(
  * Show error message for unsupported migrate operation
  */
 export function showMigrateUnsupportedError(adapterName: string): never {
-  let errorMessage = `The migrate command is not supported for the ${adapterName} adapter.\n\n`;
+  let hint = "Use the adapter's migration tool.";
 
   switch (adapterName as AdapterName) {
     case "drizzle":
-      errorMessage +=
-        "For Drizzle, please use Drizzle's migration system:\n" +
-        "  • Generate migration: npx drizzle-kit generate\n" +
-        "  • Apply migration: npx drizzle-kit migrate\n" +
-        "  • Or push directly: npx drizzle-kit push\n\n" +
-        "Learn more: https://orm.drizzle.team/docs/migrations";
+      hint = "Use drizzle-kit.";
       break;
 
     case "prisma":
-      errorMessage +=
-        "For Prisma, please use Prisma's migration system:\n" +
-        "  • Create migration: npx prisma migrate dev\n" +
-        "  • Apply migration: npx prisma migrate deploy\n\n" +
-        "Learn more: https://www.prisma.io/docs/concepts/components/prisma-migrate";
+      hint = "Use prisma migrate.";
       break;
 
     case "typeorm":
-      errorMessage +=
-        "For TypeORM, please use TypeORM's migration system:\n" +
-        "  • Generate migration: npx typeorm migration:generate\n" +
-        "  • Run migration: npx typeorm migration:run\n\n" +
-        "Learn more: https://typeorm.io/migrations";
+      hint = "Use TypeORM migrations.";
       break;
-
-    default:
-      errorMessage +=
-        "This adapter has its own migration system.\n" +
-        "Please refer to the adapter's documentation for migration instructions.";
   }
 
-  p.log.error(errorMessage);
+  p.log.error(
+    ui.line(["migrate is not supported for", ui.warning(adapterName), hint]),
+  );
   process.exit(1);
 }

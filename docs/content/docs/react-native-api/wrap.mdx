@@ -6,7 +6,10 @@ icon: Package
 
 ## Usage
 
-> **Important:** `HotUpdater.wrap` is **required** for all apps. It enables automatic crash detection and rollback. All HotUpdater methods will throw an error if wrap is not used.
+> **Important:** Configure Hot Updater with either `HotUpdater.wrap` or
+> [`HotUpdater.init`](/docs/react-native-api/init) before calling update APIs.
+> This enables automatic crash detection and rollback. Update methods will
+> throw an error if neither API is used.
 
 `HotUpdater.wrap` supports two usage patterns:
 
@@ -39,7 +42,7 @@ export default HotUpdater.wrap({ // [!code hl:9]
 
 ### Option 2: Manual Updates Only (Custom Flow)
 
-Use this for apps with custom update logic. 
+Use this for apps with custom updates.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -57,6 +60,19 @@ export default HotUpdater.wrap({ // [!code hl:3]
   baseURL: "<your-update-server-url>",
   updateMode: "manual",
 })(App);
+```
+
+If another runtime owns the root component, use
+[`HotUpdater.init`](/docs/react-native-api/init) instead. It has the same
+initialization effect as manual `wrap` without creating an unnecessary React
+HOC.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
 ```
 
 Then use `checkForUpdate` or `updateBundle` manually when needed:
@@ -92,13 +108,14 @@ function App() {
   // ... your app
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-})(App);
+});
+
+export default App;
 ```
 
 ## Configuration Reference
@@ -115,6 +132,7 @@ Available in both automatic and manual modes:
 | `resolver` | `HotUpdaterResolver` | Yes* | Custom network operations (advanced) |
 | `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
 | `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
+| `onNotifyAppReady` | `(result) => void` | No | Callback invoked after native app-ready state is read |
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive)
 

@@ -27,7 +27,14 @@ import {
 } from "./native";
 import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
-import { type HotUpdaterOptions, type InternalWrapOptions, wrap } from "./wrap";
+import {
+  type HotUpdaterInitOptions,
+  type HotUpdaterOptions,
+  init,
+  type InternalInitOptions,
+  type InternalWrapOptions,
+  wrap,
+} from "./wrap";
 
 export type {
   CustomReloadHandler,
@@ -49,8 +56,12 @@ export {
   type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";
-export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
-export type { HotUpdaterFallbackComponentProps } from "./wrap";
+export type {
+  HotUpdaterFallbackComponentProps,
+  HotUpdaterInitOptions,
+  HotUpdaterOptions,
+  RunUpdateProcessResponse,
+} from "./wrap";
 
 /**
  * Register getBaseURL to global objects for use without imports.
@@ -84,23 +95,109 @@ function createHotUpdaterClient() {
     resolver: null,
   };
 
+  const createMissingNetworkConfigError = (apiName: "init" | "wrap") => {
+    if (apiName === "init") {
+      return new Error(
+        `[HotUpdater] baseURL must be provided.\n\n` +
+          `Configure HotUpdater before calling update APIs:\n\n` +
+          `  HotUpdater.init({\n` +
+          `    baseURL: "<your-update-server-url>",\n` +
+          `  });\n\n` +
+          `For more information, visit: https://hot-updater.dev/docs/react-native-api/init`,
+      );
+    }
+
+    const baseURLExample =
+      `  export default HotUpdater.wrap({\n` +
+      `    baseURL: "<your-update-server-url>",\n` +
+      `    updateStrategy: "appVersion",\n` +
+      `    updateMode: "auto"\n` +
+      `  })(App);\n\n`;
+
+    const resolverExample =
+      `  export default HotUpdater.wrap({\n` +
+      `    resolver: {\n` +
+      `      checkUpdate: async (params) => { /* custom logic */ },\n` +
+      `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
+      `    },\n` +
+      `    updateMode: "manual"\n` +
+      `  })(App);\n\n`;
+
+    return new Error(
+      `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
+        `Option 1: Using baseURL (recommended for most cases)\n` +
+        baseURLExample +
+        `Option 2: Using custom resolver (advanced)\n` +
+        resolverExample +
+        `For more information, visit: https://hot-updater.dev/docs/react-native-api/${apiName}`,
+    );
+  };
+
+  const normalizeOptions = (
+    options: HotUpdaterOptions,
+  ): InternalWrapOptions => {
+    if ("baseURL" in options && options.baseURL) {
+      const { baseURL, ...rest } = options;
+      return {
+        ...rest,
+        resolver: createDefaultResolver(baseURL),
+      };
+    }
+
+    if ("resolver" in options && options.resolver) {
+      return options;
+    }
+
+    throw createMissingNetworkConfigError("wrap");
+  };
+
+  const normalizeInitOptions = (
+    options: HotUpdaterInitOptions,
+  ): InternalInitOptions => {
+    const {
+      baseURL,
+      updateMode: _updateMode,
+      ...rest
+    } = options as HotUpdaterInitOptions & {
+      updateMode?: unknown;
+    };
+
+    if (baseURL) {
+      return {
+        ...rest,
+        resolver: createDefaultResolver(baseURL),
+      };
+    }
+
+    throw createMissingNetworkConfigError("init");
+  };
+
+  const configureGlobal = (
+    normalizedOptions: InternalInitOptions | InternalWrapOptions,
+    options: HotUpdaterOptions | HotUpdaterInitOptions,
+  ) => {
+    globalConfig.resolver = normalizedOptions.resolver;
+    globalConfig.requestHeaders = options.requestHeaders;
+    globalConfig.requestTimeout = options.requestTimeout;
+  };
+
   const ensureGlobalResolver = (methodName: string) => {
     if (!globalConfig.resolver) {
       throw new Error(
-        `[HotUpdater] ${methodName} requires HotUpdater.wrap() to be used.\n\n` +
-          `To fix this issue, wrap your root component with HotUpdater.wrap():\n\n` +
-          `Option 1: With automatic updates\n` +
+        `[HotUpdater] ${methodName} requires HotUpdater.wrap() or HotUpdater.init() to be used.\n\n` +
+          `To fix this issue, configure HotUpdater before calling ${methodName}:\n\n` +
+          `Option 1: With HotUpdater.wrap()\n` +
           `  export default HotUpdater.wrap({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `    updateStrategy: "appVersion",\n` +
           `    updateMode: "auto"\n` +
           `  })(App);\n\n` +
-          `Option 2: Manual updates only (custom flow)\n` +
-          `  export default HotUpdater.wrap({\n` +
+          `Option 2: With HotUpdater.init() for custom runtimes\n` +
+          `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
-          `    updateMode: "manual"\n` +
-          `  })(App);\n\n` +
-          `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap`,
+          `  });\n\n` +
+          `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap ` +
+          `or https://hot-updater.dev/docs/react-native-api/init`,
       );
     }
     return globalConfig.resolver;
@@ -132,42 +229,34 @@ function createHotUpdaterClient() {
      * ```
      */
     wrap: (options: HotUpdaterOptions) => {
-      let normalizedOptions: InternalWrapOptions;
-
-      if ("baseURL" in options && options.baseURL) {
-        const { baseURL, ...rest } = options;
-        normalizedOptions = {
-          ...rest,
-          resolver: createDefaultResolver(baseURL),
-        };
-      } else if ("resolver" in options && options.resolver) {
-        normalizedOptions = options;
-      } else {
-        throw new Error(
-          `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
-            `Option 1: Using baseURL (recommended for most cases)\n` +
-            `  export default HotUpdater.wrap({\n` +
-            `    baseURL: "<your-update-server-url>",\n` +
-            `    updateStrategy: "appVersion",\n` +
-            `    updateMode: "auto"\n` +
-            `  })(App);\n\n` +
-            `Option 2: Using custom resolver (advanced)\n` +
-            `  export default HotUpdater.wrap({\n` +
-            `    resolver: {\n` +
-            `      checkUpdate: async (params) => { /* custom logic */ },\n` +
-            `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
-            `    },\n` +
-            `    updateMode: "manual"\n` +
-            `  })(App);\n\n` +
-            `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap`,
-        );
-      }
-
-      globalConfig.resolver = normalizedOptions.resolver;
-      globalConfig.requestHeaders = options.requestHeaders;
-      globalConfig.requestTimeout = options.requestTimeout;
+      const normalizedOptions = normalizeOptions(options);
+      configureGlobal(normalizedOptions, options);
 
       return wrap(normalizedOptions);
+    },
+
+    /**
+     * Initializes HotUpdater without wrapping a React component.
+     *
+     * Use this for manual update flows in runtimes where a root component HOC
+     * is not convenient. It has the same initialization effect as
+     * `HotUpdater.wrap({ updateMode: "manual" })(App)`.
+     *
+     * @example
+     * ```tsx
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     * });
+     *
+     * export default App;
+     * ```
+     */
+    init: (options: HotUpdaterInitOptions): void => {
+      const normalizedOptions = normalizeInitOptions(options);
+
+      configureGlobal(normalizedOptions, options);
+
+      init(normalizedOptions);
     },
 
     /**

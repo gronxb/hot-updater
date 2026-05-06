@@ -179,6 +179,16 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
     updateMode: "manual";
   };
 
+type ManualBaseURLUpdateOptions = CommonHotUpdaterOptions &
+  BaseURLConfig & {
+    updateMode: "manual";
+  };
+
+export type HotUpdaterInitOptions = Omit<
+  ManualBaseURLUpdateOptions,
+  "updateMode"
+>;
+
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
 
 /**
@@ -206,9 +216,29 @@ type InternalManualUpdateOptions = InternalCommonOptions & {
   updateMode: "manual";
 };
 
+export type InternalInitOptions = InternalCommonOptions;
+
 export type InternalWrapOptions =
   | InternalAutoUpdateOptions
   | InternalManualUpdateOptions;
+
+type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
+
+const waitForNextFrame = () =>
+  new Promise<void>((resolve) => {
+    const requestAnimationFrame = (
+      globalThis as typeof globalThis & {
+        requestAnimationFrame?: RequestAnimationFrame;
+      }
+    )?.requestAnimationFrame;
+
+    if (requestAnimationFrame) {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+
+    void Promise.resolve().then(resolve);
+  });
 
 /**
  * Helper function to handle notifyAppReady flow
@@ -219,6 +249,8 @@ const handleNotifyAppReady = async (options: {
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
 }): Promise<void> => {
+  await waitForNextFrame();
+
   try {
     const nativeResult = nativeNotifyAppReady();
 
@@ -241,6 +273,10 @@ const handleNotifyAppReady = async (options: {
     console.warn("[HotUpdater] Failed to notify app ready:", e);
   }
 };
+
+export function init(options: InternalInitOptions): void {
+  void handleNotifyAppReady(options);
+}
 
 export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
   options: InternalWrapOptions,

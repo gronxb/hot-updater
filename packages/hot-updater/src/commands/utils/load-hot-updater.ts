@@ -5,6 +5,8 @@ import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 import { createJiti } from "jiti";
 
+import { ui } from "../../utils/cli-ui";
+
 export interface HotUpdaterInstance {
   createMigrator?: () => Migrator;
   generateSchema?: (
@@ -59,16 +61,13 @@ const resolveConfigPath = (configPath: string) => {
     return defaultConfigPath;
   }
 
-  p.log.error(
-    "Could not find a Hot Updater config file.\n\n" +
-      "Pass the file that exports `hotUpdater`, for example:\n" +
-      "  hot-updater db generate src/db.ts\n" +
-      "  hot-updater db migrate src/db.ts\n\n" +
-      "Automatic lookup supports:\n" +
-      "  • hot-updater.config.{ts,js,mjs,cjs,mts,cts}\n" +
-      "  • src/hotUpdater.{ts,js,mjs,cjs,mts,cts}\n" +
-      "  • src/db.{ts,js,mjs,cjs,mts,cts}\n\n" +
-      "Or use `hot-updater db generate --sql` for standalone SQL export.",
+  p.log.error("Could not find a Hot Updater config file.");
+  p.log.message(
+    ui.block("Examples", [
+      ui.kv("Generate", ui.command("hot-updater db generate src/db.ts")),
+      ui.kv("Migrate", ui.command("hot-updater db migrate src/db.ts")),
+      ui.kv("SQL", ui.command("hot-updater db generate --sql")),
+    ]),
   );
   process.exit(1);
 };
@@ -83,13 +82,15 @@ export async function loadHotUpdater(
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {
-    p.log.error(`Config file not found: ${absoluteConfigPath}`);
+    p.log.error(
+      ui.line(["Config file not found:", ui.path(absoluteConfigPath)]),
+    );
     process.exit(1);
   }
 
   if (statSync(absoluteConfigPath).isDirectory()) {
     p.log.error(
-      `Config path must be a file that exports \`hotUpdater\`: ${absoluteConfigPath}`,
+      ui.line(["Config path must be a file:", ui.path(absoluteConfigPath)]),
     );
     process.exit(1);
   }

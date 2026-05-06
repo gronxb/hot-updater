@@ -1,8 +1,12 @@
 #!/usr/bin/env node
-import { Command, Option } from "@commander-js/extra-typings";
+import {
+  Command,
+  InvalidArgumentError,
+  Option,
+} from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, log, p } from "@hot-updater/cli-tools";
+import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
@@ -15,6 +19,7 @@ import {
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
+import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import {
@@ -28,8 +33,8 @@ import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
-import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -39,6 +44,7 @@ import {
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -82,6 +88,46 @@ channelCommand
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const bundleCommand = program.command("bundle").description("Manage bundles");
+
+bundleCommand
+  .command("list")
+  .description("List bundles, most recent first")
+  .option("-c, --channel <channel>", "filter by channel")
+  .option("--json", "output raw bundle data as JSON")
+  .addOption(platformCommandOption)
+  .option(
+    "--limit <n>",
+    "limit the number of results",
+    (value) => {
+      const n = Number.parseInt(value, 10);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw new InvalidArgumentError("must be a positive integer");
+      }
+      return n;
+    },
+    20,
+  )
+  .action(handleBundleList);
+
+bundleCommand
+  .command("disable")
+  .description("Disable a bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to disable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, false, options),
+  );
+
+bundleCommand
+  .command("enable")
+  .description("Re-enable a previously disabled bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to enable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, true, options),
+  );
 
 const keysCommand = program
   .command("keys")
@@ -208,6 +254,27 @@ program
   });
 
 program
+  .command("rollback")
+  .description("Disable the most recent enabled bundle on a channel")
+  .argument("<channel>", "the channel to roll back")
+  .addOption(platformCommandOption)
+  .option("-y, --yes", "skip confirmation prompt")
+  .option(
+    "--target <bundle-id>",
+    "scope rollback to exactly this bundle id (use to retry a failed rollback)",
+  )
+  .action(
+    (
+      channel: string,
+      options: {
+        platform?: "ios" | "android";
+        yes?: boolean;
+        target?: string;
+      },
+    ) => handleRollback(channel, options),
+  );
+
+program
   .command("console")
   .description("open the console")
   .action(async () => {
@@ -221,13 +288,8 @@ program
 program
   .command("app-version")
   .description("get the current app version")
-  .action(async () => {
-    const androidVersion = await getNativeAppVersion("android");
-    const iosVersion = await getNativeAppVersion("ios");
-
-    log.info(`Android version: ${androidVersion}`);
-    log.info(`iOS version: ${iosVersion}`);
-  });
+  .option("--json", "output app versions as JSON")
+  .action(handleAppVersion);
 
 // Database migration commands
 const dbCommand = program

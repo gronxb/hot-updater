@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.30.7",
+  "version": "0.30.9",
   "type": "module",
   "engines": {
     "node": ">=20.19.0"
@@ -47,6 +47,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "oxc-transform": "0.121.0",
     "typescript": "6.0.2",

@@ -1,15 +1,27 @@
-import defaultMdxComponents from "fumadocs-ui/mdx";
 import {
   DocsBody,
   DocsDescription,
   DocsPage,
   DocsTitle,
-} from "fumadocs-ui/page";
+  MarkdownCopyButton,
+  ViewOptionsPopover,
+} from "fumadocs-ui/layouts/docs/page";
+import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { ComponentProps } from "react";
 import type { PageProps } from "waku/router";
 
 import { VersionTag } from "@/components/version-tag";
 import { source } from "@/lib/source";
+
+const githubBaseUrl =
+  "https://github.com/gronxb/hot-updater/blob/main/docs/content/docs";
+
+const getMarkdownUrl = (slugs: string[]) => {
+  const segments = slugs.length > 0 ? slugs : ["index"];
+  const last = segments.at(-1)!;
+
+  return `/api/markdown/${[...segments.slice(0, -1), `${last}.mdx`].join("/")}`;
+};
 
 export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
   const page = source.getPage(slugs);
@@ -31,9 +43,15 @@ export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {
   const components = defaultMdxComponents as ComponentProps<
     typeof MDX
   >["components"];
+  const markdownUrl = getMarkdownUrl(page.slugs);
+  const githubUrl = `${githubBaseUrl}/${page.path}`;
 
   return (
     <DocsPage toc={page.data.toc}>
+      <div className="flex flex-row items-center gap-2 border-b pt-2 pb-6">
+        <MarkdownCopyButton markdownUrl={markdownUrl} />
+        <ViewOptionsPopover githubUrl={githubUrl} markdownUrl={markdownUrl} />
+      </div>
       <DocsTitle>{page.data.title}</DocsTitle>
       <VersionTag version={page.data?.version} />
       <DocsDescription>{page.data.description}</DocsDescription>
