@@ -101,7 +101,10 @@ describe("handleBundleList", () => {
     const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("B1");
     expect(output).toContain("B2");
-    expect(output).toMatch(/^id\s+channel\s+platform/);
+    expect(output).toContain("┌");
+    expect(output).toContain("│ ID");
+    expect(output).toContain("Channel");
+    expect(output).toContain("Platform");
   });
 
   it("prints empty-state marker when no bundles exist", async () => {

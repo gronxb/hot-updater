@@ -1,4 +1,4 @@
-import { colors, loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
@@ -8,6 +8,7 @@ import type {
 import { printBanner } from "@/utils/printBanner";
 
 import { PLATFORMS } from "../commandOptions";
+import { ui } from "../utils/cli-ui";
 
 export interface RollbackOptions {
   platform?: Platform;
@@ -22,17 +23,12 @@ interface RollbackTarget {
 }
 
 const summarizeTarget = (target: RollbackTarget): string =>
-  [
-    `  ${colors.bold(colors.cyan(target.platform))}`,
-    `    ${colors.red("Disable:")}  ${colors.yellow(target.bundle.id)}`,
+  ui.block(`${target.platform}`, [
+    ui.kv("Disable", ui.id(target.bundle.id)),
     target.fallbackId
-      ? `    ${colors.green("Fallback:")} ${colors.yellow(target.fallbackId)}`
-      : `    ${colors.green("Fallback:")} ${colors.yellow(
-          "binary-shipped JS",
-        )}`,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+      ? ui.kv("Fallback", ui.id(target.fallbackId))
+      : ui.kv("Fallback", ui.warning("binary-shipped JS")),
+  ]);
 
 const formatRetryHint = (channel: string, target: RollbackTarget): string =>
   `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
@@ -136,7 +132,7 @@ export const handleRollback = async (
       process.exit(1);
     }
 
-    p.log.message(`Rollback plan for channel "${channel}":`);
+    p.log.message(ui.title(`Rollback ${channel}`));
     for (const t of targets) {
       p.log.message(summarizeTarget(t));
     }

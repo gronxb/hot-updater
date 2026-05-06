@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 
 import { AndroidConfigParser } from "@/utils/configParser/androidParser";
 import { IosConfigParser } from "@/utils/configParser/iosParser";
@@ -12,6 +12,8 @@ import {
   loadPrivateKey,
   saveKeyPair,
 } from "@/utils/signing";
+
+import { ui } from "../utils/cli-ui";
 
 export const ANDROID_KEY = "hot_updater_public_key";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -150,15 +152,15 @@ async function writePublicKeyToIos(
 
 function printPublicKeyInstructions(publicKeyPEM: string): void {
   console.log("");
-  console.log(colors.bold(colors.cyan("Public key")));
+  console.log(ui.title("Public key"));
   console.log("");
   console.log(publicKeyPEM);
   console.log("");
-  console.log(colors.bold("iOS"));
+  console.log(ui.title("iOS"));
   console.log("<key>HOT_UPDATER_PUBLIC_KEY</key>");
   console.log(`<string>${publicKeyPEM.trim().replace(/\n/g, "\\n")}</string>`);
   console.log("");
-  console.log(colors.bold("Android"));
+  console.log(ui.title("Android"));
   console.log('<string name="hot_updater_public_key">');
   console.log(publicKeyPEM.trim());
   console.log("</string>");
@@ -168,10 +170,10 @@ const formatNativeTarget = (
   platform: "android" | "ios",
   paths: string[],
 ): string =>
-  [
-    `  ${colors.bold(colors.cyan(platform))}`,
-    ...paths.map((targetPath) => `    ${colors.dim(targetPath)}`),
-  ].join("\n");
+  ui.block(
+    platform,
+    paths.map((targetPath) => ui.kv("Path", ui.path(targetPath))),
+  );
 
 /**
  * Export public key for embedding in native configuration.
@@ -234,7 +236,7 @@ export const keysExportPublic = async (
       process.exit(1);
     }
 
-    p.log.message(colors.bold("Native files"));
+    p.log.message(ui.title("Native files"));
     if (androidExists) {
       p.log.message(
         formatNativeTarget(

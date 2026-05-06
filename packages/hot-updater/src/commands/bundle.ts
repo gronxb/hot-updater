@@ -1,4 +1,4 @@
-import { colors, loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
@@ -6,6 +6,8 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
+
+import { ui } from "../utils/cli-ui";
 
 const LIST_FIELDS = [
   "id",
@@ -19,6 +21,31 @@ const LIST_FIELDS = [
 ] as const satisfies readonly (keyof Bundle)[];
 
 type ListField = (typeof LIST_FIELDS)[number];
+
+const LIST_COLUMNS = [
+  { key: "id", label: "ID", format: ui.id },
+  { key: "channel", label: "Channel", format: ui.channel },
+  { key: "platform", label: "Platform", format: ui.platform },
+  {
+    key: "enabled",
+    label: "Enabled",
+    format: (value: string) =>
+      value.trim() === "yes" ? ui.success(value) : ui.danger(value),
+  },
+  { key: "targetAppVersion", label: "Version", format: ui.version },
+  {
+    key: "shouldForceUpdate",
+    label: "Force Update",
+    format: (value: string) =>
+      value.trim() === "yes" ? ui.warning(value) : ui.muted(value),
+  },
+  { key: "gitCommitHash", label: "Commit", format: ui.muted },
+  { key: "message", label: "Message" },
+] as const satisfies readonly {
+  key: ListField;
+  label: string;
+  format?: (value: string) => string;
+}[];
 
 export interface BundleListOptions {
   channel?: string;
@@ -52,59 +79,28 @@ const formatRow = (bundle: Bundle): Record<ListField, string> => {
   return out;
 };
 
-const colorizeCell = (field: ListField, value: string): string => {
-  if (!value) return value;
-  if (field === "id") return colors.yellow(value);
-  if (field === "channel") return colors.blue(value);
-  if (field === "platform") return colors.cyan(value);
-  if (field === "enabled")
-    return value === "yes" ? colors.green(value) : colors.red(value);
-  if (field === "shouldForceUpdate") {
-    return value === "yes" ? colors.yellow(value) : colors.dim(value);
-  }
-  if (field === "gitCommitHash") return colors.dim(value);
-  return value;
-};
-
 const tabulate = (bundles: Bundle[]): string => {
   if (bundles.length === 0) {
-    return colors.dim("(no bundles)");
+    return ui.muted("(no bundles)");
   }
-  const rows = bundles.map(formatRow);
-  const widths = {} as Record<ListField, number>;
-  for (const field of LIST_FIELDS) {
-    widths[field] = Math.max(field.length, ...rows.map((r) => r[field].length));
-  }
-  const header = LIST_FIELDS.map((f) =>
-    colors.bold(f.padEnd(widths[f] ?? f.length)),
-  ).join("  ");
-  const body = rows.map((r) =>
-    LIST_FIELDS.map((f) =>
-      colorizeCell(f, r[f].padEnd(widths[f] ?? f.length)),
-    ).join("  "),
-  );
-  return [header, ...body].join("\n");
+  return ui.table(LIST_COLUMNS, bundles.map(formatRow));
 };
-
-const formatStatus = (enabled: boolean): string =>
-  enabled ? colors.green("enabled") : colors.red("disabled");
 
 const formatBundleSummary = (bundle: Bundle, nextEnabled?: boolean): string => {
   const status =
     nextEnabled === undefined || bundle.enabled === nextEnabled
-      ? formatStatus(bundle.enabled)
-      : `${formatStatus(bundle.enabled)} -> ${formatStatus(nextEnabled)}`;
-  return [
-    `  ${colors.bold(colors.cyan(bundle.platform))} / ${colors.blue(bundle.channel)}`,
-    `    ID:      ${colors.yellow(bundle.id)}`,
-    `    Status:  ${status}`,
+      ? ui.status(bundle.enabled)
+      : `${ui.status(bundle.enabled)} -> ${ui.status(nextEnabled)}`;
+  const lines = [
+    `  ${ui.platform(bundle.platform)} / ${ui.channel(bundle.channel)}`,
+    ui.kv("ID", ui.id(bundle.id)),
+    ui.kv("Status", status),
     bundle.targetAppVersion
-      ? `    Version: ${colors.magenta(bundle.targetAppVersion)}`
+      ? ui.kv("Version", ui.version(bundle.targetAppVersion))
       : null,
-    bundle.message ? `    Message: ${bundle.message}` : null,
-  ]
-    .filter((line): line is string => line !== null)
-    .join("\n");
+    bundle.message ? ui.kv("Message", bundle.message) : null,
+  ].filter((line): line is string => line !== null);
+  return ui.block("Bundle", lines);
 };
 
 const refuseNonInteractiveMutation = (action: string): never => {
@@ -208,7 +204,7 @@ export const handleBundleSetEnabled = async (
       process.exit(1);
     } else {
       p.log.success(`${nextEnabled ? "Enabled" : "Disabled"} bundle.`);
-      p.log.info(`  ${colors.yellow(bundleId)}`);
+      p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
     await safeOnUnmount(databasePlugin);
