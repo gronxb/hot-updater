@@ -83,7 +83,6 @@ src/
 │   ├── api.ts                  # React Query hooks
 │   ├── constants.ts            # Shared constants
 │   ├── utils.ts                # Utility functions
-│   ├── extract-timestamp-from-uuidv7.ts
 │   └── server/
 │       ├── api.server.ts       # Server functions
 │       └── config.server.ts    # Hot Updater config loader

@@ -216,7 +216,7 @@ export const promoteBundle = createServerFn({ method: "POST" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { promoteBundle: promoteBundleWithConfig } =
-        await import("./server/promoteBundle");
+        await import("@hot-updater/cli-tools");
       const { config, databasePlugin, storagePlugin } = await prepareConfig();
       const bundle = await promoteBundleWithConfig(data, {
         config,

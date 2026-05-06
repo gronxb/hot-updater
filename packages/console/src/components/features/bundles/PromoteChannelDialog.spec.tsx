@@ -41,9 +41,14 @@ vi.mock("@/hooks/useFilterParams", () => ({
   }),
 }));
 
-vi.mock("@/lib/extract-timestamp-from-uuidv7", () => ({
-  createUUIDv7: mockCreateUUIDv7,
-}));
+vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/plugin-core")>();
+  return {
+    ...actual,
+    createUUIDv7: mockCreateUUIDv7,
+  };
+});
 
 vi.mock("@/lib/api", () => ({
   useChannelsQuery: () => ({ data: ["stable", "beta"] }),

@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { createUUIDv7 } from "@hot-updater/plugin-core";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/select";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useChannelsQuery, usePromoteBundleMutation } from "@/lib/api";
-import { createUUIDv7 } from "@/lib/extract-timestamp-from-uuidv7";
 
 interface PromoteChannelDialogProps {
   bundle: Bundle;
