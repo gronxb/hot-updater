@@ -1,5 +1,15 @@
 # @hot-updater/firebase
 
+## 0.30.8
+
+### Patch Changes
+
+- Updated dependencies [6019156]
+  - @hot-updater/cli-tools@0.30.8
+  - @hot-updater/plugin-core@0.30.8
+  - @hot-updater/server@0.30.8
+  - @hot-updater/core@0.30.8
+
 ## 0.30.7
 
 ### Patch Changes
