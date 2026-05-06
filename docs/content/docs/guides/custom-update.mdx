@@ -1,5 +1,5 @@
 ---
-title: "Custom Update Logic"
+title: "Custom Update"
 description: "Build a custom Hot Updater client flow with init, checkForUpdate, updateBundle, and reload."
 icon: Settings2
 ---
@@ -13,7 +13,7 @@ state, or let another runtime own the root component.
 
 The custom flow has four parts:
 
-1. Initialize Hot Updater with `HotUpdater.init` or manual `HotUpdater.wrap`.
+1. Initialize Hot Updater with `HotUpdater.init`.
 2. Decide when to call `HotUpdater.checkForUpdate`.
 3. Download the bundle with `updateInfo.updateBundle()` or
    `HotUpdater.updateBundle`.
@@ -26,9 +26,8 @@ Use `HotUpdater.init` when you do not want to wrap the root component.
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-void HotUpdater.init({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
   requestHeaders: {
     Authorization: "Bearer <your-access-token>",
   },
@@ -36,16 +35,18 @@ void HotUpdater.init({
 ```
 
 <Callout>
-`HotUpdater.init` has the same initialization effect as manual `wrap`.
+`HotUpdater.init` has the same initialization effect as manual `wrap`, without
+creating an unnecessary React HOC.
 
 ```tsx
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
-})(App);
+});
+
+export default App;
 ```
 
-Both options configure the shared resolver and notify the update server that the
+This configures the shared resolver and notifies the update server that the
 current app launch is ready, which keeps crash recovery and rollback tracking
 working.
 </Callout>
@@ -308,7 +309,7 @@ async function runUpdateFlow() {
 
 ## Checklist
 
-- Call `HotUpdater.init` or manual `HotUpdater.wrap` before update APIs.
+- Call `HotUpdater.init` before update APIs.
 - Keep `notifyAppReady` wired through `baseURL`.
 - Choose the check timing based on your app state, not module import order.
 - Download with `updateInfo.updateBundle()` unless you need direct control.

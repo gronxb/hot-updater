@@ -4,7 +4,7 @@
   "icon": "BookOpenCheck",
   "pages": [
     "deploy",
-    "custom-update-logic",
+    "custom-update",
     "rollout-cohorts",
     "console",
     "ai-agents",

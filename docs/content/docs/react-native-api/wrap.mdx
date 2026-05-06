@@ -42,7 +42,7 @@ export default HotUpdater.wrap({ // [!code hl:9]
 
 ### Option 2: Manual Updates Only (Custom Flow)
 
-Use this for apps with custom update logic. 
+Use this for apps with custom updates.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -64,14 +64,14 @@ export default HotUpdater.wrap({ // [!code hl:3]
 
 If another runtime owns the root component, use
 [`HotUpdater.init`](/docs/react-native-api/init) instead. It has the same
-initialization effect as manual `wrap` without returning a React HOC.
+initialization effect as manual `wrap` without creating an unnecessary React
+HOC.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-void HotUpdater.init({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
 });
 ```
 
@@ -108,13 +108,14 @@ function App() {
   // ... your app
 }
 
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },
-})(App);
+});
+
+export default App;
 ```
 
 ## Configuration Reference
