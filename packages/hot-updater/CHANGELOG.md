@@ -1,5 +1,17 @@
 # hot-updater
 
+## 0.30.9
+
+### Patch Changes
+
+- @hot-updater/android-helper@0.30.9
+- @hot-updater/apple-helper@0.30.9
+- @hot-updater/cli-tools@0.30.9
+- @hot-updater/console@0.30.9
+- @hot-updater/core@0.30.9
+- @hot-updater/server@0.30.9
+- @hot-updater/plugin-core@0.30.9
+
 ## 0.30.8
 
 ### Patch Changes
