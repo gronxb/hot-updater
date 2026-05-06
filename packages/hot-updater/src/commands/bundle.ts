@@ -18,8 +18,11 @@ const LIST_FIELDS = [
   "message",
 ] as const satisfies readonly (keyof Bundle)[];
 
+type ListField = (typeof LIST_FIELDS)[number];
+
 export interface BundleListOptions {
   channel?: string;
+  json?: boolean;
   platform?: Platform;
   limit?: number;
 }
@@ -30,8 +33,8 @@ export interface BundleMutationOptions {
 
 const DEFAULT_LIMIT = 20;
 
-const formatRow = (bundle: Bundle): Record<string, string> => {
-  const out: Record<string, string> = {};
+const formatRow = (bundle: Bundle): Record<ListField, string> => {
+  const out = {} as Record<ListField, string>;
   for (const field of LIST_FIELDS) {
     const v = bundle[field];
     if (field === "enabled" || field === "shouldForceUpdate") {
@@ -54,13 +57,15 @@ const tabulate = (bundles: Bundle[]): string => {
     return "(no bundles)";
   }
   const rows = bundles.map(formatRow);
-  const widths: Record<string, number> = {};
+  const widths = {} as Record<ListField, number>;
   for (const field of LIST_FIELDS) {
     widths[field] = Math.max(field.length, ...rows.map((r) => r[field].length));
   }
-  const header = LIST_FIELDS.map((f) => f.padEnd(widths[f])).join("  ");
+  const header = LIST_FIELDS.map((f) => f.padEnd(widths[f] ?? f.length)).join(
+    "  ",
+  );
   const body = rows.map((r) =>
-    LIST_FIELDS.map((f) => r[f].padEnd(widths[f])).join("  "),
+    LIST_FIELDS.map((f) => r[f].padEnd(widths[f] ?? f.length)).join("  "),
   );
   return [header, ...body].join("\n");
 };
@@ -85,7 +90,9 @@ const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
 };
 
 export const handleBundleList = async (options: BundleListOptions = {}) => {
-  printBanner();
+  if (!options.json) {
+    printBanner();
+  }
 
   const config = await loadConfig(null);
 
@@ -102,7 +109,9 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       },
       limit,
     });
-    console.log(tabulate(result.data));
+    console.log(
+      options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
+    );
   } finally {
     await safeOnUnmount(databasePlugin);
   }

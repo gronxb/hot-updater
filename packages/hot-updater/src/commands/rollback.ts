@@ -12,7 +12,6 @@ import { PLATFORMS } from "../commandOptions";
 export interface RollbackOptions {
   platform?: Platform;
   yes?: boolean;
-  confirmRevertToBinary?: boolean;
   target?: string;
 }
 
@@ -66,7 +65,6 @@ export const handleRollback = async (
   try {
     const targets: RollbackTarget[] = [];
     const skippedPlatforms: Platform[] = [];
-    const wouldRevertToBinary: Platform[] = [];
 
     if (options.target) {
       // Scoped retry path: roll back exactly the named bundle.
@@ -102,9 +100,6 @@ export const handleRollback = async (
       const fallback = fallbackResult.data.find(
         (b) => b.id !== targetBundle.id,
       );
-      if (!fallback) {
-        wouldRevertToBinary.push(targetBundle.platform);
-      }
       targets.push({
         platform: targetBundle.platform,
         bundle: targetBundle,
@@ -121,9 +116,6 @@ export const handleRollback = async (
           p.log.info(`No enabled bundle on ${channel}/${platform}; skipping.`);
           skippedPlatforms.push(platform);
           continue;
-        }
-        if (!fallback) {
-          wouldRevertToBinary.push(platform);
         }
         targets.push({
           platform,
@@ -143,25 +135,6 @@ export const handleRollback = async (
     p.log.message(`Rollback plan for channel "${channel}":`);
     for (const t of targets) {
       p.log.message(summarizeTarget(t));
-    }
-
-    if (wouldRevertToBinary.length > 0 && !options.confirmRevertToBinary) {
-      const safePlatforms = targets
-        .map((t) => t.platform)
-        .filter((pl) => !wouldRevertToBinary.includes(pl));
-      const safePlatformsHint = safePlatforms.length
-        ? ` Re-run with -p ${safePlatforms.join("/")} to skip the platforms above,`
-        : "";
-      p.log.error(
-        `Rollback would leave channel "${channel}" with NO enabled bundles for: ${wouldRevertToBinary.join(", ")}.`,
-      );
-      p.log.info(
-        "Affected platforms would fall back to the binary-shipped JS.",
-      );
-      p.log.info(
-        `${safePlatformsHint} or --confirm-revert-to-binary to also revert ${wouldRevertToBinary.join(", ")} to binary-shipped JS.`,
-      );
-      process.exit(1);
     }
 
     if (skippedPlatforms.length > 0 && !options.yes) {

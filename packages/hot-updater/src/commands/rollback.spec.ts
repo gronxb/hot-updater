@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
@@ -80,10 +80,10 @@ const setupConsoleSpies = () => {
 };
 
 const stubGetBundlesByPlatform = (
-  byPlatform: Partial<Record<"ios" | "android", Bundle[]>>,
+  byPlatform: Partial<Record<Platform, Bundle[]>>,
 ) => {
   mockDatabasePlugin.getBundles.mockImplementation((options) => {
-    const platform = options.where?.platform;
+    const platform = options.where?.platform as Platform | undefined;
     const bundles = (platform && byPlatform[platform]) ?? [];
     return Promise.resolve({
       data: bundles.slice(0, options.limit ?? bundles.length),
@@ -158,7 +158,7 @@ describe("handleRollback", () => {
     );
   });
 
-  it("refuses without --confirm-revert-to-binary when a platform has only one enabled bundle", async () => {
+  it("rolls back to binary-shipped JS when a platform has one enabled bundle", async () => {
     stubGetBundlesByPlatform({
       ios: [buildBundle({ id: "ios-1", platform: "ios" })],
       android: [
@@ -166,20 +166,25 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    const { exitSpy } = expectExit(1);
-    const { handleRollback } = await import("./rollback");
-    await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
-      "process.exit(1)",
+    mockDatabasePlugin.getBundleById.mockImplementation((id: string) =>
+      Promise.resolve(buildBundle({ id, enabled: false })),
     );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.commitBundle).not.toHaveBeenCalled();
-    expect(mockCli.p.log.error).toHaveBeenCalledWith(
-      expect.stringContaining("would leave channel"),
+
+    const { handleRollback } = await import("./rollback");
+    await handleRollback("dev", { yes: true });
+
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
+      enabled: false,
+    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("and-2", {
+      enabled: false,
+    });
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("would revert to binary-shipped JS"),
     );
   });
 
-  it("proceeds with --confirm-revert-to-binary when the only-enabled-bundle case is acknowledged", async () => {
+  it("rolls back a specified platform to binary-shipped JS", async () => {
     stubGetBundlesByPlatform({
       ios: [buildBundle({ id: "ios-1", platform: "ios" })],
     });
@@ -190,7 +195,6 @@ describe("handleRollback", () => {
     await handleRollback("dev", {
       platform: "ios",
       yes: true,
-      confirmRevertToBinary: true,
     });
     expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
       enabled: false,

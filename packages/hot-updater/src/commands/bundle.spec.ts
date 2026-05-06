@@ -115,6 +115,21 @@ describe("handleBundleList", () => {
     expect(logSpy).toHaveBeenCalledWith("(no bundles)");
   });
 
+  it("prints raw paginated JSON and skips the banner when --json is passed", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const result = {
+      data: [buildBundle({ id: "B1" })],
+      pagination: { total: 1 },
+    };
+    mockDatabasePlugin.getBundles.mockResolvedValue(result);
+
+    const { handleBundleList } = await import("./bundle");
+    await handleBundleList({ json: true });
+
+    expect(mockPrintBanner).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(result, null, 2));
+  });
+
   it("forwards channel/platform/limit options to getBundles", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockDatabasePlugin.getBundles.mockResolvedValue({
