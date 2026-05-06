@@ -23,6 +23,8 @@ const colorIfPresent = (
 
 export const ui = {
   title: (text: string): string => colors.bold(colors.cyan(text)),
+  code: (text: StringValue): string => colors.dim(stringify(text)),
+  command: (text: StringValue): string => colors.green(stringify(text)),
   label: (text: string): string => colors.dim(text.padEnd(LABEL_WIDTH)),
   muted: (text: StringValue): string => colors.dim(stringify(text)),
   id: (value: StringValue): string => colorIfPresent(value, colors.yellow),
@@ -72,10 +74,7 @@ export const ui = {
         })
         .join(" │ ")} │`;
 
-    const header = renderRow(
-      (column) => column.label ?? column.key,
-      false,
-    );
+    const header = renderRow((column) => column.label ?? column.key, false);
     const body = rows.map((row) =>
       renderRow((column) => stringify(row[column.key]), true),
     );

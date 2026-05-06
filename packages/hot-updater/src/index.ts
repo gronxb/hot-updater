@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, log, p } from "@hot-updater/cli-tools";
+import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
@@ -29,6 +29,7 @@ import {
 import { init } from "@/commands/init";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
+import { ui } from "@/utils/cli-ui";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
@@ -268,8 +269,12 @@ program
     const androidVersion = await getNativeAppVersion("android");
     const iosVersion = await getNativeAppVersion("ios");
 
-    log.info(`Android version: ${androidVersion}`);
-    log.info(`iOS version: ${iosVersion}`);
+    p.log.message(
+      ui.block("App version", [
+        ui.kv("Android", ui.version(androidVersion)),
+        ui.kv("iOS", ui.version(iosVersion)),
+      ]),
+    );
   });
 
 // Database migration commands

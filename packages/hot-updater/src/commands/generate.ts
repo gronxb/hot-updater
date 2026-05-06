@@ -13,13 +13,13 @@ import {
 } from "kysely";
 import { format } from "sql-formatter";
 
+import { ui } from "../utils/cli-ui";
 import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,
 } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
 import { mergePrismaSchema } from "./utils/prisma-schema-merger";
-import { ui } from "../utils/cli-ui";
 
 // Supported database providers
 const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
@@ -180,9 +180,7 @@ async function generateWithMigrator(
         .digest("hex");
 
       if (existingHash === newSqlHash) {
-        p.log.warn(
-          `Identical migration already exists: ${file}`,
-        );
+        p.log.warn(`Identical migration already exists: ${file}`);
         p.outro("Done");
         return;
       }
@@ -272,9 +270,7 @@ async function generateWithSchemaGenerator(
         .digest("hex");
 
       if (existingHash === newSchemaHash) {
-        p.log.warn(
-          `Identical schema already exists: ${file}`,
-        );
+        p.log.warn(`Identical schema already exists: ${file}`);
         p.outro("Done");
         return;
       }
@@ -370,9 +366,12 @@ async function generatePrismaSchema(
   await writeFile(prismaSchemaPath, finalContent, "utf-8");
 
   p.log.success(
-    ui.line([
-      schemaExists ? "Updated" : "Created",
-      ui.path(prismaSchemaPath),
+    ui.line([schemaExists ? "Updated" : "Created", ui.path(prismaSchemaPath)]),
+  );
+  p.log.message(
+    ui.block("Run", [
+      ui.kv("Prisma", ui.command("npx prisma generate")),
+      ui.kv("Migrate", ui.command("npx prisma migrate dev")),
     ]),
   );
 }

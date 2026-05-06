@@ -1,12 +1,12 @@
 import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 
+import { ui } from "../utils/cli-ui";
 import {
   showMigrateUnsupportedError,
   validateMigratorSupport,
 } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
-import { ui } from "../utils/cli-ui";
 
 export interface MigrateOptions {
   configPath: string;
@@ -76,7 +76,9 @@ function formatOperations(operations: MigrationOperation[]): string[] {
             );
             for (const col of columns) {
               const paddedName = col.name.padEnd(maxNameLength);
-              changes.push(`    ${ui.platform(paddedName)}  ${ui.warning(col.type)}`);
+              changes.push(
+                `    ${ui.platform(paddedName)}  ${ui.warning(col.type)}`,
+              );
             }
           }
         }
@@ -258,7 +260,12 @@ async function migrateWithMigrator(
     process.exit(0);
   }
 
-  p.log.message(ui.block("Changes", changes.map((change) => `    ${change}`)));
+  p.log.message(
+    ui.block(
+      "Changes",
+      changes.map((change) => `    ${change}`),
+    ),
+  );
 
   // Confirmation
   if (!skipConfirm) {

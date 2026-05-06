@@ -435,15 +435,11 @@ export const handleDoctor = async ({
 
   if (details?.infrastructure) {
     const infrastructure = details.infrastructure;
-    const lines = [
-      ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint)),
-    ];
+    const lines = [ui.kv("Endpoint", ui.path(infrastructure.versionEndpoint))];
 
     if (infrastructure.serverVersion) {
       lines.push(ui.kv("Server", ui.version(infrastructure.serverVersion)));
-      lines.push(
-        ui.kv("Required", ui.version(infrastructure.requiredVersion)),
-      );
+      lines.push(ui.kv("Required", ui.version(infrastructure.requiredVersion)));
     }
     p.log.message(ui.block("Infrastructure", lines));
 

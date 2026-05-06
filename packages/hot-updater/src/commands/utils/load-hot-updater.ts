@@ -5,6 +5,8 @@ import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 import { createJiti } from "jiti";
 
+import { ui } from "../../utils/cli-ui";
+
 export interface HotUpdaterInstance {
   createMigrator?: () => Migrator;
   generateSchema?: (
@@ -59,16 +61,13 @@ const resolveConfigPath = (configPath: string) => {
     return defaultConfigPath;
   }
 
-  p.log.error(
-    "Could not find a Hot Updater config file.\n\n" +
-      "Pass the file that exports `hotUpdater`, for example:\n" +
-      "  hot-updater db generate src/db.ts\n" +
-      "  hot-updater db migrate src/db.ts\n\n" +
-      "Automatic lookup supports:\n" +
-      "  • hot-updater.config.{ts,js,mjs,cjs,mts,cts}\n" +
-      "  • src/hotUpdater.{ts,js,mjs,cjs,mts,cts}\n" +
-      "  • src/db.{ts,js,mjs,cjs,mts,cts}\n\n" +
-      "Or use `hot-updater db generate --sql` for standalone SQL export.",
+  p.log.error("Could not find a Hot Updater config file.");
+  p.log.message(
+    ui.block("Examples", [
+      ui.kv("Generate", ui.command("hot-updater db generate src/db.ts")),
+      ui.kv("Migrate", ui.command("hot-updater db migrate src/db.ts")),
+      ui.kv("SQL", ui.command("hot-updater db generate --sql")),
+    ]),
   );
   process.exit(1);
 };
@@ -83,13 +82,15 @@ export async function loadHotUpdater(
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {
-    p.log.error(`Config file not found: ${absoluteConfigPath}`);
+    p.log.error(
+      ui.line(["Config file not found:", ui.path(absoluteConfigPath)]),
+    );
     process.exit(1);
   }
 
   if (statSync(absoluteConfigPath).isDirectory()) {
     p.log.error(
-      `Config path must be a file that exports \`hotUpdater\`: ${absoluteConfigPath}`,
+      ui.line(["Config path must be a file:", ui.path(absoluteConfigPath)]),
     );
     process.exit(1);
   }
@@ -108,32 +109,15 @@ export async function loadHotUpdater(
       importError instanceof Error ? importError.message : String(importError);
 
     if (errorMessage.includes("is not a function")) {
-      p.log.error(
-        "Failed to load the config file due to an import error.\n" +
-          "This usually happens when:\n" +
-          "  1. '@hot-updater/server' package is not installed\n" +
-          "  2. The import statement is incorrect\n\n" +
-          "Solutions:\n" +
-          "  • Run: pnpm install @hot-updater/server\n" +
-          "  • Verify your import: import { createHotUpdater } from '@hot-updater/server'\n" +
-          "  • Ensure you're exporting: export const hotUpdater = createHotUpdater({...})",
-      );
+      p.log.error("Config import failed.");
     } else if (
       errorMessage.includes("Cannot find module") ||
       errorMessage.includes("Cannot find package")
     ) {
-      p.log.error(
-        "Failed to load required dependencies.\n\n" +
-          "Please run: pnpm install\n\n" +
-          "If the error persists, check that all packages in your config file are installed.",
-      );
+      p.log.error("Failed to load required dependencies.");
     } else {
       p.log.error(
-        `Failed to load configuration file: ${errorMessage}\n\n` +
-          "Please check:\n" +
-          "  • The config file syntax is valid TypeScript/JavaScript\n" +
-          "  • All imported packages are installed\n" +
-          "  • The file path is correct",
+        ui.line(["Failed to load configuration file:", errorMessage]),
       );
     }
 
@@ -152,15 +136,14 @@ export async function loadHotUpdater(
     moduleExports["default"]) as HotUpdaterInstance | undefined;
 
   if (!hotUpdater) {
-    p.log.error(
-      'Could not find "hotUpdater" export in the config file.\n\n' +
-        "Your config file should export a hotUpdater instance:\n\n" +
-        "  import { createHotUpdater } from '@hot-updater/server';\n" +
-        "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
-        "  export const hotUpdater = createHotUpdater({\n" +
-        "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
-        "    storages: [...],\n" +
-        "  });",
+    p.log.error('Could not find "hotUpdater" export in the config file.');
+    p.log.message(
+      ui.block("Export", [
+        ui.kv(
+          "Code",
+          ui.code("export const hotUpdater = createHotUpdater({ ... })"),
+        ),
+      ]),
     );
     process.exit(1);
   }

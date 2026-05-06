@@ -59,11 +59,7 @@ const buildNativeInternal = async ({
       outputPath,
     });
     p.log.success(
-      ui.line([
-        "Built",
-        ui.platform(platformName),
-        ui.muted(buildPlugin.name),
-      ]),
+      ui.line(["Built", ui.platform(platformName), ui.muted(buildPlugin.name)]),
     );
   } catch (e) {
     catchError(e);

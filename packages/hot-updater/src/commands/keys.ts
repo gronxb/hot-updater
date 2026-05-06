@@ -60,6 +60,17 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
         ui.kv("Gitignore", gitignoreUpdated ? `${keysDir}/` : "unchanged"),
       ]),
     );
+    p.log.message(
+      ui.block("Config", [
+        ui.kv(
+          "Code",
+          ui.code(
+            'signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+          ),
+        ),
+        ui.kv("Run", ui.command("hot-updater keys export-public")),
+      ]),
+    );
     p.log.warn("Keep private key secure.");
   } catch (error) {
     spinner.error("Failed to generate keys");
@@ -438,7 +449,10 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   const foundKeys: string[] = [];
   if (iosKey.value) {
     foundKeys.push(
-      ui.kv("iOS", iosKey.paths.map((targetPath) => ui.path(targetPath)).join(", ")),
+      ui.kv(
+        "iOS",
+        iosKey.paths.map((targetPath) => ui.path(targetPath)).join(", "),
+      ),
     );
   }
   if (androidKey.value) {
