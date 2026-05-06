@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.30.8",
+  "version": "0.30.9",
   "files": [
     ".output",
     "package.json"
