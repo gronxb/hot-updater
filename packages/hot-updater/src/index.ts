@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-import { Command, Option } from "@commander-js/extra-typings";
+import {
+  Command,
+  InvalidArgumentError,
+  Option,
+} from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, log, p } from "@hot-updater/cli-tools";
@@ -29,6 +33,7 @@ import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -82,6 +87,57 @@ channelCommand
   .description("Set the channel for Android (BuildConfig) and iOS (Info.plist)")
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+const bundleCommand = program.command("bundle").description("Manage bundles");
+
+bundleCommand
+  .command("list")
+  .description("List bundles, most recent first")
+  .option("-c, --channel <channel>", "filter by channel")
+  .addOption(platformCommandOption)
+  .option(
+    "--limit <n>",
+    "limit the number of results",
+    (value) => {
+      const n = Number.parseInt(value, 10);
+      if (!Number.isInteger(n) || n <= 0) {
+        throw new InvalidArgumentError("must be a positive integer");
+      }
+      return n;
+    },
+    20,
+  )
+  .addHelpText(
+    "after",
+    `\nExit codes:\n  0  success\n  1  configuration error or DB error\n`,
+  )
+  .action(handleBundleList);
+
+bundleCommand
+  .command("disable")
+  .description("Disable a bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to disable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .addHelpText(
+    "after",
+    `\nDisables a bundle and re-reads its state to confirm the change.\n\nExit codes:\n  0  bundle is disabled (or was already disabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running disable on an already-disabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
+  )
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, false, options),
+  );
+
+bundleCommand
+  .command("enable")
+  .description("Re-enable a previously disabled bundle by id")
+  .argument("<bundle-id>", "the id of the bundle to enable")
+  .option("-y, --yes", "skip confirmation prompt")
+  .addHelpText(
+    "after",
+    `\nRe-enables a previously disabled bundle and re-reads its state to confirm.\n\nExit codes:\n  0  bundle is enabled (or was already enabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running enable on an already-enabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
+  )
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleSetEnabled(bundleId, true, options),
+  );
 
 const keysCommand = program
   .command("keys")
