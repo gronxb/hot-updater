@@ -8,7 +8,7 @@ import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -232,37 +232,40 @@ describe("createCopiedBundleArchive", () => {
         }),
       });
       const uploadedFiles = new Map<string, string>();
-      const storagePlugin: StoragePlugin = {
+      const storagePlugin: NodeStoragePlugin = {
         name: "mockStorage",
         supportedProtocol: "s3",
-        delete: vi.fn(),
-        download: vi.fn(async (_storageUri, filePath) => {
-          await fs.copyFile(archivePath, filePath);
-        }),
-        getDownloadUrl: vi.fn(),
-        upload: vi.fn(async (key, filePath) => {
-          const uploadPath = path.join(
-            path.dirname(archivePath),
-            "uploads",
-            key,
-          );
-          const finalPath = path.join(uploadPath, path.basename(filePath));
-          await fs.mkdir(path.dirname(finalPath), { recursive: true });
-          await fs.copyFile(filePath, finalPath);
-          uploadedFiles.set(
-            path.posix.join(key, path.basename(filePath)),
-            finalPath,
-          );
-          return {
-            storageUri: `s3://bucket/${path
-              .relative(
-                path.join(path.dirname(archivePath), "uploads"),
+        profiles: {
+          node: {
+            delete: vi.fn(),
+            downloadFile: vi.fn(async (_storageUri, filePath) => {
+              await fs.copyFile(archivePath, filePath);
+            }),
+            upload: vi.fn(async (key, filePath) => {
+              const uploadPath = path.join(
+                path.dirname(archivePath),
+                "uploads",
+                key,
+              );
+              const finalPath = path.join(uploadPath, path.basename(filePath));
+              await fs.mkdir(path.dirname(finalPath), { recursive: true });
+              await fs.copyFile(filePath, finalPath);
+              uploadedFiles.set(
+                path.posix.join(key, path.basename(filePath)),
                 finalPath,
-              )
-              .split(path.sep)
-              .join("/")}`,
-          };
-        }),
+              );
+              return {
+                storageUri: `s3://bucket/${path
+                  .relative(
+                    path.join(path.dirname(archivePath), "uploads"),
+                    finalPath,
+                  )
+                  .split(path.sep)
+                  .join("/")}`,
+              };
+            }),
+          },
+        },
       };
 
       vi.stubGlobal(
@@ -336,15 +339,18 @@ describe("createCopiedBundleArchive", () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "index.js": "console.log('hello');",
     });
-    const storagePlugin: StoragePlugin = {
+    const storagePlugin: NodeStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      delete: vi.fn(),
-      download: vi.fn(async (_storageUri, filePath) => {
-        await fs.copyFile(archivePath, filePath);
-      }),
-      getDownloadUrl: vi.fn(),
-      upload: vi.fn(),
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(async (_storageUri, filePath) => {
+            await fs.copyFile(archivePath, filePath);
+          }),
+          upload: vi.fn(),
+        },
+      },
     };
 
     vi.stubGlobal(
@@ -386,21 +392,24 @@ describe("createCopiedBundleArchive", () => {
       }),
     });
     const deleteFromStorage = vi.fn();
-    const storagePlugin: StoragePlugin = {
+    const storagePlugin: NodeStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      delete: deleteFromStorage,
-      download: vi.fn(async (_storageUri, filePath) => {
-        await fs.copyFile(archivePath, filePath);
-      }),
-      getDownloadUrl: vi.fn(),
-      upload: vi.fn(async (key, filePath) => {
-        return {
-          storageUri: `s3://bucket/${path.posix
-            .join(key, path.basename(filePath))
-            .replaceAll("//", "/")}`,
-        };
-      }),
+      profiles: {
+        node: {
+          delete: deleteFromStorage,
+          downloadFile: vi.fn(async (_storageUri, filePath) => {
+            await fs.copyFile(archivePath, filePath);
+          }),
+          upload: vi.fn(async (key, filePath) => {
+            return {
+              storageUri: `s3://bucket/${path.posix
+                .join(key, path.basename(filePath))
+                .replaceAll("//", "/")}`,
+            };
+          }),
+        },
+      },
     };
     const databasePlugin = {
       name: "mockDatabase",

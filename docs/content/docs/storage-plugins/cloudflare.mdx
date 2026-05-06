@@ -82,17 +82,40 @@ export default defineConfig({
 });
 ```
 
+## Runtime Usage
+
+`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
+profile and uses Wrangler to upload, delete, and download objects to local
+files.
+
+Cloudflare Workers should use the Worker runtime export instead:
+
+```typescript
+import { r2Storage } from "@hot-updater/cloudflare/worker";
+import { createHotUpdater } from "@hot-updater/server/runtime";
+
+export const hotUpdater = createHotUpdater({
+  storages: [
+    r2Storage({
+      publicBaseUrl: (context) => new URL(context!.request!.url).origin,
+    }),
+  ],
+  // ... other options
+});
+```
+
+The Worker runtime plugin implements the `runtime` profile. It signs bundle
+download URLs and reads manifest metadata directly from the R2 binding, so
+manifest diff calculation does not depend on the Worker fetching its own signed
+public URL.
+
 ## Limitations
 
-- `download()` downloads private R2 objects to the provided local file path
-  through Wrangler. This is intended for deploy-time tooling such as partial
-  update generation.
-- `getDownloadUrl()` is not supported because R2's Wrangler API cannot provide
-  an HTTP(S) presigned URL for runtime/browser downloads.
-- For public presigned URLs, use `s3Storage` from `@hot-updater/aws` with R2 S3
-  API credentials.
-- Uses CLI instead of SDK (slower performance)
-- Limited compared to S3-compatible approach
+- `r2Storage` does not implement the runtime profile.
+- `r2Storage` uses Wrangler instead of the R2 S3-compatible SDK, so it is slower
+  than the S3-compatible approach.
+- For a single plugin that supports both deploy-time and runtime profiles, use
+  `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
 
 ## Protocol
 

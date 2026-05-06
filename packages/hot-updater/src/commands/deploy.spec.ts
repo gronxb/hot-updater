@@ -13,7 +13,14 @@ const {
   };
   const mockStoragePlugin = {
     name: "mock-storage",
-    upload: vi.fn(),
+    supportedProtocol: "s3",
+    profiles: {
+      node: {
+        delete: vi.fn(),
+        downloadFile: vi.fn(),
+        upload: vi.fn(),
+      },
+    },
   };
   const mockDatabasePlugin = {
     appendBundle: vi.fn(),
@@ -283,7 +290,7 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
-    mockStoragePlugin.upload.mockResolvedValue({
+    mockStoragePlugin.profiles.node.upload.mockResolvedValue({
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
     mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
@@ -445,18 +452,20 @@ describe("deploy rollout wiring", () => {
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
-    mockStoragePlugin.upload.mockImplementation(async (key, filePath) => {
-      const filename =
-        filePath === "/mock/build/manifest.json"
-          ? "manifest.json"
-          : filePath === "/mock/build/index.bundle"
-            ? "index.bundle"
-            : "bundle.tar.br";
+    mockStoragePlugin.profiles.node.upload.mockImplementation(
+      async (key, filePath) => {
+        const filename =
+          filePath === "/mock/build/manifest.json"
+            ? "manifest.json"
+            : filePath === "/mock/build/index.bundle"
+              ? "index.bundle"
+              : "bundle.tar.br";
 
-      return {
-        storageUri: `s3://bundles/${key}/${filename}`,
-      };
-    });
+        return {
+          storageUri: `s3://bundles/${key}/${filename}`,
+        };
+      },
+    );
 
     await deploy({
       channel: "production",
@@ -466,7 +475,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         assetBaseStorageUri: "s3://bundles/bundle-123/files",
@@ -503,11 +512,11 @@ describe("deploy rollout wiring", () => {
       "/mock/build/index.ios.bundle.hbc",
       "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
     );
-    expect(mockStoragePlugin.upload).toHaveBeenCalledWith(
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
       "bundle-123/files",
       "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
     );
-    expect(mockStoragePlugin.upload).toHaveBeenCalledWith(
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
       "bundle-123/files/assets/src",
       "/mock/build/assets/src/logo.png",
     );

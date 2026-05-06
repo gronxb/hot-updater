@@ -13,9 +13,10 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
+  NodeStoragePlugin,
   Platform,
-  StoragePlugin,
 } from "@hot-updater/plugin-core";
+import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -160,7 +161,7 @@ const createAutoPatches = async ({
   databasePlugin: DatabasePlugin;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: StoragePlugin;
+  storagePlugin: NodeStoragePlugin;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
@@ -475,6 +476,7 @@ export const deploy = async (options: DeployOptions) => {
     config.storage(),
     config.database(),
   ]);
+  assertNodeStoragePlugin(storagePlugin);
 
   try {
     const taskRef: {
@@ -641,7 +643,7 @@ export const deploy = async (options: DeployOptions) => {
           }
 
           try {
-            const { storageUri } = await storagePlugin.upload(
+            const { storageUri } = await storagePlugin.profiles.node.upload(
               bundleId,
               bundlePath,
             );
@@ -651,7 +653,7 @@ export const deploy = async (options: DeployOptions) => {
               throw new Error("Manifest path not found");
             }
 
-            const manifestUpload = await storagePlugin.upload(
+            const manifestUpload = await storagePlugin.profiles.node.upload(
               bundleId,
               taskRef.manifestPath,
             );
@@ -673,7 +675,10 @@ export const deploy = async (options: DeployOptions) => {
                   targetFile,
                 });
 
-                return storagePlugin.upload(uploadKey, uploadSourcePath);
+                return storagePlugin.profiles.node.upload(
+                  uploadKey,
+                  uploadSourcePath,
+                );
               }),
             );
           } catch (e) {

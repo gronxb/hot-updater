@@ -17,7 +17,7 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { detectCompressionFormat } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
@@ -44,7 +44,7 @@ export interface PromoteBundleInput {
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
   databasePlugin: DatabasePlugin;
-  storagePlugin: StoragePlugin | null;
+  storagePlugin: NodeStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -107,7 +107,7 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
 
 async function downloadArchive(
   storageUri: string,
-  storagePlugin: StoragePlugin | null,
+  storagePlugin: NodeStoragePlugin | null,
   archivePath: string,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
@@ -134,7 +134,7 @@ async function downloadFromUrl(fileUrl: string) {
 
 async function downloadFromStorage(
   storageUri: string,
-  storagePlugin: StoragePlugin | null,
+  storagePlugin: NodeStoragePlugin | null,
   filePath: string,
 ) {
   if (!storagePlugin) {
@@ -146,7 +146,7 @@ async function downloadFromStorage(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  await storagePlugin.download(storageUri, filePath);
+  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -283,7 +283,7 @@ export async function createCopiedBundleArchive({
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: StoragePlugin;
+  storagePlugin: NodeStoragePlugin;
   targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
@@ -332,12 +332,12 @@ export async function createCopiedBundleArchive({
       ? await signFileHash(manifestHash, signingKeyPath)
       : manifestHash;
 
-    const archiveUpload = await storagePlugin.upload(
+    const archiveUpload = await storagePlugin.profiles.node.upload(
       nextBundleId,
       outputArchivePath,
     );
     uploadedStorageUris.push(archiveUpload.storageUri);
-    const manifestUpload = await storagePlugin.upload(
+    const manifestUpload = await storagePlugin.profiles.node.upload(
       nextBundleId,
       manifestPath,
     );
@@ -352,7 +352,7 @@ export async function createCopiedBundleArchive({
       const uploadKey = [nextBundleId, "files", relativeDir]
         .filter(Boolean)
         .join("/");
-      const assetUpload = await storagePlugin.upload(
+      const assetUpload = await storagePlugin.profiles.node.upload(
         uploadKey,
         path.join(extractDir, assetPath),
       );
@@ -392,7 +392,7 @@ export async function createCopiedBundleArchive({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: StoragePlugin,
+  storagePlugin: NodeStoragePlugin,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -401,7 +401,7 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.delete(storageUri);
+      await storagePlugin.profiles.node.delete(storageUri);
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }

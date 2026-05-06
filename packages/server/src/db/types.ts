@@ -8,7 +8,7 @@ import type {
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   HotUpdaterContext,
-  StoragePlugin,
+  RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { sqlProviders, type Provider, type SQLProvider } from "fumadb";
 
@@ -111,4 +111,4 @@ export interface DatabaseAPI<TContext = unknown> {
 }
 
 export type StoragePluginFactory<TContext = unknown> =
-  () => StoragePlugin<TContext>;
+  () => RuntimeStoragePlugin<TContext>;

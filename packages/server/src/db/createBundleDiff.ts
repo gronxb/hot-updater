@@ -13,7 +13,7 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
@@ -28,7 +28,7 @@ export interface CreateBundleDiffInput {
 
 export interface CreateBundleDiffDependencies {
   databasePlugin: DatabasePlugin;
-  storagePlugin: StoragePlugin | null;
+  storagePlugin: NodeStoragePlugin | null;
 }
 
 export interface CreateBundleDiffOptions {
@@ -108,7 +108,7 @@ async function downloadFromUrl(url: string) {
 
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: StoragePlugin | null,
+  storagePlugin: NodeStoragePlugin | null,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -133,7 +133,7 @@ async function downloadStorageBytes(
   const filePath = path.join(workDir, filename);
 
   try {
-    await storagePlugin.download(storageUri, filePath);
+    await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
     return new Uint8Array(await fs.readFile(filePath));
   } finally {
     await fs.rm(workDir, { force: true, recursive: true });
@@ -142,7 +142,7 @@ async function downloadStorageBytes(
 
 async function fetchManifest(
   bundle: Bundle,
-  storagePlugin: StoragePlugin | null,
+  storagePlugin: NodeStoragePlugin | null,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -179,7 +179,7 @@ function resolveHbcAssetPath(manifest: BundleManifest) {
 async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
-  storagePlugin: StoragePlugin | null,
+  storagePlugin: NodeStoragePlugin | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
@@ -293,7 +293,10 @@ export async function createBundleDiff(
     ]
       .filter(Boolean)
       .join("/");
-    const patchUpload = await deps.storagePlugin.upload(uploadKey, patchPath);
+    const patchUpload = await deps.storagePlugin.profiles.node.upload(
+      uploadKey,
+      patchPath,
+    );
     const patchFileHash = await getFileHash(patchPath);
 
     const nextPatch = {
@@ -321,7 +324,7 @@ export async function createBundleDiff(
       previousPatch?.patchStorageUri &&
       previousPatch.patchStorageUri !== patchUpload.storageUri
     ) {
-      await deps.storagePlugin
+      await deps.storagePlugin.profiles.node
         .delete(previousPatch.patchStorageUri)
         .catch(() => {
           return;

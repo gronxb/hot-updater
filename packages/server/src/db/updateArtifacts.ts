@@ -15,6 +15,16 @@ type BundleManifest = {
   assets: Record<string, { fileHash: string; signature?: string }>;
 };
 
+type ResolveFileUrl<TContext> = (
+  storageUri: string | null,
+  context?: HotUpdaterContext<TContext>,
+) => Promise<string | null>;
+
+type ReadStorageText<TContext> = (
+  storageUri: string,
+  context?: HotUpdaterContext<TContext>,
+) => Promise<string | null>;
+
 const HBC_ASSET_PATH_RE = /\.bundle$/;
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
@@ -128,25 +138,28 @@ export const parseBundleRawMetadata = (
 
 async function fetchBundleManifest<TContext>(
   storageUri: string,
-  resolveFileUrl: (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<string | null>,
+  readStorageText: ReadStorageText<TContext>,
+  resolveFileUrl: ResolveFileUrl<TContext>,
   context?: HotUpdaterContext<TContext>,
 ): Promise<{ fileUrl: string; manifest: BundleManifest } | null> {
-  const fileUrl = await resolveFileUrl(storageUri, context);
-
-  if (!fileUrl) {
+  const storageText = await readStorageText(storageUri, context);
+  if (storageText === null) {
     return null;
   }
 
-  const response = await fetch(fileUrl);
-  if (!response.ok) {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(storageText) as unknown;
+  } catch {
     return null;
   }
 
-  const payload = (await response.json()) as unknown;
   if (!isBundleManifest(payload)) {
+    return null;
+  }
+
+  const fileUrl = await resolveFileUrl(storageUri, context);
+  if (!fileUrl) {
     return null;
   }
 
@@ -165,10 +178,7 @@ async function resolveChangedAssets<TContext>({
 }: {
   assetBaseStorageUri: string;
   currentManifest: BundleManifest | null;
-  resolveFileUrl: (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<string | null>;
+  resolveFileUrl: ResolveFileUrl<TContext>;
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Record<string, ChangedAsset>> {
@@ -226,10 +236,7 @@ async function attachHbcPatchDescriptor<TContext>({
 }: {
   changedAssets: Record<string, ChangedAsset>;
   currentBundle: Bundle | null;
-  resolveFileUrl: (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<string | null>;
+  resolveFileUrl: ResolveFileUrl<TContext>;
   targetBundle: Bundle | null;
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
@@ -279,14 +286,13 @@ async function attachHbcPatchDescriptor<TContext>({
 export async function resolveManifestArtifacts<TContext>({
   currentBundle,
   resolveFileUrl,
+  readStorageText,
   targetBundle,
   context,
 }: {
   currentBundle: Bundle | null;
-  resolveFileUrl: (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<string | null>;
+  resolveFileUrl: ResolveFileUrl<TContext>;
+  readStorageText: ReadStorageText<TContext>;
   targetBundle: Bundle | null;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Pick<
@@ -309,6 +315,7 @@ export async function resolveManifestArtifacts<TContext>({
 
   const targetManifestResult = await fetchBundleManifest(
     manifestStorageUri,
+    readStorageText,
     resolveFileUrl,
     context,
   );
@@ -323,6 +330,7 @@ export async function resolveManifestArtifacts<TContext>({
   const currentManifestResult = currentManifestStorageUri
     ? await fetchBundleManifest(
         currentManifestStorageUri,
+        readStorageText,
         resolveFileUrl,
         context,
       )

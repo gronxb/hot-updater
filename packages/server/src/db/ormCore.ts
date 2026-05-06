@@ -223,10 +223,15 @@ export type Migrator = ReturnType<HotUpdaterClient["createMigrator"]>;
 export function createOrmDatabaseCore<TContext = unknown>({
   database,
   resolveFileUrl,
+  readStorageText,
 }: {
   database: ORMDatabaseAdapter;
   resolveFileUrl: (
     storageUri: string | null,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<string | null>;
+  readStorageText?: (
+    storageUri: string,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>;
 }): {
@@ -732,31 +737,32 @@ export function createOrmDatabaseCore<TContext = unknown>({
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
       const baseResponse = { ...rest, fileUrl };
 
-      try {
-        const currentBundle =
-          args.bundleId !== NIL_UUID
-            ? await fetchBundleById(args.bundleId)
-            : null;
-        const targetBundle =
-          info.id !== NIL_UUID ? await fetchBundleById(info.id) : null;
-        const manifestArtifacts = await resolveManifestArtifacts({
-          currentBundle,
-          resolveFileUrl,
-          targetBundle,
-          context,
-        });
-
-        if (!manifestArtifacts) {
-          return baseResponse;
-        }
-
-        return {
-          ...baseResponse,
-          ...manifestArtifacts,
-        };
-      } catch {
+      if (!readStorageText) {
         return baseResponse;
       }
+
+      const currentBundle =
+        args.bundleId !== NIL_UUID
+          ? await fetchBundleById(args.bundleId)
+          : null;
+      const targetBundle =
+        info.id !== NIL_UUID ? await fetchBundleById(info.id) : null;
+      const manifestArtifacts = await resolveManifestArtifacts({
+        currentBundle,
+        resolveFileUrl,
+        readStorageText,
+        targetBundle,
+        context,
+      });
+
+      if (!manifestArtifacts) {
+        return baseResponse;
+      }
+
+      return {
+        ...baseResponse,
+        ...manifestArtifacts,
+      };
     },
 
     async getChannels(): Promise<string[]> {

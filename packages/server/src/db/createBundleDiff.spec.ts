@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
+  NodeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -74,25 +75,26 @@ const createDatabasePlugin = (
 });
 
 const createStoragePlugin = (
-  upload: StoragePlugin["upload"],
-): StoragePlugin => ({
+  upload: NodeStorageProfile["upload"],
+): NodeStoragePlugin => ({
   name: "mockStorage",
   supportedProtocol: "s3",
-  async delete() {},
-  async getDownloadUrl(storageUri) {
-    const storageUrl = new URL(storageUri);
-    return {
-      fileUrl: `https://assets.example.com${storageUrl.pathname}`,
-    };
+  profiles: {
+    node: {
+      async delete() {},
+      async downloadFile(storageUri, filePath) {
+        const storageUrl = new URL(storageUri);
+        const response = await fetch(
+          `https://assets.example.com${storageUrl.pathname}`,
+        );
+        await fs.writeFile(
+          filePath,
+          new Uint8Array(await response.arrayBuffer()),
+        );
+      },
+      upload,
+    },
   },
-  async download(storageUri, filePath) {
-    const storageUrl = new URL(storageUri);
-    const response = await fetch(
-      `https://assets.example.com${storageUrl.pathname}`,
-    );
-    await fs.writeFile(filePath, new Uint8Array(await response.arrayBuffer()));
-  },
-  upload,
 });
 
 describe("createBundleDiff", () => {
@@ -111,9 +113,11 @@ describe("createBundleDiff", () => {
       [baseBundle.id, baseBundle],
       [targetBundle.id, targetBundle],
     ]);
-    const upload = vi.fn<StoragePlugin["upload"]>(async (key, filePath) => ({
-      storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
-    }));
+    const upload = vi.fn<NodeStorageProfile["upload"]>(
+      async (key, filePath) => ({
+        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
+      }),
+    );
 
     vi.stubGlobal(
       "fetch",
@@ -218,9 +222,11 @@ describe("createBundleDiff", () => {
       [secondaryBaseBundle.id, secondaryBaseBundle],
       [targetBundle.id, targetBundle],
     ]);
-    const upload = vi.fn<StoragePlugin["upload"]>(async (key, filePath) => ({
-      storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
-    }));
+    const upload = vi.fn<NodeStorageProfile["upload"]>(
+      async (key, filePath) => ({
+        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
+      }),
+    );
 
     vi.stubGlobal(
       "fetch",

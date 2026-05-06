@@ -112,6 +112,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
     cleanupMutationPlugin?: (
       plugin: DatabasePlugin<TContext>,
     ) => Promise<void> | void;
+    readStorageText?: (
+      storageUri: string,
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<string | null>;
   },
 ): {
   api: DatabaseAPI<TContext>;
@@ -353,29 +357,31 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return baseResponse;
       }
 
-      const targetBundle = await getPlugin().getBundleById(info.id, context);
-      try {
-        const currentBundle =
-          args.bundleId !== NIL_UUID
-            ? await getPlugin().getBundleById(args.bundleId, context)
-            : null;
-        const manifestArtifacts = await resolveManifestArtifacts({
-          currentBundle,
-          resolveFileUrl,
-          targetBundle,
-          context,
-        });
-        if (!manifestArtifacts) {
-          return baseResponse;
-        }
-
-        return {
-          ...baseResponse,
-          ...manifestArtifacts,
-        };
-      } catch {
+      const readStorageText = options?.readStorageText;
+      if (!readStorageText) {
         return baseResponse;
       }
+
+      const targetBundle = await getPlugin().getBundleById(info.id, context);
+      const currentBundle =
+        args.bundleId !== NIL_UUID
+          ? await getPlugin().getBundleById(args.bundleId, context)
+          : null;
+      const manifestArtifacts = await resolveManifestArtifacts({
+        currentBundle,
+        resolveFileUrl,
+        readStorageText,
+        targetBundle,
+        context,
+      });
+      if (!manifestArtifacts) {
+        return baseResponse;
+      }
+
+      return {
+        ...baseResponse,
+        ...manifestArtifacts,
+      };
     },
 
     async getChannels(

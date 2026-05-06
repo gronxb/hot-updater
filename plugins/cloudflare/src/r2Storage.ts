@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createNodeStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -24,7 +24,7 @@ export interface R2StorageConfig {
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
  */
-export const r2Storage = createStoragePlugin<R2StorageConfig>({
+export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
   factory: (config) => {
@@ -91,19 +91,7 @@ export const r2Storage = createStoragePlugin<R2StorageConfig>({
           storageUri: `r2://${bucketName}/${Key}`,
         };
       },
-      async getDownloadUrl(storageUri) {
-        const { bucket } = parseStorageUri(storageUri, "r2");
-        if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-          );
-        }
-
-        throw new Error(
-          "`r2Storage` does not support `getDownloadUrl()` outside deploy-time tooling. Use the Cloudflare worker storage from `@hot-updater/cloudflare/worker` in serverless runtimes, or use `s3Storage` from `@hot-updater/aws` with Cloudflare R2 S3 API credentials for presigned URLs.",
-        );
-      },
-      async download(storageUri, filePath) {
+      async downloadFile(storageUri, filePath) {
         const { bucket, key } = parseStorageUri(storageUri, "r2");
         if (bucket !== bucketName) {
           throw new Error(

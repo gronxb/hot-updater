@@ -22,9 +22,9 @@ const adminOptions = admin.app().options;
 const storageBucket = adminOptions.storageBucket;
 const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
 
-if (!storageBucket && !cdnUrl) {
+if (!storageBucket) {
   throw new Error(
-    "Firebase runtime requires storageBucket or HOT_UPDATER_CDN_URL to resolve bundle URLs.",
+    "Firebase runtime requires storageBucket to read bundle manifests.",
   );
 }
 

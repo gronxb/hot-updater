@@ -180,24 +180,23 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     getUpdateInfo,
     manifestArtifacts: {
       prepareArtifacts: async (fixture) => {
+        await Promise.all([
+          putR2Object(
+            `${fixture.currentBundleId}/manifest.json`,
+            JSON.stringify(fixture.currentManifest),
+            "application/json",
+          ),
+          putR2Object(
+            `${fixture.nextBundleId}/manifest.json`,
+            JSON.stringify(fixture.nextManifest),
+            "application/json",
+          ),
+        ]);
+
         vi.stubGlobal(
           "fetch",
-          vi.fn<typeof fetch>(async (input) => {
-            const url = String(input);
-
-            if (url.endsWith(`${fixture.currentBundleId}/manifest.json`)) {
-              return new Response(JSON.stringify(fixture.currentManifest), {
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            if (url.endsWith(`${fixture.nextBundleId}/manifest.json`)) {
-              return new Response(JSON.stringify(fixture.nextManifest), {
-                headers: { "content-type": "application/json" },
-              });
-            }
-
-            return new Response("not found", { status: 404 });
+          vi.fn<typeof fetch>(async () => {
+            return new Response("worker subrequest failed", { status: 502 });
           }),
         );
 
@@ -208,12 +207,12 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           currentMetadata: {
             asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
             manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.currentBundleId}/manifest.json`,
+            manifest_storage_uri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
           },
           nextMetadata: {
             asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
             manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.nextBundleId}/manifest.json`,
+            manifest_storage_uri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
@@ -234,6 +233,16 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     prepareArtifacts: async (fixture) => {
       await Promise.all([
         putR2Object(
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        putR2Object(
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
+        putR2Object(
           fixture.patchPath,
           "patch-bytes",
           "application/octet-stream",
@@ -252,22 +261,8 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
       vi.stubGlobal(
         "fetch",
-        vi.fn<typeof fetch>(async (input) => {
-          const url = String(input);
-
-          if (url.endsWith(`${fixture.currentBundleId}/manifest.json`)) {
-            return new Response(JSON.stringify(fixture.currentManifest), {
-              headers: { "content-type": "application/json" },
-            });
-          }
-
-          if (url.endsWith(`${fixture.nextBundleId}/manifest.json`)) {
-            return new Response(JSON.stringify(fixture.nextManifest), {
-              headers: { "content-type": "application/json" },
-            });
-          }
-
-          return new Response("not found", { status: 404 });
+        vi.fn<typeof fetch>(async () => {
+          return new Response("worker subrequest failed", { status: 502 });
         }),
       );
 
@@ -278,7 +273,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         currentMetadata: {
           asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.currentBundleId}/manifest.json`,
+          manifest_storage_uri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
         },
         nextMetadata: {
           asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
@@ -287,7 +282,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           hbc_patch_file_hash: "hash-bsdiff",
           hbc_patch_storage_uri: `r2://bundles/${fixture.patchPath}`,
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `https://manifest-fixtures.example.com/${fixture.nextBundleId}/manifest.json`,
+          manifest_storage_uri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
         },
       };
     },

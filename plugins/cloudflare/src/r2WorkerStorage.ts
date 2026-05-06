@@ -1,12 +1,15 @@
 import { signToken } from "@hot-updater/js";
-import type {
-  HotUpdaterContext,
-  RequestEnvContext,
-  StoragePlugin,
+import {
+  createRuntimeStoragePlugin,
+  type HotUpdaterContext,
+  type RequestEnvContext,
 } from "@hot-updater/plugin-core";
 
 export interface CloudflareWorkerStorageEnv {
   JWT_SECRET: string;
+  BUCKET: {
+    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+  };
 }
 
 type ContextResolver<TContext, TValue> = (
@@ -43,30 +46,54 @@ const resolveJwtSecretFromContext = (
   return jwtSecret;
 };
 
+const resolveR2BucketFromContext = (
+  context?: RequestEnvContext<CloudflareWorkerStorageEnv>,
+) => {
+  const bucket = context?.env?.BUCKET;
+
+  if (!bucket) {
+    throw new Error(
+      "r2WorkerStorage requires env.BUCKET in the hot updater context.",
+    );
+  }
+
+  return bucket;
+};
+
+const createPublicObjectPath = (storageUrl: URL) =>
+  `${storageUrl.host}${storageUrl.pathname}`;
+
+const createR2ObjectKey = (storageUrl: URL) =>
+  storageUrl.pathname.replace(/^\/+/, "");
+
 export const r2WorkerStorage = <
   TContext extends RequestEnvContext<CloudflareWorkerStorageEnv> =
     RequestEnvContext<CloudflareWorkerStorageEnv>,
 >(
   config: CloudflareWorkerStorageConfig<TContext>,
 ) => {
-  return (): StoragePlugin<TContext> => {
-    return {
-      name: "r2WorkerStorage",
-      supportedProtocol: "r2",
-      async upload() {
-        throw new Error(
-          "r2WorkerStorage does not support upload() in the worker runtime.",
-        );
-      },
-      async delete() {
-        throw new Error(
-          "r2WorkerStorage does not support delete() in the worker runtime.",
-        );
-      },
-      async download() {
-        throw new Error(
-          "r2WorkerStorage does not support download() in the worker runtime.",
-        );
+  return createRuntimeStoragePlugin<
+    CloudflareWorkerStorageConfig<TContext>,
+    TContext
+  >({
+    name: "r2WorkerStorage",
+    supportedProtocol: "r2",
+    factory: (config) => ({
+      async readText(storageUri, context) {
+        const storageUrl = new URL(storageUri);
+
+        if (storageUrl.protocol !== "r2:") {
+          throw new Error("Invalid R2 storage URI protocol");
+        }
+
+        const bucket = resolveR2BucketFromContext(context);
+        const key = createR2ObjectKey(storageUrl);
+        const object = await bucket.get(key);
+        if (!object) {
+          return null;
+        }
+
+        return object.text();
       },
       async getDownloadUrl(storageUri, context) {
         const storageUrl = new URL(storageUri);
@@ -75,7 +102,7 @@ export const r2WorkerStorage = <
           throw new Error("Invalid R2 storage URI protocol");
         }
 
-        const key = `${storageUrl.host}${storageUrl.pathname}`;
+        const key = createPublicObjectPath(storageUrl);
         const [jwtSecret, publicBaseUrl] = await Promise.all([
           resolveContextValue(
             config.jwtSecret ?? resolveJwtSecretFromContext,
@@ -94,6 +121,6 @@ export const r2WorkerStorage = <
           fileUrl: url.toString(),
         };
       },
-    };
-  };
+    }),
+  })(config);
 };

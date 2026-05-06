@@ -45,7 +45,7 @@ describe("r2Storage", () => {
     const downloadPath = "/tmp/hot-updater-test-manifest.json";
     await fs.rm(downloadPath, { force: true });
 
-    await storage.download(
+    await storage.profiles.node.downloadFile(
       "r2://test-bucket/releases/bundle-1/manifest.json",
       downloadPath,
     );
@@ -73,7 +73,7 @@ describe("r2Storage", () => {
     })();
 
     await expect(
-      storage.download(
+      storage.profiles.node.downloadFile(
         "r2://other-bucket/releases/bundle-1/manifest.json",
         "/tmp/hot-updater-test-manifest.json",
       ),

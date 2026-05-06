@@ -82,6 +82,184 @@ describe("createPluginDatabaseCore", () => {
     expect(getBundles).not.toHaveBeenCalled();
   });
 
+  it("resolves manifest artifacts through storage text reader", async () => {
+    const currentBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000001",
+      manifestStorageUri: "r2://bucket/current/manifest.json",
+      manifestFileHash: "sig:current-manifest",
+      assetBaseStorageUri: "r2://bucket/current/files",
+    };
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      fileHash: "hash-2",
+      manifestStorageUri: "r2://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "r2://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        currentBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: currentBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "old-bundle-hash",
+            },
+          },
+        }),
+      ],
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "new-bundle-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "manifest-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(bundleId) {
+        if (bundleId === currentBundle.id) return currentBundle;
+        if (bundleId === targetBundle.id) return targetBundle;
+        return null;
+      },
+      getUpdateInfo,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+
+    await expect(
+      core.api.getAppUpdateInfo({
+        ...updateArgs,
+        bundleId: currentBundle.id,
+      }),
+    ).resolves.toMatchObject({
+      changedAssets: {
+        "index.ios.bundle": {
+          fileHash: "new-bundle-hash",
+          fileUrl:
+            "https://assets.example.com/bucket/target/files/index.ios.bundle",
+        },
+      },
+      manifestFileHash: "sig:target-manifest",
+      manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
+    });
+  });
+
+  it("propagates manifest storage read failures", async () => {
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      fileHash: "hash-2",
+      manifestStorageUri: "r2://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "r2://bucket/target/files",
+    };
+    const storageError = new Error("storage read failed");
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "manifest-error-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(bundleId) {
+        return bundleId === targetBundle.id ? targetBundle : null;
+      },
+      getUpdateInfo,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async () => {
+          throw storageError;
+        },
+      },
+    );
+
+    await expect(core.api.getAppUpdateInfo(updateArgs)).rejects.toThrow(
+      "storage read failed",
+    );
+  });
+
   it("does not fall back to scanning when plugin getUpdateInfo returns null", async () => {
     const getBundles = vi.fn<DatabasePlugin["getBundles"]>(async () => ({
       data: [baseBundle],

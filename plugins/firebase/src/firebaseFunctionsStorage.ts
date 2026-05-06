@@ -1,6 +1,6 @@
-import type {
-  StoragePlugin,
-  StoragePluginHooks,
+import {
+  createRuntimeStoragePlugin,
+  type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import type { AppOptions } from "firebase-admin/app";
 
@@ -15,72 +15,49 @@ export interface FirebaseFunctionsStorageConfig extends AppOptions {
   cdnUrl?: string;
 }
 
+const createFirebaseFunctionsStorage =
+  createRuntimeStoragePlugin<FirebaseFunctionsStorageConfig>({
+    name: "firebaseFunctionsStorage",
+    supportedProtocol: "gs",
+    factory: (config) => {
+      const fallbackStorage = firebaseStorage({
+        ...config,
+        storageBucket: config.storageBucket!,
+      })();
+
+      return {
+        async readText(storageUri, context) {
+          return fallbackStorage.profiles.runtime.readText(storageUri, context);
+        },
+        async getDownloadUrl(storageUri, context) {
+          if (config.cdnUrl) {
+            const storageUrl = new URL(storageUri);
+
+            if (storageUrl.protocol === "gs:") {
+              return {
+                fileUrl: `${trimTrailingSlash(config.cdnUrl)}/${storageUrl.pathname.replace(/^\/+/, "")}`,
+              };
+            }
+          }
+
+          return fallbackStorage.profiles.runtime.getDownloadUrl(
+            storageUri,
+            context,
+          );
+        },
+      };
+    },
+  });
+
 export const firebaseFunctionsStorage = (
   config: FirebaseFunctionsStorageConfig,
   hooks?: StoragePluginHooks,
 ) => {
-  const fallbackStorageFactory = config.storageBucket
-    ? firebaseStorage(
-        {
-          ...config,
-          storageBucket: config.storageBucket,
-        },
-        hooks,
-      )
-    : null;
+  if (!config.storageBucket) {
+    throw new Error(
+      "firebaseFunctionsStorage requires storageBucket for the runtime storage profile.",
+    );
+  }
 
-  return (): StoragePlugin => {
-    const fallbackStorage = fallbackStorageFactory?.() ?? null;
-
-    return {
-      name: "firebaseFunctionsStorage",
-      supportedProtocol: "gs",
-      async upload(key, filePath) {
-        if (!fallbackStorage) {
-          throw new Error(
-            "firebaseFunctionsStorage requires storageBucket to support upload().",
-          );
-        }
-
-        return fallbackStorage.upload(key, filePath);
-      },
-      async delete(storageUri) {
-        if (!fallbackStorage) {
-          throw new Error(
-            "firebaseFunctionsStorage requires storageBucket to support delete().",
-          );
-        }
-
-        return fallbackStorage.delete(storageUri);
-      },
-      async download(storageUri, filePath) {
-        if (!fallbackStorage) {
-          throw new Error(
-            "firebaseFunctionsStorage requires storageBucket to support download().",
-          );
-        }
-
-        return fallbackStorage.download(storageUri, filePath);
-      },
-      async getDownloadUrl(storageUri, context) {
-        if (config.cdnUrl) {
-          const storageUrl = new URL(storageUri);
-
-          if (storageUrl.protocol === "gs:") {
-            return {
-              fileUrl: `${trimTrailingSlash(config.cdnUrl)}/${storageUrl.pathname.replace(/^\/+/, "")}`,
-            };
-          }
-        }
-
-        if (!fallbackStorage) {
-          throw new Error(
-            "firebaseFunctionsStorage requires storageBucket or cdnUrl to resolve download URLs.",
-          );
-        }
-
-        return fallbackStorage.getDownloadUrl(storageUri, context);
-      },
-    };
-  };
+  return createFirebaseFunctionsStorage(config, hooks);
 };

@@ -111,10 +111,10 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
   return `${HOT_UPDATER_BASE_PATH}/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
 };
 
-const toRuntimeBundle = (bundle: Bundle): Bundle => {
+const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   return {
     ...bundle,
-    storageUri: `gs://hot-updater-test/${bundle.id}/bundle.zip`,
+    storageUri: `gs://${storageBucket}/${bundle.id}/bundle.zip`,
   };
 };
 
@@ -128,11 +128,13 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
+  const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
+  const storageBucket = `${projectId}.appspot.com`;
 
   beforeAll(async () => {
-    if (!projectId || !firestoreHost) {
+    if (!projectId || !firestoreHost || !storageEmulatorHost) {
       throw new Error(
-        "Firebase acceptance tests require FIRESTORE_EMULATOR_HOST and GCLOUD_PROJECT.",
+        "Firebase acceptance tests require FIRESTORE_EMULATOR_HOST, FIREBASE_STORAGE_EMULATOR_HOST and GCLOUD_PROJECT.",
       );
     }
 
@@ -228,8 +230,12 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     const firebaseAdminApp = admin.apps.length
       ? admin.app()
-      : admin.initializeApp({ projectId });
-    const adminOptions = firebaseAdminApp.options;
+      : admin.initializeApp({ projectId, storageBucket });
+    const adminOptions = {
+      ...firebaseAdminApp.options,
+      projectId,
+      storageBucket,
+    };
 
     seedHotUpdater = createHotUpdater({
       database: firebaseDatabase(adminOptions),
@@ -264,6 +270,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       cwd: WORKSPACE_ROOT,
       env: {
         FIRESTORE_EMULATOR_HOST: firestoreHost,
+        FIREBASE_CONFIG: JSON.stringify({
+          projectId,
+          storageBucket,
+        }),
+        FIREBASE_STORAGE_EMULATOR_HOST: storageEmulatorHost,
         GCLOUD_PROJECT: projectId,
         HOT_UPDATER_CDN_URL: cdnBaseUrl,
       },
@@ -279,6 +290,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
   beforeEach(async () => {
     cdnObjects.clear();
+    await clearStorageBucket(storageBucket);
     await clearFirestoreCollection("bundles");
     await clearFirestoreCollection("channels");
     await clearFirestoreCollection("target_app_versions");
@@ -311,7 +323,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   };
 
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
-    for (const bundle of bundles.map(toRuntimeBundle)) {
+    for (const bundle of bundles.map((bundle) =>
+      toRuntimeBundle(bundle, storageBucket),
+    )) {
       await seedHotUpdater.insertBundle(bundle);
     }
   };
@@ -337,8 +351,20 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           JSON.stringify(fixture.currentManifest),
           "application/json",
         );
+        await seedStorageObject(
+          storageBucket,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        );
         seedCdnObject(
           cdnObjects,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        );
+        await seedStorageObject(
+          storageBucket,
           `${fixture.nextBundleId}/manifest.json`,
           JSON.stringify(fixture.nextManifest),
           "application/json",
@@ -346,14 +372,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
         return {
           currentMetadata: {
-            asset_base_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/files`,
+            asset_base_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
             manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/manifest.json`,
+            manifest_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
           },
           nextMetadata: {
-            asset_base_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/files`,
+            asset_base_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
             manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/manifest.json`,
+            manifest_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
@@ -380,8 +406,20 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         JSON.stringify(fixture.currentManifest),
         "application/json",
       );
+      await seedStorageObject(
+        storageBucket,
+        `${fixture.currentBundleId}/manifest.json`,
+        JSON.stringify(fixture.currentManifest),
+        "application/json",
+      );
       seedCdnObject(
         cdnObjects,
+        `${fixture.nextBundleId}/manifest.json`,
+        JSON.stringify(fixture.nextManifest),
+        "application/json",
+      );
+      await seedStorageObject(
+        storageBucket,
         `${fixture.nextBundleId}/manifest.json`,
         JSON.stringify(fixture.nextManifest),
         "application/json",
@@ -397,18 +435,18 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
       return {
         currentMetadata: {
-          asset_base_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/files`,
+          asset_base_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `gs://hot-updater-test/${fixture.currentBundleId}/manifest.json`,
+          manifest_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
         },
         nextMetadata: {
-          asset_base_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/files`,
+          asset_base_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
           patch_base_bundle_id: fixture.currentBundleId,
           hbc_patch_base_file_hash: "hash-old-bundle",
           hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `gs://hot-updater-test/${fixture.patchPath}`,
+          hbc_patch_storage_uri: `gs://${storageBucket}/${fixture.patchPath}`,
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `gs://hot-updater-test/${fixture.nextBundleId}/manifest.json`,
+          manifest_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
         },
       };
     },
@@ -419,19 +457,22 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
   it("serves canonical routes from the emulator entrypoint", async () => {
     await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: "00000000-0000-0000-0000-000000000001",
-        platform: "ios",
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash",
-        gitCommitHash: null,
-        message: "hello",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-      }),
+      toRuntimeBundle(
+        {
+          id: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash",
+          gitCommitHash: null,
+          message: "hello",
+          channel: "production",
+          storageUri: "storage://unused",
+          fingerprintHash: null,
+        },
+        storageBucket,
+      ),
     );
 
     const response = await invokeHandler(
@@ -479,6 +520,44 @@ const clearFirestoreCollection = async (collectionName: string) => {
     batch.delete(doc.ref);
   }
   await batch.commit();
+};
+
+const clearStorageBucket = async (storageBucket: string) => {
+  const [files] = await admin.storage().bucket(storageBucket).getFiles();
+
+  await Promise.all(
+    files.map((file) =>
+      file.delete().catch((error) => {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === 404
+        ) {
+          return;
+        }
+
+        throw error;
+      }),
+    ),
+  );
+};
+
+const seedStorageObject = async (
+  storageBucket: string,
+  key: string,
+  body: string,
+  contentType = "application/octet-stream",
+) => {
+  await admin
+    .storage()
+    .bucket(storageBucket)
+    .file(key.replace(/^\/+/, ""))
+    .save(body, {
+      metadata: {
+        contentType,
+      },
+    });
 };
 
 const seedCdnObject = (

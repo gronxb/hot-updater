@@ -8,7 +8,10 @@ import {
   getManifestStorageUri,
   getPatchStorageUri,
 } from "@hot-updater/core";
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePlugin,
+  NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
 
 interface DeleteBundleInput {
   bundleId: string;
@@ -16,7 +19,7 @@ interface DeleteBundleInput {
 
 interface DeleteBundleDependencies {
   databasePlugin: DatabasePlugin;
-  storagePlugin: StoragePlugin;
+  storagePlugin: NodeStoragePlugin;
 }
 
 interface BundleManifest {
@@ -27,7 +30,7 @@ const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
 
 function resolveStorageUriForDeletion(
   storageUri: string,
-  storagePlugin: StoragePlugin,
+  storagePlugin: NodeStoragePlugin,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -44,7 +47,7 @@ function resolveStorageUriForDeletion(
 
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: StoragePlugin,
+  storagePlugin: NodeStoragePlugin,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -72,7 +75,7 @@ async function downloadStorageBytes(
   const filePath = path.join(workDir, filename);
 
   try {
-    await storagePlugin.download(storageUri, filePath);
+    await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
     return new Uint8Array(await fs.readFile(filePath));
   } finally {
     await fs.rm(workDir, { force: true, recursive: true });
@@ -97,7 +100,7 @@ function createStorageUriWithRelativePath(
 
 async function loadBundleManifest(
   manifestStorageUri: string,
-  storagePlugin: StoragePlugin,
+  storagePlugin: NodeStoragePlugin,
 ) {
   const manifestBytes = await downloadStorageBytes(
     manifestStorageUri,
@@ -190,7 +193,7 @@ export async function deleteBundle(
 
   for (const storageUri of cleanupUris) {
     try {
-      await storagePlugin.delete(storageUri);
+      await storagePlugin.profiles.node.delete(storageUri);
     } catch (error) {
       console.error("Failed to delete bundle from storage:", error);
     }

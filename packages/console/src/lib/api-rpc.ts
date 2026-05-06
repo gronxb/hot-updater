@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import { isRuntimeStoragePlugin, type Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
@@ -235,7 +235,14 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
         throw new Error(`No storage plugin for protocol: ${protocol}`);
       }
 
-      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
+      if (!isRuntimeStoragePlugin(storagePlugin)) {
+        throw new Error(
+          `${storagePlugin.name} does not support runtime download URL resolution.`,
+        );
+      }
+
+      const downloadTarget =
+        await storagePlugin.profiles.runtime.getDownloadUrl(storageUri);
       const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {

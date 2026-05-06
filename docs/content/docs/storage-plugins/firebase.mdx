@@ -75,3 +75,12 @@ export default defineConfig({
 `gs://`
 
 This prefix is stored in the `storageUri` field in the database.
+
+## Profiles
+
+`firebaseStorage` implements both storage profiles:
+
+- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
+- `runtime`: creates Firebase download URLs and reads manifest text directly through Cloud Storage APIs.
+
+For Firebase Functions runtimes, use the runtime-specific storage export so the server can resolve downloads and read manifests from the configured bucket.

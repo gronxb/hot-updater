@@ -5,7 +5,9 @@ import fs from "node:fs/promises";
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
+  NodeStorageProfile,
+  RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -42,26 +44,42 @@ function createDatabasePlugin(bundle: Bundle | null = baseBundle) {
 
 function createStoragePlugin(
   supportedProtocol = "s3",
-  overrides?: Partial<StoragePlugin>,
+  overrides?: Partial<NodeStorageProfile> & Partial<RuntimeStorageProfile>,
 ) {
+  const getDownloadUrl =
+    overrides?.getDownloadUrl ??
+    vi.fn(async (storageUri: string) => {
+      const storageUrl = new URL(storageUri);
+      return {
+        fileUrl: `https://assets.example.com${storageUrl.pathname}`,
+      };
+    });
   const storagePlugin = {
     name: "mockStorage",
     supportedProtocol,
-    upload: vi.fn(),
-    delete: vi.fn(),
-    download: vi.fn(async (storageUri: string, filePath: string) => {
-      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
-      const response = await fetch(fileUrl);
-      await fs.writeFile(
-        filePath,
-        new Uint8Array(await response.arrayBuffer()),
-      );
-    }),
-    getDownloadUrl: vi.fn(),
-    ...overrides,
+    profiles: {
+      node: {
+        upload: overrides?.upload ?? vi.fn(),
+        delete: overrides?.delete ?? vi.fn(),
+        downloadFile:
+          overrides?.downloadFile ??
+          vi.fn(async (storageUri: string, filePath: string) => {
+            const { fileUrl } = await getDownloadUrl(storageUri);
+            const response = await fetch(fileUrl);
+            await fs.writeFile(
+              filePath,
+              new Uint8Array(await response.arrayBuffer()),
+            );
+          }),
+      },
+      runtime: {
+        getDownloadUrl,
+        readText: overrides?.readText ?? vi.fn(async () => null),
+      },
+    },
   };
 
-  return storagePlugin satisfies StoragePlugin;
+  return storagePlugin satisfies NodeStoragePlugin;
 }
 
 afterEach(() => {
@@ -130,7 +148,7 @@ describe("deleteBundle", () => {
 
     expect(databasePlugin.deleteBundle).not.toHaveBeenCalled();
     expect(databasePlugin.commitBundle).not.toHaveBeenCalled();
-    expect(storagePlugin.delete).not.toHaveBeenCalled();
+    expect(storagePlugin.profiles.node.delete).not.toHaveBeenCalled();
   });
 
   it("keeps bundle deletion successful when storage cleanup fails", async () => {

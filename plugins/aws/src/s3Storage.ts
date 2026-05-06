@@ -12,7 +12,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createFullStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -27,7 +27,7 @@ export interface S3StorageConfig extends S3ClientConfig {
   basePath?: string;
 }
 
-export const s3Storage = createStoragePlugin<S3StorageConfig>({
+export const s3Storage = createFullStoragePlugin<S3StorageConfig>({
   name: "s3Storage",
   supportedProtocol: "s3",
   factory: (config) => {
@@ -36,113 +36,143 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      async delete(storageUri) {
-        const { bucket, key } = parseStorageUri(storageUri, "s3");
-        if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-          );
-        }
+      node: {
+        async delete(storageUri) {
+          const { bucket, key } = parseStorageUri(storageUri, "s3");
+          if (bucket !== bucketName) {
+            throw new Error(
+              `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+            );
+          }
 
-        const listCommand = new ListObjectsV2Command({
-          Bucket: bucketName,
-          Prefix: key,
-        });
-        const listResponse = await client.send(listCommand);
-
-        if (listResponse.Contents && listResponse.Contents.length > 0) {
-          const objectsToDelete = listResponse.Contents.map((obj) => ({
-            Key: obj.Key,
-          }));
-
-          const deleteParams = {
+          const listCommand = new ListObjectsV2Command({
             Bucket: bucketName,
-            Delete: {
-              Objects: objectsToDelete,
-              Quiet: true,
-            },
-          };
-
-          const deleteCommand = new DeleteObjectsCommand(deleteParams);
-          await client.send(deleteCommand);
-          return;
-        }
-
-        throw new Error("Bundle Not Found");
-      },
-      async upload(key, filePath) {
-        const Body = await fs.readFile(filePath);
-        const ContentType = getContentType(filePath);
-
-        const filename = path.basename(filePath);
-
-        const Key = getStorageKey(key, filename);
-        const upload = new Upload({
-          client,
-          params: {
-            ContentType,
-            Bucket: bucketName,
-            Key,
-            Body,
-            CacheControl: "max-age=31536000",
-          },
-        });
-        const response = await upload.done();
-        if (!response.Bucket || !response.Key) {
-          throw new Error("Upload Failed");
-        }
-
-        return {
-          storageUri: `s3://${bucketName}/${Key}`,
-        };
-      },
-      async download(storageUri: string, filePath: string) {
-        const { bucket, key } = parseStorageUri(storageUri, "s3");
-        if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-          );
-        }
-
-        const response = await client.send(
-          new GetObjectCommand({ Bucket: bucket, Key: key }),
-        );
-
-        if (!response.Body) {
-          throw new Error("S3 object body is empty");
-        }
-
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        await fs.writeFile(
-          filePath,
-          await response.Body.transformToByteArray(),
-        );
-      },
-      async getDownloadUrl(storageUri: string) {
-        // Simple validation: supported protocol must match
-        const u = new URL(storageUri);
-        if (u.protocol.replace(":", "") !== "s3") {
-          throw new Error("Invalid S3 storage URI protocol");
-        }
-        const bucket = u.host;
-        const key = u.pathname.slice(1);
-        if (!bucket || !key) {
-          throw new Error("Invalid S3 storage URI: missing bucket or key");
-        }
-        try {
-          const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-          const signedUrl = await getSignedUrl(client, command, {
-            expiresIn: 3600,
+            Prefix: key,
           });
-          if (!signedUrl) throw new Error("Failed to presign S3 URL");
-          return { fileUrl: signedUrl };
-        } catch (e) {
-          throw new Error(
-            e instanceof Error
-              ? `Failed to presign S3 URL: ${e.message}`
-              : "Failed to presign S3 URL",
+          const listResponse = await client.send(listCommand);
+
+          if (listResponse.Contents && listResponse.Contents.length > 0) {
+            const objectsToDelete = listResponse.Contents.map((obj) => ({
+              Key: obj.Key,
+            }));
+
+            const deleteParams = {
+              Bucket: bucketName,
+              Delete: {
+                Objects: objectsToDelete,
+                Quiet: true,
+              },
+            };
+
+            const deleteCommand = new DeleteObjectsCommand(deleteParams);
+            await client.send(deleteCommand);
+            return;
+          }
+
+          throw new Error("Bundle Not Found");
+        },
+        async upload(key, filePath) {
+          const Body = await fs.readFile(filePath);
+          const ContentType = getContentType(filePath);
+
+          const filename = path.basename(filePath);
+
+          const Key = getStorageKey(key, filename);
+          const upload = new Upload({
+            client,
+            params: {
+              ContentType,
+              Bucket: bucketName,
+              Key,
+              Body,
+              CacheControl: "max-age=31536000",
+            },
+          });
+          const response = await upload.done();
+          if (!response.Bucket || !response.Key) {
+            throw new Error("Upload Failed");
+          }
+
+          return {
+            storageUri: `s3://${bucketName}/${Key}`,
+          };
+        },
+        async downloadFile(storageUri: string, filePath: string) {
+          const { bucket, key } = parseStorageUri(storageUri, "s3");
+          if (bucket !== bucketName) {
+            throw new Error(
+              `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+            );
+          }
+
+          const response = await client.send(
+            new GetObjectCommand({ Bucket: bucket, Key: key }),
           );
-        }
+
+          if (!response.Body) {
+            throw new Error("S3 object body is empty");
+          }
+
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(
+            filePath,
+            await response.Body.transformToByteArray(),
+          );
+        },
+      },
+      runtime: {
+        async readText(storageUri: string) {
+          const { bucket, key } = parseStorageUri(storageUri, "s3");
+          if (bucket !== bucketName) {
+            throw new Error(
+              `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+            );
+          }
+
+          try {
+            const response = await client.send(
+              new GetObjectCommand({ Bucket: bucket, Key: key }),
+            );
+
+            if (!response.Body) {
+              return null;
+            }
+
+            return response.Body.transformToString();
+          } catch (error) {
+            if (error instanceof Error && error.name === "NoSuchKey") {
+              return null;
+            }
+
+            throw error;
+          }
+        },
+        async getDownloadUrl(storageUri: string) {
+          // Simple validation: supported protocol must match
+          const u = new URL(storageUri);
+          if (u.protocol.replace(":", "") !== "s3") {
+            throw new Error("Invalid S3 storage URI protocol");
+          }
+          const bucket = u.host;
+          const key = u.pathname.slice(1);
+          if (!bucket || !key) {
+            throw new Error("Invalid S3 storage URI: missing bucket or key");
+          }
+          try {
+            const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+            const signedUrl = await getSignedUrl(client, command, {
+              expiresIn: 3600,
+            });
+            if (!signedUrl) throw new Error("Failed to presign S3 URL");
+            return { fileUrl: signedUrl };
+          } catch (e) {
+            throw new Error(
+              e instanceof Error
+                ? `Failed to presign S3 URL: ${e.message}`
+                : "Failed to presign S3 URL",
+            );
+          }
+        },
       },
     };
   },

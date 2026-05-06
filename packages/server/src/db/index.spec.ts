@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  StoragePlugin,
+  RuntimeStoragePlugin,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
@@ -142,19 +142,18 @@ function createTestStoragePlugin(
     storageUri: string,
     context?: StorageResolveContext,
   ) => string,
-): StoragePlugin {
+  readText: (storageUri: string) => Promise<string | null> = async () => null,
+): RuntimeStoragePlugin {
   return {
     name: `${protocol}TestStorage`,
     supportedProtocol: protocol,
-    async upload(key) {
-      return {
-        storageUri: `${protocol}://test-bucket/${key}`,
-      };
-    },
-    async delete() {},
-    async download() {},
-    async getDownloadUrl(storageUri, context) {
-      return { fileUrl: resolveFileUrl(storageUri, context) };
+    profiles: {
+      runtime: {
+        readText,
+        async getDownloadUrl(storageUri, context) {
+          return { fileUrl: resolveFileUrl(storageUri, context) };
+        },
+      },
     },
   };
 }
@@ -192,6 +191,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
   const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+  const storageTexts = new Map<string, string | Error>();
+  const readStoredText = async (storageUri: string) => {
+    const text = storageTexts.get(storageUri);
+    if (text instanceof Error) {
+      throw text;
+    }
+    return text ?? null;
+  };
 
   const hotUpdater = createHotUpdater({
     database: kyselyAdapter({
@@ -199,28 +206,40 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       provider: "postgresql",
     }),
     storages: [
-      createTestStoragePlugin("s3", (storageUri) =>
-        storageUri
-          .replace("s3://", "https://s3.example.com/")
-          .replace(/([^:]\/)\/+/g, "$1"),
+      createTestStoragePlugin(
+        "s3",
+        (storageUri) =>
+          storageUri
+            .replace("s3://", "https://s3.example.com/")
+            .replace(/([^:]\/)\/+/g, "$1"),
+        readStoredText,
       ),
-      createTestStoragePlugin("r2", (storageUri) =>
-        storageUri
-          .replace("r2://", "https://r2.example.com/")
-          .replace(/([^:]\/)\/+/g, "$1"),
+      createTestStoragePlugin(
+        "r2",
+        (storageUri) =>
+          storageUri
+            .replace("r2://", "https://r2.example.com/")
+            .replace(/([^:]\/)\/+/g, "$1"),
+        readStoredText,
       ),
-      createTestStoragePlugin("supabase-storage", (storageUri) =>
-        storageUri
-          .replace(
-            "supabase-storage://",
-            "https://supabase.example.com/storage/v1/object/sign/",
-          )
-          .replace(/([^:]\/)\/+/g, "$1"),
+      createTestStoragePlugin(
+        "supabase-storage",
+        (storageUri) =>
+          storageUri
+            .replace(
+              "supabase-storage://",
+              "https://supabase.example.com/storage/v1/object/sign/",
+            )
+            .replace(/([^:]\/)\/+/g, "$1"),
+        readStoredText,
       ),
-      createTestStoragePlugin("gs", (storageUri) =>
-        storageUri
-          .replace("gs://", "https://firebase.example.com/")
-          .replace(/([^:]\/)\/+/g, "$1"),
+      createTestStoragePlugin(
+        "gs",
+        (storageUri) =>
+          storageUri
+            .replace("gs://", "https://firebase.example.com/")
+            .replace(/([^:]\/)\/+/g, "$1"),
+        readStoredText,
       ),
     ],
   });
@@ -260,6 +279,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   beforeEach(async () => {
+    storageTexts.clear();
     await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
   });
@@ -652,6 +672,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("returns manifest metadata and hbc patch descriptors for createHotUpdater", async () => {
+      const currentManifestStorageUri =
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/manifest.json";
+      const nextManifestStorageUri =
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json";
       const olderBundle: Bundle = {
         id: "00000000-0000-0000-0000-000000000100",
         platform: "ios",
@@ -683,8 +707,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           asset_base_storage_uri:
             "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/files",
           manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/manifest.json",
+          manifest_storage_uri: currentManifestStorageUri,
         },
       };
       const nextBundle: Bundle = {
@@ -718,8 +741,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             },
           },
           manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/manifest.json",
+          manifest_storage_uri: nextManifestStorageUri,
         },
         patchBaseBundleId: "00000000-0000-0000-0000-000000000100",
         patchBaseFileHash: "hash-older-bundle",
@@ -727,50 +749,38 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         patchStorageUri:
           "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
       };
-      const fetchMock = vi.fn<typeof fetch>(async (input) => {
-        const url = String(input);
-
-        if (url.endsWith(`${currentBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "assets/logo.png": {
-                  fileHash: "hash-logo",
-                },
-                "index.ios.bundle": {
-                  fileHash: "hash-old-bundle",
-                },
-              },
-              bundleId: currentBundle.id,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
+      storageTexts.set(
+        currentManifestStorageUri,
+        JSON.stringify({
+          assets: {
+            "assets/logo.png": {
+              fileHash: "hash-logo",
             },
-          );
-        }
-
-        if (url.endsWith(`${nextBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "assets/logo.png": {
-                  fileHash: "hash-logo",
-                },
-                "index.ios.bundle": {
-                  fileHash: "hash-new-bundle",
-                },
-              },
-              bundleId: nextBundle.id,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
+            "index.ios.bundle": {
+              fileHash: "hash-old-bundle",
             },
-          );
-        }
-
-        return new Response("not found", { status: 404 });
+          },
+          bundleId: currentBundle.id,
+        }),
+      );
+      storageTexts.set(
+        nextManifestStorageUri,
+        JSON.stringify({
+          assets: {
+            "assets/logo.png": {
+              fileHash: "hash-logo",
+            },
+            "index.ios.bundle": {
+              fileHash: "hash-new-bundle",
+            },
+          },
+          bundleId: nextBundle.id,
+        }),
+      );
+      const fetchMock = vi.fn<typeof fetch>(async () => {
+        return new Response("manifest fetch should not be used", {
+          status: 500,
+        });
       });
 
       await hotUpdater.insertBundle(olderBundle);
@@ -814,9 +824,51 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           shouldForceUpdate: false,
           status: "UPDATE",
         });
+        expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+
+    it("propagates manifest storage read failures for createHotUpdater", async () => {
+      const nextManifestStorageUri =
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/manifest.json";
+      const nextBundle: Bundle = {
+        id: "00000000-0000-0000-0000-000000000109",
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hash-next-zip",
+        gitCommitHash: null,
+        message: "Next bundle",
+        channel: "production",
+        storageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/bundle.zip",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {
+          asset_base_storage_uri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/files",
+          manifest_file_hash: "sig:manifest-next",
+          manifest_storage_uri: nextManifestStorageUri,
+        },
+      };
+
+      await hotUpdater.insertBundle(nextBundle);
+      storageTexts.set(
+        nextManifestStorageUri,
+        new Error("storage read failed"),
+      );
+
+      await expect(
+        hotUpdater.getAppUpdateInfo({
+          appVersion: "1.0.0",
+          bundleId: NIL_UUID,
+          channel: "production",
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        }),
+      ).rejects.toThrow("storage read failed");
     });
   });
 

@@ -55,3 +55,12 @@ export default defineConfig({
 `supabase-storage://`
 
 This prefix is stored in the `storageUri` field in the database.
+
+## Profiles
+
+`supabaseStorage` implements both storage profiles:
+
+- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
+- `runtime`: creates signed download URLs and reads manifest text directly through Supabase Storage.
+
+For Supabase Edge Function runtimes, use the runtime-specific storage export so update checks can resolve downloads without relying on local filesystem APIs.

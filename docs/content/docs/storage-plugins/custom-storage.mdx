@@ -12,41 +12,78 @@ npm install @hot-updater/plugin-core --save-dev
 
 ## Overview
 
-Build a custom storage plugin to integrate any storage provider. This guide shows how to use `createStoragePlugin` to build and configure your own storage plugin.
+Build a custom storage plugin to integrate any storage provider. Storage plugins are split into explicit environment profiles so plugin authors can implement the APIs that are safe for each runtime.
+
+- `node`: used by the CLI, deploy command, and console. It can read and write local files.
+- `runtime`: used by update-check servers and edge runtimes. It must resolve HTTP(S) bundle URLs and read small text artifacts such as `manifest.json` directly from storage.
+
+Use the narrow helper that matches your plugin:
+
+| Helper | Use when |
+| --- | --- |
+| `createNodeStoragePlugin` | The plugin is only used by deploy-time tooling. |
+| `createRuntimeStoragePlugin` | The plugin is only used by an update-check runtime. |
+| `createFullStoragePlugin` | The same provider implementation supports both deploy and runtime usage. |
+| `createStoragePlugin` | You need a custom profile combination. Prefer the helpers above for public plugins. |
 
 ## Creating a Storage Plugin
 
-Use `createStoragePlugin` to build custom storage plugins:
+Use `createFullStoragePlugin` when one plugin can be used by both `hot-updater deploy` and `createHotUpdater`:
 
 ```typescript
-import { createStoragePlugin } from "@hot-updater/plugin-core";
+import { createFullStoragePlugin } from "@hot-updater/plugin-core";
 
-export const myStorage = createStoragePlugin<MyConfig>({
-  name: "myStorage",              // Plugin identifier
-  supportedProtocol: "custom",    // Storage URI protocol (e.g., "custom://...")
+export const myStorage = createFullStoragePlugin<MyConfig>({
+  name: "myStorage",
+  supportedProtocol: "custom",
   factory: (config) => ({
-    // Return these three required methods:
-    upload: async (key, filePath) => ({ storageUri: "..." }),
-    delete: async (storageUri) => { /* ... */ },
-    getDownloadUrl: async (storageUri) => ({ fileUrl: "..." })
-  })
+    node: {
+      upload: async (key, filePath) => ({ storageUri: "..." }),
+      delete: async (storageUri) => {
+        /* ... */
+      },
+      downloadFile: async (storageUri, filePath) => {
+        /* ... */
+      },
+    },
+    runtime: {
+      getDownloadUrl: async (storageUri, context) => ({ fileUrl: "..." }),
+      readText: async (storageUri, context) => "{...}",
+    },
+  }),
 });
 ```
 
 ### Factory Function Return Type
 
-Your factory function must return an object with these methods:
+Your factory function returns one or more profiles.
 
 ```typescript
 {
-  // Uploads file to storage and returns storage URI
-  upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
-  // Deletes all files at the storage URI path
-  delete: (storageUri: string) => Promise<void>;
-  // Generates download URL for clients to fetch bundles
-  getDownloadUrl: (storageUri: string) => Promise<{ fileUrl: string }>;
+  node: {
+    // Uploads a local file and returns the storage URI saved in the database.
+    upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
+    // Deletes a storage object or storage prefix.
+    delete: (storageUri: string) => Promise<void>;
+    // Downloads a storage object to a local file path.
+    downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+  };
+  runtime: {
+    // Generates an HTTP(S) URL that clients can download.
+    getDownloadUrl: (
+      storageUri: string,
+      context?: HotUpdaterContext
+    ) => Promise<{ fileUrl: string }>;
+    // Reads a small text artifact directly from the provider.
+    readText: (
+      storageUri: string,
+      context?: HotUpdaterContext
+    ) => Promise<string | null>;
+  };
 }
 ```
+
+`runtime.readText` is required for runtime storage plugins. Do not implement it by generating a public URL and fetching that URL again. Use the provider SDK, platform binding, or authenticated runtime API directly. This avoids edge runtimes failing on internal fetches and keeps manifest diff calculation independent from client download URL generation.
 
 ## Implementation Example
 
@@ -61,7 +98,7 @@ import {
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
-  createStoragePlugin,
+  createFullStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -77,63 +114,96 @@ export interface CustomStorageConfig {
   bucketName: string;
 }
 
-export const customStorage = createStoragePlugin<CustomStorageConfig>({
+export const customStorage = createFullStoragePlugin<CustomStorageConfig>({
   name: "customStorage",
   supportedProtocol: "s3",
   factory: (config) => {
     const { bucketName, ...s3Config } = config;
     const client = new S3Client(s3Config);
 
+    const assertStorageUri = (storageUri: string) => {
+      const parsed = parseStorageUri(storageUri, "s3");
+
+      if (parsed.bucket !== bucketName) {
+        throw new Error(`Bucket mismatch: expected "${bucketName}"`);
+      }
+
+      return parsed;
+    };
+
     return {
-      async upload(key, filePath) {
-        const Body = await fs.readFile(filePath);
-        const ContentType = getContentType(filePath);
-        const filename = path.basename(filePath);
-        const Key = `${key}/${filename}`;
+      node: {
+        async upload(key, filePath) {
+          const Body = await fs.readFile(filePath);
+          const ContentType = getContentType(filePath);
+          const filename = path.basename(filePath);
+          const Key = `${key}/${filename}`;
 
-        const upload = new Upload({
-          client,
-          params: {
+          const upload = new Upload({
+            client,
+            params: {
+              Bucket: bucketName,
+              Key,
+              Body,
+              ContentType,
+            },
+          });
+
+          await upload.done();
+
+          return {
+            storageUri: `s3://${bucketName}/${Key}`,
+          };
+        },
+
+        async delete(storageUri) {
+          const { key } = assertStorageUri(storageUri);
+
+          const command = new DeleteObjectCommand({
             Bucket: bucketName,
-            Key,
-            Body,
-            ContentType,
-          },
-        });
+            Key: key,
+          });
 
-        await upload.done();
+          await client.send(command);
+        },
 
-        return {
-          storageUri: `s3://${bucketName}/${Key}`,
-        };
+        async downloadFile(storageUri, filePath) {
+          const { key } = assertStorageUri(storageUri);
+          const response = await client.send(
+            new GetObjectCommand({ Bucket: bucketName, Key: key }),
+          );
+          const bytes = await response.Body?.transformToByteArray();
+
+          if (!bytes) {
+            throw new Error("Object body is empty");
+          }
+
+          await fs.writeFile(filePath, bytes);
+        },
       },
+      runtime: {
+        async getDownloadUrl(storageUri) {
+          const { key } = assertStorageUri(storageUri);
 
-      async delete(storageUri) {
-        const { bucket, key } = parseStorageUri(storageUri, "s3");
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+          });
+          const signedUrl = await getSignedUrl(client, command, {
+            expiresIn: 3600,
+          });
 
-        if (bucket !== bucketName) {
-          throw new Error(`Bucket mismatch: expected "${bucketName}"`);
-        }
+          return { fileUrl: signedUrl };
+        },
 
-        const command = new DeleteObjectCommand({
-          Bucket: bucketName,
-          Key: key,
-        });
+        async readText(storageUri) {
+          const { key } = assertStorageUri(storageUri);
+          const response = await client.send(
+            new GetObjectCommand({ Bucket: bucketName, Key: key }),
+          );
 
-        await client.send(command);
-      },
-
-      async getDownloadUrl(storageUri) {
-        const url = new URL(storageUri);
-        const bucket = url.host;
-        const key = url.pathname.slice(1);
-
-        const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-        const signedUrl = await getSignedUrl(client, command, {
-          expiresIn: 3600,
-        });
-
-        return { fileUrl: signedUrl };
+          return response.Body?.transformToString() ?? null;
+        },
       },
     };
   },
@@ -189,10 +259,10 @@ export default defineConfig({
 
 ## Custom Server Usage
 
-Use your plugin with `createHotUpdater` for self-hosted servers:
+Use your plugin with `createHotUpdater` for self-hosted servers. The plugin passed to `storages` must implement the `runtime` profile.
 
 ```typescript
-import { createHotUpdater } from "@hot-updater/core";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 import { customStorage } from "./customStorage";
 
 const hotUpdater = createHotUpdater({
@@ -216,6 +286,8 @@ const hotUpdater = createHotUpdater({
 - Use environment variables for sensitive data
 - Validate storage URIs before processing
 - Implement proper authentication headers
+- Keep `runtime.getDownloadUrl` limited to HTTP(S) client downloads
+- Keep `runtime.readText` on direct provider reads for manifest metadata
 
 ### Storage URI Format
 

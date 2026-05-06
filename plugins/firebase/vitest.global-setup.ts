@@ -18,6 +18,7 @@ type EmulatorLogs = {
 
 let emulatorProcess: ChildProcessWithoutNullStreams | undefined;
 let firestorePort: number | undefined;
+let storagePort: number | undefined;
 let tempConfigDir: string | undefined;
 let projectId: string | undefined;
 
@@ -48,18 +49,44 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
-async function createFirebaseConfig(firestorePort: number): Promise<string> {
+async function createFirebaseConfig(
+  firestorePort: number,
+  storagePort: number,
+): Promise<string> {
   tempConfigDir = await mkdtemp(join(tmpdir(), "hot-updater-firebase-"));
   const configPath = join(tempConfigDir, "firebase.json");
+  const storageRulesPath = join(tempConfigDir, "storage.rules");
+
+  await writeFile(
+    storageRulesPath,
+    [
+      'rules_version = "2";',
+      "service firebase.storage {",
+      "  match /b/{bucket}/o {",
+      "    match /{allPaths=**} {",
+      "      allow read, write: if true;",
+      "    }",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
 
   await writeFile(
     configPath,
     JSON.stringify({
+      storage: {
+        rules: "storage.rules",
+      },
       emulators: {
         singleProjectMode: true,
         firestore: {
           host: "127.0.0.1",
           port: firestorePort,
+        },
+        storage: {
+          host: "127.0.0.1",
+          port: storagePort,
         },
         ui: {
           enabled: false,
@@ -97,7 +124,7 @@ function startEmulatorProcess({
       "--project",
       projectId,
       "--only",
-      "firestore",
+      "firestore,storage",
       "--config",
       configPath,
       "--log-verbosity",
@@ -159,7 +186,7 @@ async function waitForExit(
 
 async function stopEmulatorProcess(
   child: ChildProcessWithoutNullStreams,
-  port: number | undefined,
+  ports: Array<number | undefined>,
 ) {
   const pid = child.pid;
 
@@ -187,11 +214,13 @@ async function stopEmulatorProcess(
     await waitForExit(child, 3_000);
   }
 
-  if (typeof port === "number") {
-    await fkill(`:${port}`, {
-      force: true,
-      silent: true,
-    }).catch(() => {});
+  for (const port of ports) {
+    if (typeof port === "number") {
+      await fkill(`:${port}`, {
+        force: true,
+        silent: true,
+      }).catch(() => {});
+    }
   }
 }
 
@@ -245,15 +274,20 @@ export async function setup() {
   console.log("Starting Firebase emulator...");
 
   firestorePort = await getAvailablePort();
+  storagePort = await getAvailablePort();
   const emulatorHost = `127.0.0.1:${firestorePort}`;
+  const storageHost = `127.0.0.1:${storagePort}`;
   projectId = `${PROJECT_ID_PREFIX}-${process.pid}-${Date.now()}`;
+  const storageBucket = `${projectId}.appspot.com`;
 
   process.env.FIRESTORE_EMULATOR_HOST = emulatorHost;
+  process.env.FIREBASE_STORAGE_EMULATOR_HOST = storageHost;
   process.env.GCLOUD_PROJECT = projectId;
 
   if (!admin.apps.length) {
     admin.initializeApp({
       projectId,
+      storageBucket,
     });
   }
 
@@ -267,7 +301,10 @@ export async function setup() {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt += 1) {
-    const firebaseConfigPath = await createFirebaseConfig(firestorePort);
+    const firebaseConfigPath = await createFirebaseConfig(
+      firestorePort,
+      storagePort,
+    );
     const runtime = startEmulatorProcess({
       configPath: firebaseConfigPath,
       projectId,
@@ -310,11 +347,11 @@ export async function setup() {
 export async function teardown(options?: { resetState?: boolean }) {
   const resetState = options?.resetState ?? true;
   const child = emulatorProcess;
-  const port = firestorePort;
+  const ports = [firestorePort, storagePort];
 
   if (child) {
     try {
-      await stopEmulatorProcess(child, port);
+      await stopEmulatorProcess(child, ports);
       console.log("Successfully killed emulator process");
     } catch (error) {
       console.error("Failed to kill emulator process:", error);
@@ -330,6 +367,7 @@ export async function teardown(options?: { resetState?: boolean }) {
 
   if (resetState) {
     firestorePort = undefined;
+    storagePort = undefined;
     projectId = undefined;
   }
 }
