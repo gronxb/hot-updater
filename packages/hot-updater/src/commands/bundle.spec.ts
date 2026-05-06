@@ -112,7 +112,9 @@ describe("handleBundleList", () => {
     });
     const { handleBundleList } = await import("./bundle");
     await handleBundleList({});
-    expect(logSpy).toHaveBeenCalledWith("(no bundles)");
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining("(no bundles)"),
+    );
   });
 
   it("prints raw paginated JSON and skips the banner when --json is passed", async () => {
@@ -175,8 +177,12 @@ describe("handleBundleSetEnabled", () => {
       enabled: false,
     });
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      expect.stringContaining("disabled B1"),
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("Status:"),
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith("Disabled bundle.");
+    expect(mockCli.p.log.info).toHaveBeenCalledWith(
+      expect.stringContaining("B1"),
     );
   });
 
@@ -190,6 +196,7 @@ describe("handleBundleSetEnabled", () => {
     expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
       enabled: true,
     });
+    expect(mockCli.p.log.success).toHaveBeenCalledWith("Enabled bundle.");
   });
 
   it("short-circuits with info log when bundle is already in target state", async () => {

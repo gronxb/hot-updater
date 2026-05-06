@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { colors, loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
   DatabasePlugin,
@@ -21,14 +21,18 @@ interface RollbackTarget {
   fallbackId: string | null;
 }
 
-const summarizeTarget = (target: RollbackTarget): string => {
-  const fallback = target.fallbackId
-    ? `next-most-recent enabled bundle: ${target.fallbackId}` +
-      ` (actual active bundle per app version may differ — depends on` +
-      ` targetAppVersion / fingerprint match)`
-    : "next: (would revert to binary-shipped JS)";
-  return `  - ${target.platform}: disable ${target.bundle.id} (${fallback})`;
-};
+const summarizeTarget = (target: RollbackTarget): string =>
+  [
+    `  ${colors.bold(colors.cyan(target.platform))}`,
+    `    ${colors.red("Disable:")}  ${colors.yellow(target.bundle.id)}`,
+    target.fallbackId
+      ? `    ${colors.green("Fallback:")} ${colors.yellow(target.fallbackId)}`
+      : `    ${colors.green("Fallback:")} ${colors.yellow(
+          "binary-shipped JS",
+        )}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 
 const formatRetryHint = (channel: string, target: RollbackTarget): string =>
   `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
@@ -150,9 +154,8 @@ export const handleRollback = async (
         );
         process.exit(1);
       }
-      const ids = targets.map((t) => t.bundle.id).join(", ");
       const confirmed = await p.confirm({
-        message: `Disable ${ids} on ${channel}?`,
+        message: `Apply this rollback plan to ${channel}?`,
         initialValue: false,
       });
       if (p.isCancel(confirmed) || !confirmed) {

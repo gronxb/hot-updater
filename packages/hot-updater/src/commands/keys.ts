@@ -150,31 +150,28 @@ async function writePublicKeyToIos(
 
 function printPublicKeyInstructions(publicKeyPEM: string): void {
   console.log("");
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
-  console.log(colors.cyan("Public Key (embed in native configuration)"));
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
+  console.log(colors.bold(colors.cyan("Public key")));
   console.log("");
   console.log(publicKeyPEM);
   console.log("");
-  console.log(colors.yellow("iOS Configuration (Info.plist):"));
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(colors.bold("iOS"));
   console.log("<key>HOT_UPDATER_PUBLIC_KEY</key>");
   console.log(`<string>${publicKeyPEM.trim().replace(/\n/g, "\\n")}</string>`);
   console.log("");
-  console.log(colors.yellow("Android Configuration (res/values/strings.xml):"));
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log(colors.bold("Android"));
   console.log('<string name="hot_updater_public_key">');
   console.log(publicKeyPEM.trim());
   console.log("</string>");
-  console.log("");
-  console.log(
-    colors.cyan("═══════════════════════════════════════════════════════"),
-  );
 }
+
+const formatNativeTarget = (
+  platform: "android" | "ios",
+  paths: string[],
+): string =>
+  [
+    `  ${colors.bold(colors.cyan(platform))}`,
+    ...paths.map((targetPath) => `    ${colors.dim(targetPath)}`),
+  ].join("\n");
 
 /**
  * Export public key for embedding in native configuration.
@@ -220,11 +217,6 @@ export const keysExportPublic = async (
       return;
     }
 
-    // WRITE MODE (default): Write to native files
-    p.log.info(
-      "Preparing to write public key to native configuration files...",
-    );
-
     // Check which files exist (config already loaded above)
     const androidParser = new AndroidConfigParser(
       config.platform.android.stringResourcePaths,
@@ -242,37 +234,25 @@ export const keysExportPublic = async (
       process.exit(1);
     }
 
-    // Show preview of what will be updated
-    console.log("");
-    p.log.step("Files to be updated:");
+    p.log.message(colors.bold("Native files"));
     if (androidExists) {
-      const androidPaths = config.platform.android.stringResourcePaths;
-      if (androidPaths.length === 1) {
-        p.log.info(`  Android: ${androidPaths[0]} (${ANDROID_KEY})`);
-      } else {
-        p.log.info(`  Android (${ANDROID_KEY}):`);
-        for (const androidPath of androidPaths) {
-          p.log.info(`    - ${androidPath}`);
-        }
-      }
+      p.log.message(
+        formatNativeTarget(
+          "android",
+          config.platform.android.stringResourcePaths,
+        ),
+      );
     }
     if (iosExists) {
-      const iosPaths = config.platform.ios.infoPlistPaths;
-      if (iosPaths.length === 1) {
-        p.log.info(`  iOS: ${iosPaths[0]} (${IOS_KEY})`);
-      } else {
-        p.log.info(`  iOS (${IOS_KEY}):`);
-        for (const iosPath of iosPaths) {
-          p.log.info(`    - ${iosPath}`);
-        }
-      }
+      p.log.message(
+        formatNativeTarget("ios", config.platform.ios.infoPlistPaths),
+      );
     }
-    console.log("");
 
     // Confirmation prompt (unless --yes)
     if (!options.yes) {
       const shouldContinue = await p.confirm({
-        message: "Write public key to native files?",
+        message: "Write public key?",
         initialValue: true,
       });
 
@@ -302,11 +282,11 @@ export const keysExportPublic = async (
       );
     }
 
-    // Report results
-    console.log("");
     for (const result of results) {
       if (result.success) {
-        p.log.success(`${result.platform}: Updated ${result.paths.join(", ")}`);
+        p.log.success(
+          `${result.platform}: ${result.paths.length} file(s) updated`,
+        );
       } else {
         p.log.error(`${result.platform}: ${result.error}`);
       }
@@ -314,14 +294,12 @@ export const keysExportPublic = async (
 
     // Summary
     const successCount = results.filter((r) => r.success).length;
-    console.log("");
     if (successCount === results.length) {
-      p.log.success("Public key written to all native files!");
-      p.log.info("Next step: Rebuild your native app to apply the changes.");
+      p.log.success("Public key exported.");
     } else if (successCount > 0) {
-      p.log.warn("Public key written to some files. Check errors above.");
+      p.log.warn("Public key exported partially.");
     } else {
-      p.log.error("Failed to write public key to any native files.");
+      p.log.error("Public key export failed.");
       process.exit(1);
     }
   } catch (error) {

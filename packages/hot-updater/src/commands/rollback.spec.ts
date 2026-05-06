@@ -133,6 +133,15 @@ describe("handleRollback", () => {
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("and-2"),
     );
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("Disable:"),
+    );
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("Fallback:"),
+    );
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining("ios-1"),
+    );
   });
 
   it("only mutates the specified platform when -p is passed", async () => {
@@ -180,7 +189,7 @@ describe("handleRollback", () => {
       enabled: false,
     });
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
-      expect.stringContaining("would revert to binary-shipped JS"),
+      expect.stringContaining("binary-shipped JS"),
     );
   });
 
@@ -262,6 +271,10 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(2)");
     expect(exitSpy).toHaveBeenCalledWith(2);
+    expect(mockCli.p.confirm).toHaveBeenCalledWith({
+      message: "Apply this rollback plan to dev?",
+      initialValue: false,
+    });
     expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
