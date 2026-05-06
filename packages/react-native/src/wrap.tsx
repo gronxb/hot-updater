@@ -173,6 +173,16 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
     updateMode: "manual";
   };
 
+type ManualBaseURLUpdateOptions = CommonHotUpdaterOptions &
+  BaseURLConfig & {
+    updateMode: "manual";
+  };
+
+export type HotUpdaterInitOptions = Omit<
+  ManualBaseURLUpdateOptions,
+  "updateMode"
+>;
+
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
 
 /**
@@ -204,7 +214,7 @@ type InternalManualUpdateOptions = InternalCommonOptions & {
   updateMode: "manual";
 };
 
-export type InternalInitOptions = InternalManualUpdateOptions;
+export type InternalInitOptions = InternalCommonOptions;
 
 export type InternalWrapOptions =
   | InternalAutoUpdateOptions

@@ -58,7 +58,6 @@ describe("HotUpdater wrap initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
-      updateMode: "manual",
     });
 
     expect(result).toBeUndefined();
