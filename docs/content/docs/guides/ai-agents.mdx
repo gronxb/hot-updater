@@ -1,33 +1,26 @@
 ---
 title: "AI Agent Guide"
-description: "Install the Hot Updater skill for AI coding agents and ask for OTA operations in natural language."
+description: "Use the Hot Updater skill with AI coding agents and ask for OTA operations in natural language."
 icon: Bot
 ---
 
-## Install the Skill
+## Attach the Skill
 
 Agent skills are packaged capabilities that give AI coding agents structured
-instructions for a production workflow. Install the Hot Updater skill with
-`npx skills`:
+instructions for a production workflow. Attach the Hot Updater skill from its
+GitHub location:
+
+- [`.agents/skills/hot-updater/SKILL.md`](https://github.com/gronxb/hot-updater/blob/main/.agents/skills/hot-updater/SKILL.md)
+
+You can also install it with `npx skills`:
 
 ```sh
 npx skills add gronxb/hot-updater --skill hot-updater
 ```
 
-Install it globally if you want the same skill available outside the current
-project:
-
-```sh
-npx skills add gronxb/hot-updater --skill hot-updater --global
-```
-
-The `skills` CLI can also install from a full GitHub URL or a direct path to a
-skill directory. Pass `--agent <agent-name>` only when you need to target a
-specific supported agent.
-
 ## Ask With `$hot-updater`
 
-After installing the skill, ask your agent in natural language:
+After attaching the skill, ask your agent in natural language:
 
 ```txt
 $hot-updater deploy using the current app version
