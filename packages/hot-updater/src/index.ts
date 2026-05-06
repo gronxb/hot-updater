@@ -38,6 +38,7 @@ import {
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
 
@@ -182,6 +183,36 @@ program
   .action(async (options: DeployOptions) => {
     deploy(options);
   });
+
+program
+  .command("rollback")
+  .description("Disable the most recent enabled bundle on a channel")
+  .argument("<channel>", "the channel to roll back")
+  .addOption(platformCommandOption)
+  .option("-y, --yes", "skip confirmation prompt")
+  .option(
+    "--confirm-revert-to-binary",
+    "allow rollback even when no other enabled bundle exists for that platform",
+  )
+  .option(
+    "--target <bundle-id>",
+    "scope rollback to exactly this bundle id (use to retry a failed rollback)",
+  )
+  .addHelpText(
+    "after",
+    `\nFour phases: read (pull up to two most-recent enabled bundles per platform),\nvalidate (refuse if a platform would have no enabled bundle, unless\n--confirm-revert-to-binary), mutate (one commitBundle for all platforms\n— note: commit is sequential, not atomic across platforms), verify\n(re-read each target).\n\nExit codes:\n  0  rollback succeeded and verified\n  1  validation, mutation, or post-mutate verification failed\n  2  user declined the interactive confirmation\n\nWhen rollback partially fails, the FAILED line names the exact bundle id;\nretry the failed platform with: hot-updater rollback <channel> -p <platform> --target <bundle-id>\n\nExamples:\n  hot-updater rollback production -y\n  hot-updater rollback production -p ios --confirm-revert-to-binary -y\n  hot-updater rollback production -p android --target 0195a408-... -y\n`,
+  )
+  .action(
+    (
+      channel: string,
+      options: {
+        platform?: "ios" | "android";
+        yes?: boolean;
+        confirmRevertToBinary?: boolean;
+        target?: string;
+      },
+    ) => handleRollback(channel, options),
+  );
 
 program
   .command("console")
