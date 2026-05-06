@@ -6,21 +6,22 @@ icon: Search
 
 ## Usage
 
-Use `checkForUpdate` to verify if an update bundle is available. The function reuses the `baseURL` configured in `HotUpdater.wrap()`, and optionally allows overriding the `updateStrategy`.
+Use `checkForUpdate` to verify if an update bundle is available. The function
+reuses the `baseURL` or `resolver` configured in `HotUpdater.wrap()` or
+`HotUpdater.init()`.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-// First, configure baseURL and updateStrategy in wrap
-export default HotUpdater.wrap({
+// First, configure baseURL in manual wrap or init
+void HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual"
-})(App);
+  updateMode: "manual",
+});
 
-// Use checkForUpdate - it reuses wrap's baseURL
+// Use checkForUpdate - it reuses the configured baseURL
 async function checkForAppUpdate() {
   try {
-    // Option 1: Use wrap's updateStrategy
     const updateInfo = await HotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
       requestHeaders: {
@@ -65,9 +66,11 @@ async function checkForAppUpdate() {
 
 ```
 
-## Important: HotUpdater.wrap Required
+## Important: HotUpdater.wrap or HotUpdater.init Required
 
-When using `checkForUpdate`, you must wrap your root component with `HotUpdater.wrap()` and configure `baseURL` and `updateStrategy`. This is required for proper crash detection and rollback functionality.
+When using `checkForUpdate`, configure Hot Updater first with
+`HotUpdater.wrap()` or `HotUpdater.init()`. This is required for proper crash
+detection and rollback functionality.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -95,14 +98,24 @@ function App() {
   return <YourApp />;
 }
 
-// Configure baseURL and updateStrategy in wrap
+// Configure baseURL with manual wrap
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateMode: "manual"
 })(App);
 ```
 
-Without wrap, calling `checkForUpdate` will throw an error with instructions on how to fix it.
+If another runtime owns your root component, use `HotUpdater.init()` instead:
+
+```tsx
+void HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  updateMode: "manual",
+});
+```
+
+Without `wrap` or `init`, calling `checkForUpdate` will throw an error with
+instructions on how to fix it.
 
 ## Parameters
 
@@ -110,16 +123,18 @@ The `checkForUpdate` function accepts the following optional parameters:
 
 | Parameter         | Type                           | Required | Description                                                                      |
 |-------------------|--------------------------------|----------|----------------------------------------------------------------------------------|
-| `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Override the update strategy set in wrap. If not provided, uses the strategy from `HotUpdater.wrap()`. |
+| `updateStrategy`  | `"appVersion"` \| `"fingerprint"` | ✅        | Update detection strategy for this check. |
 | `requestHeaders`  | `Record<string, string>`       | ❌        | Optional headers to include in the update request.                               |
 | `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
 | `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
 
-The `baseURL` is always from `HotUpdater.wrap()` - it cannot be overridden in `checkForUpdate`.
+The `baseURL` or `resolver` is always from `HotUpdater.wrap()` or
+`HotUpdater.init()`; it cannot be overridden in `checkForUpdate`.
 
 ## How It Works
 
-When you call `checkForUpdate`, the function uses the `baseURL` and `updateStrategy` from `HotUpdater.wrap()` to construct the appropriate endpoint URL:
+When you call `checkForUpdate`, the function uses the configured `baseURL` and
+the provided `updateStrategy` to construct the appropriate endpoint URL:
 
 * For `updateStrategy: "appVersion"`: `GET {baseURL}/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
 * For `updateStrategy: "fingerprint"`: `GET {baseURL}/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`

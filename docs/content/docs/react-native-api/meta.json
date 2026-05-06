@@ -4,6 +4,7 @@
   "icon": "Smartphone",
   "pages": [
     "wrap",
+    "init",
     "checkForUpdate",
     "reload",
     "setReloadBehavior",
