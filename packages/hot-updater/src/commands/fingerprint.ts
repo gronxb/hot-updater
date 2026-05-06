@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-import { colors, getCwd, loadConfig, p } from "@hot-updater/cli-tools";
+import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
@@ -16,14 +16,20 @@ import {
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
 
+import { ui } from "../utils/cli-ui";
+
 export const handleFingerprint = async () => {
   const s = p.spinner();
   s.start("Generating fingerprints");
 
   const fingerPrintRef = await generateFingerprints();
 
-  s.stop(
-    `Fingerprint generated. iOS: ${fingerPrintRef.ios.hash}, Android: ${fingerPrintRef.android.hash}`,
+  s.stop("Fingerprint generated");
+  p.log.message(
+    ui.block("Fingerprint", [
+      ui.kv("iOS", ui.id(fingerPrintRef.ios.hash)),
+      ui.kv("Android", ui.id(fingerPrintRef.android.hash)),
+    ]),
   );
 
   const localFingerprintPath = path.join(getCwd(), "fingerprint.json");
@@ -76,7 +82,7 @@ export const handleFingerprint = async () => {
     process.exit(1);
   }
 
-  p.log.success("Fingerprint matched");
+  p.log.success("Fingerprint matched.");
 };
 
 export const handleCreateFingerprint = async () => {
@@ -116,24 +122,29 @@ export const handleCreateFingerprint = async () => {
 
   if (diffChanged && result) {
     if (result.androidPaths.length > 0) {
-      p.log.info(colors.bold("Changed Android paths:"));
-      for (const path of result.androidPaths) {
-        p.log.info(`  ${colors.green(path)}`);
-      }
+      p.log.message(
+        ui.block(
+          "Android paths",
+          result.androidPaths.map((targetPath) =>
+            ui.kv("Path", ui.path(targetPath)),
+          ),
+        ),
+      );
     }
 
     if (result.iosPaths.length > 0) {
-      p.log.info(colors.bold("Changed iOS paths:"));
-      for (const path of result.iosPaths) {
-        p.log.info(`  ${colors.green(path)}`);
-      }
+      p.log.message(
+        ui.block(
+          "iOS paths",
+          result.iosPaths.map((targetPath) =>
+            ui.kv("Path", ui.path(targetPath)),
+          ),
+        ),
+      );
     }
 
-    p.log.success(
-      colors.bold(
-        `${colors.blue("fingerprint.json")} has changed, you need to rebuild the native app.`,
-      ),
-    );
+    p.log.success(ui.line([ui.path("fingerprint.json"), "changed."]));
+    p.log.warn("Rebuild native app.");
 
     // Show what changed
     if (localFingerprint && result.fingerprint) {
@@ -172,8 +183,6 @@ export const handleCreateFingerprint = async () => {
       }
     }
   } else {
-    p.log.success(
-      colors.bold(`${colors.blue("fingerprint.json")} is up to date.`),
-    );
+    p.log.success(ui.line([ui.path("fingerprint.json"), "is up to date."]));
   }
 };

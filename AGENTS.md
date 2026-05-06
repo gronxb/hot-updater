@@ -20,6 +20,14 @@
 - Naming: camelCase (functions/vars), PascalCase (types/classes), kebab-case (package and dir names). Scoped packages use `@hot-updater/<name>`.
 - Structure: Source under `src/` with a focused `index.ts` entry per package.
 
+## CLI Output Design
+- Apply the shared CLI design system to `packages/hot-updater` commands through `packages/hot-updater/src/utils/cli-ui.ts`; avoid ad hoc `colors.*` formatting in command files.
+- Keep CLI output concise and action-oriented. Prefer the minimum useful state, target, and result over explanatory context or next-step tutorials.
+- Use color semantically: green for success/enabled, red for disabled/errors, yellow for ids/warnings, cyan for platforms/titles, blue for channels, magenta for versions, and dim for paths/secondary text.
+- Use `ui.block`, `ui.kv`, and `ui.line` for human-readable summaries; use `ui.table` for list output, including `hot-updater bundle list`, with a Wrangler-like bordered table.
+- Avoid emojis, long notes, and verbose fallback explanations in command output unless the text is required to prevent a destructive or irreversible action.
+- `deploy`, `console`, and `init` are currently excluded from this CLI output migration unless explicitly requested.
+
 ## Testing Guidelines
 - Framework: Vitest. Place tests near code or in `__tests__`. Use `*.spec.ts`.
 - Run all tests: `pnpm -w test`. To focus: `pnpm -w test -- -t "name"`.

@@ -108,10 +108,6 @@ bundleCommand
     },
     20,
   )
-  .addHelpText(
-    "after",
-    `\nExit codes:\n  0  success\n  1  configuration error or DB error\n`,
-  )
   .action(handleBundleList);
 
 bundleCommand
@@ -119,10 +115,6 @@ bundleCommand
   .description("Disable a bundle by id")
   .argument("<bundle-id>", "the id of the bundle to disable")
   .option("-y, --yes", "skip confirmation prompt")
-  .addHelpText(
-    "after",
-    `\nDisables a bundle and re-reads its state to confirm the change.\n\nExit codes:\n  0  bundle is disabled (or was already disabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running disable on an already-disabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
-  )
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, false, options),
   );
@@ -132,10 +124,6 @@ bundleCommand
   .description("Re-enable a previously disabled bundle by id")
   .argument("<bundle-id>", "the id of the bundle to enable")
   .option("-y, --yes", "skip confirmation prompt")
-  .addHelpText(
-    "after",
-    `\nRe-enables a previously disabled bundle and re-reads its state to confirm.\n\nExit codes:\n  0  bundle is enabled (or was already enabled)\n  1  bundle not found, DB error, or post-commit verification failed\n  2  user declined the interactive confirmation\n\nIdempotent: running enable on an already-enabled bundle is a no-op.\nNon-TTY shells require -y; otherwise the command refuses to mutate.\n`,
-  )
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, true, options),
   );
@@ -250,10 +238,6 @@ program
   .option(
     "--target <bundle-id>",
     "scope rollback to exactly this bundle id (use to retry a failed rollback)",
-  )
-  .addHelpText(
-    "after",
-    `\nFour phases: read (pull up to two most-recent enabled bundles per platform),\nvalidate (ensure at least one target exists), mutate (one commitBundle for all platforms\n— note: commit is sequential, not atomic across platforms), verify\n(re-read each target).\n\nExit codes:\n  0  rollback succeeded and verified\n  1  validation, mutation, or post-mutate verification failed\n  2  user declined the interactive confirmation\n\nWhen rollback partially fails, the FAILED line names the exact bundle id;\nretry the failed platform with: hot-updater rollback <channel> -p <platform> --target <bundle-id>\n\nExamples:\n  hot-updater rollback production -y\n  hot-updater rollback production -p ios -y\n  hot-updater rollback production -p android --target 0195a408-... -y\n`,
   )
   .action(
     (

@@ -8,6 +8,8 @@ import { createNativeBuild } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 
+import { ui } from "../utils/cli-ui";
+
 const buildNativeInternal = async ({
   options,
   platform,
@@ -43,14 +45,26 @@ const buildNativeInternal = async ({
           });
 
   try {
-    p.log.info(`📦 Building ${platformName} (${buildPlugin.name}) Started`);
+    p.log.info(
+      ui.line([
+        "Building",
+        ui.platform(platformName),
+        ui.muted(buildPlugin.name),
+      ]),
+    );
     await createNativeBuild({
       platform,
       builder,
       buildPlugin,
       outputPath,
     });
-    p.log.success(`📦 ${platformName} Build Complete (${buildPlugin.name})`);
+    p.log.success(
+      ui.line([
+        "Built",
+        ui.platform(platformName),
+        ui.muted(buildPlugin.name),
+      ]),
+    );
   } catch (e) {
     catchError(e);
   }

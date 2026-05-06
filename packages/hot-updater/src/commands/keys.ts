@@ -37,19 +37,14 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
 
   const keySize = options.keySize ?? 4096;
 
-  p.log.info(`Generating ${keySize}-bit RSA key pair...`);
-
   const spinner = p.spinner();
-  spinner.start("Generating keys");
+  spinner.start(`Generating ${keySize}-bit RSA keys`);
 
   try {
     const keyPair = await generateKeyPair(keySize);
     await saveKeyPair(keyPair, outputDir);
 
-    spinner.stop("Keys generated successfully");
-
-    p.log.success(`Private key: ${path.join(outputDir, "private-key.pem")}`);
-    p.log.success(`Public key: ${path.join(outputDir, "public-key.pem")}`);
+    spinner.stop("Keys generated");
 
     // Add keys directory to .gitignore
     const keysDir = path.basename(outputDir);
@@ -58,22 +53,14 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
       globLines: [`${keysDir}/`],
     });
 
-    if (gitignoreUpdated) {
-      p.log.success(`Added ${keysDir}/ to .gitignore`);
-    }
-
-    console.log("");
-    p.log.warn("⚠️  Keep private key secure!");
-    p.log.warn("   - Use secure storage for CI/CD (AWS Secrets Manager, etc.)");
-    console.log("");
-    p.log.info("Next steps:");
-    p.log.info("1. Add to hot-updater.config.ts:");
-    p.log.info(
-      '   signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" }',
+    p.log.message(
+      ui.block("Keys", [
+        ui.kv("Private", ui.path(path.join(outputDir, "private-key.pem"))),
+        ui.kv("Public", ui.path(path.join(outputDir, "public-key.pem"))),
+        ui.kv("Gitignore", gitignoreUpdated ? `${keysDir}/` : "unchanged"),
+      ]),
     );
-    p.log.info("2. Run: npx hot-updater keys export-public");
-    p.log.info("3. Embed public key in iOS Info.plist and Android strings.xml");
-    p.log.info("4. Rebuild native app");
+    p.log.warn("Keep private key secure.");
   } catch (error) {
     spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
@@ -287,7 +274,10 @@ export const keysExportPublic = async (
     for (const result of results) {
       if (result.success) {
         p.log.success(
-          `${result.platform}: ${result.paths.length} file(s) updated`,
+          ui.line([
+            ui.platform(result.platform),
+            `${result.paths.length} file(s) updated`,
+          ]),
         );
       } else {
         p.log.error(`${result.platform}: ${result.error}`);
@@ -447,10 +437,17 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   const foundKeys: string[] = [];
   if (iosKey.value) {
-    foundKeys.push(`iOS: ${iosKey.paths.join(", ")}`);
+    foundKeys.push(
+      ui.kv("iOS", iosKey.paths.map((targetPath) => ui.path(targetPath)).join(", ")),
+    );
   }
   if (androidKey.value) {
-    foundKeys.push(`Android: ${androidKey.paths.join(", ")}`);
+    foundKeys.push(
+      ui.kv(
+        "Android",
+        androidKey.paths.map((targetPath) => ui.path(targetPath)).join(", "),
+      ),
+    );
   }
 
   if (foundKeys.length === 0) {
@@ -458,13 +455,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     return;
   }
 
-  // Show what will be removed
-  console.log("");
-  p.log.step("Found public keys in:");
-  for (const key of foundKeys) {
-    p.log.info(`  • ${key}`);
-  }
-  console.log("");
+  p.log.message(ui.block("Public keys", foundKeys));
 
   // Confirmation prompt (unless --yes)
   if (!options.yes) {
@@ -495,12 +486,14 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
     );
   }
 
-  // Report results
-  console.log("");
   for (const result of results) {
     if (result.success && result.found) {
       p.log.success(
-        `Removed ${result.platform === "ios" ? IOS_KEY : ANDROID_KEY} from ${result.paths.join(", ")}`,
+        ui.line([
+          "Removed",
+          ui.platform(result.platform),
+          ui.path(result.paths.join(", ")),
+        ]),
       );
     } else if (!result.success) {
       p.log.error(`${result.platform}: ${result.error}`);
@@ -509,13 +502,7 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
 
   // Summary
   const successCount = results.filter((r) => r.success && r.found).length;
-  console.log("");
   if (successCount > 0) {
-    p.log.success("Public keys removed from native files!");
-    console.log("");
-    p.log.info("Next steps:");
-    p.log.info("  1. Rebuild your native apps");
-    p.log.info("  2. Release to app stores");
-    p.log.info("  3. Deploy unsigned bundles with `npx hot-updater deploy`");
+    p.log.success("Public keys removed.");
   }
 };
