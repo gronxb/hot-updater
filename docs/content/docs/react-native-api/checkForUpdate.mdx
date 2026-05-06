@@ -13,10 +13,9 @@ reuses the `baseURL` or `resolver` configured in `HotUpdater.wrap()` or
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-// First, configure baseURL in manual wrap or init
-void HotUpdater.init({
+// First, configure baseURL with init
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
 });
 
 // Use checkForUpdate - it reuses the configured baseURL
@@ -98,19 +97,19 @@ function App() {
   return <YourApp />;
 }
 
-// Configure baseURL with manual wrap
-export default HotUpdater.wrap({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual"
-})(App);
+});
+
+export default App;
 ```
 
-If another runtime owns your root component, use `HotUpdater.init()` instead:
+`HotUpdater.init()` configures Hot Updater without the unnecessary HOC that
+manual `wrap` would create:
 
 ```tsx
-void HotUpdater.init({
+HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  updateMode: "manual",
 });
 ```
 
