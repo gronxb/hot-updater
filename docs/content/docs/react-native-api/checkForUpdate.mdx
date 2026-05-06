@@ -7,7 +7,7 @@ icon: Search
 ## Usage
 
 Use `checkForUpdate` to verify if an update bundle is available. The function
-reuses the `baseURL` or `resolver` configured in `HotUpdater.wrap()` or
+reuses the update source configured in `HotUpdater.wrap()` or
 `HotUpdater.init()`.
 
 ```tsx
@@ -127,8 +127,8 @@ The `checkForUpdate` function accepts the following optional parameters:
 | `requestTimeout`  | `number`                       | ❌        | Request timeout in milliseconds (default: 5000).                                 |
 | `onError`         | `(error: Error) => void`       | ❌        | Error callback.                                                                  |
 
-The `baseURL` or `resolver` is always from `HotUpdater.wrap()` or
-`HotUpdater.init()`; it cannot be overridden in `checkForUpdate`.
+The update source is always from `HotUpdater.wrap()` or `HotUpdater.init()`; it
+cannot be overridden in `checkForUpdate`.
 
 ## How It Works
 

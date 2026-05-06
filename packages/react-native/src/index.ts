@@ -28,10 +28,11 @@ import {
 import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
 import {
+  type HotUpdaterInitOptions,
   type HotUpdaterOptions,
   init,
+  type InternalInitOptions,
   type InternalWrapOptions,
-  type ManualUpdateOptions,
   wrap,
 } from "./wrap";
 
@@ -53,8 +54,11 @@ export {
   type ResolverNotifyAppReadyParams,
   type SignatureVerificationFailure,
 } from "./types";
-export type { HotUpdaterOptions, RunUpdateProcessResponse } from "./wrap";
-export type { ManualUpdateOptions as HotUpdaterInitOptions } from "./wrap";
+export type {
+  HotUpdaterInitOptions,
+  HotUpdaterOptions,
+  RunUpdateProcessResponse,
+} from "./wrap";
 
 /**
  * Register getBaseURL to global objects for use without imports.
@@ -88,9 +92,46 @@ function createHotUpdaterClient() {
     resolver: null,
   };
 
+  const createMissingNetworkConfigError = (apiName: "init" | "wrap") => {
+    if (apiName === "init") {
+      return new Error(
+        `[HotUpdater] baseURL must be provided.\n\n` +
+          `Configure HotUpdater before calling update APIs:\n\n` +
+          `  HotUpdater.init({\n` +
+          `    baseURL: "<your-update-server-url>",\n` +
+          `  });\n\n` +
+          `For more information, visit: https://hot-updater.dev/docs/react-native-api/init`,
+      );
+    }
+
+    const baseURLExample =
+      `  export default HotUpdater.wrap({\n` +
+      `    baseURL: "<your-update-server-url>",\n` +
+      `    updateStrategy: "appVersion",\n` +
+      `    updateMode: "auto"\n` +
+      `  })(App);\n\n`;
+
+    const resolverExample =
+      `  export default HotUpdater.wrap({\n` +
+      `    resolver: {\n` +
+      `      checkUpdate: async (params) => { /* custom logic */ },\n` +
+      `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
+      `    },\n` +
+      `    updateMode: "manual"\n` +
+      `  })(App);\n\n`;
+
+    return new Error(
+      `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
+        `Option 1: Using baseURL (recommended for most cases)\n` +
+        baseURLExample +
+        `Option 2: Using custom resolver (advanced)\n` +
+        resolverExample +
+        `For more information, visit: https://hot-updater.dev/docs/react-native-api/${apiName}`,
+    );
+  };
+
   const normalizeOptions = (
     options: HotUpdaterOptions,
-    apiName: "init" | "wrap",
   ): InternalWrapOptions => {
     if ("baseURL" in options && options.baseURL) {
       const { baseURL, ...rest } = options;
@@ -104,48 +145,33 @@ function createHotUpdaterClient() {
       return options;
     }
 
-    const baseURLExample =
-      apiName === "wrap"
-        ? `  export default HotUpdater.wrap({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `    updateStrategy: "appVersion",\n` +
-          `    updateMode: "auto"\n` +
-          `  })(App);\n\n`
-        : `  HotUpdater.init({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `    updateMode: "manual"\n` +
-          `  });\n\n`;
+    throw createMissingNetworkConfigError("wrap");
+  };
 
-    const resolverExample =
-      apiName === "wrap"
-        ? `  export default HotUpdater.wrap({\n` +
-          `    resolver: {\n` +
-          `      checkUpdate: async (params) => { /* custom logic */ },\n` +
-          `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
-          `    },\n` +
-          `    updateMode: "manual"\n` +
-          `  })(App);\n\n`
-        : `  HotUpdater.init({\n` +
-          `    resolver: {\n` +
-          `      checkUpdate: async (params) => { /* custom logic */ },\n` +
-          `      notifyAppReady: async (params) => { /* custom logic */ }\n` +
-          `    },\n` +
-          `    updateMode: "manual"\n` +
-          `  });\n\n`;
+  const normalizeInitOptions = (
+    options: HotUpdaterInitOptions,
+  ): InternalInitOptions => {
+    const {
+      baseURL,
+      updateMode: _updateMode,
+      ...rest
+    } = options as HotUpdaterInitOptions & {
+      updateMode?: unknown;
+    };
 
-    throw new Error(
-      `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
-        `Option 1: Using baseURL (recommended for most cases)\n` +
-        baseURLExample +
-        `Option 2: Using custom resolver (advanced)\n` +
-        resolverExample +
-        `For more information, visit: https://hot-updater.dev/docs/react-native-api/${apiName}`,
-    );
+    if (baseURL) {
+      return {
+        ...rest,
+        resolver: createDefaultResolver(baseURL),
+      };
+    }
+
+    throw createMissingNetworkConfigError("init");
   };
 
   const configureGlobal = (
-    normalizedOptions: InternalWrapOptions,
-    options: HotUpdaterOptions,
+    normalizedOptions: InternalInitOptions | InternalWrapOptions,
+    options: HotUpdaterOptions | HotUpdaterInitOptions,
   ) => {
     globalConfig.resolver = normalizedOptions.resolver;
     globalConfig.requestHeaders = options.requestHeaders;
@@ -166,7 +192,6 @@ function createHotUpdaterClient() {
           `Option 2: With HotUpdater.init() for custom runtimes\n` +
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
-          `    updateMode: "manual"\n` +
           `  });\n\n` +
           `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap ` +
           `or https://hot-updater.dev/docs/react-native-api/init`,
@@ -201,7 +226,7 @@ function createHotUpdaterClient() {
      * ```
      */
     wrap: (options: HotUpdaterOptions) => {
-      const normalizedOptions = normalizeOptions(options, "wrap");
+      const normalizedOptions = normalizeOptions(options);
       configureGlobal(normalizedOptions, options);
 
       return wrap(normalizedOptions);
@@ -213,15 +238,18 @@ function createHotUpdaterClient() {
      * Use this for manual update flows in runtimes where a root component HOC
      * is not convenient. It has the same initialization effect as
      * `HotUpdater.wrap({ updateMode: "manual" })(App)`.
+     *
+     * @example
+     * ```tsx
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     * });
+     *
+     * export default App;
+     * ```
      */
-    init: (options: ManualUpdateOptions): void => {
-      const normalizedOptions = normalizeOptions(options, "init");
-      if (normalizedOptions.updateMode !== "manual") {
-        throw new Error(
-          `[HotUpdater] HotUpdater.init() only supports updateMode: "manual". ` +
-            `Use HotUpdater.wrap() for automatic updates.`,
-        );
-      }
+    init: (options: HotUpdaterInitOptions): void => {
+      const normalizedOptions = normalizeInitOptions(options);
 
       configureGlobal(normalizedOptions, options);
 

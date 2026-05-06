@@ -1,4 +1,3 @@
-import defaultMdxComponents from "fumadocs-ui/mdx";
 import {
   DocsBody,
   DocsDescription,
@@ -7,6 +6,7 @@ import {
   MarkdownCopyButton,
   ViewOptionsPopover,
 } from "fumadocs-ui/layouts/docs/page";
+import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { ComponentProps } from "react";
 import type { PageProps } from "waku/router";
 

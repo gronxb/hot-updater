@@ -99,7 +99,6 @@ describe("HotUpdater client initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
-      updateMode: "manual",
     });
 
     expect(result).toBeUndefined();
@@ -112,7 +111,6 @@ describe("HotUpdater client initialization", () => {
       },
       requestTimeout: 1000,
       resolver,
-      updateMode: "manual",
     });
   });
 
@@ -131,7 +129,6 @@ describe("HotUpdater client initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
-      updateMode: "manual",
     });
 
     await HotUpdater.checkForUpdate({
@@ -162,16 +159,12 @@ describe("HotUpdater client initialization", () => {
     ).toThrow("requires HotUpdater.wrap() or HotUpdater.init() to be used");
   });
 
-  it("rejects automatic update mode for init at runtime", async () => {
+  it("requires baseURL for init", async () => {
     const HotUpdater = await importHotUpdater();
 
-    expect(() =>
-      HotUpdater.init({
-        baseURL: "https://updates.example.com",
-        updateMode: "auto",
-        updateStrategy: "appVersion",
-      } as never),
-    ).toThrow('HotUpdater.init() only supports updateMode: "manual"');
+    expect(() => HotUpdater.init({} as never)).toThrow(
+      "baseURL must be provided",
+    );
     expect(mocks.init).not.toHaveBeenCalled();
   });
 });
