@@ -327,13 +327,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-override val reactNativeHost: ReactNativeHost =
-object : DefaultReactNativeHost(this) {
-override fun getPackages(): List<ReactPackage> =
-PackageList(this).packages.apply {
-// Packages that cannot be autolinked yet can be added manually here, for example:
-// add(MyReactNativePackage())
-}
+  override val reactNativeHost: ReactNativeHost =
+      object : DefaultReactNativeHost(this) {
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply {
+              // Packages that cannot be autolinked yet can be added manually here, for example:
+              // add(MyReactNativePackage())
+            }
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -347,20 +347,20 @@ PackageList(this).packages.apply {
         }  // [!code ++]
       }
 
-override val reactHost: ReactHost
-get() = getDefaultReactHost(applicationContext, reactNativeHost)
+  override val reactHost: ReactHost
+    get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-override fun onCreate() {
-super.onCreate()
-SoLoader.init(this, OpenSourceMergedSoMapping)
-if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-// If you opted-in for the New Architecture, we load the native entry point for this app.
-load()
-}
-}
+  override fun onCreate() {
+    super.onCreate()
+    SoLoader.init(this, OpenSourceMergedSoMapping)
+    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+      // If you opted-in for the New Architecture, we load the native entry point for this app.
+      load()
+    }
+  }
 }
 
-````
+```
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -434,7 +434,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-````
+```
 
   </Tab>
 </Tabs>
@@ -452,33 +452,32 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-self.moduleName = "HotUpdaterExample"
-self.dependencyProvider = RCTAppDependencyProvider()
+  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    self.moduleName = "HotUpdaterExample"
+    self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
 
-}
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    self.bundleURL()
+  }
 
-override func sourceURL(for bridge: RCTBridge) -> URL? {
-self.bundleURL()
-}
-
-override func bundleURL() -> URL? {
+  override func bundleURL() -> URL? {
 #if DEBUG
-RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
 #else
-Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-HotUpdater.bundleURL() // [!code ++]
+    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+    HotUpdater.bundleURL() // [!code ++]
 #endif
-}
+  }
 }
 
-````
+```
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -514,7 +513,7 @@ HotUpdater.bundleURL() // [!code ++]
 }
 
 @end
-````
+```
 
 </Tab>
 </Tabs>
