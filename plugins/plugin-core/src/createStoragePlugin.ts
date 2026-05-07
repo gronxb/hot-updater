@@ -37,6 +37,16 @@ export interface CreateStoragePluginOptions<TConfig, TContext = unknown> {
    */
   supportedProtocol: string;
   /**
+   * Whether the plugin's factory returns a `download()` implementation.
+   *
+   * Required because the wrapper preserves lazy factory initialization, so it
+   * cannot probe the factory at construction time to detect `download`. Set
+   * this to `true` when the factory returns a `download` method, and callers
+   * can use `if (plugin.download)` to choose between the native path and a
+   * `getDownloadUrl` + fetch fallback.
+   */
+  supportsDownload?: boolean;
+  /**
    * Function that creates the storage plugin methods (upload, delete, getDownloadUrl)
    */
   factory: StoragePluginFactory<TConfig, TContext>;
@@ -102,6 +112,22 @@ export const createStoragePlugin = <TConfig, TContext = unknown>(
         ) {
           return getMethods().getDownloadUrl(storageUri, context);
         },
+
+        download: options.supportsDownload
+          ? async (
+              storageUri: string,
+              destinationPath: string,
+              context?: StorageResolveContext<TContext>,
+            ) => {
+              const methods = getMethods();
+              if (!methods.download) {
+                throw new Error(
+                  `${options.name} declared supportsDownload but factory did not return download()`,
+                );
+              }
+              return methods.download(storageUri, destinationPath, context);
+            }
+          : undefined,
       };
     };
   };

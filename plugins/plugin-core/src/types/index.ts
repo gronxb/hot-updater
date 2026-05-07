@@ -374,6 +374,19 @@ export interface StoragePlugin<TContext = unknown> {
   ) => Promise<{
     fileUrl: string;
   }>;
+
+  /**
+   * Optional. Download an object referenced by `storageUri` directly to
+   * `destinationPath`. Plugins implement this when their backend cannot mint
+   * a fetch()-able URL (e.g. R2 via wrangler, where presigned URLs require
+   * separate S3 credentials). Callers that need a local file should prefer
+   * this method and fall back to `getDownloadUrl` + fetch when it is absent.
+   */
+  download?: (
+    storageUri: string,
+    destinationPath: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<void>;
   name: string;
 }
 

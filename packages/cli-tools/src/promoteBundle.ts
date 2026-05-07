@@ -83,7 +83,10 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
   return entryPath;
 }
 
-async function downloadArchive(fileUrl: string, archivePath: string) {
+async function downloadArchiveFromHttpUrl(
+  fileUrl: string,
+  archivePath: string,
+) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -214,14 +217,16 @@ async function rewriteManifestBundleId(
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-async function resolveBundleDownloadUrl(
+async function downloadBundleArchive(
   storageUri: string,
+  archivePath: string,
   storagePlugin: StoragePlugin | null,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
   if (protocol === "http" || protocol === "https") {
-    return storageUri;
+    await downloadArchiveFromHttpUrl(storageUri, archivePath);
+    return;
   }
 
   if (!storagePlugin) {
@@ -232,12 +237,17 @@ async function resolveBundleDownloadUrl(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
+  if (storagePlugin.download) {
+    await storagePlugin.download(storageUri, archivePath);
+    return;
+  }
+
   const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
   if (!fileUrl) {
     throw new Error("Storage plugin returned empty fileUrl");
   }
 
-  return fileUrl;
+  await downloadArchiveFromHttpUrl(fileUrl, archivePath);
 }
 
 export async function createCopiedBundleArchive({
@@ -253,10 +263,6 @@ export async function createCopiedBundleArchive({
   storagePlugin: StoragePlugin;
   targetChannel: string;
 }) {
-  const downloadUrl = await resolveBundleDownloadUrl(
-    bundle.storageUri,
-    storagePlugin,
-  );
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
   const archiveFilename = getArchiveFilename(bundle.storageUri);
   const workDir = await fs.mkdtemp(
@@ -269,7 +275,11 @@ export async function createCopiedBundleArchive({
   await fs.mkdir(extractDir, { recursive: true });
 
   try {
-    await downloadArchive(downloadUrl, sourceArchivePath);
+    await downloadBundleArchive(
+      bundle.storageUri,
+      sourceArchivePath,
+      storagePlugin,
+    );
     const format = await extractArchive(sourceArchivePath, extractDir);
 
     await rewriteManifestBundleId(extractDir, nextBundleId);

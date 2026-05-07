@@ -46,6 +46,7 @@ export interface R2StorageConfig {
 export const r2Storage = createStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
+  supportsDownload: true,
   factory: (config) => {
     const { bucketName, cloudflareApiToken, accountId } = config;
     const wrangler = createWrangler({
@@ -124,6 +125,35 @@ export const r2Storage = createStoragePlugin<R2StorageConfig>({
             "  bucketName: 'YOUR_BUCKET_NAME',\n" +
             "})",
         );
+      },
+      async download(storageUri, destinationPath) {
+        const { bucket, key } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
+        try {
+          const { stderr, exitCode } = await wrangler(
+            "r2",
+            "object",
+            "get",
+            [bucketName, key].join("/"),
+            "--file",
+            destinationPath,
+            "--remote",
+          );
+          if (exitCode !== 0 && stderr) {
+            throw new Error(stderr);
+          }
+        } catch (error) {
+          if (error instanceof ExecaError) {
+            throw new Error(error.stderr || error.stdout);
+          }
+
+          throw error;
+        }
       },
     };
   },

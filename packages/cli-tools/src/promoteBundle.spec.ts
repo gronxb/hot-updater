@@ -278,6 +278,96 @@ describe("createCopiedBundleArchive", () => {
     },
   );
 
+  it("uses storagePlugin.download() when the plugin provides one", async () => {
+    const { archivePath, cleanup } = await createSourceArchive("zip", {
+      "index.js": "console.log('hello');",
+      "manifest.json": JSON.stringify({ bundleId: baseBundle.id }),
+    });
+    const downloadFn = vi.fn(async (_uri: string, dst: string) => {
+      await fs.copyFile(archivePath, dst);
+    });
+    const storagePlugin: StoragePlugin = {
+      name: "mockStorage",
+      supportedProtocol: "r2",
+      delete: vi.fn(),
+      getDownloadUrl: vi.fn(async () => {
+        throw new Error("getDownloadUrl should not be called");
+      }),
+      upload: vi.fn(async (key) => ({
+        storageUri: `r2://bucket/${key}.zip`,
+      })),
+      download: downloadFn,
+    };
+
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("fetch should not be called when download() is used");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      await createCopiedBundleArchive({
+        bundle: {
+          ...baseBundle,
+          storageUri: "r2://bucket/path/bundle.zip",
+        },
+        config,
+        nextBundleId: "bundle-copy-id",
+        storagePlugin,
+        targetChannel: "beta",
+      });
+
+      expect(downloadFn).toHaveBeenCalledTimes(1);
+      expect(downloadFn.mock.calls[0]?.[0]).toBe("r2://bucket/path/bundle.zip");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("falls back to getDownloadUrl + fetch when download() is absent", async () => {
+    const { archivePath, cleanup } = await createSourceArchive("zip", {
+      "index.js": "console.log('hello');",
+      "manifest.json": JSON.stringify({ bundleId: baseBundle.id }),
+    });
+    const storagePlugin: StoragePlugin = {
+      name: "mockStorage",
+      supportedProtocol: "s3",
+      delete: vi.fn(),
+      getDownloadUrl: vi.fn(async () => ({
+        fileUrl: "https://signed.example.com/bundle.zip",
+      })),
+      upload: vi.fn(async (key) => ({
+        storageUri: `s3://bucket/${key}.zip`,
+      })),
+    };
+
+    const fetchSpy = vi.fn(async (_input: string) => {
+      return new Response(await fs.readFile(archivePath));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+
+    try {
+      await createCopiedBundleArchive({
+        bundle: {
+          ...baseBundle,
+          storageUri: "s3://bucket/path/bundle.zip",
+        },
+        config,
+        nextBundleId: "bundle-copy-id",
+        storagePlugin,
+        targetChannel: "beta",
+      });
+
+      expect(storagePlugin.getDownloadUrl).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy.mock.calls[0]?.[0]).toBe(
+        "https://signed.example.com/bundle.zip",
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
   it("throws a legacy bundle error when manifest.json is missing", async () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "index.js": "console.log('hello');",
