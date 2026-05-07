@@ -1,9 +1,14 @@
 import { ExecaError, execa } from "execa";
-import { readPackageUp } from "read-package-up";
 
 import { getCwd } from "./cwd.js";
 import { getPackageManager } from "./getPackageManager.js";
 import { p } from "./prompts.js";
+import { readPackageUp } from "./readPackageUp.js";
+
+interface PackageJson {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
 
 export const ensureInstallPackages = async (
   packages: {
@@ -16,7 +21,7 @@ export const ensureInstallPackages = async (
 ) => {
   const { versionResolver = (pkg: string) => pkg } = options ?? {};
 
-  const pkgJson = await readPackageUp({ cwd: getCwd() });
+  const pkgJson = await readPackageUp<PackageJson>(getCwd());
 
   const dependenciesToInstall = (packages.dependencies ?? []).filter((pkg) => {
     return !pkgJson?.packageJson?.dependencies?.[pkg];

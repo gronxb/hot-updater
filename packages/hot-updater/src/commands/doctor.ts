@@ -1,6 +1,5 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
+import { getCwd, p, readPackageUp } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
-import { readPackageUp } from "read-package-up";
 import * as semver from "semver";
 
 import { ui } from "../utils/cli-ui";
@@ -265,7 +264,7 @@ export async function doctor(
     const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
 
     // Read package.json
-    const packageResult = await readPackageUp({ cwd });
+    const packageResult = await readPackageUp<PackageJson>(cwd);
 
     if (!packageResult) {
       return {

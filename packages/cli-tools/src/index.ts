@@ -20,6 +20,7 @@ export * from "./log";
 export * from "./makeEnv";
 export * from "./promoteBundle";
 export * from "./prompts";
+export * from "./readPackageUp";
 export * from "./resolvePackageVersion";
 export * from "./transformEnv";
 export * from "./transformTemplate";
