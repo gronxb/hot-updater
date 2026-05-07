@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/cli-tools",
-  "version": "0.30.9",
+  "version": "0.30.10",
   "type": "module",
   "engines": {
     "node": ">=20.19.0"

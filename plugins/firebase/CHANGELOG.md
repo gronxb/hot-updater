@@ -1,5 +1,14 @@
 # @hot-updater/firebase
 
+## 0.30.10
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.30.10
+- @hot-updater/core@0.30.10
+- @hot-updater/server@0.30.10
+- @hot-updater/plugin-core@0.30.10
+
 ## 0.30.9
 
 ### Patch Changes
