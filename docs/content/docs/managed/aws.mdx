@@ -4,17 +4,18 @@ description: "This guide walks you through setting up `hot-updater` with AWS S3 
 icon: aws
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
-import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
 <video src={"/docs/get-started/init-aws.mov"} controls autoPlay loop muted />
 
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
+
 - **Node.js**: Version 20 or later is recommended.
 - **AWS Account**: Sign up at [AWS](https://aws.amazon.com) if you don't have one.
-- **AWS CLI**: Install the AWS CLI and configure your credentials.
+- **AWS CLI**: Install the AWS CLI and sign in or configure a profile.
 
 ## Required AWS Permissions
 
@@ -23,26 +24,26 @@ Hot Updater requires specific AWS IAM permissions for setup and ongoing usage:
 ### 1. Initialization (One-Time Setup)
 
 Used for `hot-updater init`:
-* `AmazonS3FullAccess`: Create and read S3 buckets.
-* `AWSLambda_FullAccess`: Create and update Lambda functions.
-* `CloudFrontFullAccess`: Manage CloudFront distributions.
-* `IAMFullAccess`: Create IAM roles for Lambda@Edge.
-* `SSMFullAccess`: Create Access to SSM Parameters for storing CloudFront key pairs.
+
+- `AmazonS3FullAccess`: Create and read S3 buckets.
+- `AWSLambda_FullAccess`: Create and update Lambda functions.
+- `CloudFrontFullAccess`: Manage CloudFront distributions.
+- `IAMFullAccess`: Create IAM roles for Lambda@Edge.
+- `SSMFullAccess`: Create Access to SSM Parameters for storing CloudFront key pairs.
 
 ### 2. Ongoing Usage
 
 Used for `hot-updater deploy` and `hot-updater console`:
-* `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
-* `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
+
+- `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
+- `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
 
 For ongoing usage, create a separate access token with limited permissions. Here's a minimal policy example for CloudFront invalidation:
 
 ```json
 {
   "Effect": "Allow",
-  "Action": [
-    "cloudfront:CreateInvalidation"
-  ],
+  "Action": ["cloudfront:CreateInvalidation"],
   "Resource": "arn:aws:cloudfront::<ACCOUNT_ID>:distribution/<DISTRIBUTION_ID>"
 }
 ```
@@ -74,31 +75,45 @@ npx hot-updater init
 
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
-During the setup, you will be prompted to:
-1. **Choose AWS Login Method**: Select between AWS Access Key or SSO login
-2. **Enter AWS Credentials**: Input your AWS credentials with required permissions
-3. **Select Region**: Choose an AWS region for your S3 bucket
-4. **Select S3 Bucket**: Choose an existing bucket or create a new one
-5. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
-6. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-7. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+   During the setup, you will be prompted to:
+3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
+4. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
+5. **Select Region**: Choose an AWS region for your S3 bucket
+6. **Select S3 Bucket**: Choose an existing bucket or create a new one
+7. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
+8. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+9. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, a `.env` file will be generated containing the following keys:
+Once the setup is complete, `.env.hotupdater` will be generated with your bucket,
+region, CloudFront distribution ID, and any profile or key settings needed for the
+mode you selected.
 
 ```
-# This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.
-HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
-# This key was generated via SSO login and may expire. Update it with an S3FullAccess and CloudFrontFullAccess key.
-HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
-
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
+HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
 ```
 
+If you choose a shared AWS profile, the generated env file will also include:
 
+```bash
+HOT_UPDATER_AWS_PROFILE=your-profile-name
+```
+
+If you choose the current AWS CLI/default session mode, no extra credential env
+variables are written. The generated config uses the AWS SDK default provider
+chain directly.
+
+If you choose access keys, the generated env file will instead include:
+
+```bash
+# The generated key may be over-privileged or temporary depending on how you authenticated during init.
+HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
+HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
+```
 
 <Callout type="warn">
 
@@ -106,17 +121,21 @@ If you're **not** using the `react-native-dotenv` solution, the tokens from your
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
+
 </Callout>
 
-
 ## Step 3: Generated Configurations
+
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating AWS with your project.
 
-```ts title="hot-updater.config.ts"
+If you choose **current AWS CLI/default session**, the generated config uses the
+AWS SDK default provider chain instead of embedding access keys:
 
+```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { s3Storage, s3Database } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
@@ -126,10 +145,7 @@ config({ path: ".env.hotupdater" });
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
-  credentials: {
-    accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
-  },
+  credentials: fromNodeProviderChain(),
 };
 
 export default defineConfig({
@@ -137,14 +153,23 @@ export default defineConfig({
   storage: s3Storage(commonOptions),
   database: s3Database({
     ...commonOptions,
+    // prettier-ignore
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
 });
 ```
 
+If you choose **shared AWS profile**, `fromNodeProviderChain()` is replaced with
+`fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })`. If you choose
+access keys or SSO, the generated credential block matches that mode instead.
+
 ## Step 4: Change `.env` file (Optional)
 
 By this point, the .env file should already be created. The token inside was generated when you ran the `hot-updater init` command.
+
+This step only applies if you selected **access key** or **SSO** during `init`.
+If you selected **current AWS CLI/default session** or **shared AWS profile**,
+you can keep using the generated credential-provider setup and skip this section.
 
 The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
 
@@ -154,7 +179,6 @@ To avoid issues, update it with a permanent token with `S3FullAccess` and `Cloud
 HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id
 HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 ```
-
 
 ## Step 5: Add HotUpdater to Your Project
 
@@ -202,13 +226,11 @@ export default HotUpdater.wrap({
     </View>
   ),
 })(App);
-
 ```
 
 <Callout type="info">
 The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, version: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
 </Callout>
-
 
 ## Step 6: If You Use Expo, Add the Config Plugin
 
@@ -234,12 +256,14 @@ npx expo prebuild
 ```
 
 <Callout>
-This process automatically generates the code that needs to be added in Step 7.
-Skip this step if you are using bare or Rock.
+  This process automatically generates the code that needs to be added in Step
+  7. Skip this step if you are using bare or Rock.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
+  If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the
+  additional Babel plugin setup.
 </Callout>
 
 ## Step 7: Add Native Code
@@ -335,6 +359,7 @@ class MainApplication : Application(), ReactApplication {
     }
   }
 }
+
 ```
   </Tab>
   <Tab value="Java">
@@ -415,6 +440,7 @@ public class MainApplication extends Application implements ReactApplication {
 </Tabs>
 
 ### iOS
+
 <Tabs items={['Swift', 'Objective-C']}>
 <Tab value="Swift">
 ```swift title="ios/<your-app-name>/AppDelegate.swift"
@@ -488,17 +514,21 @@ class AppDelegate: RCTAppDelegate {
 
 @end
 ```
+
 </Tab>
 </Tabs>
 
 <Callout type="info">
-For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
 
 ## Verifying the Setup
+
 1. Check your AWS dashboard for the newly created bucket, Lambda@Edge function, and CloudFront distribution.
 2. Test the HotUpdater integration in your React Native app.
-
 
 You're all set! 🎉 Start using hot-updater with AWS for seamless updates in your React Native app.
 

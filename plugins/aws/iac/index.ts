@@ -1,4 +1,8 @@
-import { fromSSO } from "@aws-sdk/credential-providers";
+import {
+  fromIni,
+  fromNodeProviderChain,
+  fromSSO,
+} from "@aws-sdk/credential-providers";
 import {
   type BuildType,
   colors,
@@ -19,7 +23,11 @@ import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpda
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
+import {
+  type AwsConfigScaffoldAuthMode,
+  getConfigScaffold,
+  SOURCE_TEMPLATE,
+} from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -42,11 +50,21 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   let credentials:
     | { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
     | undefined;
+  let configAuthMode: AwsConfigScaffoldAuthMode = { mode: "account" };
+  let awsProfile: string | null = null;
 
   // Select: AWS login mode
   const mode = await p.select({
     message: "Select the mode to login to AWS",
     options: [
+      {
+        label: "Current AWS CLI Session / Default Credential Chain",
+        value: "local-session",
+      },
+      {
+        label: "Shared AWS Profile",
+        value: "shared-profile",
+      },
       { label: "AWS SSO Login", value: "sso" },
       {
         label: "AWS Access Key ID & Secret Access Key",
@@ -73,8 +91,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
-  let ssoProfile: string | null = null;
-
   if (mode === "sso") {
     try {
       const profile = await p.text({
@@ -85,7 +101,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       if (p.isCancel(profile)) {
         process.exit(1);
       }
-      ssoProfile = profile;
+      awsProfile = profile;
+      configAuthMode = { mode: "sso", profile };
       await execa("aws", ["sso", "login", "--profile", profile], {
         stdio: "inherit",
         shell: true,
@@ -94,6 +111,38 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     } catch (error) {
       if (error instanceof ExecaError) {
         p.log.error(error.stdout || error.stderr || error.message);
+      }
+      process.exit(1);
+    }
+  } else if (mode === "local-session") {
+    try {
+      configAuthMode = { mode: "local", profile: null };
+      credentials = await fromNodeProviderChain()();
+    } catch (error) {
+      if (error instanceof Error) {
+        p.log.error(error.message);
+      }
+      process.exit(1);
+    }
+  } else if (mode === "shared-profile") {
+    try {
+      const profile = await p.text({
+        message: "Enter the AWS profile name",
+        defaultValue: process.env.AWS_PROFILE ?? "default",
+        placeholder: process.env.AWS_PROFILE ?? "default",
+        validate: (value) =>
+          (value ?? "").trim() ? undefined : "AWS profile name is required",
+      });
+      if (p.isCancel(profile)) {
+        process.exit(1);
+      }
+
+      awsProfile = profile.trim();
+      configAuthMode = { mode: "local", profile: awsProfile };
+      credentials = await fromIni({ profile: awsProfile })();
+    } catch (error) {
+      if (error instanceof Error) {
+        p.log.error(error.message);
       }
       process.exit(1);
     }
@@ -119,6 +168,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       accessKeyId: creds.accessKeyId,
       secretAccessKey: creds.secretAccessKey,
     };
+    configAuthMode = { mode: "account" };
   }
 
   if (!credentials) {
@@ -247,7 +297,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   // Create configuration file
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, { profile: ssoProfile }),
+    getConfigScaffold(build, configAuthMode),
   );
 
   await makeEnv({
@@ -267,9 +317,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           },
         }
       : {}),
-    ...(ssoProfile !== null
+    ...(awsProfile !== null
       ? {
-          HOT_UPDATER_AWS_PROFILE: ssoProfile!,
+          HOT_UPDATER_AWS_PROFILE: awsProfile,
         }
       : {}),
     HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
@@ -279,6 +329,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   if (mode === "sso") {
     await ensureInstallPackages({
       devDependencies: ["@aws-sdk/credential-provider-sso"],
+    });
+  } else if (mode === "local-session" || mode === "shared-profile") {
+    await ensureInstallPackages({
+      devDependencies: ["@aws-sdk/credential-providers"],
     });
   }
 

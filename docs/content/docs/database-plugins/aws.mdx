@@ -39,6 +39,10 @@ interface S3DatabaseConfig {
 }
 ```
 
+If `credentials` is omitted, the AWS SDK default credential chain is used. This
+lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
+other standard AWS credential sources.
+
 ## Usage
 
 ```typescript
