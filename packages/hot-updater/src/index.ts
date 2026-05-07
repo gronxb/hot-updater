@@ -16,6 +16,7 @@ import {
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildSchemeCommandOption,
+  PLATFORMS,
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
@@ -252,7 +253,18 @@ program
     ),
   )
   .action(async (options: DeployOptions) => {
-    deploy(options);
+    // When neither -p nor -i is set, deploy both platforms sequentially.
+    // ios runs first; if it fails (deploy() exits the process on error),
+    // android is not attempted -- avoids leaving a channel partially
+    // updated. Existing -p ios / -p android invocations are unchanged;
+    // -i still prompts for a single platform.
+    if (options.platform || options.interactive) {
+      await deploy(options);
+      return;
+    }
+    for (const platform of PLATFORMS) {
+      await deploy({ ...options, platform });
+    }
   });
 
 program
