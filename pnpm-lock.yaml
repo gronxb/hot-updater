@@ -13014,8 +13014,8 @@ packages:
   fast-xml-builder@1.1.5:
     resolution: {integrity: sha512-4TJn/8FKLeslLAH3dnohXqE3QSoxkhvaMzepOIZytwJXZO69Bfz0HBdDHzOTOon6G59Zrk6VQ2bEiv1t61rfkA==}
 
-  fast-xml-parser@4.5.3:
-    resolution: {integrity: sha512-RKihhV+SHsIUGXObeVy9AXiBbFwkVk7Syp8XgwN5U3JV416+Gwp/GO9i0JYKmikykgz/UHRrrV4ROuZEo/T0ig==}
+  fast-xml-parser@4.5.4:
+    resolution: {integrity: sha512-jE8ugADnYOBsu1uaoayVl1tVKAMNOXyjwvv2U6udEA2ORBhDooJDWoGxTkhd4Qn4yh59JVVt/pKXtjPwx9OguQ==}
     hasBin: true
 
   fast-xml-parser@5.4.1:
@@ -25843,7 +25843,7 @@ snapshots:
       abort-controller: 3.0.0
       async-retry: 1.3.3
       duplexify: 4.1.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       gaxios: 6.7.1(encoding@0.1.13)
       google-auth-library: 9.15.1(encoding@0.1.13)
       html-entities: 2.6.0
@@ -28360,21 +28360,21 @@ snapshots:
       '@react-native-community/cli-tools': 18.0.0
       chalk: 4.1.2
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-config-android@19.1.1':
     dependencies:
       '@react-native-community/cli-tools': 19.1.1
       chalk: 4.1.2
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-config-android@20.0.0':
     dependencies:
       '@react-native-community/cli-tools': 20.0.0
       chalk: 4.1.2
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-config-apple@15.0.1':
     dependencies:
@@ -28607,7 +28607,7 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       logkitty: 0.7.1
     transitivePeerDependencies:
       - encoding
@@ -28618,7 +28618,7 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       logkitty: 0.7.1
 
   '@react-native-community/cli-platform-android@15.0.1':
@@ -28627,7 +28627,7 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       logkitty: 0.7.1
 
   '@react-native-community/cli-platform-android@18.0.0':
@@ -28652,7 +28652,7 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       ora: 5.4.1
     transitivePeerDependencies:
       - encoding
@@ -28663,7 +28663,7 @@ snapshots:
       chalk: 4.1.2
       execa: 5.1.1
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       ora: 5.4.1
 
   '@react-native-community/cli-platform-apple@15.0.1':
@@ -28672,7 +28672,7 @@ snapshots:
       '@react-native-community/cli-tools': 15.0.1
       chalk: 4.1.2
       execa: 5.1.1
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-platform-apple@18.0.0':
     dependencies:
@@ -28680,7 +28680,7 @@ snapshots:
       '@react-native-community/cli-tools': 18.0.0
       chalk: 4.1.2
       execa: 5.1.1
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-platform-apple@20.0.0':
     dependencies:
@@ -28688,7 +28688,7 @@ snapshots:
       '@react-native-community/cli-tools': 20.0.0
       chalk: 4.1.2
       execa: 5.1.1
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
 
   '@react-native-community/cli-platform-ios@13.6.6(encoding@0.1.13)':
     dependencies:
@@ -30367,7 +30367,7 @@ snapshots:
       '@types/adm-zip': 0.5.7
       adm-zip: 0.5.16
       fast-glob: 3.3.3
-      fast-xml-parser: 4.5.3
+      fast-xml-parser: 4.5.4
       tslib: 2.8.1
     transitivePeerDependencies:
       - supports-color
@@ -35911,7 +35911,7 @@ snapshots:
     dependencies:
       path-expression-matcher: 1.5.0
 
-  fast-xml-parser@4.5.3:
+  fast-xml-parser@4.5.4:
     dependencies:
       strnum: 1.1.2
 
