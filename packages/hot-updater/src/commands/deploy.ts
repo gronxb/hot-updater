@@ -36,6 +36,7 @@ import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
 
 export interface DeployOptions {
@@ -89,13 +90,102 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   }
 };
 
-export const deploy = async (options: DeployOptions) => {
-  printBanner();
+const getPlatformName = (platform: Platform) =>
+  platform === "ios" ? "iOS" : "Android";
 
+const getDeployPlatforms = async (
+  options: DeployOptions,
+): Promise<Platform[] | null> => {
+  if (options.platform) {
+    return [options.platform];
+  }
+
+  if (!options.interactive) {
+    return [...PLATFORMS];
+  }
+
+  const platform = await getPlatform("Which platform do you want to deploy?");
+  if (p.isCancel(platform)) {
+    return null;
+  }
+
+  if (!platform) {
+    p.log.error(
+      "Platform not found. -p <ios | android> or --platform <ios | android>",
+    );
+    return null;
+  }
+
+  return [platform];
+};
+
+const getBundleOutputRoot = ({
+  cwd,
+  outputPath,
+  platform,
+  multiPlatform,
+}: {
+  cwd: string;
+  outputPath: string;
+  platform: Platform;
+  multiPlatform: boolean;
+}) => {
+  const normalizedOutputPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.join(cwd, outputPath);
+
+  return multiPlatform
+    ? path.join(normalizedOutputPath, platform)
+    : normalizedOutputPath;
+};
+
+const getMultiPlatformDeploymentContext = async ({
+  channel,
+  options,
+  platforms,
+  rolloutPercentage,
+}: {
+  channel: string;
+  options: DeployOptions;
+  platforms: Platform[];
+  rolloutPercentage: number;
+}) => {
+  const config = await loadConfig({ platform: platforms[0]!, channel });
+  if (!config) {
+    return null;
+  }
+
+  const lines = [
+    `Platform: Both (${platforms.map(getPlatformName).join(", ")})`,
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+  ];
+
+  if (config.updateStrategy === "fingerprint") {
+    lines.push("Fingerprint: per-platform");
+  } else if (options.targetAppVersion) {
+    lines.push(`Target app version: ${semverValid(options.targetAppVersion)}`);
+  }
+
+  return lines.join("\n");
+};
+
+const deployPlatform = async ({
+  options,
+  platform,
+  platformIndex,
+  platformCount,
+}: {
+  options: DeployOptions;
+  platform: Platform;
+  platformIndex: number;
+  platformCount: number;
+}): Promise<{ bundleId: string; platform: Platform } | null> => {
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
   const rolloutCohortCount =
     getRolloutCohortCountFromPercentage(rolloutPercentage);
+  const multiPlatform = platformCount > 1;
 
   const gitCommit = await getLatestGitCommit();
   const [gitCommitHash, gitMessage] = [
@@ -103,25 +193,7 @@ export const deploy = async (options: DeployOptions) => {
     gitCommit?.summary() ?? null,
   ];
 
-  const platform =
-    options.platform ??
-    (options.interactive
-      ? await getPlatform("Which platform do you want to deploy?")
-      : null);
-
-  if (p.isCancel(platform)) {
-    return;
-  }
-
-  if (!platform) {
-    p.log.error(
-      "Platform not found. -p <ios | android> or --platform <ios | android>",
-    );
-    return;
-  }
-
   const channel = options.channel;
-
   const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
@@ -228,14 +300,14 @@ export const deploy = async (options: DeployOptions) => {
         : null);
 
     if (p.isCancel(targetAppVersion)) {
-      return;
+      return null;
     }
 
     if (!targetAppVersion) {
       p.log.error(
         "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
       );
-      return;
+      return null;
     }
     target.appVersion = targetAppVersion;
   }
@@ -253,16 +325,6 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   }
 
-  const deploymentContext = [
-    `Channel: ${channel}`,
-    `Rollout: ${rolloutPercentage}%`,
-    config.updateStrategy === "fingerprint"
-      ? `Fingerprint: ${target.fingerprintHash}`
-      : `Target app version: ${semverValid(target.appVersion)}`,
-  ].join("\n");
-
-  p.note(deploymentContext, "Deployment");
-
   if (
     appendToProjectRootGitignore({
       globLines: [HotUpdateDirUtil.outputGitignorePath],
@@ -276,18 +338,40 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
-
-  const normalizeOutputPath = path.isAbsolute(outputPath)
-    ? outputPath
-    : path.join(cwd, outputPath);
+  const platformName = getPlatformName(platform);
+  const outputRoot = getBundleOutputRoot({
+    cwd,
+    outputPath,
+    platform,
+    multiPlatform,
+  });
 
   const compressStrategy = config.compressStrategy;
   const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
   const bundlePath = path.join(
-    normalizeOutputPath,
+    outputRoot,
     "bundle",
     `bundle${bundleExtension}`,
   );
+
+  const deploymentContext = [
+    `Platform: ${platformName}`,
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+    config.updateStrategy === "fingerprint"
+      ? `Fingerprint: ${target.fingerprintHash}`
+      : `Target app version: ${semverValid(target.appVersion)}`,
+  ].join("\n");
+
+  const deploymentTitle = multiPlatform
+    ? `Deployment (${platformName} ${platformIndex + 1}/${platformCount})`
+    : "Deployment";
+
+  if (multiPlatform) {
+    p.log.step(`${deploymentTitle} • ${channel}`);
+  } else {
+    p.note(deploymentContext, deploymentTitle);
+  }
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -312,13 +396,13 @@ export const deploy = async (options: DeployOptions) => {
 
     await p.tasks([
       {
-        title: `📦 Building Bundle (${buildPlugin.name})`,
+        title: `📦 Building Bundle (${platformName} • ${buildPlugin.name})`,
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
 
-          await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
+          await fs.promises.mkdir(outputRoot, { recursive: true });
 
           const buildPath = taskRef.buildResult?.buildPath;
           if (!buildPath) {
@@ -413,7 +497,10 @@ export const deploy = async (options: DeployOptions) => {
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.note(taskRef.buildResult.stdout.trim(), "Build Output");
+      p.note(
+        taskRef.buildResult.stdout.trim(),
+        multiPlatform ? `Build Output (${platformName})` : "Build Output",
+      );
     }
 
     if (config.signing?.enabled) {
@@ -422,7 +509,7 @@ export const deploy = async (options: DeployOptions) => {
 
     await p.tasks([
       {
-        title: `📦 Uploading to Storage (${storagePlugin.name})`,
+        title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
@@ -444,7 +531,7 @@ export const deploy = async (options: DeployOptions) => {
         },
       },
       {
-        title: `📦 Updating Database (${databasePlugin.name})`,
+        title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
@@ -519,7 +606,13 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
+    if (multiPlatform) {
+      p.log.success(`✅ ${platformName} Deployment Successful (${bundleId})`);
+      return { bundleId, platform };
+    }
+
     p.outro(`🚀 Deployment Successful (${bundleId})`);
+    return { bundleId, platform };
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
@@ -527,5 +620,51 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
+  }
+};
+
+export const deploy = async (options: DeployOptions) => {
+  printBanner();
+
+  const platforms = await getDeployPlatforms(options);
+  if (!platforms || platforms.length === 0) {
+    return;
+  }
+
+  const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+
+  if (platforms.length > 1) {
+    const deploymentContext = await getMultiPlatformDeploymentContext({
+      channel: options.channel,
+      options,
+      platforms,
+      rolloutPercentage,
+    });
+
+    if (deploymentContext) {
+      p.note(deploymentContext, "Deployment");
+    }
+  }
+
+  const results: Array<{ bundleId: string; platform: Platform }> = [];
+  for (const [platformIndex, platform] of platforms.entries()) {
+    const result = await deployPlatform({
+      options,
+      platform,
+      platformCount: platforms.length,
+      platformIndex,
+    });
+
+    if (!result) {
+      return;
+    }
+
+    results.push(result);
+  }
+
+  if (platforms.length > 1) {
+    p.outro(
+      `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
+    );
   }
 };
