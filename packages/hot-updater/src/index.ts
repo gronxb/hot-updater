@@ -43,6 +43,7 @@ import {
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handlePromote } from "./commands/promote";
 import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
@@ -126,6 +127,31 @@ bundleCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, true, options),
+  );
+
+bundleCommand
+  .command("promote")
+  .description("Move or copy a bundle to a different channel")
+  .argument("<bundle-id>", "the id of the bundle to promote")
+  .requiredOption("-t, --target <channel>", "channel to promote the bundle to")
+  .addOption(
+    new Option(
+      "-a, --action <action>",
+      "promote action (copy creates a new bundle id; move keeps the id)",
+    )
+      .choices(["copy", "move"])
+      .default("copy"),
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(
+    (
+      bundleId: string,
+      options: {
+        target: string;
+        action: "copy" | "move";
+        yes?: boolean;
+      },
+    ) => handlePromote(bundleId, options),
   );
 
 const keysCommand = program
