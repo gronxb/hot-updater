@@ -7,13 +7,14 @@ import {
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
+export type AwsConfigScaffoldAuthMode =
+  | { mode: "account" }
+  | { mode: "local"; profile: string | null }
+  | { mode: "sso"; profile: string };
+
 export const getConfigScaffold = (
   build: BuildType,
-  {
-    profile,
-  }: {
-    profile: string | null;
-  },
+  authMode: AwsConfigScaffoldAuthMode,
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
@@ -27,29 +28,50 @@ export const getConfigScaffold = (
   })`,
   };
 
-  let helperStatements: ManagedHelperStatement[] = [];
+  let helperStatements: ManagedHelperStatement[];
 
-  if (profile) {
-    // SSO mode: use fromSSO with profile
-    helperStatements = [
-      {
-        name: "commonOptions",
-        strategy: "merge-object",
-        code: `
+  switch (authMode.mode) {
+    case "sso":
+      helperStatements = [
+        {
+          name: "commonOptions",
+          strategy: "merge-object",
+          code: `
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim(),
-      },
-    ];
-  } else {
-    // Account mode: use access key credentials
-    helperStatements = [
-      {
-        name: "commonOptions",
-        strategy: "merge-object",
-        code: `
+        },
+      ];
+      break;
+    case "local":
+      helperStatements = [
+        {
+          name: "commonOptions",
+          strategy: "merge-object",
+          code: authMode.profile
+            ? `
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
+};`.trim()
+            : `
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: fromNodeProviderChain(),
+};`.trim(),
+        },
+      ];
+      break;
+    case "account":
+      helperStatements = [
+        {
+          name: "commonOptions",
+          strategy: "merge-object",
+          code: `
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   region: process.env.HOT_UPDATER_S3_REGION!,
@@ -58,8 +80,9 @@ const commonOptions = {
     secretAccessKey: process.env.HOT_UPDATER_S3_SECRET_ACCESS_KEY!,
   },
 };`.trim(),
-      },
-    ];
+        },
+      ];
+      break;
   }
 
   const builder = new ConfigBuilder()
@@ -70,11 +93,21 @@ const commonOptions = {
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
     );
 
-  if (profile) {
-    builder.addImport({
-      pkg: "@aws-sdk/credential-provider-sso",
-      named: ["fromSSO"],
-    });
+  switch (authMode.mode) {
+    case "sso":
+      builder.addImport({
+        pkg: "@aws-sdk/credential-provider-sso",
+        named: ["fromSSO"],
+      });
+      break;
+    case "local":
+      builder.addImport({
+        pkg: "@aws-sdk/credential-providers",
+        named: [authMode.profile ? "fromIni" : "fromNodeProviderChain"],
+      });
+      break;
+    case "account":
+      break;
   }
 
   return createHotUpdaterConfigScaffoldFromBuilder(builder, {
@@ -84,12 +117,8 @@ const commonOptions = {
 
 export const getConfigTemplate = (
   build: BuildType,
-  {
-    profile,
-  }: {
-    profile: string | null;
-  },
-) => getConfigScaffold(build, { profile }).text;
+  authMode: AwsConfigScaffoldAuthMode,
+) => getConfigScaffold(build, authMode).text;
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
