@@ -1,6 +1,6 @@
 ---
 title: "Deploy"
-description: "This command is used to deploy the update to the specified platform."
+description: "Deploy an update to one platform or both platforms sequentially."
 icon: Upload
 ---
 
@@ -20,7 +20,7 @@ Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -f, --force-update                           force update the app (default: false)
-  -o, --bundle-output-path <bundleOutputPath>  the path where the bundle.zip will be generated
+  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
   -r, --rollout <percentage>                   specify the rollout percentage for the deployed bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
@@ -29,6 +29,22 @@ Options:
 ```
 
 ## Usage
+
+### Default Mode
+
+When you omit `-p` and `-i`, Hot Updater deploys **iOS first, then Android**
+sequentially. If the iOS deploy fails, Android is not attempted.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy
+```
+
+- This is the default mode for CI/CD pipelines when both platforms should move
+  together.
+- Local bundle archives are written under platform-specific directories such as
+  `<bundle-output-path>/ios/bundle/` and `<bundle-output-path>/android/bundle/`.
 
 ### Interactive Mode
 
@@ -45,7 +61,7 @@ The `-i` (or `--interactive`) flag enables interactive keyboard input.
 
 ### For Continuous Deployment (CD) Pipelines
 
-Use this mode for automating deployment in CI/CD pipelines.
+Use this mode when a pipeline should deploy only one platform.
 
 Run the following command:
 
@@ -53,7 +69,7 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android">
 ```
 
-- This mode is suitable for Continuous Deployment (CD) pipelines.
+- Use `-p` to scope the deploy to exactly one platform.
 
 ### Force Update
 
@@ -116,6 +132,9 @@ Run the following command:
 ```package-install
 npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
 ```
+
+If you omit `-p`, the same message is applied to both sequential platform
+deploys.
 
 ## Force Update Flag Difference
 

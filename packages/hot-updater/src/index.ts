@@ -16,7 +16,6 @@ import {
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
   nativeBuildSchemeCommandOption,
-  PLATFORMS,
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
@@ -221,7 +220,7 @@ program
   .addOption(
     new Option(
       "-o, --bundle-output-path <bundleOutputPath>",
-      "the path where the bundle.zip will be generated",
+      "the directory where bundle archives will be generated",
     ),
   )
   .addOption(
@@ -252,20 +251,7 @@ program
       "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
     ),
   )
-  .action(async (options: DeployOptions) => {
-    // When neither -p nor -i is set, deploy both platforms sequentially.
-    // ios runs first; if it fails (deploy() exits the process on error),
-    // android is not attempted -- avoids leaving a channel partially
-    // updated. Existing -p ios / -p android invocations are unchanged;
-    // -i still prompts for a single platform.
-    if (options.platform || options.interactive) {
-      await deploy(options);
-      return;
-    }
-    for (const platform of PLATFORMS) {
-      await deploy({ ...options, platform });
-    }
-  });
+  .action(async (options: DeployOptions) => deploy(options));
 
 program
   .command("rollback")
