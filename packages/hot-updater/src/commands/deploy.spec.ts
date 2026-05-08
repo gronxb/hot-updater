@@ -201,10 +201,13 @@ import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
+import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
+import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { getConsolePort } from "./console";
 import {
   deploy,
   getRolloutCohortCountFromPercentage,
@@ -337,6 +340,7 @@ describe("deploy rollout wiring", () => {
       id: () => "git-hash",
       summary: () => "git summary",
     } as Awaited<ReturnType<typeof getLatestGitCommit>>);
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
     vi.mocked(getNativeAppVersion).mockResolvedValue("1.0");
     vi.mocked(writeBundleManifest).mockResolvedValue({
       manifest: {
@@ -425,11 +429,66 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "🚀 Deployment Successful (bundle-123)",
+    );
+  });
+
+  it("deploys both platforms sequentially when platform is omitted", async () => {
+    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(printBanner).toHaveBeenCalledTimes(1);
+    expect(mockBuildPlugin.build.mock.calls).toEqual([
+      [{ platform: "ios" }],
+      [{ platform: "android" }],
+    ]);
+    expect(mockCli.p.note).toHaveBeenNthCalledWith(
+      1,
+      "Platform: Both (iOS, Android)\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Deployment",
+    );
+    expect(mockCli.p.log.step).toHaveBeenNthCalledWith(
+      1,
+      "Deployment (iOS 1/2) • production",
+    );
+    expect(mockCli.p.log.step).toHaveBeenNthCalledWith(
+      2,
+      "Deployment (Android 2/2) • production",
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outfile: "/mock/cwd/.hot-updater/output/ios/bundle/bundle.tar.br",
+      }),
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outfile: "/mock/cwd/.hot-updater/output/android/bundle/bundle.tar.br",
+      }),
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "✅ iOS Deployment Successful (bundle-ios)",
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "✅ Android Deployment Successful (bundle-android)",
+    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      "🚀 Deployment Successful (iOS, Android)",
     );
   });
 
@@ -558,7 +617,7 @@ describe("deploy rollout wiring", () => {
       "✅ Bundle Signing Complete",
     );
     expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
 
@@ -704,6 +763,82 @@ describe("deploy rollout wiring", () => {
     );
     expect(mockCli.p.log.warn).toHaveBeenCalledWith(
       "Partial update skipped for bundle-1: storage unavailable",
+    );
+  });
+
+  it("falls back to the auto-detected target app version in non-interactive mode when -t is omitted", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.5.0",
+      }),
+    );
+  });
+
+  it("errors out in non-interactive mode when -t is omitted and the native config is unreadable", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("Target app version not found in native files"),
+    );
+    expect(mockDatabasePlugin.appendBundle).not.toHaveBeenCalled();
+  });
+
+  it("uses the explicit -t value over the auto-detected default", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.2.0",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.2.0",
+      }),
+    );
+  });
+
+  it("uses the interactive prompt with the auto-detected value as placeholder/initialValue", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getConsolePort).mockResolvedValue(3000);
+    mockCli.p.text.mockResolvedValue("1.7.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: true,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        placeholder: "1.5.0",
+        initialValue: "1.5.0",
+      }),
+    );
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.7.0",
+      }),
     );
   });
 });

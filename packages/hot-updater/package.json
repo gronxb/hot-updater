@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.30.9",
+  "version": "0.30.10",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -82,7 +82,6 @@
     "is-port-reachable": "^4.0.0",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "read-package-up": "^11.0.0",
     "semver": "^7.6.3",
     "typescript": "6.0.2"
   },

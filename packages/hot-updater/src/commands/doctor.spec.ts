@@ -1,4 +1,4 @@
-import { readPackageUp } from "read-package-up";
+import { readPackageUp } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,13 +9,13 @@ import {
   resolveVersionEndpoint,
 } from "./doctor";
 
-vi.mock("read-package-up", () => ({
+vi.mock("@hot-updater/cli-tools", () => ({
+  getCwd: vi.fn(() => "/mock/cwd"),
+  p: {},
   readPackageUp: vi.fn(),
 }));
 
-vi.mock("@hot-updater/plugin-core", () => ({
-  getCwd: vi.fn(() => "/mock/cwd"),
-}));
+const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
 
 describe("areVersionsCompatible", () => {
   // Test cases for exact matches
@@ -136,7 +136,7 @@ describe("doctor", () => {
   });
 
   it("should return true for a healthy setup", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
@@ -155,7 +155,7 @@ describe("doctor", () => {
   });
 
   it("should return true for a healthy setup", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "0.18.2",
@@ -174,7 +174,7 @@ describe("doctor", () => {
   });
 
   it("should return true for a healthy setup", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
@@ -193,7 +193,7 @@ describe("doctor", () => {
   });
 
   it("should return true for a healthy setup", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^0.18.2",
@@ -234,7 +234,7 @@ describe("doctor", () => {
   });
 
   it("should return true for a healthy setup", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
@@ -253,7 +253,7 @@ describe("doctor", () => {
   });
 
   it("should return an error if package.json is not found", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    mockReadPackageUp.mockResolvedValue(undefined);
 
     const result = await doctor();
     expect(result).toEqual({
@@ -263,7 +263,7 @@ describe("doctor", () => {
   });
 
   it("should return an error if hot-updater CLI is not found", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "@hot-updater/core": "1.0.0",
@@ -280,7 +280,7 @@ describe("doctor", () => {
   });
 
   it("should detect version mismatches", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
@@ -322,7 +322,7 @@ describe("doctor", () => {
   });
 
   it("should return true if only hot-updater CLI is present and no other @hot-updater packages", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
@@ -336,7 +336,7 @@ describe("doctor", () => {
   });
 
   it("should handle empty dependencies and devDependencies", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "1.0.0",
@@ -347,7 +347,7 @@ describe("doctor", () => {
     const result = await doctor();
     expect(result).toBe(true);
 
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         devDependencies: {
           "hot-updater": "1.0.0",
@@ -358,7 +358,7 @@ describe("doctor", () => {
     const result2 = await doctor();
     expect(result2).toBe(true);
 
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {},
       path: "/mock/cwd/package.json",
     });
@@ -370,7 +370,7 @@ describe("doctor", () => {
   });
 
   it("should pass when server infrastructure is on the required target", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "0.30.0",
@@ -416,7 +416,7 @@ describe("doctor", () => {
   });
 
   it("should pass when server version is newer than the required infrastructure target", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "0.30.0",
@@ -449,7 +449,7 @@ describe("doctor", () => {
   });
 
   it("should fail when server infrastructure is below the required target", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "0.30.0",
@@ -482,7 +482,7 @@ describe("doctor", () => {
   });
 
   it("should require an update when server version endpoint is unavailable", async () => {
-    (readPackageUp as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
           "hot-updater": "0.30.0",
