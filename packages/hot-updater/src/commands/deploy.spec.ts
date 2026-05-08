@@ -177,8 +177,10 @@ import { getLatestGitCommit } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
+import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { getConsolePort } from "./console";
 import {
   deploy,
   getRolloutCohortCountFromPercentage,
@@ -270,6 +272,7 @@ describe("deploy rollout wiring", () => {
       id: () => "git-hash",
       summary: () => "git summary",
     } as Awaited<ReturnType<typeof getLatestGitCommit>>);
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
     vi.mocked(getNativeAppVersion).mockResolvedValue("1.0");
     vi.mocked(writeBundleManifest).mockResolvedValue({
       manifest: {
@@ -484,5 +487,81 @@ describe("deploy rollout wiring", () => {
 
     expect(buildOutputOrder).toBeGreaterThanOrEqual(0);
     expect(signingOrder).toBeGreaterThanOrEqual(0);
+  });
+
+  it("falls back to the auto-detected target app version in non-interactive mode when -t is omitted", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.5.0",
+      }),
+    );
+  });
+
+  it("errors out in non-interactive mode when -t is omitted and the native config is unreadable", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("Target app version not found in native files"),
+    );
+    expect(mockDatabasePlugin.appendBundle).not.toHaveBeenCalled();
+  });
+
+  it("uses the explicit -t value over the auto-detected default", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.2.0",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.2.0",
+      }),
+    );
+  });
+
+  it("uses the interactive prompt with the auto-detected value as placeholder/initialValue", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getConsolePort).mockResolvedValue(3000);
+    mockCli.p.text.mockResolvedValue("1.7.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: true,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        placeholder: "1.5.0",
+        initialValue: "1.5.0",
+      }),
+    );
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.7.0",
+      }),
+    );
   });
 });

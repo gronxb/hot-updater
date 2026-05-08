@@ -280,16 +280,15 @@ const deployPlatform = async ({
     target.fingerprintHash = newFingerprint.hash;
     s.stop(`Fingerprint(${platform}): ${newFingerprint.hash}`);
   } else {
-    const defaultTargetAppVersion =
-      (await getDefaultTargetAppVersion(platform)) ?? "1.0.0";
+    const defaultTargetAppVersion = await getDefaultTargetAppVersion(platform);
 
     const targetAppVersion =
       options.targetAppVersion ??
       (options.interactive
         ? await p.text({
             message: "Target app version",
-            placeholder: defaultTargetAppVersion,
-            initialValue: defaultTargetAppVersion,
+            placeholder: defaultTargetAppVersion ?? "1.0.0",
+            initialValue: defaultTargetAppVersion ?? "1.0.0",
             validate: (value) => {
               if (!semverValid(value)) {
                 return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
@@ -297,7 +296,7 @@ const deployPlatform = async ({
               return;
             },
           })
-        : null);
+        : defaultTargetAppVersion);
 
     if (p.isCancel(targetAppVersion)) {
       return null;
@@ -305,7 +304,7 @@ const deployPlatform = async ({
 
     if (!targetAppVersion) {
       p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+        "Target app version not found in native files (Info.plist for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
       );
       return null;
     }
