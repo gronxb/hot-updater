@@ -28,7 +28,14 @@ export const fetchUpdateInfo = async ({
     if (response.status !== 200) {
       throw new Error(response.statusText);
     }
-    return response.json();
+
+    const body = await response.text();
+    const trimmedBody = body.trim();
+    if (trimmedBody === "" || trimmedBody === "null") {
+      return null;
+    }
+
+    return JSON.parse(trimmedBody) as AppUpdateInfo;
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("Request timed out");
