@@ -61,7 +61,47 @@ describe("fetchUpdateInfo", () => {
     expect(response.json).toHaveBeenCalledWith();
   });
 
-  it("throws when fetch returns no response", async () => {
+  it("retries once when fetch returns no response", async () => {
+    const response = createResponse();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(undefined as unknown as Response)
+      .mockResolvedValueOnce(response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchUpdateInfo({
+        url: "https://updates.example.com/check-update",
+      }),
+    ).resolves.toEqual(updateInfo);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses a fresh abort signal for a retried fetch", async () => {
+    const response = createResponse();
+    const signals: Array<AbortSignal | undefined> = [];
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
+      signals.push(init?.signal);
+      return Promise.resolve(
+        signals.length === 1 ? (undefined as unknown as Response) : response,
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchUpdateInfo({
+        url: "https://updates.example.com/check-update",
+      }),
+    ).resolves.toEqual(updateInfo);
+
+    expect(signals).toHaveLength(2);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]).not.toBe(signals[1]);
+  });
+
+  it("throws when fetch still returns no response after retry", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(undefined as unknown as Response);
@@ -72,7 +112,7 @@ describe("fetchUpdateInfo", () => {
         url: "https://updates.example.com/check-update",
       }),
     ).rejects.toThrow("Fetch returned no response");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("throws the response status text for non-200 responses", async () => {
