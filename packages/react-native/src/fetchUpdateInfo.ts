@@ -3,20 +3,18 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 export const fetchUpdateInfo = async ({
   url,
   requestHeaders,
-  onError,
   requestTimeout = 5000,
 }: {
   url: string;
   requestHeaders?: Record<string, string>;
-  onError?: (error: Error) => void;
   requestTimeout?: number;
 }): Promise<AppUpdateInfo | null> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, requestTimeout);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, requestTimeout);
 
+  try {
     const headers = {
       "Content-Type": "application/json",
       ...requestHeaders,
@@ -26,7 +24,6 @@ export const fetchUpdateInfo = async ({
       signal: controller.signal,
       headers,
     });
-    clearTimeout(timeoutId);
 
     if (response.status !== 200) {
       throw new Error(response.statusText);
@@ -34,10 +31,10 @@ export const fetchUpdateInfo = async ({
     return response.json();
   } catch (error: unknown) {
     if (error instanceof Error && error.name === "AbortError") {
-      onError?.(new Error("Request timed out"));
-    } else {
-      onError?.(error as Error);
+      throw new Error("Request timed out");
     }
-    return null;
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 };

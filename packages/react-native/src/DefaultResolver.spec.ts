@@ -70,4 +70,28 @@ describe("createDefaultResolver", () => {
       url: "http://localhost:3007/hot-updater/fingerprint/ios/fingerprint-hash/beta/min-bundle/current-bundle/qa",
     });
   });
+
+  it("propagates fetchUpdateInfo errors", async () => {
+    fetchUpdateInfoMock.mockRejectedValueOnce(new Error("Network failed"));
+
+    const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
+    if (!resolver.checkUpdate) {
+      throw new Error("Default resolver must implement checkUpdate");
+    }
+
+    await expect(
+      resolver.checkUpdate({
+        appVersion: "1.0",
+        bundleId: "current-bundle",
+        channel: "production",
+        cohort: "730",
+        minBundleId: "min-bundle",
+        platform: "android",
+        requestHeaders: undefined,
+        requestTimeout: undefined,
+        updateStrategy: "appVersion",
+        fingerprintHash: null,
+      }),
+    ).rejects.toThrow("Network failed");
+  });
 });
