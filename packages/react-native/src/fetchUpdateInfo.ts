@@ -9,10 +9,7 @@ export const fetchUpdateInfo = async ({
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
 }): Promise<AppUpdateInfo | null> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, requestTimeout);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
     const headers = {
@@ -20,21 +17,30 @@ export const fetchUpdateInfo = async ({
       ...requestHeaders,
     };
 
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers,
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Request timed out"));
+      }, requestTimeout);
     });
+
+    const response = await Promise.race([
+      fetch(url, {
+        headers,
+      }),
+      timeoutPromise,
+    ]);
+
+    if (!response) {
+      throw new Error("Fetch returned no response");
+    }
 
     if (response.status !== 200) {
       throw new Error(response.statusText);
     }
     return response.json();
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Request timed out");
-    }
-    throw error;
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 };
