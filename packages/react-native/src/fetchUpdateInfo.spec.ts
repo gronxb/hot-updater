@@ -78,29 +78,6 @@ describe("fetchUpdateInfo", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("uses a fresh abort signal for a retried fetch", async () => {
-    const response = createResponse();
-    const signals: Array<AbortSignal | undefined> = [];
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, init) => {
-      signals.push(init?.signal);
-      return Promise.resolve(
-        signals.length === 1 ? (undefined as unknown as Response) : response,
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(
-      fetchUpdateInfo({
-        url: "https://updates.example.com/check-update",
-      }),
-    ).resolves.toEqual(updateInfo);
-
-    expect(signals).toHaveLength(2);
-    expect(signals[0]).toBeInstanceOf(AbortSignal);
-    expect(signals[1]).toBeInstanceOf(AbortSignal);
-    expect(signals[0]).not.toBe(signals[1]);
-  });
-
   it("throws when fetch still returns no response after retry", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
