@@ -2,10 +2,8 @@
   "name": "@hot-updater/react-native",
   "version": "0.30.10",
   "description": "React Native OTA solution for self-hosted",
-  "main": "lib/commonjs/index",
-  "module": "lib/module/index",
-  "types": "./lib/typescript/commonjs/index.d.ts",
-  "react-native": "src/index",
+  "main": "./lib/module/index.js",
+  "types": "./lib/typescript/src/index.d.ts",
   "exports": {
     ".": {
       "source": "./src/index.ts",
