@@ -3,7 +3,7 @@
   "version": "0.30.10",
   "description": "React Native OTA solution for self-hosted",
   "main": "./lib/module/index.js",
-  "types": "./lib/typescript/src/index.d.ts",
+  "types": "./lib/typescript/commonjs/index.d.ts",
   "exports": {
     ".": {
       "source": "./src/index.ts",
