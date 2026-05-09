@@ -1,43 +1,50 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
+import { task, withRetry, withTimeout } from "./utils/task";
+
+const requireResponse = (response: Response | undefined) => {
+  if (!response) {
+    throw new Error("Fetch returned no response");
+  }
+  return response;
+};
+
+const parseUpdateInfo = (response: Response): Promise<AppUpdateInfo | null> => {
+  if (response.status !== 200) {
+    throw new Error(response.statusText);
+  }
+  return response.json();
+};
+
 export const fetchUpdateInfo = async ({
   url,
   requestHeaders,
-  onError,
   requestTimeout = 5000,
 }: {
   url: string;
   requestHeaders?: Record<string, string>;
-  onError?: (error: Error) => void;
   requestTimeout?: number;
 }): Promise<AppUpdateInfo | null> => {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, requestTimeout);
+  const headers = {
+    "Content-Type": "application/json",
+    ...requestHeaders,
+  };
 
-    const headers = {
-      "Content-Type": "application/json",
-      ...requestHeaders,
-    };
+  const getUpdateResponse = task<Response | undefined>(
+    (signal?: AbortSignal) => {
+      return fetch(url, {
+        signal,
+        headers,
+      });
+    },
+  );
 
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers,
-    });
-    clearTimeout(timeoutId);
+  const response = await getUpdateResponse
+    .pipe(
+      withRetry(1, (response) => !response),
+      withTimeout(requestTimeout),
+    )
+    .run();
 
-    if (response.status !== 200) {
-      throw new Error(response.statusText);
-    }
-    return response.json();
-  } catch (error: unknown) {
-    if (error instanceof Error && error.name === "AbortError") {
-      onError?.(new Error("Request timed out"));
-    } else {
-      onError?.(error as Error);
-    }
-    return null;
-  }
+  return parseUpdateInfo(requireResponse(response));
 };
