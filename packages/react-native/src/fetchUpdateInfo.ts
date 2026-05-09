@@ -41,8 +41,8 @@ export const fetchUpdateInfo = async ({
 
   const response = await getUpdateResponse
     .pipe(
-      withRetry(1, (response) => !response),
       withTimeout(requestTimeout),
+      withRetry(1, (response) => !response),
     )
     .run();
 

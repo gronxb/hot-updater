@@ -35,14 +35,14 @@ export const withTimeout =
 export const withRetry =
   <TValue>(retryCount: number, shouldRetry: (value: TValue) => boolean) =>
   (effect: Task<TValue>): Task<TValue> =>
-    task(async (signal) => {
-      let result = await effect.run(signal);
+    task(async () => {
+      let result = await effect.run();
 
       for (let attempt = 0; attempt < retryCount; attempt++) {
         if (!shouldRetry(result)) {
           return result;
         }
-        result = await effect.run(signal);
+        result = await effect.run();
       }
 
       return result;
