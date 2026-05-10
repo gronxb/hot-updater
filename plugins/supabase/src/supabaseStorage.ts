@@ -9,6 +9,10 @@ import {
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  formatSupabaseStorageError,
+  isSupabaseStorageObjectNotFoundError,
+} from "./supabaseStorageError";
 import type { Database } from "./types";
 
 export interface SupabaseStorageConfig {
@@ -147,8 +151,15 @@ export const supabaseStorage = createFullStoragePlugin<SupabaseStorageConfig>({
           }
           const { data, error } = await bucket.createSignedUrl(key, 3600);
           if (error) {
+            if (isSupabaseStorageObjectNotFoundError(error)) {
+              const { data } = bucket.getPublicUrl(key);
+              if (data.publicUrl) {
+                return { fileUrl: data.publicUrl };
+              }
+            }
+
             throw new Error(
-              `Failed to generate download URL: ${error.message}`,
+              `Failed to generate download URL: ${formatSupabaseStorageError(error)}`,
             );
           }
           if (!data?.signedUrl) {

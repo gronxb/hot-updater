@@ -1,6 +1,10 @@
 import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  formatSupabaseStorageError,
+  isSupabaseStorageObjectNotFoundError,
+} from "./supabaseStorageError";
 import type { Database } from "./types";
 
 export interface SupabaseEdgeFunctionStorageConfig {
@@ -62,13 +66,22 @@ export const supabaseEdgeFunctionStorage =
         },
         async getDownloadUrl(storageUri) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
-          const { data, error } = await supabase.storage
-            .from(bucketName)
-            .createSignedUrl(key, config.signedUrlExpiresIn ?? 3600);
+          const bucket = supabase.storage.from(bucketName);
+          const { data, error } = await bucket.createSignedUrl(
+            key,
+            config.signedUrlExpiresIn ?? 3600,
+          );
 
           if (error) {
+            if (isSupabaseStorageObjectNotFoundError(error)) {
+              const { data } = bucket.getPublicUrl(key);
+              if (data.publicUrl) {
+                return { fileUrl: data.publicUrl };
+              }
+            }
+
             throw new Error(
-              `Failed to generate download URL: ${error.message}`,
+              `Failed to generate download URL: ${formatSupabaseStorageError(error)}`,
             );
           }
 
