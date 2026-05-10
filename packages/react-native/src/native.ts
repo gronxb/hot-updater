@@ -229,10 +229,25 @@ export interface HotUpdaterDiffFileSnapshot {
    * the patch artifact, for example `index.ios.bundle.bsdiff`.
    */
   downloadPath?: string;
+  /**
+   * Current download state for this asset within the manifest diff update.
+   */
   status: HotUpdaterDiffFileStatus;
+  /**
+   * Download progress for this file, normalized from 0 to 1.
+   */
   progress: number;
+  /**
+   * Stable display order among diff files.
+   */
   order: number;
+  /**
+   * Bytes downloaded for `downloadPath`, when the native downloader reports it.
+   */
   downloadedBytes?: number;
+  /**
+   * Total expected bytes for `downloadPath`, when known.
+   */
   totalBytes?: number;
 }
 
