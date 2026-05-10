@@ -44,6 +44,7 @@ const areDiffDetailsEqual = (
       rightFile !== undefined &&
       leftFile.order === rightFile.order &&
       leftFile.path === rightFile.path &&
+      leftFile.downloadPath === rightFile.downloadPath &&
       leftFile.downloadedBytes === rightFile.downloadedBytes &&
       leftFile.progress === rightFile.progress &&
       leftFile.status === rightFile.status &&
@@ -68,6 +69,10 @@ const normalizeByteCount = (value: number | undefined) => {
     return undefined;
   }
   return Math.round(value);
+};
+
+const normalizeDownloadPath = (value: string | undefined) => {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
 const createHotUpdaterStore = () => {
@@ -97,14 +102,19 @@ const createHotUpdaterStore = () => {
   ): HotUpdaterDiffProgressDetails => {
     const totalFilesCount = Math.max(0, details.totalFilesCount);
     const normalizedFiles: HotUpdaterDiffFileSnapshot[] = details.files
-      .map((file) => ({
-        downloadedBytes: normalizeByteCount(file.downloadedBytes),
-        order: Math.max(0, file.order),
-        path: file.path,
-        progress: Math.max(0, Math.min(file.progress, 1)),
-        status: file.status,
-        totalBytes: normalizeByteCount(file.totalBytes),
-      }))
+      .map((file) => {
+        const downloadPath = normalizeDownloadPath(file.downloadPath);
+
+        return {
+          ...(downloadPath ? { downloadPath } : {}),
+          downloadedBytes: normalizeByteCount(file.downloadedBytes),
+          order: Math.max(0, file.order),
+          path: file.path,
+          progress: Math.max(0, Math.min(file.progress, 1)),
+          status: file.status,
+          totalBytes: normalizeByteCount(file.totalBytes),
+        };
+      })
       .sort((left, right) => left.order - right.order);
 
     return {

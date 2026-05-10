@@ -175,6 +175,7 @@ class HotUpdaterModule internal constructor(
                                                             pushMap(
                                                                 WritableNativeMap().apply {
                                                                     putString("path", file.path)
+                                                                    putString("downloadPath", file.downloadPath)
                                                                     putString("status", file.status)
                                                                     putDouble("progress", file.progress)
                                                                     putInt("order", file.order)

@@ -215,7 +215,20 @@ export type HotUpdaterDiffFileStatus =
   | "failed";
 
 export interface HotUpdaterDiffFileSnapshot {
+  /**
+   * Final asset path in the installed bundle, matching the manifest key.
+   *
+   * This stays stable even when the update downloads an intermediate artifact
+   * such as a bsdiff patch.
+   */
   path: string;
+  /**
+   * File currently being downloaded for this asset.
+   *
+   * Usually the same as `path`. When a bsdiff patch is used, this points to
+   * the patch artifact, for example `index.ios.bundle.bsdiff`.
+   */
+  downloadPath?: string;
   status: HotUpdaterDiffFileStatus;
   progress: number;
   order: number;

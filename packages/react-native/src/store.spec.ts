@@ -166,6 +166,41 @@ describe("hotUpdaterStore", () => {
     });
   });
 
+  it("preserves patch download metadata for manifest diff files", async () => {
+    const store = await importStore();
+    const emitProgress = listeners.get("onProgress");
+
+    emitProgress?.({
+      artifactType: "diff",
+      details: {
+        completedFilesCount: 0,
+        files: [
+          {
+            downloadPath: "index.ios.bundle.bsdiff",
+            order: 0,
+            path: "index.ios.bundle",
+            progress: 0.4,
+            status: "downloading",
+          },
+        ],
+        totalFilesCount: 1,
+      },
+      progress: 0.32,
+    });
+
+    expect(store.getSnapshot().details?.files).toEqual([
+      {
+        downloadPath: "index.ios.bundle.bsdiff",
+        downloadedBytes: undefined,
+        order: 0,
+        path: "index.ios.bundle",
+        progress: 0.4,
+        status: "downloading",
+        totalBytes: undefined,
+      },
+    ]);
+  });
+
   it("stores diff snapshot transitions from downloading to downloaded", async () => {
     const store = await importStore();
     const emitProgress = listeners.get("onProgress");

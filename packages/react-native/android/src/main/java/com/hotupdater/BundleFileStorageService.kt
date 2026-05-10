@@ -32,6 +32,7 @@ data class UpdateProgressPayload(
 
 data class DiffProgressFileSnapshot(
     val path: String,
+    val downloadPath: String = path,
     val status: String,
     val progress: Double,
     val order: Int,
@@ -189,6 +190,7 @@ class BundleFileStorageService(
             .mapIndexed { order, path ->
                 DiffProgressFileSnapshot(
                     path = path,
+                    downloadPath = path,
                     status = "pending",
                     progress = 0.0,
                     order = order,
@@ -200,6 +202,7 @@ class BundleFileStorageService(
         assetPath: String,
         status: String,
         progress: Double,
+        downloadPath: String? = null,
         downloadedBytes: Long? = null,
         totalBytes: Long? = null,
     ) {
@@ -212,6 +215,7 @@ class BundleFileStorageService(
             files[fileIndex].copy(
                 status = status,
                 progress = progress.coerceIn(0.0, 1.0),
+                downloadPath = downloadPath ?: files[fileIndex].downloadPath,
                 downloadedBytes = downloadedBytes ?: files[fileIndex].downloadedBytes,
                 totalBytes = totalBytes ?: files[fileIndex].totalBytes,
             )
@@ -291,6 +295,7 @@ class BundleFileStorageService(
             assetPath = assetPath,
             status = "pending",
             progress = 0.0,
+            downloadPath = assetPath,
         )
         emitDiffProgress(
             progressCallback = progressCallback,
@@ -308,6 +313,8 @@ class BundleFileStorageService(
         patchDir.mkdirs()
         return File(patchDir, "$safeName.bsdiff")
     }
+
+    private fun patchDownloadPath(assetPath: String): String = "$assetPath.bsdiff"
 
     private suspend fun applyPatchAssetIfPossible(
         assetPath: String,
@@ -345,6 +352,7 @@ class BundleFileStorageService(
                             assetPath = assetPath,
                             status = "downloading",
                             progress = downloadProgress.progress,
+                            downloadPath = patchDownloadPath(assetPath),
                             downloadedBytes = downloadProgress.downloadedBytes,
                             totalBytes = downloadProgress.totalBytes,
                         )
@@ -1557,6 +1565,7 @@ class BundleFileStorageService(
                                 assetPath = assetPath,
                                 status = "downloading",
                                 progress = downloadProgress.progress,
+                                downloadPath = assetPath,
                                 downloadedBytes = downloadProgress.downloadedBytes,
                                 totalBytes = downloadProgress.totalBytes,
                             )

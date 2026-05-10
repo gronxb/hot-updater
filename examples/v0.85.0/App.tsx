@@ -226,6 +226,20 @@ const formatFallbackPercent = (value: number | null | undefined) => {
 
 const MAX_VISIBLE_COMPLETED_FILES = 5;
 
+type DiffProgressFileWithDownload = NonNullable<
+  HotUpdaterFallbackComponentProps["details"]
+>["files"][number] & {
+  downloadPath?: string;
+};
+
+const formatDiffFileLabel = (file: DiffProgressFileWithDownload) => {
+  if (file.downloadPath?.endsWith(".bsdiff")) {
+    return `${file.downloadPath} (patch)`;
+  }
+
+  return file.downloadPath ?? file.path;
+};
+
 const UpdateFallbackModal = ({
   artifactType,
   details,
@@ -308,7 +322,9 @@ const UpdateFallbackModal = ({
                       style={styles.fallbackMetaText}
                       testID={`fallback-current-file-${file.order}`}
                     >
-                      - {file.path} ({formatFallbackPercent(file.progress)})
+                      {`- ${formatDiffFileLabel(file)} (${formatFallbackPercent(
+                        file.progress,
+                      )})`}
                     </Text>
                   ))}
                 </>
@@ -335,7 +351,7 @@ const UpdateFallbackModal = ({
                       style={styles.fallbackMetaText}
                       testID={`fallback-completed-file-${file.order}`}
                     >
-                      - {file.path}
+                      - {formatDiffFileLabel(file)}
                     </Text>
                   ))}
                 </>

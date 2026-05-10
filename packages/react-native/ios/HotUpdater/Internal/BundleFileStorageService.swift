@@ -68,6 +68,7 @@ public struct UpdateProgressPayload {
     
     public struct DiffProgressFileSnapshot {
         public let path: String
+        public let downloadPath: String
         public let status: String
         public let progress: Double
         public let order: Int
@@ -76,6 +77,7 @@ public struct UpdateProgressPayload {
 
         public init(
             path: String,
+            downloadPath: String? = nil,
             status: String,
             progress: Double,
             order: Int,
@@ -83,6 +85,7 @@ public struct UpdateProgressPayload {
             totalBytes: Int64? = nil
         ) {
             self.path = path
+            self.downloadPath = downloadPath ?? path
             self.status = status
             self.progress = progress
             self.order = order
@@ -93,6 +96,7 @@ public struct UpdateProgressPayload {
         public var userInfo: [String: Any] {
             var info: [String: Any] = [
                 "path": path,
+                "downloadPath": downloadPath,
                 "status": status,
                 "progress": progress,
                 "order": order
@@ -368,6 +372,7 @@ class BundleFileStorageService: BundleStorageService {
         return changedAssets.keys.sorted().enumerated().map { index, path in
             UpdateProgressPayload.DiffProgressFileSnapshot(
                 path: path,
+                downloadPath: path,
                 status: "pending",
                 progress: 0,
                 order: index
@@ -380,6 +385,7 @@ class BundleFileStorageService: BundleStorageService {
         assetPath: String,
         status: String,
         progress: Double,
+        downloadPath: String? = nil,
         downloadedBytes: Int64? = nil,
         totalBytes: Int64? = nil
     ) {
@@ -389,6 +395,7 @@ class BundleFileStorageService: BundleStorageService {
 
         files[fileIndex] = UpdateProgressPayload.DiffProgressFileSnapshot(
             path: files[fileIndex].path,
+            downloadPath: downloadPath ?? files[fileIndex].downloadPath,
             status: status,
             progress: max(0, min(progress, 1)),
             order: files[fileIndex].order,
@@ -462,7 +469,8 @@ class BundleFileStorageService: BundleStorageService {
             files: &files,
             assetPath: assetPath,
             status: "pending",
-            progress: 0
+            progress: 0,
+            downloadPath: assetPath
         )
         emitDiffProgress(
             progressHandler: progressHandler,
@@ -481,6 +489,10 @@ class BundleFileStorageService: BundleStorageService {
         let patchDirectory = (tempDirectory as NSString).appendingPathComponent("patches")
         _ = fileSystem.createDirectory(atPath: patchDirectory)
         return (patchDirectory as NSString).appendingPathComponent("\(safeName).bsdiff")
+    }
+
+    private func patchDownloadPath(assetPath: String) -> String {
+        return "\(assetPath).bsdiff"
     }
 
     private func applyPatchAssetIfPossible(
@@ -543,6 +555,7 @@ class BundleFileStorageService: BundleStorageService {
                         assetPath: assetPath,
                         status: "downloading",
                         progress: progress.progress,
+                        downloadPath: self.patchDownloadPath(assetPath: assetPath),
                         downloadedBytes: progress.downloadedBytes,
                         totalBytes: progress.totalBytes
                     )
@@ -1793,6 +1806,7 @@ class BundleFileStorageService: BundleStorageService {
                             assetPath: assetPath,
                             status: "downloading",
                             progress: progress.progress,
+                            downloadPath: assetPath,
                             downloadedBytes: progress.downloadedBytes,
                             totalBytes: progress.totalBytes
                         )
