@@ -46,6 +46,7 @@
 ## Commit & Pull Requests
 
 - Commit style: Conventional Commits (e.g., `feat(aws): add R2 option`, `fix(android): handle proguard syntax`).
+- Do not force push. Use normal pushes and coordinate before any history rewrite.
 - Before PR: `pnpm -w lint`, `pnpm -w test`, and `pnpm changeset` (select affected packages; patch/minor as appropriate).
 - PR content: clear description, linked issues, screenshots for console/UI changes, and notes on docs/Breaking Changes.
 
