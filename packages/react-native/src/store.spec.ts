@@ -122,12 +122,14 @@ describe("hotUpdaterStore", () => {
         completedFilesCount: 1,
         files: [
           {
+            downloadPath: "index.ios.bundle",
             order: 0,
             path: "index.ios.bundle",
             progress: 1,
             status: "downloaded",
           },
           {
+            downloadPath: "assets/logo.png",
             order: 1,
             path: "assets/logo.png",
             progress: 0.5,
@@ -145,12 +147,14 @@ describe("hotUpdaterStore", () => {
         completedFilesCount: 1,
         files: [
           {
+            downloadPath: "index.ios.bundle",
             order: 0,
             path: "index.ios.bundle",
             progress: 1,
             status: "downloaded",
           },
           {
+            downloadPath: "assets/logo.png",
             order: 1,
             path: "assets/logo.png",
             progress: 0.5,
@@ -234,12 +238,14 @@ describe("hotUpdaterStore", () => {
         completedFilesCount: 1,
         files: [
           {
+            downloadPath: "index.ios.bundle",
             order: 0,
             path: "index.ios.bundle",
             progress: 1,
             status: "downloaded",
           },
           {
+            downloadPath: "assets/logo.png",
             order: 1,
             path: "assets/logo.png",
             progress: 0,
@@ -257,12 +263,14 @@ describe("hotUpdaterStore", () => {
         completedFilesCount: 1,
         files: [
           {
+            downloadPath: "index.ios.bundle",
             order: 0,
             path: "index.ios.bundle",
             progress: 1,
             status: "downloaded",
           },
           {
+            downloadPath: "assets/logo.png",
             order: 1,
             path: "assets/logo.png",
             progress: 0,

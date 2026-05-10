@@ -103,10 +103,11 @@ const createHotUpdaterStore = () => {
     const totalFilesCount = Math.max(0, details.totalFilesCount);
     const normalizedFiles: HotUpdaterDiffFileSnapshot[] = details.files
       .map((file) => {
-        const downloadPath = normalizeDownloadPath(file.downloadPath);
+        const downloadPath =
+          normalizeDownloadPath(file.downloadPath) ?? file.path;
 
         return {
-          ...(downloadPath ? { downloadPath } : {}),
+          downloadPath,
           downloadedBytes: normalizeByteCount(file.downloadedBytes),
           order: Math.max(0, file.order),
           path: file.path,

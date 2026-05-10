@@ -216,19 +216,20 @@ export type HotUpdaterDiffFileStatus =
 
 export interface HotUpdaterDiffFileSnapshot {
   /**
-   * Final asset path in the installed bundle, matching the manifest key.
+   * Manifest asset path for this progress entry.
    *
-   * This stays stable even when the update downloads an intermediate artifact
-   * such as a bsdiff patch.
+   * This is the stable identity of the asset in the installed bundle. Use this
+   * when matching progress back to the manifest or to the final file location.
    */
   path: string;
   /**
-   * File currently being downloaded for this asset.
+   * Artifact path currently being transferred for this progress entry.
    *
-   * Usually the same as `path`. When a bsdiff patch is used, this points to
-   * the patch artifact, for example `index.ios.bundle.bsdiff`.
+   * Usually this is the same as `path`. It can differ when the updater
+   * downloads an intermediate artifact that will be applied to produce the
+   * final asset.
    */
-  downloadPath?: string;
+  downloadPath: string;
   /**
    * Current download state for this asset within the manifest diff update.
    */
