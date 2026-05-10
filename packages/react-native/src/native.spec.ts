@@ -355,7 +355,6 @@ describe("notifyAppReady", () => {
       changedAssets: {
         "index.ios.bundle": {
           fileHash: "hash-next",
-          fileUrl: "https://example.com/files/index.ios.bundle",
           patch: {
             algorithm: "bsdiff",
             baseBundleId: "bundle-123",
@@ -377,7 +376,6 @@ describe("notifyAppReady", () => {
       changedAssets: {
         "index.ios.bundle": {
           fileHash: "hash-next",
-          fileUrl: "https://example.com/files/index.ios.bundle",
           patch: {
             algorithm: "bsdiff",
             baseBundleId: "bundle-123",

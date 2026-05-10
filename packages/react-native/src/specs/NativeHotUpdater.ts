@@ -3,7 +3,7 @@ import { TurboModuleRegistry } from "react-native";
 import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
 export interface ChangedAsset {
-  fileUrl: string;
+  fileUrl?: string | null;
   fileHash: string;
   patch?: {
     algorithm: "bsdiff";

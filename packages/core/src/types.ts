@@ -48,7 +48,7 @@ export interface ChangedAssetPatch {
 }
 
 export interface ChangedAsset {
-  fileUrl: string;
+  fileUrl?: string | null;
   fileHash: string;
   patch?: ChangedAssetPatch | null;
 }

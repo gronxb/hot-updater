@@ -22,12 +22,12 @@ private func hotUpdaterApplyBsdiffPatch(
 public typealias ManifestAssets = [String: Any]
 
 public struct ChangedAssetDescriptor {
-    public let fileUrl: URL
+    public let fileUrl: URL?
     public let fileHash: String
     public let patch: BsdiffPatchDescriptor?
 
     public init(
-        fileUrl: URL,
+        fileUrl: URL?,
         fileHash: String,
         patch: BsdiffPatchDescriptor? = nil
     ) {
@@ -1797,8 +1797,27 @@ class BundleFileStorageService: BundleStorageService {
                     continue
                 }
 
+                guard let changedAssetFileUrl = changedAsset.fileUrl else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
+                    throw BundleStorageError.downloadFailed(
+                        NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
+                        ])
+                    )
+                }
+
                 switch self.downloadFileSynchronously(
-                    from: changedAsset.fileUrl,
+                    from: changedAssetFileUrl,
                     to: destinationPath,
                     progressHandler: { progress in
                         self.updateDiffProgressFile(

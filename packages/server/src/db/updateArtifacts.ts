@@ -172,16 +172,27 @@ async function fetchBundleManifest<TContext>(
 async function resolveChangedAssets<TContext>({
   assetBaseStorageUri,
   currentManifest,
+  currentBundle,
   resolveFileUrl,
+  targetBundle,
   targetManifest,
   context,
 }: {
   assetBaseStorageUri: string;
   currentManifest: BundleManifest | null;
+  currentBundle: Bundle | null;
   resolveFileUrl: ResolveFileUrl<TContext>;
+  targetBundle: Bundle | null;
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Record<string, ChangedAsset>> {
+  const patchDescriptor = await resolveHbcPatchDescriptor({
+    currentBundle,
+    resolveFileUrl,
+    targetBundle,
+    targetManifest,
+    context,
+  });
   const changedEntries = (
     await Promise.all(
       Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
@@ -194,29 +205,38 @@ async function resolveChangedAssets<TContext>({
           assetBaseStorageUri,
           assetPath,
         );
-        const fileUrl = await resolveFileUrl(storageUri, context);
+        const patch =
+          patchDescriptor?.assetPath === assetPath
+            ? patchDescriptor.patch
+            : null;
 
-        if (!fileUrl) {
+        let fileUrl: string | null = null;
+        try {
+          fileUrl = await resolveFileUrl(storageUri, context);
+        } catch (error) {
+          if (!patch) {
+            throw error;
+          }
+        }
+
+        if (!fileUrl && !patch) {
           return null;
         }
 
-        return [
-          assetPath,
-          {
-            fileHash: asset.fileHash,
-            fileUrl,
-          },
-        ] as const;
+        const changedAsset: ChangedAsset = {
+          fileHash: asset.fileHash,
+        };
+        if (fileUrl) {
+          changedAsset.fileUrl = fileUrl;
+        }
+        if (patch) {
+          changedAsset.patch = patch;
+        }
+
+        return [assetPath, changedAsset] as const;
       }),
     )
-  ).filter(
-    (
-      entry,
-    ): entry is readonly [
-      string,
-      { readonly fileHash: string; readonly fileUrl: string },
-    ] => entry !== null,
-  );
+  ).filter((entry): entry is readonly [string, ChangedAsset] => entry !== null);
 
   return Object.fromEntries(changedEntries);
 }
@@ -226,21 +246,22 @@ const resolveHbcAssetPath = (manifest: BundleManifest) =>
     .sort((left, right) => left.localeCompare(right))
     .find((candidate) => HBC_ASSET_PATH_RE.test(candidate)) ?? null;
 
-async function attachHbcPatchDescriptor<TContext>({
-  changedAssets,
+async function resolveHbcPatchDescriptor<TContext>({
   currentBundle,
   resolveFileUrl,
   targetBundle,
   targetManifest,
   context,
 }: {
-  changedAssets: Record<string, ChangedAsset>;
   currentBundle: Bundle | null;
   resolveFileUrl: ResolveFileUrl<TContext>;
   targetBundle: Bundle | null;
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
-}): Promise<Record<string, ChangedAsset>> {
+}): Promise<{
+  assetPath: string;
+  patch: ChangedAsset["patch"];
+} | null> {
   const matchingPatch =
     targetBundle && currentBundle
       ? getBundlePatch(targetBundle, currentBundle.id)
@@ -255,30 +276,22 @@ async function attachHbcPatchDescriptor<TContext>({
     !matchingPatch.patchFileHash ||
     !matchingPatch.baseFileHash
   ) {
-    return changedAssets;
-  }
-
-  const changedAsset = changedAssets[patchAssetPath];
-  if (!changedAsset) {
-    return changedAssets;
+    return null;
   }
 
   const patchUrl = await resolveFileUrl(matchingPatch.patchStorageUri, context);
   if (!patchUrl) {
-    return changedAssets;
+    return null;
   }
 
   return {
-    ...changedAssets,
-    [patchAssetPath]: {
-      ...changedAsset,
-      patch: {
-        algorithm: "bsdiff",
-        baseBundleId: matchingPatch.baseBundleId,
-        baseFileHash: matchingPatch.baseFileHash,
-        patchFileHash: matchingPatch.patchFileHash,
-        patchUrl,
-      },
+    assetPath: patchAssetPath,
+    patch: {
+      algorithm: "bsdiff",
+      baseBundleId: matchingPatch.baseBundleId,
+      baseFileHash: matchingPatch.baseFileHash,
+      patchFileHash: matchingPatch.patchFileHash,
+      patchUrl,
     },
   };
 }
@@ -339,12 +352,6 @@ export async function resolveManifestArtifacts<TContext>({
   const changedAssets = await resolveChangedAssets({
     assetBaseStorageUri,
     currentManifest: currentManifestResult?.manifest ?? null,
-    resolveFileUrl,
-    targetManifest: targetManifestResult.manifest,
-    context,
-  });
-  const changedAssetsWithPatch = await attachHbcPatchDescriptor({
-    changedAssets,
     currentBundle,
     resolveFileUrl,
     targetBundle,
@@ -353,7 +360,7 @@ export async function resolveManifestArtifacts<TContext>({
   });
 
   return {
-    changedAssets: changedAssetsWithPatch,
+    changedAssets,
     manifestFileHash,
     manifestUrl: targetManifestResult.fileUrl,
   };

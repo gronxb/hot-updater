@@ -226,9 +226,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             }
             let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
             let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
-                guard let fileUrlString = entry.value["fileUrl"] as? String,
-                      let fileUrl = URL(string: fileUrlString),
-                      let fileHash = entry.value["fileHash"] as? String,
+                guard let fileHash = entry.value["fileHash"] as? String,
                       !fileHash.isEmpty
                 else {
                     return
@@ -253,6 +251,10 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                         patchFileHash: patchFileHash,
                         patchUrl: patchUrl
                     )
+                }
+                let fileUrl = (entry.value["fileUrl"] as? String).flatMap { URL(string: $0) }
+                guard fileUrl != nil || patch != nil else {
+                    return
                 }
 
                 partialResult[entry.key] = ChangedAssetDescriptor(

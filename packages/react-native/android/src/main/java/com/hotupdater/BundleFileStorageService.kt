@@ -9,7 +9,7 @@ import java.io.File
 import java.net.URL
 
 data class ChangedAssetDescriptor(
-    val fileUrl: String,
+    val fileUrl: String?,
     val fileHash: String,
     val patch: BsdiffPatchDescriptor? = null,
 )
@@ -1554,10 +1554,29 @@ class BundleFileStorageService(
                     return@forEachIndexed
                 }
 
+                val changedAssetFileUrl =
+                    changedAsset.fileUrl
+                        ?: run {
+                            updateDiffProgressFile(
+                                files = diffFiles,
+                                assetPath = assetPath,
+                                status = "failed",
+                                progress = 0.0,
+                            )
+                            emitDiffProgress(
+                                progressCallback = progressCallback,
+                                phase = "downloading",
+                                files = diffFiles,
+                            )
+                            throw HotUpdaterException.downloadFailed(
+                                IllegalStateException("Changed asset fileUrl missing and patch could not be applied: $assetPath"),
+                            )
+                        }
+
                 when (
                     val assetDownloadResult =
                         downloadService.downloadFile(
-                            URL(changedAsset.fileUrl),
+                            URL(changedAssetFileUrl),
                             targetFile,
                         ) { downloadProgress ->
                             updateDiffProgressFile(

@@ -49,7 +49,6 @@ class HotUpdaterModule internal constructor(
         while (iterator.hasNextKey()) {
             val assetPath = iterator.nextKey()
             val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
-            val assetUrl = assetMap.getString("fileUrl") ?: continue
             val assetHash = assetMap.getString("fileHash") ?: continue
             val patchMap = assetMap.getMap("patch")
             val patch =
@@ -80,6 +79,15 @@ class HotUpdaterModule internal constructor(
                 } else {
                     null
                 }
+            val assetUrl =
+                if (assetMap.hasKey("fileUrl") && !assetMap.isNull("fileUrl")) {
+                    assetMap.getString("fileUrl")
+                } else {
+                    null
+                }
+            if (assetUrl == null && patch == null) {
+                continue
+            }
             parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash, patch)
         }
 

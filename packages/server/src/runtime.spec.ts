@@ -288,7 +288,7 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
-  it("returns signed manifest metadata and changed asset URLs when manifest artifacts are available", async () => {
+  it("returns bsdiff patch metadata when the full asset fallback URL is unavailable", async () => {
     const currentManifestStorageUri =
       "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/manifest.json";
     const nextManifestStorageUri =
@@ -341,6 +341,10 @@ describe("runtime createHotUpdater", () => {
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (storageUri, context) => {
+      if (storageUri.endsWith("/files/index.ios.bundle")) {
+        throw new Error("full asset fallback is unavailable");
+      }
+
       const storageUrl = new URL(storageUri);
       return {
         fileUrl: new URL(
@@ -442,8 +446,6 @@ describe("runtime createHotUpdater", () => {
               patchUrl:
                 "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
             },
-            fileUrl:
-              "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/files/index.ios.bundle",
           },
         },
         fileHash: "hash123",
