@@ -1,4 +1,4 @@
 interface:
   display_name: "HotUpdater Agent"
   short_description: "Run the dashboard E2E fix loop by task id"
-  default_prompt: "Use $hot-updater-agent with `hot-updater-agent verify ...` to queue E2E, wait on the generated task id, print failure reasons, patch the repo, and repeat until the dashboard job succeeds."
+  default_prompt: "Use $hot-updater-agent with `hot-updater-agent verify ...` to queue E2E, wait on the generated task id, print failure reasons, patch the repo, and repeat until the dashboard job succeeds. Pick profile from standalone, supabase, cloudflare, firebase, aws; default to standalone when unspecified."
