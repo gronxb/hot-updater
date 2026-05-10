@@ -16,6 +16,10 @@
 - Format/Lint: `pnpm -w lint:fix` (write) • `pnpm lint` (read-only).
 - Clean: `pnpm clear` (removes `**/dist` and `.nx`).
 
+## Skill Usage
+
+- Do not use the `hot-updater` skill when developing this repository. That skill is intended for Hot Updater library users who need setup, deployment, diagnostics, and OTA operation guidance, not for maintainers changing the library code itself.
+
 ## Coding Style & Naming
 
 - Language: TypeScript (`strict: true`).
