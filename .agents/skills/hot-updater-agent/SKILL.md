@@ -29,10 +29,10 @@ Use `hot-updater-agent` as the E2E verification control loop for AI:
 2. Use `e2e`, `status`, `wait`, and `reason` separately when the task id needs
    to be handled step by step.
 3. Print the failure reason by task id.
-5. Diagnose the likely repo cause.
-6. Patch this repo.
-7. Re-run the same queued E2E command.
-8. Repeat until the dashboard job succeeds or the blocker is outside repo code.
+4. Diagnose the likely repo cause.
+5. Patch this repo.
+6. Re-run the same queued E2E command.
+7. Repeat until the dashboard job succeeds or the blocker is outside repo code.
 
 The agent should keep iterating autonomously when the user asks for E2E
 verification or an E2E fix loop. Stop only when the task is green, the failure is
