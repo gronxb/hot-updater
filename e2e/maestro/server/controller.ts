@@ -9,7 +9,6 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 import {
   getBundlePatch,
-  getAssetBaseStorageUri,
   getBundlePatches,
   getPatchBaseBundleId,
   getPatchBaseFileHash,
@@ -34,11 +33,9 @@ type DeployMode = "crash" | "reset";
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
-  assetBaseStorageUri: string | null;
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
-  disabledFullAssetBaseStorageUri: string | null;
   diffBaseBundleId: string | null;
   diffPatchAssetPath: string | null;
   enabled: boolean;
@@ -1068,17 +1065,6 @@ function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
   return getBundlePatches(bundle).map((patch) => patch.baseBundleId);
 }
 
-function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
-  try {
-    const url = new URL(assetBaseStorageUri);
-    const pathname = url.pathname.replace(/\/+$/, "");
-    url.pathname = `${pathname}/__e2e_bspatch_full_asset_fallback_disabled__`;
-    return url.toString();
-  } catch {
-    return `${assetBaseStorageUri.replace(/\/+$/, "")}/__e2e_bspatch_full_asset_fallback_disabled__`;
-  }
-}
-
 async function resolveAutoPatchBundleDiff(
   baseBundleId: string,
   bundleId: string,
@@ -1094,7 +1080,6 @@ async function resolveAutoPatchBundleDiff(
     matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
   const patchStorageUri =
     matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
-  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
 
   if (
     bundle.id !== bundleId ||
@@ -1102,8 +1087,7 @@ async function resolveAutoPatchBundleDiff(
     !patchAssetPath ||
     !patchBaseFileHash ||
     !patchFileHash ||
-    !patchStorageUri ||
-    !assetBaseStorageUri
+    !patchStorageUri
   ) {
     throw createEndpointError(
       `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
@@ -1118,31 +1102,21 @@ async function resolveAutoPatchBundleDiff(
           patchBaseFileHash,
           patchFileHash,
           patchStorageUri,
-          assetBaseStorageUri,
         },
       },
     );
   }
 
-  const disabledFullAssetBaseStorageUri =
-    createDisabledFullAssetBaseStorageUri(assetBaseStorageUri);
-  await patchBundle(bundleId, {
-    assetBaseStorageUri: disabledFullAssetBaseStorageUri,
-  });
-
   logE2e("auto patch metadata resolved", {
     baseBundleId,
     bundleId,
-    disabledFullAssetBaseStorageUri,
     patchAssetPath,
     patchStorageUri,
     platform: session.platform,
   });
 
   return {
-    assetBaseStorageUri,
     baseBundleId,
-    disabledFullAssetBaseStorageUri,
     patchAssetPath,
   };
 }
@@ -2664,12 +2638,9 @@ async function deployBundle(request: DeployBundleRequest) {
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
-    assetBaseStorageUri: diff?.assetBaseStorageUri ?? null,
     bundleId,
     bundleProfile,
     channel: bundle.channel,
-    disabledFullAssetBaseStorageUri:
-      diff?.disabledFullAssetBaseStorageUri ?? null,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: bundle.enabled,
@@ -2854,13 +2825,12 @@ function readBsdiffPatchStoreEvidence(args: {
   const record = session.deployedBundles.find(
     (entry) =>
       entry.diffBaseBundleId === args.baseBundleId &&
-      entry.diffPatchAssetPath === args.assetPath &&
-      entry.disabledFullAssetBaseStorageUri,
+      entry.diffPatchAssetPath === args.assetPath,
   );
   if (!record) {
     return {
       ok: false,
-      reason: "tracked diff bundle with disabled full-asset fallback not found",
+      reason: "tracked diff bundle not found",
     };
   }
 
@@ -2937,8 +2907,7 @@ async function readManifestDiffState(args: {
     assetFile.readError === null &&
     assetFile.fileHash === expectedHash &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
-    !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
-    !record?.disabledFullAssetBaseStorageUri;
+    !includesAllFragments(bsdiffLogs, bsdiffFragments);
 
   return {
     archiveFragments,
@@ -2977,7 +2946,7 @@ async function assertBsdiffPatchApplied(args: {
         bundleId: evidence.record.bundleId,
         evidence: includesAllFragments(logs, expectedFragments)
           ? "bundle-store-and-native-log"
-          : "bundle-store-with-disabled-full-asset-fallback",
+          : "bundle-store",
         platform: session.platform,
       });
       return {};
@@ -3400,43 +3369,6 @@ async function writeSummary({
 async function cleanup() {
   if (!session.appBackupPath) {
     return {};
-  }
-
-  const restoredFullAssetFallbackBundleIds: string[] = [];
-  for (const record of session.deployedBundles) {
-    if (
-      !record.assetBaseStorageUri ||
-      !record.disabledFullAssetBaseStorageUri
-    ) {
-      continue;
-    }
-
-    try {
-      await patchBundle(record.bundleId, {
-        assetBaseStorageUri: record.assetBaseStorageUri,
-      });
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("targetBundleId not found")
-      ) {
-        logE2e("skipped restoring bsdiff full asset fallback", {
-          bundleId: record.bundleId,
-          platform: session.platform,
-          reason: "bundle already deleted",
-        });
-        continue;
-      }
-
-      throw error;
-    }
-    restoredFullAssetFallbackBundleIds.push(record.bundleId);
-  }
-  if (restoredFullAssetFallbackBundleIds.length > 0) {
-    logE2e("restored bsdiff full asset fallback", {
-      bundleIds: restoredFullAssetFallbackBundleIds,
-      platform: session.platform,
-    });
   }
 
   if (session.appBackupPath) {
