@@ -1,0 +1,8 @@
+appId: ${APP_ID}
+---
+- stopApp
+- runFlow:
+    file: launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}

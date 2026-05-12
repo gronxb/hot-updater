@@ -147,17 +147,17 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase1CDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
       ACTION: assertBsdiffPatchApplied
       ASSET_PATH: ${output.phase1CDiffPatchAssetPath}
       BASE_BUNDLE_ID: ${output.phase1A}
-      CONTROL_URL: ${CONTROL_URL}
-- runFlow:
-    file: subflows/launch-app-home.yaml
-    env:
-      APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
@@ -334,17 +334,17 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase2CDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
       ACTION: assertBsdiffPatchApplied
       ASSET_PATH: ${output.phase2CDiffPatchAssetPath}
       BASE_BUNDLE_ID: ${output.phase2B}
-      CONTROL_URL: ${CONTROL_URL}
-- runFlow:
-    file: subflows/launch-app-home.yaml
-    env:
-      APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
@@ -411,17 +411,17 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase2DDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
       ACTION: assertBsdiffPatchApplied
       ASSET_PATH: ${output.phase2DDiffPatchAssetPath}
       BASE_BUNDLE_ID: ${output.phase2C}
-      CONTROL_URL: ${CONTROL_URL}
-- runFlow:
-    file: subflows/launch-app-home.yaml
-    env:
-      APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
@@ -570,6 +570,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}.br
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -577,11 +582,6 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase3C}
       CONTROL_URL: ${CONTROL_URL}
       PREVIOUS_BUNDLE_ID: ${output.phase3A}
-- runFlow:
-    file: subflows/launch-app-home.yaml
-    env:
-      APP_ID: ${APP_ID}
-      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
