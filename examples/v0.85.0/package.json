@@ -23,6 +23,7 @@
   "devDependencies": {
     "@aws-sdk/credential-provider-sso": "^3.972.25",
     "@babel/core": "^7.25.2",
+    "@babel/plugin-syntax-typescript": "7.28.6",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@callstack/repack": "^5.2.5",
