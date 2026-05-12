@@ -186,32 +186,18 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
     storageUri: firestoreData.storage_uri,
     fingerprintHash: firestoreData.fingerprint_hash,
     metadata: stripBundleArtifactMetadata(rawMetadata),
-    manifestStorageUri:
-      firestoreData.manifest_storage_uri ??
-      getManifestStorageUri({ metadata: rawMetadata }),
-    manifestFileHash:
-      firestoreData.manifest_file_hash ??
-      getManifestFileHash({ metadata: rawMetadata }),
-    assetBaseStorageUri:
-      firestoreData.asset_base_storage_uri ??
-      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    manifestStorageUri: firestoreData.manifest_storage_uri ?? null,
+    manifestFileHash: firestoreData.manifest_file_hash ?? null,
+    assetBaseStorageUri: firestoreData.asset_base_storage_uri ?? null,
     patches,
     patchBaseBundleId:
-      primaryPatch?.baseBundleId ??
-      firestoreData.patch_base_bundle_id ??
-      getPatchBaseBundleId({ metadata: rawMetadata }),
+      primaryPatch?.baseBundleId ?? firestoreData.patch_base_bundle_id ?? null,
     patchBaseFileHash:
-      primaryPatch?.baseFileHash ??
-      firestoreData.patch_base_file_hash ??
-      getPatchBaseFileHash({ metadata: rawMetadata }),
+      primaryPatch?.baseFileHash ?? firestoreData.patch_base_file_hash ?? null,
     patchFileHash:
-      primaryPatch?.patchFileHash ??
-      firestoreData.patch_file_hash ??
-      getPatchFileHash({ metadata: rawMetadata }),
+      primaryPatch?.patchFileHash ?? firestoreData.patch_file_hash ?? null,
     patchStorageUri:
-      primaryPatch?.patchStorageUri ??
-      firestoreData.patch_storage_uri ??
-      getPatchStorageUri({ metadata: rawMetadata }),
+      primaryPatch?.patchStorageUri ?? firestoreData.patch_storage_uri ?? null,
     rolloutCohortCount:
       firestoreData.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
     targetCohorts: firestoreData.target_cohorts ?? null,

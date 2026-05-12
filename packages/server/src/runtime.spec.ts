@@ -296,29 +296,29 @@ describe("runtime createHotUpdater", () => {
     const currentBundle: Bundle = {
       ...bundle,
       id: "00000000-0000-0000-0000-000000000001",
-      metadata: {
-        asset_base_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
-        manifest_file_hash: "sig:current-manifest",
-        manifest_storage_uri: currentManifestStorageUri,
-      },
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
+      manifestFileHash: "sig:current-manifest",
+      manifestStorageUri: currentManifestStorageUri,
       storageUri:
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/bundle.zip",
     };
     const nextBundle: Bundle = {
       ...bundle,
       id: "00000000-0000-0000-0000-000000000002",
-      metadata: {
-        asset_base_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
-        patch_base_bundle_id: currentBundle.id,
-        hbc_patch_base_file_hash: "hash-old-bundle",
-        hbc_patch_file_hash: "hash-bsdiff",
-        hbc_patch_storage_uri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
-        manifest_file_hash: "sig:next-manifest",
-        manifest_storage_uri: nextManifestStorageUri,
-      },
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
+      manifestFileHash: "sig:next-manifest",
+      manifestStorageUri: nextManifestStorageUri,
+      patches: [
+        {
+          baseBundleId: currentBundle.id,
+          baseFileHash: "hash-old-bundle",
+          patchFileHash: "hash-bsdiff",
+          patchStorageUri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
+        },
+      ],
       storageUri:
         "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
     };

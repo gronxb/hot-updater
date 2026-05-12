@@ -18,8 +18,8 @@ type BsdiffManifestFixture = {
 
 type PreparedBsdiffManifestArtifacts = {
   cleanup?: () => Promise<void> | void;
-  currentMetadata: NonNullable<Bundle["metadata"]>;
-  nextMetadata: NonNullable<Bundle["metadata"]>;
+  currentArtifacts: Partial<Bundle>;
+  nextArtifacts: Partial<Bundle>;
 };
 
 type SetupBsdiffManifestUpdateInfoTestSuiteOptions = {
@@ -50,7 +50,7 @@ const createManifest = (bundleId: string, hbcHash: string) => ({
 
 const createBundle = (
   id: string,
-  metadata: NonNullable<Bundle["metadata"]>,
+  artifacts: Partial<Bundle>,
   overrides: Partial<Bundle> = {},
 ): Bundle => ({
   id,
@@ -67,7 +67,8 @@ const createBundle = (
   channel: "production",
   storageUri: "storage://unused",
   fingerprintHash: null,
-  metadata,
+  metadata: {},
+  ...artifacts,
   ...overrides,
 });
 
@@ -100,8 +101,8 @@ export const setupBsdiffManifestUpdateInfoTestSuite = ({
 
       try {
         await seedBundles([
-          createBundle(fixture.currentBundleId, prepared.currentMetadata),
-          createBundle(fixture.nextBundleId, prepared.nextMetadata),
+          createBundle(fixture.currentBundleId, prepared.currentArtifacts),
+          createBundle(fixture.nextBundleId, prepared.nextArtifacts),
         ]);
 
         const updateInfo = await getUpdateInfo({

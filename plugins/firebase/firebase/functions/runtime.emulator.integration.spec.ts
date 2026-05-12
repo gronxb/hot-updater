@@ -371,15 +371,15 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         );
 
         return {
-          currentMetadata: {
-            asset_base_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
-            manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
+          currentArtifacts: {
+            assetBaseStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
           },
-          nextMetadata: {
-            asset_base_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
-            manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
+          nextArtifacts: {
+            assetBaseStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
@@ -434,19 +434,23 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       seedCdnObject(cdnObjects, `${fixture.nextBundleId}/bundle.zip`, "zip");
 
       return {
-        currentMetadata: {
-          asset_base_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
+        currentArtifacts: {
+          assetBaseStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
         },
-        nextMetadata: {
-          asset_base_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
-          patch_base_bundle_id: fixture.currentBundleId,
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `gs://${storageBucket}/${fixture.patchPath}`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
+        nextArtifacts: {
+          assetBaseStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `gs://${storageBucket}/${fixture.patchPath}`,
+            },
+          ],
         },
       };
     },

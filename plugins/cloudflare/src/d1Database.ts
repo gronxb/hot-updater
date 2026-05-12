@@ -247,14 +247,9 @@ function transformRowToBundle(
     storageUri: row.storage_uri,
     fingerprintHash: row.fingerprint_hash,
     metadata: stripBundleArtifactMetadata(rawMetadata),
-    manifestStorageUri:
-      row.manifest_storage_uri ??
-      getManifestStorageUri({ metadata: rawMetadata }),
-    manifestFileHash:
-      row.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
-    assetBaseStorageUri:
-      row.asset_base_storage_uri ??
-      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    manifestStorageUri: row.manifest_storage_uri ?? null,
+    manifestFileHash: row.manifest_file_hash ?? null,
+    assetBaseStorageUri: row.asset_base_storage_uri ?? null,
     patches,
     patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
     patchBaseFileHash: primaryPatch?.baseFileHash ?? null,

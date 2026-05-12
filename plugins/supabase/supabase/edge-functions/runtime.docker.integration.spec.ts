@@ -384,15 +384,15 @@ describe.sequential("supabase edge runtime acceptance", () => {
         ]);
 
         return {
-          currentMetadata: {
-            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
-            manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+          currentArtifacts: {
+            assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
           },
-          nextMetadata: {
-            asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
-            manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+          nextArtifacts: {
+            assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
@@ -443,19 +443,23 @@ describe.sequential("supabase edge runtime acceptance", () => {
       ]);
 
       return {
-        currentMetadata: {
-          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
+        currentArtifacts: {
+          assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.currentBundleId}/manifest.json`,
         },
-        nextMetadata: {
-          asset_base_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
-          patch_base_bundle_id: fixture.currentBundleId,
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+        nextArtifacts: {
+          assetBaseStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.nextBundleId}/manifest.json`,
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `supabase-storage://${BUCKET_NAME}/${fixture.patchPath}`,
+            },
+          ],
         },
       };
     },

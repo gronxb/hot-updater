@@ -55,8 +55,8 @@ type ManifestUpdateInfoFixture = {
 
 type PreparedManifestArtifacts = {
   cleanup?: () => Promise<void> | void;
-  currentMetadata: NonNullable<Bundle["metadata"]>;
-  nextMetadata: NonNullable<Bundle["metadata"]>;
+  currentArtifacts: Partial<Bundle>;
+  nextArtifacts: Partial<Bundle>;
 };
 
 type SetupManifestUpdateInfoTestOptions = {
@@ -104,7 +104,7 @@ const DEFAULT_MANIFEST_FIXTURE: ManifestUpdateInfoFixture = {
 
 const createManifestBundle = (
   id: string,
-  metadata: NonNullable<Bundle["metadata"]>,
+  artifacts: Partial<Bundle>,
 ): Bundle => ({
   id,
   platform: "ios",
@@ -120,7 +120,8 @@ const createManifestBundle = (
   channel: "production",
   storageUri: "storage://unused",
   fingerprintHash: null,
-  metadata,
+  metadata: {},
+  ...artifacts,
 });
 
 const createRolloutBundle = (
@@ -2396,9 +2397,12 @@ export const setupGetUpdateInfoTestSuite = ({
             [
               createManifestBundle(
                 fixture.currentBundleId,
-                prepared.currentMetadata,
+                prepared.currentArtifacts,
               ),
-              createManifestBundle(fixture.nextBundleId, prepared.nextMetadata),
+              createManifestBundle(
+                fixture.nextBundleId,
+                prepared.nextArtifacts,
+              ),
             ],
             {
               appVersion: "1.0.0",

@@ -415,16 +415,16 @@ describe.sequential("aws lambda runtime acceptance", () => {
         ]);
 
         return {
-          currentMetadata: {
-            asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
-            manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri:
+          currentArtifacts: {
+            assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri:
               await createRuntimeReadableS3Url(currentManifestKey),
           },
-          nextMetadata: {
-            asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
-            manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri:
+          nextArtifacts: {
+            assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri:
               await createRuntimeReadableS3Url(nextManifestKey),
           },
         };
@@ -484,21 +484,24 @@ describe.sequential("aws lambda runtime acceptance", () => {
       ]);
 
       return {
-        currentMetadata: {
-          asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri:
+        currentArtifacts: {
+          assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri:
             await createRuntimeReadableS3Url(currentManifestKey),
         },
-        nextMetadata: {
-          asset_base_storage_uri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
-          patch_base_bundle_id: fixture.currentBundleId,
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `s3://${S3_BUCKET_NAME}/${patchKey}`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri:
-            await createRuntimeReadableS3Url(nextManifestKey),
+        nextArtifacts: {
+          assetBaseStorageUri: `s3://${S3_BUCKET_NAME}/releases/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: await createRuntimeReadableS3Url(nextManifestKey),
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `s3://${S3_BUCKET_NAME}/${patchKey}`,
+            },
+          ],
         },
       };
     },

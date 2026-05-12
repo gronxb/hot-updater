@@ -47,7 +47,6 @@ import {
 } from "./types";
 import {
   parseBundleMetadata,
-  parseBundleRawMetadata,
   resolveManifestArtifacts,
 } from "./updateArtifacts";
 
@@ -344,7 +343,6 @@ export function createOrmDatabaseCore<TContext = unknown>({
     record: BundleRecord,
     patchRecords: BundlePatchRecord[] = [],
   ): Bundle => {
-    const rawMetadata = parseBundleRawMetadata(record.metadata);
     const patches = patchRecords
       .slice()
       .sort(
@@ -368,15 +366,9 @@ export function createOrmDatabaseCore<TContext = unknown>({
       targetAppVersion: record.target_app_version ?? null,
       fingerprintHash: record.fingerprint_hash ?? null,
       metadata: parseBundleMetadata(record.metadata),
-      manifestStorageUri:
-        record.manifest_storage_uri ??
-        getManifestStorageUri({ metadata: rawMetadata }),
-      manifestFileHash:
-        record.manifest_file_hash ??
-        getManifestFileHash({ metadata: rawMetadata }),
-      assetBaseStorageUri:
-        record.asset_base_storage_uri ??
-        getAssetBaseStorageUri({ metadata: rawMetadata }),
+      manifestStorageUri: record.manifest_storage_uri ?? null,
+      manifestFileHash: record.manifest_file_hash ?? null,
+      assetBaseStorageUri: record.asset_base_storage_uri ?? null,
       patches,
       patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
       patchBaseFileHash: primaryPatch?.baseFileHash ?? null,

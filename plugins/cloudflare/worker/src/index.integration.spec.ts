@@ -204,15 +204,15 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           cleanup: () => {
             vi.unstubAllGlobals();
           },
-          currentMetadata: {
-            asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
-            manifest_file_hash: "sig:manifest-current",
-            manifest_storage_uri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+          currentArtifacts: {
+            assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
           },
-          nextMetadata: {
-            asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
-            manifest_file_hash: "sig:manifest-next",
-            manifest_storage_uri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+          nextArtifacts: {
+            assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
           },
         };
       },
@@ -270,19 +270,23 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         cleanup: () => {
           vi.unstubAllGlobals();
         },
-        currentMetadata: {
-          asset_base_storage_uri: `r2://bundles/${fixture.currentBundleId}/files`,
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+        currentArtifacts: {
+          assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
         },
-        nextMetadata: {
-          asset_base_storage_uri: `r2://bundles/${fixture.nextBundleId}/files`,
-          patch_base_bundle_id: fixture.currentBundleId,
-          hbc_patch_base_file_hash: "hash-old-bundle",
-          hbc_patch_file_hash: "hash-bsdiff",
-          hbc_patch_storage_uri: `r2://bundles/${fixture.patchPath}`,
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+        nextArtifacts: {
+          assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `r2://bundles/${fixture.patchPath}`,
+            },
+          ],
         },
       };
     },

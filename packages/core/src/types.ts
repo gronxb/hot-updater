@@ -2,28 +2,6 @@ export type Platform = "ios" | "android";
 
 export type BundleMetadata = {
   app_version?: string;
-  /** @deprecated Use Bundle.manifestStorageUri. */
-  manifest_storage_uri?: string;
-  /** @deprecated Use Bundle.manifestFileHash. */
-  manifest_file_hash?: string;
-  /** @deprecated Use Bundle.assetBaseStorageUri. */
-  asset_base_storage_uri?: string;
-  /** @deprecated Use Bundle.patchBaseBundleId. */
-  patch_base_bundle_id?: string;
-  /** @deprecated Use Bundle.patchBaseBundleId. */
-  diff_base_bundle_id?: string;
-  /** @deprecated Patch algorithm is implicit. */
-  hbc_patch_algorithm?: "bsdiff";
-  /** @deprecated Patch asset path is derived from the manifest. */
-  hbc_patch_asset_path?: string;
-  /** @deprecated Use Bundle.patchBaseFileHash. */
-  hbc_patch_base_file_hash?: string;
-  /** @deprecated Use Bundle.patchFileHash. */
-  hbc_patch_file_hash?: string;
-  /** @deprecated Use Bundle.patchStorageUri. */
-  hbc_patch_storage_uri?: string;
-  /** @deprecated Use Bundle.patches. */
-  patches?: Record<string, BundlePatchArtifactMetadata>;
 };
 
 export interface BundlePatchArtifact {
@@ -32,12 +10,6 @@ export interface BundlePatchArtifact {
   patchFileHash: string;
   patchStorageUri: string;
 }
-
-export type BundlePatchArtifactMetadata = {
-  base_file_hash: string;
-  patch_file_hash: string;
-  patch_storage_uri: string;
-};
 
 export interface ChangedAssetPatch {
   algorithm: "bsdiff";

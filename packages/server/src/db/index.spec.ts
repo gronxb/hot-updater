@@ -703,12 +703,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/bundle.zip",
         targetAppVersion: "1.0.0",
         fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/files",
-          manifest_file_hash: "sig:manifest-current",
-          manifest_storage_uri: currentManifestStorageUri,
-        },
+        assetBaseStorageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000101/files",
+        manifestFileHash: "sig:manifest-current",
+        manifestStorageUri: currentManifestStorageUri,
       };
       const nextBundle: Bundle = {
         id: "00000000-0000-0000-0000-000000000102",
@@ -723,31 +721,26 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/bundle.zip",
         targetAppVersion: "1.0.0",
         fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/files",
-          patches: {
-            [currentBundle.id]: {
-              base_file_hash: "hash-old-bundle",
-              patch_file_hash: "hash-bsdiff",
-              patch_storage_uri:
-                "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
-            },
-            "00000000-0000-0000-0000-000000000100": {
-              base_file_hash: "hash-older-bundle",
-              patch_file_hash: "hash-older-bsdiff",
-              patch_storage_uri:
-                "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
-            },
+        assetBaseStorageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/files",
+        manifestFileHash: "sig:manifest-next",
+        manifestStorageUri: nextManifestStorageUri,
+        patches: [
+          {
+            baseBundleId: "00000000-0000-0000-0000-000000000100",
+            baseFileHash: "hash-older-bundle",
+            patchFileHash: "hash-older-bsdiff",
+            patchStorageUri:
+              "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
           },
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: nextManifestStorageUri,
-        },
-        patchBaseBundleId: "00000000-0000-0000-0000-000000000100",
-        patchBaseFileHash: "hash-older-bundle",
-        patchFileHash: "hash-older-bsdiff",
-        patchStorageUri:
-          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000100/index.ios.bundle.bsdiff",
+          {
+            baseBundleId: currentBundle.id,
+            baseFileHash: "hash-old-bundle",
+            patchFileHash: "hash-bsdiff",
+            patchStorageUri:
+              "s3://test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
+          },
+        ],
       };
       storageTexts.set(
         currentManifestStorageUri,
@@ -846,12 +839,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/bundle.zip",
         targetAppVersion: "1.0.0",
         fingerprintHash: null,
-        metadata: {
-          asset_base_storage_uri:
-            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/files",
-          manifest_file_hash: "sig:manifest-next",
-          manifest_storage_uri: nextManifestStorageUri,
-        },
+        assetBaseStorageUri:
+          "s3://test-bucket/releases/00000000-0000-0000-0000-000000000109/files",
+        manifestFileHash: "sig:manifest-next",
+        manifestStorageUri: nextManifestStorageUri,
       };
 
       await hotUpdater.insertBundle(nextBundle);

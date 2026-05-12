@@ -80,14 +80,9 @@ const mapRowToBundle = (
     storageUri: data.storage_uri,
     fingerprintHash: data.fingerprint_hash,
     metadata: stripBundleArtifactMetadata(rawMetadata),
-    manifestStorageUri:
-      data.manifest_storage_uri ??
-      getManifestStorageUri({ metadata: rawMetadata }),
-    manifestFileHash:
-      data.manifest_file_hash ?? getManifestFileHash({ metadata: rawMetadata }),
-    assetBaseStorageUri:
-      data.asset_base_storage_uri ??
-      getAssetBaseStorageUri({ metadata: rawMetadata }),
+    manifestStorageUri: data.manifest_storage_uri ?? null,
+    manifestFileHash: data.manifest_file_hash ?? null,
+    assetBaseStorageUri: data.asset_base_storage_uri ?? null,
     patches,
     patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
     patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
