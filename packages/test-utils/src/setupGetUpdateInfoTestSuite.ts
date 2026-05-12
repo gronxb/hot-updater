@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAvailableInfo,
   AppUpdateInfo,
   Bundle,
   GetBundlesArgs,
@@ -2410,7 +2411,7 @@ export const setupGetUpdateInfoTestSuite = ({
               platform: "ios",
               _updateStrategy: "appVersion",
             },
-          )) as AppUpdateInfo | null;
+          )) as AppUpdateAvailableInfo | null;
 
           expect(updateInfo).toMatchObject({
             id: fixture.nextBundleId,

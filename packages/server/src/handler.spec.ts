@@ -83,6 +83,43 @@ describe("createHandler", () => {
     );
   });
 
+  it("keeps legacy no-update responses as null when SDK version is missing", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toBeNull();
+  });
+
+  it("returns UP_TO_DATE for no-update responses from SDK-versioned clients", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+        {
+          headers: {
+            "Hot-Updater-SDK-Version": "0.30.10",
+          },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "UP_TO_DATE",
+    });
+  });
+
   it("supports the fingerprint route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });

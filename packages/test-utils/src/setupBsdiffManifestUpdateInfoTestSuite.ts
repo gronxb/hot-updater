@@ -1,4 +1,9 @@
-import type { AppUpdateInfo, Bundle, GetBundlesArgs } from "@hot-updater/core";
+import type {
+  AppUpdateAvailableInfo,
+  AppUpdateInfo,
+  Bundle,
+  GetBundlesArgs,
+} from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 type BsdiffManifestFixture = {
@@ -118,7 +123,7 @@ export const setupBsdiffManifestUpdateInfoTestSuite = ({
           status: "UPDATE",
         });
 
-        const changedAssets = (updateInfo as AppUpdateInfo | null)
+        const changedAssets = (updateInfo as AppUpdateAvailableInfo | null)
           ?.changedAssets as Record<string, any> | undefined;
         const changedAsset = changedAssets?.[fixture.assetPath];
 

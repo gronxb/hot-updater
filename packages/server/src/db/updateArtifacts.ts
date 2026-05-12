@@ -4,7 +4,7 @@ import {
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
-  type AppUpdateInfo,
+  type AppUpdateAvailableInfo,
   type Bundle,
   type ChangedAsset,
 } from "@hot-updater/core";
@@ -317,7 +317,7 @@ export async function resolveManifestArtifacts<TContext>({
   targetBundle: Bundle | null;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Pick<
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   "changedAssets" | "manifestFileHash" | "manifestUrl"
 > | null> {
   const manifestStorageUri = targetBundle

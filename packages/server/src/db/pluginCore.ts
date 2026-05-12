@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
@@ -342,7 +342,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     async getAppUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<AppUpdateInfo | null> {
+    ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args, context);
       if (!info) {
         return null;
@@ -351,7 +351,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
         storageUri: string | null;
       };
       const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      const baseResponse: AppUpdateInfo = { ...rest, fileUrl };
+      const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
 
       if (info.id === NIL_UUID) {
         return baseResponse;

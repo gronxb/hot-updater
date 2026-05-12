@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAvailableInfo,
   AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
@@ -19,7 +20,7 @@ export interface HandlerAPI<TContext = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<AppUpdateInfo | null>;
+  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById: (
     id: string,
     context?: HotUpdaterContext<TContext>,
@@ -87,6 +88,23 @@ class HandlerBadRequestError extends Error {
     this.name = "HandlerBadRequestError";
   }
 }
+
+const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
+
+const serializeUpdateInfo = (
+  updateInfo: AppUpdateAvailableInfo | null,
+  request: Request,
+): string => {
+  if (updateInfo) {
+    return JSON.stringify(updateInfo satisfies AppUpdateInfo);
+  }
+
+  if (request.headers.has(SDK_VERSION_HEADER)) {
+    return JSON.stringify({ status: "UP_TO_DATE" } satisfies AppUpdateInfo);
+  }
+
+  return JSON.stringify(null);
+};
 
 // Route handlers
 const handleVersion: RouteHandler = async () => {
@@ -193,7 +211,7 @@ const requireBundlePatchPayload = (
 
 const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -216,7 +234,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -224,7 +242,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
 
 const handleAppVersionUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -247,7 +265,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

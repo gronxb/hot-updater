@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   BundlePatchArtifact,
@@ -720,7 +720,7 @@ export function createOrmDatabaseCore<TContext = unknown>({
     async getAppUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<AppUpdateInfo | null> {
+    ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) return null;
       const { storageUri, ...rest } = info as UpdateInfo & {

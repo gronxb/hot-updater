@@ -1,4 +1,4 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 
 import { HotUpdaterError } from "./error";
@@ -42,7 +42,7 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = AppUpdateInfo & {
+export type CheckForUpdateResult = AppUpdateAvailableInfo & {
   /**
    * Updates the bundle.
    * This method is equivalent to `HotUpdater.updateBundle()` but with all required arguments pre-filled.
@@ -139,6 +139,10 @@ export async function checkForUpdate(
   }
 
   if (!updateInfo) {
+    return null;
+  }
+
+  if (updateInfo.status === "UP_TO_DATE") {
     return null;
   }
 
