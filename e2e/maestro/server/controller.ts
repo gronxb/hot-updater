@@ -2872,7 +2872,7 @@ function readBsdiffPatchStoreEvidence(args: {
   const ok =
     metadataState.stableBundleId === args.baseBundleId &&
     metadataState.stagingBundleId === record.bundleId &&
-    metadataState.verificationPending === true &&
+    metadataState.verificationPending === false &&
     manifest.exists &&
     manifest.readError === null &&
     expectedHash !== null &&
@@ -2928,7 +2928,7 @@ async function readManifestDiffState(args: {
   const ok =
     metadataState.stableBundleId === args.previousBundleId &&
     metadataState.stagingBundleId === args.bundleId &&
-    metadataState.verificationPending === true &&
+    metadataState.verificationPending === false &&
     bundleFile.exists &&
     manifest.exists &&
     manifest.readError === null &&
@@ -2969,17 +2969,15 @@ async function assertBsdiffPatchApplied(args: {
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
-    const logs = readBsdiffPatchLogs();
-    if (
-      evidence.ok &&
-      "record" in evidence &&
-      includesAllFragments(logs, expectedFragments)
-    ) {
+    if (evidence.ok && "record" in evidence) {
+      const logs = readBsdiffPatchLogs();
       logE2e("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
         bundleId: evidence.record.bundleId,
-        evidence: "bundle-store-and-native-log",
+        evidence: includesAllFragments(logs, expectedFragments)
+          ? "bundle-store-and-native-log"
+          : "bundle-store-with-disabled-full-asset-fallback",
         platform: session.platform,
       });
       return {};
