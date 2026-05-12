@@ -252,8 +252,9 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                         patchUrl: patchUrl
                     )
                 }
-                let fileUrl = (entry.value["fileUrl"] as? String).flatMap { URL(string: $0) }
-                let fileCompression = entry.value["fileCompression"] as? String
+                let filePayload = entry.value["file"] as? [String: Any]
+                let fileUrl = (filePayload?["url"] as? String).flatMap { URL(string: $0) }
+                let fileCompression = filePayload?["compression"] as? String
                 guard fileUrl != nil || patch != nil else {
                     return
                 }

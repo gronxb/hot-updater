@@ -437,10 +437,11 @@ describe("runtime createHotUpdater", () => {
       await expect(response.json()).resolves.toEqual({
         changedAssets: {
           "index.ios.bundle": {
+            file: {
+              compression: "br",
+              url: "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/files/index.ios.bundle.br",
+            },
             fileHash: "hash-new-bundle",
-            fileCompression: "br",
-            fileUrl:
-              "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/files/index.ios.bundle.br",
             patch: {
               algorithm: "bsdiff",
               baseBundleId: "00000000-0000-0000-0000-000000000001",

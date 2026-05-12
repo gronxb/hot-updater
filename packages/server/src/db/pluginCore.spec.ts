@@ -183,10 +183,11 @@ describe("createPluginDatabaseCore", () => {
     ).resolves.toMatchObject({
       changedAssets: {
         "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
+          },
           fileHash: "new-bundle-hash",
-          fileCompression: "br",
-          fileUrl:
-            "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
         },
       },
       manifestFileHash: "sig:target-manifest",

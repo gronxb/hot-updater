@@ -354,6 +354,10 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-789",
       changedAssets: {
         "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://example.com/files/index.ios.bundle.br",
+          },
           fileHash: "hash-next",
           patch: {
             algorithm: "bsdiff",
@@ -375,6 +379,10 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-789",
       changedAssets: {
         "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://example.com/files/index.ios.bundle.br",
+          },
           fileHash: "hash-next",
           patch: {
             algorithm: "bsdiff",

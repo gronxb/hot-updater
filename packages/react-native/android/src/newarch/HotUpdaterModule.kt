@@ -79,15 +79,16 @@ class HotUpdaterModule internal constructor(
                 } else {
                     null
                 }
-            val assetUrl =
-                if (assetMap.hasKey("fileUrl") && !assetMap.isNull("fileUrl")) {
-                    assetMap.getString("fileUrl")
+            val fileMap =
+                if (assetMap.hasKey("file") && !assetMap.isNull("file")) {
+                    assetMap.getMap("file")
                 } else {
                     null
                 }
+            val assetUrl = fileMap?.getString("url")
             val fileCompression =
-                if (assetMap.hasKey("fileCompression") && !assetMap.isNull("fileCompression")) {
-                    assetMap.getString("fileCompression")
+                if (fileMap != null && fileMap.hasKey("compression") && !fileMap.isNull("compression")) {
+                    fileMap.getString("compression")
                 } else {
                     null
                 }

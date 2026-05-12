@@ -19,9 +19,13 @@ export interface ChangedAssetPatch {
   patchUrl: string;
 }
 
+export interface ChangedAssetFile {
+  compression?: "br" | null;
+  url: string;
+}
+
 export interface ChangedAsset {
-  fileUrl?: string | null;
-  fileCompression?: "br" | null;
+  file?: ChangedAssetFile | null;
   fileHash: string;
   patch?: ChangedAssetPatch | null;
 }
@@ -227,7 +231,7 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    */
   manifestFileHash?: string | null;
   /**
-   * Per-file download URLs for assets whose hash differs from the client's
+   * Per-file descriptors for assets whose hash differs from the client's
    * current manifest, or for all assets when the server cannot reuse a base
    * manifest. Keys are manifest-relative file paths.
    */

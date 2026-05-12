@@ -226,14 +226,16 @@ async function resolveChangedAssets<TContext>({
           return null;
         }
 
-        const changedAsset: ChangedAsset & { fileCompression?: "br" | null } = {
+        const changedAsset: ChangedAsset = {
           fileHash: asset.fileHash,
         };
         if (fileUrl) {
-          changedAsset.fileUrl = fileUrl;
-        }
-        if (usesBrotliAsset) {
-          changedAsset.fileCompression = "br";
+          changedAsset.file = {
+            url: fileUrl,
+          };
+          if (usesBrotliAsset) {
+            changedAsset.file.compression = "br";
+          }
         }
         if (patch) {
           changedAsset.patch = patch;
