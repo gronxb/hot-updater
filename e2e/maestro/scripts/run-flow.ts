@@ -160,6 +160,39 @@ function parseEnvFile(source: string): ParsedEnvFile {
   );
 }
 
+function setEnvFileValue(source: string, key: string, value: string) {
+  const lines = source.length > 0 ? source.split(/\r?\n/) : [];
+  let didReplace = false;
+
+  const nextLines = lines.map((line) => {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("#")) {
+      return line;
+    }
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex === -1) {
+      return line;
+    }
+
+    if (line.slice(0, separatorIndex).trim() !== key) {
+      return line;
+    }
+
+    didReplace = true;
+    return `${key}=${value}`;
+  });
+
+  if (!didReplace) {
+    if (nextLines.length > 0 && nextLines.at(-1) !== "") {
+      nextLines.push("");
+    }
+    nextLines.push(`${key}=${value}`);
+  }
+
+  return `${nextLines.join("\n").replace(/\n*$/, "")}\n`;
+}
+
 function parseConfiguredUrl(
   name: string,
   rawValue: string,
@@ -209,8 +242,12 @@ async function validateDeveloperE2ESetup(
     ? await fsPromises.readFile(envPath, "utf8")
     : "";
   const parsedEnv = parseEnvFile(envSource);
-  const appBaseUrlRaw =
-    parsedEnv.HOT_UPDATER_APP_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
+  const shouldUseProfileUpdateServer =
+    Boolean(process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH) &&
+    process.env.HOT_UPDATER_E2E_USE_PROFILE_UPDATE_SERVER !== "false";
+  const appBaseUrlRaw = shouldUseProfileUpdateServer
+    ? DEFAULT_UPDATE_SERVER_BASE_URL
+    : parsedEnv.HOT_UPDATER_APP_BASE_URL || DEFAULT_UPDATE_SERVER_BASE_URL;
   const relativeEnvPath = path.relative(REPO_DIR, envPath);
   const appBaseUrl = parseConfiguredUrl(
     "HOT_UPDATER_APP_BASE_URL",
@@ -241,6 +278,17 @@ async function validateDeveloperE2ESetup(
         "iOS Maestro E2E does not rewrite .env.hotupdater.",
         `Use an iOS-simulator-reachable host such as http://127.0.0.1:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater or a host LAN IP that both platforms can reach.`,
       ].join("\n"),
+    );
+  }
+
+  if (shouldUseProfileUpdateServer) {
+    await fsPromises.writeFile(
+      envPath,
+      setEnvFileValue(
+        envSource,
+        "HOT_UPDATER_APP_BASE_URL",
+        appBaseUrl.toString(),
+      ),
     );
   }
 
