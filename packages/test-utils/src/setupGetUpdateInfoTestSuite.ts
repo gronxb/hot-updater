@@ -2422,6 +2422,7 @@ export const setupGetUpdateInfoTestSuite = ({
             updateInfo?.changedAssets?.[fixture.changedAssetPath];
 
           expect(changedAsset).toMatchObject({
+            fileCompression: "br",
             fileHash: "hash-new-bundle",
           });
           expect(changedAsset?.patch).toBeUndefined();

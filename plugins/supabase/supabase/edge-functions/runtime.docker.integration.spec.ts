@@ -379,7 +379,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           ),
           uploadStorageObject(
             supabaseAdmin,
-            `${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+            `${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
             "next-bundle-bytes",
             "application/javascript",
           ),
@@ -400,7 +400,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       },
       expectFileUrl: (fileUrl, fixture) => {
         expect(fileUrl).toContain(
-          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+          `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
         );
       },
       expectManifestUrl: (manifestUrl, fixture) => {

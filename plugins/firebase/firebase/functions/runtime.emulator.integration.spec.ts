@@ -385,7 +385,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       },
       expectFileUrl: (fileUrl, fixture) => {
         expect(fileUrl).toBe(
-          `${cdnBaseUrl}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+          `${cdnBaseUrl}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
         );
       },
       expectManifestUrl: (manifestUrl, fixture) => {
