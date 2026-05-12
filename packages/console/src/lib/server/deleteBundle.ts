@@ -20,6 +20,7 @@ interface DeleteBundleInput {
 interface DeleteBundleDependencies {
   databasePlugin: DatabasePlugin;
   storagePlugin: NodeStoragePlugin;
+  waitForStorageCleanup?: boolean;
 }
 
 interface BundleManifest {
@@ -112,7 +113,11 @@ async function loadBundleManifest(
 
 export async function deleteBundle(
   { bundleId }: DeleteBundleInput,
-  { databasePlugin, storagePlugin }: DeleteBundleDependencies,
+  {
+    databasePlugin,
+    storagePlugin,
+    waitForStorageCleanup = true,
+  }: DeleteBundleDependencies,
 ) {
   const bundle = await databasePlugin.getBundleById(bundleId);
   if (!bundle) {
@@ -134,68 +139,79 @@ export async function deleteBundle(
   await databasePlugin.deleteBundle(bundle);
   await databasePlugin.commitBundle();
 
-  const cleanupUris = new Set<string>();
-  const addCleanupUri = (storageUri: string | undefined) => {
-    if (!storageUri) {
+  const cleanupStorage = async () => {
+    const cleanupUris = new Set<string>();
+    const addCleanupUri = (storageUri: string | undefined) => {
+      if (!storageUri) {
+        return;
+      }
+
+      const resolvedStorageUri = resolveStorageUriForDeletion(
+        storageUri,
+        storagePlugin,
+      );
+      if (resolvedStorageUri) {
+        cleanupUris.add(resolvedStorageUri);
+      }
+    };
+
+    addCleanupUri(bundle.storageUri);
+    addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
+    addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
+    for (const patch of getBundlePatches(bundle)) {
+      addCleanupUri(patch.patchStorageUri);
+    }
+
+    const manifestStorageUri = getManifestStorageUri(bundle);
+    const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
+
+    if (assetBaseStorageUri) {
+      if (!manifestStorageUri) {
+        addCleanupUri(assetBaseStorageUri);
+      } else {
+        try {
+          const manifest = await loadBundleManifest(
+            manifestStorageUri,
+            storagePlugin,
+          );
+          const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
+            a.localeCompare(b),
+          );
+
+          for (const assetPath of assetPaths) {
+            addCleanupUri(
+              createStorageUriWithRelativePath(assetBaseStorageUri, assetPath),
+            );
+          }
+        } catch (error) {
+          console.error(
+            "Failed to load bundle manifest for storage cleanup:",
+            error,
+          );
+          addCleanupUri(assetBaseStorageUri);
+        }
+      }
+    }
+
+    if (cleanupUris.size === 0) {
       return;
     }
 
-    const resolvedStorageUri = resolveStorageUriForDeletion(
-      storageUri,
-      storagePlugin,
-    );
-    if (resolvedStorageUri) {
-      cleanupUris.add(resolvedStorageUri);
+    for (const storageUri of cleanupUris) {
+      try {
+        await storagePlugin.profiles.node.delete(storageUri);
+      } catch (error) {
+        console.error("Failed to delete bundle from storage:", error);
+      }
     }
   };
 
-  addCleanupUri(bundle.storageUri);
-  addCleanupUri(getManifestStorageUri(bundle) ?? undefined);
-  addCleanupUri(getPatchStorageUri(bundle) ?? undefined);
-  for (const patch of getBundlePatches(bundle)) {
-    addCleanupUri(patch.patchStorageUri);
-  }
-
-  const manifestStorageUri = getManifestStorageUri(bundle);
-  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
-
-  if (assetBaseStorageUri) {
-    if (!manifestStorageUri) {
-      addCleanupUri(assetBaseStorageUri);
-    } else {
-      try {
-        const manifest = await loadBundleManifest(
-          manifestStorageUri,
-          storagePlugin,
-        );
-        const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
-          a.localeCompare(b),
-        );
-
-        for (const assetPath of assetPaths) {
-          addCleanupUri(
-            createStorageUriWithRelativePath(assetBaseStorageUri, assetPath),
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load bundle manifest for storage cleanup:",
-          error,
-        );
-        addCleanupUri(assetBaseStorageUri);
-      }
-    }
-  }
-
-  if (cleanupUris.size === 0) {
+  if (waitForStorageCleanup) {
+    await cleanupStorage();
     return;
   }
 
-  for (const storageUri of cleanupUris) {
-    try {
-      await storagePlugin.profiles.node.delete(storageUri);
-    } catch (error) {
-      console.error("Failed to delete bundle from storage:", error);
-    }
-  }
+  void cleanupStorage().catch((error) => {
+    console.error("Failed to clean up bundle storage:", error);
+  });
 }

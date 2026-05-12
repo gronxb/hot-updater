@@ -179,6 +179,25 @@ describe("deleteBundle", () => {
     );
   });
 
+  it("can return without waiting for storage cleanup", async () => {
+    const databasePlugin = createDatabasePlugin();
+    const deleteFromStorage = vi.fn(() => new Promise<void>(() => undefined));
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+    });
+
+    await expect(
+      deleteBundle(
+        { bundleId: baseBundle.id },
+        { databasePlugin, storagePlugin, waitForStorageCleanup: false },
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(databasePlugin.deleteBundle).toHaveBeenCalledOnce();
+    expect(databasePlugin.commitBundle).toHaveBeenCalledOnce();
+    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+  });
+
   it("deletes manifest artifacts individually when metadata is available", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
@@ -281,12 +300,10 @@ describe("deleteBundle", () => {
     );
   });
 
-  it("throws before database deletion when manifest metadata uses an unsupported storage protocol", async () => {
+  it("throws before database deletion when manifest storage uses an unsupported storage protocol", async () => {
     const databasePlugin = createDatabasePlugin({
       ...baseBundle,
-      metadata: {
-        manifest_storage_uri: "r2://bucket/bundle/manifest.json",
-      },
+      manifestStorageUri: "r2://bucket/bundle/manifest.json",
     });
     const storagePlugin = createStoragePlugin("s3");
 
