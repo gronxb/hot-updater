@@ -29,6 +29,7 @@ import {
   runCheckedCommand,
   spawnRuntime,
   stopRuntime,
+  formatRuntimeLogs,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
@@ -344,6 +345,16 @@ describe.sequential("supabase edge runtime acceptance", () => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
+
+    if (!response.ok) {
+      throw new Error(
+        [
+          `Edge runtime returned ${response.status} ${response.statusText}`,
+          await response.text(),
+          edgeRuntime ? formatRuntimeLogs(edgeRuntime.logs) : "",
+        ].join("\n\n"),
+      );
+    }
 
     return (await response.json()) as any;
   };
@@ -833,7 +844,7 @@ services:
       rest:
         condition: service_started
     ports:
-      - "127.0.0.1:${gatewayPort}:8000"
+      - "0.0.0.0:${gatewayPort}:8000"
     volumes:
       - ${path.join(runtimeRoot, "nginx.conf")}:/etc/nginx/nginx.conf:ro
 
