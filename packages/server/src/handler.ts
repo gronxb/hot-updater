@@ -10,6 +10,7 @@ import type {
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
+import semver from "semver";
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
@@ -90,6 +91,20 @@ class HandlerBadRequestError extends Error {
 }
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
+const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.30.10";
+
+const supportsExplicitNoUpdateResponse = (request: Request) => {
+  const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
+  if (!sdkVersion) {
+    return false;
+  }
+
+  const normalizedSdkVersion = semver.valid(sdkVersion);
+  return (
+    normalizedSdkVersion !== null &&
+    semver.gte(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
+  );
+};
 
 const serializeUpdateInfo = (
   updateInfo: AppUpdateAvailableInfo | null,
@@ -99,7 +114,7 @@ const serializeUpdateInfo = (
     return JSON.stringify(updateInfo satisfies AppUpdateInfo);
   }
 
-  if (request.headers.has(SDK_VERSION_HEADER)) {
+  if (supportsExplicitNoUpdateResponse(request)) {
     return JSON.stringify({ status: "UP_TO_DATE" } satisfies AppUpdateInfo);
   }
 

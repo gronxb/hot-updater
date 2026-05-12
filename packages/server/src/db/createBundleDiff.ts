@@ -169,15 +169,20 @@ async function fetchManifest(
 }
 
 function resolveHbcAssetPath(manifest: BundleManifest) {
-  const assetPath = Object.keys(manifest.assets)
+  const candidates = Object.keys(manifest.assets)
     .sort((left, right) => left.localeCompare(right))
-    .find((candidate) => HBC_ASSET_PATH_RE.test(candidate));
+    .filter((candidate) => HBC_ASSET_PATH_RE.test(candidate));
 
-  if (!assetPath) {
+  if (candidates.length === 0) {
     throw new Error("No Hermes bundle asset found in manifest");
   }
+  if (candidates.length > 1) {
+    throw new Error(
+      `Expected exactly one Hermes bundle asset in manifest, found ${candidates.length}: ${candidates.join(", ")}`,
+    );
+  }
 
-  return assetPath;
+  return candidates[0];
 }
 
 async function fetchAssetBytes(
