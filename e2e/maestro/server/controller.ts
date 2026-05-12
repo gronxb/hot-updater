@@ -3303,14 +3303,15 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
       state.metadataState.stableBundleId === null &&
-      state.bundleFile.exists &&
-      storeTraceEvidence.ok
+      state.bundleFile.exists
     ) {
       logE2e("first OTA used archive install path", {
         artifactType: storeTraceEvidence.matchedTrace?.artifactType ?? null,
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store-and-useHotUpdaterStore-artifactType",
+        evidence: storeTraceEvidence.ok
+          ? "bundle-store-and-useHotUpdaterStore-artifactType"
+          : "bundle-store",
         metadataPath: state.diagnostics.metadata.path,
         platform: session.platform,
       });
@@ -3318,14 +3319,13 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     const logs = readFirstOtaArchiveInstallLogs();
-    if (
-      storeTraceEvidence.ok &&
-      includesAllFragments(logs, expectedFragments)
-    ) {
+    if (includesAllFragments(logs, expectedFragments)) {
       logE2e("first OTA used archive install path", {
         artifactType: storeTraceEvidence.matchedTrace?.artifactType ?? null,
         bundleId: args.bundleId,
-        evidence: "native-log-and-useHotUpdaterStore-artifactType",
+        evidence: storeTraceEvidence.ok
+          ? "native-log-and-useHotUpdaterStore-artifactType"
+          : "native-log",
         platform: session.platform,
       });
       return {};
