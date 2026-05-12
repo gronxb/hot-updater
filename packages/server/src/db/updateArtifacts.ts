@@ -151,7 +151,10 @@ async function fetchBundleManifest<TContext>(
   resolveFileUrl: ResolveFileUrl<TContext>,
   context?: HotUpdaterContext<TContext>,
 ): Promise<{ fileUrl: string; manifest: BundleManifest } | null> {
-  const storageText = await readStorageText(storageUri, context);
+  const [storageText, fileUrl] = await Promise.all([
+    readStorageText(storageUri, context),
+    resolveFileUrl(storageUri, context),
+  ]);
   if (storageText === null) {
     return null;
   }
@@ -167,7 +170,6 @@ async function fetchBundleManifest<TContext>(
     return null;
   }
 
-  const fileUrl = await resolveFileUrl(storageUri, context);
   if (!fileUrl) {
     return null;
   }
@@ -341,28 +343,29 @@ export async function resolveManifestArtifacts<TContext>({
     return null;
   }
 
-  const targetManifestResult = await fetchBundleManifest(
-    manifestStorageUri,
-    readStorageText,
-    resolveFileUrl,
-    context,
-  );
+  const currentManifestStorageUri = currentBundle
+    ? getManifestStorageUri(currentBundle)
+    : null;
+  const [targetManifestResult, currentManifestResult] = await Promise.all([
+    fetchBundleManifest(
+      manifestStorageUri,
+      readStorageText,
+      resolveFileUrl,
+      context,
+    ),
+    currentManifestStorageUri
+      ? fetchBundleManifest(
+          currentManifestStorageUri,
+          readStorageText,
+          resolveFileUrl,
+          context,
+        )
+      : null,
+  ]);
 
   if (!targetManifestResult) {
     return null;
   }
-
-  const currentManifestStorageUri = currentBundle
-    ? getManifestStorageUri(currentBundle)
-    : null;
-  const currentManifestResult = currentManifestStorageUri
-    ? await fetchBundleManifest(
-        currentManifestStorageUri,
-        readStorageText,
-        resolveFileUrl,
-        context,
-      )
-    : null;
 
   const changedAssets = await resolveChangedAssets({
     assetBaseStorageUri,
