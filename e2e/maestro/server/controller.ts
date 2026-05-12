@@ -5,7 +5,7 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
 import {
   getBundlePatch,
@@ -56,7 +56,6 @@ type SessionState = {
   builtInBundleId: string | null;
   configBackupPath: string | null;
   configSourceFile: string;
-  consoleApiBaseUrl: string;
   deployedBundles: DeployedBundleRecord[];
   exampleDir: string;
   initialMarker: string;
@@ -125,33 +124,8 @@ type JsonSnapshot = {
   value: Record<string, unknown> | null;
 };
 
-type ConsoleServerFnName =
-  | "deleteBundle"
-  | "getBundle"
-  | "getBundles"
-  | "updateBundle";
-
-type ServerFnFetcher = (
-  url: string,
-  args: Array<{
-    data?: unknown;
-    method: "GET" | "POST";
-  }>,
-  handler: typeof fetch,
-) => Promise<unknown>;
-
-type ServerFnResultEnvelope<T> = {
-  error?: unknown;
-  result?: T;
-};
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
-const PNPM_STORE_DIR = path.join(REPO_DIR, "node_modules/.pnpm");
-const CONSOLE_SSR_DIR = path.join(
-  REPO_DIR,
-  "packages/console/.output/server/_ssr",
-);
 const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
@@ -192,7 +166,6 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
-const DEFAULT_UPDATE_SERVER_BASE_URL = "http://localhost:3007/hot-updater";
 
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
@@ -219,45 +192,10 @@ function logE2e(event: string, details?: unknown) {
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
-function parseEnvFile(source: string) {
-  return Object.fromEntries(
-    source
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith("#"))
-      .map((line) => {
-        const separatorIndex = line.indexOf("=");
-        if (separatorIndex === -1) {
-          return null;
-        }
-
-        return [
-          line.slice(0, separatorIndex).trim(),
-          line.slice(separatorIndex + 1).trim(),
-        ] as const;
-      })
-      .filter((entry): entry is readonly [string, string] => entry !== null),
-  );
-}
-
-function resolveUpdateServerBaseUrl() {
-  const envPath = path.join(EXAMPLE_DIR, ".env.hotupdater");
-  const envSource = fs.existsSync(envPath)
-    ? fs.readFileSync(envPath, "utf8")
-    : "";
-  const parsedEnv = parseEnvFile(envSource);
-
-  return (
-    parsedEnv.HOT_UPDATER_APP_BASE_URL ?? DEFAULT_UPDATE_SERVER_BASE_URL
-  ).replace(/\/+$/, "");
-}
-
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
-const consoleBaseUrl = process.env.HOT_UPDATER_E2E_CONSOLE_BASE_URL;
 const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
-const updateServerBaseUrl = resolveUpdateServerBaseUrl();
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
   throw new Error("HOT_UPDATER_E2E_PLATFORM must be ios or android");
@@ -270,9 +208,6 @@ if (!deviceId) {
 }
 if (!resultsDir) {
   throw new Error("HOT_UPDATER_E2E_RESULTS_DIR is required");
-}
-if (!consoleBaseUrl) {
-  throw new Error("HOT_UPDATER_E2E_CONSOLE_BASE_URL is required");
 }
 
 const session: SessionState = {
@@ -293,7 +228,6 @@ const session: SessionState = {
   builtInBundleId: null,
   configBackupPath: null,
   configSourceFile: HOT_UPDATER_CONFIG_FILE,
-  consoleApiBaseUrl: consoleBaseUrl,
   deployedBundles: [],
   exampleDir: EXAMPLE_DIR,
   initialMarker:
@@ -313,10 +247,6 @@ const session: SessionState = {
 };
 
 const jobs = new Map<string, JobState>();
-let consoleServerFnIdsPromise: Promise<
-  Record<ConsoleServerFnName, string>
-> | null = null;
-let tanstackServerFnFetcherPromise: Promise<ServerFnFetcher> | null = null;
 
 function runCapture(
   command: string,
@@ -347,146 +277,6 @@ function runCapture(
   }
 
   return result.stdout.trim();
-}
-
-async function findConsoleApiRpcChunkPath() {
-  const entries = await fsPromises.readdir(CONSOLE_SSR_DIR);
-  const chunkName = entries
-    .filter((entry) => entry.startsWith("api-rpc-") && entry.endsWith(".mjs"))
-    .sort()[0];
-
-  if (!chunkName) {
-    throw new Error(
-      `Failed to locate console api-rpc chunk in ${CONSOLE_SSR_DIR}`,
-    );
-  }
-
-  return path.join(CONSOLE_SSR_DIR, chunkName);
-}
-
-function extractConsoleServerFnId(
-  source: string,
-  serverFnName: ConsoleServerFnName,
-) {
-  const pattern = new RegExp(
-    `${serverFnName}_createServerFn_handler = createServerRpc\\(\\{\\s*id: "([a-f0-9]+)"`,
-  );
-  const match = source.match(pattern);
-
-  if (!match?.[1]) {
-    throw new Error(
-      `Failed to resolve TanStack server function id for ${serverFnName}`,
-    );
-  }
-
-  return match[1];
-}
-
-async function loadConsoleServerFnIds() {
-  const source = await fsPromises.readFile(
-    await findConsoleApiRpcChunkPath(),
-    "utf8",
-  );
-
-  return {
-    deleteBundle: extractConsoleServerFnId(source, "deleteBundle"),
-    getBundle: extractConsoleServerFnId(source, "getBundle"),
-    getBundles: extractConsoleServerFnId(source, "getBundles"),
-    updateBundle: extractConsoleServerFnId(source, "updateBundle"),
-  };
-}
-
-async function getConsoleServerFnIds() {
-  if (!consoleServerFnIdsPromise) {
-    consoleServerFnIdsPromise = loadConsoleServerFnIds();
-  }
-
-  return consoleServerFnIdsPromise;
-}
-
-async function loadTanstackServerFnFetcher() {
-  const entries = await fsPromises.readdir(PNPM_STORE_DIR);
-  const packageDir = entries
-    .filter((entry) => entry.startsWith("@tanstack+start-client-core@"))
-    .sort()[0];
-
-  if (!packageDir) {
-    throw new Error(
-      "Failed to locate @tanstack/start-client-core in pnpm store",
-    );
-  }
-
-  const modulePath = path.join(
-    PNPM_STORE_DIR,
-    packageDir,
-    "node_modules/@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js",
-  );
-  const module = (await import(pathToFileURL(modulePath).href)) as {
-    serverFnFetcher?: ServerFnFetcher;
-  };
-
-  if (typeof module.serverFnFetcher !== "function") {
-    throw new Error("Failed to load TanStack Start serverFnFetcher");
-  }
-
-  return module.serverFnFetcher;
-}
-
-async function getTanstackServerFnFetcher() {
-  if (!tanstackServerFnFetcherPromise) {
-    tanstackServerFnFetcherPromise = loadTanstackServerFnFetcher();
-  }
-
-  return tanstackServerFnFetcherPromise;
-}
-
-function unwrapConsoleServerFnResult<T>(
-  serverFnName: ConsoleServerFnName,
-  value: unknown,
-) {
-  if (value && typeof value === "object") {
-    const envelope = value as ServerFnResultEnvelope<T>;
-
-    if (envelope.error !== undefined && envelope.error !== null) {
-      if (envelope.error instanceof Error) {
-        throw envelope.error;
-      }
-
-      throw new Error(
-        `Console server function ${serverFnName} failed: ${String(envelope.error)}`,
-      );
-    }
-
-    if ("result" in envelope) {
-      return envelope.result as T;
-    }
-  }
-
-  return value as T;
-}
-
-async function callConsoleServerFn<T>(
-  serverFnName: ConsoleServerFnName,
-  method: "GET" | "POST",
-  data?: unknown,
-) {
-  const [consoleServerFnIds, serverFnFetcher] = await Promise.all([
-    getConsoleServerFnIds(),
-    getTanstackServerFnFetcher(),
-  ]);
-  const url = `${session.consoleApiBaseUrl}/_serverFn/${consoleServerFnIds[serverFnName]}`;
-  const result = await serverFnFetcher(
-    url,
-    [
-      {
-        data,
-        method,
-      },
-    ],
-    fetch,
-  );
-
-  return unwrapConsoleServerFnResult<T>(serverFnName, result);
 }
 
 async function runLogged(
@@ -860,7 +650,7 @@ function normalizeBundleListResponse(payload: unknown): BundleListPage {
   }
 
   if (!payload || typeof payload !== "object") {
-    throw new Error("Unexpected bundle list response from console API");
+    throw new Error("Unexpected bundle list response from hot-updater CLI");
   }
 
   const response = payload as {
@@ -891,35 +681,85 @@ function normalizeBundleListResponse(payload: unknown): BundleListPage {
   };
 }
 
+function parseHotUpdaterCliJson<T>(label: string, output: string): T {
+  try {
+    return JSON.parse(output) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse hot-updater CLI ${label} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function runHotUpdaterCliCapture(args: string[]) {
+  logE2e("hot-updater cli request", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+  });
+
+  const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+
+  logE2e("hot-updater cli response", {
+    command: args.join(" "),
+    stdout: output,
+  });
+
+  return output;
+}
+
+async function runHotUpdaterCliLogged(args: string[], logName: string) {
+  const logPath = path.join(session.resultsDir, logName);
+  logE2e("hot-updater cli start", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    logPath: path.relative(REPO_DIR, logPath),
+  });
+
+  await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    logPath,
+  });
+
+  logE2e("hot-updater cli done", {
+    command: args.join(" "),
+  });
+}
+
 async function fetchBundlesPage(args: {
   channel?: string;
   limit: number;
   offset: number;
 }) {
-  logE2e("console-api request", {
-    channel: args.channel ?? null,
-    limit: args.limit,
-    method: "GET",
-    offset: args.offset,
-    platform: session.platform,
-  });
+  if (args.offset !== 0) {
+    throw new Error("hot-updater CLI bundle list does not support offset");
+  }
 
-  const response = await callConsoleServerFn<BundleListPage>(
-    "getBundles",
-    "GET",
-    {
-      channel: args.channel,
-      limit: String(args.limit),
-      page: Math.floor(args.offset / args.limit) + 1,
-      platform: session.platform,
-    },
+  const cliArgs = [
+    "bundle",
+    "list",
+    "--json",
+    "-p",
+    session.platform,
+    "--limit",
+    String(args.limit),
+  ];
+  if (args.channel) {
+    cliArgs.push("-c", args.channel);
+  }
+
+  const response = parseHotUpdaterCliJson<BundleListPage>(
+    "bundle list",
+    runHotUpdaterCliCapture(cliArgs),
   );
   const bundles = normalizeBundleListResponse(response);
-  logE2e("console-api response", {
+  logE2e("hot-updater cli bundle list", {
+    channel: args.channel ?? null,
     count: bundles.data.length,
     limit: args.limit,
-    method: "GET",
-    offset: args.offset,
+    platform: session.platform,
     total: bundles.pagination.total,
   });
 
@@ -942,24 +782,19 @@ async function fetchLatestBundle(args: { channel?: string }) {
 }
 
 async function fetchBundleById(bundleId: string) {
-  logE2e("console-api request", {
-    bundleId,
-    method: "GET",
-  });
-
-  const bundle = await callConsoleServerFn<Bundle | null>("getBundle", "GET", {
-    bundleId,
-  });
+  const bundle = parseHotUpdaterCliJson<Bundle>(
+    "bundle show",
+    runHotUpdaterCliCapture(["bundle", "show", bundleId, "--json"]),
+  );
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logE2e("console-api response", {
+  logE2e("hot-updater cli bundle show", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
-    method: "GET",
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
   });
 
@@ -967,30 +802,41 @@ async function fetchBundleById(bundleId: string) {
 }
 
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
-  logE2e("console-api request", {
-    body: { bundle: patch },
-    bundleId,
-    method: "POST",
-  });
+  if (patch.enabled !== undefined) {
+    await runHotUpdaterCliLogged(
+      ["bundle", patch.enabled ? "enable" : "disable", bundleId, "-y"],
+      `bundle-${patch.enabled ? "enable" : "disable"}-${bundleId}.log`,
+    );
+  }
 
-  await callConsoleServerFn<{
-    bundle: {
-      channel: string;
-      enabled: boolean;
-      id: string;
-      rolloutCohortCount?: number | null;
-      shouldForceUpdate?: boolean;
-      targetCohorts?: string[] | null;
-    };
-    success: true;
-  }>("updateBundle", "POST", {
-    bundle: patch,
-    bundleId,
-  });
+  const updateArgs = ["bundle", "update", bundleId, "-y", "--json"];
+  if (patch.rolloutCohortCount !== undefined) {
+    if (patch.rolloutCohortCount === null) {
+      throw new Error("Cannot clear rolloutCohortCount through E2E CLI patch");
+    }
+    updateArgs.push("--rollout-cohort-count", String(patch.rolloutCohortCount));
+  }
+  if (patch.shouldForceUpdate !== undefined) {
+    updateArgs.push("--force-update", String(patch.shouldForceUpdate));
+  }
+  if (patch.targetCohorts !== undefined) {
+    if (patch.targetCohorts === null) {
+      updateArgs.push("--clear-target-cohorts");
+    } else {
+      updateArgs.push("--target-cohorts", patch.targetCohorts.join(","));
+    }
+  }
 
-  logE2e("console-api response", {
+  if (updateArgs.length > 5) {
+    parseHotUpdaterCliJson<Bundle>(
+      "bundle update",
+      runHotUpdaterCliCapture(updateArgs),
+    );
+  }
+
+  logE2e("hot-updater cli bundle patch", {
     bundleId,
-    method: "POST",
+    patch,
   });
 }
 
@@ -1122,47 +968,10 @@ async function resolveAutoPatchBundleDiff(
 }
 
 async function deleteBundle(bundleId: string) {
-  logE2e("console-api request", {
-    bundleId,
-    method: "POST",
-  });
-
-  try {
-    await callConsoleServerFn<{ success: true }>("deleteBundle", "POST", {
-      bundleId,
-    });
-  } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !error.message.includes("No storage plugin for protocol")
-    ) {
-      throw error;
-    }
-
-    logE2e("console-api delete fallback", {
-      bundleId,
-      reason: "unsupported-storage-protocol",
-      updateServerBaseUrl,
-    });
-
-    const response = await fetch(
-      `${updateServerBaseUrl}/api/bundles/${encodeURIComponent(bundleId)}`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Fallback delete failed for bundle ${bundleId}: ${response.status} ${response.statusText}`,
-      );
-    }
-  }
-
-  logE2e("console-api response", {
-    bundleId,
-    method: "POST",
-  });
+  await runHotUpdaterCliLogged(
+    ["bundle", "delete", bundleId, "-y"],
+    `bundle-delete-${bundleId}.log`,
+  );
 }
 
 async function clearRemoteBundles() {

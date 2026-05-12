@@ -205,6 +205,16 @@ both on the same bundle. A common flow is:
 2. Add `qa` to `Target Cohorts`.
 3. After QA verifies the bundle, increase the same bundle to `50%` rollout.
 
+You can do the same thing from the CLI:
+
+```package-install
+npx hot-updater bundle update <bundle-id> --target-cohorts qa -y
+npx hot-updater bundle update <bundle-id> --rollout-cohort-count 500 -y
+```
+
+`--rollout-cohort-count 500` is equivalent to a `50%` rollout because Hot
+Updater uses 1000 numeric cohorts.
+
 After QA verifies the bundle and you raise the same bundle to `50%`, the
 console can look like this:
 

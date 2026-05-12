@@ -44,14 +44,6 @@ const E2E_DIR = path.join(REPO_DIR, "e2e");
 const E2E_MAESTRO_DIR = path.join(E2E_DIR, "maestro");
 const E2E_RUNTIME_DIR = path.join(E2E_DIR, ".runtime");
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
-const CLI_TOOLS_DIST_PATH = path.join(
-  REPO_DIR,
-  "packages/cli-tools/dist/index.mjs",
-);
-const CONSOLE_SERVER_SCRIPT_PATH = path.join(
-  REPO_DIR,
-  "packages/console/.output/server/index.mjs",
-);
 const RESULTS_ROOT = path.join(E2E_DIR, "results");
 const LEGACY_STANDALONE_SERVER_PORT = 3007;
 const DEFAULT_UPDATE_SERVER_BASE_URL = `http://localhost:${LEGACY_STANDALONE_SERVER_PORT}/hot-updater`;
@@ -300,7 +292,7 @@ function extractMeaningfulLogLines(contents: string, limit = 8) {
     .filter(Boolean);
 
   const meaningful = lines.filter((line) =>
-    /\b(error|failed|exception|invalid|missing|timed out|timeout|unable|canceled|not found|expected|observed|verificationpending|stagingbundleid|crashedbundleid|launchreport|metadatapath|deploy|console-api|remote-bundles)\b/i.test(
+    /\b(error|failed|exception|invalid|missing|timed out|timeout|unable|canceled|not found|expected|observed|verificationpending|stagingbundleid|crashedbundleid|launchreport|metadatapath|deploy|hot-updater cli|remote-bundles)\b/i.test(
       line,
     ),
   );
@@ -588,29 +580,6 @@ async function waitForHttp(url: string, attempts = 90) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-function resolveConsolePort() {
-  const output = runCapture(
-    "node",
-    [
-      "--input-type=module",
-      "-e",
-      [
-        `import { loadConfig } from ${JSON.stringify(CLI_TOOLS_DIST_PATH)};`,
-        "const config = await loadConfig(null);",
-        "process.stdout.write(String(config.console.port));",
-      ].join(" "),
-    ],
-    { cwd: EXAMPLE_DIR },
-  );
-
-  const port = Number.parseInt(output, 10);
-  if (Number.isNaN(port) || port <= 0) {
-    throw new Error(`Invalid console port resolved from config: ${output}`);
-  }
-
-  return port;
-}
-
 function resolveIosSimulatorUdid(preferredName: string) {
   const output = runCapture("xcrun", [
     "simctl",
@@ -816,38 +785,6 @@ async function main() {
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
   await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
 
-  const preferredConsolePort = resolveConsolePort();
-  await terminateListenersOnPort(preferredConsolePort);
-  const consolePort = await resolveServerPort(preferredConsolePort, true);
-  const consoleBaseUrl = `http://${DEFAULT_SERVER_HOST}:${consolePort}`;
-  const consoleLogPath = path.join(resultsDir, "console-api.log");
-  const consoleLogStream = fs.createWriteStream(consoleLogPath, { flags: "w" });
-  const consoleProcess = spawn("node", [CONSOLE_SERVER_SCRIPT_PATH], {
-    cwd: EXAMPLE_DIR,
-    env: {
-      ...process.env,
-      HOST: DEFAULT_SERVER_HOST,
-      PORT: String(consolePort),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  consoleProcess.stdout?.on("data", (chunk: Buffer | string) =>
-    consoleLogStream.write(chunk),
-  );
-  consoleProcess.stderr?.on("data", (chunk: Buffer | string) =>
-    consoleLogStream.write(chunk),
-  );
-
-  const stopConsoleServer = async () => {
-    consoleProcess.kill("SIGTERM");
-    await new Promise<void>((resolve) => {
-      consoleProcess.once("close", () => resolve());
-      setTimeout(() => resolve(), 3000);
-    });
-    consoleLogStream.end();
-  };
-
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
   const serverProcess = spawn(
@@ -863,7 +800,6 @@ async function main() {
         HOT_UPDATER_E2E_ANDROID_APK_PATH:
           "android/app/build/outputs/apk/release/app-release.apk",
         HOT_UPDATER_E2E_APP_ID: appId,
-        HOT_UPDATER_E2E_CONSOLE_BASE_URL: consoleBaseUrl,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
         HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
           "/tmp/hotupdater-v085-ios-maestro",
@@ -902,7 +838,6 @@ async function main() {
   };
 
   try {
-    await waitForHttp(`${consoleBaseUrl}/manifest.json`);
     await waitForHttp(serverBaseUrl);
 
     await runLogged(
@@ -938,7 +873,6 @@ async function main() {
     throw error;
   } finally {
     await stopServer();
-    await stopConsoleServer();
   }
 }
 
