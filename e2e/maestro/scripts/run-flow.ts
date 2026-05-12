@@ -799,6 +799,7 @@ async function main() {
         ...process.env,
         HOT_UPDATER_E2E_ANDROID_APK_PATH:
           "android/app/build/outputs/apk/release/app-release.apk",
+        HOT_UPDATER_E2E_APP_BASE_URL: developerSetup.appBaseUrl.toString(),
         HOT_UPDATER_E2E_APP_ID: appId,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
         HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:

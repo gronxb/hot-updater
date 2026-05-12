@@ -49,6 +49,7 @@ type DeployedBundleRecord = {
 
 type SessionState = {
   androidApkPath: string;
+  appBaseUrl: string;
   appBackupPath: string | null;
   appId: string;
   appSourceFile: string;
@@ -152,6 +153,8 @@ const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
+const E2E_APP_VERSION = "1.0";
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
@@ -221,6 +224,9 @@ const session: SessionState = {
         process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
           DEFAULT_ANDROID_APK_RELATIVE_PATH,
       ),
+  appBaseUrl:
+    process.env.HOT_UPDATER_E2E_APP_BASE_URL ??
+    "http://localhost:3007/hot-updater",
   appBackupPath: null,
   appId,
   appSourceFile: APP_SOURCE_FILE,
@@ -1866,6 +1872,121 @@ function getLaunchReportState(report: Record<string, unknown> | null) {
   };
 }
 
+function getControllerReachableAppBaseUrl() {
+  const url = new URL(session.appBaseUrl);
+  if (
+    url.hostname === "localhost" ||
+    url.hostname === "10.0.2.2" ||
+    url.hostname === "10.0.3.2"
+  ) {
+    url.hostname = "127.0.0.1";
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function buildAppVersionUpdateCheckUrl(args: {
+  bundleId: string;
+  channel: string;
+  minBundleId: string;
+}) {
+  const encode = (value: string) => encodeURIComponent(value);
+  return [
+    getControllerReachableAppBaseUrl(),
+    "app-version",
+    encode(session.platform),
+    encode(E2E_APP_VERSION),
+    encode(args.channel),
+    encode(args.minBundleId),
+    encode(args.bundleId),
+  ].join("/");
+}
+
+function getCurrentUpdateCheckBundleId() {
+  const diagnostics = readWaitForMetadataDiagnostics();
+  const metadataState = getMetadataState(diagnostics.metadata.value);
+  return metadataState.stagingBundleId ?? NIL_UUID;
+}
+
+function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
+  return (
+    request.disabled !== true &&
+    typeof request.rollout !== "number" &&
+    (!request.targetCohorts || request.targetCohorts.length === 0)
+  );
+}
+
+async function waitForUpdateCheckVisibility(args: {
+  bundleId: string;
+  channel: string;
+  requestBundleId: string;
+}) {
+  const minBundleId = NIL_UUID;
+  const url = buildAppVersionUpdateCheckUrl({
+    bundleId: args.requestBundleId,
+    channel: args.channel,
+    minBundleId,
+  });
+  let lastObserved: unknown = null;
+  let lastError: string | null = null;
+
+  for (let index = 0; index < 90; index += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Hot-Updater-SDK-Version": "e2e",
+        },
+      });
+      const body = await response.text();
+      lastObserved = body;
+
+      if (response.ok) {
+        const payload = JSON.parse(body) as { id?: unknown; status?: unknown };
+        lastObserved = {
+          id: payload.id,
+          status: payload.status,
+        };
+
+        if (payload.id === args.bundleId) {
+          logE2e("update check visibility ready", {
+            bundleId: args.bundleId,
+            channel: args.channel,
+            requestBundleId: args.requestBundleId,
+            url,
+          });
+          return;
+        }
+      } else {
+        lastError = `HTTP ${response.status}: ${truncateForLog(body)}`;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(1000);
+  }
+
+  throw createEndpointError(
+    [
+      "Timed out waiting for update check visibility.",
+      `Expected update check to return bundleId=${args.bundleId}.`,
+      `URL: ${url}`,
+    ].join("\n"),
+    {
+      expected: {
+        bundleId: args.bundleId,
+      },
+      lastError,
+      lastObserved,
+      platform: session.platform,
+      request: {
+        bundleId: args.requestBundleId,
+        channel: args.channel,
+        minBundleId,
+      },
+    },
+  );
+}
+
 function createWaitForRecoveryTimeoutError(args: {
   attempts: number;
   crashedBundleId: string;
@@ -2073,22 +2194,53 @@ async function waitForAndroidMetadataState(
   verificationPending: boolean,
   attempts = 90,
 ) {
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics = readAndroidWaitForMetadataDiagnostics();
-    if (diagnostics.metadata.value) {
-      const metadata = diagnostics.metadata.value;
-      if (
-        metadata.stagingBundleId === bundleId &&
-        metadata.verificationPending === verificationPending
-      ) {
-        return;
+  const relaunchLimit = 2;
+  let totalAttempts = 0;
+
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
+    for (let index = 0; index < attempts; index += 1) {
+      totalAttempts += 1;
+
+      const diagnostics = readAndroidWaitForMetadataDiagnostics();
+      if (diagnostics.metadata.value) {
+        const metadataState = getMetadataState(diagnostics.metadata.value);
+        if (
+          metadataState.stagingBundleId === bundleId &&
+          metadataState.verificationPending === verificationPending
+        ) {
+          return;
+        }
       }
+      await sleep(1000);
     }
-    await sleep(1000);
+
+    const diagnostics = readAndroidWaitForMetadataDiagnostics();
+    const metadataState = getMetadataState(diagnostics.metadata.value);
+    if (
+      relaunchIndex === relaunchLimit ||
+      metadataState.verificationPending === true
+    ) {
+      break;
+    }
+
+    logE2e("android metadata wait relaunch", {
+      expectedBundleId: bundleId,
+      expectedVerificationPending: verificationPending,
+      observed: metadataState,
+      relaunchAttempt: relaunchIndex + 1,
+      relaunchLimit,
+    });
+    await prepareAppLaunch();
+    launchAndroidApp();
+    await sleep(3000);
   }
 
   throw createWaitForMetadataTimeoutError({
-    attempts,
+    attempts: totalAttempts,
     bundleId,
     ...readAndroidWaitForMetadataDiagnostics(),
     verificationPending,
@@ -2324,6 +2476,7 @@ async function deployBundle(request: DeployBundleRequest) {
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
+  const updateCheckRequestBundleId = getCurrentUpdateCheckBundleId();
 
   if (bundleProfile === "archive300mb") {
     await ensureLargeArchiveAsset();
@@ -2444,6 +2597,14 @@ async function deployBundle(request: DeployBundleRequest) {
       : null;
   const bundle = await fetchBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
+
+  if (shouldWaitForUpdateCheckVisibility(request)) {
+    await waitForUpdateCheckVisibility({
+      bundleId,
+      channel: bundle.channel,
+      requestBundleId: updateCheckRequestBundleId,
+    });
+  }
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
