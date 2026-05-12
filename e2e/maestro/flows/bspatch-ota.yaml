@@ -10,6 +10,7 @@ env:
   PHASE2_A_MARKER: bspatch-a-second-maestro
   PHASE2_B_MARKER: bspatch-b-second-maestro
   PHASE2_C_MARKER: bspatch-c-from-b-maestro
+  PHASE2_D_MARKER: bspatch-d-from-c-maestro
   PHASE3_A_MARKER: bspatch-a-third-maestro
   PHASE3_B_MARKER: bspatch-b-third-maestro
   PHASE3_C_MARKER: bspatch-c-manifest-diff-maestro
@@ -203,7 +204,8 @@ onFlowComplete:
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
 
-# Phase 2: build A -> B -> C and verify B -> C uses a bsdiff patch.
+# Phase 2: build A -> B -> C -> D and verify B -> C, then C -> D both use
+# bsdiff patches with maxBaseBundles=2.
 - runScript:
     file: ../scripts/control.js
     env:
@@ -358,6 +360,77 @@ onFlowComplete:
     env:
       ACTION: assertMetadataActive
       BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.phase2C}
+      MARKER: ${PHASE2_D_MARKER}
+      MESSAGE: Maestro bspatch phase2 bundle D consecutive patch
+      MODE: reset
+      OUTPUT_KEY: phase2D
+      PATCH_MAX_BASE_BUNDLES: "2"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBundlePatchBases
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      EXPECTED_BASE_BUNDLE_IDS: ${output.phase2C},${output.phase2B}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.phase2DDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2D}
+      EXPECTED_MARKER: ${PHASE2_D_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-c-to-d
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2D}
       CONTROL_URL: ${CONTROL_URL}
 
 # Reset again before the pure manifest diff fallback phase.

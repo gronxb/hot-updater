@@ -261,7 +261,7 @@ function isBsdiffStoreTraceFile(
 ) {
   return (
     file.path === assetPath &&
-    file.downloadPath?.endsWith(".bsdiff") === true &&
+    file.downloadPath === `${assetPath}.bsdiff` &&
     file.status === "downloaded" &&
     typeof file.progress === "number" &&
     file.progress >= 1
@@ -274,11 +274,19 @@ function isManifestDiffStoreTraceFile(
 ) {
   return (
     file.path === assetPath &&
-    (file.downloadPath === assetPath ||
-      file.downloadPath === `${assetPath}.br`) &&
+    file.downloadPath === `${assetPath}.br` &&
     file.status === "downloaded" &&
     typeof file.progress === "number" &&
     file.progress >= 1
+  );
+}
+
+function isArchiveStoreTrace(trace: HotUpdaterStoreTrace) {
+  return (
+    trace.artifactType === "archive" &&
+    trace.isUpdateDownloaded === true &&
+    typeof trace.progress === "number" &&
+    trace.progress >= 1
   );
 }
 
@@ -294,6 +302,20 @@ function findDiffStoreTrace(
         trace.details?.files?.some((file) => predicate(file, assetPath)),
     ) ?? null
   );
+}
+
+function findDiffStoreTraceFile(
+  trace: HotUpdaterStoreTrace | null,
+  assetPath: string,
+  predicate: (file: HotUpdaterStoreTraceFile, assetPath: string) => boolean,
+) {
+  return (
+    trace?.details?.files?.find((file) => predicate(file, assetPath)) ?? null
+  );
+}
+
+function findArchiveStoreTrace(traces: HotUpdaterStoreTrace[]) {
+  return traces.find(isArchiveStoreTrace) ?? null;
 }
 
 async function fetchHotUpdaterStoreTraces(): Promise<HotUpdaterStoreTraceEvidence> {
@@ -329,6 +351,16 @@ async function fetchHotUpdaterStoreTraces(): Promise<HotUpdaterStoreTraceEvidenc
       tracesTail: [],
     };
   }
+}
+
+async function readArchiveStoreTraceEvidence() {
+  const evidence = await fetchHotUpdaterStoreTraces();
+  const matchedTrace = findArchiveStoreTrace(evidence.traces);
+  return {
+    ...evidence,
+    matchedTrace,
+    ok: evidence.ok && matchedTrace !== null,
+  };
 }
 
 async function readBsdiffStoreTraceEvidence(assetPath: string) {
@@ -3104,6 +3136,7 @@ async function readManifestDiffState(args: {
     assetFile.exists &&
     assetFile.readError === null &&
     assetFile.fileHash === expectedHash &&
+    storeTraceEvidence.ok &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
     !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
     !bsdiffStoreTraceEvidence.ok &&
@@ -3143,27 +3176,38 @@ async function assertBsdiffPatchApplied(args: {
     const storeTraceEvidence = await readBsdiffStoreTraceEvidence(
       args.assetPath,
     );
-    if (evidence.ok && "record" in evidence) {
+    if (storeTraceEvidence.ok && evidence.ok && "record" in evidence) {
+      const traceFile = findDiffStoreTraceFile(
+        storeTraceEvidence.matchedTrace,
+        args.assetPath,
+        isBsdiffStoreTraceFile,
+      );
       logE2e("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
         bundleId: evidence.record.bundleId,
-        evidence: storeTraceEvidence.ok
-          ? "bundle-store-and-useHotUpdaterStore"
-          : "bundle-store-with-disabled-full-asset-fallback",
+        downloadPath: traceFile?.downloadPath ?? null,
+        evidence: "bundle-store-and-useHotUpdaterStore-downloadPath",
         platform: session.platform,
       });
       return {};
     }
 
     const logs = readBsdiffPatchLogs();
-    if (includesAllFragments(logs, expectedFragments)) {
+    if (
+      storeTraceEvidence.ok &&
+      includesAllFragments(logs, expectedFragments)
+    ) {
+      const traceFile = findDiffStoreTraceFile(
+        storeTraceEvidence.matchedTrace,
+        args.assetPath,
+        isBsdiffStoreTraceFile,
+      );
       logE2e("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
-        evidence: storeTraceEvidence.ok
-          ? "native-log-and-useHotUpdaterStore"
-          : "native-log",
+        downloadPath: traceFile?.downloadPath ?? null,
+        evidence: "native-log-and-useHotUpdaterStore-downloadPath",
         platform: session.platform,
       });
       return {};
@@ -3196,11 +3240,16 @@ async function assertManifestDiffApplied(args: {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const state = await readManifestDiffState(args);
     if (state.ok) {
+      const traceFile = findDiffStoreTraceFile(
+        state.storeTraceEvidence.matchedTrace,
+        state.assetPath,
+        isManifestDiffStoreTraceFile,
+      );
       logE2e("manifest diff applied without bsdiff patch", {
         bundleId: args.bundleId,
-        evidence: state.storeTraceEvidence.ok
-          ? "bundle-store-and-useHotUpdaterStore-without-bsdiff"
-          : "bundle-store-without-bsdiff",
+        downloadPath: traceFile?.downloadPath ?? null,
+        evidence:
+          "bundle-store-and-useHotUpdaterStore-downloadPath-without-bsdiff",
         platform: session.platform,
         previousBundleId: args.previousBundleId,
       });
@@ -3249,16 +3298,19 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const state = readFirstOtaArchiveState(args.bundleId);
+    const storeTraceEvidence = await readArchiveStoreTraceEvidence();
     if (
       state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === true &&
       state.metadataState.stableBundleId === null &&
-      state.bundleFile.exists
+      state.bundleFile.exists &&
+      storeTraceEvidence.ok
     ) {
       logE2e("first OTA used archive install path", {
+        artifactType: storeTraceEvidence.matchedTrace?.artifactType ?? null,
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
-        evidence: "bundle-store",
+        evidence: "bundle-store-and-useHotUpdaterStore-artifactType",
         metadataPath: state.diagnostics.metadata.path,
         platform: session.platform,
       });
@@ -3266,10 +3318,14 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     const logs = readFirstOtaArchiveInstallLogs();
-    if (includesAllFragments(logs, expectedFragments)) {
+    if (
+      storeTraceEvidence.ok &&
+      includesAllFragments(logs, expectedFragments)
+    ) {
       logE2e("first OTA used archive install path", {
+        artifactType: storeTraceEvidence.matchedTrace?.artifactType ?? null,
         bundleId: args.bundleId,
-        evidence: "native-log",
+        evidence: "native-log-and-useHotUpdaterStore-artifactType",
         platform: session.platform,
       });
       return {};
@@ -3280,6 +3336,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
 
   const logs = readFirstOtaArchiveInstallLogs();
   const state = readFirstOtaArchiveState(args.bundleId);
+  const storeTraceEvidence = await readArchiveStoreTraceEvidence();
   throw createEndpointError(
     "Timed out waiting for first OTA archive install evidence.",
     {
@@ -3298,6 +3355,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
         metadataState: state.metadataState,
       },
       platform: session.platform,
+      storeTraceEvidence,
     },
   );
 }
