@@ -3387,6 +3387,13 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
   return createJob(() => updateBundle(request));
 }
 
+export function startWaitForMetadataJob(
+  bundleId: string,
+  verificationPending: boolean,
+) {
+  return createJob(() => waitForMetadata(bundleId, verificationPending));
+}
+
 export function getJob(jobId: string) {
   return jobs.get(jobId) ?? null;
 }

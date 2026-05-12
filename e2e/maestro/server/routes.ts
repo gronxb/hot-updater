@@ -24,6 +24,7 @@ import {
   startBootstrapJob,
   startDeployBundleJob,
   startPatchBundleJob,
+  startWaitForMetadataJob,
 } from "./controller.ts";
 
 const app = new Hono();
@@ -154,6 +155,26 @@ app.post("/e2e/jobs/patch-bundle", async (c) => {
       shouldForceUpdate: payload.shouldForceUpdate,
       targetCohorts: payload.targetCohorts,
     }),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-metadata", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    verificationPending?: boolean;
+  };
+  if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
+    return c.json(
+      { error: "bundleId and verificationPending are required" },
+      400,
+    );
+  }
+
+  return c.json({
+    jobId: startWaitForMetadataJob(
+      payload.bundleId,
+      payload.verificationPending,
+    ),
   });
 });
 
