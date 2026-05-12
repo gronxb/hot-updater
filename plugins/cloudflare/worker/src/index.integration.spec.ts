@@ -50,7 +50,8 @@ const createInsertBundleQuery = (bundle: Bundle) => {
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message, channel,
-      storage_uri, fingerprint_hash, metadata, rollout_cohort_count,
+      storage_uri, fingerprint_hash, metadata, manifest_storage_uri,
+      manifest_file_hash, asset_base_storage_uri, rollout_cohort_count,
       target_cohorts
     ) VALUES (
       ${sqlString(bundle.id)},
@@ -65,6 +66,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       ${bundle.storageUri ? sqlString(bundle.storageUri) : "null"},
       ${bundle.fingerprintHash ? sqlString(bundle.fingerprintHash) : "null"},
       ${metadata},
+      ${bundle.manifestStorageUri ? sqlString(bundle.manifestStorageUri) : "null"},
+      ${bundle.manifestFileHash ? sqlString(bundle.manifestFileHash) : "null"},
+      ${bundle.assetBaseStorageUri ? sqlString(bundle.assetBaseStorageUri) : "null"},
       ${rolloutCohortCount},
       ${targetCohorts}
     ) ON CONFLICT(id) DO UPDATE SET
@@ -79,6 +83,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       storage_uri = excluded.storage_uri,
       fingerprint_hash = excluded.fingerprint_hash,
       metadata = excluded.metadata,
+      manifest_storage_uri = excluded.manifest_storage_uri,
+      manifest_file_hash = excluded.manifest_file_hash,
+      asset_base_storage_uri = excluded.asset_base_storage_uri,
       rollout_cohort_count = excluded.rollout_cohort_count,
       target_cohorts = excluded.target_cohorts;
   `;

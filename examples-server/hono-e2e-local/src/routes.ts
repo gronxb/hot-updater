@@ -10,10 +10,32 @@ const port = Number(process.env.PORT) || 3007;
 const publicBaseUrl = (
   process.env.HOT_UPDATER_PUBLIC_BASE_URL ?? `http://127.0.0.1:${port}`
 ).replace(/\/$/, "");
+const hotUpdaterStoreTraces: HotUpdaterStoreTrace[] = [];
 const storageRoot = path.resolve(
   process.env.HOT_UPDATER_E2E_STORAGE_DIR ??
     path.join(process.cwd(), "storage"),
 );
+
+type HotUpdaterStoreTraceFile = {
+  downloadPath?: string;
+  path?: string;
+  progress?: number;
+  status?: string;
+};
+
+type HotUpdaterStoreTrace = {
+  artifactType?: string | null;
+  details?: {
+    completedFilesCount?: number;
+    files?: HotUpdaterStoreTraceFile[];
+    totalFilesCount?: number;
+  } | null;
+  isUpdateDownloaded?: boolean;
+  progress?: number;
+  runtimeBundleId?: string;
+  source?: string;
+  timestamp?: number;
+};
 
 function resolveWithinStorage(relativePath: string) {
   const resolvedPath = path.resolve(storageRoot, relativePath);
@@ -67,6 +89,34 @@ async function removeEmptyStorageParents(targetPath: string) {
 
 app.on(["GET", "POST", "PATCH", "DELETE"], "/hot-updater/*", async (c) => {
   return hotUpdater.handler(c.req.raw);
+});
+
+app.post("/e2e/hot-updater-store-trace", async (c) => {
+  const payload = (await c.req.json()) as HotUpdaterStoreTrace;
+  hotUpdaterStoreTraces.push({
+    artifactType: payload.artifactType ?? null,
+    details: payload.details ?? null,
+    isUpdateDownloaded: payload.isUpdateDownloaded,
+    progress: payload.progress,
+    runtimeBundleId: payload.runtimeBundleId,
+    source: payload.source,
+    timestamp: Date.now(),
+  });
+
+  if (hotUpdaterStoreTraces.length > 500) {
+    hotUpdaterStoreTraces.splice(0, hotUpdaterStoreTraces.length - 500);
+  }
+
+  return c.json({ ok: true });
+});
+
+app.get("/e2e/hot-updater-store-traces", (c) => {
+  return c.json({ traces: hotUpdaterStoreTraces });
+});
+
+app.delete("/e2e/hot-updater-store-traces", (c) => {
+  hotUpdaterStoreTraces.length = 0;
+  return c.json({ ok: true });
 });
 
 app.post("/upload", async (c) => {

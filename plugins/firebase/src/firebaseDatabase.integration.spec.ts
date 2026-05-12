@@ -97,7 +97,7 @@ describe("firebaseDatabase plugin", () => {
       targetAppVersion: "1.0.0",
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
-      metadata: undefined,
+      metadata: {},
       manifestStorageUri: null,
       manifestFileHash: null,
       assetBaseStorageUri: null,

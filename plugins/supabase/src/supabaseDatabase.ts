@@ -10,10 +10,10 @@ import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
+  createDatabasePluginGetUpdateInfo,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
-import { getUpdateInfo } from "./getUpdateInfo";
 import type { SupabaseBundlePatchRow, SupabaseBundleRow } from "./types";
 
 export interface SupabaseDatabaseConfig {
@@ -44,6 +44,36 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
 
 const BUNDLE_SELECT_COLUMNS =
   "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, manifest_storage_uri, manifest_file_hash, asset_base_storage_uri, rollout_cohort_count, target_cohorts";
+
+const createSupabaseError = (error: unknown) => {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (error && typeof error === "object") {
+    const properties: Record<string, unknown> = {};
+    let target: object | null = error;
+    while (target && target !== Object.prototype) {
+      for (const key of Object.getOwnPropertyNames(target)) {
+        properties[key] = (error as Record<string, unknown>)[key];
+      }
+      target = Object.getPrototypeOf(target);
+    }
+
+    return new Error(
+      JSON.stringify({
+        name: error.constructor.name,
+        ...properties,
+      }),
+    );
+  }
+
+  try {
+    return new Error(JSON.stringify(error));
+  } catch {
+    return new Error(String(error));
+  }
+};
 
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
@@ -145,7 +175,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         .order("order_index", { ascending: true });
 
       if (error) {
-        throw error;
+        throw createSupabaseError(error);
       }
 
       for (const row of data ?? []) {
@@ -156,11 +186,76 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
       return patchMap;
     };
+    const mapRowsToBundles = async (rows: SupabaseBundleRow[]) => {
+      const patchMap = await fetchPatchMap(rows.map((row) => row.id));
+      return rows.map((row) => mapRowToBundle(row, patchMap.get(row.id)));
+    };
 
     return {
-      async getUpdateInfo(args) {
-        return getUpdateInfo(supabase, args);
-      },
+      getUpdateInfo: createDatabasePluginGetUpdateInfo({
+        async listTargetAppVersions({ platform, channel, minBundleId }) {
+          const { data, error } = await supabase
+            .from("bundles")
+            .select("target_app_version")
+            .eq("platform", platform)
+            .eq("channel", channel)
+            .eq("enabled", true)
+            .gte("id", minBundleId)
+            .not("target_app_version", "is", null);
+
+          if (error) {
+            throw createSupabaseError(error);
+          }
+
+          return Array.from(
+            new Set(
+              (data ?? [])
+                .map((row) => row.target_app_version)
+                .filter((version): version is string => Boolean(version)),
+            ),
+          );
+        },
+        async getBundlesByTargetAppVersions(
+          { platform, channel, minBundleId },
+          targetAppVersions,
+        ) {
+          const { data, error } = await supabase
+            .from("bundles")
+            .select(BUNDLE_SELECT_COLUMNS)
+            .eq("platform", platform)
+            .eq("channel", channel)
+            .eq("enabled", true)
+            .gte("id", minBundleId)
+            .in("target_app_version", targetAppVersions);
+
+          if (error) {
+            throw createSupabaseError(error);
+          }
+
+          return mapRowsToBundles(data ?? []);
+        },
+        async getBundlesByFingerprint({
+          platform,
+          channel,
+          minBundleId,
+          fingerprintHash,
+        }) {
+          const { data, error } = await supabase
+            .from("bundles")
+            .select(BUNDLE_SELECT_COLUMNS)
+            .eq("platform", platform)
+            .eq("channel", channel)
+            .eq("enabled", true)
+            .gte("id", minBundleId)
+            .eq("fingerprint_hash", fingerprintHash);
+
+          if (error) {
+            throw createSupabaseError(error);
+          }
+
+          return mapRowsToBundles(data ?? []);
+        },
+      }),
 
       async getBundleById(bundleId) {
         const [{ data, error }, patchMap] = await Promise.all([

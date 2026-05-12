@@ -128,6 +128,39 @@ type JsonSnapshot = {
   value: Record<string, unknown> | null;
 };
 
+type HotUpdaterStoreTraceFile = {
+  downloadPath?: string;
+  path?: string;
+  progress?: number;
+  status?: string;
+};
+
+type HotUpdaterStoreTrace = {
+  artifactType?: string | null;
+  details?: {
+    completedFilesCount?: number;
+    files?: HotUpdaterStoreTraceFile[];
+    totalFilesCount?: number;
+  } | null;
+  isUpdateDownloaded?: boolean;
+  progress?: number;
+  runtimeBundleId?: string;
+  source?: string;
+  timestamp?: number;
+};
+
+type HotUpdaterStoreTraceResponse = {
+  traces?: HotUpdaterStoreTrace[];
+};
+
+type HotUpdaterStoreTraceEvidence = {
+  matchedTrace: HotUpdaterStoreTrace | null;
+  ok: boolean;
+  readError: string | null;
+  traces: HotUpdaterStoreTrace[];
+  tracesTail: HotUpdaterStoreTrace[];
+};
+
 type ConsoleServerFnName =
   | "deleteBundle"
   | "getBundle"
@@ -222,6 +255,125 @@ function logE2e(event: string, details?: unknown) {
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
+function isBsdiffStoreTraceFile(
+  file: HotUpdaterStoreTraceFile,
+  assetPath: string,
+) {
+  return (
+    file.path === assetPath &&
+    file.downloadPath?.endsWith(".bsdiff") === true &&
+    file.status === "downloaded" &&
+    typeof file.progress === "number" &&
+    file.progress >= 1
+  );
+}
+
+function isManifestDiffStoreTraceFile(
+  file: HotUpdaterStoreTraceFile,
+  assetPath: string,
+) {
+  return (
+    file.path === assetPath &&
+    file.downloadPath === assetPath &&
+    file.status === "downloaded" &&
+    typeof file.progress === "number" &&
+    file.progress >= 1
+  );
+}
+
+function findDiffStoreTrace(
+  traces: HotUpdaterStoreTrace[],
+  assetPath: string,
+  predicate: (file: HotUpdaterStoreTraceFile, assetPath: string) => boolean,
+) {
+  return (
+    traces.find(
+      (trace) =>
+        trace.artifactType === "diff" &&
+        trace.details?.files?.some((file) => predicate(file, assetPath)),
+    ) ?? null
+  );
+}
+
+async function fetchHotUpdaterStoreTraces(): Promise<HotUpdaterStoreTraceEvidence> {
+  try {
+    const response = await fetch(
+      `${resolveUpdateServerRootUrl()}/e2e/hot-updater-store-traces`,
+    );
+    if (!response.ok) {
+      return {
+        matchedTrace: null,
+        ok: false,
+        readError: `trace endpoint returned ${response.status}`,
+        traces: [],
+        tracesTail: [],
+      };
+    }
+
+    const payload = (await response.json()) as HotUpdaterStoreTraceResponse;
+    const traces = Array.isArray(payload.traces) ? payload.traces : [];
+    return {
+      matchedTrace: null,
+      ok: true,
+      readError: null,
+      traces,
+      tracesTail: traces.slice(-20),
+    };
+  } catch (error) {
+    return {
+      matchedTrace: null,
+      ok: false,
+      readError: error instanceof Error ? error.message : String(error),
+      traces: [],
+      tracesTail: [],
+    };
+  }
+}
+
+async function readBsdiffStoreTraceEvidence(assetPath: string) {
+  const evidence = await fetchHotUpdaterStoreTraces();
+  const matchedTrace = findDiffStoreTrace(
+    evidence.traces,
+    assetPath,
+    isBsdiffStoreTraceFile,
+  );
+  return {
+    ...evidence,
+    matchedTrace,
+    ok: evidence.ok && matchedTrace !== null,
+  };
+}
+
+async function readManifestDiffStoreTraceEvidence(assetPath: string) {
+  const evidence = await fetchHotUpdaterStoreTraces();
+  const matchedTrace = findDiffStoreTrace(
+    evidence.traces,
+    assetPath,
+    isManifestDiffStoreTraceFile,
+  );
+  return {
+    ...evidence,
+    matchedTrace,
+    ok: evidence.ok && matchedTrace !== null,
+  };
+}
+
+async function clearHotUpdaterStoreTraces() {
+  try {
+    await fetch(
+      `${resolveUpdateServerRootUrl()}/e2e/hot-updater-store-traces`,
+      {
+        method: "DELETE",
+      },
+    );
+  } catch (error) {
+    logE2e("skipped clearing hot updater store traces", {
+      error: error instanceof Error ? error.message : String(error),
+      platform: session.platform,
+    });
+  }
+}
+
 function parseEnvFile(source: string) {
   return Object.fromEntries(
     source
@@ -253,6 +405,17 @@ function resolveUpdateServerBaseUrl() {
   return (
     parsedEnv.HOT_UPDATER_APP_BASE_URL ?? DEFAULT_UPDATE_SERVER_BASE_URL
   ).replace(/\/+$/, "");
+}
+
+function resolveUpdateServerRootUrl() {
+  const url = new URL(updateServerBaseUrl);
+  const pathname = url.pathname.replace(/\/+$/, "");
+  if (pathname.endsWith("/hot-updater")) {
+    url.pathname = pathname.slice(0, -"/hot-updater".length) || "/";
+  } else if (pathname.endsWith("/api/check-update")) {
+    url.pathname = pathname.slice(0, -"/api/check-update".length) || "/";
+  }
+  return url.toString().replace(/\/+$/, "");
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
@@ -1047,8 +1210,8 @@ function resolvePatchAssetPath(
   baseBundleId: string,
 ) {
   const patchStorageUri = bundle
-    ? getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
-      getPatchStorageUri(bundle)
+    ? (getBundlePatch(bundle, baseBundleId)?.patchStorageUri ??
+      getPatchStorageUri(bundle))
     : null;
   if (!patchStorageUri) {
     return readLegacyPatchAssetPath(bundle);
@@ -2503,6 +2666,7 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
+  await clearHotUpdaterStoreTraces();
   await clearRemoteBundles();
   await restoreFile(
     session.largeArchiveAssetBackupPath,
@@ -2897,7 +3061,7 @@ function getPrimaryBundleAssetPath() {
     : "index.android.bundle";
 }
 
-function readManifestDiffState(args: {
+async function readManifestDiffState(args: {
   bundleId: string;
   previousBundleId: string;
 }) {
@@ -2910,6 +3074,10 @@ function readManifestDiffState(args: {
   const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
   const archiveLogs = readFirstOtaArchiveInstallLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
+  const storeTraceEvidence =
+    await readManifestDiffStoreTraceEvidence(assetPath);
+  const bsdiffStoreTraceEvidence =
+    await readBsdiffStoreTraceEvidence(assetPath);
   const archiveFragments = [
     "Skipping manifest-driven install",
     `for ${args.bundleId}`,
@@ -2937,6 +3105,8 @@ function readManifestDiffState(args: {
     assetFile.fileHash === expectedHash &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
     !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
+    storeTraceEvidence.ok &&
+    !bsdiffStoreTraceEvidence.ok &&
     !record?.disabledFullAssetBaseStorageUri;
 
   return {
@@ -2946,6 +3116,7 @@ function readManifestDiffState(args: {
     assetPath,
     bsdiffFragments,
     bsdiffLogs,
+    bsdiffStoreTraceEvidence,
     bundleFile,
     diagnostics,
     expectedHash,
@@ -2953,6 +3124,7 @@ function readManifestDiffState(args: {
     metadataState,
     ok,
     record,
+    storeTraceEvidence,
   };
 }
 
@@ -2968,25 +3140,33 @@ async function assertBsdiffPatchApplied(args: {
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
-    if (evidence.ok) {
-      logE2e("bsdiff patch applied", {
-        assetPath: args.assetPath,
-        baseBundleId: args.baseBundleId,
-        bundleId: evidence.record.bundleId,
-        evidence: "bundle-store-with-disabled-full-asset-fallback",
-        platform: session.platform,
-      });
-      return {};
+    const storeTraceEvidence = await readBsdiffStoreTraceEvidence(
+      args.assetPath,
+    );
+    if (evidence.ok && "record" in evidence) {
+      if (storeTraceEvidence.ok) {
+        logE2e("bsdiff patch applied", {
+          assetPath: args.assetPath,
+          baseBundleId: args.baseBundleId,
+          bundleId: evidence.record.bundleId,
+          evidence: "bundle-store-and-useHotUpdaterStore",
+          platform: session.platform,
+        });
+        return {};
+      }
     }
 
     const logs = readBsdiffPatchLogs();
     if (includesAllFragments(logs, expectedFragments)) {
-      logE2e("bsdiff patch applied", {
-        assetPath: args.assetPath,
-        baseBundleId: args.baseBundleId,
-        platform: session.platform,
-      });
-      return {};
+      if (storeTraceEvidence.ok) {
+        logE2e("bsdiff patch applied", {
+          assetPath: args.assetPath,
+          baseBundleId: args.baseBundleId,
+          evidence: "native-log-and-useHotUpdaterStore",
+          platform: session.platform,
+        });
+        return {};
+      }
     }
 
     await sleep(1000);
@@ -2994,8 +3174,9 @@ async function assertBsdiffPatchApplied(args: {
 
   const logs = readBsdiffPatchLogs();
   const evidence = readBsdiffPatchStoreEvidence(args);
+  const storeTraceEvidence = await readBsdiffStoreTraceEvidence(args.assetPath);
   throw createEndpointError(
-    "Timed out waiting for bsdiff patch application log.",
+    "Timed out waiting for bsdiff patch application evidence.",
     {
       assetPath: args.assetPath,
       baseBundleId: args.baseBundleId,
@@ -3003,6 +3184,7 @@ async function assertBsdiffPatchApplied(args: {
       evidence,
       logsTail: logs.split("\n").slice(-20),
       platform: session.platform,
+      storeTraceEvidence,
     },
   );
 }
@@ -3012,11 +3194,11 @@ async function assertManifestDiffApplied(args: {
   previousBundleId: string;
 }) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    const state = readManifestDiffState(args);
+    const state = await readManifestDiffState(args);
     if (state.ok) {
       logE2e("manifest diff applied without bsdiff patch", {
         bundleId: args.bundleId,
-        evidence: "bundle-store-without-bsdiff-or-archive-log",
+        evidence: "bundle-store-and-useHotUpdaterStore-without-bsdiff",
         platform: session.platform,
         previousBundleId: args.previousBundleId,
       });
@@ -3026,7 +3208,7 @@ async function assertManifestDiffApplied(args: {
     await sleep(1000);
   }
 
-  const state = readManifestDiffState(args);
+  const state = await readManifestDiffState(args);
   throw createEndpointError(
     "Timed out waiting for manifest diff install evidence.",
     {
@@ -3040,6 +3222,7 @@ async function assertManifestDiffApplied(args: {
         state.bsdiffLogs,
         state.bsdiffFragments,
       ),
+      bsdiffStoreTraceEvidence: state.bsdiffStoreTraceEvidence,
       bundleFile: state.bundleFile,
       bundleId: args.bundleId,
       diagnostics: state.diagnostics,
@@ -3048,6 +3231,7 @@ async function assertManifestDiffApplied(args: {
       metadataState: state.metadataState,
       platform: session.platform,
       previousBundleId: args.previousBundleId,
+      storeTraceEvidence: state.storeTraceEvidence,
       trackedBundleRecord: state.record,
     },
   );
@@ -3203,6 +3387,7 @@ async function reinstallBuiltInApp() {
 }
 
 async function resetRemoteBundles() {
+  await clearHotUpdaterStoreTraces();
   await clearRemoteBundles();
 
   logE2e("remote bundles reset on demand", {
