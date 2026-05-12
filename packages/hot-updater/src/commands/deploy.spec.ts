@@ -109,8 +109,10 @@ vi.mock("fs", async () => {
         ...actual.promises,
         copyFile: vi.fn(),
         mkdir: vi.fn(),
+        readFile: vi.fn(),
         readdir: vi.fn(),
         rm: vi.fn(),
+        writeFile: vi.fn(),
       },
       statSync: vi.fn(),
     },
@@ -119,8 +121,10 @@ vi.mock("fs", async () => {
       ...actual.promises,
       copyFile: vi.fn(),
       mkdir: vi.fn(),
+      readFile: vi.fn(),
       readdir: vi.fn(),
       rm: vi.fn(),
+      writeFile: vi.fn(),
     },
     statSync: vi.fn(),
   };
@@ -360,10 +364,12 @@ describe("deploy rollout wiring", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.readFile).mockResolvedValue(Buffer.from("bundle"));
     vi.mocked(fs.promises.readdir).mockResolvedValue([
       "index.bundle",
     ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
     vi.mocked(fs.promises.rm).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.statSync).mockReturnValue({
       isDirectory: () => false,
     } as ReturnType<typeof fs.statSync>);
@@ -567,13 +573,16 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(fs.promises.copyFile).toHaveBeenCalledWith(
+    expect(fs.promises.readFile).toHaveBeenCalledWith(
       "/mock/build/index.ios.bundle.hbc",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
+    );
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
+      expect.any(Buffer),
     );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
       "bundle-123/files",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
     );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
       "bundle-123/files/assets/src",

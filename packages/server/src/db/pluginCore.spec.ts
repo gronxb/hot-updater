@@ -184,8 +184,9 @@ describe("createPluginDatabaseCore", () => {
       changedAssets: {
         "index.ios.bundle": {
           fileHash: "new-bundle-hash",
+          fileCompression: "br",
           fileUrl:
-            "https://assets.example.com/bucket/target/files/index.ios.bundle",
+            "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
         },
       },
       manifestFileHash: "sig:target-manifest",

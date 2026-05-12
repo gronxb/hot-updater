@@ -794,6 +794,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           changedAssets: {
             "index.ios.bundle": {
               fileHash: "hash-new-bundle",
+              fileCompression: "br",
               patch: {
                 algorithm: "bsdiff",
                 baseBundleId: currentBundle.id,
@@ -803,7 +804,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
                   "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/patches/00000000-0000-0000-0000-000000000101/index.ios.bundle.bsdiff",
               },
               fileUrl:
-                "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/files/index.ios.bundle",
+                "https://s3.example.com/test-bucket/releases/00000000-0000-0000-0000-000000000102/files/index.ios.bundle.br",
             },
           },
           fileHash: "hash-next-zip",

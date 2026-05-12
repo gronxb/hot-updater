@@ -24,15 +24,18 @@ public typealias ManifestAssets = [String: Any]
 public struct ChangedAssetDescriptor {
     public let fileUrl: URL?
     public let fileHash: String
+    public let fileCompression: String?
     public let patch: BsdiffPatchDescriptor?
 
     public init(
         fileUrl: URL?,
         fileHash: String,
+        fileCompression: String? = nil,
         patch: BsdiffPatchDescriptor? = nil
     ) {
         self.fileUrl = fileUrl
         self.fileHash = fileHash
+        self.fileCompression = fileCompression
         self.patch = patch
     }
 }
@@ -493,6 +496,45 @@ class BundleFileStorageService: BundleStorageService {
 
     private func patchDownloadPath(assetPath: String) -> String {
         return "\(assetPath).bsdiff"
+    }
+
+    private func downloadPath(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor
+    ) -> String {
+        if changedAsset.fileCompression == "br" {
+            return "\(assetPath).br"
+        }
+        return assetPath
+    }
+
+    private func compressedTempPath(
+        tempDirectory: String,
+        assetPath: String,
+        compression: String
+    ) -> String {
+        let safeName = assetPath
+            .replacingOccurrences(of: "/", with: "__")
+            .replacingOccurrences(of: "\\", with: "__")
+        let compressedDirectory = (tempDirectory as NSString).appendingPathComponent("compressed")
+        _ = fileSystem.createDirectory(atPath: compressedDirectory)
+        return (compressedDirectory as NSString).appendingPathComponent("\(safeName).\(compression)")
+    }
+
+    private func materializeDownloadedAsset(
+        downloadedPath: String,
+        destinationPath: String,
+        changedAsset: ChangedAssetDescriptor
+    ) throws {
+        guard changedAsset.fileCompression == "br" else {
+            return
+        }
+
+        try StreamingTarArchiveExtractor.decompressBrotliFile(
+            from: downloadedPath,
+            to: destinationPath
+        )
+        try? fileSystem.removeItem(atPath: downloadedPath)
     }
 
     private func applyPatchAssetIfPossible(
@@ -1816,16 +1858,31 @@ class BundleFileStorageService: BundleStorageService {
                     )
                 }
 
+                let changedAssetDownloadPath = downloadPath(
+                    assetPath: assetPath,
+                    changedAsset: changedAsset
+                )
+                let downloadDestinationPath: String
+                if changedAsset.fileCompression == "br" {
+                    downloadDestinationPath = compressedTempPath(
+                        tempDirectory: tempDirectory,
+                        assetPath: assetPath,
+                        compression: "br"
+                    )
+                } else {
+                    downloadDestinationPath = destinationPath
+                }
+
                 switch self.downloadFileSynchronously(
                     from: changedAssetFileUrl,
-                    to: destinationPath,
+                    to: downloadDestinationPath,
                     progressHandler: { progress in
                         self.updateDiffProgressFile(
                             files: &diffFiles,
                             assetPath: assetPath,
                             status: "downloading",
                             progress: progress.progress,
-                            downloadPath: assetPath,
+                            downloadPath: changedAssetDownloadPath,
                             downloadedBytes: progress.downloadedBytes,
                             totalBytes: progress.totalBytes
                         )
@@ -1838,8 +1895,13 @@ class BundleFileStorageService: BundleStorageService {
                 ) {
                 case .success(let downloadedFileURL):
                     do {
+                        try materializeDownloadedAsset(
+                            downloadedPath: downloadedFileURL.path,
+                            destinationPath: destinationPath,
+                            changedAsset: changedAsset
+                        )
                         try verifyManifestAssetFile(
-                            atPath: downloadedFileURL.path,
+                            atPath: destinationPath,
                             asset: expectedAsset
                         )
                     } catch {

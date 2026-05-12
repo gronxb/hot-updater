@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { brotliCompressSync } from "node:zlib";
 
 import type {
   Bundle,
@@ -150,8 +151,16 @@ describe("createBundleDiff", () => {
           );
         }
 
+        if (url.endsWith(`${baseBundle.id}/files/index.ios.bundle.br`)) {
+          return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
+        }
+
         if (url.endsWith(`${baseBundle.id}/files/index.ios.bundle`)) {
           return new Response(new Uint8Array([1, 2, 3]));
+        }
+
+        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle.br`)) {
+          return new Response(brotliCompressSync(new Uint8Array([1, 9, 3])));
         }
 
         if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle`)) {
@@ -259,8 +268,18 @@ describe("createBundleDiff", () => {
           );
         }
 
+        if (
+          url.endsWith(`${secondaryBaseBundle.id}/files/index.ios.bundle.br`)
+        ) {
+          return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
+        }
+
         if (url.endsWith(`${secondaryBaseBundle.id}/files/index.ios.bundle`)) {
           return new Response(new Uint8Array([1, 2, 3]));
+        }
+
+        if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle.br`)) {
+          return new Response(brotliCompressSync(new Uint8Array([1, 4, 3])));
         }
 
         if (url.endsWith(`${targetBundle.id}/files/index.ios.bundle`)) {

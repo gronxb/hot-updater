@@ -4,6 +4,7 @@ import type { UnsafeObject } from "react-native/Libraries/Types/CodegenTypes";
 
 export interface ChangedAsset {
   fileUrl?: string | null;
+  fileCompression?: "br" | null;
   fileHash: string;
   patch?: {
     algorithm: "bsdiff";

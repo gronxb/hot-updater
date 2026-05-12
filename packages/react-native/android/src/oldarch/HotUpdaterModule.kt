@@ -85,10 +85,22 @@ class HotUpdaterModule internal constructor(
                 } else {
                     null
                 }
+            val fileCompression =
+                if (assetMap.hasKey("fileCompression") && !assetMap.isNull("fileCompression")) {
+                    assetMap.getString("fileCompression")
+                } else {
+                    null
+                }
             if (assetUrl == null && patch == null) {
                 continue
             }
-            parsedAssets[assetPath] = ChangedAssetDescriptor(assetUrl, assetHash, patch)
+            parsedAssets[assetPath] =
+                ChangedAssetDescriptor(
+                    fileUrl = assetUrl,
+                    fileHash = assetHash,
+                    fileCompression = fileCompression,
+                    patch = patch,
+                )
         }
 
         return parsedAssets

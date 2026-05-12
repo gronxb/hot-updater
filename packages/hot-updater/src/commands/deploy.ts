@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { promisify } from "util";
+import { brotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
@@ -45,6 +47,8 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
+
+const compressBrotli = promisify(brotliCompress);
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -229,6 +233,9 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
+const isBrotliManifestBundleAsset = (relativePath: string) =>
+  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+
 const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
   const storageUrl = new URL(storageUri);
   const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
@@ -247,22 +254,37 @@ const ensureUploadSourcePath = async ({
   outputPath: string;
   targetFile: { path: string; name: string };
 }) => {
-  const expectedFilename = path.posix.basename(targetFile.name);
+  const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+    ? `${targetFile.name}.br`
+    : targetFile.name;
+  const expectedFilename = path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
-  if (expectedFilename === actualFilename) {
+  if (uploadName === targetFile.name && expectedFilename === actualFilename) {
     return targetFile.path;
   }
 
   const aliasDir = path.join(
     outputPath,
     "upload-artifacts",
-    getRelativeStorageDir(targetFile.name),
+    getRelativeStorageDir(uploadName),
   );
   await fs.promises.mkdir(aliasDir, { recursive: true });
 
   const aliasPath = path.join(aliasDir, expectedFilename);
-  await fs.promises.copyFile(targetFile.path, aliasPath);
+  if (uploadName !== targetFile.name) {
+    const source = await fs.promises.readFile(targetFile.path);
+    await fs.promises.writeFile(
+      aliasPath,
+      await compressBrotli(source, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+        },
+      }),
+    );
+  } else {
+    await fs.promises.copyFile(targetFile.path, aliasPath);
+  }
   return aliasPath;
 };
 
@@ -751,7 +773,10 @@ const deployPlatform = async ({
 
             await Promise.all(
               taskRef.targetFiles.map(async (targetFile) => {
-                const relativeDir = getRelativeStorageDir(targetFile.name);
+                const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+                  ? `${targetFile.name}.br`
+                  : targetFile.name;
+                const relativeDir = getRelativeStorageDir(uploadName);
                 const uploadKey = [bundleId, "files", relativeDir]
                   .filter(Boolean)
                   .join("/");

@@ -4,13 +4,17 @@ import android.os.StatFs
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.brotli.dec.BrotliInputStream
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.net.URL
 
 data class ChangedAssetDescriptor(
     val fileUrl: String?,
     val fileHash: String,
+    val fileCompression: String? = null,
     val patch: BsdiffPatchDescriptor? = null,
 )
 
@@ -315,6 +319,60 @@ class BundleFileStorageService(
     }
 
     private fun patchDownloadPath(assetPath: String): String = "$assetPath.bsdiff"
+
+    private fun downloadPathForChangedAsset(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor,
+    ): String =
+        if (changedAsset.fileCompression == "br") {
+            "$assetPath.br"
+        } else {
+            assetPath
+        }
+
+    private fun compressedTempFile(
+        tempDir: File,
+        assetPath: String,
+        compression: String,
+    ): File {
+        val safeName = assetPath.replace("/", "__").replace("\\", "__")
+        val compressedDir = File(tempDir, "compressed")
+        compressedDir.mkdirs()
+        return File(compressedDir, "$safeName.$compression")
+    }
+
+    private fun decompressBrotliFile(
+        sourceFile: File,
+        targetFile: File,
+    ) {
+        targetFile.parentFile?.mkdirs()
+        val tempOutputFile = File(targetFile.parentFile, "${targetFile.name}.tmp")
+
+        if (tempOutputFile.exists()) {
+            tempOutputFile.delete()
+        }
+
+        try {
+            FileInputStream(sourceFile).use { fileInputStream ->
+                BrotliInputStream(fileInputStream).use { brotliInputStream ->
+                    FileOutputStream(tempOutputFile).use { outputStream ->
+                        brotliInputStream.copyTo(outputStream)
+                    }
+                }
+            }
+
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+            if (!tempOutputFile.renameTo(targetFile)) {
+                tempOutputFile.copyTo(targetFile, overwrite = true)
+                tempOutputFile.delete()
+            }
+        } catch (error: Throwable) {
+            tempOutputFile.delete()
+            throw error
+        }
+    }
 
     private suspend fun applyPatchAssetIfPossible(
         assetPath: String,
@@ -1573,18 +1631,26 @@ class BundleFileStorageService(
                             )
                         }
 
+                val downloadPath = downloadPathForChangedAsset(assetPath, changedAsset)
+                val downloadedAssetFile =
+                    if (changedAsset.fileCompression == "br") {
+                        compressedTempFile(tempDir, assetPath, "br")
+                    } else {
+                        targetFile
+                    }
+
                 when (
                     val assetDownloadResult =
                         downloadService.downloadFile(
                             URL(changedAssetFileUrl),
-                            targetFile,
+                            downloadedAssetFile,
                         ) { downloadProgress ->
                             updateDiffProgressFile(
                                 files = diffFiles,
                                 assetPath = assetPath,
                                 status = "downloading",
                                 progress = downloadProgress.progress,
-                                downloadPath = assetPath,
+                                downloadPath = downloadPath,
                                 downloadedBytes = downloadProgress.downloadedBytes,
                                 totalBytes = downloadProgress.totalBytes,
                             )
@@ -1623,11 +1689,17 @@ class BundleFileStorageService(
 
                     is DownloadResult.Success -> {
                         try {
+                            if (changedAsset.fileCompression == "br") {
+                                decompressBrotliFile(
+                                    assetDownloadResult.file,
+                                    targetFile,
+                                )
+                            }
                             verifyManifestAssetFileOrThrow(
-                                assetDownloadResult.file,
+                                targetFile,
                                 expectedAsset,
                             )
-                        } catch (e: HotUpdaterException) {
+                        } catch (e: Exception) {
                             updateDiffProgressFile(
                                 files = diffFiles,
                                 assetPath = assetPath,
@@ -1639,7 +1711,14 @@ class BundleFileStorageService(
                                 phase = "downloading",
                                 files = diffFiles,
                             )
-                            throw e
+                            if (e is HotUpdaterException) {
+                                throw e
+                            }
+                            throw HotUpdaterException.downloadFailed(e)
+                        } finally {
+                            if (changedAsset.fileCompression == "br") {
+                                assetDownloadResult.file.delete()
+                            }
                         }
                         updateDiffProgressFile(
                             files = diffFiles,

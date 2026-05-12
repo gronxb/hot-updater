@@ -253,6 +253,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                     )
                 }
                 let fileUrl = (entry.value["fileUrl"] as? String).flatMap { URL(string: $0) }
+                let fileCompression = entry.value["fileCompression"] as? String
                 guard fileUrl != nil || patch != nil else {
                     return
                 }
@@ -260,6 +261,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                 partialResult[entry.key] = ChangedAssetDescriptor(
                     fileUrl: fileUrl,
                     fileHash: fileHash,
+                    fileCompression: fileCompression,
                     patch: patch
                 )
             }

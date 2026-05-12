@@ -21,6 +21,7 @@ export interface ChangedAssetPatch {
 
 export interface ChangedAsset {
   fileUrl?: string | null;
+  fileCompression?: "br" | null;
   fileHash: string;
   patch?: ChangedAssetPatch | null;
 }

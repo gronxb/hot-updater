@@ -274,7 +274,8 @@ function isManifestDiffStoreTraceFile(
 ) {
   return (
     file.path === assetPath &&
-    file.downloadPath === assetPath &&
+    (file.downloadPath === assetPath ||
+      file.downloadPath === `${assetPath}.br`) &&
     file.status === "downloaded" &&
     typeof file.progress === "number" &&
     file.progress >= 1

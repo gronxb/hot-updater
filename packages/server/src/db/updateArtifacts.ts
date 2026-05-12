@@ -26,6 +26,7 @@ type ReadStorageText<TContext> = (
 ) => Promise<string | null>;
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
+const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -201,9 +202,11 @@ async function resolveChangedAssets<TContext>({
           return null;
         }
 
+        const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
+        const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
         const storageUri = createChildStorageUri(
           assetBaseStorageUri,
-          assetPath,
+          downloadPath,
         );
         const patch =
           patchDescriptor?.assetPath === assetPath
@@ -223,11 +226,14 @@ async function resolveChangedAssets<TContext>({
           return null;
         }
 
-        const changedAsset: ChangedAsset = {
+        const changedAsset: ChangedAsset & { fileCompression?: "br" | null } = {
           fileHash: asset.fileHash,
         };
         if (fileUrl) {
           changedAsset.fileUrl = fileUrl;
+        }
+        if (usesBrotliAsset) {
+          changedAsset.fileCompression = "br";
         }
         if (patch) {
           changedAsset.patch = patch;

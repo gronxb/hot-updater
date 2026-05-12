@@ -2,6 +2,8 @@ import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { brotliDecompress } from "node:zlib";
 
 import { hdiff } from "@hot-updater/bsdiff";
 import {
@@ -36,7 +38,9 @@ export interface CreateBundleDiffOptions {
 }
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
+const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
+const decompressBrotli = promisify(brotliDecompress);
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -184,6 +188,27 @@ async function fetchAssetBytes(
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
     throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
+  }
+
+  if (BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)) {
+    const compressedAssetStorageUri = createChildStorageUri(
+      assetBaseStorageUri,
+      `${assetPath}.br`,
+    );
+
+    let compressedBytes: Uint8Array | null = null;
+    try {
+      compressedBytes = await downloadStorageBytes(
+        compressedAssetStorageUri,
+        storagePlugin,
+      );
+    } catch {
+      // Older deployments stored manifest assets uncompressed.
+    }
+
+    if (compressedBytes) {
+      return new Uint8Array(await decompressBrotli(compressedBytes));
+    }
   }
 
   const assetStorageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
