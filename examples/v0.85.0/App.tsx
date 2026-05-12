@@ -701,6 +701,20 @@ function App(): React.JSX.Element {
               label="Download Progress"
               value={`${Math.round(progress * 100)}%`}
             />
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="launch-status-result"
+            >
+              {launchStatusText}
+            </Text>
+            <Text
+              selectable
+              style={styles.actionResult}
+              testID="launch-crashed-bundle-result"
+            >
+              {crashedBundleText}
+            </Text>
             <InfoRow
               label="Update Artifact Type"
               value={progressState.artifactType ?? "null"}
@@ -716,20 +730,6 @@ function App(): React.JSX.Element {
               value={updateStoreDownloadPaths}
               valueTestID="update-store-download-paths"
             />
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="launch-status-result"
-            >
-              {launchStatusText}
-            </Text>
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="launch-crashed-bundle-result"
-            >
-              {crashedBundleText}
-            </Text>
             <Text selectable style={styles.codeBlock}>
               {statusPayload}
             </Text>
