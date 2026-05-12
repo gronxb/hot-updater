@@ -201,6 +201,10 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Marker`, result.marker);
     assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
     assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
+    assignIfPresent(
+      `${outputKey}PrimaryBundleAssetPath`,
+      result.primaryBundleAssetPath,
+    );
     assignIfPresent(`${outputKey}PatchBaseBundleIds`, result.patchBaseBundleIds);
     assignIfPresent(
       `${outputKey}RolloutCohortCount`,

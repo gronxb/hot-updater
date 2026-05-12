@@ -9,7 +9,6 @@ import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import {
   HotUpdater,
   type HotUpdaterFallbackComponentProps,
-  type HotUpdaterState,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
 import React, { useEffect, useRef, useState } from "react";
@@ -40,26 +39,9 @@ const notify = proxy<{
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
-const HOT_UPDATER_E2E_STORE_TRACE_URL = (() => {
-  try {
-    const url = new URL(HOT_UPDATER_BASE_URL);
-    const pathname = url.pathname.replace(/\/+$/, "");
-    if (pathname.endsWith("/hot-updater")) {
-      url.pathname = `${pathname.slice(0, -"/hot-updater".length)}/e2e/hot-updater-store-trace`;
-    } else if (pathname.endsWith("/api/check-update")) {
-      url.pathname = `${pathname.slice(0, -"/api/check-update".length)}/e2e/hot-updater-store-trace`;
-    } else {
-      url.pathname = `${pathname}/e2e/hot-updater-store-trace`;
-    }
-    return url.toString();
-  } catch {
-    return null;
-  }
-})();
 const E2E_SCENARIO_MARKER = "targeted-qa-maestro";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
-let lastHotUpdaterStoreTraceKey: string | null = null;
 
 function maybeCrashForE2E() {
   /* E2E_CRASH_GUARD_START */
@@ -82,49 +64,6 @@ const getGlobalBaseUrl = (): string | null => {
   }
   const value = maybeFn();
   return typeof value === "string" ? value : null;
-};
-
-const recordHotUpdaterStoreTrace = (
-  snapshot: HotUpdaterState,
-  source: "app" | "fallback",
-) => {
-  if (!HOT_UPDATER_E2E_STORE_TRACE_URL || snapshot.artifactType === null) {
-    return;
-  }
-  if (
-    snapshot.artifactType === "archive" &&
-    snapshot.isUpdateDownloaded === false
-  ) {
-    return;
-  }
-  if (
-    snapshot.artifactType === "diff" &&
-    snapshot.progress < 1 &&
-    snapshot.details?.files.some((file) => file.status === "downloaded") !==
-      true
-  ) {
-    return;
-  }
-
-  const payload = {
-    artifactType: snapshot.artifactType,
-    details: snapshot.details,
-    isUpdateDownloaded: snapshot.isUpdateDownloaded,
-    progress: snapshot.progress,
-    runtimeBundleId: HotUpdater.getBundleId(),
-    source,
-  };
-  const key = JSON.stringify(payload);
-  if (lastHotUpdaterStoreTraceKey === key) {
-    return;
-  }
-  lastHotUpdaterStoreTraceKey = key;
-
-  void fetch(HOT_UPDATER_E2E_STORE_TRACE_URL, {
-    body: key,
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
-  }).catch(() => {});
 };
 type RuntimeSnapshot = {
   appVersion: string | null;
@@ -285,31 +224,32 @@ const formatFallbackPercent = (value: number | null | undefined) => {
   return `${Math.round(value * 100)}%`;
 };
 
+const formatUpdateStoreDownloadPaths = (
+  details: HotUpdaterFallbackComponentProps["details"],
+) => {
+  if (!details || details.files.length === 0) {
+    return "none";
+  }
+
+  return details.files
+    .map(
+      (file) =>
+        `${file.path}:${file.status}:${file.downloadPath}:${formatFallbackPercent(
+          file.progress,
+        )}`,
+    )
+    .join("\n");
+};
+
 const MAX_VISIBLE_COMPLETED_FILES = 5;
 
 const UpdateFallbackModal = ({
   artifactType,
   details,
-  downloadedBytes,
   message,
   progress,
   status,
-  totalBytes,
 }: HotUpdaterFallbackComponentProps) => {
-  useEffect(() => {
-    recordHotUpdaterStoreTrace(
-      {
-        artifactType,
-        details,
-        downloadedBytes,
-        isUpdateDownloaded: progress >= 1,
-        progress,
-        totalBytes,
-      },
-      "fallback",
-    );
-  }, [artifactType, details, downloadedBytes, progress, totalBytes]);
-
   const isDiffUpdate = artifactType === "diff" && details !== null;
   const statusTitle =
     status === "UPDATING" ? "Updating..." : "Checking for Update...";
@@ -484,10 +424,6 @@ function App(): React.JSX.Element {
     ([fileName]) => fileName === E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH,
   );
 
-  useEffect(() => {
-    recordHotUpdaterStoreTrace(progressState, "app");
-  }, [progressState]);
-
   const statusPayload = JSON.stringify(notifyState, null, 2);
   const launchStatusText = `Current Launch Status: ${
     notifyState.status ?? "null"
@@ -499,6 +435,9 @@ function App(): React.JSX.Element {
     runtimeSnapshot.defaultChannel
   } switched=${String(runtimeSnapshot.isChannelSwitched)}`;
   const cohortSummary = `current=${runtimeSnapshot.cohort} initial=${initialCohort}`;
+  const updateStoreDownloadPaths = formatUpdateStoreDownloadPaths(
+    progressState.details,
+  );
 
   const refreshRuntimeSnapshot = () => {
     setRuntimeSnapshot(readRuntimeSnapshot());
@@ -761,6 +700,21 @@ function App(): React.JSX.Element {
             <InfoRow
               label="Download Progress"
               value={`${Math.round(progress * 100)}%`}
+            />
+            <InfoRow
+              label="Update Artifact Type"
+              value={progressState.artifactType ?? "null"}
+              valueTestID="update-store-artifact-type"
+            />
+            <InfoRow
+              label="Update Downloaded"
+              value={String(progressState.isUpdateDownloaded)}
+              valueTestID="update-store-downloaded"
+            />
+            <InfoRow
+              label="Update Download Paths"
+              value={updateStoreDownloadPaths}
+              valueTestID="update-store-download-paths"
             />
             <Text
               selectable

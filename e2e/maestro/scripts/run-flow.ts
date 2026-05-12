@@ -9,6 +9,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+
 import { p } from "../../../packages/cli-tools/src/prompts.ts";
 
 type Platform = "ios" | "android";
@@ -43,10 +44,6 @@ const E2E_DIR = path.join(REPO_DIR, "e2e");
 const E2E_MAESTRO_DIR = path.join(E2E_DIR, "maestro");
 const E2E_RUNTIME_DIR = path.join(E2E_DIR, ".runtime");
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
-const SERVER_PACKAGE_DIR = path.join(
-  REPO_DIR,
-  "examples-server/hono-e2e-local",
-);
 const CLI_TOOLS_DIST_PATH = path.join(
   REPO_DIR,
   "packages/cli-tools/dist/index.mjs",
@@ -68,8 +65,10 @@ const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
-// The literal form trips noControlCharactersInRegex for ESC.
-const ANSI_ESCAPE_PATTERN = new RegExp("\\x1B\\[[0-?]*[ -/]*[@-~]", "g");
+const ANSI_ESCAPE_PATTERN = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
+  "g",
+);
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -853,13 +852,7 @@ async function main() {
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
   const serverProcess = spawn(
     "pnpm",
-    [
-      "--dir",
-      SERVER_PACKAGE_DIR,
-      "exec",
-      "tsx",
-      path.join(REPO_DIR, "e2e/maestro/server/index.ts"),
-    ],
+    ["exec", "tsx", path.join(REPO_DIR, "e2e/maestro/server/index.ts")],
     {
       cwd: REPO_DIR,
       env: {

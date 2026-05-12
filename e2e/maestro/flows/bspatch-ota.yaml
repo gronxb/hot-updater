@@ -141,6 +141,12 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase1C}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase1CDiffPatchAssetPath}.bsdiff
 - runScript:
     file: ../scripts/control.js
     env:
@@ -322,6 +328,12 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase2C}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2CDiffPatchAssetPath}.bsdiff
 - runScript:
     file: ../scripts/control.js
     env:
@@ -393,6 +405,12 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase2D}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2DDiffPatchAssetPath}.bsdiff
 - runScript:
     file: ../scripts/control.js
     env:
@@ -546,6 +564,12 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase3C}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}.br
 - runScript:
     file: ../scripts/control.js
     env:
