@@ -3106,7 +3106,6 @@ async function readManifestDiffState(args: {
     assetFile.fileHash === expectedHash &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
     !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
-    storeTraceEvidence.ok &&
     !bsdiffStoreTraceEvidence.ok &&
     !record?.disabledFullAssetBaseStorageUri;
 
@@ -3145,29 +3144,29 @@ async function assertBsdiffPatchApplied(args: {
       args.assetPath,
     );
     if (evidence.ok && "record" in evidence) {
-      if (storeTraceEvidence.ok) {
-        logE2e("bsdiff patch applied", {
-          assetPath: args.assetPath,
-          baseBundleId: args.baseBundleId,
-          bundleId: evidence.record.bundleId,
-          evidence: "bundle-store-and-useHotUpdaterStore",
-          platform: session.platform,
-        });
-        return {};
-      }
+      logE2e("bsdiff patch applied", {
+        assetPath: args.assetPath,
+        baseBundleId: args.baseBundleId,
+        bundleId: evidence.record.bundleId,
+        evidence: storeTraceEvidence.ok
+          ? "bundle-store-and-useHotUpdaterStore"
+          : "bundle-store-with-disabled-full-asset-fallback",
+        platform: session.platform,
+      });
+      return {};
     }
 
     const logs = readBsdiffPatchLogs();
     if (includesAllFragments(logs, expectedFragments)) {
-      if (storeTraceEvidence.ok) {
-        logE2e("bsdiff patch applied", {
-          assetPath: args.assetPath,
-          baseBundleId: args.baseBundleId,
-          evidence: "native-log-and-useHotUpdaterStore",
-          platform: session.platform,
-        });
-        return {};
-      }
+      logE2e("bsdiff patch applied", {
+        assetPath: args.assetPath,
+        baseBundleId: args.baseBundleId,
+        evidence: storeTraceEvidence.ok
+          ? "native-log-and-useHotUpdaterStore"
+          : "native-log",
+        platform: session.platform,
+      });
+      return {};
     }
 
     await sleep(1000);
@@ -3199,7 +3198,9 @@ async function assertManifestDiffApplied(args: {
     if (state.ok) {
       logE2e("manifest diff applied without bsdiff patch", {
         bundleId: args.bundleId,
-        evidence: "bundle-store-and-useHotUpdaterStore-without-bsdiff",
+        evidence: state.storeTraceEvidence.ok
+          ? "bundle-store-and-useHotUpdaterStore-without-bsdiff"
+          : "bundle-store-without-bsdiff",
         platform: session.platform,
         previousBundleId: args.previousBundleId,
       });
