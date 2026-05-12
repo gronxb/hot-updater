@@ -451,6 +451,155 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase2D}
       CONTROL_URL: ${CONTROL_URL}
 
+# Disable the active chain one bundle at a time. This proves the native runtime
+# can roll back from bsdiff-applied OTAs through the installed chain and finally
+# clear OTA metadata when every candidate is disabled.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2C}
+      EXPECTED_MARKER: ${PHASE2_C_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2B}
+      EXPECTED_MARKER: ${PHASE2_B_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2A}
+      EXPECTED_MARKER: ${PHASE2_A_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-disabled-chain-to-builtin
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
+
 # Reset again before the pure manifest diff fallback phase.
 - runScript:
     file: ../scripts/control.js
