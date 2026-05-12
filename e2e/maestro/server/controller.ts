@@ -1965,6 +1965,19 @@ async function waitForUpdateCheckVisibility(args: {
     await sleep(1000);
   }
 
+  logE2e("update check visibility timeout", {
+    expectedBundleId: args.bundleId,
+    lastError,
+    lastObserved,
+    platform: session.platform,
+    request: {
+      bundleId: args.requestBundleId,
+      channel: args.channel,
+      minBundleId,
+    },
+    url,
+  });
+
   throw createEndpointError(
     [
       "Timed out waiting for update check visibility.",
