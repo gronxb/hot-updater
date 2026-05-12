@@ -851,8 +851,11 @@ async function main() {
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
   const serverProcess = spawn(
-    "pnpm",
-    ["exec", "tsx", path.join(REPO_DIR, "e2e/maestro/server/index.ts")],
+    "node",
+    [
+      "--experimental-strip-types",
+      path.join(REPO_DIR, "e2e/maestro/server/index.ts"),
+    ],
     {
       cwd: REPO_DIR,
       env: {

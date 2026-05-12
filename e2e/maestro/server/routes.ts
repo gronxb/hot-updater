@@ -24,7 +24,7 @@ import {
   startBootstrapJob,
   startDeployBundleJob,
   startPatchBundleJob,
-} from "./controller.js";
+} from "./controller.ts";
 
 const app = new Hono();
 

@@ -15,9 +15,9 @@ import {
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
-} from "../../../packages/core/src/bundleArtifacts.js";
-import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
-import type { Bundle } from "../../../packages/core/src/types.js";
+} from "../../../packages/core/src/bundleArtifacts.ts";
+import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
+import type { Bundle } from "../../../packages/core/src/types.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default";
