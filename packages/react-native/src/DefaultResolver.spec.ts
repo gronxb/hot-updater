@@ -12,6 +12,7 @@ vi.mock("./fetchUpdateInfo", () => ({
 }));
 
 import { createDefaultResolver } from "./DefaultResolver";
+import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 
 describe("createDefaultResolver", () => {
   it("strips trailing slashes from baseURL for app-version requests", async () => {
@@ -39,7 +40,7 @@ describe("createDefaultResolver", () => {
 
     expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
       requestHeaders: {
-        "Hot-Updater-SDK-Version": "0.30.10",
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
       },
       requestTimeout: undefined,
       url: "http://localhost:3007/hot-updater/app-version/android/1.0/production/min-bundle/current-bundle/730",
@@ -72,7 +73,7 @@ describe("createDefaultResolver", () => {
     expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
       requestHeaders: {
         authorization: "Bearer token",
-        "Hot-Updater-SDK-Version": "0.30.10",
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
       },
       requestTimeout: 1500,
       url: "http://localhost:3007/hot-updater/fingerprint/ios/fingerprint-hash/beta/min-bundle/current-bundle/qa",
