@@ -88,7 +88,7 @@ function startJob(pathname, body) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < JOB_TIMEOUT_SECONDS; attempt += 1) {
+  for (let attempt = 0; attempt < timeoutSeconds; attempt += 1) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -104,7 +104,7 @@ function startJob(pathname, body) {
   }
 
   throw new Error(
-    `timed out waiting for job ${jobId} after ${JOB_TIMEOUT_SECONDS}s`,
+    `timed out waiting for job ${jobId} after ${timeoutSeconds}s`,
   );
 }
 
@@ -201,6 +201,10 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Marker`, result.marker);
     assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
     assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
+    assignIfPresent(
+      `${outputKey}PrimaryBundleAssetPath`,
+      result.primaryBundleAssetPath,
+    );
     assignIfPresent(`${outputKey}PatchBaseBundleIds`, result.patchBaseBundleIds);
     assignIfPresent(
       `${outputKey}RolloutCohortCount`,
@@ -247,11 +251,10 @@ switch (ACTION) {
   }
 
   case "waitForMetadata": {
-    const response = request("POST", "/e2e/wait-for-metadata", {
+    startJob("/e2e/jobs/wait-for-metadata", {
       bundleId: BUNDLE_ID,
       verificationPending: VERIFICATION_PENDING === "true",
     });
-    expectOk(response, "wait for metadata");
     break;
   }
 

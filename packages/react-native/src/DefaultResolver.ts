@@ -1,6 +1,7 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
 import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type { HotUpdaterResolver, ResolverCheckUpdateParams } from "./types";
 
 /**
@@ -31,7 +32,10 @@ export function createDefaultResolver(baseURL: string): HotUpdaterResolver {
 
       return fetchUpdateInfo({
         url,
-        requestHeaders: params.requestHeaders,
+        requestHeaders: {
+          ...params.requestHeaders,
+          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+        },
         requestTimeout: params.requestTimeout,
       });
     },

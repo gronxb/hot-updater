@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 const { fetchUpdateInfoMock } = vi.hoisted(() => ({
@@ -35,7 +38,9 @@ describe("createDefaultResolver", () => {
     });
 
     expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
-      requestHeaders: undefined,
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": "0.30.10",
+      },
       requestTimeout: undefined,
       url: "http://localhost:3007/hot-updater/app-version/android/1.0/production/min-bundle/current-bundle/730",
     });
@@ -65,10 +70,23 @@ describe("createDefaultResolver", () => {
     });
 
     expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
-      requestHeaders: { authorization: "Bearer token" },
+      requestHeaders: {
+        authorization: "Bearer token",
+        "Hot-Updater-SDK-Version": "0.30.10",
+      },
       requestTimeout: 1500,
       url: "http://localhost:3007/hot-updater/fingerprint/ios/fingerprint-hash/beta/min-bundle/current-bundle/qa",
     });
+  });
+
+  it("keeps the SDK version header aligned with package.json", async () => {
+    const [{ HOT_UPDATER_SDK_VERSION }, packageJson] = await Promise.all([
+      import("./sdkVersion"),
+      readFile(join(__dirname, "../package.json"), "utf-8"),
+    ]);
+    const pkg = JSON.parse(packageJson) as { version: string };
+
+    expect(HOT_UPDATER_SDK_VERSION).toBe(pkg.version);
   });
 
   it("propagates fetchUpdateInfo errors", async () => {

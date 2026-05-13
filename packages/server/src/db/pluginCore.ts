@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
@@ -342,7 +342,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     async getAppUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<AppUpdateInfo | null> {
+    ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args, context);
       if (!info) {
         return null;
@@ -350,23 +350,22 @@ export function createPluginDatabaseCore<TContext = unknown>(
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      const baseResponse: AppUpdateInfo = { ...rest, fileUrl };
-
-      if (info.id === NIL_UUID) {
-        return baseResponse;
-      }
 
       const readStorageText = options?.readStorageText;
-      if (!readStorageText) {
+      if (info.id === NIL_UUID || !readStorageText) {
+        const fileUrl = await resolveFileUrl(storageUri ?? null, context);
+        const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
         return baseResponse;
       }
 
-      const targetBundle = await getPlugin().getBundleById(info.id, context);
-      const currentBundle =
+      const [fileUrl, targetBundle, currentBundle] = await Promise.all([
+        resolveFileUrl(storageUri ?? null, context),
+        getPlugin().getBundleById(info.id, context),
         args.bundleId !== NIL_UUID
-          ? await getPlugin().getBundleById(args.bundleId, context)
-          : null;
+          ? getPlugin().getBundleById(args.bundleId, context)
+          : null,
+      ]);
+      const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
       const manifestArtifacts = await resolveManifestArtifacts({
         currentBundle,
         resolveFileUrl,

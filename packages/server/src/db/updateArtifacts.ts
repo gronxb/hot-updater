@@ -4,7 +4,7 @@ import {
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
-  type AppUpdateInfo,
+  type AppUpdateAvailableInfo,
   type Bundle,
   type ChangedAsset,
 } from "@hot-updater/core";
@@ -27,6 +27,14 @@ type ReadStorageText<TContext> = (
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
 const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
+
+const resolveUniqueHbcAssetPath = (manifest: BundleManifest) => {
+  const candidates = Object.keys(manifest.assets)
+    .sort((left, right) => left.localeCompare(right))
+    .filter((candidate) => HBC_ASSET_PATH_RE.test(candidate));
+
+  return candidates.length === 1 ? candidates[0] : null;
+};
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -143,7 +151,10 @@ async function fetchBundleManifest<TContext>(
   resolveFileUrl: ResolveFileUrl<TContext>,
   context?: HotUpdaterContext<TContext>,
 ): Promise<{ fileUrl: string; manifest: BundleManifest } | null> {
-  const storageText = await readStorageText(storageUri, context);
+  const [storageText, fileUrl] = await Promise.all([
+    readStorageText(storageUri, context),
+    resolveFileUrl(storageUri, context),
+  ]);
   if (storageText === null) {
     return null;
   }
@@ -159,7 +170,6 @@ async function fetchBundleManifest<TContext>(
     return null;
   }
 
-  const fileUrl = await resolveFileUrl(storageUri, context);
   if (!fileUrl) {
     return null;
   }
@@ -186,7 +196,7 @@ async function resolveChangedAssets<TContext>({
   targetBundle: Bundle | null;
   targetManifest: BundleManifest;
   context?: HotUpdaterContext<TContext>;
-}): Promise<Record<string, ChangedAsset>> {
+}): Promise<Record<string, ChangedAsset> | null> {
   const patchDescriptor = await resolveHbcPatchDescriptor({
     currentBundle,
     resolveFileUrl,
@@ -194,63 +204,64 @@ async function resolveChangedAssets<TContext>({
     targetManifest,
     context,
   });
-  const changedEntries = (
-    await Promise.all(
-      Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
-        const currentAsset = currentManifest?.assets[assetPath];
-        if (currentAsset?.fileHash === asset.fileHash) {
-          return null;
+  const changedEntries = await Promise.all(
+    Object.entries(targetManifest.assets).map(async ([assetPath, asset]) => {
+      const currentAsset = currentManifest?.assets[assetPath];
+      if (currentAsset?.fileHash === asset.fileHash) {
+        return null;
+      }
+
+      const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
+      const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
+      const storageUri = createChildStorageUri(
+        assetBaseStorageUri,
+        downloadPath,
+      );
+      const patch =
+        patchDescriptor?.assetPath === assetPath ? patchDescriptor.patch : null;
+
+      let fileUrl: string | null = null;
+      try {
+        fileUrl = await resolveFileUrl(storageUri, context);
+      } catch (error) {
+        if (!patch) {
+          throw error;
         }
+      }
 
-        const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
-        const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
-        const storageUri = createChildStorageUri(
-          assetBaseStorageUri,
-          downloadPath,
-        );
-        const patch =
-          patchDescriptor?.assetPath === assetPath
-            ? patchDescriptor.patch
-            : null;
+      if (!fileUrl && !patch) {
+        return false;
+      }
 
-        let fileUrl: string | null = null;
-        try {
-          fileUrl = await resolveFileUrl(storageUri, context);
-        } catch (error) {
-          if (!patch) {
-            throw error;
-          }
-        }
-
-        if (!fileUrl && !patch) {
-          return null;
-        }
-
-        const changedAsset: ChangedAsset & { fileCompression?: "br" | null } = {
-          fileHash: asset.fileHash,
+      const changedAsset: ChangedAsset = {
+        fileHash: asset.fileHash,
+      };
+      if (fileUrl) {
+        changedAsset.file = {
+          url: fileUrl,
         };
-        if (fileUrl) {
-          changedAsset.fileUrl = fileUrl;
-        }
         if (usesBrotliAsset) {
-          changedAsset.fileCompression = "br";
+          changedAsset.file.compression = "br";
         }
-        if (patch) {
-          changedAsset.patch = patch;
-        }
+      }
+      if (patch) {
+        changedAsset.patch = patch;
+      }
 
-        return [assetPath, changedAsset] as const;
-      }),
-    )
-  ).filter((entry): entry is readonly [string, ChangedAsset] => entry !== null);
+      return [assetPath, changedAsset] as const;
+    }),
+  );
 
-  return Object.fromEntries(changedEntries);
+  if (changedEntries.some((entry) => entry === false)) {
+    return null;
+  }
+
+  return Object.fromEntries(
+    changedEntries.filter(
+      (entry): entry is readonly [string, ChangedAsset] => entry !== null,
+    ),
+  );
 }
-
-const resolveHbcAssetPath = (manifest: BundleManifest) =>
-  Object.keys(manifest.assets)
-    .sort((left, right) => left.localeCompare(right))
-    .find((candidate) => HBC_ASSET_PATH_RE.test(candidate)) ?? null;
 
 async function resolveHbcPatchDescriptor<TContext>({
   currentBundle,
@@ -272,7 +283,7 @@ async function resolveHbcPatchDescriptor<TContext>({
     targetBundle && currentBundle
       ? getBundlePatch(targetBundle, currentBundle.id)
       : null;
-  const patchAssetPath = resolveHbcAssetPath(targetManifest);
+  const patchAssetPath = resolveUniqueHbcAssetPath(targetManifest);
 
   if (
     !currentBundle ||
@@ -315,7 +326,7 @@ export async function resolveManifestArtifacts<TContext>({
   targetBundle: Bundle | null;
   context?: HotUpdaterContext<TContext>;
 }): Promise<Pick<
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   "changedAssets" | "manifestFileHash" | "manifestUrl"
 > | null> {
   const manifestStorageUri = targetBundle
@@ -332,28 +343,29 @@ export async function resolveManifestArtifacts<TContext>({
     return null;
   }
 
-  const targetManifestResult = await fetchBundleManifest(
-    manifestStorageUri,
-    readStorageText,
-    resolveFileUrl,
-    context,
-  );
+  const currentManifestStorageUri = currentBundle
+    ? getManifestStorageUri(currentBundle)
+    : null;
+  const [targetManifestResult, currentManifestResult] = await Promise.all([
+    fetchBundleManifest(
+      manifestStorageUri,
+      readStorageText,
+      resolveFileUrl,
+      context,
+    ),
+    currentManifestStorageUri
+      ? fetchBundleManifest(
+          currentManifestStorageUri,
+          readStorageText,
+          resolveFileUrl,
+          context,
+        )
+      : null,
+  ]);
 
   if (!targetManifestResult) {
     return null;
   }
-
-  const currentManifestStorageUri = currentBundle
-    ? getManifestStorageUri(currentBundle)
-    : null;
-  const currentManifestResult = currentManifestStorageUri
-    ? await fetchBundleManifest(
-        currentManifestStorageUri,
-        readStorageText,
-        resolveFileUrl,
-        context,
-      )
-    : null;
 
   const changedAssets = await resolveChangedAssets({
     assetBaseStorageUri,
@@ -364,6 +376,9 @@ export async function resolveManifestArtifacts<TContext>({
     targetManifest: targetManifestResult.manifest,
     context,
   });
+  if (!changedAssets) {
+    return null;
+  }
 
   return {
     changedAssets,

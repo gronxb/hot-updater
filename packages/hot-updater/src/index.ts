@@ -34,7 +34,13 @@ import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
-import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
+import {
+  handleBundleDelete,
+  handleBundleList,
+  handleBundleSetEnabled,
+  handleBundleShow,
+  handleBundleUpdate,
+} from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -48,6 +54,23 @@ import { handlePromote } from "./commands/promote";
 import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
+const parseBooleanOption = (value: string) => {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new InvalidArgumentError("must be true or false");
+};
+
+const parseRolloutCohortCount = (value: string) => {
+  const count = Number.parseInt(value, 10);
+  if (!Number.isInteger(count) || count < 0 || count > 1000) {
+    throw new InvalidArgumentError("must be an integer between 0 and 1000");
+  }
+  return count;
+};
 
 const program = new Command();
 
@@ -113,6 +136,15 @@ bundleCommand
   .action(handleBundleList);
 
 bundleCommand
+  .command("show")
+  .description("Show one bundle by id")
+  .argument("<bundle-id>", "the bundle id to show")
+  .option("--json", "output raw bundle data as JSON")
+  .action((bundleId: string, options: { json?: boolean }) =>
+    handleBundleShow(bundleId, options),
+  );
+
+bundleCommand
   .command("disable")
   .description("Disable a bundle by id")
   .argument("<bundle-id>", "the id of the bundle to disable")
@@ -128,6 +160,35 @@ bundleCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, true, options),
+  );
+
+bundleCommand
+  .command("update")
+  .description("Update bundle rollout and targeting metadata")
+  .argument("<bundle-id>", "the bundle id to update")
+  .option(
+    "--rollout-cohort-count <count>",
+    "rollout cohort count from 0 to 1000",
+    parseRolloutCohortCount,
+  )
+  .option(
+    "--force-update <value>",
+    "set force update flag (true or false)",
+    parseBooleanOption,
+  )
+  .option("--target-cohorts <cohorts>", "comma-separated target cohorts")
+  .option("--clear-target-cohorts", "clear target cohorts")
+  .option("--json", "output the updated bundle as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleBundleUpdate);
+
+bundleCommand
+  .command("delete")
+  .description("Delete a bundle record by id")
+  .argument("<bundle-id>", "the bundle id to delete")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleDelete(bundleId, options),
   );
 
 bundleCommand

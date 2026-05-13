@@ -205,6 +205,79 @@ describe("createBundleDiff", () => {
     }
   });
 
+  it("rejects ambiguous Hermes bundle assets in manifests", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const bundles = new Map([
+      [baseBundle.id, baseBundle],
+      [targetBundle.id, targetBundle],
+    ]);
+    const upload = vi.fn<NodeStorageProfile["upload"]>(
+      async (key, filePath) => ({
+        storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
+      }),
+    );
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request | URL | string) => {
+        const url = String(input);
+
+        if (url.endsWith(`${baseBundle.id}/manifest.json`)) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "index.ios.bundle": {
+                  fileHash: "hash-old",
+                },
+                "secondary.ios.bundle": {
+                  fileHash: "hash-secondary-old",
+                },
+              },
+              bundleId: baseBundle.id,
+            }),
+          );
+        }
+
+        if (url.endsWith(`${targetBundle.id}/manifest.json`)) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "index.ios.bundle": {
+                  fileHash: "hash-new",
+                },
+                "secondary.ios.bundle": {
+                  fileHash: "hash-secondary-new",
+                },
+              },
+              bundleId: targetBundle.id,
+            }),
+          );
+        }
+
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    try {
+      await expect(
+        createBundleDiff(
+          {
+            baseBundleId: baseBundle.id,
+            bundleId: targetBundle.id,
+          },
+          {
+            databasePlugin: createDatabasePlugin(bundles),
+            storagePlugin: createStoragePlugin(upload),
+          },
+        ),
+      ).rejects.toThrow("Expected exactly one Hermes bundle asset in manifest");
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("appends additional patch bases without replacing the primary patch when requested", async () => {
     const primaryBaseBundle = createBundle(
       "00000000-0000-0000-0000-000000000001",

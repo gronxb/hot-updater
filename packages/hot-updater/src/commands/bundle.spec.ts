@@ -309,3 +309,102 @@ describe("handleBundleSetEnabled", () => {
     expect(mockDatabasePlugin.onUnmount).toHaveBeenCalled();
   });
 });
+
+describe("handleBundleShow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubLoadedConfig();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prints raw bundle JSON and skips the banner when --json is passed", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const bundle = buildBundle({ id: "B1" });
+    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(bundle);
+
+    const { handleBundleShow } = await import("./bundle");
+    await handleBundleShow("B1", { json: true });
+
+    expect(mockPrintBanner).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledWith("B1");
+    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(bundle, null, 2));
+  });
+});
+
+describe("handleBundleUpdate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubLoadedConfig();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("updates rollout and target cohorts with -y and prints updated JSON", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const updated = buildBundle({
+      id: "B1",
+      rolloutCohortCount: 500,
+      targetCohorts: ["qa"],
+    });
+    mockDatabasePlugin.getBundleById
+      .mockResolvedValueOnce(buildBundle({ id: "B1" }))
+      .mockResolvedValueOnce(updated);
+
+    const { handleBundleUpdate } = await import("./bundle");
+    await handleBundleUpdate("B1", {
+      json: true,
+      rolloutCohortCount: 500,
+      targetCohorts: "qa",
+      yes: true,
+    });
+
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
+      rolloutCohortCount: 500,
+      targetCohorts: ["qa"],
+    });
+    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(updated, null, 2));
+  });
+
+  it("exits 1 when no update fields are provided", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { exitSpy } = expectExit(1);
+    const { handleBundleUpdate } = await import("./bundle");
+
+    await expect(handleBundleUpdate("B1", { yes: true })).rejects.toThrow(
+      "process.exit(1)",
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleBundleDelete", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubLoadedConfig();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("deletes an existing bundle record with -y and verifies it is gone", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const bundle = buildBundle({ id: "B1" });
+    mockDatabasePlugin.getBundleById
+      .mockResolvedValueOnce(bundle)
+      .mockResolvedValueOnce(null);
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete("B1", { yes: true });
+
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
+    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "Deleted bundle record.",
+    );
+  });
+});

@@ -20,6 +20,20 @@ export async function readFixtureHbc(name: "one" | "two"): Promise<Bytes> {
   return new Uint8Array(bytes);
 }
 
+export async function readLargeFixtureHbc(
+  platform: "android" | "ios",
+  variant: "base" | "target",
+): Promise<Bytes> {
+  const fixturePath = path.resolve(
+    ROOT,
+    "fixture",
+    `large-${platform}-${variant}`,
+    `index.${platform}.bundle.hbc`,
+  );
+  const bytes = await fs.readFile(fixturePath);
+  return new Uint8Array(bytes);
+}
+
 export async function applyBspatch(base: Bytes, patch: Bytes): Promise<Bytes> {
   return await applyBsdiffPatch(base, patch);
 }

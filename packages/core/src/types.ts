@@ -19,9 +19,13 @@ export interface ChangedAssetPatch {
   patchUrl: string;
 }
 
+export interface ChangedAssetFile {
+  compression?: "br" | null;
+  url: string;
+}
+
 export interface ChangedAsset {
-  fileUrl?: string | null;
-  fileCompression?: "br" | null;
+  file?: ChangedAssetFile | null;
   fileHash: string;
   patch?: ChangedAssetPatch | null;
 }
@@ -178,6 +182,7 @@ type SnakeKeyObject<T> = T extends readonly (infer U)[]
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
+export type AppUpdateStatus = UpdateStatus | "UP_TO_DATE";
 
 /**
  * The update info for the database layer.
@@ -205,7 +210,8 @@ export interface UpdateInfo {
  * The update info for the app layer.
  * This is the update info that is used by the app.
  */
-export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
+export interface AppUpdateAvailableInfo extends Omit<UpdateInfo, "storageUri"> {
+  status: UpdateStatus;
   fileUrl: string | null;
   /**
    * SHA256 hash of the bundle file, optionally with embedded signature.
@@ -227,12 +233,18 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    */
   manifestFileHash?: string | null;
   /**
-   * Per-file download URLs for assets whose hash differs from the client's
+   * Per-file descriptors for assets whose hash differs from the client's
    * current manifest, or for all assets when the server cannot reuse a base
    * manifest. Keys are manifest-relative file paths.
    */
   changedAssets?: Record<string, ChangedAsset> | null;
 }
+
+export interface AppUpToDateInfo {
+  status: "UP_TO_DATE";
+}
+
+export type AppUpdateInfo = AppUpdateAvailableInfo | AppUpToDateInfo;
 
 export type UpdateStrategy = "fingerprint" | "appVersion";
 

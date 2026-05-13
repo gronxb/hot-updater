@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAvailableInfo,
   AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
@@ -9,6 +10,7 @@ import type {
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
+import semver from "semver";
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
@@ -19,7 +21,7 @@ export interface HandlerAPI<TContext = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<AppUpdateInfo | null>;
+  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById: (
     id: string,
     context?: HotUpdaterContext<TContext>,
@@ -87,6 +89,37 @@ class HandlerBadRequestError extends Error {
     this.name = "HandlerBadRequestError";
   }
 }
+
+const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
+const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.30.10";
+
+const supportsExplicitNoUpdateResponse = (request: Request) => {
+  const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
+  if (!sdkVersion) {
+    return false;
+  }
+
+  const normalizedSdkVersion = semver.valid(sdkVersion);
+  return (
+    normalizedSdkVersion !== null &&
+    semver.gte(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
+  );
+};
+
+const serializeUpdateInfo = (
+  updateInfo: AppUpdateAvailableInfo | null,
+  request: Request,
+): string => {
+  if (updateInfo) {
+    return JSON.stringify(updateInfo satisfies AppUpdateInfo);
+  }
+
+  if (supportsExplicitNoUpdateResponse(request)) {
+    return JSON.stringify({ status: "UP_TO_DATE" } satisfies AppUpdateInfo);
+  }
+
+  return JSON.stringify(null);
+};
 
 // Route handlers
 const handleVersion: RouteHandler = async () => {
@@ -193,7 +226,7 @@ const requireBundlePatchPayload = (
 
 const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -216,7 +249,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -224,7 +257,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
 
 const handleAppVersionUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -247,7 +280,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

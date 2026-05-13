@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   Bundle,
   GetBundlesArgs,
   UpdateInfo,
@@ -89,7 +89,7 @@ export interface DatabaseAPI<TContext = unknown> {
   getAppUpdateInfo(
     args: GetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
-  ): Promise<AppUpdateInfo | null>;
+  ): Promise<AppUpdateAvailableInfo | null>;
   getChannels(context?: HotUpdaterContext<TContext>): Promise<string[]>;
   getBundles(
     options: DatabaseBundleQueryOptions,

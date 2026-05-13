@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   BundlePatchArtifact,
@@ -720,25 +720,24 @@ export function createOrmDatabaseCore<TContext = unknown>({
     async getAppUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<AppUpdateInfo | null> {
+    ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args);
       if (!info) return null;
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      const baseResponse = { ...rest, fileUrl };
-
       if (!readStorageText) {
+        const fileUrl = await resolveFileUrl(storageUri ?? null, context);
+        const baseResponse = { ...rest, fileUrl };
         return baseResponse;
       }
 
-      const currentBundle =
-        args.bundleId !== NIL_UUID
-          ? await fetchBundleById(args.bundleId)
-          : null;
-      const targetBundle =
-        info.id !== NIL_UUID ? await fetchBundleById(info.id) : null;
+      const [fileUrl, currentBundle, targetBundle] = await Promise.all([
+        resolveFileUrl(storageUri ?? null, context),
+        args.bundleId !== NIL_UUID ? fetchBundleById(args.bundleId) : null,
+        info.id !== NIL_UUID ? fetchBundleById(info.id) : null,
+      ]);
+      const baseResponse = { ...rest, fileUrl };
       const manifestArtifacts = await resolveManifestArtifacts({
         currentBundle,
         resolveFileUrl,

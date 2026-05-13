@@ -339,9 +339,88 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-123",
     });
     expect(getBaseURL()).toBe("file:///bundle-123");
-    expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(2);
+    expect(nativeModuleMock.getBundleId).toHaveBeenCalledTimes(3);
     expect(nativeModuleMock.getManifest).toHaveBeenCalledTimes(2);
     expect(nativeModuleMock.getBaseURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("reinstalls a session-installed bundle after native resets to built-in", async () => {
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: null,
+      CHANNEL: "production",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "00000000-0000-0000-0000-000000000001",
+    });
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000002",
+    );
+    nativeModuleMock.updateBundle.mockResolvedValue(true);
+
+    const { getBundleId, updateBundle } = await import("./native");
+
+    await updateBundle({
+      bundleId: "00000000-0000-0000-0000-000000000003",
+      fileHash: null,
+      fileUrl: "https://example.com/bundle.zip",
+      status: "UPDATE",
+    });
+
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000003",
+    );
+    expect(getBundleId()).toBe("00000000-0000-0000-0000-000000000003");
+
+    nativeModuleMock.getBundleId.mockReturnValue(null);
+
+    await expect(
+      updateBundle({
+        bundleId: "00000000-0000-0000-0000-000000000003",
+        fileHash: null,
+        fileUrl: "https://example.com/bundle.zip",
+        status: "UPDATE",
+      }),
+    ).resolves.toBe(true);
+
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips a session-installed bundle when native still reports it active", async () => {
+    nativeModuleMock.getConstants.mockReturnValue({
+      APP_VERSION: null,
+      CHANNEL: "production",
+      DEFAULT_CHANNEL: "production",
+      FINGERPRINT_HASH: null,
+      MIN_BUNDLE_ID: "00000000-0000-0000-0000-000000000001",
+    });
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000002",
+    );
+    nativeModuleMock.updateBundle.mockResolvedValue(true);
+
+    const { updateBundle } = await import("./native");
+
+    await updateBundle({
+      bundleId: "00000000-0000-0000-0000-000000000003",
+      fileHash: null,
+      fileUrl: "https://example.com/bundle.zip",
+      status: "UPDATE",
+    });
+
+    nativeModuleMock.getBundleId.mockReturnValue(
+      "00000000-0000-0000-0000-000000000003",
+    );
+
+    await expect(
+      updateBundle({
+        bundleId: "00000000-0000-0000-0000-000000000003",
+        fileHash: null,
+        fileUrl: "https://example.com/bundle.zip",
+        status: "UPDATE",
+      }),
+    ).resolves.toBe(true);
+
+    expect(nativeModuleMock.updateBundle).toHaveBeenCalledTimes(1);
   });
 
   it("forwards manifest artifact parameters to native updateBundle", async () => {
@@ -354,6 +433,10 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-789",
       changedAssets: {
         "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://example.com/files/index.ios.bundle.br",
+          },
           fileHash: "hash-next",
           patch: {
             algorithm: "bsdiff",
@@ -375,6 +458,10 @@ describe("notifyAppReady", () => {
       bundleId: "bundle-789",
       changedAssets: {
         "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://example.com/files/index.ios.bundle.br",
+          },
           fileHash: "hash-next",
           patch: {
             algorithm: "bsdiff",

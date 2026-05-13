@@ -196,6 +196,30 @@ const cloneManifest = (manifest: Manifest): Manifest => ({
   ),
 });
 
+const getNativeBundleId = (): string | null => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getBundleId?: () => string | null;
+  };
+
+  if (typeof nativeModule.getBundleId !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  return nativeModule.getBundleId();
+};
+
+const resolveBundleId = (bundleId: string | null): string => {
+  return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
+};
+
+const getFreshBundleId = (): string => {
+  const resolvedBundleId = resolveBundleId(getNativeBundleId());
+  sessionState.cacheBundleId(resolvedBundleId);
+  return resolvedBundleId;
+};
+
 const getReloadProcess = (): (() => Promise<void>) | null => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
     reloadProcess?: () => Promise<void>;
@@ -320,8 +344,21 @@ export async function updateBundle(
   const status =
     typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
 
-  // If we have already installed this bundle in this session, skip re-download.
-  if (status === "UPDATE" && sessionState.hasInstalledBundle(updateBundleId)) {
+  const targetFileUrl =
+    typeof paramsOrBundleId === "string"
+      ? (fileUrl ?? null)
+      : paramsOrBundleId.fileUrl;
+
+  const currentBundleId = status === "UPDATE" ? getFreshBundleId() : undefined;
+
+  // If native is still on the same bundle we installed in this session,
+  // skip re-download. Native state can move back to the built-in bundle after
+  // rollback/reset, so check a fresh native bundle id before using this guard.
+  if (
+    status === "UPDATE" &&
+    sessionState.hasInstalledBundle(updateBundleId) &&
+    currentBundleId === updateBundleId
+  ) {
     return true;
   }
 
@@ -333,7 +370,8 @@ export async function updateBundle(
   if (
     !shouldSkipCurrentBundleIdCheck &&
     status === "UPDATE" &&
-    updateBundleId.localeCompare(getBundleId()) <= 0
+    currentBundleId !== undefined &&
+    updateBundleId.localeCompare(currentBundleId) <= 0
   ) {
     throw new Error(
       "Update bundle id is not newer than the current bundle id. Preventing infinite update loop.",
@@ -343,11 +381,6 @@ export async function updateBundle(
   // In-flight guard: return the same promise if the same bundle is already updating.
   const existing = sessionState.getInflightUpdate(updateBundleId);
   if (existing) return existing;
-
-  const targetFileUrl =
-    typeof paramsOrBundleId === "string"
-      ? (fileUrl ?? null)
-      : paramsOrBundleId.fileUrl;
 
   const targetFileHash =
     typeof paramsOrBundleId === "string"
@@ -508,23 +541,7 @@ export const getBundleId = (): string => {
     return cachedBundleId;
   }
 
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getBundleId?: () => string | null;
-  };
-
-  if (typeof nativeModule.getBundleId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  const bundleId = nativeModule.getBundleId();
-
-  const resolvedBundleId =
-    !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
-
-  sessionState.cacheBundleId(resolvedBundleId);
-  return resolvedBundleId;
+  return getFreshBundleId();
 };
 
 /**

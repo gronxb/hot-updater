@@ -5,19 +5,18 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
 import {
   getBundlePatch,
-  getAssetBaseStorageUri,
   getBundlePatches,
   getPatchBaseBundleId,
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
-} from "../../../packages/core/src/bundleArtifacts.js";
-import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.js";
-import type { Bundle } from "../../../packages/core/src/types.js";
+} from "../../../packages/core/src/bundleArtifacts.ts";
+import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
+import type { Bundle } from "../../../packages/core/src/types.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default";
@@ -34,11 +33,9 @@ type DeployMode = "crash" | "reset";
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
-  assetBaseStorageUri: string | null;
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
-  disabledFullAssetBaseStorageUri: string | null;
   diffBaseBundleId: string | null;
   diffPatchAssetPath: string | null;
   enabled: boolean;
@@ -52,6 +49,7 @@ type DeployedBundleRecord = {
 
 type SessionState = {
   androidApkPath: string;
+  appBaseUrl: string;
   appBackupPath: string | null;
   appId: string;
   appSourceFile: string;
@@ -59,7 +57,6 @@ type SessionState = {
   builtInBundleId: string | null;
   configBackupPath: string | null;
   configSourceFile: string;
-  consoleApiBaseUrl: string;
   deployedBundles: DeployedBundleRecord[];
   exampleDir: string;
   initialMarker: string;
@@ -128,66 +125,8 @@ type JsonSnapshot = {
   value: Record<string, unknown> | null;
 };
 
-type HotUpdaterStoreTraceFile = {
-  downloadPath?: string;
-  path?: string;
-  progress?: number;
-  status?: string;
-};
-
-type HotUpdaterStoreTrace = {
-  artifactType?: string | null;
-  details?: {
-    completedFilesCount?: number;
-    files?: HotUpdaterStoreTraceFile[];
-    totalFilesCount?: number;
-  } | null;
-  isUpdateDownloaded?: boolean;
-  progress?: number;
-  runtimeBundleId?: string;
-  source?: string;
-  timestamp?: number;
-};
-
-type HotUpdaterStoreTraceResponse = {
-  traces?: HotUpdaterStoreTrace[];
-};
-
-type HotUpdaterStoreTraceEvidence = {
-  matchedTrace: HotUpdaterStoreTrace | null;
-  ok: boolean;
-  readError: string | null;
-  traces: HotUpdaterStoreTrace[];
-  tracesTail: HotUpdaterStoreTrace[];
-};
-
-type ConsoleServerFnName =
-  | "deleteBundle"
-  | "getBundle"
-  | "getBundles"
-  | "updateBundle";
-
-type ServerFnFetcher = (
-  url: string,
-  args: Array<{
-    data?: unknown;
-    method: "GET" | "POST";
-  }>,
-  handler: typeof fetch,
-) => Promise<unknown>;
-
-type ServerFnResultEnvelope<T> = {
-  error?: unknown;
-  result?: T;
-};
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
-const PNPM_STORE_DIR = path.join(REPO_DIR, "node_modules/.pnpm");
-const CONSOLE_SSR_DIR = path.join(
-  REPO_DIR,
-  "packages/console/.output/server/_ssr",
-);
 const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
@@ -214,6 +153,8 @@ const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
+const E2E_APP_VERSION = "1.0";
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
@@ -228,7 +169,6 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
-const DEFAULT_UPDATE_SERVER_BASE_URL = "http://localhost:3007/hot-updater";
 
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
@@ -255,176 +195,10 @@ function logE2e(event: string, details?: unknown) {
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
-function isBsdiffStoreTraceFile(
-  file: HotUpdaterStoreTraceFile,
-  assetPath: string,
-) {
-  return (
-    file.path === assetPath &&
-    file.downloadPath?.endsWith(".bsdiff") === true &&
-    file.status === "downloaded" &&
-    typeof file.progress === "number" &&
-    file.progress >= 1
-  );
-}
-
-function isManifestDiffStoreTraceFile(
-  file: HotUpdaterStoreTraceFile,
-  assetPath: string,
-) {
-  return (
-    file.path === assetPath &&
-    (file.downloadPath === assetPath ||
-      file.downloadPath === `${assetPath}.br`) &&
-    file.status === "downloaded" &&
-    typeof file.progress === "number" &&
-    file.progress >= 1
-  );
-}
-
-function findDiffStoreTrace(
-  traces: HotUpdaterStoreTrace[],
-  assetPath: string,
-  predicate: (file: HotUpdaterStoreTraceFile, assetPath: string) => boolean,
-) {
-  return (
-    traces.find(
-      (trace) =>
-        trace.artifactType === "diff" &&
-        trace.details?.files?.some((file) => predicate(file, assetPath)),
-    ) ?? null
-  );
-}
-
-async function fetchHotUpdaterStoreTraces(): Promise<HotUpdaterStoreTraceEvidence> {
-  try {
-    const response = await fetch(
-      `${resolveUpdateServerRootUrl()}/e2e/hot-updater-store-traces`,
-    );
-    if (!response.ok) {
-      return {
-        matchedTrace: null,
-        ok: false,
-        readError: `trace endpoint returned ${response.status}`,
-        traces: [],
-        tracesTail: [],
-      };
-    }
-
-    const payload = (await response.json()) as HotUpdaterStoreTraceResponse;
-    const traces = Array.isArray(payload.traces) ? payload.traces : [];
-    return {
-      matchedTrace: null,
-      ok: true,
-      readError: null,
-      traces,
-      tracesTail: traces.slice(-20),
-    };
-  } catch (error) {
-    return {
-      matchedTrace: null,
-      ok: false,
-      readError: error instanceof Error ? error.message : String(error),
-      traces: [],
-      tracesTail: [],
-    };
-  }
-}
-
-async function readBsdiffStoreTraceEvidence(assetPath: string) {
-  const evidence = await fetchHotUpdaterStoreTraces();
-  const matchedTrace = findDiffStoreTrace(
-    evidence.traces,
-    assetPath,
-    isBsdiffStoreTraceFile,
-  );
-  return {
-    ...evidence,
-    matchedTrace,
-    ok: evidence.ok && matchedTrace !== null,
-  };
-}
-
-async function readManifestDiffStoreTraceEvidence(assetPath: string) {
-  const evidence = await fetchHotUpdaterStoreTraces();
-  const matchedTrace = findDiffStoreTrace(
-    evidence.traces,
-    assetPath,
-    isManifestDiffStoreTraceFile,
-  );
-  return {
-    ...evidence,
-    matchedTrace,
-    ok: evidence.ok && matchedTrace !== null,
-  };
-}
-
-async function clearHotUpdaterStoreTraces() {
-  try {
-    await fetch(
-      `${resolveUpdateServerRootUrl()}/e2e/hot-updater-store-traces`,
-      {
-        method: "DELETE",
-      },
-    );
-  } catch (error) {
-    logE2e("skipped clearing hot updater store traces", {
-      error: error instanceof Error ? error.message : String(error),
-      platform: session.platform,
-    });
-  }
-}
-
-function parseEnvFile(source: string) {
-  return Object.fromEntries(
-    source
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith("#"))
-      .map((line) => {
-        const separatorIndex = line.indexOf("=");
-        if (separatorIndex === -1) {
-          return null;
-        }
-
-        return [
-          line.slice(0, separatorIndex).trim(),
-          line.slice(separatorIndex + 1).trim(),
-        ] as const;
-      })
-      .filter((entry): entry is readonly [string, string] => entry !== null),
-  );
-}
-
-function resolveUpdateServerBaseUrl() {
-  const envPath = path.join(EXAMPLE_DIR, ".env.hotupdater");
-  const envSource = fs.existsSync(envPath)
-    ? fs.readFileSync(envPath, "utf8")
-    : "";
-  const parsedEnv = parseEnvFile(envSource);
-
-  return (
-    parsedEnv.HOT_UPDATER_APP_BASE_URL ?? DEFAULT_UPDATE_SERVER_BASE_URL
-  ).replace(/\/+$/, "");
-}
-
-function resolveUpdateServerRootUrl() {
-  const url = new URL(updateServerBaseUrl);
-  const pathname = url.pathname.replace(/\/+$/, "");
-  if (pathname.endsWith("/hot-updater")) {
-    url.pathname = pathname.slice(0, -"/hot-updater".length) || "/";
-  } else if (pathname.endsWith("/api/check-update")) {
-    url.pathname = pathname.slice(0, -"/api/check-update".length) || "/";
-  }
-  return url.toString().replace(/\/+$/, "");
-}
-
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
 const appId = process.env.HOT_UPDATER_E2E_APP_ID;
-const consoleBaseUrl = process.env.HOT_UPDATER_E2E_CONSOLE_BASE_URL;
 const deviceId = process.env.HOT_UPDATER_E2E_DEVICE_ID;
 const resultsDir = process.env.HOT_UPDATER_E2E_RESULTS_DIR;
-const updateServerBaseUrl = resolveUpdateServerBaseUrl();
 
 if (!platform || (platform !== "ios" && platform !== "android")) {
   throw new Error("HOT_UPDATER_E2E_PLATFORM must be ios or android");
@@ -438,9 +212,6 @@ if (!deviceId) {
 if (!resultsDir) {
   throw new Error("HOT_UPDATER_E2E_RESULTS_DIR is required");
 }
-if (!consoleBaseUrl) {
-  throw new Error("HOT_UPDATER_E2E_CONSOLE_BASE_URL is required");
-}
 
 const session: SessionState = {
   androidApkPath: path.isAbsolute(
@@ -453,6 +224,9 @@ const session: SessionState = {
         process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
           DEFAULT_ANDROID_APK_RELATIVE_PATH,
       ),
+  appBaseUrl:
+    process.env.HOT_UPDATER_E2E_APP_BASE_URL ??
+    "http://localhost:3007/hot-updater",
   appBackupPath: null,
   appId,
   appSourceFile: APP_SOURCE_FILE,
@@ -460,7 +234,6 @@ const session: SessionState = {
   builtInBundleId: null,
   configBackupPath: null,
   configSourceFile: HOT_UPDATER_CONFIG_FILE,
-  consoleApiBaseUrl: consoleBaseUrl,
   deployedBundles: [],
   exampleDir: EXAMPLE_DIR,
   initialMarker:
@@ -480,10 +253,6 @@ const session: SessionState = {
 };
 
 const jobs = new Map<string, JobState>();
-let consoleServerFnIdsPromise: Promise<
-  Record<ConsoleServerFnName, string>
-> | null = null;
-let tanstackServerFnFetcherPromise: Promise<ServerFnFetcher> | null = null;
 
 function runCapture(
   command: string,
@@ -514,146 +283,6 @@ function runCapture(
   }
 
   return result.stdout.trim();
-}
-
-async function findConsoleApiRpcChunkPath() {
-  const entries = await fsPromises.readdir(CONSOLE_SSR_DIR);
-  const chunkName = entries
-    .filter((entry) => entry.startsWith("api-rpc-") && entry.endsWith(".mjs"))
-    .sort()[0];
-
-  if (!chunkName) {
-    throw new Error(
-      `Failed to locate console api-rpc chunk in ${CONSOLE_SSR_DIR}`,
-    );
-  }
-
-  return path.join(CONSOLE_SSR_DIR, chunkName);
-}
-
-function extractConsoleServerFnId(
-  source: string,
-  serverFnName: ConsoleServerFnName,
-) {
-  const pattern = new RegExp(
-    `${serverFnName}_createServerFn_handler = createServerRpc\\(\\{\\s*id: "([a-f0-9]+)"`,
-  );
-  const match = source.match(pattern);
-
-  if (!match?.[1]) {
-    throw new Error(
-      `Failed to resolve TanStack server function id for ${serverFnName}`,
-    );
-  }
-
-  return match[1];
-}
-
-async function loadConsoleServerFnIds() {
-  const source = await fsPromises.readFile(
-    await findConsoleApiRpcChunkPath(),
-    "utf8",
-  );
-
-  return {
-    deleteBundle: extractConsoleServerFnId(source, "deleteBundle"),
-    getBundle: extractConsoleServerFnId(source, "getBundle"),
-    getBundles: extractConsoleServerFnId(source, "getBundles"),
-    updateBundle: extractConsoleServerFnId(source, "updateBundle"),
-  };
-}
-
-async function getConsoleServerFnIds() {
-  if (!consoleServerFnIdsPromise) {
-    consoleServerFnIdsPromise = loadConsoleServerFnIds();
-  }
-
-  return consoleServerFnIdsPromise;
-}
-
-async function loadTanstackServerFnFetcher() {
-  const entries = await fsPromises.readdir(PNPM_STORE_DIR);
-  const packageDir = entries
-    .filter((entry) => entry.startsWith("@tanstack+start-client-core@"))
-    .sort()[0];
-
-  if (!packageDir) {
-    throw new Error(
-      "Failed to locate @tanstack/start-client-core in pnpm store",
-    );
-  }
-
-  const modulePath = path.join(
-    PNPM_STORE_DIR,
-    packageDir,
-    "node_modules/@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js",
-  );
-  const module = (await import(pathToFileURL(modulePath).href)) as {
-    serverFnFetcher?: ServerFnFetcher;
-  };
-
-  if (typeof module.serverFnFetcher !== "function") {
-    throw new Error("Failed to load TanStack Start serverFnFetcher");
-  }
-
-  return module.serverFnFetcher;
-}
-
-async function getTanstackServerFnFetcher() {
-  if (!tanstackServerFnFetcherPromise) {
-    tanstackServerFnFetcherPromise = loadTanstackServerFnFetcher();
-  }
-
-  return tanstackServerFnFetcherPromise;
-}
-
-function unwrapConsoleServerFnResult<T>(
-  serverFnName: ConsoleServerFnName,
-  value: unknown,
-) {
-  if (value && typeof value === "object") {
-    const envelope = value as ServerFnResultEnvelope<T>;
-
-    if (envelope.error !== undefined && envelope.error !== null) {
-      if (envelope.error instanceof Error) {
-        throw envelope.error;
-      }
-
-      throw new Error(
-        `Console server function ${serverFnName} failed: ${String(envelope.error)}`,
-      );
-    }
-
-    if ("result" in envelope) {
-      return envelope.result as T;
-    }
-  }
-
-  return value as T;
-}
-
-async function callConsoleServerFn<T>(
-  serverFnName: ConsoleServerFnName,
-  method: "GET" | "POST",
-  data?: unknown,
-) {
-  const [consoleServerFnIds, serverFnFetcher] = await Promise.all([
-    getConsoleServerFnIds(),
-    getTanstackServerFnFetcher(),
-  ]);
-  const url = `${session.consoleApiBaseUrl}/_serverFn/${consoleServerFnIds[serverFnName]}`;
-  const result = await serverFnFetcher(
-    url,
-    [
-      {
-        data,
-        method,
-      },
-    ],
-    fetch,
-  );
-
-  return unwrapConsoleServerFnResult<T>(serverFnName, result);
 }
 
 async function runLogged(
@@ -1027,7 +656,7 @@ function normalizeBundleListResponse(payload: unknown): BundleListPage {
   }
 
   if (!payload || typeof payload !== "object") {
-    throw new Error("Unexpected bundle list response from console API");
+    throw new Error("Unexpected bundle list response from hot-updater CLI");
   }
 
   const response = payload as {
@@ -1058,35 +687,85 @@ function normalizeBundleListResponse(payload: unknown): BundleListPage {
   };
 }
 
+function parseHotUpdaterCliJson<T>(label: string, output: string): T {
+  try {
+    return JSON.parse(output) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse hot-updater CLI ${label} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function runHotUpdaterCliCapture(args: string[]) {
+  logE2e("hot-updater cli request", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+  });
+
+  const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+
+  logE2e("hot-updater cli response", {
+    command: args.join(" "),
+    stdout: output,
+  });
+
+  return output;
+}
+
+async function runHotUpdaterCliLogged(args: string[], logName: string) {
+  const logPath = path.join(session.resultsDir, logName);
+  logE2e("hot-updater cli start", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    logPath: path.relative(REPO_DIR, logPath),
+  });
+
+  await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    logPath,
+  });
+
+  logE2e("hot-updater cli done", {
+    command: args.join(" "),
+  });
+}
+
 async function fetchBundlesPage(args: {
   channel?: string;
   limit: number;
   offset: number;
 }) {
-  logE2e("console-api request", {
-    channel: args.channel ?? null,
-    limit: args.limit,
-    method: "GET",
-    offset: args.offset,
-    platform: session.platform,
-  });
+  if (args.offset !== 0) {
+    throw new Error("hot-updater CLI bundle list does not support offset");
+  }
 
-  const response = await callConsoleServerFn<BundleListPage>(
-    "getBundles",
-    "GET",
-    {
-      channel: args.channel,
-      limit: String(args.limit),
-      page: Math.floor(args.offset / args.limit) + 1,
-      platform: session.platform,
-    },
+  const cliArgs = [
+    "bundle",
+    "list",
+    "--json",
+    "-p",
+    session.platform,
+    "--limit",
+    String(args.limit),
+  ];
+  if (args.channel) {
+    cliArgs.push("-c", args.channel);
+  }
+
+  const response = parseHotUpdaterCliJson<BundleListPage>(
+    "bundle list",
+    runHotUpdaterCliCapture(cliArgs),
   );
   const bundles = normalizeBundleListResponse(response);
-  logE2e("console-api response", {
+  logE2e("hot-updater cli bundle list", {
+    channel: args.channel ?? null,
     count: bundles.data.length,
     limit: args.limit,
-    method: "GET",
-    offset: args.offset,
+    platform: session.platform,
     total: bundles.pagination.total,
   });
 
@@ -1109,24 +788,19 @@ async function fetchLatestBundle(args: { channel?: string }) {
 }
 
 async function fetchBundleById(bundleId: string) {
-  logE2e("console-api request", {
-    bundleId,
-    method: "GET",
-  });
-
-  const bundle = await callConsoleServerFn<Bundle | null>("getBundle", "GET", {
-    bundleId,
-  });
+  const bundle = parseHotUpdaterCliJson<Bundle>(
+    "bundle show",
+    runHotUpdaterCliCapture(["bundle", "show", bundleId, "--json"]),
+  );
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logE2e("console-api response", {
+  logE2e("hot-updater cli bundle show", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
-    method: "GET",
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
   });
 
@@ -1134,30 +808,41 @@ async function fetchBundleById(bundleId: string) {
 }
 
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
-  logE2e("console-api request", {
-    body: { bundle: patch },
-    bundleId,
-    method: "POST",
-  });
+  if (patch.enabled !== undefined) {
+    await runHotUpdaterCliLogged(
+      ["bundle", patch.enabled ? "enable" : "disable", bundleId, "-y"],
+      `bundle-${patch.enabled ? "enable" : "disable"}-${bundleId}.log`,
+    );
+  }
 
-  await callConsoleServerFn<{
-    bundle: {
-      channel: string;
-      enabled: boolean;
-      id: string;
-      rolloutCohortCount?: number | null;
-      shouldForceUpdate?: boolean;
-      targetCohorts?: string[] | null;
-    };
-    success: true;
-  }>("updateBundle", "POST", {
-    bundle: patch,
-    bundleId,
-  });
+  const updateArgs = ["bundle", "update", bundleId, "-y", "--json"];
+  if (patch.rolloutCohortCount !== undefined) {
+    if (patch.rolloutCohortCount === null) {
+      throw new Error("Cannot clear rolloutCohortCount through E2E CLI patch");
+    }
+    updateArgs.push("--rollout-cohort-count", String(patch.rolloutCohortCount));
+  }
+  if (patch.shouldForceUpdate !== undefined) {
+    updateArgs.push("--force-update", String(patch.shouldForceUpdate));
+  }
+  if (patch.targetCohorts !== undefined) {
+    if (patch.targetCohorts === null) {
+      updateArgs.push("--clear-target-cohorts");
+    } else {
+      updateArgs.push("--target-cohorts", patch.targetCohorts.join(","));
+    }
+  }
 
-  logE2e("console-api response", {
+  if (updateArgs.length > 5) {
+    parseHotUpdaterCliJson<Bundle>(
+      "bundle update",
+      runHotUpdaterCliCapture(updateArgs),
+    );
+  }
+
+  logE2e("hot-updater cli bundle patch", {
     bundleId,
-    method: "POST",
+    patch,
   });
 }
 
@@ -1232,17 +917,6 @@ function getBundlePatchBaseBundleIds(bundle: Bundle | null | undefined) {
   return getBundlePatches(bundle).map((patch) => patch.baseBundleId);
 }
 
-function createDisabledFullAssetBaseStorageUri(assetBaseStorageUri: string) {
-  try {
-    const url = new URL(assetBaseStorageUri);
-    const pathname = url.pathname.replace(/\/+$/, "");
-    url.pathname = `${pathname}/__e2e_bspatch_full_asset_fallback_disabled__`;
-    return url.toString();
-  } catch {
-    return `${assetBaseStorageUri.replace(/\/+$/, "")}/__e2e_bspatch_full_asset_fallback_disabled__`;
-  }
-}
-
 async function resolveAutoPatchBundleDiff(
   baseBundleId: string,
   bundleId: string,
@@ -1258,7 +932,6 @@ async function resolveAutoPatchBundleDiff(
     matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
   const patchStorageUri =
     matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
-  const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
 
   if (
     bundle.id !== bundleId ||
@@ -1266,8 +939,7 @@ async function resolveAutoPatchBundleDiff(
     !patchAssetPath ||
     !patchBaseFileHash ||
     !patchFileHash ||
-    !patchStorageUri ||
-    !assetBaseStorageUri
+    !patchStorageUri
   ) {
     throw createEndpointError(
       `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
@@ -1282,77 +954,30 @@ async function resolveAutoPatchBundleDiff(
           patchBaseFileHash,
           patchFileHash,
           patchStorageUri,
-          assetBaseStorageUri,
         },
       },
     );
   }
 
-  const disabledFullAssetBaseStorageUri =
-    createDisabledFullAssetBaseStorageUri(assetBaseStorageUri);
-  await patchBundle(bundleId, {
-    assetBaseStorageUri: disabledFullAssetBaseStorageUri,
-  });
-
   logE2e("auto patch metadata resolved", {
     baseBundleId,
     bundleId,
-    disabledFullAssetBaseStorageUri,
     patchAssetPath,
     patchStorageUri,
     platform: session.platform,
   });
 
   return {
-    assetBaseStorageUri,
     baseBundleId,
-    disabledFullAssetBaseStorageUri,
     patchAssetPath,
   };
 }
 
 async function deleteBundle(bundleId: string) {
-  logE2e("console-api request", {
-    bundleId,
-    method: "POST",
-  });
-
-  try {
-    await callConsoleServerFn<{ success: true }>("deleteBundle", "POST", {
-      bundleId,
-    });
-  } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !error.message.includes("No storage plugin for protocol")
-    ) {
-      throw error;
-    }
-
-    logE2e("console-api delete fallback", {
-      bundleId,
-      reason: "unsupported-storage-protocol",
-      updateServerBaseUrl,
-    });
-
-    const response = await fetch(
-      `${updateServerBaseUrl}/api/bundles/${encodeURIComponent(bundleId)}`,
-      {
-        method: "DELETE",
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Fallback delete failed for bundle ${bundleId}: ${response.status} ${response.statusText}`,
-      );
-    }
-  }
-
-  logE2e("console-api response", {
-    bundleId,
-    method: "POST",
-  });
+  await runHotUpdaterCliLogged(
+    ["bundle", "delete", bundleId, "-y"],
+    `bundle-delete-${bundleId}.log`,
+  );
 }
 
 async function clearRemoteBundles() {
@@ -2247,6 +1872,134 @@ function getLaunchReportState(report: Record<string, unknown> | null) {
   };
 }
 
+function getControllerReachableAppBaseUrl() {
+  const url = new URL(session.appBaseUrl);
+  if (
+    url.hostname === "localhost" ||
+    url.hostname === "10.0.2.2" ||
+    url.hostname === "10.0.3.2"
+  ) {
+    url.hostname = "127.0.0.1";
+  }
+  return url.toString().replace(/\/+$/, "");
+}
+
+function buildAppVersionUpdateCheckUrl(args: {
+  bundleId: string;
+  channel: string;
+  minBundleId: string;
+}) {
+  const encode = (value: string) => encodeURIComponent(value);
+  return [
+    getControllerReachableAppBaseUrl(),
+    "app-version",
+    encode(session.platform),
+    encode(E2E_APP_VERSION),
+    encode(args.channel),
+    encode(args.minBundleId),
+    encode(args.bundleId),
+  ].join("/");
+}
+
+function getCurrentUpdateCheckBundleId() {
+  const diagnostics = readWaitForMetadataDiagnostics();
+  const metadataState = getMetadataState(diagnostics.metadata.value);
+  return metadataState.stagingBundleId ?? NIL_UUID;
+}
+
+function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
+  return (
+    request.disabled !== true &&
+    typeof request.rollout !== "number" &&
+    (!request.targetCohorts || request.targetCohorts.length === 0)
+  );
+}
+
+async function waitForUpdateCheckVisibility(args: {
+  bundleId: string;
+  channel: string;
+  requestBundleId: string;
+}) {
+  const minBundleId = NIL_UUID;
+  const url = buildAppVersionUpdateCheckUrl({
+    bundleId: args.requestBundleId,
+    channel: args.channel,
+    minBundleId,
+  });
+  let lastObserved: unknown = null;
+  let lastError: string | null = null;
+
+  for (let index = 0; index < 90; index += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Hot-Updater-SDK-Version": "e2e",
+        },
+      });
+      const body = await response.text();
+      lastObserved = body;
+
+      if (response.ok) {
+        const payload = JSON.parse(body) as { id?: unknown; status?: unknown };
+        lastObserved = {
+          id: payload.id,
+          status: payload.status,
+        };
+
+        if (payload.id === args.bundleId) {
+          logE2e("update check visibility ready", {
+            bundleId: args.bundleId,
+            channel: args.channel,
+            requestBundleId: args.requestBundleId,
+            url,
+          });
+          return;
+        }
+      } else {
+        lastError = `HTTP ${response.status}: ${truncateForLog(body)}`;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(1000);
+  }
+
+  logE2e("update check visibility timeout", {
+    expectedBundleId: args.bundleId,
+    lastError,
+    lastObserved,
+    platform: session.platform,
+    request: {
+      bundleId: args.requestBundleId,
+      channel: args.channel,
+      minBundleId,
+    },
+    url,
+  });
+
+  throw createEndpointError(
+    [
+      "Timed out waiting for update check visibility.",
+      `Expected update check to return bundleId=${args.bundleId}.`,
+      `URL: ${url}`,
+    ].join("\n"),
+    {
+      expected: {
+        bundleId: args.bundleId,
+      },
+      lastError,
+      lastObserved,
+      platform: session.platform,
+      request: {
+        bundleId: args.requestBundleId,
+        channel: args.channel,
+        minBundleId,
+      },
+    },
+  );
+}
+
 function createWaitForRecoveryTimeoutError(args: {
   attempts: number;
   crashedBundleId: string;
@@ -2454,22 +2207,53 @@ async function waitForAndroidMetadataState(
   verificationPending: boolean,
   attempts = 90,
 ) {
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics = readAndroidWaitForMetadataDiagnostics();
-    if (diagnostics.metadata.value) {
-      const metadata = diagnostics.metadata.value;
-      if (
-        metadata.stagingBundleId === bundleId &&
-        metadata.verificationPending === verificationPending
-      ) {
-        return;
+  const relaunchLimit = 2;
+  let totalAttempts = 0;
+
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
+    for (let index = 0; index < attempts; index += 1) {
+      totalAttempts += 1;
+
+      const diagnostics = readAndroidWaitForMetadataDiagnostics();
+      if (diagnostics.metadata.value) {
+        const metadataState = getMetadataState(diagnostics.metadata.value);
+        if (
+          metadataState.stagingBundleId === bundleId &&
+          metadataState.verificationPending === verificationPending
+        ) {
+          return;
+        }
       }
+      await sleep(1000);
     }
-    await sleep(1000);
+
+    const diagnostics = readAndroidWaitForMetadataDiagnostics();
+    const metadataState = getMetadataState(diagnostics.metadata.value);
+    if (
+      relaunchIndex === relaunchLimit ||
+      metadataState.verificationPending === true
+    ) {
+      break;
+    }
+
+    logE2e("android metadata wait relaunch", {
+      expectedBundleId: bundleId,
+      expectedVerificationPending: verificationPending,
+      observed: metadataState,
+      relaunchAttempt: relaunchIndex + 1,
+      relaunchLimit,
+    });
+    await prepareAppLaunch();
+    launchAndroidApp();
+    await sleep(3000);
   }
 
   throw createWaitForMetadataTimeoutError({
-    attempts,
+    attempts: totalAttempts,
     bundleId,
     ...readAndroidWaitForMetadataDiagnostics(),
     verificationPending,
@@ -2667,7 +2451,6 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
-  await clearHotUpdaterStoreTraces();
   await clearRemoteBundles();
   await restoreFile(
     session.largeArchiveAssetBackupPath,
@@ -2706,6 +2489,7 @@ async function deployBundle(request: DeployBundleRequest) {
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
+  const updateCheckRequestBundleId = getCurrentUpdateCheckBundleId();
 
   if (bundleProfile === "archive300mb") {
     await ensureLargeArchiveAsset();
@@ -2827,14 +2611,19 @@ async function deployBundle(request: DeployBundleRequest) {
   const bundle = await fetchBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
 
+  if (shouldWaitForUpdateCheckVisibility(request)) {
+    await waitForUpdateCheckVisibility({
+      bundleId,
+      channel: bundle.channel,
+      requestBundleId: updateCheckRequestBundleId,
+    });
+  }
+
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
-    assetBaseStorageUri: diff?.assetBaseStorageUri ?? null,
     bundleId,
     bundleProfile,
     channel: bundle.channel,
-    disabledFullAssetBaseStorageUri:
-      diff?.disabledFullAssetBaseStorageUri ?? null,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: bundle.enabled,
@@ -2856,6 +2645,7 @@ async function deployBundle(request: DeployBundleRequest) {
     enabled: bundle.enabled,
     marker: request.marker,
     patchBaseBundleIds,
+    primaryBundleAssetPath: getPrimaryBundleAssetPath(),
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
     targetCohorts: bundle.targetCohorts ?? null,
@@ -3018,13 +2808,12 @@ function readBsdiffPatchStoreEvidence(args: {
   const record = session.deployedBundles.find(
     (entry) =>
       entry.diffBaseBundleId === args.baseBundleId &&
-      entry.diffPatchAssetPath === args.assetPath &&
-      entry.disabledFullAssetBaseStorageUri,
+      entry.diffPatchAssetPath === args.assetPath,
   );
   if (!record) {
     return {
       ok: false,
-      reason: "tracked diff bundle with disabled full-asset fallback not found",
+      reason: "tracked diff bundle not found",
     };
   }
 
@@ -3036,7 +2825,7 @@ function readBsdiffPatchStoreEvidence(args: {
   const ok =
     metadataState.stableBundleId === args.baseBundleId &&
     metadataState.stagingBundleId === record.bundleId &&
-    metadataState.verificationPending === true &&
+    metadataState.verificationPending === false &&
     manifest.exists &&
     manifest.readError === null &&
     expectedHash !== null &&
@@ -3075,10 +2864,6 @@ async function readManifestDiffState(args: {
   const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
   const archiveLogs = readFirstOtaArchiveInstallLogs();
   const bsdiffLogs = readBsdiffPatchLogs();
-  const storeTraceEvidence =
-    await readManifestDiffStoreTraceEvidence(assetPath);
-  const bsdiffStoreTraceEvidence =
-    await readBsdiffStoreTraceEvidence(assetPath);
   const archiveFragments = [
     "Skipping manifest-driven install",
     `for ${args.bundleId}`,
@@ -3096,7 +2881,7 @@ async function readManifestDiffState(args: {
   const ok =
     metadataState.stableBundleId === args.previousBundleId &&
     metadataState.stagingBundleId === args.bundleId &&
-    metadataState.verificationPending === true &&
+    metadataState.verificationPending === false &&
     bundleFile.exists &&
     manifest.exists &&
     manifest.readError === null &&
@@ -3105,9 +2890,7 @@ async function readManifestDiffState(args: {
     assetFile.readError === null &&
     assetFile.fileHash === expectedHash &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
-    !includesAllFragments(bsdiffLogs, bsdiffFragments) &&
-    !bsdiffStoreTraceEvidence.ok &&
-    !record?.disabledFullAssetBaseStorageUri;
+    !includesAllFragments(bsdiffLogs, bsdiffFragments);
 
   return {
     archiveFragments,
@@ -3116,7 +2899,6 @@ async function readManifestDiffState(args: {
     assetPath,
     bsdiffFragments,
     bsdiffLogs,
-    bsdiffStoreTraceEvidence,
     bundleFile,
     diagnostics,
     expectedHash,
@@ -3124,7 +2906,6 @@ async function readManifestDiffState(args: {
     metadataState,
     ok,
     record,
-    storeTraceEvidence,
   };
 }
 
@@ -3140,30 +2921,15 @@ async function assertBsdiffPatchApplied(args: {
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
-    const storeTraceEvidence = await readBsdiffStoreTraceEvidence(
-      args.assetPath,
-    );
     if (evidence.ok && "record" in evidence) {
+      const logs = readBsdiffPatchLogs();
       logE2e("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
         bundleId: evidence.record.bundleId,
-        evidence: storeTraceEvidence.ok
-          ? "bundle-store-and-useHotUpdaterStore"
-          : "bundle-store-with-disabled-full-asset-fallback",
-        platform: session.platform,
-      });
-      return {};
-    }
-
-    const logs = readBsdiffPatchLogs();
-    if (includesAllFragments(logs, expectedFragments)) {
-      logE2e("bsdiff patch applied", {
-        assetPath: args.assetPath,
-        baseBundleId: args.baseBundleId,
-        evidence: storeTraceEvidence.ok
-          ? "native-log-and-useHotUpdaterStore"
-          : "native-log",
+        evidence: includesAllFragments(logs, expectedFragments)
+          ? "bundle-store-and-native-log"
+          : "bundle-store",
         platform: session.platform,
       });
       return {};
@@ -3174,7 +2940,6 @@ async function assertBsdiffPatchApplied(args: {
 
   const logs = readBsdiffPatchLogs();
   const evidence = readBsdiffPatchStoreEvidence(args);
-  const storeTraceEvidence = await readBsdiffStoreTraceEvidence(args.assetPath);
   throw createEndpointError(
     "Timed out waiting for bsdiff patch application evidence.",
     {
@@ -3184,7 +2949,6 @@ async function assertBsdiffPatchApplied(args: {
       evidence,
       logsTail: logs.split("\n").slice(-20),
       platform: session.platform,
-      storeTraceEvidence,
     },
   );
 }
@@ -3198,9 +2962,7 @@ async function assertManifestDiffApplied(args: {
     if (state.ok) {
       logE2e("manifest diff applied without bsdiff patch", {
         bundleId: args.bundleId,
-        evidence: state.storeTraceEvidence.ok
-          ? "bundle-store-and-useHotUpdaterStore-without-bsdiff"
-          : "bundle-store-without-bsdiff",
+        evidence: "bundle-store-without-archive-or-bsdiff-log",
         platform: session.platform,
         previousBundleId: args.previousBundleId,
       });
@@ -3224,7 +2986,6 @@ async function assertManifestDiffApplied(args: {
         state.bsdiffLogs,
         state.bsdiffFragments,
       ),
-      bsdiffStoreTraceEvidence: state.bsdiffStoreTraceEvidence,
       bundleFile: state.bundleFile,
       bundleId: args.bundleId,
       diagnostics: state.diagnostics,
@@ -3233,7 +2994,6 @@ async function assertManifestDiffApplied(args: {
       metadataState: state.metadataState,
       platform: session.platform,
       previousBundleId: args.previousBundleId,
-      storeTraceEvidence: state.storeTraceEvidence,
       trackedBundleRecord: state.record,
     },
   );
@@ -3389,7 +3149,6 @@ async function reinstallBuiltInApp() {
 }
 
 async function resetRemoteBundles() {
-  await clearHotUpdaterStoreTraces();
   await clearRemoteBundles();
 
   logE2e("remote bundles reset on demand", {
@@ -3595,43 +3354,6 @@ async function cleanup() {
     return {};
   }
 
-  const restoredFullAssetFallbackBundleIds: string[] = [];
-  for (const record of session.deployedBundles) {
-    if (
-      !record.assetBaseStorageUri ||
-      !record.disabledFullAssetBaseStorageUri
-    ) {
-      continue;
-    }
-
-    try {
-      await patchBundle(record.bundleId, {
-        assetBaseStorageUri: record.assetBaseStorageUri,
-      });
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("targetBundleId not found")
-      ) {
-        logE2e("skipped restoring bsdiff full asset fallback", {
-          bundleId: record.bundleId,
-          platform: session.platform,
-          reason: "bundle already deleted",
-        });
-        continue;
-      }
-
-      throw error;
-    }
-    restoredFullAssetFallbackBundleIds.push(record.bundleId);
-  }
-  if (restoredFullAssetFallbackBundleIds.length > 0) {
-    logE2e("restored bsdiff full asset fallback", {
-      bundleIds: restoredFullAssetFallbackBundleIds,
-      platform: session.platform,
-    });
-  }
-
   if (session.appBackupPath) {
     await restoreFile(session.appBackupPath, session.appSourceFile);
   }
@@ -3676,6 +3398,13 @@ export function startDeployBundleJob(request: DeployBundleRequest) {
 
 export function startPatchBundleJob(request: PatchBundleRequest) {
   return createJob(() => updateBundle(request));
+}
+
+export function startWaitForMetadataJob(
+  bundleId: string,
+  verificationPending: boolean,
+) {
+  return createJob(() => waitForMetadata(bundleId, verificationPending));
 }
 
 export function getJob(jobId: string) {

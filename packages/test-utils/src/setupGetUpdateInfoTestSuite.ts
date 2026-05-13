@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAvailableInfo,
   AppUpdateInfo,
   Bundle,
   GetBundlesArgs,
@@ -2410,7 +2411,7 @@ export const setupGetUpdateInfoTestSuite = ({
               platform: "ios",
               _updateStrategy: "appVersion",
             },
-          )) as AppUpdateInfo | null;
+          )) as AppUpdateAvailableInfo | null;
 
           expect(updateInfo).toMatchObject({
             id: fixture.nextBundleId,
@@ -2422,7 +2423,9 @@ export const setupGetUpdateInfoTestSuite = ({
             updateInfo?.changedAssets?.[fixture.changedAssetPath];
 
           expect(changedAsset).toMatchObject({
-            fileCompression: "br",
+            file: {
+              compression: "br",
+            },
             fileHash: "hash-new-bundle",
           });
           expect(changedAsset?.patch).toBeUndefined();
@@ -2431,7 +2434,7 @@ export const setupGetUpdateInfoTestSuite = ({
           ).toBeUndefined();
 
           await manifestArtifacts.expectFileUrl(
-            changedAsset?.fileUrl ?? "",
+            changedAsset?.file?.url ?? "",
             fixture,
           );
 
