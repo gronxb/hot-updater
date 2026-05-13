@@ -91,7 +91,7 @@ class HandlerBadRequestError extends Error {
 }
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
-const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.30.10";
+const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();

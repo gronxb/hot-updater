@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createHandler, type HandlerAPI } from "./handler";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
+const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
+const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
+
 type TestEnv = {
   tenantId: string;
 };
@@ -108,7 +111,7 @@ describe("createHandler", () => {
         "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
         {
           headers: {
-            "Hot-Updater-SDK-Version": "0.30.10",
+            "Hot-Updater-SDK-Version": NEXT_SDK_VERSION_FOR_TEST,
           },
         },
       ),
@@ -130,7 +133,7 @@ describe("createHandler", () => {
         "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
         {
           headers: {
-            "Hot-Updater-SDK-Version": "0.30.9",
+            "Hot-Updater-SDK-Version": CURRENT_PACKAGE_SDK_VERSION,
           },
         },
       ),
