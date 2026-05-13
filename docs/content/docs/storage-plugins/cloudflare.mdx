@@ -105,8 +105,8 @@ export const hotUpdater = createHotUpdater({
 ```
 
 The Worker runtime plugin implements the `runtime` profile. It signs bundle
-download URLs and reads manifest metadata directly from the R2 binding, so
-manifest diff calculation does not depend on the Worker fetching its own signed
+download URLs and reads small metadata files directly from the R2 binding. This
+lets update checks use bundle diffing without the Worker fetching its own signed
 public URL.
 
 ## Limitations

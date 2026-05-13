@@ -48,13 +48,18 @@ npx hot-updater deploy
 
 ### Bundle Diffing
 
-New deployments automatically upload a signed or hashed `manifest.json` plus
-per-file assets alongside the archive bundle. When the app runtime supports
-manifest-based diffing, unchanged files can be reused locally and only changed
-files are downloaded.
+New deployments automatically include the artifacts needed for bundle diffing
+alongside the archive bundle. When the app runtime supports manifest-based
+diffing, unchanged files can be reused locally and only changed files are
+downloaded. No deploy flag is required for this behavior.
 
-See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior,
-requirements, and fallback rules.
+If `patch.enabled` is set in `hot-updater.config.ts`, deploy also tries to
+prepare compatible `bsdiff` patches for the Hermes bundle. Patch generation is
+best-effort; a skipped patch does not fail the deployment because the normal
+archive update remains available.
+
+See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
+fallback rules.
 
 ### Interactive Mode
 

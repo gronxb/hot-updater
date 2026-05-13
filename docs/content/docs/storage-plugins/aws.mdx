@@ -90,7 +90,8 @@ This prefix is stored in the `storageUri` field in the database.
 `s3Storage` implements both storage profiles:
 
 - `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates presigned HTTP(S) download URLs and reads manifest text directly through the S3 API.
+- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
+  files directly through the S3 API.
 
 This means the same `s3Storage` configuration can be used in both
 `hot-updater.config.ts` and `createHotUpdater`.

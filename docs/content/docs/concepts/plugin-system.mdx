@@ -24,9 +24,13 @@ Storage plugins upload your generated bundles during the `hot-updater deploy` co
 Storage plugins expose explicit environment profiles:
 
 - `node`: deploy-time APIs for upload, delete, and local file downloads.
-- `runtime`: update-check APIs for HTTP(S) download URL generation and direct text reads of small metadata files such as `manifest.json`.
+- `runtime`: update-check APIs for HTTP(S) download URLs and small metadata
+  reads.
 
-`hot-updater.config.ts` uses the `node` profile. `createHotUpdater` uses the `runtime` profile. A provider can export one full plugin that supports both profiles, or separate CLI/runtime plugins when the provider runtime has different APIs.
+`hot-updater.config.ts` uses the `node` profile. `createHotUpdater` uses the
+`runtime` profile. Most apps can use the official storage plugins directly;
+custom plugin authors only need the profile details when implementing their own
+storage provider.
 
 ### Supported Plugins
 

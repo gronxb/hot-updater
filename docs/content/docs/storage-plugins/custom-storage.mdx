@@ -12,7 +12,13 @@ npm install @hot-updater/plugin-core --save-dev
 
 ## Overview
 
-Build a custom storage plugin to integrate any storage provider. Storage plugins are split into explicit environment profiles so plugin authors can implement the APIs that are safe for each runtime.
+Build a custom storage plugin to integrate any storage provider.
+
+Most apps do not need this guide. Use it when you are writing or maintaining a
+storage plugin.
+
+Storage plugins are split into explicit environment profiles so plugin authors
+can implement the APIs that are safe for each runtime.
 
 - `node`: used by the CLI, deploy command, and console. It can read and write local files.
 - `runtime`: used by update-check servers and edge runtimes. It must resolve HTTP(S) bundle URLs and read small text artifacts such as `manifest.json` directly from storage.
@@ -83,7 +89,10 @@ Your factory function returns one or more profiles.
 }
 ```
 
-`runtime.readText` is required for runtime storage plugins. Do not implement it by generating a public URL and fetching that URL again. Use the provider SDK, platform binding, or authenticated runtime API directly. This avoids edge runtimes failing on internal fetches and keeps manifest diff calculation independent from client download URL generation.
+`runtime.readText` is required for runtime storage plugins so update-check
+servers can read `manifest.json` and other small metadata directly from storage.
+Implement it with the provider SDK, platform binding, or authenticated runtime
+API. Do not generate a public download URL and fetch that URL again.
 
 ## Implementation Example
 

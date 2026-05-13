@@ -1,14 +1,21 @@
 ---
 title: "useHotUpdaterStore"
-description: "A store related to updates."
+description: "Read update progress from React components."
 icon: Database
 ---
 
-## Download Progress
+Use `useHotUpdaterStore` when you want to show OTA update progress in your
+React Native UI.
 
-`progress` is a number representing the bundle download progress. It has a value between 0 and 1.
+For most apps, `progress` and `isUpdateDownloaded` are enough. Use
+`artifactType` and `details` only when you want to render bundle diffing
+progress more specifically.
 
-When `isUpdateDownloaded` is `true`, it means the bundle download is complete and the update will be applied when `HotUpdater.reload()` is called. The `isUpdateDownloaded` becomes `true` when the `progress` value reaches 1.
+## Basic Usage
+
+`progress` is a number from `0` to `1`. `isUpdateDownloaded` becomes `true`
+when the update has finished downloading and can be applied with
+`HotUpdater.reload()`.
 
 ```tsx
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
@@ -19,7 +26,6 @@ function App() {
 
   return (
     <View>
-      <Text>Hello World</Text>
       <Text>{Math.round(progress * 100)}%</Text>
       <Button
         title="Reload"
@@ -29,36 +35,64 @@ function App() {
     </View>
   );
 }
+```
 
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    Authorization: "Bearer <your-access-token>",
-  },
-})(App);
+## State
+
+| Field                | Type                  | Description                                      |
+|----------------------|-----------------------|--------------------------------------------------|
+| `progress`           | `number`              | Overall update progress from `0` to `1`.          |
+| `isUpdateDownloaded` | `boolean`             | `true` when `progress` reaches `1`.               |
+| `artifactType`       | `"archive" \| "diff" \| null` | Current download type, or `null` before progress starts. |
+| `downloadedBytes`    | `number \| undefined` | Downloaded bytes for archive updates.             |
+| `totalBytes`         | `number \| undefined` | Total bytes for archive updates when known.       |
+| `details`            | `object \| null`      | Per-file progress for bundle diffing updates.     |
+
+When `artifactType` is `"archive"`, the app is downloading the normal
+compressed OTA archive.
+
+When `artifactType` is `"diff"`, Hot Updater is reusing unchanged files from
+the current OTA bundle and downloading only the files that changed. In this
+case, `details` contains `totalFilesCount`, `completedFilesCount`, and `files`.
+
+```tsx
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function UpdateProgress() {
+  const { artifactType, details, progress } = useHotUpdaterStore();
+
+  return (
+    <View>
+      <Text>{Math.round(progress * 100)}%</Text>
+      {artifactType === "diff" && details ? (
+        <Text>
+          {details.completedFilesCount}/{details.totalFilesCount} files
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 ```
 
 ## Optimizing Renders with Selectors
 
-You can optimize your component renders by using selectors to subscribe only to specific parts of the state. This prevents unnecessary re-renders when other parts of the state change.
+Pass a selector when a component only needs one field from the store.
 
 ```tsx
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
-import { Text } from "react-native";
+import { Button, Text } from "react-native";
 
 function ProgressDisplay() {
-  // Only re-renders when progress changes
-  const progress = useHotUpdaterStore(state => state.progress);
+  const progress = useHotUpdaterStore((state) => state.progress);
 
   return <Text>{Math.round(progress * 100)}%</Text>;
 }
 
 function UpdateButton() {
-  // Only re-renders when isUpdateDownloaded changes
-  const isUpdateDownloaded = useHotUpdaterStore(state => state.isUpdateDownloaded);
+  const isUpdateDownloaded = useHotUpdaterStore(
+    (state) => state.isUpdateDownloaded,
+  );
 
   return (
     <Button

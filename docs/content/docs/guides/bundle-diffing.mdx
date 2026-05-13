@@ -1,117 +1,70 @@
 ---
 title: "Bundle Diffing"
-description: "Ship smaller OTA updates by reusing unchanged files from the current bundle."
+description: "Ship smaller OTA updates by reusing unchanged bundle files."
 icon: Diff
-version: 0.29.4
+version: 0.31.0
 ---
 
 ## What it is
 
-Bundle diffing is the first step toward smaller OTA updates in `hot-updater`.
+Bundle diffing helps OTA updates download less data.
 
-Instead of always downloading the full archive, the client can:
+Instead of always installing the full archive, Hot Updater can reuse files that
+already exist in the currently installed OTA bundle and download only the files
+that changed.
 
-- verify the target `manifest.json`
-- reuse unchanged files from the currently installed bundle
-- download only files whose hashes changed
-- fall back to the archive download when diff assembly is not possible
+You do not need to change your update-check code or deploy command. After your
+app is using a diff-enabled Hot Updater runtime, new deployments include the
+data needed for bundle diffing automatically.
 
-There is no extra CLI flag for this feature. Once your deploy, server, and app
-runtime all support it, the diff path is used automatically.
+## How to use it
 
-## Requirements
-
-1. Upgrade `hot-updater`, `@hot-updater/server`, and `@hot-updater/react-native` to a version that includes manifest-based diff updates.
-2. Release a new native app build with the updated runtime.
-3. Deploy new OTA bundles with `npx hot-updater deploy`.
-
-If you also want authenticity checks for the manifest itself, enable signing as
-described in [Bundle Signing](/docs/guides/bundle-signing).
-
-## How to enable it
-
-### 1. Upgrade your app runtime
-
-Install the updated packages and rebuild your app:
-
-```bash
-pnpm add hot-updater @hot-updater/react-native @hot-updater/server
-```
-
-Then create a new native release build for iOS and Android.
-
-### 2. Keep using normal deploys
-
-Deploy exactly as before:
+No special command is required. Deploy as usual:
 
 ```bash
 npx hot-updater deploy -p ios
 npx hot-updater deploy -p android
 ```
 
-During deploy, `hot-updater` now uploads:
+For apps running a bundle-diffing capable runtime, that is enough for
+manifest-based diffing.
 
-- the archive bundle used for fallback
-- `manifest.json`
-- per-file bundle assets under the bundle's storage prefix
-
-No extra configuration is required for diffing itself.
-
-### 3. Optional but recommended: enable signing
-
-When signing is enabled, both the archive and `manifest.json` are verified by
-the client before install.
+If you also want binary patch optimization for Hermes bundle changes, enable it
+in `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  signing: {
+  patch: {
     enabled: true,
-    privateKeyPath: "./keys/private-key.pem",
   },
 });
 ```
 
-If you enable signing, make sure your native app already contains the matching
-public key before shipping signed OTA bundles.
+This is optional. If a patch cannot be created or applied, Hot Updater still
+falls back to the normal archive update.
 
-## How it works at runtime
+## How it works
 
-1. The server returns the normal archive URL plus manifest diff metadata for the target bundle.
-2. The client downloads `manifest.json` and verifies its hash or signature.
-3. The client compares the target manifest with the local bundle contents.
-4. Files with matching hashes are copied from the current bundle directory.
-5. Files with changed hashes are downloaded from storage.
-6. If any verification or reuse step fails, the client falls back to the full archive.
+The first OTA update after installing a native app uses the normal compressed
+archive. At that point, the app does not have a previous OTA bundle directory
+that can be reused.
 
-This means the feature is safe to roll out incrementally. The archive path
-remains the compatibility fallback for older bundles, older clients, and
-verification failures.
+From the second OTA update onward, the app can compare the new update with the
+currently installed OTA bundle:
 
-## When you get the biggest benefit
+1. Files that did not change are copied from the current OTA bundle.
+2. Files that changed are downloaded from the new update.
+3. If a compatible patch exists for the Hermes bundle, the app downloads and
+   applies the patch instead of downloading the full changed Hermes bundle.
+4. If reuse or patching fails, the app falls back to the normal compressed
+   archive.
 
-Bundle diffing helps most when:
+## Signing
 
-- your JavaScript bundle changes a little between releases
-- only a few static assets changed
-- you deploy frequently and want to avoid repeated full archive downloads
+Bundle diffing works without signing, but signing is recommended. When signing
+is enabled, the archive, manifest, and manifest assets are verified before the
+update is installed.
 
-It is simpler than binary patching and works well as a default first step.
-
-## Troubleshooting
-
-### The app still downloads the full archive
-
-That is expected when any of the following is true:
-
-- the deployed bundle does not have manifest metadata yet
-- the client runtime is older than the diff-enabled version
-- manifest verification fails
-- a reusable local file is missing or corrupted
-- the server cannot provide the required changed asset URL
-
-### Do I need to change my deploy command?
-
-No. Keep using `npx hot-updater deploy ...`. Diff artifacts are uploaded
-automatically as part of the deploy.
+See [Bundle Signing](/docs/guides/bundle-signing) for setup.

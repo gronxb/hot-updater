@@ -53,14 +53,20 @@ export default defineConfig({
 
 ## Storage Plugins
 
-The `storages` field in your server configuration accepts storage plugins that implement the `runtime` profile. Runtime storage plugins act as decoders/interpreters for storage URIs and as direct readers for small manifest metadata.
+The `storages` field in your server configuration accepts storage plugins that
+implement the `runtime` profile. Runtime storage plugins translate stored bundle
+locations into client download URLs. They can also read small metadata files
+directly from storage when bundle diffing data is available.
 
 1. When you run `npx hot-updater deploy` from your `hot-updater.config.ts`, the bundle is uploaded and a `storageUri` is saved to the database
 2. When the API returns bundle information, the server decodes the `storageUri` using `runtime.getDownloadUrl` to generate an HTTP(S) download URL
-3. When manifest metadata is available, the server reads `manifest.json` through `runtime.readText` to calculate `manifestUrl`, `changedAssets`, and patch metadata
-4. React Native clients download the bundle and changed assets using the returned URLs
+3. When diffing data is available, the server reads it directly from storage so the client can reuse unchanged files
+4. React Native clients download the update files using the returned URLs
 
-The CLI `storage` field uses the `node` profile for upload/delete/local file download operations. A plugin such as `s3Storage` can support both profiles, while edge providers such as Cloudflare Workers may use a separate runtime plugin that reads from platform bindings.
+The CLI `storage` field uses the `node` profile for upload/delete/local file
+download operations. A plugin such as `s3Storage` can support both profiles,
+while edge providers such as Cloudflare Workers may use a separate runtime
+plugin that reads from platform bindings.
 
 ### Multiple Storage Plugins
 
