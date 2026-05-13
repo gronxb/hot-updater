@@ -30,7 +30,7 @@ For apps running a bundle-diffing capable runtime, that is enough for
 manifest-based diffing.
 
 If you also want binary patch optimization for Hermes bundle changes, enable it
-in `hot-updater.config.ts`:
+in `hot-updater.config.ts`. Binary patch optimization is disabled by default:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -38,12 +38,45 @@ import { defineConfig } from "hot-updater";
 export default defineConfig({
   patch: {
     enabled: true,
+    maxBaseBundles: 5,
   },
 });
 ```
 
-This is optional. If a patch cannot be created or applied, Hot Updater still
-falls back to the normal archive update.
+This is optional.
+
+`maxBaseBundles` controls how many previous compatible OTA bundles are used as
+patch bases when deploying a new OTA update.
+
+For example:
+
+```txt
+Base bundle -> OTA A -> OTA B -> OTA C
+```
+
+When deploying `OTA C` with `maxBaseBundles: 2`, Hot Updater can prepare patches
+from:
+
+- `OTA B` to `OTA C`
+- `OTA A` to `OTA C`
+
+This means devices currently on `OTA A` or `OTA B` can download a small patch to
+`OTA C` instead of the full changed Hermes bundle. Devices that only have the
+base bundle still use the compressed archive for their first OTA update. Devices
+on an older OTA outside the selected patch bases download the full changed
+Hermes bundle file instead of a patch.
+
+Notes:
+
+- Defaults to `5`.
+- Uses recent compatible bundles from the same channel and platform.
+- Higher values increase the range of OTA versions covered by patches, but can
+  make deployment time grow exponentially because more patch artifacts must be
+  generated.
+
+If a patch cannot be created or applied, Hot Updater downloads the full changed
+Hermes bundle file instead. If the bundle-diffing path itself cannot be used, it
+falls back to the compressed archive.
 
 ## How it works
 

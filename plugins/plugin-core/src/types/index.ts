@@ -544,7 +544,7 @@ export type ConfigInput = {
     enabled?: boolean;
     /**
      * Maximum number of compatible older bundles to prepare patches for.
-     * Must be an integer between 1 and 5.
+     * Must be a positive integer.
      *
      * @default 5
      */

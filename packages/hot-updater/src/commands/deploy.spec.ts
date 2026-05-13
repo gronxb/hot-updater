@@ -256,20 +256,18 @@ describe("normalizePatchMaxBaseBundles", () => {
     expect(normalizePatchMaxBaseBundles(undefined)).toBe(5);
   });
 
-  it("accepts integer values between 1 and 5", () => {
+  it("accepts positive integer values", () => {
     expect(normalizePatchMaxBaseBundles(1)).toBe(1);
     expect(normalizePatchMaxBaseBundles(5)).toBe(5);
+    expect(normalizePatchMaxBaseBundles(6)).toBe(6);
   });
 
-  it("rejects values outside the supported range", () => {
+  it("rejects non-positive or non-integer values", () => {
     expect(() => normalizePatchMaxBaseBundles(0)).toThrow(
-      "Patch maxBaseBundles must be an integer between 1 and 5",
-    );
-    expect(() => normalizePatchMaxBaseBundles(6)).toThrow(
-      "Patch maxBaseBundles must be an integer between 1 and 5",
+      "Patch maxBaseBundles must be a positive integer",
     );
     expect(() => normalizePatchMaxBaseBundles(2.5)).toThrow(
-      "Patch maxBaseBundles must be an integer between 1 and 5",
+      "Patch maxBaseBundles must be a positive integer",
     );
   });
 });

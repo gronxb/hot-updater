@@ -95,12 +95,8 @@ export const normalizePatchMaxBaseBundles = (
     return 5;
   }
 
-  if (
-    !Number.isInteger(maxBaseBundles) ||
-    maxBaseBundles < 1 ||
-    maxBaseBundles > 5
-  ) {
-    throw new Error("Patch maxBaseBundles must be an integer between 1 and 5");
+  if (!Number.isInteger(maxBaseBundles) || maxBaseBundles < 1) {
+    throw new Error("Patch maxBaseBundles must be a positive integer");
   }
 
   return maxBaseBundles;

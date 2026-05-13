@@ -68,7 +68,7 @@ public struct UpdateProgressPayload {
     public let downloadedBytes: Int64?
     public let totalBytes: Int64?
     public let details: DiffProgressDetails?
-    
+
     public struct DiffProgressFileSnapshot {
         public let path: String
         public let downloadPath: String
@@ -583,73 +583,35 @@ class BundleFileStorageService: BundleStorageService {
         }
 
         var updatedFiles = files
-        do {
-            defer {
-                files = updatedFiles
-            }
+        defer {
+            files = updatedFiles
+        }
 
-            switch self.downloadFileSynchronously(
-                from: patch.patchUrl,
-                to: patchPath,
-                progressHandler: { progress in
-                    self.updateDiffProgressFile(
-                        files: &updatedFiles,
-                        assetPath: assetPath,
-                        status: "downloading",
-                        progress: progress.progress,
-                        downloadPath: self.patchDownloadPath(assetPath: assetPath),
-                        downloadedBytes: progress.downloadedBytes,
-                        totalBytes: progress.totalBytes
-                    )
-                    self.emitDiffProgress(
-                        progressHandler: progressHandler,
-                        phase: "downloading",
-                        files: updatedFiles
-                    )
-                }
-            ) {
-            case .success(let patchFileURL):
-                guard HashUtils.verifyHash(
-                    fileURL: patchFileURL,
-                    expectedHash: patch.patchFileHash
-                ) else {
-                    resetDiffProgressFile(
-                        files: &updatedFiles,
-                        assetPath: assetPath,
-                        progressHandler: progressHandler
-                    )
-                    return false
-                }
-
-                let applied = hotUpdaterApplyBsdiffPatch(
-                    patchPath: patchPath,
-                    basePath: sourcePath,
-                    outputPath: destinationPath
+        switch self.downloadFileSynchronously(
+            from: patch.patchUrl,
+            to: patchPath,
+            progressHandler: { progress in
+                self.updateDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    status: "downloading",
+                    progress: progress.progress,
+                    downloadPath: self.patchDownloadPath(assetPath: assetPath),
+                    downloadedBytes: progress.downloadedBytes,
+                    totalBytes: progress.totalBytes
                 )
-                guard applied else {
-                    resetDiffProgressFile(
-                        files: &updatedFiles,
-                        assetPath: assetPath,
-                        progressHandler: progressHandler
-                    )
-                    return false
-                }
-
-                guard HashUtils.verifyHash(
-                    fileURL: URL(fileURLWithPath: destinationPath),
-                    expectedHash: expectedHash
-                ) else {
-                    resetDiffProgressFile(
-                        files: &updatedFiles,
-                        assetPath: assetPath,
-                        progressHandler: progressHandler
-                    )
-                    return false
-                }
-
-                NSLog("[BundleStorage] HotUpdaterBsdiffPatchApplied asset=\(assetPath) baseBundleId=\(patch.baseBundleId)")
-                return true
-            case .failure:
+                self.emitDiffProgress(
+                    progressHandler: progressHandler,
+                    phase: "downloading",
+                    files: updatedFiles
+                )
+            }
+        ) {
+        case .success(let patchFileURL):
+            guard HashUtils.verifyHash(
+                fileURL: patchFileURL,
+                expectedHash: patch.patchFileHash
+            ) else {
                 resetDiffProgressFile(
                     files: &updatedFiles,
                     assetPath: assetPath,
@@ -657,7 +619,36 @@ class BundleFileStorageService: BundleStorageService {
                 )
                 return false
             }
-        } catch {
+
+            let applied = hotUpdaterApplyBsdiffPatch(
+                patchPath: patchPath,
+                basePath: sourcePath,
+                outputPath: destinationPath
+            )
+            guard applied else {
+                resetDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+
+            guard HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: destinationPath),
+                expectedHash: expectedHash
+            ) else {
+                resetDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+
+            NSLog("[BundleStorage] HotUpdaterBsdiffPatchApplied asset=\(assetPath) baseBundleId=\(patch.baseBundleId)")
+            return true
+        case .failure:
             resetDiffProgressFile(
                 files: &updatedFiles,
                 assetPath: assetPath,
@@ -2060,10 +2051,8 @@ class BundleFileStorageService: BundleStorageService {
         _ = self.downloadService.downloadFile(
             from: fileUrl,
             to: tempBundleFile,
-            fileSizeHandler: { [weak self] fileSize in
+            fileSizeHandler: { fileSize in
                 // This will be called when Content-Length is received
-                guard let self = self else { return }
-
                 NSLog("[BundleStorage] File size received: \(fileSize) bytes")
 
                 // Check available disk space
@@ -2439,41 +2428,31 @@ class BundleFileStorageService: BundleStorageService {
      * Returns the file:// URL to the bundle directory without trailing slash
      */
     func getBaseURL() -> String {
-        do {
-            if let bundleId = getActiveBundleId() {
-                if case .success(let storeDir) = bundleStoreDir() {
-                    let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-                    if fileSystem.fileExists(atPath: bundleDir) {
-                        return "file://\(bundleDir)"
-                    }
+        if let bundleId = getActiveBundleId() {
+            if case .success(let storeDir) = bundleStoreDir() {
+                let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+                if fileSystem.fileExists(atPath: bundleDir) {
+                    return "file://\(bundleDir)"
                 }
             }
-
-            return ""
-        } catch {
-            NSLog("[BundleStorage] Error getting base URL: \(error)")
-            return ""
         }
+
+        return ""
     }
 
     func getBaseURL(forBundleId bundleId: String?) -> String {
-        do {
-            guard let bundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !bundleId.isEmpty,
-                  case .success(let storeDir) = bundleStoreDir() else {
-                return ""
-            }
-
-            let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-            guard fileSystem.fileExists(atPath: bundleDir) else {
-                return ""
-            }
-
-            return "file://\(bundleDir)"
-        } catch {
-            NSLog("[BundleStorage] Error getting base URL for bundle \(bundleId ?? "nil"): \(error)")
+        guard let bundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !bundleId.isEmpty,
+              case .success(let storeDir) = bundleStoreDir() else {
             return ""
         }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            return ""
+        }
+
+        return "file://\(bundleDir)"
     }
 
     func getBundleId() -> String? {
