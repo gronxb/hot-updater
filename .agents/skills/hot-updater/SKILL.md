@@ -1,6 +1,6 @@
 ---
 name: hot-updater
-description: Use when working with Hot Updater CLI setup, deployment, patch artifacts, bundle inventory/state, rollback, channels, code signing keys, database migration, diagnostics, native build artifacts, or AI-assisted React Native OTA operations.
+description: Use when working with Hot Updater CLI setup, deployment, patch artifacts, bundle inventory/state, rollback, channels, code signing keys, database migration, diagnostics, or AI-assisted React Native OTA operations.
 metadata:
   author: hot-updater
   version: "1.0.0"
@@ -11,7 +11,7 @@ metadata:
 Use this skill when a task involves Hot Updater's CLI, `hot-updater.config.ts`,
 React Native OTA deployment, patch artifacts, bundle operations, rollback,
 release-channel management, code signing keys, database migration, fingerprints,
-or native build artifacts.
+or diagnostics.
 
 ## Operating Rules
 
@@ -27,8 +27,8 @@ or native build artifacts.
 - Treat `deploy`, `patch`, `bundle enable`, `bundle disable`, `bundle update`,
   `bundle delete`, `bundle promote`, `rollback`, `channel set`, `keys
   export-public`, `keys remove`, and `db migrate` as state-changing operations.
-- Treat `keys generate`, `db generate`, and `build:android` as local
-  file/artifact writing operations.
+- Treat `keys generate` and `db generate` as local file/artifact writing
+  operations.
 - Use `--json` only with commands documented here as supporting it. For
   mutating commands, `--json` only changes the output format after the requested
   mutation has already been authorized. If a target project uses an older CLI
@@ -63,10 +63,10 @@ $hot-updater run doctor with server URL https://updates.example.com/api/check-up
 
 Translate the request into the safest CLI flow. If a state-changing request is
 missing a required channel, platform, bundle target, patch base, destination
-channel, native artifact target, or server URL that cannot be inferred from
-local context, ask one concise question before mutating anything. For deploy and
-patch channel, use the CLI default `production` unless the user names another
-channel or local context clearly indicates one.
+channel, or server URL that cannot be inferred from local context, ask one
+concise question before mutating anything. For deploy and patch channel, use the
+CLI default `production` unless the user names another channel or local context
+clearly indicates one.
 
 ### Current App Version Deploy
 
@@ -275,15 +275,3 @@ npx hot-updater db migrate [configPath]
 - `db migrate` applies the latest migration through the configured database
   plugin.
 - Pass `-y` only when the user explicitly requested the write or migration.
-
-### Native Build Artifacts
-
-```sh
-npx hot-updater build:android
-npx hot-updater build:android -o ./artifacts -s release
-npx hot-updater build:android -i
-```
-
-- `build:android` creates a new Android native artifact.
-- Important options are `-o, --output-path <path>`, `-s, --scheme <scheme>`,
-  `-i, --interactive`, and `-m, --message <message>`.
