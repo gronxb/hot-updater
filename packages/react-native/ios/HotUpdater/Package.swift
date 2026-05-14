@@ -7,6 +7,7 @@ let archiveSources = [
     "BundleMetadata.swift",
     "DecompressService.swift",
     "DecompressionStrategy.swift",
+    "DownloadService.swift",
     "FileManagerService.swift",
     "HashUtils.swift",
     "NotificationExtension.swift",

@@ -121,7 +121,7 @@ public class URLSessionDownloadService: NSObject, DownloadService {
 }
 
 extension URLSessionDownloadService: URLSessionDownloadDelegate {
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         let completion = completionHandlers[downloadTask]
         let destination = destinations[downloadTask]
 
@@ -177,7 +177,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
         }
     }
     
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         let completion = completionHandlers[task]
         defer {
             progressHandlers.removeValue(forKey: task)
@@ -194,7 +194,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
         }
     }
     
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         let progressHandler = progressHandlers[downloadTask]
 
         // Call file size handler on first callback when size is known
