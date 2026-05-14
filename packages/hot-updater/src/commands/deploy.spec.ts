@@ -252,8 +252,8 @@ describe("getRolloutCohortCountFromPercentage", () => {
 });
 
 describe("normalizePatchMaxBaseBundles", () => {
-  it("defaults to 5 when maxBaseBundles is omitted", () => {
-    expect(normalizePatchMaxBaseBundles(undefined)).toBe(5);
+  it("defaults to 3 when maxBaseBundles is omitted", () => {
+    expect(normalizePatchMaxBaseBundles(undefined)).toBe(3);
   });
 
   it("accepts positive integer values", () => {
@@ -321,8 +321,8 @@ describe("deploy rollout wiring", () => {
       database: async () => mockDatabasePlugin,
       fingerprint: {},
       patch: {
-        enabled: false,
-        maxBaseBundles: 5,
+        enabled: true,
+        maxBaseBundles: 3,
       },
       signing: { enabled: false },
       storage: async () => mockStoragePlugin,
@@ -595,8 +595,8 @@ describe("deploy rollout wiring", () => {
       database: async () => mockDatabasePlugin,
       fingerprint: {},
       patch: {
-        enabled: false,
-        maxBaseBundles: 5,
+        enabled: true,
+        maxBaseBundles: 3,
       },
       signing: { enabled: true, privateKeyPath: "/mock/private.pem" },
       storage: async () => mockStoragePlugin,

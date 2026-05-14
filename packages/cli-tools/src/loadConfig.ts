@@ -79,8 +79,8 @@ const getDefaultConfig = (): ConfigInput => {
       extraSources: [],
     },
     patch: {
-      enabled: false,
-      maxBaseBundles: 5,
+      enabled: true,
+      maxBaseBundles: 3,
     },
     console: {
       port: 1422,

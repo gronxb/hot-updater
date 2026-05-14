@@ -533,20 +533,20 @@ export type ConfigInput = {
    * up to `maxBaseBundles` recent compatible bundles. Patch generation is an
    * optimization only; archive delivery remains the fallback path.
    *
-   * @default { enabled: false, maxBaseBundles: 5 }
+   * @default { enabled: true, maxBaseBundles: 3 }
    */
   patch?: {
     /**
      * Enable automatic patch generation during deploy.
      *
-     * @default false
+     * @default true
      */
     enabled?: boolean;
     /**
      * Maximum number of compatible older bundles to prepare patches for.
      * Must be a positive integer.
      *
-     * @default 5
+     * @default 3
      */
     maxBaseBundles?: number;
   };

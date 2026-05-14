@@ -92,7 +92,7 @@ export const normalizePatchMaxBaseBundles = (
   maxBaseBundles: number | undefined,
 ): number => {
   if (maxBaseBundles === undefined) {
-    return 5;
+    return 3;
   }
 
   if (!Number.isInteger(maxBaseBundles) || maxBaseBundles < 1) {

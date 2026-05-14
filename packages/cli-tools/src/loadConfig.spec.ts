@@ -41,8 +41,8 @@ describe("loadConfig", () => {
     expect(config.releaseChannel).toBe("production");
     expect(config.updateStrategy).toBe("appVersion");
     expect(config.compressStrategy).toBe("zip");
-    expect(config.patch.enabled).toBe(false);
-    expect(config.patch.maxBaseBundles).toBe(5);
+    expect(config.patch.enabled).toBe(true);
+    expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);

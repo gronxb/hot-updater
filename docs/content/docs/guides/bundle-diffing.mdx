@@ -29,8 +29,7 @@ npx hot-updater deploy -p android
 For apps running a bundle-diffing capable runtime, that is enough for
 manifest-based diffing.
 
-If you also want binary patch optimization for Hermes bundle changes, enable it
-in `hot-updater.config.ts`. Binary patch optimization is disabled by default:
+Binary patch optimization for Hermes bundle changes is enabled by default:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -38,12 +37,14 @@ import { defineConfig } from "hot-updater";
 export default defineConfig({
   patch: {
     enabled: true,
-    maxBaseBundles: 5,
+    maxBaseBundles: 3,
   },
 });
 ```
 
-This is optional.
+This is the default behavior. Add the `patch` block only when you want to
+override it, for example to disable patch generation or change the number of
+base bundles.
 
 `maxBaseBundles` controls how many previous compatible OTA bundles are used as
 patch bases when deploying a new OTA update.
@@ -68,7 +69,7 @@ Hermes bundle file instead of a patch.
 
 Notes:
 
-- Defaults to `5`.
+- Defaults to `3`.
 - Uses recent compatible bundles from the same channel and platform.
 - Higher values increase the range of OTA versions covered by patches, but can
   make deployment time grow exponentially because more patch artifacts must be
