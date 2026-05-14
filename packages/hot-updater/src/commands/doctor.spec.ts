@@ -476,6 +476,13 @@ describe("doctor", () => {
           serverVersion: "0.29.8",
           requiredVersion: "0.30.0",
           needsUpdate: true,
+          remediation: {
+            commands: [
+              "hot-updater init",
+              "hot-updater db migrate",
+              "hot-updater db generate",
+            ],
+          },
         },
       },
     });
@@ -507,6 +514,13 @@ describe("doctor", () => {
           requiredVersion: "0.30.0",
           needsUpdate: true,
           updateReason: "Version endpoint not found",
+          remediation: {
+            commands: [
+              "hot-updater init",
+              "hot-updater db migrate",
+              "hot-updater db generate",
+            ],
+          },
         },
       },
     });

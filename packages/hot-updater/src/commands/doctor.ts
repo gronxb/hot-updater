@@ -23,6 +23,7 @@ interface InfrastructureStatus {
   needsUpdate?: boolean;
   updateReason?: string;
   error?: string;
+  remediation?: InfrastructureRemediation;
 }
 
 interface DoctorDetails {
@@ -60,6 +61,16 @@ interface InfrastructureUpdateTarget {
   version: string;
   note: string;
 }
+
+interface InfrastructureRemediation {
+  commands: string[];
+}
+
+const INFRASTRUCTURE_RECOVERY_COMMANDS = [
+  "hot-updater init",
+  "hot-updater db migrate",
+  "hot-updater db generate",
+] as const;
 
 // Only versions that require deployed server/infrastructure changes belong here.
 // Regular package releases must not be added unless existing infrastructure needs
@@ -185,6 +196,10 @@ export function resolveVersionEndpoint(serverBaseUrl: string): string {
   url.pathname = `${pathname}/version`;
   return url.toString();
 }
+
+const createInfrastructureRemediation = (): InfrastructureRemediation => ({
+  commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
+});
 
 async function checkInfrastructureStatus({
   serverBaseUrl,
@@ -332,6 +347,13 @@ export async function doctor(
         fetchImpl,
         requiredVersion: getRequiredInfrastructureVersion(hotUpdaterVersion),
       });
+
+      if (
+        details.infrastructure.error !== undefined ||
+        details.infrastructure.needsUpdate === true
+      ) {
+        details.infrastructure.remediation = createInfrastructureRemediation();
+      }
     }
 
     // Add version mismatches if any
@@ -457,6 +479,22 @@ export const handleDoctor = async ({
       p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
     } else {
       p.log.success("Infrastructure is up to date.");
+    }
+
+    if (infrastructure.remediation) {
+      p.log.message(
+        ui.block("Recovery", [
+          ui.kv("Managed", ui.command("hot-updater init")),
+          ui.kv(
+            "Self-host",
+            ui.line([
+              "redeploy server, then",
+              ui.command("hot-updater db migrate"),
+            ]),
+          ),
+          ui.kv("Review", ui.command("hot-updater db generate")),
+        ]),
+      );
     }
   }
 
