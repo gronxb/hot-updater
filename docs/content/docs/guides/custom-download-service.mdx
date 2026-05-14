@@ -1,0 +1,99 @@
+---
+title: Custom Download Service
+description: Replace the built-in download client with your own networking stack
+---
+
+# Custom Download Service
+
+By default, Hot Updater uses `URLSessionDownloadService` on iOS and `OkHttpDownloadService` on Android to download OTA bundles. You can replace these with your own implementation to route downloads through a custom networking stack.
+
+## Use Cases
+
+- **TLS Certificate Pinning** — enforce that downloads only connect to trusted servers
+- **Corporate Proxy / VPN** — route traffic through enterprise network infrastructure (e.g., Zscaler)
+- **Custom Interceptors** — add logging, metrics, retry policies, or authentication headers
+- **Background Download Management** — integrate with your app's existing download manager
+
+## iOS (Swift)
+
+### 1. Implement the `DownloadService` protocol
+
+```swift
+import HotUpdater
+
+class PinnedDownloadService: NSObject, DownloadService {
+    private let session: URLSession
+
+    override init() {
+        let config = URLSessionConfiguration.default
+        super.init()
+        // Use your own delegate with certificate pinning
+        session = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }
+
+    public func downloadFile(
+        from url: URL,
+        to destination: String,
+        fileSizeHandler: ((Int64) -> Void)?,
+        progressHandler: @escaping (Double) -> Void,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) -> URLSessionDownloadTask? {
+        let task = session.downloadTask(with: url)
+        // ... handle delegates, progress, completion
+        task.resume()
+        return task
+    }
+}
+```
+
+### 2. Set the factory before HotUpdater initializes
+
+```swift
+// In AppDelegate.swift — application(_:didFinishLaunchingWithOptions:)
+HotUpdaterImpl.downloadServiceFactory = {
+    PinnedDownloadService()
+}
+```
+
+When the factory is `nil` (default), the built-in `URLSessionDownloadService` is used.
+
+## Android (Kotlin)
+
+### 1. Implement the `DownloadService` interface
+
+```kotlin
+import com.hotupdater.DownloadService
+import com.hotupdater.DownloadResult
+
+class PinnedDownloadService : DownloadService {
+    private val client = OkHttpClient.Builder()
+        .sslSocketFactory(yourPinnedSSLSocketFactory, yourTrustManager)
+        .build()
+
+    override suspend fun downloadFile(
+        fileUrl: URL,
+        destination: File,
+        fileSizeCallback: ((Long) -> Unit)?,
+        progressCallback: (Double) -> Unit,
+    ): DownloadResult {
+        // ... download using your pinned client
+        return DownloadResult.Success(destination)
+    }
+}
+```
+
+### 2. Set the factory before HotUpdater initializes
+
+```kotlin
+// In Application.onCreate()
+HotUpdaterImpl.downloadServiceFactory = { PinnedDownloadService() }
+```
+
+When the factory is `null` (default), the built-in `OkHttpDownloadService` is used.
+
+## Important Notes
+
+- Set the factory **before** `HotUpdater.init()` is called (typically in your app's entry point)
+- The factory is called once per `HotUpdaterImpl` initialization
+- Your implementation receives the same callbacks (progress, file size, completion) as the default service
+- The return type `URLSessionDownloadTask?` on iOS can return `nil` for non-URLSession implementations

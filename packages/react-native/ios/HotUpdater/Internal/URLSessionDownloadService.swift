@@ -3,21 +3,8 @@ import Foundation
 import UIKit
 #endif
 
-protocol DownloadService {
-    /**
-     * Downloads a file from a URL.
-     * @param url The URL to download from
-     * @param destination The local path to save to
-     * @param fileSizeHandler Optional callback called when file size is known
-     * @param progressHandler Callback for download progress updates
-     * @param completion Callback with downloaded file URL or error
-     * @return The download task (optional)
-     */
-    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask?
-}
 
-
-enum DownloadError: Error {
+public enum DownloadError: Error {
     case incompleteDownload(expected: Int64, actual: Int64)
     case invalidContentLength
 }
@@ -30,7 +17,7 @@ struct TaskState: Codable {
     let startedAt: TimeInterval
 }
 
-class URLSessionDownloadService: NSObject, DownloadService {
+public class URLSessionDownloadService: NSObject, DownloadService {
     private var session: URLSession!
     private var backgroundSession: URLSession!
     private var progressHandlers: [URLSessionTask: (Double) -> Void] = [:]
@@ -91,7 +78,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
         }
     }
 
-    func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
+    public func downloadFile(from url: URL, to destination: String, fileSizeHandler: ((Int64) -> Void)?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<URL, Error>) -> Void) -> URLSessionDownloadTask? {
         // Determine if we should use background session
         #if !os(macOS)
         let appState = UIApplication.shared.applicationState

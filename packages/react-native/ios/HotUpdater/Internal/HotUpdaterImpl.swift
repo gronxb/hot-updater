@@ -39,6 +39,27 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
     private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
+    // MARK: - Custom Download Service
+
+    /**
+     * Optional factory for providing a custom DownloadService implementation.
+     *
+     * Set this before HotUpdater initializes (e.g., in `application(_:didFinishLaunchingWithOptions:)`)
+     * to route OTA bundle downloads through your own networking stack.
+     *
+     * When set, the factory is called instead of creating the default `URLSessionDownloadService`.
+     * When nil (default), the built-in `URLSessionDownloadService` is used.
+     *
+     * Example:
+     * ```swift
+     * // In AppDelegate:
+     * HotUpdaterImpl.downloadServiceFactory = {
+     *     MyPinnedDownloadService()
+     * }
+     * ```
+     */
+    public static var downloadServiceFactory: (() -> DownloadService)?
+
     // MARK: - Initialization
 
     /**
@@ -48,7 +69,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         let fileSystem = FileManagerService()
         let isolationKey = HotUpdaterImpl.getIsolationKey()
         let preferences = VersionedPreferencesService()
-        let downloadService = URLSessionDownloadService()
+        let downloadService = Self.downloadServiceFactory?() ?? URLSessionDownloadService()
         let decompressService = DecompressService()
 
         let bundleStorage = BundleFileStorageService(
