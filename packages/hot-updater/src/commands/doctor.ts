@@ -486,13 +486,14 @@ export const handleDoctor = async ({
         ui.block("Recovery", [
           ui.kv("Managed", ui.command("hot-updater init")),
           ui.kv(
-            "Self-host",
+            "@hot-updater/server (self-hosted)",
             ui.line([
-              "redeploy server, then",
+              ui.command("hot-updater db generate"),
+              "or",
               ui.command("hot-updater db migrate"),
+              "then redeploy server",
             ]),
           ),
-          ui.kv("Review", ui.command("hot-updater db generate")),
         ]),
       );
     }
