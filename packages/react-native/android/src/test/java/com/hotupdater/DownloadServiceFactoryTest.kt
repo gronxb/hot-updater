@@ -9,7 +9,6 @@ import java.io.File
 import java.net.URL
 
 class DownloadServiceFactoryTest {
-
     @After
     fun tearDown() {
         HotUpdaterImpl.downloadServiceFactory = null
@@ -27,9 +26,7 @@ class DownloadServiceFactoryTest {
                     destination: File,
                     fileSizeCallback: ((Long) -> Unit)?,
                     progressCallback: (Double) -> Unit,
-                ): DownloadResult {
-                    return DownloadResult.Success(destination)
-                }
+                ): DownloadResult = DownloadResult.Success(destination)
             }
         }
 
