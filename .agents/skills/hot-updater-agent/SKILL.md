@@ -42,14 +42,16 @@ clearly infrastructure-only, or there is no meaningful repo-side fix left.
 
 The user may mention one of these E2E profiles:
 
-- `standalone`
+- `standalone-s3`
+- `standalone-drizzle`
+- `standalone-prisma`
 - `supabase`
 - `cloudflare`
 - `firebase`
 - `aws`
 
 Use the mentioned profile as `-profile <profile>`. If the user does not mention
-one of these profiles, default to `standalone`.
+one of these profiles, explicitly use `standalone-s3` as the default.
 
 ## Required CLI Surface
 
@@ -96,15 +98,15 @@ Default full-platform dashboard run for PR `911`:
 ```bash
 hot-updater-agent verify \
   -platform full \
-  -profile standalone \
+  -profile standalone-s3 \
   -env-target examples/v0.85.0/.env.hotupdater
 ```
 
 Run one platform only:
 
 ```bash
-hot-updater-agent verify -platform ios -profile standalone -env-target examples/v0.85.0/.env.hotupdater
-hot-updater-agent verify -platform android -profile standalone -env-target examples/v0.85.0/.env.hotupdater
+hot-updater-agent verify -platform ios -profile standalone-s3 -env-target examples/v0.85.0/.env.hotupdater
+hot-updater-agent verify -platform android -profile standalone-s3 -env-target examples/v0.85.0/.env.hotupdater
 ```
 
 Use `verify` for the normal AI loop. It queues E2E, prints the task id, waits on
@@ -173,7 +175,7 @@ Use this pattern when asked to fix E2E through the dashboard:
 
 ```bash
 hot-updater-agent status -limit 3
-hot-updater-agent verify -platform full -profile standalone -env-target examples/v0.85.0/.env.hotupdater -tail 240
+hot-updater-agent verify -platform full -profile standalone-s3 -env-target examples/v0.85.0/.env.hotupdater -tail 240
 ```
 
 Then patch the repo, run the smallest relevant local check, and repeat `verify`
