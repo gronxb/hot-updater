@@ -29,39 +29,6 @@ class IncompleteDownloadException(
 ) : IOException("Download incomplete: received $actualSize bytes, expected $expectedSize bytes")
 
 /**
- * Result wrapper for download operations
- */
-sealed class DownloadResult {
-    data class Success(
-        val file: File,
-    ) : DownloadResult()
-
-    data class Error(
-        val exception: Exception,
-    ) : DownloadResult()
-}
-
-/**
- * Interface for download operations
- */
-interface DownloadService {
-    /**
-     * Downloads a file from a URL
-     * @param fileUrl The URL to download from
-     * @param destination The local file to save to
-     * @param fileSizeCallback Optional callback called when file size is known
-     * @param progressCallback Callback for download progress updates
-     * @return Result indicating success or failure
-     */
-    suspend fun downloadFile(
-        fileUrl: URL,
-        destination: File,
-        fileSizeCallback: ((Long) -> Unit)? = null,
-        progressCallback: (Double) -> Unit,
-    ): DownloadResult
-}
-
-/**
  * Progress tracking wrapper for OkHttp ResponseBody
  */
 private class ProgressResponseBody(

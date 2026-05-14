@@ -70,13 +70,31 @@ class HotUpdaterImpl {
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
         /**
+         * Optional factory for providing a custom DownloadService implementation.
+         *
+         * Set this before HotUpdater initializes (e.g., in Application.onCreate())
+         * to route OTA bundle downloads through your own networking stack.
+         *
+         * When set, the factory is called instead of creating the default OkHttpDownloadService.
+         * When null (default), the built-in OkHttpDownloadService is used.
+         *
+         * Example:
+         * ```kotlin
+         * // In Application.onCreate():
+         * HotUpdaterImpl.downloadServiceFactory = { PinnedDownloadService() }
+         * ```
+         */
+        @JvmStatic
+        var downloadServiceFactory: (() -> DownloadService)? = null
+
+        /**
          * Create BundleStorageService with all dependencies
          */
         private fun createBundleStorage(context: Context): BundleStorageService {
             val appContext = context.applicationContext
             val fileSystem = FileManagerService(appContext)
             val preferences = createPreferences(appContext)
-            val downloadService = OkHttpDownloadService()
+            val downloadService = downloadServiceFactory?.invoke() ?: OkHttpDownloadService()
             val decompressService = DecompressService()
             val isolationKey = getIsolationKey(appContext)
 
