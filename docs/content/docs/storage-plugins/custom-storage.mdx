@@ -12,129 +12,228 @@ npm install @hot-updater/plugin-core --save-dev
 
 ## Overview
 
-Build a custom storage plugin to integrate any storage provider.
+Build a custom storage plugin when the built-in providers do not match your
+storage backend.
 
-Most apps do not need this guide. Use it when you are writing or maintaining a
-storage plugin.
+The goal is small: teach Hot Updater how to save bundle artifacts, read small
+runtime metadata, and turn stored bundles into client-downloadable URLs. A
+storage plugin should not know about database rows, rollout rules, or update
+selection.
 
-Storage plugins are split into explicit environment profiles so plugin authors
-can implement the APIs that are safe for each runtime.
+Storage plugins are split into environment profiles. The profile name describes
+where Hot Updater executes the storage code:
 
-- `node`: used by the CLI, deploy command, and console. It can read and write local files.
-- `runtime`: used by update-check servers and edge runtimes. It must resolve HTTP(S) bundle URLs and read small text artifacts such as `manifest.json` directly from storage.
+| Profile   | Executed by                                                                                                           | Must implement                                                |
+| --------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `node`    | `hot-updater deploy`, `hot-updater bundle promote --action copy`, bundle diff generation, and console server actions  | Local file upload, local file download, and delete            |
+| `runtime` | `@hot-updater/server` when `createHotUpdater` handles update checks in a server, serverless function, or edge runtime | Client HTTP(S) bundle URLs and direct text reads for metadata |
 
-Use the narrow helper that matches your plugin:
+Use the helper that matches where the plugin will run:
 
-| Helper | Use when |
-| --- | --- |
-| `createNodeStoragePlugin` | The plugin is only used by deploy-time tooling. |
-| `createRuntimeStoragePlugin` | The plugin is only used by an update-check runtime. |
-| `createFullStoragePlugin` | The same provider implementation supports both deploy and runtime usage. |
-| `createStoragePlugin` | You need a custom profile combination. Prefer the helpers above for public plugins. |
+| Helper                         | Use when                                                                                                                       |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `createNodeStoragePlugin`      | The plugin is configured in `hot-updater.config.ts` and runs from CLI/Node workflows such as `hot-updater deploy`.             |
+| `createRuntimeStoragePlugin`   | The plugin is passed to `createHotUpdater({ storages })` from `@hot-updater/server` for update-check runtime reads.            |
+| `createUniversalStoragePlugin` | The same plugin should work in both places: `hot-updater.config.ts` for CLI commands and `createHotUpdater` for update checks. |
 
-## Creating a Storage Plugin
+Most providers should use `createUniversalStoragePlugin`. Split providers, such
+as Cloudflare R2, can expose one `node` plugin for Wrangler-based upload and
+download, and a separate `runtime` plugin for Worker bindings.
 
-Use `createFullStoragePlugin` when one plugin can be used by both `hot-updater deploy` and `createHotUpdater`:
+## What Universal Means
+
+A universal storage plugin supports both sides of Hot Updater:
+
+- `node`: writes and materializes files in deploy-time tooling.
+- `runtime`: resolves URLs and reads small metadata in update-check code.
+
+Universal does not mean "works everywhere with the same credentials." It means
+the plugin can provide both profile contracts from the configuration it
+receives. If your provider uses different APIs in Node and edge runtimes, keep
+them as separate `node` and `runtime` plugins instead.
+
+## Implementation Checklist
+
+Before writing code, decide these values:
+
+| Item                | Example                                      | Notes                                                                    |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
+| `name`              | `customStorage`                              | Used in diagnostics. Keep it stable and human-readable.                  |
+| `supportedProtocol` | `custom-s3`                                  | Must match every `storageUri` the plugin returns.                        |
+| Storage URI shape   | `custom-s3://bucket/releases/bundle.zip`     | Include enough information to locate the object later.                   |
+| Upload key policy   | `basePath / bundleId / filename`             | Use `createStorageKeyBuilder` unless the provider needs custom behavior. |
+| Runtime URL policy  | Signed URL, public CDN URL, or worker route  | `runtime.getDownloadUrl` must return HTTP(S).                            |
+| Text read policy    | SDK call, binding read, or authenticated API | `runtime.readText` is for small metadata such as `manifest.json`.        |
+
+## Universal Storage Plugin
+
+Use `createUniversalStoragePlugin` when one plugin can be used in both
+configuration surfaces:
+
+- `storage: customStorage(...)` in `hot-updater.config.ts`, where CLI commands
+  such as `hot-updater deploy` need the `node` profile.
+- `storages: [customStorage(...)]` in `createHotUpdater` from
+  `@hot-updater/server`, where update checks need the `runtime` profile.
 
 ```typescript
-import { createFullStoragePlugin } from "@hot-updater/plugin-core";
+import { createUniversalStoragePlugin } from "@hot-updater/plugin-core";
 
-export const myStorage = createFullStoragePlugin<MyConfig>({
+export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
   name: "myStorage",
   supportedProtocol: "custom",
   factory: (config) => ({
     node: {
-      upload: async (key, filePath) => ({ storageUri: "..." }),
-      delete: async (storageUri) => {
-        /* ... */
+      async upload(key, filePath) {
+        return { storageUri: "custom://bucket/path/bundle.zip" };
       },
-      downloadFile: async (storageUri, filePath) => {
-        /* ... */
+      async delete(storageUri) {
+        // Delete the object referenced by storageUri.
+      },
+      async downloadFile(storageUri, filePath) {
+        // Download the object referenced by storageUri into filePath.
       },
     },
     runtime: {
-      getDownloadUrl: async (storageUri, context) => ({ fileUrl: "..." }),
-      readText: async (storageUri, context) => "{...}",
+      async getDownloadUrl(storageUri, context) {
+        return { fileUrl: "https://example.com/path/bundle.zip" };
+      },
+      async readText(storageUri, context) {
+        return "{}";
+      },
     },
   }),
 });
 ```
 
-### Factory Function Return Type
+## Profile Contracts
 
-Your factory function returns one or more profiles.
+Each method should validate that the incoming `storageUri` belongs to the
+expected provider and bucket before touching storage. That small guard prevents
+accidentally deleting or reading from the wrong namespace when multiple storage
+plugins are configured.
+
+### `node.upload`
+
+Uploads a local file and returns the storage URI that Hot Updater saves in the
+database.
 
 ```typescript
-{
-  node: {
-    // Uploads a local file and returns the storage URI saved in the database.
-    upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
-    // Deletes a storage object or storage prefix.
-    delete: (storageUri: string) => Promise<void>;
-    // Downloads a storage object to a local file path.
-    downloadFile: (storageUri: string, filePath: string) => Promise<void>;
-  };
-  runtime: {
-    // Generates an HTTP(S) URL that clients can download.
-    getDownloadUrl: (
-      storageUri: string,
-      context?: HotUpdaterContext
-    ) => Promise<{ fileUrl: string }>;
-    // Reads a small text artifact directly from the provider.
-    readText: (
-      storageUri: string,
-      context?: HotUpdaterContext
-    ) => Promise<string | null>;
-  };
-}
+upload: (key: string, filePath: string) => Promise<{ storageUri: string }>;
 ```
 
-`runtime.readText` is required for runtime storage plugins so update-check
-servers can read `manifest.json` and other small metadata directly from storage.
-Implement it with the provider SDK, platform binding, or authenticated runtime
-API. Do not generate a public download URL and fetch that URL again.
+`key` is the logical upload directory, usually the bundle ID or a child path
+under the bundle ID. Preserve the uploaded filename unless your provider has a
+strong reason not to.
 
-## Implementation Example
+Return a provider URI, not a public URL:
 
-Here's a complete custom storage plugin implementation:
+```typescript
+return {
+  storageUri: `custom-s3://${bucketName}/${storageKey}`,
+};
+```
+
+### `node.downloadFile`
+
+Downloads a storage object into a local path.
+
+```typescript
+downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+```
+
+Use this for provider-native downloads, not signed URLs. This is what enables
+copy promotion and bundle diffing for providers that cannot produce a
+`fetch()`-able URL from Node credentials.
+
+Create the destination directory before writing the file:
+
+```typescript
+await fs.mkdir(path.dirname(filePath), { recursive: true });
+```
+
+### `node.delete`
+
+Deletes the storage object referenced by `storageUri`.
+
+```typescript
+delete: (storageUri: string) => Promise<void>;
+```
+
+Validate the bucket or namespace before deleting. If your provider supports
+folder-like prefixes, keep the delete behavior explicit and predictable.
+
+### `runtime.getDownloadUrl`
+
+Returns an HTTP(S) URL that an app can download.
+
+```typescript
+getDownloadUrl: (storageUri: string, context?: HotUpdaterContext) =>
+  Promise<{ fileUrl: string }>;
+```
+
+The returned URL must be usable by the client. Runtime code rejects local file
+paths and non-HTTP(S) URLs.
+
+### `runtime.readText`
+
+Reads small control-plane artifacts directly from storage.
+
+```typescript
+readText: (storageUri: string, context?: HotUpdaterContext) =>
+  Promise<string | null>;
+```
+
+Use the provider SDK, runtime binding, or authenticated API. Do not generate a
+public download URL and fetch that URL again. Hot Updater uses this path for
+metadata such as `manifest.json`.
+
+Return `null` when the object does not exist. Throw for permission errors,
+invalid storage URIs, provider outages, and malformed provider responses.
+
+## Complete Example
+
+This example implements a universal S3-compatible storage plugin. The same
+shape works for other object storage providers if you replace the SDK calls.
 
 ```typescript title="customStorage.ts"
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   S3Client,
+  type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
-  createFullStoragePlugin,
+  createStorageKeyBuilder,
+  createUniversalStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
-import fs from "fs/promises";
-import path from "path";
 
-export interface CustomStorageConfig {
-  region: string;
-  credentials: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
+export interface CustomStorageConfig extends S3ClientConfig {
   bucketName: string;
+  basePath?: string;
 }
 
-export const customStorage = createFullStoragePlugin<CustomStorageConfig>({
+export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
   name: "customStorage",
-  supportedProtocol: "s3",
+  supportedProtocol: "custom-s3",
   factory: (config) => {
-    const { bucketName, ...s3Config } = config;
-    const client = new S3Client(s3Config);
+    const { bucketName, basePath, ...clientConfig } = config;
+    const client = new S3Client(clientConfig);
+    const getStorageKey = createStorageKeyBuilder(basePath);
 
-    const assertStorageUri = (storageUri: string) => {
-      const parsed = parseStorageUri(storageUri, "s3");
+    const parseAndValidateStorageUri = (storageUri: string) => {
+      const parsed = parseStorageUri(storageUri, "custom-s3");
 
       if (parsed.bucket !== bucketName) {
-        throw new Error(`Bucket mismatch: expected "${bucketName}"`);
+        throw new Error(
+          `Bucket name mismatch: expected "${bucketName}", but found "${parsed.bucket}".`,
+        );
       }
 
       return parsed;
@@ -143,43 +242,43 @@ export const customStorage = createFullStoragePlugin<CustomStorageConfig>({
     return {
       node: {
         async upload(key, filePath) {
-          const Body = await fs.readFile(filePath);
-          const ContentType = getContentType(filePath);
           const filename = path.basename(filePath);
-          const Key = `${key}/${filename}`;
-
+          const storageKey = getStorageKey(key, filename);
           const upload = new Upload({
             client,
             params: {
               Bucket: bucketName,
-              Key,
-              Body,
-              ContentType,
+              Key: storageKey,
+              Body: await fs.readFile(filePath),
+              ContentType: getContentType(filePath),
             },
           });
 
           await upload.done();
 
           return {
-            storageUri: `s3://${bucketName}/${Key}`,
+            storageUri: `custom-s3://${bucketName}/${storageKey}`,
           };
         },
 
         async delete(storageUri) {
-          const { key } = assertStorageUri(storageUri);
+          const { key } = parseAndValidateStorageUri(storageUri);
 
-          const command = new DeleteObjectCommand({
-            Bucket: bucketName,
-            Key: key,
-          });
-
-          await client.send(command);
+          await client.send(
+            new DeleteObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+            }),
+          );
         },
 
         async downloadFile(storageUri, filePath) {
-          const { key } = assertStorageUri(storageUri);
+          const { key } = parseAndValidateStorageUri(storageUri);
           const response = await client.send(
-            new GetObjectCommand({ Bucket: bucketName, Key: key }),
+            new GetObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+            }),
           );
           const bytes = await response.Body?.transformToByteArray();
 
@@ -187,28 +286,33 @@ export const customStorage = createFullStoragePlugin<CustomStorageConfig>({
             throw new Error("Object body is empty");
           }
 
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
           await fs.writeFile(filePath, bytes);
         },
       },
+
       runtime: {
         async getDownloadUrl(storageUri) {
-          const { key } = assertStorageUri(storageUri);
-
+          const { key } = parseAndValidateStorageUri(storageUri);
           const command = new GetObjectCommand({
             Bucket: bucketName,
             Key: key,
           });
-          const signedUrl = await getSignedUrl(client, command, {
-            expiresIn: 3600,
-          });
 
-          return { fileUrl: signedUrl };
+          return {
+            fileUrl: await getSignedUrl(client, command, {
+              expiresIn: 3600,
+            }),
+          };
         },
 
         async readText(storageUri) {
-          const { key } = assertStorageUri(storageUri);
+          const { key } = parseAndValidateStorageUri(storageUri);
           const response = await client.send(
-            new GetObjectCommand({ Bucket: bucketName, Key: key }),
+            new GetObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+            }),
           );
 
           return response.Body?.transformToString() ?? null;
@@ -219,38 +323,100 @@ export const customStorage = createFullStoragePlugin<CustomStorageConfig>({
 });
 ```
 
+## Node-Only Plugin
+
+Use `createNodeStoragePlugin` when the plugin only needs to run from CLI/Node
+workflows. This is the profile used by `hot-updater deploy`, copy promotion,
+bundle diff generation, and console server actions that upload, download, or
+delete local files. The factory returns the `node` profile directly.
+
+```typescript
+import { createNodeStoragePlugin } from "@hot-updater/plugin-core";
+
+export const nodeOnlyStorage = createNodeStoragePlugin<NodeOnlyConfig>({
+  name: "nodeOnlyStorage",
+  supportedProtocol: "node-only",
+  factory: (config) => ({
+    async upload(key, filePath) {
+      return { storageUri: "node-only://bucket/path/bundle.zip" };
+    },
+    async delete(storageUri) {},
+    async downloadFile(storageUri, filePath) {},
+  }),
+});
+```
+
+## Runtime-Only Plugin
+
+Use `createRuntimeStoragePlugin` when the plugin only needs to run inside
+`@hot-updater/server`. This is the profile used by
+`createHotUpdater({ storages })` while resolving update-check responses. The
+factory returns the `runtime` profile directly.
+
+```typescript
+import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+
+export const runtimeOnlyStorage = createRuntimeStoragePlugin<
+  RuntimeConfig,
+  RuntimeContext
+>({
+  name: "runtimeOnlyStorage",
+  supportedProtocol: "runtime-only",
+  factory: (config) => ({
+    async getDownloadUrl(storageUri, context) {
+      return { fileUrl: "https://example.com/path/bundle.zip" };
+    },
+    async readText(storageUri, context) {
+      return "{}";
+    },
+  }),
+});
+```
+
 ## Helper Utilities
 
-The `@hot-updater/plugin-core` package provides helper functions:
+The `@hot-updater/plugin-core` package provides storage helpers.
 
-### parseStorageUri
+### `createStorageKeyBuilder`
 
-Parses storage URIs into bucket and key components:
+Builds storage keys with an optional base path and a filename.
+
+```typescript
+const getStorageKey = createStorageKeyBuilder("releases");
+
+getStorageKey("bundle-id", "bundle.zip");
+// "releases/bundle-id/bundle.zip"
+```
+
+### `parseStorageUri`
+
+Parses storage URIs into bucket and key components.
 
 ```typescript
 const { bucket, key } = parseStorageUri(
-  "s3://my-bucket/path/file.bundle",
-  "s3"
+  "custom-s3://my-bucket/releases/bundle.zip",
+  "custom-s3",
 );
 // bucket: "my-bucket"
-// key: "path/file.bundle"
+// key: "releases/bundle.zip"
 ```
 
-### getContentType
+### `getContentType`
 
-Returns MIME type based on file extension:
+Returns a MIME type based on a file extension.
 
 ```typescript
 const contentType = getContentType("bundle.js");
-// Result: "application/javascript"
+// "application/javascript"
 ```
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`:
+Use your custom plugin in `hot-updater.config.ts`.
 
 ```typescript
 import { defineConfig } from "@hot-updater/core";
+
 import { customStorage } from "./customStorage";
 
 export default defineConfig({
@@ -261,17 +427,24 @@ export default defineConfig({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
     bucketName: process.env.BUCKET_NAME!,
+    basePath: "releases",
   }),
-  // ... other config
 });
 ```
 
+The configured plugin must implement the `node` profile because `hot-updater`
+CLI commands upload, download, and delete local files.
+
 ## Custom Server Usage
 
-Use your plugin with `createHotUpdater` for self-hosted servers. The plugin passed to `storages` must implement the `runtime` profile.
+Use the same universal plugin with `createHotUpdater` from
+`@hot-updater/server`. The plugin passed to `storages` must implement the
+`runtime` profile because update checks need download URLs and direct metadata
+reads.
 
 ```typescript
 import { createHotUpdater } from "@hot-updater/server/runtime";
+
 import { customStorage } from "./customStorage";
 
 const hotUpdater = createHotUpdater({
@@ -283,27 +456,44 @@ const hotUpdater = createHotUpdater({
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
       },
       bucketName: process.env.BUCKET_NAME!,
+      basePath: "releases",
     }),
   ],
-  // ... other options
 });
 ```
 
-### Security
+## Storage URI Format
 
-- Never hardcode credentials in plugin code
-- Use environment variables for sensitive data
-- Validate storage URIs before processing
-- Implement proper authentication headers
-- Keep `runtime.getDownloadUrl` limited to HTTP(S) client downloads
-- Keep `runtime.readText` on direct provider reads for manifest metadata
-
-### Storage URI Format
-
-Use a consistent URI format: `protocol://bucket/path/to/file`
+Use a stable URI format:
 
 ```typescript
-return {
-  storageUri: `${supportedProtocol}://${bucketName}/${storageKey}`,
-};
+`${supportedProtocol}://${bucketName}/${storageKey}`;
 ```
+
+The protocol must match `supportedProtocol`. Always validate the bucket or
+namespace before reading, writing, or deleting objects.
+
+Avoid storing public URLs as `storageUri` values for provider-backed objects.
+The database should keep provider URIs, while `runtime.getDownloadUrl` should
+decide how to expose a temporary or public HTTP(S) URL to clients.
+
+## Testing
+
+At minimum, cover these cases with unit tests:
+
+- `upload` returns a `storageUri` using the configured protocol and bucket.
+- `downloadFile` creates the destination file.
+- `delete` rejects storage URIs from a different bucket or namespace.
+- `getDownloadUrl` returns an HTTP(S) URL.
+- `readText` returns text for an existing metadata object and `null` for a
+  missing one.
+- The plugin factory is not initialized until a profile method is accessed.
+
+## Security
+
+- Never hardcode credentials in plugin code.
+- Use environment variables or platform secret stores for sensitive values.
+- Validate `storageUri` before reading, downloading, or deleting.
+- Return only HTTP(S) URLs from `runtime.getDownloadUrl`.
+- Keep `runtime.readText` on direct provider reads for metadata.
+- Prefer short-lived signed URLs when storage objects are private.

@@ -12,7 +12,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
-  createFullStoragePlugin,
+  createUniversalStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -27,7 +27,7 @@ export interface S3StorageConfig extends S3ClientConfig {
   basePath?: string;
 }
 
-export const s3Storage = createFullStoragePlugin<S3StorageConfig>({
+export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
   name: "s3Storage",
   supportedProtocol: "s3",
   factory: (config) => {

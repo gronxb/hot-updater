@@ -427,7 +427,7 @@ export interface RuntimeStoragePlugin<
   };
 }
 
-export interface FullStoragePlugin<
+export interface UniversalStoragePlugin<
   TContext = unknown,
 > extends StoragePlugin<TContext> {
   profiles: {

@@ -3,7 +3,7 @@ import path from "path";
 
 import {
   createStorageKeyBuilder,
-  createFullStoragePlugin,
+  createUniversalStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -21,142 +21,143 @@ export interface SupabaseStorageConfig {
   basePath?: string;
 }
 
-export const supabaseStorage = createFullStoragePlugin<SupabaseStorageConfig>({
-  name: "supabaseStorage",
-  supportedProtocol: "supabase-storage",
-  factory: (config) => {
-    const supabase = createClient<Database>(
-      config.supabaseUrl,
-      config.supabaseAnonKey,
-    );
+export const supabaseStorage =
+  createUniversalStoragePlugin<SupabaseStorageConfig>({
+    name: "supabaseStorage",
+    supportedProtocol: "supabase-storage",
+    factory: (config) => {
+      const supabase = createClient<Database>(
+        config.supabaseUrl,
+        config.supabaseAnonKey,
+      );
 
-    const bucket = supabase.storage.from(config.bucketName);
-    const getStorageKey = createStorageKeyBuilder(config.basePath);
+      const bucket = supabase.storage.from(config.bucketName);
+      const getStorageKey = createStorageKeyBuilder(config.basePath);
 
-    return {
-      node: {
-        async delete(storageUri) {
-          const { key, bucket: bucketName } = parseStorageUri(
-            storageUri,
-            "supabase-storage",
-          );
-          if (bucketName !== config.bucketName) {
-            throw new Error(
-              `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+      return {
+        node: {
+          async delete(storageUri) {
+            const { key, bucket: bucketName } = parseStorageUri(
+              storageUri,
+              "supabase-storage",
             );
-          }
-
-          const { error } = await bucket.remove([key]);
-
-          if (error) {
-            if (error.message?.includes("not found")) {
-              throw new Error(`Bundle not found`);
+            if (bucketName !== config.bucketName) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+              );
             }
-            throw new Error(`Failed to delete bundle: ${error.message}`);
-          }
-        },
 
-        async upload(key, filePath) {
-          const Body = await fs.readFile(filePath);
-          const ContentType = getContentType(filePath);
+            const { error } = await bucket.remove([key]);
 
-          const filename = path.basename(filePath);
+            if (error) {
+              if (error.message?.includes("not found")) {
+                throw new Error(`Bundle not found`);
+              }
+              throw new Error(`Failed to delete bundle: ${error.message}`);
+            }
+          },
 
-          const Key = getStorageKey(key, filename);
+          async upload(key, filePath) {
+            const Body = await fs.readFile(filePath);
+            const ContentType = getContentType(filePath);
 
-          const upload = await bucket.upload(Key, Body, {
-            contentType: ContentType,
-            cacheControl: "max-age=31536000",
-            headers: {},
-          });
-          if (upload.error) {
-            throw upload.error;
-          }
+            const filename = path.basename(filePath);
 
-          const fullPath = upload.data.fullPath;
+            const Key = getStorageKey(key, filename);
 
-          return {
-            storageUri: `supabase-storage://${fullPath}`,
-          };
-        },
-        async downloadFile(storageUri: string, filePath: string) {
-          const { key, bucket: bucketName } = parseStorageUri(
-            storageUri,
-            "supabase-storage",
-          );
-          if (bucketName !== config.bucketName) {
-            throw new Error(
-              `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+            const upload = await bucket.upload(Key, Body, {
+              contentType: ContentType,
+              cacheControl: "max-age=31536000",
+              headers: {},
+            });
+            if (upload.error) {
+              throw upload.error;
+            }
+
+            const fullPath = upload.data.fullPath;
+
+            return {
+              storageUri: `supabase-storage://${fullPath}`,
+            };
+          },
+          async downloadFile(storageUri: string, filePath: string) {
+            const { key, bucket: bucketName } = parseStorageUri(
+              storageUri,
+              "supabase-storage",
             );
-          }
+            if (bucketName !== config.bucketName) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+              );
+            }
 
-          const { data, error } = await bucket.download(key);
-          if (error) {
-            throw new Error(`Failed to download bundle: ${error.message}`);
-          }
-          if (!data) {
-            throw new Error("Failed to download bundle");
-          }
+            const { data, error } = await bucket.download(key);
+            if (error) {
+              throw new Error(`Failed to download bundle: ${error.message}`);
+            }
+            if (!data) {
+              throw new Error("Failed to download bundle");
+            }
 
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(
-            filePath,
-            new Uint8Array(await data.arrayBuffer()),
-          );
-        },
-      },
-      runtime: {
-        async readText(storageUri: string) {
-          const { key, bucket: bucketName } = parseStorageUri(
-            storageUri,
-            "supabase-storage",
-          );
-          if (bucketName !== config.bucketName) {
-            throw new Error(
-              `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(
+              filePath,
+              new Uint8Array(await data.arrayBuffer()),
             );
-          }
+          },
+        },
+        runtime: {
+          async readText(storageUri: string) {
+            const { key, bucket: bucketName } = parseStorageUri(
+              storageUri,
+              "supabase-storage",
+            );
+            if (bucketName !== config.bucketName) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+              );
+            }
 
-          const { data, error } = await bucket.download(key);
-          if (error) {
-            if (error.message?.includes("not found")) {
+            const { data, error } = await bucket.download(key);
+            if (error) {
+              if (error.message?.includes("not found")) {
+                return null;
+              }
+
+              throw new Error(`Failed to read storage text: ${error.message}`);
+            }
+            if (!data) {
               return null;
             }
 
-            throw new Error(`Failed to read storage text: ${error.message}`);
-          }
-          if (!data) {
-            return null;
-          }
-
-          return data.text();
+            return data.text();
+          },
+          async getDownloadUrl(storageUri: string) {
+            // Simple validation: supported protocol must match
+            const u = new URL(storageUri);
+            if (u.protocol.replace(":", "") !== "supabase-storage") {
+              throw new Error("Invalid Supabase storage URI protocol");
+            }
+            // Extract key without bucket prefix if present
+            let key = `${u.host}${u.pathname}`.replace(/^\//, "");
+            if (!key) {
+              throw new Error("Invalid Supabase storage URI: missing key");
+            }
+            if (key.startsWith(`${config.bucketName}/`)) {
+              key = key.substring(`${config.bucketName}/`.length);
+            }
+            const { data, error } = await bucket.createSignedUrl(key, 3600);
+            if (error) {
+              throw new Error(
+                `Failed to generate download URL: ${error.message}`,
+              );
+            }
+            if (!data?.signedUrl) {
+              throw new Error("Failed to generate download URL");
+            }
+            return { fileUrl: data.signedUrl };
+          },
         },
-        async getDownloadUrl(storageUri: string) {
-          // Simple validation: supported protocol must match
-          const u = new URL(storageUri);
-          if (u.protocol.replace(":", "") !== "supabase-storage") {
-            throw new Error("Invalid Supabase storage URI protocol");
-          }
-          // Extract key without bucket prefix if present
-          let key = `${u.host}${u.pathname}`.replace(/^\//, "");
-          if (!key) {
-            throw new Error("Invalid Supabase storage URI: missing key");
-          }
-          if (key.startsWith(`${config.bucketName}/`)) {
-            key = key.substring(`${config.bucketName}/`.length);
-          }
-          const { data, error } = await bucket.createSignedUrl(key, 3600);
-          if (error) {
-            throw new Error(
-              `Failed to generate download URL: ${error.message}`,
-            );
-          }
-          if (!data?.signedUrl) {
-            throw new Error("Failed to generate download URL");
-          }
-          return { fileUrl: data.signedUrl };
-        },
-      },
-    };
-  },
-});
+      };
+    },
+  });

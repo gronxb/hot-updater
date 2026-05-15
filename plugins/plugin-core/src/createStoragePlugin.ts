@@ -1,5 +1,4 @@
 import type {
-  FullStoragePlugin,
   NodeStoragePlugin,
   NodeStorageProfile,
   RuntimeStoragePlugin,
@@ -7,11 +6,12 @@ import type {
   StoragePlugin,
   StoragePluginHooks,
   StoragePluginProfiles,
+  UniversalStoragePlugin,
 } from "./types";
 
 type StorageProfileFactory<TConfig, TProfiles> = (config: TConfig) => TProfiles;
 
-interface CreateStoragePluginOptions<
+interface BaseStoragePluginOptions<
   TConfig,
   TContext = unknown,
   TProfiles extends StoragePluginProfiles<TContext> =
@@ -35,14 +35,14 @@ interface CreateStoragePluginOptions<
 }
 
 type CreateNodeStoragePluginOptions<TConfig> = Omit<
-  CreateStoragePluginOptions<TConfig, unknown, { node: NodeStorageProfile }>,
+  BaseStoragePluginOptions<TConfig, unknown, { node: NodeStorageProfile }>,
   "factory"
 > & {
   factory: StorageProfileFactory<TConfig, NodeStorageProfile>;
 };
 
 type CreateRuntimeStoragePluginOptions<TConfig, TContext = unknown> = Omit<
-  CreateStoragePluginOptions<
+  BaseStoragePluginOptions<
     TConfig,
     TContext,
     { runtime: RuntimeStorageProfile<TContext> }
@@ -52,8 +52,8 @@ type CreateRuntimeStoragePluginOptions<TConfig, TContext = unknown> = Omit<
   factory: StorageProfileFactory<TConfig, RuntimeStorageProfile<TContext>>;
 };
 
-type CreateFullStoragePluginOptions<TConfig, TContext = unknown> = Omit<
-  CreateStoragePluginOptions<
+type CreateUniversalStoragePluginOptions<TConfig, TContext = unknown> = Omit<
+  BaseStoragePluginOptions<
     TConfig,
     TContext,
     {
@@ -197,28 +197,6 @@ const createProfiledStoragePlugin = <TContext>(
 };
 
 /**
- * Creates a storage plugin with explicit environment profiles.
- *
- * Prefer `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, or
- * `createFullStoragePlugin` when a plugin supports a known profile shape.
- */
-export const createStoragePlugin = <TConfig, TContext = unknown>(
-  options: CreateStoragePluginOptions<TConfig, TContext>,
-) => {
-  return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): StoragePlugin<TContext> =>
-      createProfiledStoragePlugin(
-        {
-          createProfiles: () => options.factory(config),
-          name: options.name,
-          supportedProtocol: options.supportedProtocol,
-        },
-        hooks,
-      );
-  };
-};
-
-/**
  * Creates a deploy/CLI/console storage plugin.
  */
 export const createNodeStoragePlugin = <TConfig>(
@@ -268,11 +246,11 @@ export const createRuntimeStoragePlugin = <TConfig, TContext = unknown>(
  * Creates a storage plugin that can be used by both Node tooling and update
  * check runtimes.
  */
-export const createFullStoragePlugin = <TConfig, TContext = unknown>(
-  options: CreateFullStoragePluginOptions<TConfig, TContext>,
+export const createUniversalStoragePlugin = <TConfig, TContext = unknown>(
+  options: CreateUniversalStoragePluginOptions<TConfig, TContext>,
 ) => {
   return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): FullStoragePlugin<TContext> =>
+    return (): UniversalStoragePlugin<TContext> =>
       createProfiledStoragePlugin(
         {
           createProfiles: () => options.factory(config),
@@ -284,6 +262,6 @@ export const createFullStoragePlugin = <TConfig, TContext = unknown>(
           supportedProtocol: options.supportedProtocol,
         },
         hooks,
-      ) as FullStoragePlugin<TContext>;
+      ) as UniversalStoragePlugin<TContext>;
   };
 };

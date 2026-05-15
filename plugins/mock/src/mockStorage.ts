@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { FullStoragePlugin } from "@hot-updater/plugin-core";
+import type { UniversalStoragePlugin } from "@hot-updater/plugin-core";
 
-export const mockStorage = (_: any) => (): FullStoragePlugin => {
+export const mockStorage = (_: any) => (): UniversalStoragePlugin => {
   return {
     name: "mock",
     supportedProtocol: "storage",

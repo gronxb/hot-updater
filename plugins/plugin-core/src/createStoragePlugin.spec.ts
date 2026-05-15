@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  createFullStoragePlugin,
+  createUniversalStoragePlugin,
   createNodeStoragePlugin,
   createRuntimeStoragePlugin,
-  createStoragePlugin,
 } from "./createStoragePlugin";
 import {
   assertNodeStoragePlugin,
@@ -122,9 +121,9 @@ describe("createStoragePlugin", () => {
     );
   });
 
-  it("creates a full storage profile for plugins shared by deploy and runtime", async () => {
-    const plugin = createFullStoragePlugin({
-      name: "testFullStorage",
+  it("creates a universal storage profile for plugins shared by deploy and runtime", async () => {
+    const plugin = createUniversalStoragePlugin({
+      name: "testUniversalStorage",
       supportedProtocol: "supabase-storage",
       factory: () => ({
         node: {
@@ -155,24 +154,6 @@ describe("createStoragePlugin", () => {
         "supabase-storage://bucket/manifest.json",
       ),
     ).resolves.toBeNull();
-  });
-
-  it("supports custom profile combinations through the low-level factory", () => {
-    const plugin = createStoragePlugin({
-      name: "customStorage",
-      supportedProtocol: "custom",
-      factory: () => ({
-        runtime: {
-          getDownloadUrl: vi.fn(async () => ({
-            fileUrl: "https://assets.example.com/file",
-          })),
-          readText: vi.fn(async () => "{}"),
-        },
-      }),
-    })({})();
-
-    assertRuntimeStoragePlugin(plugin);
-    expect(plugin.profiles.runtime).toBeDefined();
   });
 
   it("throws clear errors when the required profile is missing", () => {

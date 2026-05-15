@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import type {
-  FullStoragePlugin,
+  UniversalStoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import mime from "mime";
@@ -50,7 +50,7 @@ export interface StandaloneStorageConfig {
 
 export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
-  (): FullStoragePlugin => {
+  (): UniversalStoragePlugin => {
     const routes: StorageRoutes = {
       upload: (key: string, filePath: string) =>
         createRoute(
