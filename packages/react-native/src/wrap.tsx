@@ -72,6 +72,13 @@ interface CommonHotUpdaterOptions {
    * ```
    */
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+
+  /**
+   * Default callback invoked when Hot Updater initialization or update checks
+   * fail. Per-call `HotUpdater.checkForUpdate({ onError })` handlers override
+   * this callback for that check.
+   */
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 }
 
 /**
@@ -126,8 +133,6 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      */
     updateStrategy: "fingerprint" | "appVersion";
 
-    onError?: (error: HotUpdaterError | Error | unknown) => void;
-
     /**
      * Component to show while downloading a new bundle update.
      *
@@ -176,6 +181,8 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
      * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
      *
      * ```tsx
+     * import { HotUpdater } from "@hot-updater/react-native";
+     *
      * HotUpdater.init({
      *   baseURL: "<your-update-server-url>",
      * });
@@ -202,12 +209,12 @@ type InternalCommonOptions = {
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 };
 
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
   fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
   onProgress?: (progress: number) => void;
   reloadOnForceUpdate?: boolean;
@@ -267,6 +274,7 @@ const handleNotifyAppReady = async (options: {
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 }): Promise<void> => {
   await waitForNextFrame();
 
@@ -283,12 +291,14 @@ const handleNotifyAppReady = async (options: {
           requestTimeout: options.requestTimeout,
         })
         .catch((e: unknown) => {
+          options.onError?.(e);
           console.warn("[HotUpdater] Resolver notifyAppReady failed:", e);
         });
     }
 
     options.onNotifyAppReady?.(nativeResult);
   } catch (e) {
+    options.onError?.(e);
     console.warn("[HotUpdater] Failed to notify app ready:", e);
   }
 };

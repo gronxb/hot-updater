@@ -82,6 +82,36 @@ describe("HotUpdater wrap initialization", () => {
     });
   });
 
+  it("calls init onError when app-ready notification fails", async () => {
+    vi.useFakeTimers();
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = new Error("notify failed");
+    const onError = vi.fn();
+    const requestAnimationFrame = vi.fn(
+      (callback: (timestamp: number) => void) => {
+        setTimeout(() => callback(0), 0);
+        return 1;
+      },
+    );
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockRejectedValue(error),
+    };
+    const { init } = await import("./wrap");
+
+    init({
+      resolver,
+      onError,
+    });
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(onError).toHaveBeenCalledWith(error);
+    warn.mockRestore();
+  });
+
   it("warns when the deprecated manual wrap HOC is used", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { wrap } = await import("./wrap");

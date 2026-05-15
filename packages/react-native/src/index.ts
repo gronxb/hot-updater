@@ -91,6 +91,8 @@ type HotUpdaterWrap = {
    * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
    *
    * ```tsx
+   * import { HotUpdater } from "@hot-updater/react-native";
+   *
    * HotUpdater.init({
    *   baseURL: "<your-update-server-url>",
    * });
@@ -120,6 +122,7 @@ function createHotUpdaterClient() {
     resolver: HotUpdaterResolver | null;
     requestHeaders?: Record<string, string>;
     requestTimeout?: number;
+    onError?: (error: unknown) => void;
   } = {
     resolver: null,
   };
@@ -223,6 +226,7 @@ function createHotUpdaterClient() {
     globalConfig.resolver = normalizedOptions.resolver;
     globalConfig.requestHeaders = options.requestHeaders;
     globalConfig.requestTimeout = options.requestTimeout;
+    globalConfig.onError = options.onError;
   };
 
   const ensureGlobalResolver = (methodName: string) => {
@@ -463,6 +467,7 @@ function createHotUpdaterClient() {
           ...config.requestHeaders,
         },
         requestTimeout: config.requestTimeout ?? globalConfig.requestTimeout,
+        onError: config.onError ?? globalConfig.onError,
       };
 
       return checkForUpdate(mergedConfig);
