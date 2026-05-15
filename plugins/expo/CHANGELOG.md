@@ -1,5 +1,13 @@
 # @hot-updater/expo
 
+## 0.31.0
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.31.0
+- @hot-updater/plugin-core@0.31.0
+- @hot-updater/bare@0.31.0
+
 ## 0.30.12
 
 ### Patch Changes

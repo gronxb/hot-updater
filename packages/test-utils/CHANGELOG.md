@@ -1,5 +1,7 @@
 # @hot-updater/test-utils
 
+## 0.31.0
+
 ## 0.30.12
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @hot-updater/supabase
 
+## 0.31.0
+
+### Minor Changes
+
+- 5b0a0f5: Add signed manifest-based diff update support across deploy, server, provider storage, console tooling, and React Native runtime.
+
+### Patch Changes
+
+- Updated dependencies [5b0a0f5]
+- Updated dependencies [5b0a0f5]
+  - @hot-updater/core@0.31.0
+  - @hot-updater/server@0.31.0
+  - @hot-updater/cli-tools@0.31.0
+  - @hot-updater/plugin-core@0.31.0
+
 ## 0.30.12
 
 ### Patch Changes
