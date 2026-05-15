@@ -48,6 +48,7 @@ export type {
 export * from "./store";
 export {
   extractSignatureFailure,
+  type HotUpdaterBaseURL,
   type HotUpdaterResolver,
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,

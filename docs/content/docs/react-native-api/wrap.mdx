@@ -128,7 +128,7 @@ Available in both automatic and manual modes:
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
-| `baseURL` | `string` | Yes* | Your update server URL (standard approach) |
+| `baseURL` | `string \| () => string \| Promise<string>` | Yes* | Your update server URL (standard approach) |
 | `resolver` | `HotUpdaterResolver` | Yes* | Custom network operations (advanced) |
 | `requestHeaders` | `Record<string, string>` | No | Custom HTTP headers for update requests |
 | `requestTimeout` | `number` | No | Request timeout in milliseconds (default: 5000) |
