@@ -340,9 +340,11 @@ describe("createCopiedBundleArchive", () => {
       "index.js": "console.log('hello');",
       "manifest.json": JSON.stringify({ bundleId: baseBundle.id }),
     });
-    const downloadFile = vi.fn(async (_storageUri: string, filePath: string) => {
-      await fs.copyFile(archivePath, filePath);
-    });
+    const downloadFile = vi.fn(
+      async (_storageUri: string, filePath: string) => {
+        await fs.copyFile(archivePath, filePath);
+      },
+    );
     const storagePlugin: NodeStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "r2",
