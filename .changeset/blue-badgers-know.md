@@ -1,3 +1,4 @@
+---
 "@hot-updater/core": minor
 "@hot-updater/cloudflare": minor
 "@hot-updater/console": minor
