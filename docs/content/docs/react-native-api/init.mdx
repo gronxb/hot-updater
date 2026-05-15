@@ -9,11 +9,7 @@ icon: Settings2
 Use `HotUpdater.init` when you want a fully custom update flow and cannot, or do
 not want to, wrap your root component with `HotUpdater.wrap`. Call it once when
 your runtime considers the app ready. This API exists for apps that only need
-Hot Updater initialization and do not need the extra React HOC created by
-manual `HotUpdater.wrap`.
-
-Use `HotUpdater.init` instead of the deprecated
-`HotUpdater.wrap({ updateMode: "manual" })(App)` pattern.
+Hot Updater initialization without a React HOC.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";

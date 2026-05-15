@@ -43,9 +43,8 @@ export default HotUpdater.wrap({ // [!code hl:8]
 ### Manual Updates
 
 Use [`HotUpdater.init`](/docs/react-native-api/init) for manual update flows.
-Existing `HotUpdater.wrap({ updateMode: "manual" })(App)` usage is deprecated;
-initialize once with `HotUpdater.init`, export your root component directly,
-then call `checkForUpdate` or `updateBundle` manually when needed.
+Initialize once with `HotUpdater.init`, export your root component directly,
+then call `checkForUpdate` or `updateBundle` when needed.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
