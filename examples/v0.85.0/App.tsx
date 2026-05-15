@@ -1226,7 +1226,6 @@ const styles = StyleSheet.create({
 export default HotUpdater.wrap({
   baseURL: HOT_UPDATER_BASE_URL,
   updateStrategy: "appVersion",
-  updateMode: "auto",
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;

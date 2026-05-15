@@ -134,7 +134,6 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   baseURL: "http://localhost:3006/hot-updater",
   updateStrategy: "appVersion",
-  updateMode: "auto",
   onNotifyAppReady: (result) => {
     notify.status = result.status;
     notify.crashedBundleId = result.crashedBundleId;

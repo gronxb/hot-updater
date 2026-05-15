@@ -90,7 +90,6 @@ function App(): React.JSX.Element {
 export default HotUpdater.wrap({
   baseURL: `${HOT_UPDATER_SUPABASE_URL}/functions/v1/update-server`,
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

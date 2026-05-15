@@ -12,8 +12,8 @@ your runtime considers the app ready. This API exists for apps that only need
 Hot Updater initialization and do not need the extra React HOC created by
 manual `HotUpdater.wrap`.
 
-`HotUpdater.init` is equivalent to
-`HotUpdater.wrap({ updateMode: "manual" })(App)` without the HOC.
+Use `HotUpdater.init` instead of the deprecated
+`HotUpdater.wrap({ updateMode: "manual" })(App)` pattern.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -58,12 +58,15 @@ if (updateInfo.shouldForceUpdate) {
 
 ## Configuration Reference
 
-| Option             | Type                                      | Required | Description                                                      |
-| ------------------ | ----------------------------------------- | -------- | ---------------------------------------------------------------- |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes      | Your update server URL or runtime URL resolver                   |
-| `requestHeaders`   | `Record<string, string>`                  | No       | Shared headers used by update checks and app-ready notifications |
-| `requestTimeout`   | `number`                                  | No       | Request timeout in milliseconds (default: 5000)                  |
-| `onNotifyAppReady` | `(result) => void`                        | No       | Callback invoked after native app-ready state is read            |
+| Option             | Type                                        | Required | Description                                                      |
+| ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                   |
+| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
+| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
+| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
+| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
+
+\*Either `baseURL` or `resolver` must be provided (mutually exclusive).
 
 ## When to Use init
 

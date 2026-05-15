@@ -95,7 +95,6 @@ import { HotUpdater } from '@hot-updater/react-native';
 export default HotUpdater.wrap({
   baseURL: 'http://localhost:3000/hot-updater', // [!code ++]
   updateStrategy: 'appVersion', // or "fingerprint" // [!code ++]
-  updateMode: "auto",
   fallbackComponent: ({ progress, status }) => (
     // ... Custom loading UI
   ),

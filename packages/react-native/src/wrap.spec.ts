@@ -1,4 +1,7 @@
+import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { HotUpdaterOptions } from "./wrap";
 
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
@@ -77,5 +80,65 @@ describe("HotUpdater wrap initialization", () => {
       },
       requestTimeout: 1000,
     });
+  });
+
+  it("warns when the deprecated manual wrap HOC is used", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { wrap } = await import("./wrap");
+
+    wrap({
+      resolver: {
+        checkUpdate: vi.fn(),
+        notifyAppReady: vi.fn(),
+      },
+      updateMode: "manual",
+    });
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'HotUpdater.wrap({ updateMode: "manual" }) is deprecated',
+      ),
+    );
+    warn.mockRestore();
+  });
+
+  it("preserves wrapped component prop inference", async () => {
+    const { wrap } = await import("./wrap");
+    const Component: React.ComponentType<{ title: string }> = () => null;
+
+    const WrappedComponent = wrap({
+      resolver: {
+        checkUpdate: vi.fn(),
+        notifyAppReady: vi.fn(),
+      },
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+    })(Component);
+
+    const acceptsTitleProps: React.ComponentType<{ title: string }> =
+      WrappedComponent;
+    expect(acceptsTitleProps).toBe(WrappedComponent);
+  });
+
+  it("types public wrap options as automatic mode by default", () => {
+    const autoOptions = {
+      baseURL: "https://updates.example.com",
+      updateStrategy: "appVersion",
+    } satisfies HotUpdaterOptions;
+    const manualOptions = {
+      baseURL: "https://updates.example.com",
+      updateMode: "manual",
+    } satisfies HotUpdaterOptions;
+    const autoModeOptions = {
+      baseURL: "https://updates.example.com",
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+    } as const;
+
+    // @ts-expect-error HotUpdater.wrap defaults to auto and no longer accepts updateMode: "auto".
+    void (autoModeOptions satisfies HotUpdaterOptions);
+
+    expect(autoOptions.updateStrategy).toBe("appVersion");
+    expect(manualOptions.updateMode).toBe("manual");
   });
 });

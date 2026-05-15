@@ -134,6 +134,71 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
+  it("accepts custom resolvers for manual update flows", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      resolver,
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+    });
+
+    expect(mocks.createDefaultResolver).not.toHaveBeenCalled();
+    expect(mocks.init).toHaveBeenCalledWith({
+      resolver,
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+    });
+  });
+
+  it("defaults wrap to automatic update mode", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.wrap).toHaveBeenCalledWith({
+      resolver,
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+    });
+  });
+
+  it("keeps deprecated manual wrap calls working", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      updateMode: "manual",
+    });
+
+    expect(mocks.wrap).toHaveBeenCalledWith({
+      resolver,
+      updateMode: "manual",
+    });
+  });
+
   it("uses init configuration for later manual update checks", async () => {
     const resolver = {
       checkUpdate: vi.fn(),
@@ -183,7 +248,7 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     expect(() => HotUpdater.init({} as never)).toThrow(
-      "baseURL must be provided",
+      "Either baseURL or resolver must be provided",
     );
     expect(mocks.init).not.toHaveBeenCalled();
   });

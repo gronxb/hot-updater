@@ -27,7 +27,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
 })(App);`;
 
 const REGIONS = [
