@@ -1,44 +1,57 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
-
-const { fetchUpdateInfoMock } = vi.hoisted(() => ({
-  fetchUpdateInfoMock: vi.fn(),
-}));
-
-vi.mock("./fetchUpdateInfo", () => ({
-  fetchUpdateInfo: fetchUpdateInfoMock,
-}));
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
+import type { ResolverCheckUpdateParams } from "./types";
+
+const mocks = vi.hoisted(() => ({
+  fetchUpdateInfo: vi.fn(),
+}));
+
+vi.mock("./fetchUpdateInfo", () => ({
+  fetchUpdateInfo: mocks.fetchUpdateInfo,
+}));
+
+const createParams = (
+  params?: Partial<ResolverCheckUpdateParams>,
+): ResolverCheckUpdateParams => ({
+  appVersion: "1.0.0",
+  bundleId: "bundle-id",
+  channel: "production",
+  cohort: "cohort",
+  fingerprintHash: null,
+  minBundleId: "min-bundle-id",
+  platform: "ios",
+  updateStrategy: "appVersion",
+  ...params,
+});
 
 describe("createDefaultResolver", () => {
-  it("strips trailing slashes from baseURL for app-version requests", async () => {
-    fetchUpdateInfoMock.mockResolvedValueOnce(null);
+  beforeEach(() => {
+    mocks.fetchUpdateInfo.mockReset();
+    mocks.fetchUpdateInfo.mockResolvedValue(null);
+  });
 
+  it("strips trailing slashes from baseURL for app-version requests", async () => {
     const resolver = createDefaultResolver(
       "http://localhost:3007/hot-updater/",
     );
-    if (!resolver.checkUpdate) {
-      throw new Error("Default resolver must implement checkUpdate");
-    }
 
-    await resolver.checkUpdate({
-      appVersion: "1.0",
-      bundleId: "current-bundle",
-      channel: "production",
-      cohort: "730",
-      minBundleId: "min-bundle",
-      platform: "android",
-      requestHeaders: undefined,
-      requestTimeout: undefined,
-      updateStrategy: "appVersion",
-      fingerprintHash: null,
-    });
+    await resolver.checkUpdate?.(
+      createParams({
+        appVersion: "1.0",
+        bundleId: "current-bundle",
+        channel: "production",
+        cohort: "730",
+        minBundleId: "min-bundle",
+        platform: "android",
+      }),
+    );
 
-    expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
+    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
       requestHeaders: {
         "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
       },
@@ -48,29 +61,26 @@ describe("createDefaultResolver", () => {
   });
 
   it("strips trailing slashes from baseURL for fingerprint requests", async () => {
-    fetchUpdateInfoMock.mockResolvedValueOnce(null);
-
     const resolver = createDefaultResolver(
       "http://localhost:3007/hot-updater///",
     );
-    if (!resolver.checkUpdate) {
-      throw new Error("Default resolver must implement checkUpdate");
-    }
 
-    await resolver.checkUpdate({
-      appVersion: "1.0",
-      bundleId: "current-bundle",
-      channel: "beta",
-      cohort: "qa",
-      minBundleId: "min-bundle",
-      platform: "ios",
-      requestHeaders: { authorization: "Bearer token" },
-      requestTimeout: 1500,
-      updateStrategy: "fingerprint",
-      fingerprintHash: "fingerprint-hash",
-    });
+    await resolver.checkUpdate?.(
+      createParams({
+        appVersion: "1.0",
+        bundleId: "current-bundle",
+        channel: "beta",
+        cohort: "qa",
+        fingerprintHash: "fingerprint-hash",
+        minBundleId: "min-bundle",
+        platform: "ios",
+        requestHeaders: { authorization: "Bearer token" },
+        requestTimeout: 1500,
+        updateStrategy: "fingerprint",
+      }),
+    );
 
-    expect(fetchUpdateInfoMock).toHaveBeenCalledWith({
+    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
       requestHeaders: {
         authorization: "Bearer token",
         "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
@@ -91,26 +101,78 @@ describe("createDefaultResolver", () => {
   });
 
   it("propagates fetchUpdateInfo errors", async () => {
-    fetchUpdateInfoMock.mockRejectedValueOnce(new Error("Network failed"));
-
+    mocks.fetchUpdateInfo.mockRejectedValueOnce(new Error("Network failed"));
     const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
-    if (!resolver.checkUpdate) {
-      throw new Error("Default resolver must implement checkUpdate");
-    }
 
-    await expect(
-      resolver.checkUpdate({
-        appVersion: "1.0",
-        bundleId: "current-bundle",
-        channel: "production",
-        cohort: "730",
-        minBundleId: "min-bundle",
-        platform: "android",
-        requestHeaders: undefined,
-        requestTimeout: undefined,
-        updateStrategy: "appVersion",
-        fingerprintHash: null,
-      }),
-    ).rejects.toThrow("Network failed");
+    await expect(resolver.checkUpdate?.(createParams())).rejects.toThrow(
+      "Network failed",
+    );
+  });
+
+  it("resolves dynamic baseURL before checking for updates", async () => {
+    const resolveBaseURL = vi.fn(async () => "https://updates.example.com");
+    const resolver = createDefaultResolver(resolveBaseURL);
+
+    await resolver.checkUpdate?.(createParams());
+
+    expect(resolveBaseURL).toHaveBeenCalledWith();
+    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: undefined,
+      url: "https://updates.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
+    });
+  });
+
+  it("calls dynamic baseURL for each update check", async () => {
+    const resolveBaseURL = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce("https://one.example.com")
+      .mockResolvedValueOnce("https://two.example.com");
+    const resolver = createDefaultResolver(resolveBaseURL);
+
+    await resolver.checkUpdate?.(createParams());
+    await resolver.checkUpdate?.(createParams());
+
+    expect(resolveBaseURL).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchUpdateInfo).toHaveBeenNthCalledWith(1, {
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: undefined,
+      url: "https://one.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
+    });
+    expect(mocks.fetchUpdateInfo).toHaveBeenNthCalledWith(2, {
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: undefined,
+      url: "https://two.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
+    });
+  });
+
+  it("strips trailing slashes from dynamic baseURL results", async () => {
+    const resolver = createDefaultResolver(
+      () => "https://updates.example.com/",
+    );
+
+    await resolver.checkUpdate?.(createParams());
+
+    expect(mocks.fetchUpdateInfo).toHaveBeenCalledWith({
+      requestHeaders: {
+        "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+      },
+      requestTimeout: undefined,
+      url: "https://updates.example.com/app-version/ios/1.0.0/production/min-bundle-id/bundle-id/cohort",
+    });
+  });
+
+  it("rejects an empty dynamic baseURL", async () => {
+    const resolver = createDefaultResolver(() => "");
+
+    await expect(resolver.checkUpdate?.(createParams())).rejects.toThrow(
+      "baseURL resolver must return a non-empty string",
+    );
   });
 });

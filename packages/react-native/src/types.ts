@@ -2,6 +2,8 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 
 import type { NotifyAppReadyResult } from "./native";
 
+export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
+
 /**
  * Parameters passed to resolver.checkUpdate method
  */
