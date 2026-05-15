@@ -1,6 +1,12 @@
 {
   "sponsors": [
     {
+      "login": "Alexhamila",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/28599364?u=28acfc45897776540c12bbcaddb6a0f75eac3ae4&v=4",
+      "name": "Alexandre Hamila",
+      "url": "https://github.com/Alexhamila"
+    },
+    {
       "login": "Davescat",
       "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
       "name": "Davide Catalano",
@@ -25,5 +31,5 @@
       "url": "https://github.com/victorsaisse"
     }
   ],
-  "updatedAt": "2026-05-14T00:49:57Z"
+  "updatedAt": "2026-05-15T00:47:12Z"
 }
