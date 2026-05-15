@@ -88,9 +88,18 @@ registerGlobalGetBaseURL();
 type HotUpdaterWrap = {
   (options: AutoUpdateOptions): ReturnType<typeof wrap>;
   /**
-   * @deprecated `HotUpdater.wrap({ updateMode: "manual" })` is deprecated.
-   * Use `HotUpdater.init(...)`, export your root component directly, and call
-   * `HotUpdater.checkForUpdate(...)` when your manual flow needs it.
+   * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
+   *
+   * ```tsx
+   * HotUpdater.init({
+   *   baseURL: "<your-update-server-url>",
+   * });
+   *
+   * export default App;
+   * ```
+   *
+   * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
+   * See https://hot-updater.dev/docs/guides/custom-update
    */
   (options: ManualUpdateOptions): ReturnType<typeof wrap>;
   (options: HotUpdaterOptions): ReturnType<typeof wrap>;
@@ -271,9 +280,8 @@ function createHotUpdaterClient() {
      * Initializes HotUpdater without wrapping a React component.
      *
      * Use this for manual update flows in runtimes where a root component HOC
-     * is not convenient. It has the same initialization effect as
-     * Deprecated manual `HotUpdater.wrap({ updateMode: "manual" })(App)`
-     * usage should be replaced with this API.
+     * is not convenient. Replace deprecated manual
+     * `HotUpdater.wrap({ updateMode: "manual" })(App)` usage with this API.
      *
      * @example
      * ```tsx

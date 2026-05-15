@@ -173,9 +173,18 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
 export type ManualUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     /**
-     * @deprecated `HotUpdater.wrap({ updateMode: "manual" })` is deprecated.
-     * Use `HotUpdater.init(...)`, export your root component directly, and call
-     * `HotUpdater.checkForUpdate(...)` when your manual flow needs it.
+     * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
+     *
+     * ```tsx
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     * });
+     *
+     * export default App;
+     * ```
+     *
+     * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
+     * See https://hot-updater.dev/docs/guides/custom-update
      */
     updateMode: "manual";
   };
@@ -227,8 +236,10 @@ const warnManualWrapDeprecation = () => {
   didWarnManualWrapDeprecation = true;
   console.warn(
     '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) is deprecated. ' +
-      "Use HotUpdater.init(...) once, export your root component directly, " +
-      "and call HotUpdater.checkForUpdate(...) for manual update flows.",
+      "Move the same baseURL/resolver options to HotUpdater.init({ ... }), " +
+      "export your root component directly, and call " +
+      "HotUpdater.checkForUpdate(...) from your manual update flow. " +
+      "See https://hot-updater.dev/docs/guides/custom-update",
   );
 };
 
