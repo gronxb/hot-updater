@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { HotUpdater as HotUpdaterValue } from "./index";
+import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
+
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
@@ -134,6 +137,151 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
+  it("accepts custom resolvers for manual update flows", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      resolver,
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+    });
+
+    expect(mocks.createDefaultResolver).not.toHaveBeenCalled();
+    expect(mocks.init).toHaveBeenCalledWith({
+      resolver,
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+    });
+  });
+
+  it("accepts onError during init and uses it for later manual update checks", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    const onError = vi.fn();
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      onError,
+    });
+
+    await HotUpdater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.init).toHaveBeenCalledWith({
+      onError,
+      resolver,
+    });
+    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
+      onError,
+      requestHeaders: {},
+      requestTimeout: undefined,
+      resolver,
+      updateStrategy: "appVersion",
+    });
+  });
+
+  it("lets checkForUpdate override the init onError handler", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    const initOnError = vi.fn();
+    const checkOnError = vi.fn();
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      onError: initOnError,
+    });
+
+    await HotUpdater.checkForUpdate({
+      onError: checkOnError,
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
+      onError: checkOnError,
+      requestHeaders: {},
+      requestTimeout: undefined,
+      resolver,
+      updateStrategy: "appVersion",
+    });
+  });
+
+  it("defaults wrap to automatic update mode", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      updateStrategy: "appVersion",
+    });
+
+    expect(mocks.wrap).toHaveBeenCalledWith({
+      resolver,
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+    });
+  });
+
+  it("keeps deprecated manual wrap calls working", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.wrap({
+      baseURL: "https://updates.example.com",
+      updateMode: "manual",
+    });
+
+    expect(mocks.wrap).toHaveBeenCalledWith({
+      resolver,
+      updateMode: "manual",
+    });
+  });
+
+  it("types public wrap to accept pre-typed option unions", () => {
+    const compileOnly = (
+      wrap: typeof HotUpdaterValue.wrap,
+      options: HotUpdaterOptions,
+    ) => wrap(options);
+
+    expect(compileOnly).toBeTypeOf("function");
+  });
+
+  it("types public init options with onError", () => {
+    const options = {
+      baseURL: "https://updates.example.com",
+      onError: vi.fn(),
+    } satisfies HotUpdaterInitOptions;
+
+    expect(options.baseURL).toBe("https://updates.example.com");
+  });
+
   it("uses init configuration for later manual update checks", async () => {
     const resolver = {
       checkUpdate: vi.fn(),
@@ -183,7 +331,7 @@ describe("HotUpdater client initialization", () => {
     const HotUpdater = await importHotUpdater();
 
     expect(() => HotUpdater.init({} as never)).toThrow(
-      "baseURL must be provided",
+      "Either baseURL or resolver must be provided",
     );
     expect(mocks.init).not.toHaveBeenCalled();
   });

@@ -102,7 +102,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "https://your-update-server-url/api/check-update", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  updateMode: "auto",
   requestHeaders: {
     // Optional: Add custom headers if needed
   },

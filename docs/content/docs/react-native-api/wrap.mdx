@@ -11,9 +11,10 @@ icon: Package
 > This enables automatic crash detection and rollback. Update methods will
 > throw an error if neither API is used.
 
-`HotUpdater.wrap` supports two usage patterns:
+`HotUpdater.wrap` configures automatic updates. The automatic mode is the
+default, so `updateMode` is no longer needed.
 
-### Option 1: With Automatic Updates
+### Automatic Updates
 
 Use this for apps that want automatic OTA updates. This is the standard approach with full update management.
 
@@ -29,10 +30,9 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({ // [!code hl:9]
+export default HotUpdater.wrap({ // [!code hl:8]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -40,32 +40,11 @@ export default HotUpdater.wrap({ // [!code hl:9]
 })(App);
 ```
 
-### Option 2: Manual Updates Only (Custom Flow)
+### Manual Updates
 
-Use this for apps with custom updates.
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({ // [!code hl:3]
-  baseURL: "<your-update-server-url>",
-  updateMode: "manual",
-})(App);
-```
-
-If another runtime owns the root component, use
-[`HotUpdater.init`](/docs/react-native-api/init) instead. It has the same
-initialization effect as manual `wrap` without creating an unnecessary React
-HOC.
+Use [`HotUpdater.init`](/docs/react-native-api/init) for manual update flows.
+Initialize once with `HotUpdater.init`, export your root component directly,
+then call `checkForUpdate` or `updateBundle` when needed.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -120,11 +99,9 @@ export default App;
 
 ## Configuration Reference
 
-`HotUpdater.wrap` accepts different options depending on the update mode.
+`HotUpdater.wrap` accepts automatic update options.
 
 ### Common Options
-
-Available in both automatic and manual modes:
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
@@ -138,7 +115,7 @@ Available in both automatic and manual modes:
 
 ### Automatic Mode Options
 
-The following options are **only available when `updateMode: "auto"` or omitted** (automatic mode is the default):
+The following options are available in automatic mode:
 
 | Option | Type | Required | Description |
 |--------|------|----------|-------------|
@@ -181,7 +158,6 @@ function App() {
 export default HotUpdater.wrap({ // [!code hl:25]
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   fallbackComponent: ({ progress, status, message }) => (
       <View
         style={{
@@ -236,7 +212,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -262,7 +237,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -305,7 +279,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   // If you need to send request headers, you can use the `requestHeaders` option.
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
@@ -334,7 +307,6 @@ import { Alert } from "react-native";
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion",
-  updateMode: "auto",
   onError: (error) => { // [!code hl:18]
     // Handle other errors
     console.error("Update error:", error);
@@ -401,7 +373,7 @@ export default HotUpdater.wrap({
       return response.json(); // [!code ++]
     }, // [!code ++]
   }, // [!code ++]
-  updateMode: "manual", // or "auto"
+  updateStrategy: "appVersion",
 })(App);
 ```
 

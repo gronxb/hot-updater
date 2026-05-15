@@ -35,7 +35,7 @@ export type HotUpdaterFallbackComponentProps = {
 };
 
 /**
- * Common options shared between auto and manual update modes
+ * Common options shared by HotUpdater initialization APIs.
  */
 interface CommonHotUpdaterOptions {
   /**
@@ -61,18 +61,24 @@ interface CommonHotUpdaterOptions {
    *
    * @example
    * ```tsx
-   * HotUpdater.wrap({
+   * HotUpdater.init({
    *   baseURL: "https://api.example.com",
-   *   updateMode: "manual",
    *   onNotifyAppReady: ({ status, crashedBundleId }) => {
    *     if (status === "RECOVERED") {
    *       analytics.track("bundle_rollback", { crashedBundleId });
    *     }
-   *   }
-   * })(App);
+   *   },
+   * });
    * ```
    */
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+
+  /**
+   * Default callback invoked when Hot Updater initialization or update checks
+   * fail. Per-call `HotUpdater.checkForUpdate({ onError })` handlers override
+   * this callback for that check.
+   */
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 }
 
 /**
@@ -116,19 +122,16 @@ type NetworkConfig = BaseURLConfig | ResolverConfig;
 export type AutoUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     /**
+     * Automatic update mode. This is the default and can be omitted.
+     */
+    updateMode?: "auto";
+
+    /**
      * Update strategy
      * - "fingerprint": Use fingerprint hash to check for updates
      * - "appVersion": Use app version to check for updates
      */
     updateStrategy: "fingerprint" | "appVersion";
-
-    /**
-     * Update mode
-     * - "auto": Automatically check and download updates
-     */
-    updateMode: "auto";
-
-    onError?: (error: HotUpdaterError | Error | unknown) => void;
 
     /**
      * Component to show while downloading a new bundle update.
@@ -175,21 +178,25 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
 export type ManualUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     /**
-     * Update mode
-     * - "manual": Only notify app ready, user manually calls checkForUpdate()
+     * @deprecated Replace manual `HotUpdater.wrap` with `HotUpdater.init`.
+     *
+     * ```tsx
+     * import { HotUpdater } from "@hot-updater/react-native";
+     *
+     * HotUpdater.init({
+     *   baseURL: "<your-update-server-url>",
+     * });
+     *
+     * export default App;
+     * ```
+     *
+     * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
+     * See https://hot-updater.dev/docs/guides/custom-update
      */
     updateMode: "manual";
   };
 
-type ManualBaseURLUpdateOptions = CommonHotUpdaterOptions &
-  BaseURLConfig & {
-    updateMode: "manual";
-  };
-
-export type HotUpdaterInitOptions = Omit<
-  ManualBaseURLUpdateOptions,
-  "updateMode"
->;
+export type HotUpdaterInitOptions = CommonHotUpdaterOptions & NetworkConfig;
 
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
 
@@ -202,12 +209,12 @@ type InternalCommonOptions = {
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 };
 
 type InternalAutoUpdateOptions = InternalCommonOptions & {
   updateStrategy: "fingerprint" | "appVersion";
   updateMode: "auto";
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
   fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
   onProgress?: (progress: number) => void;
   reloadOnForceUpdate?: boolean;
@@ -225,6 +232,23 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
+
+let didWarnManualWrapDeprecation = false;
+
+const warnManualWrapDeprecation = () => {
+  if (didWarnManualWrapDeprecation) {
+    return;
+  }
+
+  didWarnManualWrapDeprecation = true;
+  console.warn(
+    '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) is deprecated. ' +
+      "Move the same baseURL/resolver options to HotUpdater.init({ ... }), " +
+      "export your root component directly, and call " +
+      "HotUpdater.checkForUpdate(...) from your manual update flow. " +
+      "See https://hot-updater.dev/docs/guides/custom-update",
+  );
+};
 
 const waitForNextFrame = () =>
   new Promise<void>((resolve) => {
@@ -250,6 +274,7 @@ const handleNotifyAppReady = async (options: {
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
+  onError?: (error: HotUpdaterError | Error | unknown) => void;
 }): Promise<void> => {
   await waitForNextFrame();
 
@@ -266,12 +291,14 @@ const handleNotifyAppReady = async (options: {
           requestTimeout: options.requestTimeout,
         })
         .catch((e: unknown) => {
+          options.onError?.(e);
           console.warn("[HotUpdater] Resolver notifyAppReady failed:", e);
         });
     }
 
     options.onNotifyAppReady?.(nativeResult);
   } catch (e) {
+    options.onError?.(e);
     console.warn("[HotUpdater] Failed to notify app ready:", e);
   }
 };
@@ -280,11 +307,15 @@ export function init(options: InternalInitOptions): void {
   void handleNotifyAppReady(options);
 }
 
-export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
+export function wrap(
   options: InternalWrapOptions,
-): (WrappedComponent: React.ComponentType<P>) => React.ComponentType<P> {
+): <P extends object>(
+  WrappedComponent: React.ComponentType<P>,
+) => React.ComponentType<P> {
   if (options.updateMode === "manual") {
-    return (WrappedComponent: React.ComponentType<P>) => {
+    warnManualWrapDeprecation();
+
+    return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
       const ManualHOC: React.FC<P> = (props: P) => {
         useEffect(() => {
           void handleNotifyAppReady(options);
@@ -297,10 +328,9 @@ export function wrap<P extends React.JSX.IntrinsicAttributes = object>(
     };
   }
 
-  // updateMode: "auto"
   const { reloadOnForceUpdate = true, ...restOptions } = options;
 
-  return (WrappedComponent: React.ComponentType<P>) => {
+  return <P extends object>(WrappedComponent: React.ComponentType<P>) => {
     const HotUpdaterHOC: React.FC<P> = (props: P) => {
       const progressState = useHotUpdaterStore((state) => state);
       const progress = progressState.progress;

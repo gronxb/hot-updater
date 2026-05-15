@@ -33,7 +33,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "<your-update-server-url>",
   updateStrategy: "appVersion", // or "fingerprint"
-  updateMode: "auto",
   requestHeaders: {
     "Authorization": "Bearer <your-access-token>",
   },

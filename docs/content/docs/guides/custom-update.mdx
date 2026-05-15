@@ -31,6 +31,9 @@ HotUpdater.init({
   requestHeaders: {
     Authorization: "Bearer <your-access-token>",
   },
+  onError: error => {
+    console.error("Hot Updater failed", error);
+  },
 });
 ```
 

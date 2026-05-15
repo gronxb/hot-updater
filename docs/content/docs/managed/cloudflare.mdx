@@ -116,7 +116,6 @@ function App() {
 export default HotUpdater.wrap({
   baseURL: "https://<your-worker-name>.<your-subdomain>.workers.dev/api/check-update", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  updateMode: "auto",
   requestHeaders: {
     // if you want to use the request headers, you can add them here
   },
