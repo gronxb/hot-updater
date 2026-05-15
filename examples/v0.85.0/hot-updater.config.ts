@@ -1,16 +1,9 @@
-import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import {
-  standaloneRepository,
-  standaloneStorage,
-} from "@hot-updater/standalone";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
-
-const standaloneStorageBaseUrl =
-  process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;
 
 export default defineConfig({
   nativeBuild: {
@@ -43,21 +36,15 @@ export default defineConfig({
   },
 
   build: bare({ enableHermes: true }),
-  storage: standaloneStorageBaseUrl
-    ? standaloneStorage({
-        baseUrl: standaloneStorageBaseUrl.replace(/\/+$/, ""),
-      })
-    : s3Storage({
-        region: "auto",
-        endpoint: process.env.R2_ENDPOINT,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        },
-        bucketName: process.env.R2_BUCKET_NAME!,
-      }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3007/hot-updater",
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
   fingerprint: {
     debug: true,
