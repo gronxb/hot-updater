@@ -93,6 +93,7 @@ type HotUpdaterWrap = {
    * `HotUpdater.checkForUpdate(...)` when your manual flow needs it.
    */
   (options: ManualUpdateOptions): ReturnType<typeof wrap>;
+  (options: HotUpdaterOptions): ReturnType<typeof wrap>;
 };
 
 const isManualWrapOptions = (

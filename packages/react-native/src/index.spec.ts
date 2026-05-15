@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { HotUpdater as HotUpdaterValue } from "./index";
+import type { HotUpdaterOptions } from "./wrap";
+
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
@@ -197,6 +200,15 @@ describe("HotUpdater client initialization", () => {
       resolver,
       updateMode: "manual",
     });
+  });
+
+  it("types public wrap to accept pre-typed option unions", () => {
+    const compileOnly = (
+      wrap: typeof HotUpdaterValue.wrap,
+      options: HotUpdaterOptions,
+    ) => wrap(options);
+
+    expect(compileOnly).toBeTypeOf("function");
   });
 
   it("uses init configuration for later manual update checks", async () => {
