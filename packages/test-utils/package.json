@@ -38,7 +38,7 @@
     "workspace-tools": "^0.18.4"
   },
   "peerDependencies": {
-    "@hot-updater/core": "workspace:*",
+    "@hot-updater/core": "*",
     "execa": "catalog:tools",
     "vitest": "*"
   },
