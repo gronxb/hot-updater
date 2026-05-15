@@ -74,7 +74,7 @@ describe("HotUpdater client initialization", () => {
 
     mocks.addListener.mockReturnValue(() => {});
     mocks.checkForUpdate.mockResolvedValue(null);
-    mocks.createDefaultResolver.mockImplementation((baseURL: string) => ({
+    mocks.createDefaultResolver.mockImplementation((baseURL: unknown) => ({
       baseURL,
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn(),
@@ -110,6 +110,26 @@ describe("HotUpdater client initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
+      resolver,
+    });
+  });
+
+  it("accepts dynamic baseURL resolvers for manual update flows", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    const resolveBaseURL = vi.fn(() => "https://updates.example.com");
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: resolveBaseURL,
+    });
+
+    expect(mocks.createDefaultResolver).toHaveBeenCalledWith(resolveBaseURL);
+    expect(mocks.init).toHaveBeenCalledWith({
       resolver,
     });
   });

@@ -10,7 +10,7 @@ import {
   reload,
 } from "./native";
 import { useHotUpdaterStore } from "./store";
-import type { HotUpdaterResolver } from "./types";
+import type { HotUpdaterBaseURL, HotUpdaterResolver } from "./types";
 
 export interface RunUpdateProcessResponse {
   status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
@@ -70,10 +70,12 @@ interface CommonHotUpdaterOptions {
  */
 interface BaseURLConfig {
   /**
-   * Base URL for update server
+   * Base URL for update server. Use a function to resolve it dynamically
+   * before each update check.
    * @example "https://update.example.com"
+   * @example () => getUpdateServerURL()
    */
-  baseURL: string;
+  baseURL: HotUpdaterBaseURL;
 
   /**
    * Resolver is not allowed when using baseURL
