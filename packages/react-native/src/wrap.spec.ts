@@ -125,20 +125,18 @@ describe("HotUpdater wrap initialization", () => {
       baseURL: "https://updates.example.com",
       updateStrategy: "appVersion",
     } satisfies HotUpdaterOptions;
+    const explicitAutoOptions = {
+      baseURL: "https://updates.example.com",
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+    } satisfies HotUpdaterOptions;
     const manualOptions = {
       baseURL: "https://updates.example.com",
       updateMode: "manual",
     } satisfies HotUpdaterOptions;
-    const autoModeOptions = {
-      baseURL: "https://updates.example.com",
-      updateMode: "auto",
-      updateStrategy: "appVersion",
-    } as const;
-
-    // @ts-expect-error HotUpdater.wrap defaults to auto and no longer accepts updateMode: "auto".
-    void (autoModeOptions satisfies HotUpdaterOptions);
 
     expect(autoOptions.updateStrategy).toBe("appVersion");
+    expect(explicitAutoOptions.updateMode).toBe("auto");
     expect(manualOptions.updateMode).toBe("manual");
   });
 });

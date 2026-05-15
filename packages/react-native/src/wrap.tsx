@@ -114,7 +114,10 @@ type NetworkConfig = BaseURLConfig | ResolverConfig;
 
 export type AutoUpdateOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
-    updateMode?: never;
+    /**
+     * Automatic update mode. This is the default and can be omitted.
+     */
+    updateMode?: "auto";
 
     /**
      * Update strategy
