@@ -39,7 +39,7 @@
   },
   "peerDependencies": {
     "@hot-updater/core": "*",
-    "execa": "catalog:tools",
+    "execa": "*",
     "vitest": "*"
   },
   "devDependencies": {
