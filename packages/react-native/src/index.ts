@@ -112,7 +112,7 @@ function createHotUpdaterClient() {
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `  });\n\n` +
-          `For more information, visit: https://hot-updater.dev/docs/react-native-api/init`,
+          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
       );
     }
 
@@ -126,7 +126,8 @@ function createHotUpdaterClient() {
       `[HotUpdater] Either baseURL or resolver must be provided.\n\n` +
         `Configure HotUpdater.wrap with the standard baseURL setup:\n\n` +
         baseURLExample +
-        `For more information, visit: https://hot-updater.dev/docs/react-native-api/${apiName}`,
+        `For manual update flows, use HotUpdater.init() and visit: ` +
+        `https://hot-updater.dev/docs/guides/custom-update`,
     );
   };
 
@@ -218,8 +219,7 @@ function createHotUpdaterClient() {
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `  });\n\n` +
-          `For more information, visit: https://hot-updater.dev/docs/react-native-api/wrap ` +
-          `or https://hot-updater.dev/docs/react-native-api/init`,
+          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
       );
     }
     return globalConfig.resolver;
