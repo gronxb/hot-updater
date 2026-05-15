@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+
 import { hotUpdater } from "./db.js";
 
 const app = new Hono();

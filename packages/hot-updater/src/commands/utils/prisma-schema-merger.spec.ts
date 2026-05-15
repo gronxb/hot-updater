@@ -6,25 +6,48 @@ import { describe, expect, it } from "vitest";
 import { mergePrismaSchema } from "./prisma-schema-merger";
 
 const HOT_UPDATER_MODELS = `model bundles {
-  id                  String  @id
-  platform            String
+  id String @db.Uuid @id
+  platform String
   should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-  rollout_cohort_count Int    @default(1000)
-  target_cohorts      Json?
+  enabled Boolean
+  file_hash String
+  git_commit_hash String?
+  message String?
+  channel String @default("production")
+  storage_uri String
+  target_app_version String?
+  fingerprint_hash String?
+  metadata Json @default("{}")
+  manifest_storage_uri String?
+  manifest_file_hash String?
+  asset_base_storage_uri String?
+  rollout_cohort_count Int @default(1000)
+  target_cohorts Json?
+  patches bundle_patches[] @relation("bundle_patches_bundles_patches")
+  baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
+  @@index([target_app_version], map: "bundles_target_app_version_idx")
+  @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
+  @@index([channel], map: "bundles_channel_idx")
+  @@index([rollout_cohort_count], map: "bundles_rollout_idx")
+}
+
+model bundle_patches {
+  id String @db.VarChar(255) @id
+  bundle_id String @db.Uuid
+  base_bundle_id String @db.Uuid
+  base_file_hash String
+  patch_file_hash String
+  patch_storage_uri String
+  order_index Int @default(0)
+  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
+  @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
 }
 
 model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
+  key String @db.VarChar(255) @id
+  value String @default("0.31.0")
 }`;
 
 describe("prisma-schema-merger", () => {
@@ -76,35 +99,21 @@ describe("prisma-schema-merger", () => {
         "utf-8",
       );
 
-      const updatedModels = `model bundles {
-  id String @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json?
-}
-model private_hot_updater_settings {
-  key String @id
-  value String @default("0.29.0")
-}`;
-
-      const result = mergePrismaSchema(schemaWithHotUpdater, updatedModels);
+      const result = mergePrismaSchema(
+        schemaWithHotUpdater,
+        HOT_UPDATER_MODELS,
+      );
 
       expect(result.hadExistingModels).toBe(true);
       // User model should still be preserved
       expect(result.content).toContain("model User");
       // Updated models should be present
       expect(result.content).toContain("rollout_cohort_count");
-      expect(result.content).toContain('"0.29.0"');
+      expect(result.content).toContain("@@index([channel]");
+      expect(result.content).toContain(
+        'bundle bundles @relation("bundle_patches_bundles_patches"',
+      );
+      expect(result.content).toContain('"0.31.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
         result.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
@@ -177,27 +186,7 @@ datasource db {
   url      = "file:./dev.db"
 }
 
-model bundles {
-  id                  String  @id
-  platform            String
-  should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-  rollout_cohort_count Int    @default(1000)
-  target_cohorts      Json?
-}
-
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}`;
+${HOT_UPDATER_MODELS}`;
 
       // Existing schema with User model
       const existingSchemaWithUser = `generator client {

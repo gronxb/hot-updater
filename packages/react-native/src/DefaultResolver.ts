@@ -1,6 +1,7 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
 import { fetchUpdateInfo } from "./fetchUpdateInfo";
+import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type {
   HotUpdaterBaseURL,
   HotUpdaterResolver,
@@ -33,7 +34,10 @@ export function createDefaultResolver(
     checkUpdate: async (
       params: ResolverCheckUpdateParams,
     ): Promise<AppUpdateInfo | null> => {
-      const resolvedBaseURL = await resolveBaseURL(baseURL);
+      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
+        /\/+$/,
+        "",
+      );
       let url: string;
       const cohortPath = `/${encodeURIComponent(params.cohort)}`;
 
@@ -48,7 +52,10 @@ export function createDefaultResolver(
 
       return fetchUpdateInfo({
         url,
-        requestHeaders: params.requestHeaders,
+        requestHeaders: {
+          ...params.requestHeaders,
+          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+        },
         requestTimeout: params.requestTimeout,
       });
     },

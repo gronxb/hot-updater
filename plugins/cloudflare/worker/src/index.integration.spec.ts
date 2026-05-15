@@ -1,7 +1,23 @@
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  getBundlePatches,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+} from "@hot-updater/core";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
-import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
+import {
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  inject,
+  it,
+  vi,
+} from "vitest";
 
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
@@ -21,29 +37,38 @@ declare module "cloudflare:test" {
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
 
+const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
+
 const createInsertBundleQuery = (bundle: Bundle) => {
   const rolloutCohortCount = bundle.rolloutCohortCount ?? 1000;
   const targetCohorts = bundle.targetCohorts
-    ? `'${JSON.stringify(bundle.targetCohorts)}'`
+    ? sqlString(JSON.stringify(bundle.targetCohorts))
     : "null";
+  const metadata = sqlString(JSON.stringify(bundle.metadata ?? {}));
 
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message, channel,
-      storage_uri, fingerprint_hash, rollout_cohort_count, target_cohorts
+      storage_uri, fingerprint_hash, metadata, manifest_storage_uri,
+      manifest_file_hash, asset_base_storage_uri, rollout_cohort_count,
+      target_cohorts
     ) VALUES (
-      '${bundle.id}',
-      '${bundle.fileHash}',
-      '${bundle.platform}',
-      ${bundle.targetAppVersion ? `'${bundle.targetAppVersion}'` : "null"},
+      ${sqlString(bundle.id)},
+      ${sqlString(bundle.fileHash)},
+      ${sqlString(bundle.platform)},
+      ${bundle.targetAppVersion ? sqlString(bundle.targetAppVersion) : "null"},
       ${bundle.shouldForceUpdate},
       ${bundle.enabled},
-      ${bundle.gitCommitHash ? `'${bundle.gitCommitHash}'` : "null"},
-      ${bundle.message ? `'${bundle.message}'` : "null"},
-      '${bundle.channel}',
-      ${bundle.storageUri ? `'${bundle.storageUri}'` : "null"},
-      ${bundle.fingerprintHash ? `'${bundle.fingerprintHash}'` : "null"},
+      ${bundle.gitCommitHash ? sqlString(bundle.gitCommitHash) : "null"},
+      ${bundle.message ? sqlString(bundle.message) : "null"},
+      ${sqlString(bundle.channel)},
+      ${bundle.storageUri ? sqlString(bundle.storageUri) : "null"},
+      ${bundle.fingerprintHash ? sqlString(bundle.fingerprintHash) : "null"},
+      ${metadata},
+      ${bundle.manifestStorageUri ? sqlString(bundle.manifestStorageUri) : "null"},
+      ${bundle.manifestFileHash ? sqlString(bundle.manifestFileHash) : "null"},
+      ${bundle.assetBaseStorageUri ? sqlString(bundle.assetBaseStorageUri) : "null"},
       ${rolloutCohortCount},
       ${targetCohorts}
     ) ON CONFLICT(id) DO UPDATE SET
@@ -57,10 +82,43 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       channel = excluded.channel,
       storage_uri = excluded.storage_uri,
       fingerprint_hash = excluded.fingerprint_hash,
+      metadata = excluded.metadata,
+      manifest_storage_uri = excluded.manifest_storage_uri,
+      manifest_file_hash = excluded.manifest_file_hash,
+      asset_base_storage_uri = excluded.asset_base_storage_uri,
       rollout_cohort_count = excluded.rollout_cohort_count,
       target_cohorts = excluded.target_cohorts;
   `;
 };
+
+const createInsertBundlePatchQueries = (bundle: Bundle) =>
+  getBundlePatches(bundle).map(
+    (patch, index) => `
+    INSERT INTO bundle_patches (
+      id,
+      bundle_id,
+      base_bundle_id,
+      base_file_hash,
+      patch_file_hash,
+      patch_storage_uri,
+      order_index
+    ) VALUES (
+      ${sqlString(`${bundle.id}:${patch.baseBundleId}`)},
+      ${sqlString(bundle.id)},
+      ${sqlString(patch.baseBundleId)},
+      ${sqlString(patch.baseFileHash)},
+      ${sqlString(patch.patchFileHash)},
+      ${sqlString(patch.patchStorageUri)},
+      ${index}
+    ) ON CONFLICT(id) DO UPDATE SET
+      bundle_id = excluded.bundle_id,
+      base_bundle_id = excluded.base_bundle_id,
+      base_file_hash = excluded.base_file_hash,
+      patch_file_hash = excluded.patch_file_hash,
+      patch_storage_uri = excluded.patch_storage_uri,
+      order_index = excluded.order_index;
+  `,
+  );
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
   return {
@@ -72,7 +130,18 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
     await env.DB.prepare(createInsertBundleQuery(bundle)).run();
+    for (const patchSql of createInsertBundlePatchQueries(bundle)) {
+      await env.DB.prepare(patchSql).run();
+    }
   }
+};
+
+const putR2Object = async (key: string, value: string, contentType: string) => {
+  await env.BUCKET.put(key, value, {
+    httpMetadata: {
+      contentType,
+    },
+  });
 };
 
 const createCanonicalPath = (args: GetBundlesArgs) => {
@@ -95,12 +164,11 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   });
 
   beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
   });
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    await seedBundles(bundles);
-
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
       env,
@@ -109,7 +177,130 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     return (await response.json()) as any;
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    await seedBundles(bundles);
+
+    return requestUpdateInfo(args);
+  };
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        await Promise.all([
+          putR2Object(
+            `${fixture.currentBundleId}/manifest.json`,
+            JSON.stringify(fixture.currentManifest),
+            "application/json",
+          ),
+          putR2Object(
+            `${fixture.nextBundleId}/manifest.json`,
+            JSON.stringify(fixture.nextManifest),
+            "application/json",
+          ),
+        ]);
+
+        vi.stubGlobal(
+          "fetch",
+          vi.fn<typeof fetch>(async () => {
+            return new Response("worker subrequest failed", { status: 502 });
+          }),
+        );
+
+        return {
+          cleanup: () => {
+            vi.unstubAllGlobals();
+          },
+          currentArtifacts: {
+            assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextArtifacts: {
+            assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toContain(
+          `/bundles/${fixture.nextBundleId}/files/${fixture.changedAssetPath}`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toContain(`/${fixture.nextBundleId}/manifest.json`);
+      },
+    },
+  });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      await Promise.all([
+        putR2Object(
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        ),
+        putR2Object(
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        ),
+        putR2Object(
+          fixture.patchPath,
+          "patch-bytes",
+          "application/octet-stream",
+        ),
+        putR2Object(
+          `${fixture.currentBundleId}/bundle.zip`,
+          "zip",
+          "application/zip",
+        ),
+        putR2Object(
+          `${fixture.nextBundleId}/bundle.zip`,
+          "zip",
+          "application/zip",
+        ),
+      ]);
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>(async () => {
+          return new Response("worker subrequest failed", { status: 502 });
+        }),
+      );
+
+      return {
+        cleanup: () => {
+          vi.unstubAllGlobals();
+        },
+        currentArtifacts: {
+          assetBaseStorageUri: `r2://bundles/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri: `r2://bundles/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextArtifacts: {
+          assetBaseStorageUri: `r2://bundles/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: `r2://bundles/${fixture.nextBundleId}/manifest.json`,
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `r2://bundles/${fixture.patchPath}`,
+            },
+          ],
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toContain(`/bundles/${fixture.patchPath}`);
+    },
+  });
 
   it("serves canonical routes from the worker entrypoint", async () => {
     await seedBundles([

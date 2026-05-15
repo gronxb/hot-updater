@@ -4,6 +4,32 @@ export type BundleMetadata = {
   app_version?: string;
 };
 
+export interface BundlePatchArtifact {
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchStorageUri: string;
+}
+
+export interface ChangedAssetPatch {
+  algorithm: "bsdiff";
+  baseBundleId: string;
+  baseFileHash: string;
+  patchFileHash: string;
+  patchUrl: string;
+}
+
+export interface ChangedAssetFile {
+  compression?: "br" | null;
+  url: string;
+}
+
+export interface ChangedAsset {
+  file?: ChangedAssetFile | null;
+  fileHash: string;
+  patch?: ChangedAssetPatch | null;
+}
+
 export interface Bundle {
   /**
    * The unique identifier for the bundle. uuidv7
@@ -67,6 +93,51 @@ export interface Bundle {
   metadata?: BundleMetadata;
 
   /**
+   * Storage URI for the bundle manifest artifact.
+   */
+  manifestStorageUri?: string | null;
+
+  /**
+   * SHA256 hash of the manifest artifact, optionally signed as sig:<signature>.
+   */
+  manifestFileHash?: string | null;
+
+  /**
+   * Storage URI prefix for manifest assets.
+   */
+  assetBaseStorageUri?: string | null;
+
+  /**
+   * Binary patch artifacts keyed by base bundle in array order.
+   * Earlier entries take precedence when a single "primary" patch is needed.
+   */
+  patches?: BundlePatchArtifact[] | null;
+
+  /**
+   * Base bundle id used to generate this bundle's binary patch.
+   * @deprecated Use Bundle.patches.
+   */
+  patchBaseBundleId?: string | null;
+
+  /**
+   * Expected hash of the base asset before patch application.
+   * @deprecated Use Bundle.patches.
+   */
+  patchBaseFileHash?: string | null;
+
+  /**
+   * Expected hash of the binary patch artifact.
+   * @deprecated Use Bundle.patches.
+   */
+  patchFileHash?: string | null;
+
+  /**
+   * Storage URI for the binary patch artifact.
+   * @deprecated Use Bundle.patches.
+   */
+  patchStorageUri?: string | null;
+
+  /**
    * Rollout cohort count (0-1000). Controls gradual rollout to numeric cohorts.
    * - 0: No cohorts receive this update
    * - 250: 25.0% of numeric cohorts receive this update
@@ -111,6 +182,7 @@ type SnakeKeyObject<T> = T extends readonly (infer U)[]
 export type SnakeCaseBundle = SnakeKeyObject<Bundle>;
 
 export type UpdateStatus = "ROLLBACK" | "UPDATE";
+export type AppUpdateStatus = UpdateStatus | "UP_TO_DATE";
 
 /**
  * The update info for the database layer.
@@ -138,7 +210,8 @@ export interface UpdateInfo {
  * The update info for the app layer.
  * This is the update info that is used by the app.
  */
-export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
+export interface AppUpdateAvailableInfo extends Omit<UpdateInfo, "storageUri"> {
+  status: UpdateStatus;
   fileUrl: string | null;
   /**
    * SHA256 hash of the bundle file, optionally with embedded signature.
@@ -147,7 +220,31 @@ export interface AppUpdateInfo extends Omit<UpdateInfo, "storageUri"> {
    * The client parses this to extract signature for native verification.
    */
   fileHash: string | null;
+  /**
+   * Optional manifest artifact for manifest-driven updates.
+   * When present with `changedAssets`, native can download and verify a signed
+   * manifest, then assemble the next bundle directory from reused and changed
+   * files while keeping archive fallback available through `fileUrl`.
+   */
+  manifestUrl?: string | null;
+  /**
+   * SHA256 hash of the manifest file, optionally with embedded signature.
+   * Follows the same `sig:<base64_signature>` or plain hex format as `fileHash`.
+   */
+  manifestFileHash?: string | null;
+  /**
+   * Per-file descriptors for assets whose hash differs from the client's
+   * current manifest, or for all assets when the server cannot reuse a base
+   * manifest. Keys are manifest-relative file paths.
+   */
+  changedAssets?: Record<string, ChangedAsset> | null;
 }
+
+export interface AppUpToDateInfo {
+  status: "UP_TO_DATE";
+}
+
+export type AppUpdateInfo = AppUpdateAvailableInfo | AppUpToDateInfo;
 
 export type UpdateStrategy = "fingerprint" | "appVersion";
 

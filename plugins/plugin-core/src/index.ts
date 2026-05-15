@@ -11,5 +11,6 @@ export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";
 export * from "./semverSatisfies";
+export * from "./storageProfile";
 export * from "./types";
 export * from "./uuidv7";

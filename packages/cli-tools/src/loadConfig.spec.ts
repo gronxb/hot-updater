@@ -41,6 +41,8 @@ describe("loadConfig", () => {
     expect(config.releaseChannel).toBe("production");
     expect(config.updateStrategy).toBe("appVersion");
     expect(config.compressStrategy).toBe("zip");
+    expect(config.patch.enabled).toBe(true);
+    expect(config.patch.maxBaseBundles).toBe(3);
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
@@ -119,6 +121,10 @@ describe("loadConfig", () => {
         "  fingerprint: {",
         "    extraSources: ['src/custom.ts'],",
         "  },",
+        "  patch: {",
+        "    enabled: true,",
+        "    maxBaseBundles: 3,",
+        "  },",
         "  platform: {",
         "    android: {",
         "      stringResourcePaths: ['android/custom/strings.xml'],",
@@ -136,6 +142,10 @@ describe("loadConfig", () => {
     expect(config.updateStrategy).toBe("fingerprint");
     expect(config.console.port).toBe(3001);
     expect(config.fingerprint.extraSources).toEqual(["src/custom.ts"]);
+    expect(config.patch).toEqual({
+      enabled: true,
+      maxBaseBundles: 3,
+    });
     expect(config.platform.android.stringResourcePaths).toEqual([
       "android/custom/strings.xml",
     ]);

@@ -1,0 +1,767 @@
+appId: ${APP_ID}
+env:
+  CONTROL_URL: ${CONTROL_URL}
+  SCENARIO_NAME: bspatch-ota
+  PATCH_CHANNEL: production
+  TARGET_APP_VERSION: 1.0.x
+  PHASE1_A_MARKER: bspatch-a-maestro
+  PHASE1_B_MARKER: bspatch-b-maestro
+  PHASE1_C_MARKER: bspatch-c-from-a-maestro
+  PHASE2_A_MARKER: bspatch-a-second-maestro
+  PHASE2_B_MARKER: bspatch-b-second-maestro
+  PHASE2_C_MARKER: bspatch-c-from-b-maestro
+  PHASE2_D_MARKER: bspatch-d-from-c-maestro
+  PHASE3_A_MARKER: bspatch-a-third-maestro
+  PHASE3_B_MARKER: bspatch-b-third-maestro
+  PHASE3_C_MARKER: bspatch-c-manifest-diff-maestro
+onFlowStart:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: bootstrap
+        CONTROL_URL: ${CONTROL_URL}
+onFlowComplete:
+  - runScript:
+      file: ../scripts/control.js
+      env:
+        ACTION: cleanup
+        CONTROL_URL: ${CONTROL_URL}
+---
+# Capture the built-in baseline before the OTA chain starts.
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureBuiltInBundleId
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+
+# Phase 1: built-in -> A uses archive, then A -> C uses a bsdiff patch while C
+# still carries patches for both B and A.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE1_A_MARKER}
+      MESSAGE: Maestro bspatch phase1 bundle A
+      MODE: reset
+      OUTPUT_KEY: phase1A
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase1A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertFirstOtaUsesArchive
+      BUNDLE_ID: ${output.phase1A}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase1A}
+      EXPECTED_MARKER: ${PHASE1_A_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase1A}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE1_B_MARKER}
+      MESSAGE: Maestro bspatch phase1 bundle B
+      MODE: reset
+      OUTPUT_KEY: phase1B
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.phase1A}
+      MARKER: ${PHASE1_C_MARKER}
+      MESSAGE: Maestro bspatch phase1 bundle C
+      MODE: reset
+      OUTPUT_KEY: phase1C
+      PATCH_MAX_BASE_BUNDLES: "2"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBundlePatchBases
+      BUNDLE_ID: ${output.phase1C}
+      CONTROL_URL: ${CONTROL_URL}
+      EXPECTED_BASE_BUNDLE_IDS: ${output.phase1B},${output.phase1A}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase1C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase1CDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.phase1CDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.phase1A}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase1C}
+      EXPECTED_MARKER: ${PHASE1_C_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-a-to-c
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase1C}
+      CONTROL_URL: ${CONTROL_URL}
+
+# Reset the app and server bundles so the next phase can rebuild a fresh chain.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetRemoteBundles
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: reinstallBuiltInApp
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+
+# Phase 2: build A -> B -> C -> D and verify B -> C, then C -> D both use
+# bsdiff patches with maxBaseBundles=2.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE2_A_MARKER}
+      MESSAGE: Maestro bspatch phase2 bundle A
+      MODE: reset
+      OUTPUT_KEY: phase2A
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertFirstOtaUsesArchive
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2A}
+      EXPECTED_MARKER: ${PHASE2_A_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE2_B_MARKER}
+      MESSAGE: Maestro bspatch phase2 bundle B
+      MODE: reset
+      OUTPUT_KEY: phase2B
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2B}
+      EXPECTED_MARKER: ${PHASE2_B_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.phase2B}
+      MARKER: ${PHASE2_C_MARKER}
+      MESSAGE: Maestro bspatch phase2 bundle C
+      MODE: reset
+      OUTPUT_KEY: phase2C
+      PATCH_MAX_BASE_BUNDLES: "2"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBundlePatchBases
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      EXPECTED_BASE_BUNDLE_IDS: ${output.phase2B},${output.phase2A}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2CDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.phase2CDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2C}
+      EXPECTED_MARKER: ${PHASE2_C_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-b-to-c
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      DIFF_BASE_BUNDLE_ID: ${output.phase2C}
+      MARKER: ${PHASE2_D_MARKER}
+      MESSAGE: Maestro bspatch phase2 bundle D consecutive patch
+      MODE: reset
+      OUTPUT_KEY: phase2D
+      PATCH_MAX_BASE_BUNDLES: "2"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBundlePatchBases
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      EXPECTED_BASE_BUNDLE_IDS: ${output.phase2C},${output.phase2B}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2DDiffPatchAssetPath}.bsdiff
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBsdiffPatchApplied
+      ASSET_PATH: ${output.phase2DDiffPatchAssetPath}
+      BASE_BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2D}
+      EXPECTED_MARKER: ${PHASE2_D_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-c-to-d
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+
+# Disable the active chain one bundle at a time. This proves the native runtime
+# can roll back from bsdiff-applied OTAs through the installed chain and finally
+# clear OTA metadata when every candidate is disabled.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2C}
+      EXPECTED_MARKER: ${PHASE2_C_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2B}
+      EXPECTED_MARKER: ${PHASE2_B_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase2A}
+      EXPECTED_MARKER: ${PHASE2_A_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: patchBundle
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      ENABLED: "false"
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-crashed-bundle-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_CRASHED_BUNDLE_RESULT: "Current Crashed Bundle ID: null"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-disabled-chain-to-builtin
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
+
+# Reset again before the pure manifest diff fallback phase.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetRemoteBundles
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: reinstallBuiltInApp
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
+      EXPECTED_MARKER: ${output.initialMarker}
+
+# Phase 3: built-in -> A uses archive, C only gets a patch from B because of
+# maxBaseBundles=1, and an A client must fall back to pure manifest diff.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE3_A_MARKER}
+      MESSAGE: Maestro bspatch phase3 bundle A
+      MODE: reset
+      OUTPUT_KEY: phase3A
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase3A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertFirstOtaUsesArchive
+      BUNDLE_ID: ${output.phase3A}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase3A}
+      EXPECTED_MARKER: ${PHASE3_A_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE3_B_MARKER}
+      MESSAGE: Maestro bspatch phase3 bundle B
+      MODE: reset
+      OUTPUT_KEY: phase3B
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: deployBundle
+      CHANNEL: ${PATCH_CHANNEL}
+      CONTROL_URL: ${CONTROL_URL}
+      MARKER: ${PHASE3_C_MARKER}
+      MESSAGE: Maestro bspatch phase3 bundle C manifest diff fallback
+      MODE: reset
+      OUTPUT_KEY: phase3C
+      PATCH_MAX_BASE_BUNDLES: "1"
+      TARGET_APP_VERSION: ${TARGET_APP_VERSION}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertBundlePatchBases
+      ABSENT_BASE_BUNDLE_IDS: ${output.phase3A}
+      BUNDLE_ID: ${output.phase3C}
+      CONTROL_URL: ${CONTROL_URL}
+      EXPECTED_BASE_BUNDLE_IDS: ${output.phase3B}
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase3C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/assert-update-store-download.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_ARTIFACT_TYPE: diff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}.br
+- runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertManifestDiffApplied
+      BUNDLE_ID: ${output.phase3C}
+      CONTROL_URL: ${CONTROL_URL}
+      PREVIOUS_BUNDLE_ID: ${output.phase3A}
+- runFlow:
+    file: subflows/assert-bundle-marker.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_BUNDLE_ID: ${output.phase3C}
+      EXPECTED_MARKER: ${PHASE3_C_MARKER}
+- runFlow:
+    file: subflows/assert-launch-status.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
+- runFlow:
+    file: subflows/assert-empty-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: captureState
+      CONTROL_URL: ${CONTROL_URL}
+      PREFIX: bspatch-manifest-diff
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataActive
+      BUNDLE_ID: ${output.phase3C}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: writeSummary
+      CONTROL_URL: ${CONTROL_URL}
+      SCENARIO: ${SCENARIO_NAME}
+      STATUS: PASSED

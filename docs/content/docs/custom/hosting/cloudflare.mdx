@@ -91,6 +91,11 @@ the CLI-side plugins, and also exports `verifyJwtSignedUrl` for signed bundle
 downloads. These runtime exports read D1, R2, and `JWT_SECRET` from the request
 context instead of calling the Cloudflare API directly.
 
+The CLI `r2Storage` implements the `node` profile for deploy-time upload and
+local downloads through Wrangler. The Worker `r2Storage` implements the
+`runtime` profile for update checks: it signs client download URLs and reads
+small metadata files directly from the R2 binding.
+
 ## Hot Updater Configuration
 
 Create the Hot Updater instance at module scope and keep the Worker env type

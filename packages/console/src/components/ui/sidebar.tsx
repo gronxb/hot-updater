@@ -8,13 +8,6 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -109,6 +102,53 @@ function SidebarProvider({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebar]);
 
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !isMobile) {
+      return;
+    }
+
+    const root = window.document.documentElement;
+    const body = window.document.body;
+    const themeColorMeta = window.document.querySelector(
+      'meta[name="theme-color"]',
+    );
+    const sidebarColor = getComputedStyle(root).getPropertyValue("--sidebar");
+    const previousBodyBackground = body.style.backgroundColor;
+    const previousThemeColor = themeColorMeta?.getAttribute("content");
+
+    if (openMobile) {
+      body.style.backgroundColor = sidebarColor;
+      themeColorMeta?.setAttribute("content", sidebarColor);
+    }
+
+    const refreshThemeChrome = () => {
+      window.dispatchEvent(new Event("hot-updater:refresh-theme-chrome"));
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      if (openMobile) {
+        body.style.backgroundColor = sidebarColor;
+        themeColorMeta?.setAttribute("content", sidebarColor);
+        return;
+      }
+
+      refreshThemeChrome();
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      body.style.backgroundColor = previousBodyBackground;
+
+      if (previousThemeColor) {
+        themeColorMeta?.setAttribute("content", previousThemeColor);
+      }
+
+      if (!openMobile) {
+        refreshThemeChrome();
+      }
+    };
+  }, [isMobile, openMobile]);
+
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open ? "expanded" : "collapsed";
@@ -179,27 +219,44 @@ function Sidebar({
   }
 
   if (isMobile) {
+    if (!openMobile) {
+      return null;
+    }
+
     return (
-      <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-        <SheetContent
-          data-sidebar="sidebar"
-          data-slot="sidebar"
-          data-mobile="true"
-          className="bg-sidebar text-sidebar-foreground w-(--sidebar-width) p-0 [&>button]:hidden"
+      <div
+        data-sidebar="sidebar"
+        data-slot="sidebar"
+        data-mobile="true"
+        className="fixed inset-0 z-50 md:hidden"
+        {...props}
+      >
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className="absolute inset-0 bg-sidebar/55 supports-backdrop-filter:backdrop-blur-sm"
+          onClick={() => setOpenMobile(false)}
+        />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sidebar"
+          className={cn(
+            "bg-sidebar text-sidebar-foreground absolute inset-y-0 z-10 flex w-(--sidebar-width) flex-col shadow-lg",
+            side === "left" ? "left-0" : "right-0",
+          )}
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
-          side={side}
         >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
-          </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
-        </SheetContent>
-      </Sheet>
+          <div className="pointer-events-none absolute inset-x-0 top-full h-32 bg-sidebar" />
+          <div className="flex h-full w-full flex-col overflow-y-auto bg-sidebar">
+            {children}
+          </div>
+        </div>
+      </div>
     );
   }
 

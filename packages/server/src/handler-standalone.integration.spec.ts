@@ -87,6 +87,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   // Clean up database after each test
+  await db.exec("DELETE FROM bundle_patches");
   await db.exec("DELETE FROM bundles");
 });
 

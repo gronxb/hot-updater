@@ -1,18 +1,88 @@
 import useSyncExternalStoreExports from "use-sync-external-store/shim/with-selector";
 
+import type {
+  HotUpdaterDiffFileSnapshot,
+  HotUpdaterDiffProgressDetails,
+  HotUpdaterProgressEvent,
+} from "./native";
 import { addListener } from "./native";
 
 export type HotUpdaterState = {
   progress: number;
+  downloadedBytes: number | undefined;
+  totalBytes: number | undefined;
   isUpdateDownloaded: boolean;
+  artifactType: "archive" | "diff" | null;
+  details: HotUpdaterDiffProgressDetails | null;
 };
 
 const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
 
+const areDiffDetailsEqual = (
+  left: HotUpdaterDiffProgressDetails | null,
+  right: HotUpdaterDiffProgressDetails | null,
+) => {
+  if (left === right) {
+    return true;
+  }
+
+  if (left === null || right === null) {
+    return false;
+  }
+
+  if (
+    left.totalFilesCount !== right.totalFilesCount ||
+    left.completedFilesCount !== right.completedFilesCount ||
+    left.files.length !== right.files.length
+  ) {
+    return false;
+  }
+
+  return left.files.every((leftFile, index) => {
+    const rightFile = right.files[index];
+    return (
+      rightFile !== undefined &&
+      leftFile.order === rightFile.order &&
+      leftFile.path === rightFile.path &&
+      leftFile.downloadPath === rightFile.downloadPath &&
+      leftFile.downloadedBytes === rightFile.downloadedBytes &&
+      leftFile.progress === rightFile.progress &&
+      leftFile.status === rightFile.status &&
+      leftFile.totalBytes === rightFile.totalBytes
+    );
+  });
+};
+
+const areStatesEqual = (left: HotUpdaterState, right: HotUpdaterState) => {
+  return (
+    left.progress === right.progress &&
+    left.downloadedBytes === right.downloadedBytes &&
+    left.totalBytes === right.totalBytes &&
+    left.isUpdateDownloaded === right.isUpdateDownloaded &&
+    left.artifactType === right.artifactType &&
+    areDiffDetailsEqual(left.details, right.details)
+  );
+};
+
+const normalizeByteCount = (value: number | undefined) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.round(value);
+};
+
+const normalizeDownloadPath = (value: string | undefined) => {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+};
+
 const createHotUpdaterStore = () => {
   let state: HotUpdaterState = {
     progress: 0,
+    downloadedBytes: undefined,
+    totalBytes: undefined,
     isUpdateDownloaded: false,
+    artifactType: null,
+    details: null,
   };
 
   const getSnapshot = () => {
@@ -27,8 +97,39 @@ const createHotUpdaterStore = () => {
     }
   };
 
+  const normalizeDiffDetails = (
+    details: HotUpdaterDiffProgressDetails,
+  ): HotUpdaterDiffProgressDetails => {
+    const totalFilesCount = Math.max(0, details.totalFilesCount);
+    const normalizedFiles: HotUpdaterDiffFileSnapshot[] = details.files
+      .map((file) => {
+        const downloadPath =
+          normalizeDownloadPath(file.downloadPath) ?? file.path;
+
+        return {
+          downloadPath,
+          downloadedBytes: normalizeByteCount(file.downloadedBytes),
+          order: Math.max(0, file.order),
+          path: file.path,
+          progress: Math.max(0, Math.min(file.progress, 1)),
+          status: file.status,
+          totalBytes: normalizeByteCount(file.totalBytes),
+        };
+      })
+      .sort((left, right) => left.order - right.order);
+
+    return {
+      completedFilesCount: Math.max(
+        0,
+        Math.min(details.completedFilesCount, totalFilesCount),
+      ),
+      files: normalizedFiles,
+      totalFilesCount,
+    };
+  };
+
   const setState = (newState: Partial<HotUpdaterState>) => {
-    // Merge first, then normalize derived fields
+    // Merge first, then normalize derived fields.
     const nextState: HotUpdaterState = {
       ...state,
       ...newState,
@@ -38,7 +139,8 @@ const createHotUpdaterStore = () => {
     // If `progress` is not provided but `isUpdateDownloaded` is,
     // honor the explicit value.
     if ("progress" in newState && typeof newState.progress === "number") {
-      nextState.isUpdateDownloaded = newState.progress >= 1;
+      nextState.progress = Math.max(0, Math.min(newState.progress, 1));
+      nextState.isUpdateDownloaded = nextState.progress >= 1;
     } else if (
       "isUpdateDownloaded" in newState &&
       typeof newState.isUpdateDownloaded === "boolean"
@@ -46,15 +148,39 @@ const createHotUpdaterStore = () => {
       nextState.isUpdateDownloaded = newState.isUpdateDownloaded;
     }
 
-    if (
-      state.progress === nextState.progress &&
-      state.isUpdateDownloaded === nextState.isUpdateDownloaded
-    ) {
+    if (newState.details === undefined) {
+      nextState.details = state.details;
+    }
+
+    if (nextState.artifactType !== "diff") {
+      nextState.details = null;
+    }
+
+    if (areStatesEqual(state, nextState)) {
       return;
     }
 
     state = nextState;
     emitChange();
+  };
+
+  const applyProgressEvent = (event: HotUpdaterProgressEvent) => {
+    setState({
+      artifactType: event.artifactType,
+      details:
+        event.artifactType === "diff"
+          ? normalizeDiffDetails(event.details)
+          : null,
+      downloadedBytes:
+        event.artifactType === "archive"
+          ? normalizeByteCount(event.downloadedBytes)
+          : undefined,
+      progress: event.progress,
+      totalBytes:
+        event.artifactType === "archive"
+          ? normalizeByteCount(event.totalBytes)
+          : undefined,
+    });
   };
 
   const subscribe = (listener: () => void) => {
@@ -64,7 +190,7 @@ const createHotUpdaterStore = () => {
 
   // Subscribe to native onProgress events
   // This listener is registered once when the store is created
-  addListener("onProgress", setState);
+  addListener("onProgress", applyProgressEvent);
 
   return { getSnapshot, setState, subscribe };
 };

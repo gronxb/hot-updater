@@ -37,6 +37,76 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
+    private fun parseChangedAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+        if (!params.hasKey("changedAssets") || params.isNull("changedAssets")) {
+            return null
+        }
+
+        val changedAssetsMap = params.getMap("changedAssets") ?: return null
+        val parsedAssets = linkedMapOf<String, ChangedAssetDescriptor>()
+        val iterator = changedAssetsMap.keySetIterator()
+
+        while (iterator.hasNextKey()) {
+            val assetPath = iterator.nextKey()
+            val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
+            val assetHash = assetMap.getString("fileHash") ?: continue
+            val patchMap = assetMap.getMap("patch")
+            val patch =
+                if (patchMap != null) {
+                    val algorithm = patchMap.getString("algorithm")
+                    val baseBundleId = patchMap.getString("baseBundleId")
+                    val baseFileHash = patchMap.getString("baseFileHash")
+                    val patchFileHash = patchMap.getString("patchFileHash")
+                    val patchUrl = patchMap.getString("patchUrl")
+
+                    if (
+                        algorithm != null &&
+                        baseBundleId != null &&
+                        baseFileHash != null &&
+                        patchFileHash != null &&
+                        patchUrl != null
+                    ) {
+                        BsdiffPatchDescriptor(
+                            algorithm = algorithm,
+                            baseBundleId = baseBundleId,
+                            baseFileHash = baseFileHash,
+                            patchFileHash = patchFileHash,
+                            patchUrl = patchUrl,
+                        )
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            val fileMap =
+                if (assetMap.hasKey("file") && !assetMap.isNull("file")) {
+                    assetMap.getMap("file")
+                } else {
+                    null
+                }
+            val assetUrl = fileMap?.getString("url")
+            val fileCompression =
+                if (fileMap != null && fileMap.hasKey("compression") && !fileMap.isNull("compression")) {
+                    fileMap.getString("compression")
+                } else {
+                    null
+                }
+            if (assetUrl == null && patch == null) {
+                continue
+            }
+            parsedAssets[assetPath] =
+                ChangedAssetDescriptor(
+                    fileUrl = assetUrl,
+                    fileHash = assetHash,
+                    fileCompression = fileCompression,
+                    patch = patch,
+                )
+        }
+
+        return parsedAssets
+    }
+
     override fun reload(promise: Promise) {
         moduleScope.launch {
             try {
@@ -88,6 +158,9 @@ class HotUpdaterModule internal constructor(
                 }
 
                 val fileHash = params.getString("fileHash")
+                val manifestUrl = params.getString("manifestUrl")
+                val manifestFileHash = params.getString("manifestFileHash")
+                val changedAssets = parseChangedAssets(params)
                 val channel = params.getString("channel")
 
                 val impl = getInstance()
@@ -96,6 +169,9 @@ class HotUpdaterModule internal constructor(
                     bundleId,
                     fileUrl,
                     fileHash,
+                    manifestUrl,
+                    manifestFileHash,
+                    changedAssets,
                     channel,
                 ) { progress ->
                     // Post to Main thread for React Native event emission
@@ -103,7 +179,42 @@ class HotUpdaterModule internal constructor(
                         try {
                             val progressParams =
                                 WritableNativeMap().apply {
-                                    putDouble("progress", progress)
+                                    putDouble("progress", progress.progress)
+                                    putString("artifactType", progress.artifactType)
+                                    progress.downloadedBytes?.let { putDouble("downloadedBytes", it.toDouble()) }
+                                    progress.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                    progress.details?.let { details ->
+                                        putMap(
+                                            "details",
+                                            WritableNativeMap().apply {
+                                                putInt("totalFilesCount", details.totalFilesCount)
+                                                putInt("completedFilesCount", details.completedFilesCount)
+                                                putArray(
+                                                    "files",
+                                                    WritableNativeArray().apply {
+                                                        details.files.forEach { file ->
+                                                            pushMap(
+                                                                WritableNativeMap().apply {
+                                                                    putString("path", file.path)
+                                                                    putString("downloadPath", file.downloadPath)
+                                                                    putString("status", file.status)
+                                                                    putDouble("progress", file.progress)
+                                                                    putInt("order", file.order)
+                                                                    file.downloadedBytes?.let {
+                                                                        putDouble(
+                                                                            "downloadedBytes",
+                                                                            it.toDouble(),
+                                                                        )
+                                                                    }
+                                                                    file.totalBytes?.let { putDouble("totalBytes", it.toDouble()) }
+                                                                },
+                                                            )
+                                                        }
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
 
                             this@HotUpdaterModule

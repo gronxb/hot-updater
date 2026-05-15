@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { promisify } from "util";
+import { brotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
@@ -10,7 +12,14 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  NodeStoragePlugin,
+  Platform,
+} from "@hot-updater/plugin-core";
+import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import semverValid from "semver/ranges/valid";
@@ -38,6 +47,8 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
+
+const compressBrotli = promisify(brotliCompress);
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -77,6 +88,128 @@ export const getRolloutCohortCountFromPercentage = (
   return rolloutPercentage * 10;
 };
 
+export const normalizePatchMaxBaseBundles = (
+  maxBaseBundles: number | undefined,
+): number => {
+  if (maxBaseBundles === undefined) {
+    return 3;
+  }
+
+  if (!Number.isInteger(maxBaseBundles) || maxBaseBundles < 1) {
+    throw new Error("Patch maxBaseBundles must be a positive integer");
+  }
+
+  return maxBaseBundles;
+};
+
+const getPatchBaseBundles = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<Bundle[]> => {
+  const where = {
+    channel,
+    enabled: true,
+    id: { lt: bundleId },
+    platform,
+    ...(target.fingerprintHash
+      ? {
+          fingerprintHash: target.fingerprintHash,
+        }
+      : {
+          targetAppVersion: target.appVersion,
+          targetAppVersionNotNull: true,
+        }),
+  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  const { data } = await databasePlugin.getBundles({
+    limit: maxBaseBundles,
+    orderBy: {
+      direction: "desc",
+      field: "id",
+    },
+    where,
+  });
+
+  return data
+    .filter((bundle) => bundle.id !== bundleId)
+    .slice(0, maxBaseBundles);
+};
+
+const createAutoPatches = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  storagePlugin,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  storagePlugin: NodeStoragePlugin;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}) => {
+  const baseBundles = await getPatchBaseBundles({
+    bundleId,
+    channel,
+    databasePlugin,
+    maxBaseBundles,
+    platform,
+    target,
+  });
+  const failures: { baseBundleId: string; message: string }[] = [];
+  let createdCount = 0;
+
+  for (const baseBundle of baseBundles) {
+    try {
+      await createBundleDiff(
+        {
+          baseBundleId: baseBundle.id,
+          bundleId,
+        },
+        {
+          databasePlugin,
+          storagePlugin,
+        },
+        {
+          makePrimary: createdCount === 0,
+        },
+      );
+      createdCount += 1;
+    } catch (error) {
+      failures.push({
+        baseBundleId: baseBundle.id,
+        message: error instanceof Error ? error.message : "Unknown patch error",
+      });
+    }
+  }
+
+  return {
+    candidateCount: baseBundles.length,
+    createdCount,
+    failures,
+  };
+};
+
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
@@ -88,6 +221,67 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
     default:
       throw new Error(`Unsupported compress strategy: ${compressStrategy}`);
   }
+};
+
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
+
+const isBrotliManifestBundleAsset = (relativePath: string) =>
+  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
+
+const ensureUploadSourcePath = async ({
+  outputPath,
+  targetFile,
+}: {
+  outputPath: string;
+  targetFile: { path: string; name: string };
+}) => {
+  const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+    ? `${targetFile.name}.br`
+    : targetFile.name;
+  const expectedFilename = path.posix.basename(uploadName);
+  const actualFilename = path.basename(targetFile.path);
+
+  if (uploadName === targetFile.name && expectedFilename === actualFilename) {
+    return targetFile.path;
+  }
+
+  const aliasDir = path.join(
+    outputPath,
+    "upload-artifacts",
+    getRelativeStorageDir(uploadName),
+  );
+  await fs.promises.mkdir(aliasDir, { recursive: true });
+
+  const aliasPath = path.join(aliasDir, expectedFilename);
+  if (uploadName !== targetFile.name) {
+    const source = await fs.promises.readFile(targetFile.path);
+    await fs.promises.writeFile(
+      aliasPath,
+      await compressBrotli(source, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+        },
+      }),
+    );
+  } else {
+    await fs.promises.copyFile(targetFile.path, aliasPath);
+  }
+  return aliasPath;
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -199,6 +393,9 @@ const deployPlatform = async ({
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
   }
+  const maxPatchBaseBundles = config.patch.enabled
+    ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
+    : 0;
 
   // Validate signing configuration
   const signingValidation = await validateSigningConfig(config);
@@ -337,6 +534,7 @@ const deployPlatform = async ({
 
   let bundleId: string | null = null;
   let fileHash: string;
+  let manifestFileHash: string | null = null;
   const platformName = getPlatformName(platform);
   const outputRoot = getBundleOutputRoot({
     cwd,
@@ -379,6 +577,7 @@ const deployPlatform = async ({
     config.storage(),
     config.database(),
   ]);
+  assertNodeStoragePlugin(storagePlugin);
 
   try {
     const taskRef: {
@@ -387,9 +586,17 @@ const deployPlatform = async ({
         bundleId: string;
         stdout: string | null;
       } | null;
+      targetFiles: { path: string; name: string }[];
+      manifestPath: string | null;
+      manifestStorageUri: string | null;
+      assetBaseStorageUri: string | null;
       storageUri: string | null;
     } = {
       buildResult: null,
+      targetFiles: [],
+      manifestPath: null,
+      manifestStorageUri: null,
+      assetBaseStorageUri: null,
       storageUri: null,
     };
 
@@ -423,9 +630,16 @@ const deployPlatform = async ({
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
+          const manifestSigning =
+            config.signing?.enabled && config.signing.privateKeyPath
+              ? (assetFileHash: string) =>
+                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
+              : undefined;
+
           const { manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
+            signFileHash: manifestSigning,
             targetFiles,
           });
 
@@ -436,6 +650,8 @@ const deployPlatform = async ({
               name: "manifest.json",
             },
           ];
+          taskRef.targetFiles = targetFiles;
+          taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
             case "tar.br":
@@ -490,6 +706,22 @@ const deployPlatform = async ({
             }
           }
 
+          manifestFileHash = await getFileHashFromFile(manifestPath);
+          if (config.signing?.enabled) {
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
+            const signature = await signBundle(
+              manifestFileHash,
+              config.signing.privateKeyPath,
+            );
+            manifestFileHash = createSignedFileHash(signature);
+          }
+
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
@@ -515,11 +747,47 @@ const deployPlatform = async ({
           }
 
           try {
-            const { storageUri } = await storagePlugin.upload(
+            const { storageUri } = await storagePlugin.profiles.node.upload(
               bundleId,
               bundlePath,
             );
             taskRef.storageUri = storageUri;
+
+            if (!taskRef.manifestPath) {
+              throw new Error("Manifest path not found");
+            }
+
+            const manifestUpload = await storagePlugin.profiles.node.upload(
+              bundleId,
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
+            taskRef.assetBaseStorageUri = replaceStorageUriLeaf(
+              manifestUpload.storageUri,
+              "files",
+            );
+
+            await Promise.all(
+              taskRef.targetFiles.map(async (targetFile) => {
+                const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+                  ? `${targetFile.name}.br`
+                  : targetFile.name;
+                const relativeDir = getRelativeStorageDir(uploadName);
+                const uploadKey = [bundleId, "files", relativeDir]
+                  .filter(Boolean)
+                  .join("/");
+
+                const uploadSourcePath = await ensureUploadSourcePath({
+                  outputPath: outputRoot,
+                  targetFile,
+                });
+
+                return storagePlugin.profiles.node.upload(
+                  uploadKey,
+                  uploadSourcePath,
+                );
+              }),
+            );
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -538,6 +806,9 @@ const deployPlatform = async ({
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
           }
+          if (!manifestFileHash) {
+            throw new Error("Manifest file hash not found");
+          }
           const appVersion = await getNativeAppVersion(platform);
 
           try {
@@ -553,11 +824,10 @@ const deployPlatform = async ({
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
-              metadata: appVersion
-                ? {
-                    app_version: appVersion,
-                  }
-                : {},
+              metadata: appVersion ? { app_version: appVersion } : {},
+              assetBaseStorageUri: taskRef.assetBaseStorageUri,
+              manifestFileHash,
+              manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();
@@ -567,14 +837,71 @@ const deployPlatform = async ({
             }
             throw e;
           }
-          await databasePlugin.onUnmount?.();
-
           return `✅ Update Complete (${databasePlugin.name})`;
         },
       },
     ]);
     if (!bundleId) {
       throw new Error("Bundle ID not found");
+    }
+    const confirmedBundleId = bundleId;
+
+    if (config.patch.enabled) {
+      let patchSummary: {
+        candidateCount: number;
+        createdCount: number;
+        failures: { baseBundleId: string; message: string }[];
+      } = {
+        candidateCount: 0,
+        createdCount: 0,
+        failures: [],
+      };
+
+      await p.tasks([
+        {
+          title: "⚡ Optimizing Delivery",
+          task: async () => {
+            try {
+              patchSummary = await createAutoPatches({
+                bundleId: confirmedBundleId,
+                channel,
+                databasePlugin,
+                maxBaseBundles: maxPatchBaseBundles,
+                platform,
+                storagePlugin,
+                target,
+              });
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown patch optimization error";
+              p.log.warn(`Partial updates unavailable: ${message}`);
+              patchSummary = {
+                candidateCount: 0,
+                createdCount: 0,
+                failures: [],
+              };
+            }
+
+            if (!patchSummary.candidateCount) {
+              return "Skipped (no compatible base bundles)";
+            }
+
+            if (!patchSummary.createdCount) {
+              return "Skipped (no patch artifacts created)";
+            }
+
+            return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
+          },
+        },
+      ]);
+
+      for (const failure of patchSummary.failures) {
+        p.log.warn(
+          `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+        );
+      }
     }
 
     if (options.interactive) {
@@ -584,7 +911,7 @@ const deployPlatform = async ({
       const openUrl = new URL(`http://localhost:${port}`);
       openUrl.searchParams.set("channel", channel);
       openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", bundleId);
+      openUrl.searchParams.set("bundleId", confirmedBundleId);
 
       const url = openUrl.toString();
 
@@ -606,12 +933,14 @@ const deployPlatform = async ({
       p.note(note);
     }
     if (multiPlatform) {
-      p.log.success(`✅ ${platformName} Deployment Successful (${bundleId})`);
-      return { bundleId, platform };
+      p.log.success(
+        `✅ ${platformName} Deployment Successful (${confirmedBundleId})`,
+      );
+      return { bundleId: confirmedBundleId, platform };
     }
 
-    p.outro(`🚀 Deployment Successful (${bundleId})`);
-    return { bundleId, platform };
+    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
+    return { bundleId: confirmedBundleId, platform };
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });

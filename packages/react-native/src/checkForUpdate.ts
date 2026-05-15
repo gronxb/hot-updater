@@ -1,4 +1,4 @@
-import type { AppUpdateInfo } from "@hot-updater/core";
+import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import { Platform } from "react-native";
 
 import { HotUpdaterError } from "./error";
@@ -42,7 +42,7 @@ export interface CheckForUpdateOptions {
   requestTimeout?: number;
 }
 
-export type CheckForUpdateResult = AppUpdateInfo & {
+export type CheckForUpdateResult = AppUpdateAvailableInfo & {
   /**
    * Updates the bundle.
    * This method is equivalent to `HotUpdater.updateBundle()` but with all required arguments pre-filled.
@@ -142,6 +142,10 @@ export async function checkForUpdate(
     return null;
   }
 
+  if (updateInfo.status === "UP_TO_DATE") {
+    return null;
+  }
+
   if (
     explicitChannel &&
     explicitChannel !== defaultChannel &&
@@ -168,8 +172,11 @@ export async function checkForUpdate(
       return updateBundle({
         bundleId: updateInfo.id,
         channel: runtimeChannel,
+        changedAssets: updateInfo.changedAssets ?? null,
         fileUrl: updateInfo.fileUrl,
         fileHash: updateInfo.fileHash,
+        manifestFileHash: updateInfo.manifestFileHash ?? null,
+        manifestUrl: updateInfo.manifestUrl ?? null,
         status: updateInfo.status,
         shouldSkipCurrentBundleIdCheck: isFirstRuntimeChannelSwitchAttempt,
       });

@@ -1,8 +1,11 @@
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
-import type { StoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertNodeStoragePlugin,
+  type NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
 
 let configPromise: Promise<ConfigResponse> | null = null;
-let storagePluginPromise: Promise<StoragePlugin> | null = null;
+let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
 
 const loadCachedConfig = async () => {
   if (!configPromise) {
@@ -23,6 +26,7 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
           throw new Error("Storage plugin initialization failed");
         }
 
+        assertNodeStoragePlugin(storagePlugin);
         return storagePlugin;
       })
       .catch((error) => {

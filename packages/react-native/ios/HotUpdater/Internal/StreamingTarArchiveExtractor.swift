@@ -49,6 +49,17 @@ enum StreamingTarArchiveExtractor {
         }
     }
 
+    static func decompressBrotliFile(
+        from sourcePath: String,
+        to outputPath: String
+    ) throws {
+        try decompressBrotliArchive(
+            from: sourcePath,
+            to: outputPath,
+            progressHandler: { _ in }
+        )
+    }
+
     static func containsTarEntries(file: String, algorithm: CompressedTarAlgorithm) -> Bool {
         do {
             return try withTemporaryTarFile { temporaryTarURL in

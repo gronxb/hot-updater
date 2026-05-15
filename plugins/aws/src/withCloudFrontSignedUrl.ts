@@ -1,7 +1,7 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import type {
-  StoragePlugin,
+  RuntimeStoragePlugin,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
 
@@ -128,43 +128,56 @@ const resolvePublicBaseUrl = async <TContext>(
   return publicBaseUrl;
 };
 
-export const withCloudFrontSignedUrl = <TContext = unknown>(
-  storageFactory: () => StoragePlugin<TContext>,
+export const withCloudFrontSignedUrl = <
+  TContext = unknown,
+  TStorage extends RuntimeStoragePlugin<TContext> =
+    RuntimeStoragePlugin<TContext>,
+>(
+  storageFactory: () => TStorage,
   config: WithCloudFrontSignedUrlOptions<TContext>,
 ) => {
-  return (): StoragePlugin<TContext> => {
+  return (): TStorage => {
     const baseStorage = storageFactory();
 
     return {
       ...baseStorage,
       name: `${baseStorage.name}WithCloudFrontSignedUrl`,
-      async getDownloadUrl(storageUri, context) {
-        const storageUrl = new URL(storageUri);
+      profiles: {
+        ...baseStorage.profiles,
+        runtime: {
+          ...baseStorage.profiles.runtime,
+          async getDownloadUrl(storageUri, context) {
+            const storageUrl = new URL(storageUri);
 
-        if (storageUrl.protocol !== "s3:") {
-          return baseStorage.getDownloadUrl(storageUri, context);
-        }
+            if (storageUrl.protocol !== "s3:") {
+              return baseStorage.profiles.runtime.getDownloadUrl(
+                storageUri,
+                context,
+              );
+            }
 
-        const [privateKey, publicBaseUrl] = await Promise.all([
-          resolvePrivateKey(config),
-          resolvePublicBaseUrl(config, context),
-        ]);
-        const url = new URL(publicBaseUrl);
-        url.pathname = storageUrl.pathname;
-        url.search = "";
+            const [privateKey, publicBaseUrl] = await Promise.all([
+              resolvePrivateKey(config),
+              resolvePublicBaseUrl(config, context),
+            ]);
+            const url = new URL(publicBaseUrl);
+            url.pathname = storageUrl.pathname;
+            url.search = "";
 
-        return {
-          fileUrl: getSignedUrl({
-            url: url.toString(),
-            keyPairId: config.keyPairId,
-            privateKey,
-            dateLessThan: new Date(
-              Date.now() +
-                (config.expiresSeconds ?? ONE_YEAR_IN_SECONDS) * 1000,
-            ).toISOString(),
-          }),
-        };
+            return {
+              fileUrl: getSignedUrl({
+                url: url.toString(),
+                keyPairId: config.keyPairId,
+                privateKey,
+                dateLessThan: new Date(
+                  Date.now() +
+                    (config.expiresSeconds ?? ONE_YEAR_IN_SECONDS) * 1000,
+                ).toISOString(),
+              }),
+            };
+          },
+        },
       },
-    };
+    } as TStorage;
   };
 };

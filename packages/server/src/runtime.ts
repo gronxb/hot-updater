@@ -1,7 +1,8 @@
 import type {
   HotUpdaterContext,
-  StoragePlugin,
+  RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
 import { createPluginDatabaseCore } from "./db/pluginCore";
 import {
@@ -13,6 +14,7 @@ import {
 } from "./db/types";
 import { createHandler, type HandlerRoutes } from "./handler";
 import { normalizeBasePath } from "./route";
+import { createStorageAccess } from "./storageAccess";
 
 export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   basePath: string;
@@ -25,8 +27,14 @@ export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
 
 export interface CreateHotUpdaterOptions<TContext = unknown> {
   database: DatabaseAdapter<TContext>;
-  storages?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
-  storagePlugins?: (StoragePlugin<TContext> | StoragePluginFactory<TContext>)[];
+  storages?: (
+    | RuntimeStoragePlugin<TContext>
+    | StoragePluginFactory<TContext>
+  )[];
+  storagePlugins?: (
+    | RuntimeStoragePlugin<TContext>
+    | StoragePluginFactory<TContext>
+  )[];
   basePath?: string;
   cwd?: string;
   routes?: HandlerRoutes;
@@ -38,39 +46,14 @@ export function createHotUpdater<TContext = unknown>(
   const database = options.database;
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
-    (plugin) => (typeof plugin === "function" ? plugin() : plugin),
+    (plugin) => {
+      const storagePlugin = typeof plugin === "function" ? plugin() : plugin;
+      assertRuntimeStoragePlugin(storagePlugin);
+      return storagePlugin;
+    },
   );
-
-  const resolveStoragePluginUrl = async (
-    storageUri: string | null,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<string | null> => {
-    if (!storageUri) {
-      return null;
-    }
-
-    const url = new URL(storageUri);
-    const protocol = url.protocol.replace(":", "");
-
-    if (protocol === "http" || protocol === "https") {
-      return storageUri;
-    }
-
-    const plugin = storagePlugins.find(
-      (item) => item.supportedProtocol === protocol,
-    );
-
-    if (!plugin) {
-      throw new Error(`No storage plugin for protocol: ${protocol}`);
-    }
-
-    const { fileUrl } = await plugin.getDownloadUrl(storageUri, context);
-    if (!fileUrl) {
-      throw new Error("Storage plugin returned empty fileUrl");
-    }
-
-    return fileUrl;
-  };
+  const { readStorageText, resolveFileUrl } =
+    createStorageAccess(storagePlugins);
 
   if (!isDatabasePluginFactory(database) && !isDatabasePlugin(database)) {
     throw new Error(
@@ -81,12 +64,13 @@ export function createHotUpdater<TContext = unknown>(
   const plugin = isDatabasePluginFactory(database) ? database() : database;
   const core = createPluginDatabaseCore<TContext>(
     () => plugin,
-    resolveStoragePluginUrl,
+    resolveFileUrl,
     isDatabasePluginFactory(database)
       ? {
           createMutationPlugin: () => database(),
+          readStorageText,
         }
-      : undefined,
+      : { readStorageText },
   );
 
   const api = {

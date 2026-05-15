@@ -19,10 +19,10 @@ export function FilterToolbar() {
   const hasActiveFilters = filters.channel || filters.platform;
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+    <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
       <SidebarTrigger className="-ml-1" />
 
-      <div className="flex items-center gap-1.5 text-muted-foreground ml-2">
+      <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
         <Filter className="h-3.5 w-3.5" />
         <span className="text-xs font-medium">Filters</span>
       </div>
@@ -36,7 +36,7 @@ export function FilterToolbar() {
           })
         }
       >
-        <SelectTrigger className="w-[140px] h-8 text-xs">
+        <SelectTrigger className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]">
           <SelectValue placeholder="All Platforms" />
         </SelectTrigger>
         <SelectContent>
@@ -52,7 +52,7 @@ export function FilterToolbar() {
           setFilters({ channel: value === "all" ? undefined : value })
         }
       >
-        <SelectTrigger className="w-[140px] h-8 text-xs">
+        <SelectTrigger className="h-8 w-[calc(50%-0.25rem)] min-w-[132px] text-xs sm:w-[140px]">
           <SelectValue placeholder="All Channels" />
         </SelectTrigger>
         <SelectContent>
@@ -70,7 +70,7 @@ export function FilterToolbar() {
           variant="ghost"
           size="sm"
           onClick={resetFilters}
-          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground sm:ml-auto"
         >
           <X className="h-3.5 w-3.5 mr-1" />
           Clear

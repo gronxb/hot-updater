@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { type HdiffError, hdiff } from "../src/index.js";
@@ -5,13 +7,14 @@ import {
   applyBspatch,
   equalsBytes,
   readFixtureHbc,
+  readLargeFixtureHbc,
   toDeltaMagic,
   withFileLength,
   withVersion,
 } from "./test-helpers.js";
 
 describe("hdiff", () => {
-  it("generates a BSPATCH-compatible BSDIFF40 patch for fixture one -> two", async () => {
+  it("generates a BSPATCH-compatible ENDSLEY BSDIFF43 patch for fixture one -> two", async () => {
     const base = await readFixtureHbc("one");
     const next = await readFixtureHbc("two");
 
@@ -82,6 +85,38 @@ describe("hdiff", () => {
     expect(equalsBytes(restored, next)).toBe(true);
   });
 
+  it("restores the target bytes from base plus patch with fileHash integrity", async () => {
+    const base = await readFixtureHbc("one");
+    const next = await readFixtureHbc("two");
+
+    const patch = await hdiff(base, next);
+    const restored = await applyBspatch(base, patch);
+
+    const baseFileHash = sha256(base);
+    const targetFileHash = sha256(next);
+    const restoredFileHash = sha256(restored);
+    const patchFileHash = sha256(patch);
+
+    expect(baseFileHash).not.toBe(targetFileHash);
+    expect(patchFileHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(restoredFileHash).toBe(targetFileHash);
+  });
+
+  it.each(["android", "ios"] as const)(
+    "applies a large %s patch from the v0.85.0 fixture and preserves target fileHash integrity",
+    async (platform) => {
+      const base = await readLargeFixtureHbc(platform, "base");
+      const next = await readLargeFixtureHbc(platform, "target");
+
+      const patch = await hdiff(base, next);
+      const restored = await applyBspatch(base, patch);
+
+      expect(next.byteLength).toBeGreaterThan(base.byteLength);
+      expect(patch.byteLength).toBeGreaterThan(1024 * 1024);
+      expect(sha256(restored)).toBe(sha256(next));
+    },
+  );
+
   it("produces deterministic patch bytes for the same input pair", async () => {
     const base = await readFixtureHbc("one");
     const next = await readFixtureHbc("two");
@@ -92,3 +127,7 @@ describe("hdiff", () => {
     expect(equalsBytes(patchA, patchB)).toBe(true);
   });
 });
+
+function sha256(bytes: Uint8Array): string {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}

@@ -15,6 +15,7 @@ interface BundleSearchParams {
   after: string | undefined;
   before: string | undefined;
   bundleId: string | undefined;
+  expandedBundleId: string | undefined;
 }
 
 export function useFilterParams() {
@@ -29,11 +30,16 @@ export function useFilterParams() {
     before: search.before as string | undefined,
   };
   const bundleId = search.bundleId as string | undefined;
+  const expandedBundleId = search.expandedBundleId as string | undefined;
 
-  const navigateWithSearch = (nextSearch: BundleSearchParams) => {
+  const navigateWithSearch = (
+    nextSearch: BundleSearchParams,
+    options?: { resetScroll?: boolean },
+  ) => {
     void navigate({
       to: "/",
       search: nextSearch,
+      resetScroll: options?.resetScroll,
     });
   };
 
@@ -74,6 +80,7 @@ export function useFilterParams() {
     navigateWithSearch({
       ...getNextFilters(newFilters),
       bundleId: undefined,
+      expandedBundleId: undefined,
     });
   };
 
@@ -81,10 +88,32 @@ export function useFilterParams() {
     nextBundleId: string | undefined,
     newFilters: Partial<BundleFilters> = {},
   ) => {
-    navigateWithSearch({
-      ...getNextFilters(newFilters),
-      bundleId: nextBundleId,
-    });
+    navigateWithSearch(
+      {
+        ...getNextFilters(newFilters),
+        bundleId: nextBundleId,
+        expandedBundleId: undefined,
+      },
+      {
+        resetScroll: false,
+      },
+    );
+  };
+
+  const setExpandedBundleId = (
+    nextExpandedBundleId: string | undefined,
+    newFilters: Partial<BundleFilters> = {},
+  ) => {
+    navigateWithSearch(
+      {
+        ...getNextFilters(newFilters),
+        bundleId,
+        expandedBundleId: nextExpandedBundleId,
+      },
+      {
+        resetScroll: false,
+      },
+    );
   };
 
   const resetFilters = () => {
@@ -95,14 +124,17 @@ export function useFilterParams() {
       after: undefined,
       before: undefined,
       bundleId: undefined,
+      expandedBundleId: undefined,
     });
   };
 
   return {
     filters,
     bundleId,
+    expandedBundleId,
     setFilters,
     setBundleId,
+    setExpandedBundleId,
     resetFilters,
   };
 }

@@ -3,6 +3,11 @@ appId: ${APP_ID}
 - retry:
     maxRetries: 3
     commands:
+      - scrollUntilVisible:
+          element:
+            id: ${TARGET_ID}
+          direction: DOWN
+          timeout: 10000
       - assertVisible:
           id: ${TARGET_ID}
       - copyTextFrom:

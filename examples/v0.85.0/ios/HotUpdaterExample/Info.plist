@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+	<dict>
+		<key>CFBundleDevelopmentRegion</key>
+		<string>en</string>
+		<key>CFBundleDisplayName</key>
+		<string>HotUpdaterExample</string>
+		<key>CFBundleExecutable</key>
+		<string>$(EXECUTABLE_NAME)</string>
+		<key>CFBundleIdentifier</key>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<key>CFBundleInfoDictionaryVersion</key>
+		<string>6.0</string>
+		<key>CFBundleName</key>
+		<string>$(PRODUCT_NAME)</string>
+		<key>CFBundlePackageType</key>
+		<string>APPL</string>
+		<key>CFBundleShortVersionString</key>
+		<string>$(MARKETING_VERSION)</string>
+		<key>CFBundleSignature</key>
+		<string>????</string>
+		<key>CFBundleVersion</key>
+		<string>$(CURRENT_PROJECT_VERSION)</string>
+		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
+		<string>375ccd5f2d85d8cb55d7ccf3991032cca7e3c51d</string>
+		<key>LSRequiresIPhoneOS</key>
+		<true/>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsArbitraryLoads</key>
+			<false/>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+		</dict>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string/>
+		<key>RCTNewArchEnabled</key>
+		<true/>
+		<key>UILaunchStoryboardName</key>
+		<string>LaunchScreen</string>
+		<key>UIRequiredDeviceCapabilities</key>
+		<array>
+			<string>arm64</string>
+		</array>
+		<key>UISupportedInterfaceOrientations</key>
+		<array>
+			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationLandscapeLeft</string>
+			<string>UIInterfaceOrientationLandscapeRight</string>
+		</array>
+		<key>UIViewControllerBasedStatusBarAppearance</key>
+		<false/>
+		<key>HOT_UPDATER_CHANNEL</key>
+		<string>production</string>
+		<key>HOT_UPDATER_PUBLIC_KEY</key>
+		<string>-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAm41X+uLNeey4oYa4IA91
+rMk4KLnKJ5ReY3+SEg4qyHD1YFvV7asju2SL8Wjoai0RlslqT9o4i/ZiZNvlNhzI
+ozmC6JkIB3CJjfRgFl3XQ/6LRAQm/SgFUeXv/bhThGIP13bXa5+rhQXD2waBcPIQ
+CNJVTPNZo8+hoZeU2De1zL6t9ECq5SoRVuuhH++9FfKLGky7tFAxkpQVv3h/GcD7
+zawt+346pzQioG75V3Cpwxe8y6Z1dCRKNjDna4xf5FQl5oyhWAMqpK8rd066QRNd
+d8qgawucmMiFUpnNmnFSj8ymQPQ3SpqoKJjDfpoIEi/VMBh0cSuFajDO7FatO+Pz
+XisUEaORnfR7k3BD/b/cX5UBuEoSIDAANTVBcAlCeivkll/0rOCzKCmk8qYE6pr1
+MkR9o9wITIuOXr800niBGW1L8MqzFUDJ28MAjO9mW9906JQR7Xl4zWhSIiGoo2be
+q4IbmcJBBmdVCgH8vXETEmnhvdttsL2bC56x2BI3qOx3QL61Qh8HFQrIoa6IKClB
+9PtlA/EKf+KHWgKgX16U+AjnWRGnFvRx1f8+OYd2d6SnEIExEeVabdp4GxWhEOBI
+q7NXcKw1/lYati9BIzcAhWtHZ+H8H9LDwcRCMmBnXscmdW6xYgpUk5oSGmrm3yii
+sqUuNdElBASjowpKQMp2N/cCAwEAAQ==
+-----END PUBLIC KEY-----</string>
+		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
+		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
+	</dict>
+</plist>

@@ -24,6 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface RolloutCohortsDialogProps {
   bundleId: string;
@@ -65,6 +66,85 @@ export function RolloutCohortsDialog({
   );
   const rolloutPercentage = (normalizedRolloutCount / 10).toFixed(1);
   const excludedCount = NUMERIC_COHORT_SIZE - rolloutCohorts.length;
+  const isMobile = useIsMobile();
+
+  const dialogBody = (
+    <>
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+        <Card>
+          <CardHeader className="p-4">
+            <CardDescription>Selected Cohorts</CardDescription>
+            <CardTitle className="font-mono text-xl">
+              {rolloutCohorts.length}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="p-4">
+            <CardDescription>Excluded Cohorts</CardDescription>
+            <CardTitle className="font-mono text-xl">{excludedCount}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="col-span-2 sm:col-span-1">
+          <CardHeader className="p-4">
+            <CardDescription>Bundle ID</CardDescription>
+            <CardTitle className="font-mono text-xs break-all leading-relaxed">
+              {bundleId}
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="p-4 pb-3">
+          <CardTitle className="text-sm">Numeric Cohorts</CardTitle>
+          <CardDescription>
+            Listed in ascending order for readability.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border bg-muted/20 p-3 sm:max-h-[45vh]">
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8">
+              {rolloutCohorts.map((cohortValue: number) => (
+                <Badge
+                  key={cohortValue}
+                  variant="outline"
+                  className="justify-center font-mono"
+                >
+                  {cohortValue}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {hasTargetCohorts ? (
+        <Card>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-sm">Target Cohorts</CardTitle>
+            <CardDescription>
+              These cohorts are also included, even if they are outside the
+              numeric rollout.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3">
+              {normalizedTargetCohorts.map((cohort) => (
+                <Badge
+                  key={cohort}
+                  variant="secondary"
+                  className="max-w-full font-mono"
+                >
+                  <span className="truncate">{cohort}</span>
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </>
+  );
 
   return (
     <Dialog>
@@ -80,93 +160,53 @@ export function RolloutCohortsDialog({
           {triggerLabel}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Rolled Out Cohorts</DialogTitle>
-          <DialogDescription>
-            {rolloutPercentage}% rollout currently targets{" "}
-            {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric cohorts.
-            The selected set stays stable for this bundle as you expand or
-            shrink rollout.
-            {hasTargetCohorts
-              ? " Target Cohorts are added on top of this numeric rollout."
-              : ""}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card>
-            <CardHeader className="p-4">
-              <CardDescription>Selected Cohorts</CardDescription>
-              <CardTitle className="font-mono text-xl">
-                {rolloutCohorts.length}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="p-4">
-              <CardDescription>Excluded Cohorts</CardDescription>
-              <CardTitle className="font-mono text-xl">
-                {excludedCount}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="p-4">
-              <CardDescription>Bundle ID</CardDescription>
-              <CardTitle className="font-mono text-xs break-all leading-relaxed">
-                {bundleId}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-sm">Numeric Cohorts</CardTitle>
-            <CardDescription>
-              Listed in ascending order for readability.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="max-h-[50vh] overflow-y-auto rounded-lg border bg-muted/20 p-3">
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-8">
-                {rolloutCohorts.map((cohortValue: number) => (
-                  <Badge
-                    key={cohortValue}
-                    variant="outline"
-                    className="justify-center font-mono"
-                  >
-                    {cohortValue}
-                  </Badge>
-                ))}
-              </div>
+      <DialogContent
+        className={
+          isMobile
+            ? "top-0 left-0 h-dvh max-w-none translate-x-0 translate-y-0 rounded-none border-0 p-0"
+            : "sm:max-w-3xl"
+        }
+      >
+        {isMobile ? (
+          <div className="flex h-full flex-col overflow-hidden">
+            <DialogHeader className="shrink-0 border-b border-border/70 px-4 py-4">
+              <DialogTitle>Rolled Out Cohorts</DialogTitle>
+              <DialogDescription>
+                {rolloutPercentage}% rollout currently targets{" "}
+                {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric
+                cohorts. The selected set stays stable for this bundle as you
+                expand or shrink rollout.
+                {hasTargetCohorts
+                  ? " Target Cohorts are added on top of this numeric rollout."
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="flex flex-col gap-4">{dialogBody}</div>
             </div>
-          </CardContent>
-        </Card>
-
-        {hasTargetCohorts ? (
-          <Card>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-sm">Target Cohorts</CardTitle>
-              <CardDescription>
-                These cohorts are also included, even if they are outside the
-                numeric rollout.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 pt-0">
-              <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/20 p-3">
-                {normalizedTargetCohorts.map((cohort) => (
-                  <Badge key={cohort} variant="secondary" className="font-mono">
-                    {cohort}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <DialogFooter showCloseButton />
+            <DialogFooter
+              className="shrink-0 border-t border-border/70 px-4 py-3"
+              showCloseButton
+            />
+          </div>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Rolled Out Cohorts</DialogTitle>
+              <DialogDescription>
+                {rolloutPercentage}% rollout currently targets{" "}
+                {rolloutCohorts.length} of {NUMERIC_COHORT_SIZE} numeric
+                cohorts. The selected set stays stable for this bundle as you
+                expand or shrink rollout.
+                {hasTargetCohorts
+                  ? " Target Cohorts are added on top of this numeric rollout."
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {dialogBody}
+            <DialogFooter showCloseButton />
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

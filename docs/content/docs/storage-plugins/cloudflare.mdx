@@ -22,24 +22,25 @@ npm install @hot-updater/aws --save-dev
 Configure with R2:
 
 ```typescript
-import { s3Storage } from '@hot-updater/aws';
-import { defineConfig } from 'hot-updater';
+import { s3Storage } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: s3Storage({
-    region: 'auto',
-    endpoint: 'https://your-account-id.r2.cloudflarestorage.com',
+    region: "auto",
+    endpoint: "https://your-account-id.r2.cloudflarestorage.com",
     credentials: {
-      accessKeyId: 'your-r2-access-key-id',
-      secretAccessKey: 'your-r2-secret-access-key'
+      accessKeyId: "your-r2-access-key-id",
+      secretAccessKey: "your-r2-secret-access-key",
     },
-    bucketName: 'my-r2-bucket'
+    bucketName: "my-r2-bucket",
   }),
   // ... other config
 });
 ```
 
 This approach provides full R2 compatibility with better performance and all S3 features.
+
 </Callout>
 
 ## Setup
@@ -58,34 +59,63 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface R2StorageConfig {
-  cloudflareApiToken: string;  // Cloudflare API token
-  accountId: string;           // Cloudflare account ID
-  bucketName: string;          // R2 bucket name
-  basePath?: string;           // Optional base path within bucket
+  cloudflareApiToken: string; // Cloudflare API token
+  accountId: string; // Cloudflare account ID
+  bucketName: string; // R2 bucket name
+  basePath?: string; // Optional base path within bucket
 }
 ```
 
 ## Usage
 
 ```typescript
-import { r2Storage } from '@hot-updater/cloudflare';
-import { defineConfig } from 'hot-updater';
+import { r2Storage } from "@hot-updater/cloudflare";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: r2Storage({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN,
-    bucketName: 'my-r2-bucket'
+    bucketName: "my-r2-bucket",
   }),
   // ... other config
 });
 ```
 
+## Runtime Usage
+
+`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
+profile and uses Wrangler to upload, delete, and download objects to local
+files.
+
+Cloudflare Workers should use the Worker runtime export instead:
+
+```typescript
+import { r2Storage } from "@hot-updater/cloudflare/worker";
+import { createHotUpdater } from "@hot-updater/server/runtime";
+
+export const hotUpdater = createHotUpdater({
+  storages: [
+    r2Storage({
+      publicBaseUrl: (context) => new URL(context!.request!.url).origin,
+    }),
+  ],
+  // ... other options
+});
+```
+
+The Worker runtime plugin implements the `runtime` profile. It signs bundle
+download URLs and reads small metadata files directly from the R2 binding. This
+lets update checks use bundle diffing without the Worker fetching its own signed
+public URL.
+
 ## Limitations
 
-- Does not support getDownloadUrl() - bundles cannot be downloaded via presigned URLs
-- Uses CLI instead of SDK (slower performance)
-- Limited compared to S3-compatible approach
+- `r2Storage` does not implement the runtime profile.
+- `r2Storage` uses Wrangler instead of the R2 S3-compatible SDK, so it is slower
+  than the S3-compatible approach.
+- For a single plugin that supports both deploy-time and runtime profiles, use
+  `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
 
 ## Protocol
 

@@ -164,16 +164,19 @@ const createMemoryHotUpdater = () => {
       {
         name: "lambdaMemoryStorage",
         supportedProtocol: "s3",
-        async upload() {
-          throw new Error("Upload is not supported in memory benchmark mode.");
-        },
-        async delete() {},
-        async getDownloadUrl(storageUri) {
-          const url = new URL("https://assets.example.com");
-          url.pathname = new URL(storageUri).pathname;
-          return {
-            fileUrl: url.toString(),
-          };
+        profiles: {
+          runtime: {
+            async readText() {
+              return null;
+            },
+            async getDownloadUrl(storageUri) {
+              const url = new URL("https://assets.example.com");
+              url.pathname = new URL(storageUri).pathname;
+              return {
+                fileUrl: url.toString(),
+              };
+            },
+          },
         },
       },
     ],

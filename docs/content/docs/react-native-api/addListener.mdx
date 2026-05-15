@@ -1,86 +1,110 @@
 ---
-title: "addEventListener"
-description: "The `addEventListener` function allows you to listen for specific events emitted by the HotUpdater. This is useful for tracking update progress or other events during the update process."
+title: "addListener"
+description: "Subscribe to Hot Updater events."
 icon: Headphones
 ---
 
 <Callout type="warn">
-For most use cases involving bundle download progress bar displays, it's more convenient to use the store hook instead of this listener. See [useHotUpdaterStore](./useHotUpdaterStore).
+For progress UI, prefer [useHotUpdaterStore](./useHotUpdaterStore). Use
+`addListener` when you need the raw event, such as analytics, logs, or custom
+side effects.
 </Callout>
 
 ## Usage
 
-Use `addEventListener` to subscribe to HotUpdater events. It returns an unsubscribe function to clean up the listener when it's no longer needed.
+`addListener` subscribes to a Hot Updater event and returns an unsubscribe
+function.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
-const unsubscribe = HotUpdater.addListener("onProgress", ({ progress }) => {
-  console.log(`Update progress: ${progress * 100}%`);
+const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+  console.log(`Update progress: ${Math.round(event.progress * 100)}%`);
 });
 
-// Later, when you no longer need the listener
 unsubscribe();
 ```
 
 ## Event Type
 
-The `HotUpdaterEvent` type defines the available events and their corresponding payloads.
+`onProgress` is emitted while an OTA update is being downloaded.
 
-```typescript
-export type HotUpdaterEvent = {
-  onProgress: {
-    progress: number;
-  };
+```ts
+type HotUpdaterProgressEvent =
+  | {
+      progress: number;
+      artifactType: "archive";
+      downloadedBytes?: number;
+      totalBytes?: number;
+    }
+  | {
+      progress: number;
+      artifactType: "diff";
+      details: {
+        totalFilesCount: number;
+        completedFilesCount: number;
+        files: Array<{
+          path: string;
+          downloadPath: string;
+          status: "pending" | "downloading" | "downloaded" | "failed";
+          progress: number;
+          order: number;
+          downloadedBytes?: number;
+          totalBytes?: number;
+        }>;
+      };
+    };
+
+type HotUpdaterEvent = {
+  onProgress: HotUpdaterProgressEvent;
 };
+```
+
+For archive updates, use `downloadedBytes` and `totalBytes` when they are
+available. For bundle diffing updates, use `details` if you need per-file
+progress.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.addListener("onProgress", (event) => {
+  if (event.artifactType === "archive") {
+    console.log("Archive progress", event.progress);
+    return;
+  }
+
+  console.log(
+    "Diff progress",
+    event.details.completedFilesCount,
+    event.details.totalFilesCount,
+  );
+});
 ```
 
 ## Parameters
 
-| Parameter   | Type                                  | Required | Description                                 |
-|-------------|---------------------------------------|----------|---------------------------------------------|
-| `eventName` | `keyof HotUpdaterEvent`                | ✅        | The name of the event to listen for.          |
-| `listener`  | `(event: HotUpdaterEvent[T]) => void` | ✅        | The callback function to handle the event.    |
+| Parameter   | Type                                  | Required | Description                              |
+|-------------|---------------------------------------|----------|------------------------------------------|
+| `eventName` | `keyof HotUpdaterEvent`               | Yes      | The event name. Currently `onProgress`.  |
+| `listener`  | `(event: HotUpdaterEvent[T]) => void` | Yes      | Callback called when the event is emitted. |
 
-## Return Value
+## Cleanup
 
-The `addEventListener` function returns a cleanup function that removes the event listener when called.
-
-```typescript
-const unsubscribe = HotUpdater.addListener("onProgress", ({ progress }) => {
-  console.log(`Update progress: ${progress * 100}%`);
-});
-
-// Unsubscribe when done
-unsubscribe();
-```
-
-## Example
-
-Here's an example of how to use `addEventListener` in a React Native component:
+Call the returned function when the listener is no longer needed.
 
 ```tsx
-import React, { useEffect } from "react";
-import { addListener } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
+import { useEffect } from "react";
+import { HotUpdater } from "@hot-updater/react-native";
 
-function App() {
+function UpdateProgressLogger() {
   useEffect(() => {
-    const unsubscribe = addListener("onProgress", ({ progress }) => {
-      console.log(`Update progress: ${progress * 100}%`);
+    const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+      console.log(Math.round(event.progress * 100));
     });
 
-    return () => {
-      unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
+  return null;
 }
-
-export default App;
 ```

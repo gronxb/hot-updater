@@ -1,0 +1,104 @@
+---
+title: "Bundle Diffing"
+description: "Ship smaller OTA updates by reusing unchanged bundle files."
+icon: Diff
+version: 0.31.0
+---
+
+## What it is
+
+Bundle diffing helps OTA updates download less data.
+
+Instead of always installing the full archive, Hot Updater can reuse files that
+already exist in the currently installed OTA bundle and download only the files
+that changed.
+
+You do not need to change your update-check code or deploy command. After your
+app is using a diff-enabled Hot Updater runtime, new deployments include the
+data needed for bundle diffing automatically.
+
+## How to use it
+
+No special command is required. Deploy as usual:
+
+```bash
+npx hot-updater deploy -p ios
+npx hot-updater deploy -p android
+```
+
+For apps running a bundle-diffing capable runtime, that is enough for
+manifest-based diffing.
+
+Binary patch optimization for Hermes bundle changes is enabled by default:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  patch: {
+    enabled: true,
+    maxBaseBundles: 3,
+  },
+});
+```
+
+This is the default behavior. Add the `patch` block only when you want to
+override it, for example to disable patch generation or change the number of
+base bundles.
+
+`maxBaseBundles` controls how many previous compatible OTA bundles are used as
+patch bases when deploying a new OTA update.
+
+For example:
+
+```txt
+Base bundle -> OTA A -> OTA B -> OTA C
+```
+
+When deploying `OTA C` with `maxBaseBundles: 2`, Hot Updater can prepare patches
+from:
+
+- `OTA B` to `OTA C`
+- `OTA A` to `OTA C`
+
+This means devices currently on `OTA A` or `OTA B` can download a small patch to
+`OTA C` instead of the full changed Hermes bundle. Devices that only have the
+base bundle still use the compressed archive for their first OTA update. Devices
+on an older OTA outside the selected patch bases download the full changed
+Hermes bundle file instead of a patch.
+
+Notes:
+
+- Defaults to `3`.
+- Uses recent compatible bundles from the same channel and platform.
+- Higher values increase the range of OTA versions covered by patches, but can
+  make deployment time grow exponentially because more patch artifacts must be
+  generated.
+
+If a patch cannot be created or applied, Hot Updater downloads the full changed
+Hermes bundle file instead. If the bundle-diffing path itself cannot be used, it
+falls back to the compressed archive.
+
+## How it works
+
+The first OTA update after installing a native app uses the normal compressed
+archive. At that point, the app does not have a previous OTA bundle directory
+that can be reused.
+
+From the second OTA update onward, the app can compare the new update with the
+currently installed OTA bundle:
+
+1. Files that did not change are copied from the current OTA bundle.
+2. Files that changed are downloaded from the new update.
+3. If a compatible patch exists for the Hermes bundle, the app downloads and
+   applies the patch instead of downloading the full changed Hermes bundle.
+4. If reuse or patching fails, the app falls back to the normal compressed
+   archive.
+
+## Signing
+
+Bundle diffing works without signing, but signing is recommended. When signing
+is enabled, the archive, manifest, and manifest assets are verified before the
+update is installed.
+
+See [Bundle Signing](/docs/guides/bundle-signing) for setup.

@@ -1,4 +1,8 @@
-import type { Bundle, PaginatedResult } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleIdFilter,
+  PaginatedResult,
+} from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 export interface RouteConfig {
@@ -76,6 +80,63 @@ const hasDataChannels = (
   };
 } =>
   isRecord(value) && isRecord(value.data) && isStringArray(value.data.channels);
+
+const setBooleanSearchParam = (
+  url: URL,
+  key: string,
+  value: boolean | undefined,
+) => {
+  if (value !== undefined) {
+    url.searchParams.set(key, String(value));
+  }
+};
+
+const setNullableStringSearchParam = (
+  url: URL,
+  key: string,
+  value: string | null | undefined,
+) => {
+  if (value !== undefined) {
+    url.searchParams.set(key, value === null ? "null" : value);
+  }
+};
+
+const appendStringArraySearchParams = (
+  url: URL,
+  key: string,
+  values: string[] | undefined,
+) => {
+  for (const value of values ?? []) {
+    url.searchParams.append(key, value);
+  }
+};
+
+const setBundleIdFilterSearchParams = (
+  url: URL,
+  filter: DatabaseBundleIdFilter | undefined,
+) => {
+  if (!filter) {
+    return;
+  }
+
+  if (filter.eq !== undefined) {
+    url.searchParams.set("idEq", filter.eq);
+  }
+  if (filter.gt !== undefined) {
+    url.searchParams.set("idGt", filter.gt);
+  }
+  if (filter.gte !== undefined) {
+    url.searchParams.set("idGte", filter.gte);
+  }
+  if (filter.lt !== undefined) {
+    url.searchParams.set("idLt", filter.lt);
+  }
+  if (filter.lte !== undefined) {
+    url.searchParams.set("idLte", filter.lte);
+  }
+
+  appendStringArraySearchParams(url, "idIn", filter.in);
+};
 
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
@@ -167,6 +228,29 @@ export const standaloneRepository =
           if (where?.platform !== undefined) {
             url.searchParams.set("platform", where.platform);
           }
+
+          setBooleanSearchParam(url, "enabled", where?.enabled);
+          setBundleIdFilterSearchParams(url, where?.id);
+          setNullableStringSearchParam(
+            url,
+            "targetAppVersion",
+            where?.targetAppVersion,
+          );
+          appendStringArraySearchParams(
+            url,
+            "targetAppVersionIn",
+            where?.targetAppVersionIn,
+          );
+          setBooleanSearchParam(
+            url,
+            "targetAppVersionNotNull",
+            where?.targetAppVersionNotNull,
+          );
+          setNullableStringSearchParam(
+            url,
+            "fingerprintHash",
+            where?.fingerprintHash,
+          );
 
           if (limit !== undefined) {
             url.searchParams.set("limit", String(limit));

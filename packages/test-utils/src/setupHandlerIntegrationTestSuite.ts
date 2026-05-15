@@ -9,6 +9,27 @@ export interface TestApiConfig {
   baseUrl: string;
 }
 
+async function fetchWithRetry(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 4) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+
+  throw lastError;
+}
+
 /**
  * Creates getUpdateInfo function for integration tests
  * This is used with setupGetUpdateInfoTestSuite from @hot-updater/test-utils
@@ -26,7 +47,7 @@ export function createGetUpdateInfo(
     try {
       // Step 1: Create bundles via POST
       for (const bundle of bundles) {
-        const createResponse = await fetch(buildUrl("/api/bundles"), {
+        const createResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(bundle),
@@ -40,7 +61,7 @@ export function createGetUpdateInfo(
       }
 
       // Step 2: List bundles via GET
-      const listResponse = await fetch(buildUrl("/api/bundles"), {
+      const listResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
         headers: { "Content-Type": "application/json" },
       });
 
@@ -65,7 +86,7 @@ export function createGetUpdateInfo(
       }
 
       // Step 4: Check for updates via GET
-      const response = await fetch(url);
+      const response = await fetchWithRetry(url);
       if (!response.ok) {
         throw new Error(`Failed to check for updates: ${response.statusText}`);
       }
@@ -74,7 +95,7 @@ export function createGetUpdateInfo(
 
       // Step 5: Clean up via DELETE
       for (const bundle of bundles) {
-        await fetch(buildUrl(`/api/bundles/${bundle.id}`), {
+        await fetchWithRetry(buildUrl(`/api/bundles/${bundle.id}`), {
           method: "DELETE",
         });
       }

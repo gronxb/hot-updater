@@ -211,7 +211,61 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
             // Extract fileHash if provided
             let fileHash = data["fileHash"] as? String
+            let manifestFileHash = data["manifestFileHash"] as? String
             let channel = data["channel"] as? String
+            let manifestUrlString = data["manifestUrl"] as? String ?? ""
+            var manifestUrl: URL? = nil
+            if !manifestUrlString.isEmpty {
+                guard let url = URL(string: manifestUrlString) else {
+                    let error = NSError(domain: "HotUpdater", code: 0,
+                                       userInfo: [NSLocalizedDescriptionKey: "Invalid 'manifestUrl' provided: \(manifestUrlString)"])
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
+                }
+                manifestUrl = url
+            }
+            let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
+            let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
+                guard let fileHash = entry.value["fileHash"] as? String,
+                      !fileHash.isEmpty
+                else {
+                    return
+                }
+
+                let patchPayload = entry.value["patch"] as? [String: Any]
+                let patch = patchPayload.flatMap { payload -> BsdiffPatchDescriptor? in
+                    guard let algorithm = payload["algorithm"] as? String,
+                          let baseBundleId = payload["baseBundleId"] as? String,
+                          let baseFileHash = payload["baseFileHash"] as? String,
+                          let patchFileHash = payload["patchFileHash"] as? String,
+                          let patchUrlString = payload["patchUrl"] as? String,
+                          let patchUrl = URL(string: patchUrlString)
+                    else {
+                        return nil
+                    }
+
+                    return BsdiffPatchDescriptor(
+                        algorithm: algorithm,
+                        baseBundleId: baseBundleId,
+                        baseFileHash: baseFileHash,
+                        patchFileHash: patchFileHash,
+                        patchUrl: patchUrl
+                    )
+                }
+                let filePayload = entry.value["file"] as? [String: Any]
+                let fileUrl = (filePayload?["url"] as? String).flatMap { URL(string: $0) }
+                let fileCompression = filePayload?["compression"] as? String
+                guard fileUrl != nil || patch != nil else {
+                    return
+                }
+
+                partialResult[entry.key] = ChangedAssetDescriptor(
+                    fileUrl: fileUrl,
+                    fileHash: fileHash,
+                    fileCompression: fileCompression,
+                    patch: patch
+                )
+            }
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
@@ -219,11 +273,16 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, progressHandler: { progress in
-                // Call JS progress callback if provided
-                if let callback = progressCallback {
-                    DispatchQueue.main.async {
-                        callback([progress])
+            bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(
+                        name: .updateProgressDidChange,
+                        object: nil,
+                        userInfo: payload.userInfo
+                    )
+
+                    if let callback = progressCallback {
+                        callback([payload.progress])
                     }
                 }
             }) { [weak self] result in

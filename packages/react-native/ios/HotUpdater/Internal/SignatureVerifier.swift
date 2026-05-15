@@ -239,19 +239,41 @@ public class SignatureVerifier {
 
         NSLog("[SignatureVerifier] Calculated file hash: \(fileHashHex)")
 
-        // Decode signature from base64
-        guard let signatureData = Data(base64Encoded: signatureBase64) else {
+        return verifySignature(fileHash: fileHashHex, signatureBase64: signatureBase64, publicKey: publicKey)
+    }
+
+    /**
+     * Verifies an RSA-SHA256 signature for an explicit SHA256 file hash.
+     */
+    public static func verifyHashSignature(fileHash: String, signatureBase64: String) -> Result<Void, SignatureVerificationError> {
+        guard let publicKeyPEM = getPublicKeyFromConfig() else {
+            NSLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
+            return .failure(.publicKeyNotConfigured)
+        }
+
+        let publicKeyResult = createPublicKey(from: publicKeyPEM)
+        guard case .success(let publicKey) = publicKeyResult else {
+            if case .failure(let error) = publicKeyResult {
+                return .failure(error)
+            }
+            return .failure(.invalidPublicKeyFormat)
+        }
+
+        return verifySignature(fileHash: fileHash, signatureBase64: signatureBase64, publicKey: publicKey)
+    }
+
+    private static func verifySignature(fileHash: String, signatureBase64: String, publicKey: SecKey) -> Result<Void, SignatureVerificationError> {
+        guard !signatureBase64.isEmpty,
+              let signatureData = Data(base64Encoded: signatureBase64) else {
             NSLog("[SignatureVerifier] Failed to decode signature from base64")
             return .failure(.invalidSignatureFormat)
         }
 
-        // Convert hex fileHash to data
-        guard let fileHashData = dataFromHexString(fileHashHex) else {
+        guard let fileHashData = dataFromHexString(fileHash) else {
             NSLog("[SignatureVerifier] Failed to convert fileHash from hex")
             return .failure(.invalidSignatureFormat)
         }
 
-        // Verify signature
         let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePKCS1v15SHA256
 
         guard SecKeyIsAlgorithmSupported(publicKey, .verify, algorithm) else {
@@ -326,6 +348,7 @@ public class SignatureVerifier {
      * @return Data or nil if invalid format
      */
     private static func dataFromHexString(_ hexString: String) -> Data? {
+        guard hexString.count % 2 == 0 else { return nil }
         var data = Data(capacity: hexString.count / 2)
 
         var index = hexString.startIndex

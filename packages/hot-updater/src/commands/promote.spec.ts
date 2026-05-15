@@ -21,10 +21,14 @@ const {
   };
   const mockStoragePlugin = {
     name: "mock-storage",
-    upload: vi.fn(),
-    delete: vi.fn(),
     supportedProtocol: "s3",
-    getDownloadUrl: vi.fn(),
+    profiles: {
+      node: {
+        delete: vi.fn(),
+        downloadFile: vi.fn(),
+        upload: vi.fn(),
+      },
+    },
   };
   const mockCli = {
     loadConfig: vi.fn(),

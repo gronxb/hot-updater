@@ -9,6 +9,7 @@ const homeSearch = {
   after: undefined,
   before: undefined,
   bundleId: undefined,
+  expandedBundleId: undefined,
 } as const;
 
 export function NotFoundPage() {

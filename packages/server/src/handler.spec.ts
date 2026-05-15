@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createHandler, type HandlerAPI } from "./handler";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
+const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
+const CURRENT_PACKAGE_SDK_VERSION = "0.30.10";
+
 type TestEnv = {
   tenantId: string;
 };
@@ -81,6 +84,83 @@ describe("createHandler", () => {
         },
       },
     );
+  });
+
+  it("keeps legacy no-update responses as null when SDK version is missing", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toBeNull();
+  });
+
+  it("returns UP_TO_DATE for no-update responses from SDK-versioned clients", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+        {
+          headers: {
+            "Hot-Updater-SDK-Version": NEXT_SDK_VERSION_FOR_TEST,
+          },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: "UP_TO_DATE",
+    });
+  });
+
+  it("keeps no-update responses as null for unsupported SDK versions", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+        {
+          headers: {
+            "Hot-Updater-SDK-Version": CURRENT_PACKAGE_SDK_VERSION,
+          },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toBeNull();
+  });
+
+  it("keeps no-update responses as null for invalid SDK versions", async () => {
+    const api = createApi();
+    api.getAppUpdateInfo.mockResolvedValueOnce(null);
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+        {
+          headers: {
+            "Hot-Updater-SDK-Version": "invalid",
+          },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toBeNull();
   });
 
   it("supports the fingerprint route without a cohort segment", async () => {
@@ -241,6 +321,47 @@ describe("createHandler", () => {
           platform: "ios",
         },
         limit: 2,
+        page: undefined,
+      },
+      undefined,
+    );
+  });
+
+  it("passes advanced bundle filters through to getBundles", async () => {
+    const api = createApi();
+    api.getBundles.mockResolvedValue({
+      data: [testBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&enabled=true&idLt=bundle-9&targetAppVersion=1.0.x&targetAppVersionNotNull=true&fingerprintHash=null&limit=5",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        where: {
+          channel: "production",
+          platform: "ios",
+          enabled: true,
+          id: {
+            lt: "bundle-9",
+          },
+          targetAppVersion: "1.0.x",
+          targetAppVersionNotNull: true,
+          fingerprintHash: null,
+        },
+        limit: 5,
         page: undefined,
       },
       undefined,

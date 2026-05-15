@@ -49,12 +49,6 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       "dist/index.mjs",
     );
 
-    // Generate Prisma Client first from existing schema
-    await execa("npx", ["prisma", "generate"], {
-      cwd: projectRoot,
-      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
-    });
-
     // Generate Prisma schema from hotUpdater instance
     await execa(
       "node",
@@ -90,6 +84,12 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       throw new Error("HOT-UPDATER marker not found in schema after generate");
     }
 
+    // Regenerate Prisma Client after hot-updater updates the Prisma schema.
+    await execa("npx", ["prisma", "generate"], {
+      cwd: projectRoot,
+      env: { TEST_DB_PATH: testDbPath, DATABASE_URL: `file:${testDbPath}` },
+    });
+
     // Apply schema to database using prisma db push
     await execa("npx", ["prisma", "db", "push", "--skip-generate"], {
       cwd: projectRoot,
@@ -103,7 +103,7 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       projectRoot,
     });
 
-    await waitForServer(baseUrl, 60); // 60 attempts * 200ms = 12 seconds
+    await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     const db = await import("./db.js");
     hotUpdater = db.hotUpdater;
