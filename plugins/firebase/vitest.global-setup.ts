@@ -1,15 +1,24 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { execa } from "execa";
 import admin from "firebase-admin";
 import fkill from "fkill";
 
 const PROJECT_ID_PREFIX = "hot-updater-test";
+const MAX_STARTUP_ATTEMPTS = process.env.CI ? 3 : 2;
+const MAX_LOG_LINES = 200;
 
-let emulatorProcess: ReturnType<typeof execa> | undefined;
+type EmulatorLogs = {
+  stdout: string[];
+  stderr: string[];
+};
+
+let emulatorProcess: ChildProcessWithoutNullStreams | undefined;
+let firestorePort: number | undefined;
+let storagePort: number | undefined;
 let tempConfigDir: string | undefined;
 let projectId: string | undefined;
 
@@ -40,17 +49,47 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
-async function createFirebaseConfig(firestorePort: number): Promise<string> {
+async function createFirebaseConfig(
+  firestorePort: number,
+  storagePort: number,
+): Promise<string> {
   tempConfigDir = await mkdtemp(join(tmpdir(), "hot-updater-firebase-"));
   const configPath = join(tempConfigDir, "firebase.json");
+  const storageRulesPath = join(tempConfigDir, "storage.rules");
+
+  await writeFile(
+    storageRulesPath,
+    [
+      'rules_version = "2";',
+      "service firebase.storage {",
+      "  match /b/{bucket}/o {",
+      "    match /{allPaths=**} {",
+      "      allow read, write: if true;",
+      "    }",
+      "  }",
+      "}",
+      "",
+    ].join("\n"),
+  );
 
   await writeFile(
     configPath,
     JSON.stringify({
+      storage: {
+        rules: "storage.rules",
+      },
       emulators: {
+        singleProjectMode: true,
         firestore: {
           host: "127.0.0.1",
           port: firestorePort,
+        },
+        storage: {
+          host: "127.0.0.1",
+          port: storagePort,
+        },
+        ui: {
+          enabled: false,
         },
       },
     }),
@@ -59,15 +98,165 @@ async function createFirebaseConfig(firestorePort: number): Promise<string> {
   return configPath;
 }
 
+function appendLog(store: string[], chunk: Buffer) {
+  store.push(chunk.toString("utf8"));
+  if (store.length > MAX_LOG_LINES) {
+    store.shift();
+  }
+}
+
+function formatEmulatorLogs(logs: EmulatorLogs) {
+  return [...logs.stdout, ...logs.stderr].join("").trim();
+}
+
+function startEmulatorProcess({
+  configPath,
+  projectId,
+}: {
+  configPath: string;
+  projectId: string;
+}) {
+  const child = spawn(
+    "pnpm",
+    [
+      "firebase",
+      "emulators:start",
+      "--project",
+      projectId,
+      "--only",
+      "firestore,storage",
+      "--config",
+      configPath,
+      "--log-verbosity",
+      "QUIET",
+    ],
+    {
+      cwd: __dirname,
+      detached: process.platform !== "win32",
+      env: {
+        ...process.env,
+        NO_COLOR: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+
+  const logs: EmulatorLogs = { stdout: [], stderr: [] };
+  child.stdout.on("data", (chunk: Buffer) => {
+    appendLog(logs.stdout, chunk);
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    appendLog(logs.stderr, chunk);
+  });
+
+  return {
+    child,
+    logs,
+  };
+}
+
+async function waitForExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+) {
+  return await new Promise<boolean>((resolve) => {
+    if (child.exitCode !== null) {
+      resolve(true);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.off("exit", onExit);
+    };
+
+    const onExit = () => {
+      cleanup();
+      resolve(true);
+    };
+
+    child.once("exit", onExit);
+  });
+}
+
+async function stopEmulatorProcess(
+  child: ChildProcessWithoutNullStreams,
+  ports: Array<number | undefined>,
+) {
+  const pid = child.pid;
+
+  if (child.exitCode === null) {
+    try {
+      if (process.platform !== "win32" && pid) {
+        process.kill(-pid, "SIGTERM");
+      } else {
+        child.kill("SIGTERM");
+      }
+    } catch {}
+  }
+
+  const exited = await waitForExit(child, 8_000);
+
+  if (!exited) {
+    try {
+      if (process.platform !== "win32" && pid) {
+        process.kill(-pid, "SIGKILL");
+      } else {
+        child.kill("SIGKILL");
+      }
+    } catch {}
+
+    await waitForExit(child, 3_000);
+  }
+
+  for (const port of ports) {
+    if (typeof port === "number") {
+      await fkill(`:${port}`, {
+        force: true,
+        silent: true,
+      }).catch(() => {});
+    }
+  }
+}
+
 async function waitForEmulator(
   firestore: FirebaseFirestore.Firestore,
+  child: ChildProcessWithoutNullStreams,
+  logs: EmulatorLogs,
   maxRetries = 20,
   retryDelay = 2000,
 ): Promise<boolean> {
   let retries = 0;
   while (retries < maxRetries) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        [
+          `Firebase emulator exited early with code ${String(child.exitCode)}.`,
+          formatEmulatorLogs(logs),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
+    }
+
     try {
       await firestore.listCollections();
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      if (child.exitCode !== null) {
+        throw new Error(
+          [
+            `Firebase emulator exited immediately after startup with code ${String(child.exitCode)}.`,
+            formatEmulatorLogs(logs),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+        );
+      }
       console.log(`Firebase emulator ready after ${retries + 1} attempt(s)`);
       return true;
     } catch {
@@ -84,16 +273,21 @@ async function waitForEmulator(
 export async function setup() {
   console.log("Starting Firebase emulator...");
 
-  const firestorePort = await getAvailablePort();
+  firestorePort = await getAvailablePort();
+  storagePort = await getAvailablePort();
   const emulatorHost = `127.0.0.1:${firestorePort}`;
+  const storageHost = `127.0.0.1:${storagePort}`;
   projectId = `${PROJECT_ID_PREFIX}-${process.pid}-${Date.now()}`;
+  const storageBucket = `${projectId}.appspot.com`;
 
   process.env.FIRESTORE_EMULATOR_HOST = emulatorHost;
+  process.env.FIREBASE_STORAGE_EMULATOR_HOST = storageHost;
   process.env.GCLOUD_PROJECT = projectId;
 
   if (!admin.apps.length) {
     admin.initializeApp({
       projectId,
+      storageBucket,
     });
   }
 
@@ -104,40 +298,60 @@ export async function setup() {
     ignoreUndefinedProperties: true,
   });
 
-  const firebaseConfigPath = await createFirebaseConfig(firestorePort);
+  let lastError: Error | undefined;
 
-  emulatorProcess = execa(
-    "pnpm",
-    [
-      "firebase",
-      "emulators:start",
-      "--project",
+  for (let attempt = 1; attempt <= MAX_STARTUP_ATTEMPTS; attempt += 1) {
+    const firebaseConfigPath = await createFirebaseConfig(
+      firestorePort,
+      storagePort,
+    );
+    const runtime = startEmulatorProcess({
+      configPath: firebaseConfigPath,
       projectId,
-      "--only",
-      "firestore",
-      "--config",
-      firebaseConfigPath,
-    ],
-    {
-      cwd: __dirname,
-      stdio: "inherit",
-      reject: false,
-    },
-  );
+    });
+    emulatorProcess = runtime.child;
 
-  const emulatorReady = await waitForEmulator(firestore);
-  if (!emulatorReady) {
-    await teardown();
-    throw new Error("Firebase emulator failed to start");
+    try {
+      const emulatorReady = await waitForEmulator(
+        firestore,
+        runtime.child,
+        runtime.logs,
+      );
+
+      if (!emulatorReady) {
+        throw new Error("Firebase emulator did not become ready in time");
+      }
+
+      console.log("Firebase emulator started successfully");
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(
+        `Firebase emulator startup attempt ${attempt}/${MAX_STARTUP_ATTEMPTS} failed`,
+      );
+      console.error(lastError.message);
+      await teardown({ resetState: false });
+    }
   }
 
-  console.log("Firebase emulator started successfully");
+  throw new Error(
+    [
+      `Firebase emulator failed to start after ${MAX_STARTUP_ATTEMPTS} attempt(s).`,
+      lastError?.message,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  );
 }
 
-export async function teardown() {
-  if (emulatorProcess?.pid) {
+export async function teardown(options?: { resetState?: boolean }) {
+  const resetState = options?.resetState ?? true;
+  const child = emulatorProcess;
+  const ports = [firestorePort, storagePort];
+
+  if (child) {
     try {
-      await fkill(emulatorProcess.pid, { force: true });
+      await stopEmulatorProcess(child, ports);
       console.log("Successfully killed emulator process");
     } catch (error) {
       console.error("Failed to kill emulator process:", error);
@@ -149,5 +363,11 @@ export async function teardown() {
     tempConfigDir = undefined;
   }
 
-  projectId = undefined;
+  emulatorProcess = undefined;
+
+  if (resetState) {
+    firestorePort = undefined;
+    storagePort = undefined;
+    projectId = undefined;
+  }
 }

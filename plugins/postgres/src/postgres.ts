@@ -1,3 +1,10 @@
+import {
+  getAssetBaseStorageUri,
+  getBundlePatches,
+  getManifestFileHash,
+  getManifestStorageUri,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/core";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
@@ -7,9 +14,115 @@ import { Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
-import type { Database } from "./types";
+import type {
+  Database,
+  PostgresBundlePatchRow,
+  PostgresBundleRow,
+} from "./types";
 
 export interface PostgresConfig extends PoolConfig {}
+
+const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
+  if (!value) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    try {
+      return normalizeMetadata(JSON.parse(value) as unknown);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Bundle["metadata"];
+  }
+
+  return undefined;
+};
+
+const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
+  `${bundleId}:${baseBundleId}`;
+
+const mapPatchRowToPatch = (row: PostgresBundlePatchRow) => ({
+  baseBundleId: row.base_bundle_id,
+  baseFileHash: row.base_file_hash,
+  patchFileHash: row.patch_file_hash,
+  patchStorageUri: row.patch_storage_uri,
+});
+
+const mapRowToBundle = (
+  data: PostgresBundleRow,
+  patchRows: PostgresBundlePatchRow[] = [],
+): Bundle => {
+  const rawMetadata = normalizeMetadata(data.metadata);
+  const patches = patchRows
+    .slice()
+    .sort(
+      (left, right) =>
+        left.order_index - right.order_index ||
+        left.base_bundle_id.localeCompare(right.base_bundle_id),
+    )
+    .map(mapPatchRowToPatch);
+  const primaryPatch = patches[0] ?? null;
+
+  return {
+    enabled: data.enabled,
+    shouldForceUpdate: data.should_force_update,
+    fileHash: data.file_hash,
+    gitCommitHash: data.git_commit_hash,
+    id: data.id,
+    message: data.message,
+    platform: data.platform,
+    targetAppVersion: data.target_app_version,
+    channel: data.channel,
+    storageUri: data.storage_uri,
+    fingerprintHash: data.fingerprint_hash,
+    metadata: stripBundleArtifactMetadata(rawMetadata),
+    manifestStorageUri: data.manifest_storage_uri ?? null,
+    manifestFileHash: data.manifest_file_hash ?? null,
+    assetBaseStorageUri: data.asset_base_storage_uri ?? null,
+    patches,
+    patchBaseBundleId: primaryPatch?.baseBundleId ?? null,
+    patchBaseFileHash: primaryPatch?.baseFileHash ?? null,
+    patchFileHash: primaryPatch?.patchFileHash ?? null,
+    patchStorageUri: primaryPatch?.patchStorageUri ?? null,
+    rolloutCohortCount: data.rollout_cohort_count,
+    targetCohorts: data.target_cohorts,
+  };
+};
+
+const bundleToRowValues = (bundle: Bundle): Database["bundles"] => ({
+  id: bundle.id,
+  enabled: bundle.enabled,
+  should_force_update: bundle.shouldForceUpdate,
+  file_hash: bundle.fileHash,
+  git_commit_hash: bundle.gitCommitHash,
+  message: bundle.message,
+  platform: bundle.platform,
+  target_app_version: bundle.targetAppVersion,
+  channel: bundle.channel,
+  storage_uri: bundle.storageUri,
+  fingerprint_hash: bundle.fingerprintHash,
+  metadata: stripBundleArtifactMetadata(bundle.metadata) ?? {},
+  manifest_storage_uri: getManifestStorageUri(bundle),
+  manifest_file_hash: getManifestFileHash(bundle),
+  asset_base_storage_uri: getAssetBaseStorageUri(bundle),
+  rollout_cohort_count: bundle.rolloutCohortCount ?? null,
+  target_cohorts: bundle.targetCohorts ?? null,
+});
+
+const bundleToPatchRows = (bundle: Bundle): Database["bundle_patches"][] =>
+  getBundlePatches(bundle).map((patch, index) => ({
+    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
+    bundle_id: bundle.id,
+    base_bundle_id: patch.baseBundleId,
+    base_file_hash: patch.baseFileHash,
+    patch_file_hash: patch.patchFileHash,
+    patch_storage_uri: patch.patchStorageUri,
+    order_index: index,
+  }));
 
 export const postgres = createDatabasePlugin<PostgresConfig>({
   name: "postgres",
@@ -17,6 +130,28 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
     const pool = new Pool(config);
     const dialect = new PostgresDialect({ pool });
     const db = new Kysely<Database>({ dialect });
+    const fetchPatchMap = async (bundleIds: string[]) => {
+      const patchMap = new Map<string, PostgresBundlePatchRow[]>();
+
+      if (bundleIds.length === 0) {
+        return patchMap;
+      }
+
+      const rows = await db
+        .selectFrom("bundle_patches")
+        .selectAll()
+        .where("bundle_id", "in", bundleIds)
+        .orderBy("order_index", "asc")
+        .execute();
+
+      for (const row of rows) {
+        const current = patchMap.get(row.bundle_id) ?? [];
+        current.push(row);
+        patchMap.set(row.bundle_id, current);
+      }
+
+      return patchMap;
+    };
 
     return {
       async onUnmount() {
@@ -27,28 +162,19 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
         return getUpdateInfo(pool, args);
       },
       async getBundleById(bundleId) {
-        const data = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("id", "=", bundleId)
-          .executeTakeFirst();
+        const [data, patchMap] = await Promise.all([
+          db
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst(),
+          fetchPatchMap([bundleId]),
+        ]);
 
         if (!data) {
           return null;
         }
-        return {
-          enabled: data.enabled,
-          shouldForceUpdate: data.should_force_update,
-          fileHash: data.file_hash,
-          gitCommitHash: data.git_commit_hash,
-          id: data.id,
-          message: data.message,
-          platform: data.platform,
-          targetAppVersion: data.target_app_version,
-          channel: data.channel,
-          storageUri: data.storage_uri,
-          fingerprintHash: data.fingerprint_hash,
-        } as Bundle;
+        return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
       },
 
       async getBundles(options) {
@@ -190,19 +316,10 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
 
         const data = await query.selectAll().execute();
 
-        const bundles = data.map((bundle) => ({
-          enabled: bundle.enabled,
-          shouldForceUpdate: bundle.should_force_update,
-          fileHash: bundle.file_hash,
-          gitCommitHash: bundle.git_commit_hash,
-          id: bundle.id,
-          message: bundle.message,
-          platform: bundle.platform,
-          targetAppVersion: bundle.target_app_version,
-          channel: bundle.channel,
-          storageUri: bundle.storage_uri,
-          fingerprintHash: bundle.fingerprint_hash,
-        })) as Bundle[];
+        const patchMap = await fetchPatchMap(data.map((bundle) => bundle.id));
+        const bundles = data.map((bundle) =>
+          mapRowToBundle(bundle, patchMap.get(bundle.id) ?? []),
+        );
 
         const pagination = calculatePagination(total, { limit, offset });
 
@@ -231,6 +348,14 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
           for (const op of changedSets) {
             if (op.operation === "delete") {
               // Handle delete operation
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("bundle_id", "=", op.data.id)
+                .execute();
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("base_bundle_id", "=", op.data.id)
+                .execute();
               const result = await tx
                 .deleteFrom("bundles")
                 .where("id", "=", op.data.id)
@@ -243,36 +368,24 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             } else if (op.operation === "insert" || op.operation === "update") {
               // Handle insert and update operations
               const bundle = op.data;
+              const values = bundleToRowValues(bundle);
+              const patchRows = bundleToPatchRows(bundle);
+              const { id: _id, ...updateValues } = values;
               await tx
                 .insertInto("bundles")
-                .values({
-                  id: bundle.id,
-                  enabled: bundle.enabled,
-                  should_force_update: bundle.shouldForceUpdate,
-                  file_hash: bundle.fileHash,
-                  git_commit_hash: bundle.gitCommitHash,
-                  message: bundle.message,
-                  platform: bundle.platform,
-                  target_app_version: bundle.targetAppVersion,
-                  channel: bundle.channel,
-                  storage_uri: bundle.storageUri,
-                  fingerprint_hash: bundle.fingerprintHash,
-                })
-                .onConflict((oc) =>
-                  oc.column("id").doUpdateSet({
-                    enabled: bundle.enabled,
-                    should_force_update: bundle.shouldForceUpdate,
-                    file_hash: bundle.fileHash,
-                    git_commit_hash: bundle.gitCommitHash,
-                    message: bundle.message,
-                    platform: bundle.platform,
-                    target_app_version: bundle.targetAppVersion,
-                    channel: bundle.channel,
-                    storage_uri: bundle.storageUri,
-                    fingerprint_hash: bundle.fingerprintHash,
-                  }),
-                )
+                .values(values)
+                .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
                 .execute();
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("bundle_id", "=", bundle.id)
+                .execute();
+              if (patchRows.length > 0) {
+                await tx
+                  .insertInto("bundle_patches")
+                  .values(patchRows)
+                  .execute();
+              }
             }
           }
         });

@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { promisify } from "util";
+import { brotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
@@ -10,7 +12,14 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import type { Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  NodeStoragePlugin,
+  Platform,
+} from "@hot-updater/plugin-core";
+import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import semverValid from "semver/ranges/valid";
@@ -36,7 +45,10 @@ import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
+
+const compressBrotli = promisify(brotliCompress);
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -76,6 +88,128 @@ export const getRolloutCohortCountFromPercentage = (
   return rolloutPercentage * 10;
 };
 
+export const normalizePatchMaxBaseBundles = (
+  maxBaseBundles: number | undefined,
+): number => {
+  if (maxBaseBundles === undefined) {
+    return 3;
+  }
+
+  if (!Number.isInteger(maxBaseBundles) || maxBaseBundles < 1) {
+    throw new Error("Patch maxBaseBundles must be a positive integer");
+  }
+
+  return maxBaseBundles;
+};
+
+const getPatchBaseBundles = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<Bundle[]> => {
+  const where = {
+    channel,
+    enabled: true,
+    id: { lt: bundleId },
+    platform,
+    ...(target.fingerprintHash
+      ? {
+          fingerprintHash: target.fingerprintHash,
+        }
+      : {
+          targetAppVersion: target.appVersion,
+          targetAppVersionNotNull: true,
+        }),
+  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  const { data } = await databasePlugin.getBundles({
+    limit: maxBaseBundles,
+    orderBy: {
+      direction: "desc",
+      field: "id",
+    },
+    where,
+  });
+
+  return data
+    .filter((bundle) => bundle.id !== bundleId)
+    .slice(0, maxBaseBundles);
+};
+
+const createAutoPatches = async ({
+  bundleId,
+  channel,
+  databasePlugin,
+  maxBaseBundles,
+  platform,
+  storagePlugin,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  databasePlugin: DatabasePlugin;
+  maxBaseBundles: number;
+  platform: Platform;
+  storagePlugin: NodeStoragePlugin;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}) => {
+  const baseBundles = await getPatchBaseBundles({
+    bundleId,
+    channel,
+    databasePlugin,
+    maxBaseBundles,
+    platform,
+    target,
+  });
+  const failures: { baseBundleId: string; message: string }[] = [];
+  let createdCount = 0;
+
+  for (const baseBundle of baseBundles) {
+    try {
+      await createBundleDiff(
+        {
+          baseBundleId: baseBundle.id,
+          bundleId,
+        },
+        {
+          databasePlugin,
+          storagePlugin,
+        },
+        {
+          makePrimary: createdCount === 0,
+        },
+      );
+      createdCount += 1;
+    } catch (error) {
+      failures.push({
+        baseBundleId: baseBundle.id,
+        message: error instanceof Error ? error.message : "Unknown patch error",
+      });
+    }
+  }
+
+  return {
+    candidateCount: baseBundles.length,
+    createdCount,
+    failures,
+  };
+};
+
 const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   switch (compressStrategy) {
     case "tar.br":
@@ -89,13 +223,163 @@ const getExtensionFromCompressStrategy = (compressStrategy: string) => {
   }
 };
 
-export const deploy = async (options: DeployOptions) => {
-  printBanner();
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
 
+const isBrotliManifestBundleAsset = (relativePath: string) =>
+  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
+
+const ensureUploadSourcePath = async ({
+  outputPath,
+  targetFile,
+}: {
+  outputPath: string;
+  targetFile: { path: string; name: string };
+}) => {
+  const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+    ? `${targetFile.name}.br`
+    : targetFile.name;
+  const expectedFilename = path.posix.basename(uploadName);
+  const actualFilename = path.basename(targetFile.path);
+
+  if (uploadName === targetFile.name && expectedFilename === actualFilename) {
+    return targetFile.path;
+  }
+
+  const aliasDir = path.join(
+    outputPath,
+    "upload-artifacts",
+    getRelativeStorageDir(uploadName),
+  );
+  await fs.promises.mkdir(aliasDir, { recursive: true });
+
+  const aliasPath = path.join(aliasDir, expectedFilename);
+  if (uploadName !== targetFile.name) {
+    const source = await fs.promises.readFile(targetFile.path);
+    await fs.promises.writeFile(
+      aliasPath,
+      await compressBrotli(source, {
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+        },
+      }),
+    );
+  } else {
+    await fs.promises.copyFile(targetFile.path, aliasPath);
+  }
+  return aliasPath;
+};
+
+const getPlatformName = (platform: Platform) =>
+  platform === "ios" ? "iOS" : "Android";
+
+const getDeployPlatforms = async (
+  options: DeployOptions,
+): Promise<Platform[] | null> => {
+  if (options.platform) {
+    return [options.platform];
+  }
+
+  if (!options.interactive) {
+    return [...PLATFORMS];
+  }
+
+  const platform = await getPlatform("Which platform do you want to deploy?");
+  if (p.isCancel(platform)) {
+    return null;
+  }
+
+  if (!platform) {
+    p.log.error(
+      "Platform not found. -p <ios | android> or --platform <ios | android>",
+    );
+    return null;
+  }
+
+  return [platform];
+};
+
+const getBundleOutputRoot = ({
+  cwd,
+  outputPath,
+  platform,
+  multiPlatform,
+}: {
+  cwd: string;
+  outputPath: string;
+  platform: Platform;
+  multiPlatform: boolean;
+}) => {
+  const normalizedOutputPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.join(cwd, outputPath);
+
+  return multiPlatform
+    ? path.join(normalizedOutputPath, platform)
+    : normalizedOutputPath;
+};
+
+const getMultiPlatformDeploymentContext = async ({
+  channel,
+  options,
+  platforms,
+  rolloutPercentage,
+}: {
+  channel: string;
+  options: DeployOptions;
+  platforms: Platform[];
+  rolloutPercentage: number;
+}) => {
+  const config = await loadConfig({ platform: platforms[0]!, channel });
+  if (!config) {
+    return null;
+  }
+
+  const lines = [
+    `Platform: Both (${platforms.map(getPlatformName).join(", ")})`,
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+  ];
+
+  if (config.updateStrategy === "fingerprint") {
+    lines.push("Fingerprint: per-platform");
+  } else if (options.targetAppVersion) {
+    lines.push(`Target app version: ${semverValid(options.targetAppVersion)}`);
+  }
+
+  return lines.join("\n");
+};
+
+const deployPlatform = async ({
+  options,
+  platform,
+  platformIndex,
+  platformCount,
+}: {
+  options: DeployOptions;
+  platform: Platform;
+  platformIndex: number;
+  platformCount: number;
+}): Promise<{ bundleId: string; platform: Platform } | null> => {
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
   const rolloutCohortCount =
     getRolloutCohortCountFromPercentage(rolloutPercentage);
+  const multiPlatform = platformCount > 1;
 
   const gitCommit = await getLatestGitCommit();
   const [gitCommitHash, gitMessage] = [
@@ -103,30 +387,15 @@ export const deploy = async (options: DeployOptions) => {
     gitCommit?.summary() ?? null,
   ];
 
-  const platform =
-    options.platform ??
-    (options.interactive
-      ? await getPlatform("Which platform do you want to deploy?")
-      : null);
-
-  if (p.isCancel(platform)) {
-    return;
-  }
-
-  if (!platform) {
-    p.log.error(
-      "Platform not found. -p <ios | android> or --platform <ios | android>",
-    );
-    return;
-  }
-
   const channel = options.channel;
-
   const config = await loadConfig({ platform, channel });
   if (!config) {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
   }
+  const maxPatchBaseBundles = config.patch.enabled
+    ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
+    : 0;
 
   // Validate signing configuration
   const signingValidation = await validateSigningConfig(config);
@@ -208,16 +477,15 @@ export const deploy = async (options: DeployOptions) => {
     target.fingerprintHash = newFingerprint.hash;
     s.stop(`Fingerprint(${platform}): ${newFingerprint.hash}`);
   } else {
-    const defaultTargetAppVersion =
-      (await getDefaultTargetAppVersion(platform)) ?? "1.0.0";
+    const defaultTargetAppVersion = await getDefaultTargetAppVersion(platform);
 
     const targetAppVersion =
       options.targetAppVersion ??
       (options.interactive
         ? await p.text({
             message: "Target app version",
-            placeholder: defaultTargetAppVersion,
-            initialValue: defaultTargetAppVersion,
+            placeholder: defaultTargetAppVersion ?? "1.0.0",
+            initialValue: defaultTargetAppVersion ?? "1.0.0",
             validate: (value) => {
               if (!semverValid(value)) {
                 return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
@@ -225,17 +493,17 @@ export const deploy = async (options: DeployOptions) => {
               return;
             },
           })
-        : null);
+        : defaultTargetAppVersion);
 
     if (p.isCancel(targetAppVersion)) {
-      return;
+      return null;
     }
 
     if (!targetAppVersion) {
       p.log.error(
-        "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
+        "Target app version not found in native files (Info.plist for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
       );
-      return;
+      return null;
     }
     target.appVersion = targetAppVersion;
   }
@@ -253,16 +521,6 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   }
 
-  const deploymentContext = [
-    `Channel: ${channel}`,
-    `Rollout: ${rolloutPercentage}%`,
-    config.updateStrategy === "fingerprint"
-      ? `Fingerprint: ${target.fingerprintHash}`
-      : `Target app version: ${semverValid(target.appVersion)}`,
-  ].join("\n");
-
-  p.note(deploymentContext, "Deployment");
-
   if (
     appendToProjectRootGitignore({
       globLines: [HotUpdateDirUtil.outputGitignorePath],
@@ -276,18 +534,41 @@ export const deploy = async (options: DeployOptions) => {
 
   let bundleId: string | null = null;
   let fileHash: string;
-
-  const normalizeOutputPath = path.isAbsolute(outputPath)
-    ? outputPath
-    : path.join(cwd, outputPath);
+  let manifestFileHash: string | null = null;
+  const platformName = getPlatformName(platform);
+  const outputRoot = getBundleOutputRoot({
+    cwd,
+    outputPath,
+    platform,
+    multiPlatform,
+  });
 
   const compressStrategy = config.compressStrategy;
   const bundleExtension = getExtensionFromCompressStrategy(compressStrategy);
   const bundlePath = path.join(
-    normalizeOutputPath,
+    outputRoot,
     "bundle",
     `bundle${bundleExtension}`,
   );
+
+  const deploymentContext = [
+    `Platform: ${platformName}`,
+    `Channel: ${channel}`,
+    `Rollout: ${rolloutPercentage}%`,
+    config.updateStrategy === "fingerprint"
+      ? `Fingerprint: ${target.fingerprintHash}`
+      : `Target app version: ${semverValid(target.appVersion)}`,
+  ].join("\n");
+
+  const deploymentTitle = multiPlatform
+    ? `Deployment (${platformName} ${platformIndex + 1}/${platformCount})`
+    : "Deployment";
+
+  if (multiPlatform) {
+    p.log.step(`${deploymentTitle} • ${channel}`);
+  } else {
+    p.note(deploymentContext, deploymentTitle);
+  }
 
   const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
     config.build({
@@ -296,6 +577,7 @@ export const deploy = async (options: DeployOptions) => {
     config.storage(),
     config.database(),
   ]);
+  assertNodeStoragePlugin(storagePlugin);
 
   try {
     const taskRef: {
@@ -304,21 +586,29 @@ export const deploy = async (options: DeployOptions) => {
         bundleId: string;
         stdout: string | null;
       } | null;
+      targetFiles: { path: string; name: string }[];
+      manifestPath: string | null;
+      manifestStorageUri: string | null;
+      assetBaseStorageUri: string | null;
       storageUri: string | null;
     } = {
       buildResult: null,
+      targetFiles: [],
+      manifestPath: null,
+      manifestStorageUri: null,
+      assetBaseStorageUri: null,
       storageUri: null,
     };
 
     await p.tasks([
       {
-        title: `📦 Building Bundle (${buildPlugin.name})`,
+        title: `📦 Building Bundle (${platformName} • ${buildPlugin.name})`,
         task: async () => {
           taskRef.buildResult = await buildPlugin.build({
             platform: platform,
           });
 
-          await fs.promises.mkdir(normalizeOutputPath, { recursive: true });
+          await fs.promises.mkdir(outputRoot, { recursive: true });
 
           const buildPath = taskRef.buildResult?.buildPath;
           if (!buildPath) {
@@ -340,9 +630,16 @@ export const deploy = async (options: DeployOptions) => {
           const currentBundleId = taskRef.buildResult.bundleId;
           bundleId = currentBundleId;
 
+          const manifestSigning =
+            config.signing?.enabled && config.signing.privateKeyPath
+              ? (assetFileHash: string) =>
+                  signBundle(assetFileHash, config.signing!.privateKeyPath!)
+              : undefined;
+
           const { manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
+            signFileHash: manifestSigning,
             targetFiles,
           });
 
@@ -353,6 +650,8 @@ export const deploy = async (options: DeployOptions) => {
               name: "manifest.json",
             },
           ];
+          taskRef.targetFiles = targetFiles;
+          taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
             case "tar.br":
@@ -407,13 +706,32 @@ export const deploy = async (options: DeployOptions) => {
             }
           }
 
+          manifestFileHash = await getFileHashFromFile(manifestPath);
+          if (config.signing?.enabled) {
+            if (!config.signing.privateKeyPath) {
+              throw new Error(
+                "privateKeyPath is required when signing is enabled. " +
+                  "Please provide a valid path to your RSA private key in hot-updater.config.ts",
+              );
+            }
+
+            const signature = await signBundle(
+              manifestFileHash,
+              config.signing.privateKeyPath,
+            );
+            manifestFileHash = createSignedFileHash(signature);
+          }
+
           return `✅ Build Complete (${buildPlugin.name})`;
         },
       },
     ]);
 
     if (taskRef.buildResult?.stdout) {
-      p.note(taskRef.buildResult.stdout.trim(), "Build Output");
+      p.note(
+        taskRef.buildResult.stdout.trim(),
+        multiPlatform ? `Build Output (${platformName})` : "Build Output",
+      );
     }
 
     if (config.signing?.enabled) {
@@ -422,18 +740,54 @@ export const deploy = async (options: DeployOptions) => {
 
     await p.tasks([
       {
-        title: `📦 Uploading to Storage (${storagePlugin.name})`,
+        title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
 
           try {
-            const { storageUri } = await storagePlugin.upload(
+            const { storageUri } = await storagePlugin.profiles.node.upload(
               bundleId,
               bundlePath,
             );
             taskRef.storageUri = storageUri;
+
+            if (!taskRef.manifestPath) {
+              throw new Error("Manifest path not found");
+            }
+
+            const manifestUpload = await storagePlugin.profiles.node.upload(
+              bundleId,
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
+            taskRef.assetBaseStorageUri = replaceStorageUriLeaf(
+              manifestUpload.storageUri,
+              "files",
+            );
+
+            await Promise.all(
+              taskRef.targetFiles.map(async (targetFile) => {
+                const uploadName = isBrotliManifestBundleAsset(targetFile.name)
+                  ? `${targetFile.name}.br`
+                  : targetFile.name;
+                const relativeDir = getRelativeStorageDir(uploadName);
+                const uploadKey = [bundleId, "files", relativeDir]
+                  .filter(Boolean)
+                  .join("/");
+
+                const uploadSourcePath = await ensureUploadSourcePath({
+                  outputPath: outputRoot,
+                  targetFile,
+                });
+
+                return storagePlugin.profiles.node.upload(
+                  uploadKey,
+                  uploadSourcePath,
+                );
+              }),
+            );
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -444,13 +798,16 @@ export const deploy = async (options: DeployOptions) => {
         },
       },
       {
-        title: `📦 Updating Database (${databasePlugin.name})`,
+        title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
           if (!taskRef.storageUri) {
             throw new Error("Storage URI not found");
+          }
+          if (!manifestFileHash) {
+            throw new Error("Manifest file hash not found");
           }
           const appVersion = await getNativeAppVersion(platform);
 
@@ -467,11 +824,10 @@ export const deploy = async (options: DeployOptions) => {
               targetAppVersion: target.appVersion,
               fingerprintHash: target.fingerprintHash,
               storageUri: taskRef.storageUri,
-              metadata: appVersion
-                ? {
-                    app_version: appVersion,
-                  }
-                : {},
+              metadata: appVersion ? { app_version: appVersion } : {},
+              assetBaseStorageUri: taskRef.assetBaseStorageUri,
+              manifestFileHash,
+              manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
             await databasePlugin.commitBundle();
@@ -481,14 +837,71 @@ export const deploy = async (options: DeployOptions) => {
             }
             throw e;
           }
-          await databasePlugin.onUnmount?.();
-
           return `✅ Update Complete (${databasePlugin.name})`;
         },
       },
     ]);
     if (!bundleId) {
       throw new Error("Bundle ID not found");
+    }
+    const confirmedBundleId = bundleId;
+
+    if (config.patch.enabled) {
+      let patchSummary: {
+        candidateCount: number;
+        createdCount: number;
+        failures: { baseBundleId: string; message: string }[];
+      } = {
+        candidateCount: 0,
+        createdCount: 0,
+        failures: [],
+      };
+
+      await p.tasks([
+        {
+          title: "⚡ Optimizing Delivery",
+          task: async () => {
+            try {
+              patchSummary = await createAutoPatches({
+                bundleId: confirmedBundleId,
+                channel,
+                databasePlugin,
+                maxBaseBundles: maxPatchBaseBundles,
+                platform,
+                storagePlugin,
+                target,
+              });
+            } catch (error) {
+              const message =
+                error instanceof Error
+                  ? error.message
+                  : "Unknown patch optimization error";
+              p.log.warn(`Partial updates unavailable: ${message}`);
+              patchSummary = {
+                candidateCount: 0,
+                createdCount: 0,
+                failures: [],
+              };
+            }
+
+            if (!patchSummary.candidateCount) {
+              return "Skipped (no compatible base bundles)";
+            }
+
+            if (!patchSummary.createdCount) {
+              return "Skipped (no patch artifacts created)";
+            }
+
+            return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
+          },
+        },
+      ]);
+
+      for (const failure of patchSummary.failures) {
+        p.log.warn(
+          `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+        );
+      }
     }
 
     if (options.interactive) {
@@ -498,7 +911,7 @@ export const deploy = async (options: DeployOptions) => {
       const openUrl = new URL(`http://localhost:${port}`);
       openUrl.searchParams.set("channel", channel);
       openUrl.searchParams.set("platform", platform);
-      openUrl.searchParams.set("bundleId", bundleId);
+      openUrl.searchParams.set("bundleId", confirmedBundleId);
 
       const url = openUrl.toString();
 
@@ -519,7 +932,15 @@ export const deploy = async (options: DeployOptions) => {
 
       p.note(note);
     }
-    p.outro(`🚀 Deployment Successful (${bundleId})`);
+    if (multiPlatform) {
+      p.log.success(
+        `✅ ${platformName} Deployment Successful (${confirmedBundleId})`,
+      );
+      return { bundleId: confirmedBundleId, platform };
+    }
+
+    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
+    return { bundleId: confirmedBundleId, platform };
   } catch (e) {
     await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
@@ -527,5 +948,51 @@ export const deploy = async (options: DeployOptions) => {
     process.exit(1);
   } finally {
     await databasePlugin.onUnmount?.();
+  }
+};
+
+export const deploy = async (options: DeployOptions) => {
+  printBanner();
+
+  const platforms = await getDeployPlatforms(options);
+  if (!platforms || platforms.length === 0) {
+    return;
+  }
+
+  const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+
+  if (platforms.length > 1) {
+    const deploymentContext = await getMultiPlatformDeploymentContext({
+      channel: options.channel,
+      options,
+      platforms,
+      rolloutPercentage,
+    });
+
+    if (deploymentContext) {
+      p.note(deploymentContext, "Deployment");
+    }
+  }
+
+  const results: Array<{ bundleId: string; platform: Platform }> = [];
+  for (const [platformIndex, platform] of platforms.entries()) {
+    const result = await deployPlatform({
+      options,
+      platform,
+      platformCount: platforms.length,
+      platformIndex,
+    });
+
+    if (!result) {
+      return;
+    }
+
+    results.push(result);
+  }
+
+  if (platforms.length > 1) {
+    p.outro(
+      `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
+    );
   }
 };

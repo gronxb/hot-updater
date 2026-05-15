@@ -37,6 +37,10 @@ interface S3StorageConfig {
 }
 ```
 
+If `credentials` is omitted, the AWS SDK default credential chain is used. This
+lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
+other standard AWS credential sources.
+
 ## Usage
 
 ### AWS S3
@@ -81,13 +85,24 @@ export default defineConfig({
 
 This prefix is stored in the `storageUri` field in the database.
 
+## Profiles
+
+`s3Storage` implements both storage profiles:
+
+- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
+- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
+  files directly through the S3 API.
+
+This means the same `s3Storage` configuration can be used in both
+`hot-updater.config.ts` and `createHotUpdater`.
+
 ## Custom Server Usage
 
 Use `s3Storage` with `createHotUpdater` for self-hosted servers:
 
 ```typescript
 import { s3Storage } from "@hot-updater/aws";
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server/runtime";
 
 const hotUpdater = createHotUpdater({
   storages: [

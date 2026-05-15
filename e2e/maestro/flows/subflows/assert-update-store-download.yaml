@@ -1,0 +1,27 @@
+appId: ${APP_ID}
+---
+- runFlow:
+    file: navigate-top.yaml
+    env:
+      APP_ID: ${APP_ID}
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Update store artifact type matches expected value
+      EXPECTED_TEXT: ${EXPECTED_ARTIFACT_TYPE}
+      TARGET_ID: update-store-artifact-type
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Update store completed download
+      EXPECTED_TEXT: "true"
+      TARGET_ID: update-store-downloaded
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Update store download path matches expected value
+      EXPECTED_TEXT: ${EXPECTED_DOWNLOAD_PATH}
+      TARGET_ID: update-store-download-paths

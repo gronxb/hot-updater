@@ -4,7 +4,7 @@
 
 - `packages/`: Core libraries (e.g., `core`, `hot-updater`, `react-native`, `console`).
 - `plugins/`: Provider/build plugins (e.g., `aws`, `cloudflare`, `supabase`, `expo`, `repack`).
-- `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.81.0`).
+- `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.85.0`).
 - `docs/`: Documentation site sources.
 - `scripts/`: Local tooling (e.g., `build-dev.mjs`).
 
@@ -15,6 +15,10 @@
 - Test all: `pnpm -w test` (Vitest workspace over `packages/*`, `plugins/*`).
 - Format/Lint: `pnpm -w lint:fix` (write) • `pnpm lint` (read-only).
 - Clean: `pnpm clear` (removes `**/dist` and `.nx`).
+
+## Skill Usage
+
+- Do not use the `hot-updater` skill when developing this repository. That skill is intended for Hot Updater library users who need setup, deployment, diagnostics, and OTA operation guidance, not for maintainers changing the library code itself.
 
 ## Coding Style & Naming
 
@@ -42,6 +46,7 @@
 ## Commit & Pull Requests
 
 - Commit style: Conventional Commits (e.g., `feat(aws): add R2 option`, `fix(android): handle proguard syntax`).
+- Do not force push. Use normal pushes and coordinate before any history rewrite.
 - Before PR: `pnpm -w lint`, `pnpm -w test`, and `pnpm changeset` (select affected packages; patch/minor as appropriate).
 - PR content: clear description, linked issues, screenshots for console/UI changes, and notes on docs/Breaking Changes.
 

@@ -9,13 +9,17 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server/runtime";
-import { setupGetUpdateInfoTestSuite } from "@hot-updater/test-utils";
+import {
+  setupBsdiffManifestUpdateInfoTestSuite,
+  setupGetUpdateInfoTestSuite,
+} from "@hot-updater/test-utils";
 import admin from "firebase-admin";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -34,7 +38,6 @@ const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
-const CDN_URL = "https://cdn.example.com";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
@@ -108,29 +111,38 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
   return `${HOT_UPDATER_BASE_PATH}/fingerprint/${encodeURIComponent(args.platform)}/${encodeURIComponent(args.fingerprintHash)}/${encodeURIComponent(channel)}/${encodeURIComponent(minBundleId)}/${encodeURIComponent(args.bundleId)}${cohortSegment}`;
 };
 
-const toRuntimeBundle = (bundle: Bundle): Bundle => {
+const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
   return {
     ...bundle,
-    storageUri: `gs://hot-updater-test/${bundle.id}/bundle.zip`,
+    storageUri: `gs://${storageBucket}/${bundle.id}/bundle.zip`,
   };
 };
 
 describe.sequential("firebase functions runtime acceptance", () => {
+  const cdnObjects = new Map<string, { body: string; contentType: string }>();
+  let cdnBaseUrl = "";
+  let cdnServer: Server | undefined;
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
+  const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
+  const storageBucket = `${projectId}.appspot.com`;
 
   beforeAll(async () => {
-    if (!projectId || !firestoreHost) {
+    if (!projectId || !firestoreHost || !storageEmulatorHost) {
       throw new Error(
-        "Firebase acceptance tests require FIRESTORE_EMULATOR_HOST and GCLOUD_PROJECT.",
+        "Firebase acceptance tests require FIRESTORE_EMULATOR_HOST, FIREBASE_STORAGE_EMULATOR_HOST and GCLOUD_PROJECT.",
       );
     }
 
     await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
+
+    const cdnPort = await findOpenPort();
+    cdnBaseUrl = `http://127.0.0.1:${cdnPort}`;
+    cdnServer = await startFixtureCdn(cdnPort, cdnObjects);
 
     tempRoot = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/firebase/runtime-acceptance-"),
@@ -218,15 +230,19 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     const firebaseAdminApp = admin.apps.length
       ? admin.app()
-      : admin.initializeApp({ projectId });
-    const adminOptions = firebaseAdminApp.options;
+      : admin.initializeApp({ projectId, storageBucket });
+    const adminOptions = {
+      ...firebaseAdminApp.options,
+      projectId,
+      storageBucket,
+    };
 
     seedHotUpdater = createHotUpdater({
       database: firebaseDatabase(adminOptions),
       storages: [
         firebaseFunctionsStorage({
           ...adminOptions,
-          cdnUrl: CDN_URL,
+          cdnUrl: cdnBaseUrl,
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
@@ -254,8 +270,13 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       cwd: WORKSPACE_ROOT,
       env: {
         FIRESTORE_EMULATOR_HOST: firestoreHost,
+        FIREBASE_CONFIG: JSON.stringify({
+          projectId,
+          storageBucket,
+        }),
+        FIREBASE_STORAGE_EMULATOR_HOST: storageEmulatorHost,
         GCLOUD_PROJECT: projectId,
-        HOT_UPDATER_CDN_URL: CDN_URL,
+        HOT_UPDATER_CDN_URL: cdnBaseUrl,
       },
     });
 
@@ -268,6 +289,8 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   }, 150_000);
 
   beforeEach(async () => {
+    cdnObjects.clear();
+    await clearStorageBucket(storageBucket);
     await clearFirestoreCollection("bundles");
     await clearFirestoreCollection("channels");
     await clearFirestoreCollection("target_app_versions");
@@ -280,6 +303,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     if (tempRoot) {
       await rm(tempRoot, { recursive: true, force: true });
+    }
+
+    if (cdnServer) {
+      await closeServer(cdnServer);
     }
   });
 
@@ -295,33 +322,161 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
-  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
-    for (const bundle of bundles.map(toRuntimeBundle)) {
+  const seedRuntimeBundles = async (bundles: Bundle[]) => {
+    for (const bundle of bundles.map((bundle) =>
+      toRuntimeBundle(bundle, storageBucket),
+    )) {
       await seedHotUpdater.insertBundle(bundle);
     }
+  };
 
+  const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await invokeHandler(createCanonicalPath(args));
 
     return (await response.json()) as any;
   };
 
-  setupGetUpdateInfoTestSuite({ getUpdateInfo });
+  const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
+    await seedRuntimeBundles(bundles);
+    return requestUpdateInfo(args);
+  };
+
+  setupGetUpdateInfoTestSuite({
+    getUpdateInfo,
+    manifestArtifacts: {
+      prepareArtifacts: async (fixture) => {
+        seedCdnObject(
+          cdnObjects,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        );
+        await seedStorageObject(
+          storageBucket,
+          `${fixture.currentBundleId}/manifest.json`,
+          JSON.stringify(fixture.currentManifest),
+          "application/json",
+        );
+        seedCdnObject(
+          cdnObjects,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        );
+        await seedStorageObject(
+          storageBucket,
+          `${fixture.nextBundleId}/manifest.json`,
+          JSON.stringify(fixture.nextManifest),
+          "application/json",
+        );
+
+        return {
+          currentArtifacts: {
+            assetBaseStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
+            manifestFileHash: "sig:manifest-current",
+            manifestStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
+          },
+          nextArtifacts: {
+            assetBaseStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
+            manifestFileHash: "sig:manifest-next",
+            manifestStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
+          },
+        };
+      },
+      expectFileUrl: (fileUrl, fixture) => {
+        expect(fileUrl).toBe(
+          `${cdnBaseUrl}/${fixture.nextBundleId}/files/${fixture.changedAssetPath}.br`,
+        );
+      },
+      expectManifestUrl: (manifestUrl, fixture) => {
+        expect(manifestUrl).toBe(
+          `${cdnBaseUrl}/${fixture.nextBundleId}/manifest.json`,
+        );
+      },
+    },
+  });
+
+  setupBsdiffManifestUpdateInfoTestSuite({
+    seedBundles: seedRuntimeBundles,
+    getUpdateInfo: requestUpdateInfo,
+    prepareArtifacts: async (fixture) => {
+      seedCdnObject(
+        cdnObjects,
+        `${fixture.currentBundleId}/manifest.json`,
+        JSON.stringify(fixture.currentManifest),
+        "application/json",
+      );
+      await seedStorageObject(
+        storageBucket,
+        `${fixture.currentBundleId}/manifest.json`,
+        JSON.stringify(fixture.currentManifest),
+        "application/json",
+      );
+      seedCdnObject(
+        cdnObjects,
+        `${fixture.nextBundleId}/manifest.json`,
+        JSON.stringify(fixture.nextManifest),
+        "application/json",
+      );
+      await seedStorageObject(
+        storageBucket,
+        `${fixture.nextBundleId}/manifest.json`,
+        JSON.stringify(fixture.nextManifest),
+        "application/json",
+      );
+      seedCdnObject(
+        cdnObjects,
+        fixture.patchPath,
+        "patch-bytes",
+        "application/octet-stream",
+      );
+      seedCdnObject(cdnObjects, `${fixture.currentBundleId}/bundle.zip`, "zip");
+      seedCdnObject(cdnObjects, `${fixture.nextBundleId}/bundle.zip`, "zip");
+
+      return {
+        currentArtifacts: {
+          assetBaseStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/files`,
+          manifestFileHash: "sig:manifest-current",
+          manifestStorageUri: `gs://${storageBucket}/${fixture.currentBundleId}/manifest.json`,
+        },
+        nextArtifacts: {
+          assetBaseStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/files`,
+          manifestFileHash: "sig:manifest-next",
+          manifestStorageUri: `gs://${storageBucket}/${fixture.nextBundleId}/manifest.json`,
+          patches: [
+            {
+              baseBundleId: fixture.currentBundleId,
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchStorageUri: `gs://${storageBucket}/${fixture.patchPath}`,
+            },
+          ],
+        },
+      };
+    },
+    expectPatchUrl: (patchUrl, fixture) => {
+      expect(patchUrl).toBe(`${cdnBaseUrl}/${fixture.patchPath}`);
+    },
+  });
 
   it("serves canonical routes from the emulator entrypoint", async () => {
     await seedHotUpdater.insertBundle(
-      toRuntimeBundle({
-        id: "00000000-0000-0000-0000-000000000001",
-        platform: "ios",
-        targetAppVersion: "1.0",
-        shouldForceUpdate: false,
-        enabled: true,
-        fileHash: "hash",
-        gitCommitHash: null,
-        message: "hello",
-        channel: "production",
-        storageUri: "storage://unused",
-        fingerprintHash: null,
-      }),
+      toRuntimeBundle(
+        {
+          id: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          targetAppVersion: "1.0",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: "hash",
+          gitCommitHash: null,
+          message: "hello",
+          channel: "production",
+          storageUri: "storage://unused",
+          fingerprintHash: null,
+        },
+        storageBucket,
+      ),
     );
 
     const response = await invokeHandler(
@@ -369,4 +524,93 @@ const clearFirestoreCollection = async (collectionName: string) => {
     batch.delete(doc.ref);
   }
   await batch.commit();
+};
+
+const clearStorageBucket = async (storageBucket: string) => {
+  const [files] = await admin.storage().bucket(storageBucket).getFiles();
+
+  await Promise.all(
+    files.map((file) =>
+      file.delete().catch((error) => {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === 404
+        ) {
+          return;
+        }
+
+        throw error;
+      }),
+    ),
+  );
+};
+
+const seedStorageObject = async (
+  storageBucket: string,
+  key: string,
+  body: string,
+  contentType = "application/octet-stream",
+) => {
+  await admin
+    .storage()
+    .bucket(storageBucket)
+    .file(key.replace(/^\/+/, ""))
+    .save(body, {
+      metadata: {
+        contentType,
+      },
+    });
+};
+
+const seedCdnObject = (
+  cdnObjects: Map<string, { body: string; contentType: string }>,
+  key: string,
+  body: string,
+  contentType = "application/octet-stream",
+) => {
+  cdnObjects.set(key.replace(/^\/+/, ""), {
+    body,
+    contentType,
+  });
+};
+
+const startFixtureCdn = async (
+  port: number,
+  cdnObjects: Map<string, { body: string; contentType: string }>,
+) => {
+  const server = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    const key = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    const object = cdnObjects.get(key);
+
+    if (!object) {
+      response.writeHead(404, { "content-type": "text/plain" });
+      response.end("not found");
+      return;
+    }
+
+    response.writeHead(200, { "content-type": object.contentType });
+    response.end(object.body);
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(port, "127.0.0.1", resolve);
+  });
+
+  return server;
+};
+
+const closeServer = async (server: Server) => {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
 };

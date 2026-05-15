@@ -1,6 +1,6 @@
 ---
 name: e2e-current-pr
-description: Generate and execute PR-aware OTA E2E scenarios for `examples/v0.81.0` by diffing the checked-out branch against its PR base branch or default branch, inferring the affected runtime, rollout, and recovery surfaces, and then running the scenario through `../e2e`. Use when the caller wants current-branch OTA validation without hand-writing the scenario.
+description: Generate and execute PR-aware OTA E2E scenarios for `examples/v0.85.0` by diffing the checked-out branch against its PR base branch or default branch, inferring the affected runtime, rollout, and recovery surfaces, and then running the scenario through `../e2e`. Use when the caller wants current-branch OTA validation without hand-writing the scenario.
 ---
 
 # E2E Current PR
@@ -34,7 +34,7 @@ owns build, deploy, device interaction, and evidence gathering.
   bundle-store, or native boot logic changes.
 - Add a crash-and-recovery phase when the diff touches recovery or launch-path
   logic such as `packages/core`, `packages/react-native`, native
-  `examples/v0.81.0/ios` or `examples/v0.81.0/android` boot code, or files
+  `examples/v0.85.0/ios` or `examples/v0.85.0/android` boot code, or files
   mentioning rollback, crash history, launch reports, `notifyAppReady`, or
   bundle-store behavior.
 - Prefer iOS first when the diff is iOS-only. Prefer Android first when the
@@ -56,7 +56,7 @@ owns build, deploy, device interaction, and evidence gathering.
   explicitly wants to include those changes. The PR diff target is
   `merge-base(base, HEAD)..HEAD`, not the unstaged local worktree.
 - Keep the scenario tight to the changed behavior. Do not default to the full
-  fixed regression in `../e2e-auto` unless the diff truly spans both stable and
+  fixed regression in `../e2e-default` unless the diff truly spans both stable and
   recovery flows.
 
 ## Script

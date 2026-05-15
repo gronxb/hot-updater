@@ -1,6 +1,5 @@
-import { getCwd, p } from "@hot-updater/cli-tools";
+import { getCwd, p, readPackageUp } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
-import { readPackageUp } from "read-package-up";
 import * as semver from "semver";
 
 import { ui } from "../utils/cli-ui";
@@ -24,6 +23,7 @@ interface InfrastructureStatus {
   needsUpdate?: boolean;
   updateReason?: string;
   error?: string;
+  remediation?: InfrastructureRemediation;
 }
 
 interface DoctorDetails {
@@ -62,6 +62,16 @@ interface InfrastructureUpdateTarget {
   note: string;
 }
 
+interface InfrastructureRemediation {
+  commands: string[];
+}
+
+const INFRASTRUCTURE_RECOVERY_COMMANDS = [
+  "hot-updater init",
+  "hot-updater db migrate",
+  "hot-updater db generate",
+] as const;
+
 // Only versions that require deployed server/infrastructure changes belong here.
 // Regular package releases must not be added unless existing infrastructure needs
 // to be redeployed or migrated for compatibility.
@@ -85,6 +95,10 @@ export const INFRASTRUCTURE_UPDATE_TARGETS = [
   {
     version: "0.30.0",
     note: "Target cohort rollout behavior",
+  },
+  {
+    version: "0.31.0",
+    note: "Bundle artifact storage fields",
   },
 ] as const satisfies readonly [
   InfrastructureUpdateTarget,
@@ -183,6 +197,10 @@ export function resolveVersionEndpoint(serverBaseUrl: string): string {
   return url.toString();
 }
 
+const createInfrastructureRemediation = (): InfrastructureRemediation => ({
+  commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
+});
+
 async function checkInfrastructureStatus({
   serverBaseUrl,
   fetchImpl = fetch,
@@ -265,7 +283,7 @@ export async function doctor(
     const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
 
     // Read package.json
-    const packageResult = await readPackageUp({ cwd });
+    const packageResult = await readPackageUp<PackageJson>(cwd);
 
     if (!packageResult) {
       return {
@@ -329,6 +347,13 @@ export async function doctor(
         fetchImpl,
         requiredVersion: getRequiredInfrastructureVersion(hotUpdaterVersion),
       });
+
+      if (
+        details.infrastructure.error !== undefined ||
+        details.infrastructure.needsUpdate === true
+      ) {
+        details.infrastructure.remediation = createInfrastructureRemediation();
+      }
     }
 
     // Add version mismatches if any
@@ -454,6 +479,23 @@ export const handleDoctor = async ({
       p.log.error(`Infrastructure check failed: ${infrastructure.error}`);
     } else {
       p.log.success("Infrastructure is up to date.");
+    }
+
+    if (infrastructure.remediation) {
+      p.log.message(
+        ui.block("Recovery", [
+          ui.kv("Managed", ui.command("hot-updater init")),
+          ui.kv(
+            "@hot-updater/server (self-hosted)",
+            ui.line([
+              ui.command("hot-updater db generate"),
+              "or",
+              ui.command("hot-updater db migrate"),
+              "then redeploy server",
+            ]),
+          ),
+        ]),
+      );
     }
   }
 

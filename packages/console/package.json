@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/console",
   "type": "module",
-  "version": "0.30.9",
+  "version": "0.30.12",
   "files": [
     ".output",
     "package.json"
@@ -20,6 +20,10 @@
   },
   "peerDependencies": {
     "@hot-updater/cli-tools": "workspace:*"
+  },
+  "dependencies": {
+    "@hot-updater/bsdiff": "workspace:*",
+    "@hot-updater/server": "workspace:*"
   },
   "devDependencies": {
     "@base-ui/react": "^1.3.0",

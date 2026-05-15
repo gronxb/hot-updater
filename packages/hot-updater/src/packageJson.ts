@@ -1,7 +1,9 @@
-import { readPackageUpSync } from "read-package-up";
+import { createRequire } from "node:module";
 
-export const packageJsonData = readPackageUpSync({
-  cwd: __dirname,
-});
+const require = createRequire(import.meta.url);
 
-export const version = packageJsonData?.packageJson.version;
+export const packageJsonData = require("../package.json") as {
+  version?: string;
+};
+
+export const version = packageJsonData.version;

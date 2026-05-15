@@ -28,12 +28,19 @@ import {
   normalizeRolloutPercentage,
 } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
 import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
-import { handleBundleList, handleBundleSetEnabled } from "./commands/bundle";
+import {
+  handleBundleDelete,
+  handleBundleList,
+  handleBundleSetEnabled,
+  handleBundleShow,
+  handleBundleUpdate,
+} from "./commands/bundle";
 import { handleChannel, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
@@ -43,9 +50,27 @@ import {
 import { generate } from "./commands/generate";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handlePromote } from "./commands/promote";
 import { handleRollback } from "./commands/rollback";
 
 const DEFAULT_CHANNEL = "production";
+const parseBooleanOption = (value: string) => {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new InvalidArgumentError("must be true or false");
+};
+
+const parseRolloutCohortCount = (value: string) => {
+  const count = Number.parseInt(value, 10);
+  if (!Number.isInteger(count) || count < 0 || count > 1000) {
+    throw new InvalidArgumentError("must be an integer between 0 and 1000");
+  }
+  return count;
+};
 
 const program = new Command();
 
@@ -111,6 +136,15 @@ bundleCommand
   .action(handleBundleList);
 
 bundleCommand
+  .command("show")
+  .description("Show one bundle by id")
+  .argument("<bundle-id>", "the bundle id to show")
+  .option("--json", "output raw bundle data as JSON")
+  .action((bundleId: string, options: { json?: boolean }) =>
+    handleBundleShow(bundleId, options),
+  );
+
+bundleCommand
   .command("disable")
   .description("Disable a bundle by id")
   .argument("<bundle-id>", "the id of the bundle to disable")
@@ -126,6 +160,60 @@ bundleCommand
   .option("-y, --yes", "skip confirmation prompt")
   .action((bundleId: string, options: { yes?: boolean }) =>
     handleBundleSetEnabled(bundleId, true, options),
+  );
+
+bundleCommand
+  .command("update")
+  .description("Update bundle rollout and targeting metadata")
+  .argument("<bundle-id>", "the bundle id to update")
+  .option(
+    "--rollout-cohort-count <count>",
+    "rollout cohort count from 0 to 1000",
+    parseRolloutCohortCount,
+  )
+  .option(
+    "--force-update <value>",
+    "set force update flag (true or false)",
+    parseBooleanOption,
+  )
+  .option("--target-cohorts <cohorts>", "comma-separated target cohorts")
+  .option("--clear-target-cohorts", "clear target cohorts")
+  .option("--json", "output the updated bundle as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleBundleUpdate);
+
+bundleCommand
+  .command("delete")
+  .description("Delete a bundle record by id")
+  .argument("<bundle-id>", "the bundle id to delete")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((bundleId: string, options: { yes?: boolean }) =>
+    handleBundleDelete(bundleId, options),
+  );
+
+bundleCommand
+  .command("promote")
+  .description("Move or copy a bundle to a different channel")
+  .argument("<bundle-id>", "the id of the bundle to promote")
+  .requiredOption("-t, --target <channel>", "channel to promote the bundle to")
+  .addOption(
+    new Option(
+      "-a, --action <action>",
+      "promote action (copy creates a new bundle id; move keeps the id)",
+    )
+      .choices(["copy", "move"])
+      .default("copy"),
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(
+    (
+      bundleId: string,
+      options: {
+        target: string;
+        action: "copy" | "move";
+        yes?: boolean;
+      },
+    ) => handlePromote(bundleId, options),
   );
 
 const keysCommand = program
@@ -194,7 +282,7 @@ program
   .addOption(
     new Option(
       "-o, --bundle-output-path <bundleOutputPath>",
-      "the path where the bundle.zip will be generated",
+      "the directory where bundle archives will be generated",
     ),
   )
   .addOption(
@@ -225,8 +313,29 @@ program
       "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
     ),
   )
-  .action(async (options: DeployOptions) => {
-    deploy(options);
+  .action(async (options: DeployOptions) => deploy(options));
+
+program
+  .command("patch")
+  .description("create patch artifacts for a deployed bundle")
+  .requiredOption(
+    "-b, --bundle-id <bundleId>",
+    "target bundle id that should receive the patch artifact",
+  )
+  .requiredOption(
+    "--base-bundle-id <baseBundleId>",
+    "older bundle id to use as the patch base",
+  )
+  .addOption(platformCommandOption)
+  .addOption(interactiveCommandOption)
+  .addOption(
+    new Option(
+      "-c, --channel <channel>",
+      "specify the channel used to load config",
+    ).default(DEFAULT_CHANNEL),
+  )
+  .action(async (options: PatchOptions) => {
+    await createPatch(options);
   });
 
 program

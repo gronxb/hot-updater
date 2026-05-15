@@ -283,11 +283,11 @@ def classify_change(path: str) -> tuple[list[str], list[str]]:
     areas: list[str] = []
     risks: list[str] = []
 
-    if path.startswith("examples/v0.81.0/ios/"):
+    if path.startswith("examples/v0.85.0/ios/"):
         areas.extend(["example", "ios", "native"])
-    elif path.startswith("examples/v0.81.0/android/"):
+    elif path.startswith("examples/v0.85.0/android/"):
         areas.extend(["example", "android", "native"])
-    elif path.startswith("examples/v0.81.0/"):
+    elif path.startswith("examples/v0.85.0/"):
         areas.extend(["example", "js"])
     elif path.startswith("packages/core/"):
         areas.extend(["core", "shared"])
@@ -335,7 +335,7 @@ def classify_change(path: str) -> tuple[list[str], list[str]]:
         )
     ):
         risks.append("recovery")
-    if path.startswith("examples/v0.81.0/") and "/ios/" not in path:
+    if path.startswith("examples/v0.85.0/") and "/ios/" not in path:
         if "/android/" not in path:
             risks.append("visible-ui")
     if "/ios/" in path or lower.endswith((".m", ".mm", ".swift", ".pbxproj")):

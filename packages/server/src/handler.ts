@@ -1,4 +1,5 @@
 import type {
+  AppUpdateAvailableInfo,
   AppUpdateInfo,
   AppVersionGetBundlesArgs,
   Bundle,
@@ -9,6 +10,7 @@ import type {
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
+import semver from "semver";
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
@@ -19,7 +21,7 @@ export interface HandlerAPI<TContext = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<AppUpdateInfo | null>;
+  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById: (
     id: string,
     context?: HotUpdaterContext<TContext>,
@@ -88,6 +90,37 @@ class HandlerBadRequestError extends Error {
   }
 }
 
+const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
+const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
+
+const supportsExplicitNoUpdateResponse = (request: Request) => {
+  const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
+  if (!sdkVersion) {
+    return false;
+  }
+
+  const normalizedSdkVersion = semver.valid(sdkVersion);
+  return (
+    normalizedSdkVersion !== null &&
+    semver.gte(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
+  );
+};
+
+const serializeUpdateInfo = (
+  updateInfo: AppUpdateAvailableInfo | null,
+  request: Request,
+): string => {
+  if (updateInfo) {
+    return JSON.stringify(updateInfo satisfies AppUpdateInfo);
+  }
+
+  if (supportsExplicitNoUpdateResponse(request)) {
+    return JSON.stringify({ status: "UP_TO_DATE" } satisfies AppUpdateInfo);
+  }
+
+  return JSON.stringify(null);
+};
+
 // Route handlers
 const handleVersion: RouteHandler = async () => {
   return new Response(JSON.stringify({ version: HOT_UPDATER_SERVER_VERSION }), {
@@ -119,6 +152,43 @@ const requireRouteParam = (
   }
 
   return value;
+};
+
+const parseBooleanSearchParam = (
+  url: URL,
+  key: string,
+): boolean | undefined => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return undefined;
+  }
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+
+  throw new HandlerBadRequestError(
+    `The '${key}' query parameter must be 'true' or 'false'.`,
+  );
+};
+
+const parseNullableStringSearchParam = (
+  url: URL,
+  key: string,
+): string | null | undefined => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return undefined;
+  }
+
+  return value === "null" ? null : value;
+};
+
+const parseStringArraySearchParam = (url: URL, key: string) => {
+  const values = url.searchParams.getAll(key);
+  return values.length > 0 ? values : undefined;
 };
 
 const requirePlatformParam = (params: Record<string, string>): Platform => {
@@ -156,7 +226,7 @@ const requireBundlePatchPayload = (
 
 const handleFingerprintUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -179,7 +249,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -187,7 +257,7 @@ const handleFingerprintUpdateWithCohort: RouteHandler = async (
 
 const handleAppVersionUpdateWithCohort: RouteHandler = async (
   params,
-  _request,
+  request,
   api,
   context,
 ) => {
@@ -210,7 +280,7 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
     context,
   );
 
-  return new Response(JSON.stringify(updateInfo), {
+  return new Response(serializeUpdateInfo(updateInfo, request), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -252,6 +322,29 @@ const handleGetBundles: RouteHandler = async (
   const offset = url.searchParams.get("offset");
   const after = url.searchParams.get("after") ?? undefined;
   const before = url.searchParams.get("before") ?? undefined;
+  const enabled = parseBooleanSearchParam(url, "enabled");
+  const targetAppVersion = parseNullableStringSearchParam(
+    url,
+    "targetAppVersion",
+  );
+  const targetAppVersionIn = parseStringArraySearchParam(
+    url,
+    "targetAppVersionIn",
+  );
+  const targetAppVersionNotNull = parseBooleanSearchParam(
+    url,
+    "targetAppVersionNotNull",
+  );
+  const fingerprintHash = parseNullableStringSearchParam(
+    url,
+    "fingerprintHash",
+  );
+  const idEq = url.searchParams.get("idEq") ?? undefined;
+  const idGt = url.searchParams.get("idGt") ?? undefined;
+  const idGte = url.searchParams.get("idGte") ?? undefined;
+  const idLt = url.searchParams.get("idLt") ?? undefined;
+  const idLte = url.searchParams.get("idLte") ?? undefined;
+  const idIn = parseStringArraySearchParam(url, "idIn");
   const page =
     pageParam === null
       ? undefined
@@ -282,6 +375,25 @@ const handleGetBundles: RouteHandler = async (
       where: {
         ...(channel && { channel }),
         ...(platform && { platform }),
+        ...(enabled !== undefined && { enabled }),
+        ...(idEq || idGt || idGte || idLt || idLte || (idIn && idIn.length > 0)
+          ? {
+              id: {
+                ...(idEq && { eq: idEq }),
+                ...(idGt && { gt: idGt }),
+                ...(idGte && { gte: idGte }),
+                ...(idLt && { lt: idLt }),
+                ...(idLte && { lte: idLte }),
+                ...(idIn && idIn.length > 0 && { in: idIn }),
+              },
+            }
+          : {}),
+        ...(targetAppVersion !== undefined && { targetAppVersion }),
+        ...(targetAppVersionIn && { targetAppVersionIn }),
+        ...(targetAppVersionNotNull !== undefined && {
+          targetAppVersionNotNull,
+        }),
+        ...(fingerprintHash !== undefined && { fingerprintHash }),
       },
       limit,
       page,

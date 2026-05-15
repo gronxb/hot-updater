@@ -39,6 +39,8 @@ import {
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,
+  HotUpdaterProgressArtifactType,
+  HotUpdaterProgressEvent,
   Manifest,
   ManifestAsset,
   NotifyAppReadyResult,
@@ -48,6 +50,7 @@ export type {
 export * from "./store";
 export {
   extractSignatureFailure,
+  type HotUpdaterBaseURL,
   type HotUpdaterResolver,
   isSignatureVerificationError,
   type ResolverCheckUpdateParams,
@@ -55,6 +58,7 @@ export {
   type SignatureVerificationFailure,
 } from "./types";
 export type {
+  HotUpdaterFallbackComponentProps,
   HotUpdaterInitOptions,
   HotUpdaterOptions,
   RunUpdateProcessResponse,
@@ -471,8 +475,12 @@ function createHotUpdaterClient() {
       const ok = await resetChannel();
       if (ok) {
         hotUpdaterStore.setState({
+          artifactType: null,
+          details: null,
+          downloadedBytes: undefined,
           isUpdateDownloaded: false,
           progress: 0,
+          totalBytes: undefined,
         });
       }
       return ok;

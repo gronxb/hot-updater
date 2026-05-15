@@ -352,13 +352,7 @@ export type HotUpdaterContext<TContext = unknown> = TContext;
 export type StorageResolveContext<TContext = unknown> =
   HotUpdaterContext<TContext>;
 
-export interface StoragePlugin<TContext = unknown> {
-  /**
-   * Protocol this storage plugin can resolve.
-   * @example "s3", "r2", "supabase-storage".
-   */
-  supportedProtocol: string;
-
+export interface NodeStorageProfile {
   upload: (
     key: string,
     filePath: string,
@@ -368,6 +362,10 @@ export interface StoragePlugin<TContext = unknown> {
 
   delete: (storageUri: string) => Promise<void>;
 
+  downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+}
+
+export interface RuntimeStorageProfile<TContext = unknown> {
   getDownloadUrl: (
     storageUri: string,
     context?: StorageResolveContext<TContext>,
@@ -375,19 +373,67 @@ export interface StoragePlugin<TContext = unknown> {
     fileUrl: string;
   }>;
 
-  /**
-   * Optional. Download an object referenced by `storageUri` directly to
-   * `destinationPath`. Plugins implement this when their backend cannot mint
-   * a fetch()-able URL (e.g. R2 via wrangler, where presigned URLs require
-   * separate S3 credentials). Callers that need a local file should prefer
-   * this method and fall back to `getDownloadUrl` + fetch when it is absent.
-   */
-  download?: (
+  readText: (
     storageUri: string,
-    destinationPath: string,
     context?: StorageResolveContext<TContext>,
-  ) => Promise<void>;
+  ) => Promise<string | null>;
+}
+
+export interface StoragePluginProfiles<TContext = unknown> {
+  /**
+   * Node/deploy/console profile.
+   *
+   * Use this profile when the caller can materialize storage objects to the
+   * local filesystem.
+   */
+  node?: NodeStorageProfile;
+
+  /**
+   * Runtime update-check profile.
+   *
+   * Use this profile when the caller needs signed/public client URLs and direct
+   * server-side reads for small control-plane text objects such as manifests.
+   */
+  runtime?: RuntimeStorageProfile<TContext>;
+}
+
+export interface StoragePlugin<TContext = unknown> {
+  /**
+   * Protocol this storage plugin can resolve.
+   * @example "s3", "r2", "supabase-storage".
+   */
+  supportedProtocol: string;
+
   name: string;
+
+  profiles: StoragePluginProfiles<TContext>;
+}
+
+export interface NodeStoragePlugin<
+  TContext = unknown,
+> extends StoragePlugin<TContext> {
+  profiles: {
+    node: NodeStorageProfile;
+    runtime?: RuntimeStorageProfile<TContext>;
+  };
+}
+
+export interface RuntimeStoragePlugin<
+  TContext = unknown,
+> extends StoragePlugin<TContext> {
+  profiles: {
+    node?: NodeStorageProfile;
+    runtime: RuntimeStorageProfile<TContext>;
+  };
+}
+
+export interface UniversalStoragePlugin<
+  TContext = unknown,
+> extends StoragePlugin<TContext> {
+  profiles: {
+    node: NodeStorageProfile;
+    runtime: RuntimeStorageProfile<TContext>;
+  };
 }
 
 export interface StoragePluginHooks {
@@ -480,6 +526,30 @@ export type ConfigInput = {
      */
     debug?: boolean;
   };
+  /**
+   * Optional pre-generated patch artifacts for faster OTA delivery.
+   *
+   * When enabled, `hot-updater deploy` tries to prepare binary patches against
+   * up to `maxBaseBundles` recent compatible bundles. Patch generation is an
+   * optimization only; archive delivery remains the fallback path.
+   *
+   * @default { enabled: true, maxBaseBundles: 3 }
+   */
+  patch?: {
+    /**
+     * Enable automatic patch generation during deploy.
+     *
+     * @default true
+     */
+    enabled?: boolean;
+    /**
+     * Maximum number of compatible older bundles to prepare patches for.
+     * Must be a positive integer.
+     *
+     * @default 3
+     */
+    maxBaseBundles?: number;
+  };
   console?: {
     /**
      * Git repository URL
@@ -517,7 +587,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: () => Promise<StoragePlugin> | StoragePlugin;
+  storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
 

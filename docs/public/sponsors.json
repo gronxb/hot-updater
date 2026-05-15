@@ -1,6 +1,12 @@
 {
   "sponsors": [
     {
+      "login": "Alexhamila",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/28599364?u=28acfc45897776540c12bbcaddb6a0f75eac3ae4&v=4",
+      "name": "Alexandre Hamila",
+      "url": "https://github.com/Alexhamila"
+    },
+    {
       "login": "Davescat",
       "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
       "name": "Davide Catalano",
@@ -11,12 +17,6 @@
       "avatarUrl": "https://avatars.githubusercontent.com/u/54767632?u=cbfb438d2adb43d312f3df83a78772e1e4dd1509&v=4",
       "name": "LESA",
       "url": "https://github.com/LESANF"
-    },
-    {
-      "login": "kr-yeon",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/65217664?u=c997206ed89e902b1d15c96d0c0997823c1317fc&v=4",
-      "name": "kr-yeon",
-      "url": "https://github.com/kr-yeon"
     },
     {
       "login": "valeriobelli",
@@ -31,5 +31,5 @@
       "url": "https://github.com/victorsaisse"
     }
   ],
-  "updatedAt": "2026-04-30T00:44:57Z"
+  "updatedAt": "2026-05-15T00:47:12Z"
 }

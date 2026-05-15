@@ -4,10 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 
+import {
+  getManifestFileHash,
+  stripBundleArtifactMetadata,
+} from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePlugin,
-  StoragePlugin,
+  NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
   createUUIDv7,
@@ -27,6 +31,7 @@ const SIGNED_HASH_PREFIX = "sig:";
 
 interface BundleManifest {
   bundleId?: string;
+  assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
 export interface PromoteBundleInput {
@@ -39,7 +44,7 @@ export interface PromoteBundleInput {
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
   databasePlugin: DatabasePlugin;
-  storagePlugin: StoragePlugin | null;
+  storagePlugin: NodeStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -67,6 +72,23 @@ function getArchiveFilename(storageUri: string) {
   return filename || "bundle.zip";
 }
 
+const getRelativeStorageDir = (relativePath: string) => {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const dirname = path.posix.dirname(normalized);
+  return dirname === "." ? "" : dirname;
+};
+
+const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
+  const storageUrl = new URL(storageUri);
+  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
+  const lastSlashIndex = normalizedPath.lastIndexOf("/");
+  const parentPath =
+    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+
+  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+  return storageUrl.toString();
+};
+
 function resolveExtractedPath(rootDir: string, entryName: string) {
   const normalizedEntryName = entryName.replaceAll("\\", "/");
   const entryPath = path.resolve(rootDir, normalizedEntryName);
@@ -83,10 +105,23 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
   return entryPath;
 }
 
-async function downloadArchiveFromHttpUrl(
-  fileUrl: string,
+async function downloadArchive(
+  storageUri: string,
+  storagePlugin: NodeStoragePlugin | null,
   archivePath: string,
 ) {
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+
+  if (protocol === "http" || protocol === "https") {
+    const archiveBuffer = await downloadFromUrl(storageUri);
+    await fs.writeFile(archivePath, archiveBuffer);
+    return;
+  }
+
+  await downloadFromStorage(storageUri, storagePlugin, archivePath);
+}
+
+async function downloadFromUrl(fileUrl: string) {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error(
@@ -94,8 +129,24 @@ async function downloadArchiveFromHttpUrl(
     );
   }
 
-  const archiveBuffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(archivePath, archiveBuffer);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+async function downloadFromStorage(
+  storageUri: string,
+  storagePlugin: NodeStoragePlugin | null,
+  filePath: string,
+) {
+  if (!storagePlugin) {
+    throw new Error("Storage plugin is not configured");
+  }
+
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+  if (storagePlugin.supportedProtocol !== protocol) {
+    throw new Error(`No storage plugin for protocol: ${protocol}`);
+  }
+
+  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -215,39 +266,11 @@ async function rewriteManifestBundleId(
   manifest.bundleId = nextBundleId;
 
   await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-}
 
-async function downloadBundleArchive(
-  storageUri: string,
-  archivePath: string,
-  storagePlugin: StoragePlugin | null,
-) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-
-  if (protocol === "http" || protocol === "https") {
-    await downloadArchiveFromHttpUrl(storageUri, archivePath);
-    return;
-  }
-
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  if (storagePlugin.supportedProtocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  if (storagePlugin.download) {
-    await storagePlugin.download(storageUri, archivePath);
-    return;
-  }
-
-  const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
-  if (!fileUrl) {
-    throw new Error("Storage plugin returned empty fileUrl");
-  }
-
-  await downloadArchiveFromHttpUrl(fileUrl, archivePath);
+  return {
+    manifest,
+    manifestPath,
+  };
 }
 
 export async function createCopiedBundleArchive({
@@ -260,7 +283,7 @@ export async function createCopiedBundleArchive({
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: StoragePlugin;
+  storagePlugin: NodeStoragePlugin;
   targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
@@ -271,65 +294,117 @@ export async function createCopiedBundleArchive({
   const sourceArchivePath = path.join(workDir, archiveFilename);
   const extractDir = path.join(workDir, "bundle");
   const outputArchivePath = path.join(workDir, archiveFilename);
+  const uploadedStorageUris: string[] = [];
 
   await fs.mkdir(extractDir, { recursive: true });
 
   try {
-    await downloadBundleArchive(
-      bundle.storageUri,
-      sourceArchivePath,
-      storagePlugin,
-    );
+    await downloadArchive(bundle.storageUri, storagePlugin, sourceArchivePath);
     const format = await extractArchive(sourceArchivePath, extractDir);
 
-    await rewriteManifestBundleId(extractDir, nextBundleId);
+    const { manifest, manifestPath } = await rewriteManifestBundleId(
+      extractDir,
+      nextBundleId,
+    );
     await fs.rm(sourceArchivePath, { force: true });
     await createArchiveFromDirectory(extractDir, outputArchivePath, format);
 
     const fileHash = await getFileHash(outputArchivePath);
-    const shouldKeepSignedHash =
-      isSignedFileHash(bundle.fileHash) && !config.signing?.enabled;
+    const manifestHash = await getFileHash(manifestPath);
+    const requiresSigningKey = [bundle.fileHash, getManifestFileHash(bundle)]
+      .filter((hash): hash is string => Boolean(hash))
+      .some((hash) => isSignedFileHash(hash));
 
-    if (shouldKeepSignedHash) {
+    if (requiresSigningKey && !config.signing?.privateKeyPath) {
       throw new Error(
         "Cannot copy a signed bundle without signing.privateKeyPath in hot-updater.config.ts",
       );
     }
 
-    const nextFileHash =
+    const signingKeyPath =
       config.signing?.enabled && config.signing.privateKeyPath
-        ? await signFileHash(fileHash, config.signing.privateKeyPath)
-        : fileHash;
+        ? config.signing.privateKeyPath
+        : null;
+    const nextFileHash = signingKeyPath
+      ? await signFileHash(fileHash, signingKeyPath)
+      : fileHash;
+    const nextManifestFileHash = signingKeyPath
+      ? await signFileHash(manifestHash, signingKeyPath)
+      : manifestHash;
 
-    const { storageUri } = await storagePlugin.upload(
+    const archiveUpload = await storagePlugin.profiles.node.upload(
       nextBundleId,
       outputArchivePath,
     );
+    uploadedStorageUris.push(archiveUpload.storageUri);
+    const manifestUpload = await storagePlugin.profiles.node.upload(
+      nextBundleId,
+      manifestPath,
+    );
+    uploadedStorageUris.push(manifestUpload.storageUri);
+
+    const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
+      left.localeCompare(right),
+    );
+
+    for (const assetPath of assetPaths) {
+      const relativeDir = getRelativeStorageDir(assetPath);
+      const uploadKey = [nextBundleId, "files", relativeDir]
+        .filter(Boolean)
+        .join("/");
+      const assetUpload = await storagePlugin.profiles.node.upload(
+        uploadKey,
+        path.join(extractDir, assetPath),
+      );
+      uploadedStorageUris.push(assetUpload.storageUri);
+    }
+
+    const assetBaseStorageUri = replaceStorageUriLeaf(
+      manifestUpload.storageUri,
+      "files",
+    );
 
     return {
-      ...bundle,
-      id: nextBundleId,
-      channel: targetChannel,
-      storageUri,
-      fileHash: nextFileHash,
-    } satisfies Bundle;
+      bundle: {
+        ...bundle,
+        id: nextBundleId,
+        channel: targetChannel,
+        storageUri: archiveUpload.storageUri,
+        fileHash: nextFileHash,
+        metadata: stripBundleArtifactMetadata(bundle.metadata),
+        assetBaseStorageUri,
+        patches: [],
+        patchBaseBundleId: null,
+        manifestFileHash: nextManifestFileHash,
+        manifestStorageUri: manifestUpload.storageUri,
+        patchBaseFileHash: null,
+        patchFileHash: null,
+        patchStorageUri: null,
+      } satisfies Bundle,
+      uploadedStorageUris,
+    };
+  } catch (error) {
+    await deleteUploadedCopy(storagePlugin, uploadedStorageUris);
+    throw error;
   } finally {
     await fs.rm(workDir, { recursive: true, force: true });
   }
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: StoragePlugin,
-  storageUri: string | null,
+  storagePlugin: NodeStoragePlugin,
+  storageUris: string[],
 ) {
-  if (!storageUri) {
+  if (storageUris.length === 0) {
     return;
   }
 
-  try {
-    await storagePlugin.delete(storageUri);
-  } catch (error) {
-    console.error("Failed to delete uploaded bundle copy:", error);
+  for (const storageUri of new Set(storageUris)) {
+    try {
+      await storagePlugin.profiles.node.delete(storageUri);
+    } catch (error) {
+      console.error("Failed to delete uploaded bundle copy:", error);
+    }
   }
 }
 
@@ -372,22 +447,25 @@ export async function promoteBundle(
   }
 
   const resolvedNextBundleId = nextBundleId?.trim() || createUUIDv7();
-  const copiedBundle = await createCopiedBundleArchive({
-    bundle,
-    config: deps.config,
-    nextBundleId: resolvedNextBundleId,
-    storagePlugin: deps.storagePlugin,
-    targetChannel: normalizedTargetChannel,
-  });
-  let uploadedStorageUri: string | null = copiedBundle.storageUri;
+  const { bundle: copiedBundle, uploadedStorageUris } =
+    await createCopiedBundleArchive({
+      bundle,
+      config: deps.config,
+      nextBundleId: resolvedNextBundleId,
+      storagePlugin: deps.storagePlugin,
+      targetChannel: normalizedTargetChannel,
+    });
+  let shouldCleanupUploadedCopy = true;
 
   try {
     await deps.databasePlugin.appendBundle(copiedBundle);
     await deps.databasePlugin.commitBundle();
-    uploadedStorageUri = null;
+    shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {
-    await deleteUploadedCopy(deps.storagePlugin, uploadedStorageUri);
+    if (shouldCleanupUploadedCopy) {
+      await deleteUploadedCopy(deps.storagePlugin, uploadedStorageUris);
+    }
     throw error;
   }
 }

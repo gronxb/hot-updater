@@ -68,12 +68,27 @@ function startJob(pathname, body) {
   const response = request("POST", pathname, body);
   const payload = expectOk(response, "job start");
   const jobId = payload.jobId;
+  const timeoutSeconds = (() => {
+    if (JOB_TIMEOUT_SECONDS) {
+      const parsed = Number(JOB_TIMEOUT_SECONDS);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    // Bootstrap can include a full clean release build on iOS.
+    if (pathname === "/e2e/jobs/bootstrap") {
+      return 1800;
+    }
+
+    return 720;
+  })();
 
   if (!jobId) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < JOB_TIMEOUT_SECONDS; attempt += 1) {
+  for (let attempt = 0; attempt < timeoutSeconds; attempt += 1) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -89,7 +104,7 @@ function startJob(pathname, body) {
   }
 
   throw new Error(
-    `timed out waiting for job ${jobId} after ${JOB_TIMEOUT_SECONDS}s`,
+    `timed out waiting for job ${jobId} after ${timeoutSeconds}s`,
   );
 }
 
@@ -168,10 +183,12 @@ switch (ACTION) {
       bundleProfile: BUNDLE_PROFILE || undefined,
       channel: CHANNEL,
       disabled: maybeBoolean(DISABLED),
+      diffBaseBundleId: DIFF_BASE_BUNDLE_ID || undefined,
       forceUpdate: maybeBoolean(FORCE_UPDATE),
       marker: MARKER,
       message: MESSAGE || undefined,
       mode: MODE,
+      patchMaxBaseBundles: maybeNumber(PATCH_MAX_BASE_BUNDLES),
       rollout: maybeNumber(ROLLOUT),
       safeBundleIds: parseCsv(SAFE_BUNDLE_IDS),
       targetAppVersion: TARGET_APP_VERSION || "1.0.x",
@@ -182,6 +199,13 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Channel`, result.channel);
     assignIfPresent(`${outputKey}Enabled`, result.enabled);
     assignIfPresent(`${outputKey}Marker`, result.marker);
+    assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
+    assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
+    assignIfPresent(
+      `${outputKey}PrimaryBundleAssetPath`,
+      result.primaryBundleAssetPath,
+    );
+    assignIfPresent(`${outputKey}PatchBaseBundleIds`, result.patchBaseBundleIds);
     assignIfPresent(
       `${outputKey}RolloutCohortCount`,
       result.rolloutCohortCount,
@@ -227,11 +251,10 @@ switch (ACTION) {
   }
 
   case "waitForMetadata": {
-    const response = request("POST", "/e2e/wait-for-metadata", {
+    startJob("/e2e/jobs/wait-for-metadata", {
       bundleId: BUNDLE_ID,
       verificationPending: VERIFICATION_PENDING === "true",
     });
-    expectOk(response, "wait for metadata");
     break;
   }
 
@@ -240,6 +263,35 @@ switch (ACTION) {
       prefix: PREFIX,
     });
     expectOk(response, "capture state");
+    break;
+  }
+
+  case "assertBsdiffPatchApplied": {
+    const response = request("POST", "/e2e/assert-bsdiff-patch-applied", {
+      assetPath: ASSET_PATH || "index.ios.bundle",
+      baseBundleId: BASE_BUNDLE_ID,
+    });
+    expectOk(response, "assert bsdiff patch applied");
+    break;
+  }
+
+  case "assertFirstOtaUsesArchive": {
+    const response = request("POST", "/e2e/assert-first-ota-uses-archive", {
+      bundleId: BUNDLE_ID,
+    });
+    expectOk(response, "assert first OTA uses archive");
+    break;
+  }
+
+  case "reinstallBuiltInApp": {
+    const response = request("POST", "/e2e/reinstall-built-in-app", {});
+    expectOk(response, "reinstall built-in app");
+    break;
+  }
+
+  case "resetRemoteBundles": {
+    const response = request("POST", "/e2e/reset-remote-bundles", {});
+    expectOk(response, "reset remote bundles");
     break;
   }
 
@@ -275,9 +327,35 @@ switch (ACTION) {
     break;
   }
 
+  case "assertBundlePatchBases": {
+    const response = request("POST", "/e2e/assert-bundle-patch-bases", {
+      absentBaseBundleIds: maybeCsv(ABSENT_BASE_BUNDLE_IDS),
+      bundleId: BUNDLE_ID,
+      expectedBaseBundleIds: maybeCsv(EXPECTED_BASE_BUNDLE_IDS),
+    });
+    const result = expectOk(response, "assert bundle patch bases");
+    assignIfPresent("observedBaseBundleIds", result.observedBaseBundleIds);
+    break;
+  }
+
+  case "assertManifestDiffApplied": {
+    const response = request("POST", "/e2e/assert-manifest-diff-applied", {
+      bundleId: BUNDLE_ID,
+      previousBundleId: PREVIOUS_BUNDLE_ID,
+    });
+    expectOk(response, "assert manifest diff applied");
+    break;
+  }
+
   case "ensureAppForeground": {
     const response = request("POST", "/e2e/ensure-app-foreground", {});
     expectOk(response, "ensure app foreground");
+    break;
+  }
+
+  case "prepareAppLaunch": {
+    const response = request("POST", "/e2e/prepare-app-launch", {});
+    expectOk(response, "prepare app launch");
     break;
   }
 

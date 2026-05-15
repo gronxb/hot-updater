@@ -1,5 +1,88 @@
 # hot-updater
 
+## 0.30.12
+
+### Patch Changes
+
+- @hot-updater/android-helper@0.30.12
+- @hot-updater/apple-helper@0.30.12
+- @hot-updater/cli-tools@0.30.12
+- @hot-updater/console@0.30.12
+- @hot-updater/core@0.30.12
+- @hot-updater/server@0.30.12
+- @hot-updater/plugin-core@0.30.12
+
+## 0.30.11
+
+### Patch Changes
+
+- eb32048: fix(cli): `deploy` falls back to the auto-detected target app version in non-interactive mode
+
+  Previously, running `hot-updater deploy` without `-t` and without `-i` errored with
+  "Target app version not found", even though `getDefaultTargetAppVersion` had already
+  extracted the version from the binary's native files (Info.plist for iOS, build.gradle
+  for Android) for use as the interactive prompt's placeholder. CI deploys had to
+  either pass `-t` explicitly or scrape the version out of package.json.
+
+  Now the resolution order is: explicit `-t` → interactive prompt (with the auto-detected
+  value as placeholder) → auto-detected default → clear error if the native config is
+  unreadable. Existing `-t` and `-i` invocations are unchanged.
+
+  - @hot-updater/android-helper@0.30.11
+  - @hot-updater/apple-helper@0.30.11
+  - @hot-updater/cli-tools@0.30.11
+  - @hot-updater/console@0.30.11
+  - @hot-updater/core@0.30.11
+  - @hot-updater/server@0.30.11
+  - @hot-updater/plugin-core@0.30.11
+
+## 0.30.10
+
+### Patch Changes
+
+- 677271a: feat(cli): `deploy` runs both platforms when `-p` is omitted
+
+  `hot-updater deploy` (without `-p ios` or `-p android`) now deploys ios then android sequentially. If ios fails, android is not attempted — the channel is never left half-updated. This is the typical CI/CD invocation pattern.
+
+  ```
+  hot-updater deploy -c dev               # ios + android, sequential, abort-on-first-failure
+  hot-updater deploy -p ios -c dev        # unchanged: single platform
+  hot-updater deploy -i -c dev            # unchanged: interactive prompt for one platform
+  ```
+
+  Existing `-p ios` / `-p android` invocations are unchanged; `-i` (interactive) still prompts for a single platform. The change is purely in the no-`-p`-no-`-i` path, which previously errored with "Platform not found" — that error path is now the multi-platform deploy.
+
+- fb780c1: feat(cli): add `bundle promote` command
+
+  Move or copy a bundle to a different channel from the CLI, mirroring the console's Promote-to-Channel UI.
+
+  ```
+  hot-updater bundle promote <bundle-id> -t <target-channel> [-a copy|move] [-y]
+  ```
+
+  - The bundle id is positional — the bundle carries its own source channel, so no `--source` flag is needed.
+  - `--action copy` (default) creates a new bundle id on the target channel and leaves the original in place — CodePush-promote semantics.
+  - `--action move` updates the bundle's `channel` column without creating a new bundle (D1-only mutation; no R2 work).
+  - Wraps the `promoteBundle` function from `@hot-updater/cli-tools`, so the CLI and console use one implementation. Surfaces the underlying `LEGACY_BUNDLE_ERROR` and signing/storage configuration errors directly.
+
+  Pre-flight: rejects bundle-already-on-target, missing bundle id, empty target. Refuses to mutate without `-y` in a non-TTY shell. Lives under the `bundle` namespace alongside `bundle list/disable/enable` since the noun being mutated is the bundle (its channel attribute, or a copy of it).
+
+- 014430a: fix(cli): make multi-platform deploy a first-class flow
+
+  `hot-updater deploy` now handles the no-`-p` path inside the deploy command
+  itself instead of looping from the CLI entrypoint. This keeps the banner and
+  success output consistent, makes it explicit that iOS and Android are deployed
+  sequentially, and writes local bundle archives to platform-specific output
+  directories so one platform no longer overwrites the other.
+
+  - @hot-updater/android-helper@0.30.10
+  - @hot-updater/apple-helper@0.30.10
+  - @hot-updater/cli-tools@0.30.10
+  - @hot-updater/console@0.30.10
+  - @hot-updater/core@0.30.10
+  - @hot-updater/server@0.30.10
+  - @hot-updater/plugin-core@0.30.10
+
 ## 0.30.9
 
 ### Patch Changes

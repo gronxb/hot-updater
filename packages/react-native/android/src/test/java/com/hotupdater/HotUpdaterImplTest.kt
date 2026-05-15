@@ -179,7 +179,10 @@ class HotUpdaterImplTest {
             bundleId: String,
             fileUrl: String?,
             fileHash: String?,
-            progressCallback: (Double) -> Unit,
+            manifestUrl: String?,
+            manifestFileHash: String?,
+            changedAssets: Map<String, ChangedAssetDescriptor>?,
+            progressCallback: (UpdateProgressPayload) -> Unit,
         ) = Unit
 
         override fun markLaunchCompleted(currentBundleId: String?) = Unit

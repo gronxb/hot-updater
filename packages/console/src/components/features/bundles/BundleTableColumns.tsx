@@ -1,26 +1,100 @@
 import { DEFAULT_ROLLOUT_COHORT_COUNT } from "@hot-updater/core";
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
-import { Fingerprint, Package } from "lucide-react";
+import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+interface BundleColumnsOptions {
+  expandedBundleId?: string;
+  patchCountsByBundleId: Record<string, number | undefined>;
+  onDetailClick: (bundle: Bundle) => void;
+  onToggleExpand: (bundle: Bundle) => void;
+}
 
 const columnHelper = createColumnHelper<Bundle>();
 
-export const bundleColumns = [
+function BundleIdCell({
+  bundle,
+  expandedBundleId,
+  onDetailClick,
+  onToggleExpand,
+}: {
+  bundle: Bundle;
+  expandedBundleId?: string;
+  onDetailClick: (bundle: Bundle) => void;
+  onToggleExpand: (bundle: Bundle) => void;
+}) {
+  const isExpanded = bundle.id === expandedBundleId;
+  const panelId = `bundle-lineage-panel-${bundle.id}`;
+
+  return (
+    <div className="flex min-w-[240px] items-center gap-3">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-8 shrink-0 touch-manipulation"
+        aria-label={isExpanded ? "Hide Lineage" : "Show Lineage"}
+        aria-controls={panelId}
+        aria-expanded={isExpanded}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleExpand(bundle);
+        }}
+      >
+        {isExpanded ? (
+          <ChevronDown aria-hidden="true" />
+        ) : (
+          <ChevronRight aria-hidden="true" />
+        )}
+      </Button>
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-col items-start rounded-sm text-left transition-colors",
+          "focus-visible:ring-ring/30 focus-visible:ring-[2px] outline-none",
+          "text-muted-foreground hover:text-foreground",
+        )}
+        aria-label={`Open details for bundle ${bundle.id}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDetailClick(bundle);
+        }}
+      >
+        <span className="min-w-0 text-foreground">
+          <BundleIdDisplay bundleId={bundle.id} fullOnMobile />
+        </span>
+      </button>
+    </div>
+  );
+}
+
+export const createBundleColumns = ({
+  expandedBundleId,
+  patchCountsByBundleId,
+  onDetailClick,
+  onToggleExpand,
+}: BundleColumnsOptions) => [
   columnHelper.accessor("id", {
     header: "Bundle ID",
-    cell: (info) => <BundleIdDisplay bundleId={info.getValue()} />,
+    cell: (info) => (
+      <BundleIdCell
+        bundle={info.row.original}
+        expandedBundleId={expandedBundleId}
+        onDetailClick={onDetailClick}
+        onToggleExpand={onToggleExpand}
+      />
+    ),
   }),
   columnHelper.accessor("channel", {
     header: "Channel",
@@ -36,6 +110,27 @@ export const bundleColumns = [
     ),
   }),
   columnHelper.display({
+    id: "patches",
+    header: "Patches",
+    cell: (info) => {
+      const count = patchCountsByBundleId[info.row.original.id];
+
+      if (count === undefined) {
+        return <span className="text-sm text-muted-foreground">Checking</span>;
+      }
+
+      if (count === 0) {
+        return <span className="text-sm text-muted-foreground">-</span>;
+      }
+
+      return (
+        <Badge variant="secondary">
+          {count} {count === 1 ? "patch" : "patches"}
+        </Badge>
+      );
+    },
+  }),
+  columnHelper.display({
     id: "target",
     header: "Target",
     cell: (info) => {
@@ -43,19 +138,10 @@ export const bundleColumns = [
 
       if (row.fingerprintHash) {
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-2 cursor-help">
-                <Fingerprint className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="font-mono text-xs">
-                  {row.fingerprintHash.slice(0, 8)}
-                </span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="font-mono text-xs">{row.fingerprintHash}</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="flex min-w-[220px] items-start gap-2">
+            <Fingerprint className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <HashValueDisplay value={row.fingerprintHash} maxLength={12} />
+          </div>
         );
       }
 
@@ -63,7 +149,9 @@ export const bundleColumns = [
         return (
           <div className="flex items-center gap-2">
             <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="text-sm">{row.targetAppVersion}</span>
+            <span translate="no" className="text-sm">
+              {row.targetAppVersion}
+            </span>
           </div>
         );
       }

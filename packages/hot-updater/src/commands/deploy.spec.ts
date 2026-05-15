@@ -1,53 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin } =
-  vi.hoisted(() => {
-    const mockBuildPlugin = {
-      build: vi.fn(),
-      name: "mock-build",
-    };
-    const mockStoragePlugin = {
-      name: "mock-storage",
-      upload: vi.fn(),
-    };
-    const mockDatabasePlugin = {
-      appendBundle: vi.fn(),
-      commitBundle: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(),
-      getBundles: vi.fn(),
-      getChannels: vi.fn(),
-      name: "mock-database",
-      onUnmount: vi.fn(),
-      updateBundle: vi.fn(),
-    };
-    const mockCli = {
-      appendToProjectRootGitignore: vi.fn(),
-      createTarBrTargetFiles: vi.fn(),
-      createTarGzTargetFiles: vi.fn(),
-      createZipTargetFiles: vi.fn(),
-      getCwd: vi.fn(),
-      loadConfig: vi.fn(),
-      p: {
-        confirm: vi.fn(),
-        isCancel: vi.fn(),
-        log: {
-          error: vi.fn(),
-          info: vi.fn(),
-          step: vi.fn(),
-          success: vi.fn(),
-          warn: vi.fn(),
-        },
-        note: vi.fn(),
-        outro: vi.fn(),
-        spinner: vi.fn(),
-        tasks: vi.fn(),
-        text: vi.fn(),
+const {
+  mockBuildPlugin,
+  mockCli,
+  mockDatabasePlugin,
+  mockServer,
+  mockStoragePlugin,
+} = vi.hoisted(() => {
+  const mockBuildPlugin = {
+    build: vi.fn(),
+    name: "mock-build",
+  };
+  const mockStoragePlugin = {
+    name: "mock-storage",
+    supportedProtocol: "s3",
+    profiles: {
+      node: {
+        delete: vi.fn(),
+        downloadFile: vi.fn(),
+        upload: vi.fn(),
       },
-    };
+    },
+  };
+  const mockDatabasePlugin = {
+    appendBundle: vi.fn(),
+    commitBundle: vi.fn(),
+    deleteBundle: vi.fn(),
+    getBundleById: vi.fn(),
+    getBundles: vi.fn(),
+    getChannels: vi.fn(),
+    name: "mock-database",
+    onUnmount: vi.fn(),
+    updateBundle: vi.fn(),
+  };
+  const mockServer = {
+    createBundleDiff: vi.fn(),
+  };
+  const mockCli = {
+    appendToProjectRootGitignore: vi.fn(),
+    createTarBrTargetFiles: vi.fn(),
+    createTarGzTargetFiles: vi.fn(),
+    createZipTargetFiles: vi.fn(),
+    getCwd: vi.fn(),
+    loadConfig: vi.fn(),
+    p: {
+      confirm: vi.fn(),
+      isCancel: vi.fn(),
+      log: {
+        error: vi.fn(),
+        info: vi.fn(),
+        step: vi.fn(),
+        success: vi.fn(),
+        warn: vi.fn(),
+      },
+      note: vi.fn(),
+      outro: vi.fn(),
+      spinner: vi.fn(),
+      tasks: vi.fn(),
+      text: vi.fn(),
+    },
+  };
 
-    return { mockBuildPlugin, mockCli, mockDatabasePlugin, mockStoragePlugin };
-  });
+  return {
+    mockBuildPlugin,
+    mockCli,
+    mockDatabasePlugin,
+    mockServer,
+    mockStoragePlugin,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -73,6 +94,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
+vi.mock("@hot-updater/server", () => ({
+  createBundleDiff: mockServer.createBundleDiff,
+}));
+
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");
   return {
@@ -82,18 +107,24 @@ vi.mock("fs", async () => {
       existsSync: vi.fn(),
       promises: {
         ...actual.promises,
+        copyFile: vi.fn(),
         mkdir: vi.fn(),
+        readFile: vi.fn(),
         readdir: vi.fn(),
         rm: vi.fn(),
+        writeFile: vi.fn(),
       },
       statSync: vi.fn(),
     },
     existsSync: vi.fn(),
     promises: {
       ...actual.promises,
+      copyFile: vi.fn(),
       mkdir: vi.fn(),
+      readFile: vi.fn(),
       readdir: vi.fn(),
       rm: vi.fn(),
+      writeFile: vi.fn(),
     },
     statSync: vi.fn(),
   };
@@ -174,13 +205,17 @@ import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { getLatestGitCommit } from "@/utils/git";
+import { printBanner } from "@/utils/printBanner";
 import { signBundle } from "@/utils/signing/bundleSigning";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
+import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
 import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { getConsolePort } from "./console";
 import {
   deploy,
   getRolloutCohortCountFromPercentage,
+  normalizePatchMaxBaseBundles,
   normalizeRolloutPercentage,
 } from "./deploy";
 
@@ -216,6 +251,27 @@ describe("getRolloutCohortCountFromPercentage", () => {
   });
 });
 
+describe("normalizePatchMaxBaseBundles", () => {
+  it("defaults to 3 when maxBaseBundles is omitted", () => {
+    expect(normalizePatchMaxBaseBundles(undefined)).toBe(3);
+  });
+
+  it("accepts positive integer values", () => {
+    expect(normalizePatchMaxBaseBundles(1)).toBe(1);
+    expect(normalizePatchMaxBaseBundles(5)).toBe(5);
+    expect(normalizePatchMaxBaseBundles(6)).toBe(6);
+  });
+
+  it("rejects non-positive or non-integer values", () => {
+    expect(() => normalizePatchMaxBaseBundles(0)).toThrow(
+      "Patch maxBaseBundles must be a positive integer",
+    );
+    expect(() => normalizePatchMaxBaseBundles(2.5)).toThrow(
+      "Patch maxBaseBundles must be a positive integer",
+    );
+  });
+});
+
 describe("deploy rollout wiring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -239,18 +295,35 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
-    mockStoragePlugin.upload.mockResolvedValue({
+    mockStoragePlugin.profiles.node.upload.mockResolvedValue({
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
     mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
     mockDatabasePlugin.commitBundle.mockResolvedValue(undefined);
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 0,
+        totalPages: 0,
+      },
+    });
     mockDatabasePlugin.onUnmount.mockResolvedValue(undefined);
+    mockServer.createBundleDiff.mockResolvedValue({
+      id: "bundle-123",
+    });
 
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: async () => mockDatabasePlugin,
       fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
       signing: { enabled: false },
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
@@ -269,6 +342,7 @@ describe("deploy rollout wiring", () => {
       id: () => "git-hash",
       summary: () => "git summary",
     } as Awaited<ReturnType<typeof getLatestGitCommit>>);
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
     vi.mocked(getNativeAppVersion).mockResolvedValue("1.0");
     vi.mocked(writeBundleManifest).mockResolvedValue({
       manifest: {
@@ -287,10 +361,13 @@ describe("deploy rollout wiring", () => {
 
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.readFile).mockResolvedValue(Buffer.from("bundle"));
     vi.mocked(fs.promises.readdir).mockResolvedValue([
       "index.bundle",
     ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
     vi.mocked(fs.promises.rm).mockResolvedValue(undefined);
+    vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.statSync).mockReturnValue({
       isDirectory: () => false,
     } as ReturnType<typeof fs.statSync>);
@@ -356,11 +433,66 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "🚀 Deployment Successful (bundle-123)",
+    );
+  });
+
+  it("deploys both platforms sequentially when platform is omitted", async () => {
+    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(printBanner).toHaveBeenCalledTimes(1);
+    expect(mockBuildPlugin.build.mock.calls).toEqual([
+      [{ platform: "ios" }],
+      [{ platform: "android" }],
+    ]);
+    expect(mockCli.p.note).toHaveBeenNthCalledWith(
+      1,
+      "Platform: Both (iOS, Android)\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Deployment",
+    );
+    expect(mockCli.p.log.step).toHaveBeenNthCalledWith(
+      1,
+      "Deployment (iOS 1/2) • production",
+    );
+    expect(mockCli.p.log.step).toHaveBeenNthCalledWith(
+      2,
+      "Deployment (Android 2/2) • production",
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        outfile: "/mock/cwd/.hot-updater/output/ios/bundle/bundle.tar.br",
+      }),
+    );
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        outfile: "/mock/cwd/.hot-updater/output/android/bundle/bundle.tar.br",
+      }),
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "✅ iOS Deployment Successful (bundle-ios)",
+    );
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "✅ Android Deployment Successful (bundle-android)",
+    );
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      "🚀 Deployment Successful (iOS, Android)",
     );
   });
 
@@ -382,12 +514,90 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.note).toHaveBeenCalledWith("LLVM\nHermes", "Build Output");
   });
 
+  it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
+    mockStoragePlugin.profiles.node.upload.mockImplementation(
+      async (key, filePath) => {
+        const filename =
+          filePath === "/mock/build/manifest.json"
+            ? "manifest.json"
+            : filePath === "/mock/build/index.bundle"
+              ? "index.bundle"
+              : "bundle.tar.br";
+
+        return {
+          storageUri: `s3://bundles/${key}/${filename}`,
+        };
+      },
+    );
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assetBaseStorageUri: "s3://bundles/bundle-123/files",
+        manifestFileHash: "file-hash",
+        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+        metadata: expect.objectContaining({
+          app_version: "1.0",
+        }),
+      }),
+    );
+  });
+
+  it("uploads hermes bundle artifacts using the manifest filename", async () => {
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "index.ios.bundle",
+        path: "/mock/build/index.ios.bundle.hbc",
+      },
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(fs.promises.readFile).toHaveBeenCalledWith(
+      "/mock/build/index.ios.bundle.hbc",
+    );
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
+      expect.any(Buffer),
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
+      "bundle-123/files",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
+      "bundle-123/files/assets/src",
+      "/mock/build/assets/src/logo.png",
+    );
+  });
+
   it("does not create a nested spinner when signing is enabled", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: async () => mockDatabasePlugin,
       fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
       signing: { enabled: true, privateKeyPath: "/mock/private.pem" },
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
@@ -414,7 +624,7 @@ describe("deploy rollout wiring", () => {
       "✅ Bundle Signing Complete",
     );
     expect(mockCli.p.note).toHaveBeenCalledWith(
-      "Channel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
+      "Platform: iOS\nChannel: production\nRollout: 100%\nTarget app version: >=1.0.0 <1.1.0-0",
       "Deployment",
     );
 
@@ -428,5 +638,214 @@ describe("deploy rollout wiring", () => {
 
     expect(buildOutputOrder).toBeGreaterThanOrEqual(0);
     expect(signingOrder).toBeGreaterThanOrEqual(0);
+  });
+
+  it("creates automatic partial update paths when patch generation is enabled", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 2,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [
+        {
+          id: "bundle-122",
+        },
+        {
+          id: "bundle-121",
+        },
+      ],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 2,
+        totalPages: 1,
+      },
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
+      limit: 2,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        channel: "production",
+        enabled: true,
+        id: { lt: "bundle-123" },
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+        targetAppVersionNotNull: true,
+      },
+    });
+    expect(mockServer.createBundleDiff).toHaveBeenNthCalledWith(
+      1,
+      {
+        baseBundleId: "bundle-122",
+        bundleId: "bundle-123",
+      },
+      {
+        databasePlugin: mockDatabasePlugin,
+        storagePlugin: mockStoragePlugin,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+    expect(mockServer.createBundleDiff).toHaveBeenNthCalledWith(
+      2,
+      {
+        baseBundleId: "bundle-121",
+        bundleId: "bundle-123",
+      },
+      {
+        databasePlugin: mockDatabasePlugin,
+        storagePlugin: mockStoragePlugin,
+      },
+      {
+        makePrimary: false,
+      },
+    );
+  });
+
+  it("keeps deploy successful when automatic patch generation fails", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockDatabasePlugin.getBundles.mockResolvedValue({
+      data: [
+        {
+          id: "bundle-122",
+        },
+      ],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    });
+    mockServer.createBundleDiff.mockRejectedValueOnce(
+      new Error("storage unavailable"),
+    );
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      "🚀 Deployment Successful (bundle-123)",
+    );
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      "Partial update skipped for bundle-1: storage unavailable",
+    );
+  });
+
+  it("falls back to the auto-detected target app version in non-interactive mode when -t is omitted", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.5.0",
+      }),
+    );
+  });
+
+  it("errors out in non-interactive mode when -t is omitted and the native config is unreadable", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("Target app version not found in native files"),
+    );
+    expect(mockDatabasePlugin.appendBundle).not.toHaveBeenCalled();
+  });
+
+  it("uses the explicit -t value over the auto-detected default", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.2.0",
+    });
+
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.2.0",
+      }),
+    );
+  });
+
+  it("uses the interactive prompt with the auto-detected value as placeholder/initialValue", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getConsolePort).mockResolvedValue(3000);
+    mockCli.p.text.mockResolvedValue("1.7.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: true,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        placeholder: "1.5.0",
+        initialValue: "1.5.0",
+      }),
+    );
+    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetAppVersion: "1.7.0",
+      }),
+    );
   });
 });

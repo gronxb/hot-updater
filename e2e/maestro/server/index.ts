@@ -2,7 +2,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import e2eRoutes from "./routes.js";
+
+import e2eRoutes from "./routes.ts";
 
 const app = new Hono();
 

@@ -1,4 +1,5 @@
 import {
+  type ChangedAsset,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -24,6 +25,7 @@ const normalizeAndValidateCohort = (cohort: string): string => {
 
 export interface ManifestAsset {
   fileHash: string;
+  signature?: string;
 }
 
 export interface Manifest {
@@ -186,10 +188,37 @@ const cloneManifest = (manifest: Manifest): Manifest => ({
   assets: Object.fromEntries(
     Object.entries(manifest.assets).map(([key, asset]) => [
       key,
-      { fileHash: asset.fileHash },
+      {
+        fileHash: asset.fileHash,
+        ...(asset.signature ? { signature: asset.signature } : {}),
+      },
     ]),
   ),
 });
+
+const getNativeBundleId = (): string | null => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getBundleId?: () => string | null;
+  };
+
+  if (typeof nativeModule.getBundleId !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  return nativeModule.getBundleId();
+};
+
+const resolveBundleId = (bundleId: string | null): string => {
+  return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
+};
+
+const getFreshBundleId = (): string => {
+  const resolvedBundleId = resolveBundleId(getNativeBundleId());
+  sessionState.cacheBundleId(resolvedBundleId);
+  return resolvedBundleId;
+};
 
 const getReloadProcess = (): (() => Promise<void>) | null => {
   const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
@@ -201,10 +230,73 @@ const getReloadProcess = (): (() => Promise<void>) | null => {
     : null;
 };
 
+export type HotUpdaterProgressArtifactType = "archive" | "diff";
+
+export type HotUpdaterDiffFileStatus =
+  | "pending"
+  | "downloading"
+  | "downloaded"
+  | "failed";
+
+export interface HotUpdaterDiffFileSnapshot {
+  /**
+   * Manifest asset path for this progress entry.
+   *
+   * This is the stable identity of the asset in the installed bundle. Use this
+   * when matching progress back to the manifest or to the final file location.
+   */
+  path: string;
+  /**
+   * Artifact path currently being transferred for this progress entry.
+   *
+   * Usually this is the same as `path`. It can differ when the updater
+   * downloads an intermediate artifact that will be applied to produce the
+   * final asset.
+   */
+  downloadPath: string;
+  /**
+   * Current download state for this asset within the manifest diff update.
+   */
+  status: HotUpdaterDiffFileStatus;
+  /**
+   * Download progress for this file, normalized from 0 to 1.
+   */
+  progress: number;
+  /**
+   * Stable display order among diff files.
+   */
+  order: number;
+  /**
+   * Bytes downloaded for `downloadPath`, when the native downloader reports it.
+   */
+  downloadedBytes?: number;
+  /**
+   * Total expected bytes for `downloadPath`, when known.
+   */
+  totalBytes?: number;
+}
+
+export interface HotUpdaterDiffProgressDetails {
+  totalFilesCount: number;
+  completedFilesCount: number;
+  files: HotUpdaterDiffFileSnapshot[];
+}
+
+export type HotUpdaterProgressEvent =
+  | {
+      progress: number;
+      artifactType: "archive";
+      downloadedBytes?: number;
+      totalBytes?: number;
+    }
+  | {
+      progress: number;
+      artifactType: "diff";
+      details: HotUpdaterDiffProgressDetails;
+    };
+
 export type HotUpdaterEvent = {
-  onProgress: {
-    progress: number;
-  };
+  onProgress: HotUpdaterProgressEvent;
 };
 
 const eventEmitter = new NativeEventEmitter(HotUpdaterNative);
@@ -252,8 +344,21 @@ export async function updateBundle(
   const status =
     typeof paramsOrBundleId === "string" ? "UPDATE" : paramsOrBundleId.status;
 
-  // If we have already installed this bundle in this session, skip re-download.
-  if (status === "UPDATE" && sessionState.hasInstalledBundle(updateBundleId)) {
+  const targetFileUrl =
+    typeof paramsOrBundleId === "string"
+      ? (fileUrl ?? null)
+      : paramsOrBundleId.fileUrl;
+
+  const currentBundleId = status === "UPDATE" ? getFreshBundleId() : undefined;
+
+  // If native is still on the same bundle we installed in this session,
+  // skip re-download. Native state can move back to the built-in bundle after
+  // rollback/reset, so check a fresh native bundle id before using this guard.
+  if (
+    status === "UPDATE" &&
+    sessionState.hasInstalledBundle(updateBundleId) &&
+    currentBundleId === updateBundleId
+  ) {
     return true;
   }
 
@@ -265,7 +370,8 @@ export async function updateBundle(
   if (
     !shouldSkipCurrentBundleIdCheck &&
     status === "UPDATE" &&
-    updateBundleId.localeCompare(getBundleId()) <= 0
+    currentBundleId !== undefined &&
+    updateBundleId.localeCompare(currentBundleId) <= 0
   ) {
     throw new Error(
       "Update bundle id is not newer than the current bundle id. Preventing infinite update loop.",
@@ -276,11 +382,6 @@ export async function updateBundle(
   const existing = sessionState.getInflightUpdate(updateBundleId);
   if (existing) return existing;
 
-  const targetFileUrl =
-    typeof paramsOrBundleId === "string"
-      ? (fileUrl ?? null)
-      : paramsOrBundleId.fileUrl;
-
   const targetFileHash =
     typeof paramsOrBundleId === "string"
       ? undefined
@@ -288,14 +389,30 @@ export async function updateBundle(
 
   const targetChannel =
     typeof paramsOrBundleId === "string" ? undefined : paramsOrBundleId.channel;
+  const targetManifestUrl =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestUrl;
+  const targetManifestFileHash =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.manifestFileHash;
+  const targetChangedAssets =
+    typeof paramsOrBundleId === "string"
+      ? undefined
+      : paramsOrBundleId.changedAssets;
 
   const promise = (async () => {
     try {
       const ok = await HotUpdaterNative.updateBundle({
         bundleId: updateBundleId,
         channel: targetChannel,
+        changedAssets:
+          (targetChangedAssets as Record<string, ChangedAsset> | null) ?? null,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
+        manifestFileHash: targetManifestFileHash ?? null,
+        manifestUrl: targetManifestUrl ?? null,
       });
       if (ok) {
         sessionState.markBundleInstalled(updateBundleId, targetChannel);
@@ -424,23 +541,7 @@ export const getBundleId = (): string => {
     return cachedBundleId;
   }
 
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getBundleId?: () => string | null;
-  };
-
-  if (typeof nativeModule.getBundleId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  const bundleId = nativeModule.getBundleId();
-
-  const resolvedBundleId =
-    !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
-
-  sessionState.cacheBundleId(resolvedBundleId);
-  return resolvedBundleId;
+  return getFreshBundleId();
 };
 
 /**
@@ -617,12 +718,25 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
         return [];
       }
 
-      const { fileHash } = entry as { fileHash?: unknown };
+      const { fileHash, signature } = entry as {
+        fileHash?: unknown;
+        signature?: unknown;
+      };
       if (typeof fileHash !== "string" || !fileHash.trim()) {
         return [];
       }
 
-      return [[trimmedKey, { fileHash: fileHash.trim() }] as const];
+      return [
+        [
+          trimmedKey,
+          {
+            fileHash: fileHash.trim(),
+            ...(typeof signature === "string" && signature.trim()
+              ? { signature: signature.trim() }
+              : {}),
+          },
+        ] as const,
+      ];
     }),
   );
 };

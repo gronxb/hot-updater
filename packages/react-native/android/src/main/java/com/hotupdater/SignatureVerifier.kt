@@ -247,35 +247,73 @@ object SignatureVerifier {
 
             Log.d(TAG, "Calculated file hash: $fileHashHex")
 
-            // Decode signature from base64
-            val signatureBytes =
-                try {
-                    Base64.decode(signatureBase64, Base64.DEFAULT)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to decode signature from base64", e)
-                    throw SignatureVerificationException.InvalidSignatureFormat()
-                }
-
-            // Convert hex fileHash to bytes
-            val fileHashBytes = hexToByteArray(fileHashHex)
-
-            // Verify signature using RSA-SHA256
-            val verifier = Signature.getInstance("SHA256withRSA")
-            verifier.initVerify(publicKey)
-            verifier.update(fileHashBytes)
-            val isValid = verifier.verify(signatureBytes)
-
-            if (isValid) {
-                Log.i(TAG, "✅ Signature verified successfully")
-            } else {
-                Log.e(TAG, "❌ Signature verification failed")
-                throw SignatureVerificationException.SignatureVerificationFailed()
-            }
+            verifySignatureForHash(publicKey, fileHashHex, signatureBase64)
         } catch (e: SignatureVerificationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Signature verification error", e)
             throw SignatureVerificationException.SecurityFrameworkError(e)
+        }
+    }
+
+    /**
+     * Verifies an RSA-SHA256 signature for an explicit SHA256 file hash.
+     */
+    fun verifyHashSignature(
+        context: Context,
+        fileHash: String,
+        signatureBase64: String,
+    ) {
+        val publicKeyPEM =
+            getPublicKeyFromConfig(context)
+                ?: run {
+                    Log.e(TAG, "Cannot verify signature: public key not configured in strings.xml")
+                    throw SignatureVerificationException.PublicKeyNotConfigured()
+                }
+
+        try {
+            verifySignatureForHash(
+                createPublicKey(publicKeyPEM),
+                fileHash,
+                signatureBase64,
+            )
+        } catch (e: SignatureVerificationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification error", e)
+            throw SignatureVerificationException.SecurityFrameworkError(e)
+        }
+    }
+
+    private fun verifySignatureForHash(
+        publicKey: PublicKey,
+        fileHash: String,
+        signatureBase64: String,
+    ) {
+        if (signatureBase64.isEmpty()) {
+            throw SignatureVerificationException.InvalidSignatureFormat()
+        }
+
+        val signatureBytes =
+            try {
+                Base64.decode(signatureBase64, Base64.DEFAULT)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to decode signature from base64", e)
+                throw SignatureVerificationException.InvalidSignatureFormat()
+            }
+
+        val fileHashBytes = hexToByteArray(fileHash)
+
+        val verifier = Signature.getInstance("SHA256withRSA")
+        verifier.initVerify(publicKey)
+        verifier.update(fileHashBytes)
+        val isValid = verifier.verify(signatureBytes)
+
+        if (isValid) {
+            Log.i(TAG, "✅ Signature verified successfully")
+        } else {
+            Log.e(TAG, "❌ Signature verification failed")
+            throw SignatureVerificationException.SignatureVerificationFailed()
         }
     }
 

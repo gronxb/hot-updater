@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import { isRuntimeStoragePlugin, type Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
@@ -14,6 +14,14 @@ type GetBundlesInput = {
 
 type GetBundleInput = {
   bundleId: string;
+};
+
+type GetBundleChildrenInput = {
+  baseBundleId: string;
+};
+
+type GetBundleChildCountsInput = {
+  bundleIds: string[];
 };
 
 type GetBundleDownloadUrlInput = {
@@ -34,6 +42,21 @@ type PromoteBundleInput = {
 
 type DeleteBundleInput = {
   bundleId: string;
+};
+
+const assertRemoteDownloadUrl = (fileUrl: string) => {
+  try {
+    const protocol = new URL(fileUrl).protocol.replace(":", "");
+    if (protocol === "http" || protocol === "https") {
+      return fileUrl;
+    }
+  } catch {
+    // Fall through to the browser-facing error below.
+  }
+
+  throw new Error(
+    "Storage plugin returned a local file path; browser downloads require an HTTP(S) download URL.",
+  );
 };
 
 // GET /api/config
@@ -94,7 +117,7 @@ export const getBundles = createServerFn({ method: "GET" })
       };
 
       const { databasePlugin } = await prepareConfig();
-      const bundles = await databasePlugin.getBundles({
+      const bundleQueryOptions = {
         where: {
           channel: query.channel,
           platform: query.platform,
@@ -108,7 +131,8 @@ export const getBundles = createServerFn({ method: "GET" })
                 before: query.before,
               }
             : undefined,
-      });
+      } as Parameters<typeof databasePlugin.getBundles>[0];
+      const bundles = await databasePlugin.getBundles(bundleQueryOptions);
 
       return (
         bundles ?? {
@@ -139,6 +163,42 @@ export const getBundle = createServerFn({ method: "GET" })
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleChildren = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleChildrenInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleChildren: getBundleChildrenWithConfig } =
+        await import("./server/getBundleChildren");
+      const { databasePlugin } = await prepareConfig();
+
+      return await getBundleChildrenWithConfig(data, {
+        databasePlugin,
+      });
+    } catch (error) {
+      console.error("Error during bundle children retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleChildCounts = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleChildCountsInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleChildCounts: getBundleChildCountsWithConfig } =
+        await import("./server/getBundleChildren");
+      const { databasePlugin } = await prepareConfig();
+
+      return await getBundleChildCountsWithConfig(data.bundleIds, {
+        databasePlugin,
+      });
+    } catch (error) {
+      console.error("Error during bundle child count retrieval:", error);
       throw error;
     }
   });
@@ -175,13 +235,21 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
         throw new Error(`No storage plugin for protocol: ${protocol}`);
       }
 
-      const { fileUrl } = await storagePlugin.getDownloadUrl(storageUri);
+      if (!isRuntimeStoragePlugin(storagePlugin)) {
+        throw new Error(
+          `${storagePlugin.name} does not support runtime download URL resolution.`,
+        );
+      }
+
+      const downloadTarget =
+        await storagePlugin.profiles.runtime.getDownloadUrl(storageUri);
+      const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {
         throw new Error("Storage plugin returned empty fileUrl");
       }
 
-      return { fileUrl };
+      return { fileUrl: assertRemoteDownloadUrl(fileUrl) };
     } catch (error) {
       console.error("Error during bundle download URL retrieval:", error);
       throw error;
@@ -260,6 +328,7 @@ export const deleteBundle = createServerFn({ method: "POST" })
       await deleteBundleWithStorage(data, {
         databasePlugin,
         storagePlugin,
+        waitForStorageCleanup: false,
       });
 
       return { success: true };

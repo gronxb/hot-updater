@@ -47,6 +47,21 @@ Execute the following command:
 npx hot-updater console
 ```
 
+You can also use the bundle CLI for automation and CI scripts:
+
+```package-install
+npx hot-updater bundle list -p ios
+npx hot-updater bundle show <bundle-id>
+npx hot-updater bundle disable <bundle-id> -y
+npx hot-updater bundle enable <bundle-id> -y
+npx hot-updater bundle update <bundle-id> --force-update true -y
+npx hot-updater bundle update <bundle-id> --rollout-cohort-count 500 -y
+npx hot-updater bundle update <bundle-id> --target-cohorts qa,dogfood -y
+```
+
+Add `--json` to `bundle list`, `bundle show`, or `bundle update` when another
+tool needs to read the raw bundle data.
+
 ## Rollback
 
 When you set a bundle's `enabled` status to `false` in the console, users who have that bundle will immediately force update to the **previous bundle**.

@@ -1,8 +1,9 @@
-import path from "path";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 import {
   createStorageKeyBuilder,
-  createStoragePlugin,
+  createNodeStoragePlugin,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -22,31 +23,10 @@ export interface R2StorageConfig {
 
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
- *
- * Note: This plugin does not support `getDownloadUrl()`.
- * If you need download URL generation, use `s3Storage` from `@hot-updater/aws` instead,
- * which is fully compatible with Cloudflare R2.
- *
- * @example
- * ```typescript
- * // Using s3Storage with Cloudflare R2 for download URL support
- * import { s3Storage } from "@hot-updater/aws";
- *
- * s3Storage({
- *   region: "auto",
- *   endpoint: "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com",
- *   credentials: {
- *     accessKeyId: "YOUR_ACCESS_KEY_ID",
- *     secretAccessKey: "YOUR_SECRET_ACCESS_KEY",
- *   },
- *   bucketName: "YOUR_BUCKET_NAME",
- * })
- * ```
  */
-export const r2Storage = createStoragePlugin<R2StorageConfig>({
+export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
-  supportsDownload: true,
   factory: (config) => {
     const { bucketName, cloudflareApiToken, accountId } = config;
     const wrangler = createWrangler({
@@ -111,22 +91,7 @@ export const r2Storage = createStoragePlugin<R2StorageConfig>({
           storageUri: `r2://${bucketName}/${Key}`,
         };
       },
-      async getDownloadUrl() {
-        throw new Error(
-          "`r2Storage` does not support `getDownloadUrl()`. Use `s3Storage` from `@hot-updater/aws` instead (compatible with Cloudflare R2).\n\n" +
-            "Example:\n" +
-            "s3Storage({\n" +
-            "  region: 'auto',\n" +
-            "  endpoint: 'https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com',\n" +
-            "  credentials: {\n" +
-            "    accessKeyId: 'YOUR_ACCESS_KEY_ID',\n" +
-            "    secretAccessKey: 'YOUR_SECRET_ACCESS_KEY',\n" +
-            "  },\n" +
-            "  bucketName: 'YOUR_BUCKET_NAME',\n" +
-            "})",
-        );
-      },
-      async download(storageUri, destinationPath) {
+      async downloadFile(storageUri, filePath) {
         const { bucket, key } = parseStorageUri(storageUri, "r2");
         if (bucket !== bucketName) {
           throw new Error(
@@ -135,13 +100,14 @@ export const r2Storage = createStoragePlugin<R2StorageConfig>({
         }
 
         try {
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
           const { stderr, exitCode } = await wrangler(
             "r2",
             "object",
             "get",
             [bucketName, key].join("/"),
             "--file",
-            destinationPath,
+            filePath,
             "--remote",
           );
           if (exitCode !== 0 && stderr) {

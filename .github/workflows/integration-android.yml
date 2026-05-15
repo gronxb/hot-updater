@@ -16,9 +16,14 @@ jobs:
     name: Kotlin Lint
     steps:
       - uses: actions/checkout@v4
-      - uses: touchlab-lab/ktlint-action-setup@1.0.0
-        with:
-          ktlint_version: 1.3.1
+      - name: Install ktlint
+        env:
+          KTLINT_VERSION: 1.3.1
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/ktlint" "https://github.com/pinterest/ktlint/releases/download/${KTLINT_VERSION}/ktlint"
+          chmod +x "${RUNNER_TEMP}/ktlint"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+      - run: ktlint --version
       - run: ktlint "packages/react-native/android/src/**/*.kt"
 
   build-new-arch:

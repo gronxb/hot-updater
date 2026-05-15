@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { Bundle, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +17,7 @@ import type { ConfigResponse } from "./loadConfig";
 import {
   createCopiedBundleArchive,
   LEGACY_BUNDLE_ERROR,
+  promoteBundle,
 } from "./promoteBundle";
 
 const baseBundle: Bundle = {
@@ -212,10 +217,14 @@ describe("createCopiedBundleArchive", () => {
     "rewrites manifest.json and uploads a %s archive",
     async (format, readManifest) => {
       const { archivePath, cleanup } = await createSourceArchive(format, {
+        "assets/logo.png": "logo",
         "index.js": "console.log('hello');",
         "manifest.json": JSON.stringify({
           bundleId: baseBundle.id,
           assets: {
+            "assets/logo.png": {
+              fileHash: "logo-hash",
+            },
             "index.js": {
               fileHash: "asset-hash",
             },
@@ -223,22 +232,40 @@ describe("createCopiedBundleArchive", () => {
         }),
       });
       const uploadedFiles = new Map<string, string>();
-      const storagePlugin: StoragePlugin = {
+      const storagePlugin: NodeStoragePlugin = {
         name: "mockStorage",
         supportedProtocol: "s3",
-        delete: vi.fn(),
-        getDownloadUrl: vi.fn(),
-        upload: vi.fn(async (key, filePath) => {
-          const uploadPath = path.join(
-            path.dirname(archivePath),
-            `${key}.${format}`,
-          );
-          await fs.copyFile(filePath, uploadPath);
-          uploadedFiles.set(key, uploadPath);
-          return {
-            storageUri: `s3://bucket/${path.basename(uploadPath)}`,
-          };
-        }),
+        profiles: {
+          node: {
+            delete: vi.fn(),
+            downloadFile: vi.fn(async (_storageUri, filePath) => {
+              await fs.copyFile(archivePath, filePath);
+            }),
+            upload: vi.fn(async (key, filePath) => {
+              const uploadPath = path.join(
+                path.dirname(archivePath),
+                "uploads",
+                key,
+              );
+              const finalPath = path.join(uploadPath, path.basename(filePath));
+              await fs.mkdir(path.dirname(finalPath), { recursive: true });
+              await fs.copyFile(filePath, finalPath);
+              uploadedFiles.set(
+                path.posix.join(key, path.basename(filePath)),
+                finalPath,
+              );
+              return {
+                storageUri: `s3://bucket/${path
+                  .relative(
+                    path.join(path.dirname(archivePath), "uploads"),
+                    finalPath,
+                  )
+                  .split(path.sep)
+                  .join("/")}`,
+              };
+            }),
+          },
+        },
       };
 
       vi.stubGlobal(
@@ -249,58 +276,92 @@ describe("createCopiedBundleArchive", () => {
       );
 
       try {
-        const copiedBundle = await createCopiedBundleArchive({
-          bundle: {
-            ...baseBundle,
-            storageUri: `https://example.com/bundle.${format}`,
-          },
-          config,
-          nextBundleId: "bundle-copy-id",
-          storagePlugin,
-          targetChannel: "beta",
-        });
+        const { bundle: copiedBundle, uploadedStorageUris } =
+          await createCopiedBundleArchive({
+            bundle: {
+              ...baseBundle,
+              storageUri: `https://example.com/bundle.${format}`,
+            },
+            config,
+            nextBundleId: "bundle-copy-id",
+            storagePlugin,
+            targetChannel: "beta",
+          });
 
         expect(copiedBundle.id).toBe("bundle-copy-id");
         expect(copiedBundle.channel).toBe("beta");
         expect(copiedBundle.storageUri).toBe(
-          `s3://bucket/bundle-copy-id.${format}`,
+          `s3://bucket/bundle-copy-id/bundle.${format}`,
         );
         expect(copiedBundle.fileHash).not.toBe(baseBundle.fileHash);
+        expect(copiedBundle).toMatchObject({
+          assetBaseStorageUri: "s3://bucket/bundle-copy-id/files",
+          manifestStorageUri: "s3://bucket/bundle-copy-id/manifest.json",
+          patchBaseBundleId: null,
+          patchStorageUri: null,
+        });
+        expect(copiedBundle.manifestFileHash).toMatch(/^[a-f0-9]{64}$/);
+        expect(copiedBundle.metadata ?? {}).not.toHaveProperty(
+          "manifest_storage_uri",
+        );
+        expect(uploadedStorageUris).toEqual(
+          expect.arrayContaining([
+            `s3://bucket/bundle-copy-id/bundle.${format}`,
+            "s3://bucket/bundle-copy-id/manifest.json",
+            "s3://bucket/bundle-copy-id/files/assets/logo.png",
+            "s3://bucket/bundle-copy-id/files/index.js",
+          ]),
+        );
 
-        const uploadedArchivePath = uploadedFiles.get("bundle-copy-id");
+        const uploadedArchivePath = uploadedFiles.get(
+          path.posix.join("bundle-copy-id", `bundle.${format}`),
+        );
         expect(uploadedArchivePath).toBeDefined();
 
         const manifest = await readManifest(uploadedArchivePath as string);
         expect(manifest.bundleId).toBe("bundle-copy-id");
+        const uploadedManifestPath = uploadedFiles.get(
+          "bundle-copy-id/manifest.json",
+        );
+        expect(uploadedManifestPath).toBeDefined();
+        expect(
+          JSON.parse(await fs.readFile(uploadedManifestPath as string, "utf8")),
+        ).toMatchObject({
+          bundleId: "bundle-copy-id",
+        });
       } finally {
         await cleanup();
       }
     },
   );
 
-  it("uses storagePlugin.download() when the plugin provides one", async () => {
+  it("downloads non-http archives through the node storage profile", async () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "index.js": "console.log('hello');",
       "manifest.json": JSON.stringify({ bundleId: baseBundle.id }),
     });
-    const downloadFn = vi.fn(async (_uri: string, dst: string) => {
-      await fs.copyFile(archivePath, dst);
+    const downloadFile = vi.fn(async (_storageUri: string, filePath: string) => {
+      await fs.copyFile(archivePath, filePath);
     });
-    const storagePlugin: StoragePlugin = {
+    const storagePlugin: NodeStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "r2",
-      delete: vi.fn(),
-      getDownloadUrl: vi.fn(async () => {
-        throw new Error("getDownloadUrl should not be called");
-      }),
-      upload: vi.fn(async (key) => ({
-        storageUri: `r2://bucket/${key}.zip`,
-      })),
-      download: downloadFn,
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile,
+          upload: vi.fn(async (key, filePath) => ({
+            storageUri: `r2://bucket/${path.posix.join(
+              key,
+              path.basename(filePath),
+            )}`,
+          })),
+        },
+      },
     };
 
     const fetchSpy = vi.fn(async () => {
-      throw new Error("fetch should not be called when download() is used");
+      throw new Error("fetch should not be called for storage URI downloads");
     });
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -316,53 +377,11 @@ describe("createCopiedBundleArchive", () => {
         targetChannel: "beta",
       });
 
-      expect(downloadFn).toHaveBeenCalledTimes(1);
-      expect(downloadFn.mock.calls[0]?.[0]).toBe("r2://bucket/path/bundle.zip");
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      await cleanup();
-    }
-  });
-
-  it("falls back to getDownloadUrl + fetch when download() is absent", async () => {
-    const { archivePath, cleanup } = await createSourceArchive("zip", {
-      "index.js": "console.log('hello');",
-      "manifest.json": JSON.stringify({ bundleId: baseBundle.id }),
-    });
-    const storagePlugin: StoragePlugin = {
-      name: "mockStorage",
-      supportedProtocol: "s3",
-      delete: vi.fn(),
-      getDownloadUrl: vi.fn(async () => ({
-        fileUrl: "https://signed.example.com/bundle.zip",
-      })),
-      upload: vi.fn(async (key) => ({
-        storageUri: `s3://bucket/${key}.zip`,
-      })),
-    };
-
-    const fetchSpy = vi.fn(async (_input: string) => {
-      return new Response(await fs.readFile(archivePath));
-    });
-    vi.stubGlobal("fetch", fetchSpy);
-
-    try {
-      await createCopiedBundleArchive({
-        bundle: {
-          ...baseBundle,
-          storageUri: "s3://bucket/path/bundle.zip",
-        },
-        config,
-        nextBundleId: "bundle-copy-id",
-        storagePlugin,
-        targetChannel: "beta",
-      });
-
-      expect(storagePlugin.getDownloadUrl).toHaveBeenCalledTimes(1);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(fetchSpy.mock.calls[0]?.[0]).toBe(
-        "https://signed.example.com/bundle.zip",
+      expect(downloadFile).toHaveBeenCalledTimes(1);
+      expect(downloadFile.mock.calls[0]?.[0]).toBe(
+        "r2://bucket/path/bundle.zip",
       );
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }
@@ -372,12 +391,18 @@ describe("createCopiedBundleArchive", () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "index.js": "console.log('hello');",
     });
-    const storagePlugin: StoragePlugin = {
+    const storagePlugin: NodeStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      delete: vi.fn(),
-      getDownloadUrl: vi.fn(),
-      upload: vi.fn(),
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(async (_storageUri, filePath) => {
+            await fs.copyFile(archivePath, filePath);
+          }),
+          upload: vi.fn(),
+        },
+      },
     };
 
     vi.stubGlobal(
@@ -397,6 +422,96 @@ describe("createCopiedBundleArchive", () => {
           targetChannel: "beta",
         }),
       ).rejects.toThrow(LEGACY_BUNDLE_ERROR);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("cleans up manifest artifacts when appendBundle fails after copy upload", async () => {
+    const { archivePath, cleanup } = await createSourceArchive("zip", {
+      "assets/logo.png": "logo",
+      "index.js": "console.log('hello');",
+      "manifest.json": JSON.stringify({
+        bundleId: baseBundle.id,
+        assets: {
+          "assets/logo.png": {
+            fileHash: "logo-hash",
+          },
+          "index.js": {
+            fileHash: "bundle-hash",
+          },
+        },
+      }),
+    });
+    const deleteFromStorage = vi.fn();
+    const storagePlugin: NodeStoragePlugin = {
+      name: "mockStorage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: deleteFromStorage,
+          downloadFile: vi.fn(async (_storageUri, filePath) => {
+            await fs.copyFile(archivePath, filePath);
+          }),
+          upload: vi.fn(async (key, filePath) => {
+            return {
+              storageUri: `s3://bucket/${path.posix
+                .join(key, path.basename(filePath))
+                .replaceAll("//", "/")}`,
+            };
+          }),
+        },
+      },
+    };
+    const databasePlugin = {
+      name: "mockDatabase",
+      appendBundle: vi.fn(async () => {
+        throw new Error("append failed");
+      }),
+      commitBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      getBundleById: vi.fn(async () => baseBundle),
+      getBundles: vi.fn(),
+      getChannels: vi.fn(),
+      updateBundle: vi.fn(),
+    } satisfies DatabasePlugin;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(await fs.readFile(archivePath));
+      }),
+    );
+
+    try {
+      await expect(
+        promoteBundle(
+          {
+            action: "copy",
+            bundleId: baseBundle.id,
+            nextBundleId: "bundle-copy-id",
+            targetChannel: "beta",
+          },
+          {
+            config,
+            databasePlugin,
+            storagePlugin,
+          },
+        ),
+      ).rejects.toThrow("append failed");
+
+      expect(deleteFromStorage).toHaveBeenCalledWith(
+        "s3://bucket/bundle-copy-id/bundle.zip",
+      );
+      expect(deleteFromStorage).toHaveBeenCalledWith(
+        "s3://bucket/bundle-copy-id/manifest.json",
+      );
+      expect(deleteFromStorage).toHaveBeenCalledWith(
+        "s3://bucket/bundle-copy-id/files/assets/logo.png",
+      );
+      expect(deleteFromStorage).toHaveBeenCalledWith(
+        "s3://bucket/bundle-copy-id/files/index.js",
+      );
     } finally {
       await cleanup();
     }

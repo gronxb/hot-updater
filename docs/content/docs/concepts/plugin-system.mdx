@@ -21,10 +21,21 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
 
 Storage plugins upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
 
+Storage plugins expose explicit environment profiles:
+
+- `node`: deploy-time APIs for upload, delete, and local file downloads.
+- `runtime`: update-check APIs for HTTP(S) download URLs and small metadata
+  reads.
+
+`hot-updater.config.ts` uses the `node` profile. `createHotUpdater` uses the
+`runtime` profile. Most apps can use the official storage plugins directly;
+custom plugin authors only need the profile details when implementing their own
+storage provider.
+
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.
-- **`@hot-updater/cloudflare`**: Provides `r2Storage` functionality, leveraging Cloudflare R2 for storage.
+- **`@hot-updater/cloudflare`**: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.
 - **`@hot-updater/aws`**: Provides `s3Storage` functionality, enabling the use of AWS S3 for storage.
 - **`@hot-updater/firebase`**: Provides `firebaseStorage` functionality, utilizing Firebase Storage for storing update bundles.
 

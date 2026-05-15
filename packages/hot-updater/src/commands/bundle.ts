@@ -55,7 +55,15 @@ export interface BundleListOptions {
 }
 
 export interface BundleMutationOptions {
+  json?: boolean;
   yes?: boolean;
+}
+
+export interface BundleUpdateOptions extends BundleMutationOptions {
+  clearTargetCohorts?: boolean;
+  forceUpdate?: boolean;
+  rolloutCohortCount?: number;
+  targetCohorts?: string;
 }
 
 const DEFAULT_LIMIT = 20;
@@ -103,6 +111,17 @@ const formatBundleSummary = (bundle: Bundle, nextEnabled?: boolean): string => {
   return ui.block("Bundle", lines);
 };
 
+const parseTargetCohorts = (value: string | undefined): string[] | null => {
+  if (value === undefined) {
+    return null;
+  }
+
+  return value
+    .split(",")
+    .map((cohort) => cohort.trim())
+    .filter(Boolean);
+};
+
 const refuseNonInteractiveMutation = (action: string): never => {
   p.log.error(
     `Cannot ${action} a bundle without confirmation in a non-interactive shell. Re-run with -y, or use a TTY.`,
@@ -145,6 +164,34 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
     console.log(
       options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
     );
+  } finally {
+    await safeOnUnmount(databasePlugin);
+  }
+};
+
+export const handleBundleShow = async (
+  bundleId: string,
+  options: Pick<BundleMutationOptions, "json"> = {},
+) => {
+  if (!options.json) {
+    printBanner();
+  }
+
+  const config = await loadConfig(null);
+  const databasePlugin: DatabasePlugin = await config.database();
+  try {
+    const bundle = await databasePlugin.getBundleById(bundleId);
+    if (!bundle) {
+      p.log.error(`No bundle with id ${bundleId}.`);
+      process.exit(1);
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(bundle, null, 2));
+      return;
+    }
+
+    p.log.message(formatBundleSummary(bundle));
   } finally {
     await safeOnUnmount(databasePlugin);
   }
@@ -206,6 +253,129 @@ export const handleBundleSetEnabled = async (
       p.log.success(`${nextEnabled ? "Enabled" : "Disabled"} bundle.`);
       p.log.info(`  ${ui.id(bundleId)}`);
     }
+  } finally {
+    await safeOnUnmount(databasePlugin);
+  }
+};
+
+export const handleBundleUpdate = async (
+  bundleId: string,
+  options: BundleUpdateOptions = {},
+) => {
+  if (!options.json) {
+    printBanner();
+  }
+
+  const targetCohorts = parseTargetCohorts(options.targetCohorts);
+  const patch: Partial<Bundle> = {};
+
+  if (options.rolloutCohortCount !== undefined) {
+    patch.rolloutCohortCount = options.rolloutCohortCount;
+  }
+  if (options.forceUpdate !== undefined) {
+    patch.shouldForceUpdate = options.forceUpdate;
+  }
+  if (targetCohorts !== null) {
+    patch.targetCohorts = targetCohorts;
+  } else if (options.clearTargetCohorts) {
+    patch.targetCohorts = null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    p.log.error("No bundle update fields were provided.");
+    process.exit(1);
+  }
+
+  const config = await loadConfig(null);
+  const databasePlugin: DatabasePlugin = await config.database();
+  try {
+    const bundle = await databasePlugin.getBundleById(bundleId);
+    if (!bundle) {
+      p.log.error(`No bundle with id ${bundleId}.`);
+      process.exit(1);
+    }
+
+    if (!options.json) {
+      p.log.message(formatBundleSummary(bundle));
+    }
+
+    if (!options.yes) {
+      if (!process.stdin.isTTY) {
+        refuseNonInteractiveMutation("update");
+      }
+      const confirmed = await p.confirm({
+        message: "Update this bundle?",
+        initialValue: false,
+      });
+      if (p.isCancel(confirmed) || !confirmed) {
+        p.log.info("Aborted.");
+        process.exit(2);
+      }
+    }
+
+    await databasePlugin.updateBundle(bundleId, patch);
+    await databasePlugin.commitBundle();
+
+    const refetched = await databasePlugin.getBundleById(bundleId);
+    if (!refetched) {
+      p.log.error(`Verification failed: ${bundleId} is missing after update.`);
+      process.exit(1);
+    }
+
+    if (options.json) {
+      console.log(JSON.stringify(refetched, null, 2));
+      return;
+    }
+
+    p.log.success("Updated bundle.");
+    p.log.info(`  ${ui.id(bundleId)}`);
+  } finally {
+    await safeOnUnmount(databasePlugin);
+  }
+};
+
+export const handleBundleDelete = async (
+  bundleId: string,
+  options: BundleMutationOptions = {},
+) => {
+  printBanner();
+
+  const config = await loadConfig(null);
+  const databasePlugin: DatabasePlugin = await config.database();
+  try {
+    const bundle = await databasePlugin.getBundleById(bundleId);
+    if (!bundle) {
+      p.log.info(`No bundle with id ${bundleId}. No changes.`);
+      return;
+    }
+
+    p.log.message(formatBundleSummary(bundle));
+
+    if (!options.yes) {
+      if (!process.stdin.isTTY) {
+        refuseNonInteractiveMutation("delete");
+      }
+      const confirmed = await p.confirm({
+        message: "Delete this bundle record?",
+        initialValue: false,
+      });
+      if (p.isCancel(confirmed) || !confirmed) {
+        p.log.info("Aborted.");
+        process.exit(2);
+      }
+    }
+
+    await databasePlugin.deleteBundle(bundle);
+    await databasePlugin.commitBundle();
+
+    const refetched = await databasePlugin.getBundleById(bundleId);
+    if (refetched) {
+      p.log.error(`Verification failed: ${bundleId} still exists.`);
+      process.exit(1);
+    }
+
+    p.log.success("Deleted bundle record.");
+    p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
     await safeOnUnmount(databasePlugin);
   }

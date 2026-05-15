@@ -1,12 +1,13 @@
 ---
 title: "Deploy"
-description: "This command is used to deploy the update to the specified platform."
+description: "Deploy an update to one platform or both platforms sequentially."
 icon: Upload
 ---
 
-<video src={"/docs/deploy/deploy.mov"}  controls autoPlay loop muted />
+<video src={"/docs/deploy/deploy.mov"} controls autoPlay loop muted />
 
 ## Checklist
+
 1. Ensure `hot-updater.config.ts` is properly configured.
 2. Wrap your components using `HotUpdater.wrap`.
 3. Include the native code.
@@ -20,7 +21,7 @@ Options:
   -p, --platform <platform>                    specify the platform (choices: "ios", "android")
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -f, --force-update                           force update the app (default: false)
-  -o, --bundle-output-path <bundleOutputPath>  the path where the bundle.zip will be generated
+  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
   -r, --rollout <percentage>                   specify the rollout percentage for the deployed bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
@@ -29,6 +30,37 @@ Options:
 ```
 
 ## Usage
+
+### Default Mode
+
+When you omit `-p` and `-i`, Hot Updater deploys **iOS first, then Android**
+sequentially. If the iOS deploy fails, Android is not attempted.
+
+Run the following command:
+
+```package-install
+npx hot-updater deploy
+```
+
+- This is the default mode for CI/CD pipelines when both platforms should move
+  together.
+- Local bundle archives are written under platform-specific directories such as
+  `<bundle-output-path>/ios/bundle/` and `<bundle-output-path>/android/bundle/`.
+
+### Bundle Diffing
+
+New deployments automatically include the artifacts needed for bundle diffing
+alongside the archive bundle. When the app runtime supports manifest-based
+diffing, unchanged files can be reused locally and only changed files are
+downloaded. No deploy flag is required for this behavior.
+
+If `patch.enabled: true` is set in `hot-updater.config.ts`, deploy also tries
+to prepare compatible `bsdiff` patches for the Hermes bundle. This optimization
+is disabled by default. Patch generation is best-effort; a skipped patch does
+not fail the deployment because the normal archive update remains available.
+
+See [Bundle Diffing](/docs/guides/bundle-diffing) for the runtime behavior and
+fallback rules.
 
 ### Interactive Mode
 
@@ -41,11 +73,12 @@ npx hot-updater deploy -i
 ```
 
 The `-i` (or `--interactive`) flag enables interactive keyboard input.
+
 - This mode allows you to proceed through deployment steps interactively.
 
 ### For Continuous Deployment (CD) Pipelines
 
-Use this mode for automating deployment in CI/CD pipelines.
+Use this mode when a pipeline should deploy only one platform.
 
 Run the following command:
 
@@ -53,7 +86,7 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android">
 ```
 
-- This mode is suitable for Continuous Deployment (CD) pipelines.
+- Use `-p` to scope the deploy to exactly one platform.
 
 ### Force Update
 
@@ -117,9 +150,12 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -m "<message>"
 ```
 
+If you omit `-p`, the same message is applied to both sequential platform
+deploys.
+
 ## Force Update Flag Difference
 
-| Update Type   | When Applied                                              | How to Enable                              |
-|---------------|----------------------------------------------------------|-------------------------------------------|
-| Default       | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
-| Force Update  | Downloads the update bundle and applies it immediately.   | Use the `--force-update` flag or console. |
+| Update Type  | When Applied                                                                                 | How to Enable                             |
+| ------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Default      | Downloads the update bundle in the background and applies it when the user restarts the app. | Default setting                           |
+| Force Update | Downloads the update bundle and applies it immediately.                                      | Use the `--force-update` flag or console. |

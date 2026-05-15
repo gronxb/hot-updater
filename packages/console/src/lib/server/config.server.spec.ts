@@ -1,6 +1,9 @@
 // @vitest-environment node
 
-import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePlugin,
+  NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { loadConfigMock } = vi.hoisted(() => ({
@@ -24,13 +27,17 @@ function createDatabasePlugin(name: string): DatabasePlugin {
   };
 }
 
-function createStoragePlugin(): StoragePlugin {
+function createStoragePlugin(): NodeStoragePlugin {
   return {
     name: "storage",
     supportedProtocol: "s3",
-    upload: vi.fn(),
-    delete: vi.fn(),
-    getDownloadUrl: vi.fn(),
+    profiles: {
+      node: {
+        upload: vi.fn(),
+        delete: vi.fn(),
+        downloadFile: vi.fn(),
+      },
+    },
   };
 }
 
@@ -101,5 +108,35 @@ describe("config.server", () => {
     expect(recovered.databasePlugin).toBe(databasePlugin);
     expect(recovered.storagePlugin).toBe(storagePlugin);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires the configured storage plugin to implement the node profile", async () => {
+    const database = vi.fn().mockResolvedValue(createDatabasePlugin("db"));
+    const storage = vi.fn().mockResolvedValue({
+      name: "runtimeOnlyStorage",
+      supportedProtocol: "s3",
+      profiles: {
+        runtime: {
+          getDownloadUrl: vi.fn(),
+          readText: vi.fn(),
+        },
+      },
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    loadConfigMock.mockResolvedValue({
+      console: { port: 1422 },
+      database,
+      storage,
+    });
+
+    const { prepareConfig } = await import("./config.server");
+
+    await expect(prepareConfig()).rejects.toThrow(
+      'runtimeOnlyStorage does not implement the node storage profile for protocol "s3".',
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
 });

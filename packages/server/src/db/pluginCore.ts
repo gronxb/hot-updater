@@ -1,5 +1,5 @@
 import type {
-  AppUpdateInfo,
+  AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
   Bundle,
   FingerprintGetBundlesArgs,
@@ -17,7 +17,9 @@ import {
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 
+import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
+import { resolveManifestArtifacts } from "./updateArtifacts";
 
 const PAGE_SIZE = 100;
 const DESC_ORDER = { field: "id", direction: "desc" } as const;
@@ -110,6 +112,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
     cleanupMutationPlugin?: (
       plugin: DatabasePlugin<TContext>,
     ) => Promise<void> | void;
+    readStorageText?: (
+      storageUri: string,
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<string | null>;
   },
 ): {
   api: DatabaseAPI<TContext>;
@@ -336,7 +342,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     async getAppUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<AppUpdateInfo | null> {
+    ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args, context);
       if (!info) {
         return null;
@@ -344,8 +350,37 @@ export function createPluginDatabaseCore<TContext = unknown>(
       const { storageUri, ...rest } = info as UpdateInfo & {
         storageUri: string | null;
       };
-      const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-      return { ...rest, fileUrl };
+
+      const readStorageText = options?.readStorageText;
+      if (info.id === NIL_UUID || !readStorageText) {
+        const fileUrl = await resolveFileUrl(storageUri ?? null, context);
+        const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
+        return baseResponse;
+      }
+
+      const [fileUrl, targetBundle, currentBundle] = await Promise.all([
+        resolveFileUrl(storageUri ?? null, context),
+        getPlugin().getBundleById(info.id, context),
+        args.bundleId !== NIL_UUID
+          ? getPlugin().getBundleById(args.bundleId, context)
+          : null,
+      ]);
+      const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
+      const manifestArtifacts = await resolveManifestArtifacts({
+        currentBundle,
+        resolveFileUrl,
+        readStorageText,
+        targetBundle,
+        context,
+      });
+      if (!manifestArtifacts) {
+        return baseResponse;
+      }
+
+      return {
+        ...baseResponse,
+        ...manifestArtifacts,
+      };
     },
 
     async getChannels(
@@ -362,6 +397,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
         await plugin.appendBundle(bundle, context);
         await plugin.commitBundle(context);
@@ -374,6 +410,11 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await runWithMutationPlugin(async (plugin) => {
+        const current = await plugin.getBundleById(bundleId, context);
+        if (!current) {
+          throw new Error("targetBundleId not found");
+        }
+        assertBundlePersistenceConstraints({ ...current, ...newBundle });
         await plugin.updateBundle(bundleId, newBundle, context);
         await plugin.commitBundle(context);
       });

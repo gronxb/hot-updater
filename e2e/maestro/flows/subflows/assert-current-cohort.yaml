@@ -7,6 +7,11 @@ appId: ${APP_ID}
 - retry:
     maxRetries: 3
     commands:
+      - runScript:
+          file: ../../scripts/control.js
+          env:
+            ACTION: ensureAppForeground
+            CONTROL_URL: ${CONTROL_URL}
       - assertVisible:
           id: current-cohort-summary
       - copyTextFrom:

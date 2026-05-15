@@ -3,7 +3,8 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   DatabasePlugin,
   RequestEnvContext,
-  StoragePlugin,
+  RuntimeStoragePlugin,
+  RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
@@ -31,7 +32,71 @@ type TestEnv = {
 
 type TestContext = RequestEnvContext<TestEnv>;
 
+const createRuntimeStorage = (
+  getDownloadUrl: RuntimeStorageProfile<TestContext>["getDownloadUrl"],
+  readText: RuntimeStorageProfile<TestContext>["readText"] = async () => null,
+): RuntimeStoragePlugin<TestContext> => ({
+  name: "testStorage",
+  supportedProtocol: "s3",
+  profiles: {
+    runtime: {
+      getDownloadUrl,
+      readText,
+    },
+  },
+});
+
 describe("runtime createHotUpdater", () => {
+  it("requires storages to implement the runtime profile", () => {
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      },
+      async getChannels() {
+        return [];
+      },
+      async updateBundle() {},
+    };
+    const nodeOnlyStorage = {
+      name: "nodeOnlyStorage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(),
+          upload: vi.fn(),
+        },
+      },
+    };
+
+    expect(() =>
+      createHotUpdater({
+        database,
+        storages: [
+          nodeOnlyStorage as unknown as RuntimeStoragePlugin<TestContext>,
+        ],
+      }),
+    ).toThrow(
+      'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
+    );
+  });
+
   it("resolves storage URLs with handler context when database fast-path is used", async () => {
     const request = new Request(
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
@@ -48,13 +113,13 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
       storageUri: bundle.storageUri,
     }));
-    const getDownloadUrl = vi.fn<StoragePlugin<TestContext>["getDownloadUrl"]>(
-      async (_storageUri, context) => {
-        return {
-          fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
-        };
-      },
-    );
+    const getDownloadUrl = vi.fn<
+      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+    >(async (_storageUri, context) => {
+      return {
+        fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
+      };
+    });
 
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
@@ -72,15 +137,7 @@ describe("runtime createHotUpdater", () => {
       async onUnmount() {},
       async updateBundle() {},
     };
-    const storage: StoragePlugin<TestContext> = {
-      name: "testStorage",
-      supportedProtocol: "s3",
-      async upload(key) {
-        return { storageUri: `s3://test-bucket/${key}` };
-      },
-      async delete() {},
-      getDownloadUrl,
-    };
+    const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
       database,
@@ -156,13 +213,13 @@ describe("runtime createHotUpdater", () => {
         };
       },
     );
-    const getDownloadUrl = vi.fn<StoragePlugin<TestContext>["getDownloadUrl"]>(
-      async (_storageUri, context) => {
-        return {
-          fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
-        };
-      },
-    );
+    const getDownloadUrl = vi.fn<
+      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+    >(async (_storageUri, context) => {
+      return {
+        fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
+      };
+    });
 
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
@@ -179,15 +236,7 @@ describe("runtime createHotUpdater", () => {
       async onUnmount() {},
       async updateBundle() {},
     };
-    const storage: StoragePlugin<TestContext> = {
-      name: "testStorage",
-      supportedProtocol: "s3",
-      async upload(key) {
-        return { storageUri: `s3://test-bucket/${key}` };
-      },
-      async delete() {},
-      getDownloadUrl,
-    };
+    const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
       database,
@@ -239,6 +288,205 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
+  it("returns bsdiff patch metadata when the full asset fallback URL is unavailable", async () => {
+    const currentManifestStorageUri =
+      "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/manifest.json";
+    const nextManifestStorageUri =
+      "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/manifest.json";
+    const currentBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000001",
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/files",
+      manifestFileHash: "sig:current-manifest",
+      manifestStorageUri: currentManifestStorageUri,
+      storageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000001/bundle.zip",
+    };
+    const nextBundle: Bundle = {
+      ...bundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      assetBaseStorageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/files",
+      manifestFileHash: "sig:next-manifest",
+      manifestStorageUri: nextManifestStorageUri,
+      patches: [
+        {
+          baseBundleId: currentBundle.id,
+          baseFileHash: "hash-old-bundle",
+          patchFileHash: "hash-bsdiff",
+          patchStorageUri:
+            "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
+        },
+      ],
+      storageUri:
+        "s3://test-bucket/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
+    };
+    const request = new Request(
+      "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
+        `${NIL_UUID}/${currentBundle.id}`,
+    );
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
+      async () => ({
+        data: [nextBundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      }),
+    );
+    const getDownloadUrl = vi.fn<
+      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+    >(async (storageUri, context) => {
+      if (storageUri.endsWith("/files/index.ios.bundle")) {
+        throw new Error("full asset fallback is unavailable");
+      }
+
+      const storageUrl = new URL(storageUri);
+      return {
+        fileUrl: new URL(
+          storageUrl.pathname,
+          context?.env?.assetHost,
+        ).toString(),
+      };
+    });
+    const manifests = new Map([
+      [
+        currentManifestStorageUri,
+        JSON.stringify({
+          assets: {
+            "assets/logo.png": {
+              fileHash: "hash-logo",
+            },
+            "index.ios.bundle": {
+              fileHash: "hash-old-bundle",
+            },
+          },
+          bundleId: currentBundle.id,
+        }),
+      ],
+      [
+        nextManifestStorageUri,
+        JSON.stringify({
+          assets: {
+            "assets/logo.png": {
+              fileHash: "hash-logo",
+            },
+            "index.ios.bundle": {
+              fileHash: "hash-new-bundle",
+            },
+          },
+          bundleId: nextBundle.id,
+        }),
+      ],
+    ]);
+    const readText = vi.fn<RuntimeStorageProfile<TestContext>["readText"]>(
+      async (storageUri) => manifests.get(storageUri) ?? null,
+    );
+    const fetchMock = vi.fn<typeof fetch>(async () => {
+      return new Response("manifest fetch should not be used", {
+        status: 500,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById(id) {
+        if (id === currentBundle.id) {
+          return currentBundle;
+        }
+        if (id === nextBundle.id) {
+          return nextBundle;
+        }
+        return null;
+      },
+      getBundles,
+      async getChannels() {
+        return ["production"];
+      },
+      async onUnmount() {},
+      async updateBundle() {},
+    };
+    const storage = createRuntimeStorage(getDownloadUrl, readText);
+
+    try {
+      const hotUpdater = createHotUpdater({
+        database,
+        storages: [storage],
+        basePath: "/api/check-update",
+        routes: {
+          updateCheck: true,
+          bundles: false,
+        },
+      });
+
+      const response = await hotUpdater.handler(request, {
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request,
+      });
+
+      await expect(response.json()).resolves.toEqual({
+        changedAssets: {
+          "index.ios.bundle": {
+            file: {
+              compression: "br",
+              url: "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/files/index.ios.bundle.br",
+            },
+            fileHash: "hash-new-bundle",
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: "00000000-0000-0000-0000-000000000001",
+              baseFileHash: "hash-old-bundle",
+              patchFileHash: "hash-bsdiff",
+              patchUrl:
+                "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/patches/00000000-0000-0000-0000-000000000001/index.ios.bundle.bsdiff",
+            },
+          },
+        },
+        fileHash: "hash123",
+        fileUrl:
+          "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/bundle.zip",
+        id: "00000000-0000-0000-0000-000000000002",
+        manifestFileHash: "sig:next-manifest",
+        manifestUrl:
+          "https://assets.example.com/releases/00000000-0000-0000-0000-000000000002/manifest.json",
+        message: "Test bundle",
+        shouldForceUpdate: false,
+        status: "UPDATE",
+      });
+      expect(readText).toHaveBeenCalledWith(
+        nextManifestStorageUri,
+        expect.objectContaining({
+          env: {
+            assetHost: "https://assets.example.com",
+          },
+          request: expect.any(Request),
+        }),
+      );
+      expect(readText).toHaveBeenCalledWith(
+        currentManifestStorageUri,
+        expect.objectContaining({
+          env: {
+            assetHost: "https://assets.example.com",
+          },
+          request: expect.any(Request),
+        }),
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("does not inject the request into context unless explicitly provided", async () => {
     const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
       async () => {
@@ -270,17 +518,9 @@ describe("runtime createHotUpdater", () => {
       async onUnmount() {},
       async updateBundle() {},
     };
-    const storage: StoragePlugin<TestContext> = {
-      name: "testStorage",
-      supportedProtocol: "s3",
-      async upload(key) {
-        return { storageUri: `s3://test-bucket/${key}` };
-      },
-      async delete() {},
-      async getDownloadUrl() {
-        return { fileUrl: "https://assets.example.com/bundle.zip" };
-      },
-    };
+    const storage = createRuntimeStorage(async () => {
+      return { fileUrl: "https://assets.example.com/bundle.zip" };
+    });
 
     const hotUpdater = createHotUpdater({
       database,
@@ -343,17 +583,9 @@ describe("runtime createHotUpdater", () => {
       async onUnmount() {},
       async updateBundle() {},
     };
-    const storage: StoragePlugin<TestContext> = {
-      name: "testStorage",
-      supportedProtocol: "s3",
-      async upload(key) {
-        return { storageUri: `s3://test-bucket/${key}` };
-      },
-      async delete() {},
-      async getDownloadUrl() {
-        return { fileUrl: "https://assets.example.com/bundle.zip" };
-      },
-    };
+    const storage = createRuntimeStorage(async () => {
+      return { fileUrl: "https://assets.example.com/bundle.zip" };
+    });
 
     const hotUpdater = createHotUpdater({
       database,

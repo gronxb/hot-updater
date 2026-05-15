@@ -1,6 +1,172 @@
 import Foundation
 
+@_silgen_name("HotUpdaterApplyBsdiffPatch")
+private func hotUpdaterApplyBsdiffPatchSymbol(
+    _ patchPath: NSString,
+    _ basePath: NSString,
+    _ outputPath: NSString
+) -> ObjCBool
+
+private func hotUpdaterApplyBsdiffPatch(
+    patchPath: String,
+    basePath: String,
+    outputPath: String
+) -> Bool {
+    return hotUpdaterApplyBsdiffPatchSymbol(
+        patchPath as NSString,
+        basePath as NSString,
+        outputPath as NSString
+    ).boolValue
+}
+
 public typealias ManifestAssets = [String: Any]
+
+public struct ChangedAssetDescriptor {
+    public let fileUrl: URL?
+    public let fileHash: String
+    public let fileCompression: String?
+    public let patch: BsdiffPatchDescriptor?
+
+    public init(
+        fileUrl: URL?,
+        fileHash: String,
+        fileCompression: String? = nil,
+        patch: BsdiffPatchDescriptor? = nil
+    ) {
+        self.fileUrl = fileUrl
+        self.fileHash = fileHash
+        self.fileCompression = fileCompression
+        self.patch = patch
+    }
+}
+
+public struct BsdiffPatchDescriptor {
+    public let algorithm: String
+    public let baseBundleId: String
+    public let baseFileHash: String
+    public let patchFileHash: String
+    public let patchUrl: URL
+
+    public init(
+        algorithm: String,
+        baseBundleId: String,
+        baseFileHash: String,
+        patchFileHash: String,
+        patchUrl: URL
+    ) {
+        self.algorithm = algorithm
+        self.baseBundleId = baseBundleId
+        self.baseFileHash = baseFileHash
+        self.patchFileHash = patchFileHash
+        self.patchUrl = patchUrl
+    }
+}
+
+public struct UpdateProgressPayload {
+    public let progress: Double
+    public let artifactType: String
+    public let downloadedBytes: Int64?
+    public let totalBytes: Int64?
+    public let details: DiffProgressDetails?
+
+    public struct DiffProgressFileSnapshot {
+        public let path: String
+        public let downloadPath: String
+        public let status: String
+        public let progress: Double
+        public let order: Int
+        public let downloadedBytes: Int64?
+        public let totalBytes: Int64?
+
+        public init(
+            path: String,
+            downloadPath: String? = nil,
+            status: String,
+            progress: Double,
+            order: Int,
+            downloadedBytes: Int64? = nil,
+            totalBytes: Int64? = nil
+        ) {
+            self.path = path
+            self.downloadPath = downloadPath ?? path
+            self.status = status
+            self.progress = progress
+            self.order = order
+            self.downloadedBytes = downloadedBytes
+            self.totalBytes = totalBytes
+        }
+
+        public var userInfo: [String: Any] {
+            var info: [String: Any] = [
+                "path": path,
+                "downloadPath": downloadPath,
+                "status": status,
+                "progress": progress,
+                "order": order
+            ]
+            if let downloadedBytes {
+                info["downloadedBytes"] = downloadedBytes
+            }
+            if let totalBytes {
+                info["totalBytes"] = totalBytes
+            }
+            return info
+        }
+    }
+
+    public struct DiffProgressDetails {
+        public let totalFilesCount: Int
+        public let completedFilesCount: Int
+        public let files: [DiffProgressFileSnapshot]
+
+        public init(
+            totalFilesCount: Int,
+            completedFilesCount: Int,
+            files: [DiffProgressFileSnapshot] = []
+        ) {
+            self.totalFilesCount = totalFilesCount
+            self.completedFilesCount = completedFilesCount
+            self.files = files
+        }
+
+        public var userInfo: [String: Any] {
+            return [
+                "totalFilesCount": totalFilesCount,
+                "completedFilesCount": completedFilesCount,
+                "files": files.map(\.userInfo)
+            ]
+        }
+    }
+
+    public init(
+        progress: Double,
+        artifactType: String,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil,
+        details: DiffProgressDetails? = nil
+    ) {
+        self.progress = progress
+        self.artifactType = artifactType
+        self.downloadedBytes = downloadedBytes
+        self.totalBytes = totalBytes
+        self.details = details
+    }
+
+    public var userInfo: [String: Any] {
+        var info: [String: Any] = [
+            "artifactType": artifactType,
+            "progress": progress,
+            "details": details?.userInfo ?? NSNull()
+        ]
+        if let downloadedBytes {
+            info["downloadedBytes"] = downloadedBytes
+        }
+        if let totalBytes {
+            info["totalBytes"] = totalBytes
+        }
+        return info
+    }
+}
 
 public enum BundleStorageError: Error, CustomNSError {
     case directoryCreationFailed
@@ -108,7 +274,7 @@ public protocol BundleStorageService {
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
 
     // Bundle update
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void)
 
     // Rollback support
     func markLaunchCompleted(bundleId: String?)
@@ -149,6 +315,16 @@ class BundleFileStorageService: BundleStorageService {
         let manifest: ManifestAssets
     }
 
+    private struct ParsedBundleManifest {
+        let bundleId: String
+        let assets: [String: ParsedManifestAsset]
+    }
+
+    private struct ParsedManifestAsset {
+        let fileHash: String
+        let signature: String?
+    }
+
     private enum UpdateProgress {
         static let downloadEnd = 0.7
         static let verificationStart = 0.72
@@ -176,6 +352,342 @@ class BundleFileStorageService: BundleStorageService {
     private var currentLaunchReport: LaunchReport?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
+
+    private func emitArchiveProgress(
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        progress: Double,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil
+    ) {
+        progressHandler(
+            UpdateProgressPayload(
+                progress: max(0, min(progress, 1)),
+                artifactType: "archive",
+                downloadedBytes: downloadedBytes,
+                totalBytes: totalBytes
+            )
+        )
+    }
+
+    private func createDiffProgressFiles(
+        changedAssets: [String: ChangedAssetDescriptor]
+    ) -> [UpdateProgressPayload.DiffProgressFileSnapshot] {
+        return changedAssets.keys.sorted().enumerated().map { index, path in
+            UpdateProgressPayload.DiffProgressFileSnapshot(
+                path: path,
+                downloadPath: path,
+                status: "pending",
+                progress: 0,
+                order: index
+            )
+        }
+    }
+
+    private func updateDiffProgressFile(
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        assetPath: String,
+        status: String,
+        progress: Double,
+        downloadPath: String? = nil,
+        downloadedBytes: Int64? = nil,
+        totalBytes: Int64? = nil
+    ) {
+        guard let fileIndex = files.firstIndex(where: { $0.path == assetPath }) else {
+            return
+        }
+
+        files[fileIndex] = UpdateProgressPayload.DiffProgressFileSnapshot(
+            path: files[fileIndex].path,
+            downloadPath: downloadPath ?? files[fileIndex].downloadPath,
+            status: status,
+            progress: max(0, min(progress, 1)),
+            order: files[fileIndex].order,
+            downloadedBytes: downloadedBytes ?? files[fileIndex].downloadedBytes,
+            totalBytes: totalBytes ?? files[fileIndex].totalBytes
+        )
+    }
+
+    private func calculateDiffOverallProgress(
+        phase: String,
+        files: [UpdateProgressPayload.DiffProgressFileSnapshot],
+        manifestProgress: Double = 0
+    ) -> Double {
+        let normalizedManifestProgress = max(0, min(manifestProgress, 1))
+        switch phase {
+        case "manifest":
+            return normalizedManifestProgress * 0.15
+        case "downloading":
+            guard !files.isEmpty else {
+                return 0.92
+            }
+
+            let completedFilesCount = files.filter { $0.status == "downloaded" }.count
+            let activeProgressUnits = files
+                .filter { $0.status == "downloading" }
+                .reduce(0.0) { partialResult, file in
+                    partialResult + max(0, min(file.progress, 1))
+                }
+            let normalizedProgress =
+                (Double(completedFilesCount) + activeProgressUnits) / Double(files.count)
+            return max(0.2, min(0.2 + normalizedProgress * 0.72, 0.92))
+        case "finalizing":
+            return 0.97
+        case "completed":
+            return 1.0
+        default:
+            return 0
+        }
+    }
+
+    private func emitDiffProgress(
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        phase: String,
+        files: [UpdateProgressPayload.DiffProgressFileSnapshot],
+        manifestProgress: Double = 0
+    ) {
+        let completedFilesCount = files.filter { $0.status == "downloaded" }.count
+        progressHandler(
+            UpdateProgressPayload(
+                progress: calculateDiffOverallProgress(
+                    phase: phase,
+                    files: files,
+                    manifestProgress: manifestProgress
+                ),
+                artifactType: "diff",
+                details: UpdateProgressPayload.DiffProgressDetails(
+                    totalFilesCount: files.count,
+                    completedFilesCount: completedFilesCount,
+                    files: files
+                )
+            )
+        )
+    }
+
+    private func resetDiffProgressFile(
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        assetPath: String,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) {
+        updateDiffProgressFile(
+            files: &files,
+            assetPath: assetPath,
+            status: "pending",
+            progress: 0,
+            downloadPath: assetPath
+        )
+        emitDiffProgress(
+            progressHandler: progressHandler,
+            phase: "downloading",
+            files: files
+        )
+    }
+
+    private func patchTempPath(
+        tempDirectory: String,
+        assetPath: String
+    ) -> String {
+        let safeName = assetPath
+            .replacingOccurrences(of: "/", with: "__")
+            .replacingOccurrences(of: "\\", with: "__")
+        let patchDirectory = (tempDirectory as NSString).appendingPathComponent("patches")
+        _ = fileSystem.createDirectory(atPath: patchDirectory)
+        return (patchDirectory as NSString).appendingPathComponent("\(safeName).bsdiff")
+    }
+
+    private func patchDownloadPath(assetPath: String) -> String {
+        return "\(assetPath).bsdiff"
+    }
+
+    private func downloadPath(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor
+    ) -> String {
+        if changedAsset.fileCompression == "br" {
+            return "\(assetPath).br"
+        }
+        return assetPath
+    }
+
+    private func compressedTempPath(
+        tempDirectory: String,
+        assetPath: String,
+        compression: String
+    ) -> String {
+        let safeName = assetPath
+            .replacingOccurrences(of: "/", with: "__")
+            .replacingOccurrences(of: "\\", with: "__")
+        let compressedDirectory = (tempDirectory as NSString).appendingPathComponent("compressed")
+        _ = fileSystem.createDirectory(atPath: compressedDirectory)
+        return (compressedDirectory as NSString).appendingPathComponent("\(safeName).\(compression)")
+    }
+
+    private func materializeDownloadedAsset(
+        downloadedPath: String,
+        destinationPath: String,
+        changedAsset: ChangedAssetDescriptor
+    ) throws {
+        guard changedAsset.fileCompression == "br" else {
+            return
+        }
+
+        try StreamingTarArchiveExtractor.decompressBrotliFile(
+            from: downloadedPath,
+            to: destinationPath
+        )
+        try? fileSystem.removeItem(atPath: downloadedPath)
+    }
+
+    private func applyPatchAssetIfPossible(
+        assetPath: String,
+        changedAsset: ChangedAssetDescriptor,
+        currentBundleId: String?,
+        currentBundleDir: String?,
+        destinationPath: String,
+        expectedHash: String,
+        tempDirectory: String,
+        files: inout [UpdateProgressPayload.DiffProgressFileSnapshot],
+        progressHandler: @escaping (UpdateProgressPayload) -> Void
+    ) -> Bool {
+        guard let patch = changedAsset.patch,
+              patch.algorithm == "bsdiff",
+              currentBundleId == patch.baseBundleId,
+              let currentBundleDir
+        else {
+            return false
+        }
+
+        let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
+        guard self.fileSystem.fileExists(atPath: sourcePath),
+              HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: sourcePath),
+                expectedHash: patch.baseFileHash
+              )
+        else {
+            return false
+        }
+
+        let patchPath = patchTempPath(
+            tempDirectory: tempDirectory,
+            assetPath: assetPath
+        )
+
+        defer {
+            try? self.fileSystem.removeItem(atPath: patchPath)
+            if self.fileSystem.fileExists(atPath: destinationPath),
+               !HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: destinationPath),
+                expectedHash: expectedHash
+               ) {
+                try? self.fileSystem.removeItem(atPath: destinationPath)
+            }
+        }
+
+        var updatedFiles = files
+        defer {
+            files = updatedFiles
+        }
+
+        switch self.downloadFileSynchronously(
+            from: patch.patchUrl,
+            to: patchPath,
+            progressHandler: { progress in
+                self.updateDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    status: "downloading",
+                    progress: progress.progress,
+                    downloadPath: self.patchDownloadPath(assetPath: assetPath),
+                    downloadedBytes: progress.downloadedBytes,
+                    totalBytes: progress.totalBytes
+                )
+                self.emitDiffProgress(
+                    progressHandler: progressHandler,
+                    phase: "downloading",
+                    files: updatedFiles
+                )
+            }
+        ) {
+        case .success(let patchFileURL):
+            guard HashUtils.verifyHash(
+                fileURL: patchFileURL,
+                expectedHash: patch.patchFileHash
+            ) else {
+                resetDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+
+            let applied = hotUpdaterApplyBsdiffPatch(
+                patchPath: patchPath,
+                basePath: sourcePath,
+                outputPath: destinationPath
+            )
+            guard applied else {
+                resetDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+
+            guard HashUtils.verifyHash(
+                fileURL: URL(fileURLWithPath: destinationPath),
+                expectedHash: expectedHash
+            ) else {
+                resetDiffProgressFile(
+                    files: &updatedFiles,
+                    assetPath: assetPath,
+                    progressHandler: progressHandler
+                )
+                return false
+            }
+
+            NSLog("[BundleStorage] HotUpdaterBsdiffPatchApplied asset=\(assetPath) baseBundleId=\(patch.baseBundleId)")
+            return true
+        case .failure:
+            resetDiffProgressFile(
+                files: &updatedFiles,
+                assetPath: assetPath,
+                progressHandler: progressHandler
+            )
+            return false
+        }
+    }
+
+    private func verifyManifestAssetFile(
+        atPath path: String,
+        asset: ParsedManifestAsset
+    ) throws {
+        guard let actualHash = HashUtils.calculateSHA256(fileURL: URL(fileURLWithPath: path)) else {
+            throw BundleStorageError.signatureVerificationFailed(.fileReadFailed)
+        }
+
+        guard actualHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame else {
+            throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+        }
+
+        guard SignatureVerifier.isSigningEnabled() else {
+            return
+        }
+
+        guard let signature = asset.signature, !signature.isEmpty else {
+            throw BundleStorageError.signatureVerificationFailed(.invalidSignatureFormat)
+        }
+
+        switch SignatureVerifier.verifyHashSignature(
+            fileHash: asset.fileHash,
+            signatureBase64: signature
+        ) {
+        case .success:
+            return
+        case .failure(let error):
+            throw BundleStorageError.signatureVerificationFailed(error)
+        }
+    }
 
     public init(fileSystem: FileSystemService,
                 downloadService: DownloadService,
@@ -349,6 +861,23 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    func canUseManifestDrivenInstall() -> Bool {
+        guard let currentBundleURL = getCachedBundleURL(),
+              case .success(let storeDir) = bundleStoreDir() else {
+            return false
+        }
+
+        let currentBundleId = currentBundleURL.deletingLastPathComponent().lastPathComponent
+        let currentBundleDir = (storeDir as NSString).appendingPathComponent(currentBundleId)
+        guard fileSystem.fileExists(atPath: currentBundleDir),
+              let snapshot = getActiveBundleMetadataSnapshot(),
+              let currentManifest = parseBundleManifest(from: snapshot.manifest) else {
+            return false
+        }
+
+        return currentManifest.assets.isEmpty == false
+    }
+
     private func resolveActiveBundleMetadataSnapshot(
         activeBundleId: String,
         bundleDirectory: String
@@ -427,6 +956,65 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Failed to read manifest at \(manifestPath): \(error.localizedDescription)")
             return nil
         }
+    }
+
+    private func parseBundleManifest(from manifest: [String: Any]) -> ParsedBundleManifest? {
+        guard let manifestBundleId = (manifest["bundleId"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !manifestBundleId.isEmpty,
+            let rawAssets = manifest["assets"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        var assets: [String: ParsedManifestAsset] = [:]
+        for (assetPath, assetValue) in rawAssets {
+            guard let asset = assetValue as? [String: Any],
+                  let fileHash = asset["fileHash"] as? String,
+                  !fileHash.isEmpty
+            else {
+                return nil
+            }
+            let signature = (asset["signature"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            assets[assetPath] = ParsedManifestAsset(
+                fileHash: fileHash,
+                signature: signature?.isEmpty == false ? signature : nil
+            )
+        }
+
+        return ParsedBundleManifest(bundleId: manifestBundleId, assets: assets)
+    }
+
+    private func parseBundleManifest(fromFile manifestPath: String) -> ParsedBundleManifest? {
+        guard let manifest = readManifest(in: (manifestPath as NSString).deletingLastPathComponent) else {
+            return nil
+        }
+
+        return parseBundleManifest(from: manifest)
+    }
+
+    private func writeManifestFile(_ manifest: ParsedBundleManifest, to destination: String) throws {
+        let manifestDirectory = (destination as NSString).deletingLastPathComponent
+        guard fileSystem.createDirectory(atPath: manifestDirectory) else {
+            throw BundleStorageError.directoryCreationFailed
+        }
+
+        let assets = manifest.assets
+            .sorted { $0.key < $1.key }
+            .reduce(into: [String: [String: String]]()) { partialResult, entry in
+                var assetPayload = ["fileHash": entry.value.fileHash]
+                if let signature = entry.value.signature, !signature.isEmpty {
+                    assetPayload["signature"] = signature
+                }
+                partialResult[entry.key] = assetPayload
+            }
+        let payload: [String: Any] = [
+            "bundleId": manifest.bundleId,
+            "assets": assets,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted])
+        try data.write(to: URL(fileURLWithPath: destination))
     }
 
     /**
@@ -647,6 +1235,28 @@ class BundleFileStorageService: BundleStorageService {
             }
         }
         DispatchQueue.global(qos: .background).async(execute: workItem)
+    }
+
+    private func downloadFileSynchronously(
+        from url: URL,
+        to destination: String,
+        progressHandler: @escaping (DownloadProgress) -> Void
+    ) -> Result<URL, Error> {
+        let semaphore = DispatchSemaphore(value: 0)
+        var finalResult: Result<URL, Error> = .failure(BundleStorageError.unknown(nil))
+
+        _ = downloadService.downloadFile(
+            from: url,
+            to: destination,
+            fileSizeHandler: nil,
+            progressHandler: progressHandler
+        ) { result in
+            finalResult = result
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return finalResult
     }
     
     // MARK: - Bundle File Operations
@@ -881,7 +1491,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, progressHandler: @escaping (Double) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
+    func updateBundle(bundleId: String, fileUrl: URL?, fileHash: String?, manifestUrl: URL?, manifestFileHash: String?, changedAssets: [String: ChangedAssetDescriptor]?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<Bool, Error>) -> Void) {
         // Check if bundle is in crashed history
         let crashedHistory = loadCrashedHistory()
         if crashedHistory.contains(bundleId) {
@@ -944,7 +1554,10 @@ class BundleFileStorageService: BundleStorageService {
                             let _ = self.saveMetadata(updatedMetadata)
                             NSLog("[BundleStorage] Set staging bundle (cached): \(bundleId), verificationPending: true")
 
-                            progressHandler(UpdateProgress.complete)
+                            self.emitArchiveProgress(
+                                progressHandler: progressHandler,
+                                progress: UpdateProgress.complete
+                            )
                             self.scheduleCleanupOldBundles(
                                 bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
                             )
@@ -958,7 +1571,27 @@ class BundleFileStorageService: BundleStorageService {
                         do {
                             try self.fileSystem.removeItem(atPath: finalBundleDir)
                             // Continue with download process on success
-                            self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                            if let manifestUrl,
+                               let manifestFileHash,
+                               let changedAssets,
+                               self.canUseManifestDrivenInstall() {
+                                self.updateBundleFromManifest(
+                                    bundleId: bundleId,
+                                    fileUrl: validFileUrl,
+                                    fileHash: fileHash,
+                                    manifestUrl: manifestUrl,
+                                    manifestFileHash: manifestFileHash,
+                                    changedAssets: changedAssets,
+                                    storeDir: storeDir,
+                                    progressHandler: progressHandler,
+                                    completion: completion
+                                )
+                            } else {
+                                if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
+                                    NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
+                                }
+                                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                            }
                         } catch let error {
                             NSLog("[BundleStorage] Failed to remove invalid bundle dir: \(error.localizedDescription)")
                             completion(.failure(BundleStorageError.unknown(error)))
@@ -968,7 +1601,27 @@ class BundleFileStorageService: BundleStorageService {
                     completion(.failure(error))
                 }
             } else {
-                self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                if let manifestUrl,
+                   let manifestFileHash,
+                   let changedAssets,
+                   self.canUseManifestDrivenInstall() {
+                    self.updateBundleFromManifest(
+                        bundleId: bundleId,
+                        fileUrl: validFileUrl,
+                        fileHash: fileHash,
+                        manifestUrl: manifestUrl,
+                        manifestFileHash: manifestFileHash,
+                        changedAssets: changedAssets,
+                        storeDir: storeDir,
+                        progressHandler: progressHandler,
+                        completion: completion
+                    )
+                } else {
+                    if manifestUrl != nil && manifestFileHash != nil && changedAssets != nil {
+                        NSLog("[BundleStorage] Skipping manifest-driven install for \(bundleId) because no active OTA manifest is available. Using archive.")
+                    }
+                    self.prepareAndDownloadBundle(bundleId: bundleId, fileUrl: validFileUrl, fileHash: fileHash, storeDir: storeDir, progressHandler: progressHandler, completion: completion)
+                }
             }
         }
     }
@@ -983,12 +1636,391 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress
      * @param completion Callback with result of the operation
      */
+    private func updateBundleFromManifest(
+        bundleId: String,
+        fileUrl: URL,
+        fileHash: String?,
+        manifestUrl: URL,
+        manifestFileHash: String,
+        changedAssets: [String: ChangedAssetDescriptor],
+        storeDir: String,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
+        completion: @escaping (Result<Bool, Error>) -> Void
+    ) {
+        let tempDirResult = tempDir()
+        guard case .success(let tempDirectory) = tempDirResult else {
+            completion(.failure(tempDirResult.failureError ?? BundleStorageError.unknown(nil)))
+            return
+        }
+
+        try? self.fileSystem.removeItem(atPath: tempDirectory)
+        guard self.fileSystem.createDirectory(atPath: tempDirectory) else {
+            completion(.failure(BundleStorageError.directoryCreationFailed))
+            return
+        }
+
+        let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
+        let currentBundleDir = currentBundleId.map {
+            (storeDir as NSString).appendingPathComponent($0)
+        }
+        let tempManifestPath = (tempDirectory as NSString).appendingPathComponent("manifest.json")
+        let tmpDir = (storeDir as NSString).appendingPathComponent("\(bundleId).tmp")
+        let realDir = (storeDir as NSString).appendingPathComponent(bundleId)
+        var diffFiles = createDiffProgressFiles(changedAssets: changedAssets)
+
+        do {
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "manifest",
+                files: diffFiles,
+                manifestProgress: 0
+            )
+            switch self.downloadFileSynchronously(
+                from: manifestUrl,
+                to: tempManifestPath,
+                progressHandler: { progress in
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "manifest",
+                        files: diffFiles,
+                        manifestProgress: progress.progress
+                    )
+                }
+            ) {
+            case .success:
+                break
+            case .failure(let error):
+                if let downloadError = error as? DownloadError,
+                   case .incompleteDownload(let expected, let actual) = downloadError {
+                    throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
+                }
+                throw BundleStorageError.downloadFailed(error)
+            }
+
+            let manifestVerificationResult = SignatureVerifier.verifyBundle(
+                fileURL: URL(fileURLWithPath: tempManifestPath),
+                fileHash: manifestFileHash
+            )
+            guard case .success = manifestVerificationResult else {
+                if case .failure(let error) = manifestVerificationResult {
+                    throw BundleStorageError.signatureVerificationFailed(error)
+                }
+                throw BundleStorageError.unknown(nil)
+            }
+
+            guard let manifestData = try? Data(contentsOf: URL(fileURLWithPath: tempManifestPath)),
+                  let manifestJson = try JSONSerialization.jsonObject(with: manifestData) as? [String: Any],
+                  let targetManifest = parseBundleManifest(from: manifestJson),
+                  targetManifest.bundleId == bundleId
+            else {
+                throw BundleStorageError.invalidBundle
+            }
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: diffFiles.isEmpty ? "finalizing" : "downloading",
+                files: diffFiles
+            )
+
+            let currentManifest = getActiveBundleMetadataSnapshot().flatMap { snapshot in
+                parseBundleManifest(from: snapshot.manifest)
+            }
+
+            if self.fileSystem.fileExists(atPath: tmpDir) {
+                try self.fileSystem.removeItem(atPath: tmpDir)
+            }
+            guard self.fileSystem.createDirectory(atPath: tmpDir) else {
+                throw BundleStorageError.directoryCreationFailed
+            }
+
+            let sortedAssets = targetManifest.assets.sorted { $0.key < $1.key }
+
+            for asset in sortedAssets {
+                let assetPath = asset.key
+                let expectedAsset = asset.value
+                let expectedHash = expectedAsset.fileHash
+                let destinationPath = (tmpDir as NSString).appendingPathComponent(assetPath)
+                let destinationDir = (destinationPath as NSString).deletingLastPathComponent
+                guard self.fileSystem.createDirectory(atPath: destinationDir) else {
+                    throw BundleStorageError.directoryCreationFailed
+                }
+
+                if currentManifest?.assets[assetPath]?.fileHash == expectedHash {
+                    guard let currentBundleDir,
+                          self.fileSystem.fileExists(atPath: currentBundleDir)
+                    else {
+                        throw BundleStorageError.downloadFailed(
+                            NSError(domain: "HotUpdater", code: 0, userInfo: [
+                                NSLocalizedDescriptionKey: "Current bundle directory unavailable for reused asset: \(assetPath)"
+                            ])
+                        )
+                    }
+
+                    let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
+                    guard self.fileSystem.fileExists(atPath: sourcePath),
+                          HashUtils.verifyHash(fileURL: URL(fileURLWithPath: sourcePath), expectedHash: expectedHash)
+                    else {
+                        throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+                    }
+
+                    try self.fileSystem.copyItem(atPath: sourcePath, toPath: destinationPath)
+                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                    continue
+                }
+
+                guard let changedAsset = changedAssets[assetPath] else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
+                    throw BundleStorageError.downloadFailed(
+                        NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Changed asset missing from update response: \(assetPath)"
+                        ])
+                    )
+                }
+
+                guard changedAsset.fileHash.caseInsensitiveCompare(expectedHash) == .orderedSame else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
+                    throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
+                }
+
+                let patched = applyPatchAssetIfPossible(
+                    assetPath: assetPath,
+                    changedAsset: changedAsset,
+                    currentBundleId: currentBundleId,
+                    currentBundleDir: currentBundleDir,
+                    destinationPath: destinationPath,
+                    expectedHash: expectedHash,
+                    tempDirectory: tempDirectory,
+                    files: &diffFiles,
+                    progressHandler: progressHandler
+                )
+                if patched {
+                    try verifyManifestAssetFile(atPath: destinationPath, asset: expectedAsset)
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "downloaded",
+                        progress: 1
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                            ? "finalizing"
+                            : "downloading",
+                        files: diffFiles
+                    )
+                    continue
+                }
+
+                guard let changedAssetFileUrl = changedAsset.fileUrl else {
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: 0
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
+                    throw BundleStorageError.downloadFailed(
+                        NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Changed asset fileUrl missing and patch could not be applied: \(assetPath)"
+                        ])
+                    )
+                }
+
+                let changedAssetDownloadPath = downloadPath(
+                    assetPath: assetPath,
+                    changedAsset: changedAsset
+                )
+                let downloadDestinationPath: String
+                if changedAsset.fileCompression == "br" {
+                    downloadDestinationPath = compressedTempPath(
+                        tempDirectory: tempDirectory,
+                        assetPath: assetPath,
+                        compression: "br"
+                    )
+                } else {
+                    downloadDestinationPath = destinationPath
+                }
+
+                switch self.downloadFileSynchronously(
+                    from: changedAssetFileUrl,
+                    to: downloadDestinationPath,
+                    progressHandler: { progress in
+                        self.updateDiffProgressFile(
+                            files: &diffFiles,
+                            assetPath: assetPath,
+                            status: "downloading",
+                            progress: progress.progress,
+                            downloadPath: changedAssetDownloadPath,
+                            downloadedBytes: progress.downloadedBytes,
+                            totalBytes: progress.totalBytes
+                        )
+                        self.emitDiffProgress(
+                            progressHandler: progressHandler,
+                            phase: "downloading",
+                            files: diffFiles
+                        )
+                    }
+                ) {
+                case .success(let downloadedFileURL):
+                    do {
+                        try materializeDownloadedAsset(
+                            downloadedPath: downloadedFileURL.path,
+                            destinationPath: destinationPath,
+                            changedAsset: changedAsset
+                        )
+                        try verifyManifestAssetFile(
+                            atPath: destinationPath,
+                            asset: expectedAsset
+                        )
+                    } catch {
+                        updateDiffProgressFile(
+                            files: &diffFiles,
+                            assetPath: assetPath,
+                            status: "failed",
+                            progress: 1
+                        )
+                        self.emitDiffProgress(
+                            progressHandler: progressHandler,
+                            phase: "downloading",
+                            files: diffFiles
+                        )
+                        throw error
+                    }
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "downloaded",
+                        progress: 1
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: diffFiles.allSatisfy { $0.status == "downloaded" }
+                            ? "finalizing"
+                            : "downloading",
+                        files: diffFiles
+                    )
+                case .failure(let error):
+                    let lastKnownProgress = diffFiles.first(where: { $0.path == assetPath })?.progress ?? 0
+                    updateDiffProgressFile(
+                        files: &diffFiles,
+                        assetPath: assetPath,
+                        status: "failed",
+                        progress: lastKnownProgress
+                    )
+                    self.emitDiffProgress(
+                        progressHandler: progressHandler,
+                        phase: "downloading",
+                        files: diffFiles
+                    )
+                    if let downloadError = error as? DownloadError,
+                       case .incompleteDownload(let expected, let actual) = downloadError {
+                        throw BundleStorageError.incompleteDownload(expected: expected, actual: actual)
+                    }
+                    throw BundleStorageError.downloadFailed(error)
+                }
+            }
+
+            self.emitDiffProgress(
+                progressHandler: progressHandler,
+                phase: "finalizing",
+                files: diffFiles
+            )
+
+            let manifestDestination = (tmpDir as NSString).appendingPathComponent("manifest.json")
+            try writeManifestFile(targetManifest, to: manifestDestination)
+
+            switch self.findBundleFile(in: tmpDir) {
+            case .success(let maybeBundlePath):
+                guard let bundlePathInTmp = maybeBundlePath else {
+                    throw BundleStorageError.invalidBundle
+                }
+
+                if self.fileSystem.fileExists(atPath: realDir) {
+                    try self.fileSystem.removeItem(atPath: realDir)
+                }
+
+                do {
+                    try self.fileSystem.moveItem(atPath: tmpDir, toPath: realDir)
+                } catch {
+                    throw BundleStorageError.moveOperationFailed(error)
+                }
+
+                let finalBundlePath = (realDir as NSString).appendingPathComponent(
+                    (bundlePathInTmp as NSString).lastPathComponent
+                )
+                switch self.setBundleURL(localPath: finalBundlePath) {
+                case .success:
+                    let currentMetadata = self.loadMetadataOrNull() ?? self.createInitialMetadata()
+                    let updatedMetadata = self.prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId)
+                    let _ = self.saveMetadata(updatedMetadata)
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    self.scheduleCleanupOldBundles(
+                        bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
+                    )
+                    progressHandler(
+                        UpdateProgressPayload(
+                            progress: UpdateProgress.complete,
+                            artifactType: "diff",
+                            details: UpdateProgressPayload.DiffProgressDetails(
+                                totalFilesCount: diffFiles.count,
+                                completedFilesCount: diffFiles.filter { $0.status == "downloaded" }.count,
+                                files: diffFiles
+                            )
+                        )
+                    )
+                    completion(.success(true))
+                case .failure(let error):
+                    try? self.fileSystem.removeItem(atPath: realDir)
+                    self.cleanupTemporaryFiles([tempDirectory])
+                    completion(.failure(error))
+                }
+            case .failure(let error):
+                throw error
+            }
+        } catch {
+            NSLog("[BundleStorage] Manifest-driven install failed: \(error.localizedDescription). Falling back to archive.")
+            try? self.fileSystem.removeItem(atPath: tmpDir)
+            self.cleanupTemporaryFiles([tempDirectory])
+            self.prepareAndDownloadBundle(
+                bundleId: bundleId,
+                fileUrl: fileUrl,
+                fileHash: fileHash,
+                storeDir: storeDir,
+                progressHandler: progressHandler,
+                completion: completion
+            )
+        }
+    }
+
     private func prepareAndDownloadBundle(
         bundleId: String,
         fileUrl: URL,
         fileHash: String?,
         storeDir: String,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         // 1) Prepare temp directory for download
@@ -1019,10 +2051,8 @@ class BundleFileStorageService: BundleStorageService {
         _ = self.downloadService.downloadFile(
             from: fileUrl,
             to: tempBundleFile,
-            fileSizeHandler: { [weak self] fileSize in
+            fileSizeHandler: { fileSize in
                 // This will be called when Content-Length is received
-                guard let self = self else { return }
-
                 NSLog("[BundleStorage] File size received: \(fileSize) bytes")
 
                 // Check available disk space
@@ -1044,7 +2074,16 @@ class BundleFileStorageService: BundleStorageService {
                 }
             },
             progressHandler: { downloadProgress in
-                progressHandler(Self.mapProgress(downloadProgress, start: 0, end: UpdateProgress.downloadEnd))
+                self.emitArchiveProgress(
+                    progressHandler: progressHandler,
+                    progress: Self.mapProgress(
+                        downloadProgress.progress,
+                        start: 0,
+                        end: UpdateProgress.downloadEnd
+                    ),
+                    downloadedBytes: downloadProgress.downloadedBytes,
+                    totalBytes: downloadProgress.totalBytes
+                )
             },
             completion: { [weak self] result in
             guard let self = self else {
@@ -1140,7 +2179,7 @@ class BundleFileStorageService: BundleStorageService {
         storeDir: String,
         bundleId: String,
         tempDirectory: String,
-        progressHandler: @escaping (Double) -> Void,
+        progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
         let currentBundleId = self.getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
@@ -1178,13 +2217,19 @@ class BundleFileStorageService: BundleStorageService {
 
             // 5) Verify bundle integrity (hash or signature based on fileHash format)
             NSLog("[BundleStorage] Verifying bundle integrity...")
-            progressHandler(UpdateProgress.verificationStart)
+            self.emitArchiveProgress(
+                progressHandler: progressHandler,
+                progress: UpdateProgress.verificationStart
+            )
             let tempBundleURL = URL(fileURLWithPath: tempBundleFile)
             let verificationResult = SignatureVerifier.verifyBundle(fileURL: tempBundleURL, fileHash: fileHash)
             switch verificationResult {
             case .success:
                 NSLog("[BundleStorage] Bundle verification completed successfully")
-                progressHandler(UpdateProgress.verificationEnd)
+                self.emitArchiveProgress(
+                    progressHandler: progressHandler,
+                    progress: UpdateProgress.verificationEnd
+                )
             case .failure(let error):
                 NSLog("[BundleStorage] Bundle verification failed: \(error)")
                 try? self.fileSystem.removeItem(atPath: tmpDir)
@@ -1198,12 +2243,14 @@ class BundleFileStorageService: BundleStorageService {
             logFileSystemDiagnostics(path: tempBundleFile, context: "Before Extraction")
             do {
                 try self.decompressService.unzip(file: tempBundleFile, to: tmpDir, progressHandler: { unzipProgress in
-                    let progress = Self.mapProgress(
-                        unzipProgress,
-                        start: UpdateProgress.extractionStart,
-                        end: UpdateProgress.extractionEnd
+                    self.emitArchiveProgress(
+                        progressHandler: progressHandler,
+                        progress: Self.mapProgress(
+                            unzipProgress,
+                            start: UpdateProgress.extractionStart,
+                            end: UpdateProgress.extractionEnd
+                        )
                     )
-                    progressHandler(progress)
                 })
                 NSLog("[BundleStorage] Extraction complete at \(tmpDir)")
                 logFileSystemDiagnostics(path: tmpDir, context: "After Extraction")
@@ -1221,7 +2268,10 @@ class BundleFileStorageService: BundleStorageService {
             try? self.fileSystem.removeItem(atPath: tempBundleFile)
 
             // 8) Verify that a valid bundle file exists inside tmpDir
-            progressHandler(UpdateProgress.bundleValidation)
+            self.emitArchiveProgress(
+                progressHandler: progressHandler,
+                progress: UpdateProgress.bundleValidation
+            )
             switch self.findBundleFile(in: tmpDir) {
             case .success(let maybeBundlePath):
                 if let bundlePathInTmp = maybeBundlePath {
@@ -1265,13 +2315,19 @@ class BundleFileStorageService: BundleStorageService {
                         // 14) Clean up the temporary directory
                         self.cleanupTemporaryFiles([tempDirectory])
 
-                        progressHandler(UpdateProgress.activationReady)
+                        self.emitArchiveProgress(
+                            progressHandler: progressHandler,
+                            progress: UpdateProgress.activationReady
+                        )
                         self.scheduleCleanupOldBundles(
                             bundleIdsToKeep: [currentBundleId, updatedMetadata.stableBundleId, bundleId].compactMap { $0 }
                         )
 
                         // 15) Complete with success
-                        progressHandler(UpdateProgress.complete)
+                        self.emitArchiveProgress(
+                            progressHandler: progressHandler,
+                            progress: UpdateProgress.complete
+                        )
                         completion(.success(true))
                     case .failure(let err):
                         let nsError = err as NSError
@@ -1372,41 +2428,31 @@ class BundleFileStorageService: BundleStorageService {
      * Returns the file:// URL to the bundle directory without trailing slash
      */
     func getBaseURL() -> String {
-        do {
-            if let bundleId = getActiveBundleId() {
-                if case .success(let storeDir) = bundleStoreDir() {
-                    let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-                    if fileSystem.fileExists(atPath: bundleDir) {
-                        return "file://\(bundleDir)"
-                    }
+        if let bundleId = getActiveBundleId() {
+            if case .success(let storeDir) = bundleStoreDir() {
+                let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+                if fileSystem.fileExists(atPath: bundleDir) {
+                    return "file://\(bundleDir)"
                 }
             }
-
-            return ""
-        } catch {
-            NSLog("[BundleStorage] Error getting base URL: \(error)")
-            return ""
         }
+
+        return ""
     }
 
     func getBaseURL(forBundleId bundleId: String?) -> String {
-        do {
-            guard let bundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !bundleId.isEmpty,
-                  case .success(let storeDir) = bundleStoreDir() else {
-                return ""
-            }
-
-            let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
-            guard fileSystem.fileExists(atPath: bundleDir) else {
-                return ""
-            }
-
-            return "file://\(bundleDir)"
-        } catch {
-            NSLog("[BundleStorage] Error getting base URL for bundle \(bundleId ?? "nil"): \(error)")
+        guard let bundleId = bundleId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !bundleId.isEmpty,
+              case .success(let storeDir) = bundleStoreDir() else {
             return ""
         }
+
+        let bundleDir = (storeDir as NSString).appendingPathComponent(bundleId)
+        guard fileSystem.fileExists(atPath: bundleDir) else {
+            return ""
+        }
+
+        return "file://\(bundleDir)"
     }
 
     func getBundleId() -> String? {

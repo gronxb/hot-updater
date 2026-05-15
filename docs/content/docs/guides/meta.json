@@ -5,6 +5,7 @@
   "pages": [
     "deploy",
     "custom-update",
+    "bundle-diffing",
     "rollout-cohorts",
     "console",
     "ai-agents",
