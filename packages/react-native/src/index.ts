@@ -85,6 +85,16 @@ const registerGlobalGetBaseURL = () => {
 // Call registration immediately on module load
 registerGlobalGetBaseURL();
 
+type HotUpdaterWrap = {
+  (options: AutoUpdateOptions): ReturnType<typeof wrap>;
+  /**
+   * @deprecated `HotUpdater.wrap({ updateMode: "manual" })` is deprecated.
+   * Use `HotUpdater.init(...)`, export your root component directly, and call
+   * `HotUpdater.checkForUpdate(...)` when your manual flow needs it.
+   */
+  (options: ManualUpdateOptions): ReturnType<typeof wrap>;
+};
+
 const isManualWrapOptions = (
   options: HotUpdaterOptions,
 ): options is ManualUpdateOptions =>
@@ -550,4 +560,11 @@ function createHotUpdaterClient() {
   };
 }
 
-export const HotUpdater = createHotUpdaterClient();
+type HotUpdaterClient = Omit<
+  ReturnType<typeof createHotUpdaterClient>,
+  "wrap"
+> & {
+  wrap: HotUpdaterWrap;
+};
+
+export const HotUpdater: HotUpdaterClient = createHotUpdaterClient();
