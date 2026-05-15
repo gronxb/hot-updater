@@ -1,5 +1,12 @@
 # @hot-updater/core
 
+## 0.31.0
+
+### Minor Changes
+
+- 5b0a0f5: Add signed manifest-based diff update support across deploy, server, provider storage, console tooling, and React Native runtime.
+- 5b0a0f5: Add Hermes bundle patch metadata and runtime BSDIFF patch application support.
+
 ## 0.30.12
 
 ## 0.30.11
