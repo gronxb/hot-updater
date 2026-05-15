@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/bsdiff",
-  "version": "0.30.11",
+  "version": "0.30.12",
   "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
   "type": "module",
   "main": "./dist/node.js",

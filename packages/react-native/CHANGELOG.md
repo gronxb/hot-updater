@@ -1,5 +1,21 @@
 # @hot-updater/react-native
 
+## 0.30.12
+
+### Patch Changes
+
+- 1498fe3: feat(react-native): support dynamic `baseURL` resolvers for `HotUpdater.init`
+  and `HotUpdater.wrap`
+
+  `baseURL` can now be a string or a function returning a string or promise. The
+  default resolver calls the function before each update check so apps can resolve
+  the update server URL at runtime.
+
+  - @hot-updater/cli-tools@0.30.12
+  - @hot-updater/core@0.30.12
+  - @hot-updater/js@0.30.12
+  - @hot-updater/plugin-core@0.30.12
+
 ## 0.30.11
 
 ### Patch Changes
