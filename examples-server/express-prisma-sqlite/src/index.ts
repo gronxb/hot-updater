@@ -6,6 +6,15 @@ import { toNodeHandler } from "@hot-updater/server/node";
 const app = express();
 const port = process.env.PORT || 3002;
 
+const authorizeBundleRequest = (req: express.Request) => {
+  if (process.env.NODE_ENV === "test") {
+    return true;
+  }
+
+  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
+  return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -16,6 +25,14 @@ app.get("/", (_req, res) => {
 });
 
 // Hot Updater routes
+app.use("/hot-updater/api", (req, res, next) => {
+  if (!authorizeBundleRequest(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+});
 app.all("/hot-updater/*", toNodeHandler(hotUpdater));
 
 // Shutdown endpoint for testing

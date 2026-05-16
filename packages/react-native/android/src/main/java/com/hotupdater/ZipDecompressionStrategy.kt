@@ -117,21 +117,16 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                     ZipInputStream(bufferedInputStream).use { zipInputStream ->
                         var entry: ZipEntry? = zipInputStream.nextEntry
                         while (entry != null) {
-                            val file = File(destinationPath, entry.name)
-
-                            // Zip Slip vulnerability check - verify entry path is within destination
-                            try {
-                                val canonicalDestPath = destinationDir.canonicalPath
-                                val canonicalFilePath = file.canonicalPath
-
-                                if (!canonicalFilePath.startsWith(canonicalDestPath)) {
-                                    Log.w(TAG, "Skipping potentially malicious zip entry: ${entry.name}")
-                                    entry = zipInputStream.nextEntry
-                                    continue
+                            val file =
+                                try {
+                                    PathSecurity.resolveInside(destinationDir, entry.name)
+                                } catch (e: IOException) {
+                                    Log.w(TAG, "Failed to resolve canonical path for zip entry: ${entry.name}", e)
+                                    null
                                 }
-                            } catch (e: IOException) {
-                                // If we can't resolve canonical paths, treat as potentially malicious
-                                Log.w(TAG, "Failed to resolve canonical path for zip entry: ${entry.name}", e)
+
+                            if (file == null) {
+                                Log.w(TAG, "Skipping potentially malicious zip entry: ${entry.name}")
                                 entry = zipInputStream.nextEntry
                                 continue
                             }

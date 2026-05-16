@@ -53,6 +53,14 @@ export interface HandlerOptions {
    */
   basePath?: string;
   routes?: HandlerRoutes;
+  /**
+   * Authorizes bundle management requests when `routes.bundles` is enabled.
+   * Public update-check and version routes do not call this hook.
+   */
+  authorizeBundleRequest?: (
+    request: Request,
+    context?: HotUpdaterContext<unknown>,
+  ) => boolean | Promise<boolean>;
 }
 
 export interface HandlerRoutes {
@@ -71,7 +79,7 @@ export interface HandlerRoutes {
    * Controls whether bundle management routes are mounted.
    * This includes `/api/bundles*`, which are used by the
    * CLI `standaloneRepository` plugin.
-   * @default true
+   * @default false
    */
   bundles?: boolean;
 }
@@ -92,6 +100,16 @@ class HandlerBadRequestError extends Error {
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
+const DEFAULT_BUNDLE_LIST_LIMIT = 50;
+const MAX_BUNDLE_LIST_LIMIT = 100;
+const BUNDLE_MANAGEMENT_ROUTES = new Set([
+  "getBundle",
+  "getBundles",
+  "createBundles",
+  "updateBundle",
+  "deleteBundle",
+  "getChannels",
+]);
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
@@ -189,6 +207,27 @@ const parseNullableStringSearchParam = (
 const parseStringArraySearchParam = (url: URL, key: string) => {
   const values = url.searchParams.getAll(key);
   return values.length > 0 ? values : undefined;
+};
+
+const parsePositiveIntegerSearchParam = (
+  url: URL,
+  key: string,
+  defaultValue: number,
+  maxValue: number,
+): number => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maxValue) {
+    throw new HandlerBadRequestError(
+      `The '${key}' query parameter must be a positive integer between 1 and ${maxValue}.`,
+    );
+  }
+
+  return parsed;
 };
 
 const requirePlatformParam = (params: Record<string, string>): Platform => {
@@ -317,7 +356,12 @@ const handleGetBundles: RouteHandler = async (
   const url = new URL(request.url);
   const channel = url.searchParams.get("channel") ?? undefined;
   const platform = url.searchParams.get("platform");
-  const limit = Number(url.searchParams.get("limit")) || 50;
+  const limit = parsePositiveIntegerSearchParam(
+    url,
+    "limit",
+    DEFAULT_BUNDLE_LIST_LIMIT,
+    MAX_BUNDLE_LIST_LIMIT,
+  );
   const pageParam = url.searchParams.get("page");
   const offset = url.searchParams.get("offset");
   const after = url.searchParams.get("after") ?? undefined;
@@ -513,7 +557,7 @@ export function createHandler<TContext = unknown>(
   const basePath = options.basePath ?? "/api";
   const updateCheckEnabled = options.routes?.updateCheck ?? true;
   const versionEnabled = options.routes?.version ?? true;
-  const bundlesEnabled = options.routes?.bundles ?? true;
+  const bundlesEnabled = options.routes?.bundles ?? false;
 
   // Create and configure router
   const router = createRouter();
@@ -584,7 +628,21 @@ export function createHandler<TContext = unknown>(
       }
 
       // Get handler and execute
-      const handler = routes[match.data as string] as RouteHandler<TContext>;
+      const routeName = match.data as string;
+      if (BUNDLE_MANAGEMENT_ROUTES.has(routeName)) {
+        const authorized = await options.authorizeBundleRequest?.(
+          request,
+          context as HotUpdaterContext<unknown> | undefined,
+        );
+        if (!authorized) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const handler = routes[routeName] as RouteHandler<TContext>;
       if (!handler) {
         return new Response(JSON.stringify({ error: "Handler not found" }), {
           status: 500,

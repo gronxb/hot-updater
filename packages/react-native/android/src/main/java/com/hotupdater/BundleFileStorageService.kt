@@ -391,7 +391,7 @@ class BundleFileStorageService(
         }
 
         val sourceDir = activeBundleDir ?: return false
-        val sourceFile = File(sourceDir, assetPath)
+        val sourceFile = PathSecurity.resolveInside(sourceDir, assetPath) ?: return false
         if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, patch.baseFileHash)) {
             return false
         }
@@ -735,11 +735,15 @@ class BundleFileStorageService(
             if (assetPath !is String) {
                 return null
             }
+            val normalizedAssetPath = PathSecurity.normalizeRelativePath(assetPath)
+            if (normalizedAssetPath == null || normalizedAssetPath != assetPath) {
+                return null
+            }
 
             val assetMap = assetValue as? Map<*, *> ?: return null
             val fileHash = assetMap["fileHash"] as? String ?: return null
             val signature = assetMap["signature"] as? String
-            assets[assetPath] =
+            assets[normalizedAssetPath] =
                 ParsedManifestAsset(
                     fileHash = fileHash,
                     signature = signature?.takeIf { it.isNotBlank() },
@@ -1523,7 +1527,9 @@ class BundleFileStorageService(
             val targetEntries = targetManifest.assets.entries.toList()
             targetEntries.forEachIndexed { index, (assetPath, expectedAsset) ->
                 val expectedHash = expectedAsset.fileHash
-                val targetFile = File(tmpDir, assetPath)
+                val targetFile =
+                    PathSecurity.resolveInside(tmpDir, assetPath)
+                        ?: throw HotUpdaterException.invalidBundle()
                 val currentAsset = currentManifest?.assets?.get(assetPath)
 
                 if (currentAsset?.fileHash == expectedHash) {
@@ -1532,7 +1538,9 @@ class BundleFileStorageService(
                             ?: throw HotUpdaterException.downloadFailed(
                                 IllegalStateException("Current bundle directory unavailable for reused asset: $assetPath"),
                             )
-                    val sourceFile = File(sourceDir, assetPath)
+                    val sourceFile =
+                        PathSecurity.resolveInside(sourceDir, assetPath)
+                            ?: throw HotUpdaterException.invalidBundle()
                     if (!sourceFile.exists() || !HashUtils.verifyHash(sourceFile, expectedHash)) {
                         throw HotUpdaterException.downloadFailed(
                             IllegalStateException("Reusable asset missing or corrupted: $assetPath"),

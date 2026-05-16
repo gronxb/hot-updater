@@ -84,16 +84,14 @@ enum ArchiveExtractionUtilities {
     }
 
     static func normalizedRelativePath(from rawPath: String) -> String? {
-        var candidate = rawPath
-            .replacingOccurrences(of: "\\", with: "/")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        while candidate.hasPrefix("/") {
-            candidate.removeFirst()
-        }
-
-        while candidate.hasPrefix("./") {
-            candidate.removeFirst(2)
+        let candidate = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty,
+              !candidate.contains("\0"),
+              !candidate.contains("\\"),
+              !candidate.hasPrefix("/"),
+              candidate.range(of: #"^[A-Za-z]:"#, options: .regularExpression) == nil
+        else {
+            return nil
         }
 
         let components = candidate
@@ -104,7 +102,9 @@ enum ArchiveExtractionUtilities {
             return nil
         }
 
-        guard !components.contains(".."), !components.contains(".") else {
+        guard components.count == candidate.split(separator: "/", omittingEmptySubsequences: false).count,
+              !components.contains(".."),
+              !components.contains(".") else {
             return nil
         }
 

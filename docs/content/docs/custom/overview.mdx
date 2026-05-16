@@ -94,11 +94,14 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 
 ## Route Groups
 
-`createHotUpdater` mounts three route groups by default:
+`createHotUpdater` exposes three route groups:
 
 - `updateCheck`: update-check endpoints used by React Native clients
 - `version`: lightweight `/version` endpoint for diagnostics and health checks
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
+
+`updateCheck` and `version` are mounted by default. `bundles` is disabled by
+default and requires an authorization hook when enabled.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
@@ -110,6 +113,8 @@ export const hotUpdater = createHotUpdater({
     version: true,
     bundles: true,
   },
+  authorizeBundleRequest: (request) =>
+    request.headers.get("Authorization") === `Bearer ${process.env.API_KEY}`,
 });
 ```
 

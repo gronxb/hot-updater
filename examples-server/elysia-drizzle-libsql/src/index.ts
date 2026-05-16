@@ -4,6 +4,23 @@ import { closeDatabase, hotUpdater } from "./db.js";
 
 const port = Number(process.env.PORT) || 3001;
 
+const authorizeBundleRequest = (request: Request) => {
+  if (process.env.NODE_ENV === "test") {
+    return true;
+  }
+
+  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
+  return (
+    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
+  );
+};
+
+const unauthorizedResponse = () =>
+  new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+
 try {
   const app = new Elysia({ adapter: node() })
     .get("/", () => ({
@@ -17,7 +34,16 @@ try {
       setTimeout(() => process.exit(0), 100);
       return { status: "shutting down" };
     })
-    .mount("/hot-updater", hotUpdater.handler)
+    .all("/hot-updater/*", ({ request }) => {
+      if (
+        new URL(request.url).pathname.startsWith("/hot-updater/api/") &&
+        !authorizeBundleRequest(request)
+      ) {
+        return unauthorizedResponse();
+      }
+
+      return hotUpdater.handler(request);
+    })
     .listen(port);
 
   console.log(`

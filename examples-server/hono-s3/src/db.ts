@@ -1,9 +1,10 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 import { s3Database, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { config } from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,11 +35,13 @@ const options =
         bucketName: process.env.R2_BUCKET_NAME!,
       };
 
-
 export const hotUpdater = createHotUpdater({
   database: s3Database(options),
   storages: [mockStorage({}), s3Storage(options)],
   basePath: "/hot-updater",
+  routes: {
+    bundles: true,
+  },
 });
 
 export async function closeDatabase() {

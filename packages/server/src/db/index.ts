@@ -6,7 +6,11 @@ import type {
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
 export * from "./createBundleDiff";
-import { createHandler, type HandlerRoutes } from "../handler";
+import {
+  createHandler,
+  type HandlerOptions,
+  type HandlerRoutes,
+} from "../handler";
 import { normalizeBasePath } from "../route";
 import { createStorageAccess } from "../storageAccess";
 import {
@@ -57,6 +61,7 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
   basePath?: string;
   cwd?: string;
   routes?: HandlerRoutes;
+  authorizeBundleRequest?: HandlerOptions["authorizeBundleRequest"];
 }
 
 export function createHotUpdater<TContext = unknown>(
@@ -108,6 +113,7 @@ export function createHotUpdater<TContext = unknown>(
     handler: createHandler(core.api, {
       basePath,
       routes: options.routes,
+      authorizeBundleRequest: options.authorizeBundleRequest,
     }),
     adapterName: core.adapterName,
     createMigrator: core.createMigrator,

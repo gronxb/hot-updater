@@ -57,16 +57,18 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-By default, `createHotUpdater` mounts update-check routes, `/version`, and the
-bundle management routes used by the CLI `standaloneRepository` plugin. If you
-want this server to keep `/version` but hide the bundle management routes, add:
+By default, `createHotUpdater` mounts update-check routes and `/version`.
+Bundle management routes used by the CLI `standaloneRepository` plugin must be
+enabled explicitly and protected:
 
 ```typescript title="src/hotUpdater.ts"
 routes: {
   updateCheck: true,
   version: true,
-  bundles: false,
+  bundles: true,
 },
+authorizeBundleRequest: (request) =>
+  request.headers.get("Authorization") === `Bearer ${process.env.API_KEY}`,
 ```
 
 ## Server Setup
@@ -97,9 +99,10 @@ Update-check routes must stay public for React Native clients:
 - `/hot-updater/app-version/*`
 - `/hot-updater/fingerprint/*`
 
-The bundle management routes under `/hot-updater/api/*` are used by the CLI and
-should be protected when `routes.bundles` is enabled. The server example above
-uses Bearer authentication for those routes.
+The bundle management routes under `/hot-updater/api/*` are used by the CLI.
+They are disabled unless `routes.bundles` is enabled, and
+`authorizeBundleRequest` must allow each management request. The server example
+above uses Bearer authentication for those routes.
 
 Set your API key in environment variables:
 

@@ -2,6 +2,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+
 import { client, db } from "./drizzle";
 
 // Create Hot Updater API
@@ -23,6 +24,9 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    bundles: true,
+  },
 });
 
 // Cleanup function for graceful shutdown

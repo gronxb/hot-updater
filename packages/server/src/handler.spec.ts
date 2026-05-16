@@ -51,6 +51,16 @@ const createApi = () =>
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
   }) satisfies HandlerAPI<TestContext>;
 
+const createManagementHandler = (api: HandlerAPI<TestContext>, routes = {}) =>
+  createHandler(api, {
+    basePath: "/hot-updater",
+    routes: {
+      bundles: true,
+      ...routes,
+    },
+    authorizeBundleRequest: () => true,
+  });
+
 describe("createHandler", () => {
   it("supports the app-version route without a cohort segment", async () => {
     const api = createApi();
@@ -218,6 +228,47 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(200);
   });
 
+  it("does not mount bundle routes by default", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const versionResponse = await handler(
+      new Request("http://localhost/hot-updater/version"),
+    );
+    const bundlesResponse = await handler(
+      new Request("http://localhost/hot-updater/api/bundles"),
+    );
+    const updateResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
+    expect(versionResponse.status).toBe(200);
+    expect(bundlesResponse.status).toBe(404);
+    expect(updateResponse.status).toBe(200);
+  });
+
+  it("requires authorization when bundle routes are enabled", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: {
+        bundles: true,
+      },
+    });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/bundles"),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unauthorized",
+    });
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
   it("can disable the version route independently", async () => {
     const api = createApi();
     const handler = createHandler(api, {
@@ -248,13 +299,7 @@ describe("createHandler", () => {
 
   it("can mount bundle routes without update-check routes", async () => {
     const api = createApi();
-    const handler = createHandler(api, {
-      basePath: "/hot-updater",
-      routes: {
-        updateCheck: false,
-        bundles: true,
-      },
-    });
+    const handler = createManagementHandler(api, { updateCheck: false });
 
     const versionResponse = await handler(
       new Request("http://localhost/hot-updater/version"),
@@ -294,7 +339,7 @@ describe("createHandler", () => {
         totalPages: 26,
       },
     });
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -339,7 +384,7 @@ describe("createHandler", () => {
         totalPages: 1,
       },
     });
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -382,7 +427,7 @@ describe("createHandler", () => {
         previousCursor: "bundle-9",
       },
     });
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -421,7 +466,7 @@ describe("createHandler", () => {
         previousCursor: null,
       },
     });
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -448,7 +493,7 @@ describe("createHandler", () => {
 
   it("returns 400 when bundle list requests still send offset pagination", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -478,7 +523,7 @@ describe("createHandler", () => {
         previousCursor: "bundle-9",
       },
     });
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request(
@@ -505,7 +550,7 @@ describe("createHandler", () => {
 
   it("returns 400 when bundle list requests send an invalid page", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request("http://localhost/hot-updater/api/bundles?limit=20&page=0"),
@@ -514,6 +559,22 @@ describe("createHandler", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
       error: "The 'page' query parameter must be a positive integer.",
+    });
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when bundle list limit exceeds the maximum", async () => {
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/bundles?limit=101"),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "The 'limit' query parameter must be a positive integer between 1 and 100.",
     });
     expect(api.getBundles).not.toHaveBeenCalled();
   });
