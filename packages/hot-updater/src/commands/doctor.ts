@@ -538,7 +538,9 @@ const checkAndroidNativeStatus = async ({
     const matchedFile = await findFirstMatchingFile({
       cwd,
       files: mainApplicationFiles,
-      patterns: [/HotUpdater\.getJSBundleFile\s*\(/],
+      patterns: [
+        /HotUpdater\s*(?:\.\s*Companion\s*)?\.\s*getJSBundleFile\s*\(/,
+      ],
     });
     bundleProviderConfigured = matchedFile !== null;
 

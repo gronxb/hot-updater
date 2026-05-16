@@ -741,6 +741,77 @@ describe("doctor", () => {
     });
   });
 
+  it("accepts Java Companion Android bundle provider calls", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.java",
+      ),
+      [
+        "import com.hotupdater.HotUpdater;",
+        "public class MainApplication {",
+        "  protected String getJSBundleFile() {",
+        "    return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          android: {
+            channel: "production",
+            bundleProviderConfigured: true,
+          },
+          issues: [],
+        },
+      },
+    });
+  });
+
   it("ignores fingerprint.json when update strategy is appVersion", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
