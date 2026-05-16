@@ -42,6 +42,7 @@ interface InfrastructureStatus {
   remediation?: InfrastructureRemediation;
 }
 
+type DoctorFixability = "auto" | "command" | "blocked";
 type NativePlatform = "ios" | "android";
 type NativeIssueType = "error" | "warning";
 
@@ -60,6 +61,8 @@ interface NativeCheckIssue {
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;
+  fixability: DoctorFixability;
+  commands?: string[];
   paths?: string[];
 }
 
@@ -112,6 +115,11 @@ interface DoctorOptions {
   fetch?: typeof fetch;
 }
 
+interface HandleDoctorOptions {
+  serverBaseUrl?: string;
+  json?: boolean;
+}
+
 interface ServerVersionResponse {
   version?: unknown;
 }
@@ -122,6 +130,8 @@ interface InfrastructureUpdateTarget {
 }
 
 interface InfrastructureRemediation {
+  fixability: DoctorFixability;
+  reason: string;
   commands: string[];
 }
 
@@ -130,6 +140,16 @@ const INFRASTRUCTURE_RECOVERY_COMMANDS = [
   "hot-updater db migrate",
   "hot-updater db generate",
 ] as const;
+
+const FINGERPRINT_RECOVERY_COMMANDS = [
+  "npx hot-updater fingerprint create",
+] as const;
+
+const EXPORT_PUBLIC_KEY_COMMANDS = [
+  "npx hot-updater keys export-public",
+] as const;
+
+const REMOVE_PUBLIC_KEY_COMMANDS = ["npx hot-updater keys remove"] as const;
 
 // Only versions that require deployed server/infrastructure changes belong here.
 // Regular package releases must not be added unless existing infrastructure needs
@@ -257,6 +277,9 @@ export function resolveVersionEndpoint(serverBaseUrl: string): string {
 }
 
 const createInfrastructureRemediation = (): InfrastructureRemediation => ({
+  fixability: "blocked",
+  reason:
+    "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
   commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
 });
 
@@ -363,6 +386,7 @@ const checkIosNativeStatus = async ({
       message: "iOS Info.plist files were not found.",
       resolution:
         "Check platform.ios.infoPlistPaths in hot-updater.config.ts or run iOS prebuild first.",
+      fixability: "auto",
       paths: configuredPaths,
     });
   }
@@ -380,6 +404,8 @@ const checkIosNativeStatus = async ({
       message: "HOT_UPDATER_FINGERPRINT_HASH is missing from Info.plist.",
       resolution:
         "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+      fixability: "command",
+      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
     });
   } else if (
@@ -394,6 +420,8 @@ const checkIosNativeStatus = async ({
       message: "HOT_UPDATER_FINGERPRINT_HASH does not match fingerprint.json.",
       resolution:
         "Run `npx hot-updater fingerprint create` and rebuild your iOS app.",
+      fixability: "command",
+      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths ?? files,
     });
   }
@@ -413,6 +441,7 @@ const checkIosNativeStatus = async ({
       message: "iOS AppDelegate file was not found.",
       resolution:
         "Add HotUpdater.bundleURL() to the app's iOS bundleURL provider.",
+      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -433,6 +462,7 @@ const checkIosNativeStatus = async ({
         message: "iOS AppDelegate does not use HotUpdater.bundleURL().",
         resolution:
           "Replace the release JS bundle URL provider with HotUpdater.bundleURL().",
+        fixability: "auto",
         paths: appDelegateFiles,
       });
     }
@@ -483,6 +513,7 @@ const checkAndroidNativeStatus = async ({
       message: "Android strings.xml files were not found.",
       resolution:
         "Check platform.android.stringResourcePaths in hot-updater.config.ts or run Android prebuild first.",
+      fixability: "auto",
       paths: configuredPaths,
     });
   }
@@ -500,6 +531,8 @@ const checkAndroidNativeStatus = async ({
       message: "hot_updater_fingerprint_hash is missing from strings.xml.",
       resolution:
         "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+      fixability: "command",
+      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
     });
   } else if (
@@ -514,6 +547,8 @@ const checkAndroidNativeStatus = async ({
       message: "hot_updater_fingerprint_hash does not match fingerprint.json.",
       resolution:
         "Run `npx hot-updater fingerprint create` and rebuild your Android app.",
+      fixability: "command",
+      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths ?? files,
     });
   }
@@ -533,6 +568,7 @@ const checkAndroidNativeStatus = async ({
       message: "Android MainApplication file was not found.",
       resolution:
         "Add HotUpdater.getJSBundleFile(applicationContext) to the Android host configuration.",
+      fixability: "auto",
     });
   } else {
     const matchedFile = await findFirstMatchingFile({
@@ -553,6 +589,7 @@ const checkAndroidNativeStatus = async ({
           "Android MainApplication does not use HotUpdater.getJSBundleFile().",
         resolution:
           "Pass HotUpdater.getJSBundleFile(applicationContext) to React Native's JS bundle provider.",
+        fixability: "auto",
         paths: mainApplicationFiles,
       });
     }
@@ -570,13 +607,31 @@ const checkAndroidNativeStatus = async ({
   };
 };
 
-const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => ({
-  type: issue.type,
-  platform: issue.platform,
-  code: issue.code,
-  message: issue.message,
-  resolution: issue.resolution,
-});
+const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
+  if (issue.code === "NATIVE_FILES_NOT_FOUND") {
+    return {
+      type: issue.type,
+      platform: issue.platform,
+      code: issue.code,
+      message: issue.message,
+      resolution: issue.resolution,
+      fixability: "auto",
+    };
+  }
+
+  return {
+    type: issue.type,
+    platform: issue.platform,
+    code: issue.code,
+    message: issue.message,
+    resolution: issue.resolution,
+    fixability: "command",
+    commands:
+      issue.code === "ORPHAN_PUBLIC_KEY"
+        ? [...REMOVE_PUBLIC_KEY_COMMANDS]
+        : [...EXPORT_PUBLIC_KEY_COMMANDS],
+  };
+};
 
 async function checkNativeStatus({
   cwd,
@@ -624,6 +679,8 @@ async function checkNativeStatus({
       code: "MISSING_FINGERPRINT_JSON",
       message: "fingerprint.json is missing for fingerprint update strategy.",
       resolution: "Run `npx hot-updater fingerprint create`.",
+      fixability: "command",
+      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: ["fingerprint.json"],
     });
   }
@@ -844,6 +901,14 @@ export async function doctor(
   }
 }
 
+const normalizeDoctorResult = (result: true | DoctorResult): DoctorResult => {
+  if (result === true) {
+    return { success: true };
+  }
+
+  return result;
+};
+
 const promptServerBaseUrl = async () => {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return undefined;
@@ -877,9 +942,17 @@ const promptServerBaseUrl = async () => {
 
 export const handleDoctor = async ({
   serverBaseUrl,
-}: {
-  serverBaseUrl?: string;
-} = {}) => {
+  json = false,
+}: HandleDoctorOptions = {}) => {
+  if (json) {
+    const result = normalizeDoctorResult(await doctor({ serverBaseUrl }));
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.success) {
+      process.exit(1);
+    }
+    return;
+  }
+
   p.intro("Hot Updater doctor");
 
   const resolvedServerBaseUrl = serverBaseUrl ?? (await promptServerBaseUrl());

@@ -21,9 +21,18 @@ or diagnostics.
 - Do not run `npx hot-updater init` on behalf of the user. It is interactive
   and asks for provider, build, and project-specific choices. Guide the user to
   run it directly and follow the setup documentation.
-- Before running `npx hot-updater doctor`, make sure the server base URL is
-  available. If the user did not provide it and it is not obvious from local
-  config, ask for the update server URL first.
+- Before running `npx hot-updater doctor` for a server/infrastructure check,
+  make sure the server base URL is available. If the user did not provide it
+  and it is not obvious from local config, ask for the update server URL first.
+- For doctor repair loops, run `npx hot-updater doctor --json` first. Fix
+  issues marked `fixability: "auto"` by editing local project files, run the
+  listed `commands` for issues marked `fixability: "command"`, and rerun doctor
+  after each focused change. Stop when doctor passes or the remaining issues are
+  marked `fixability: "blocked"`.
+- Treat `fixability: "blocked"` as outside the autonomous local loop. Server
+  infrastructure remediation commonly needs provider credentials, environment
+  variables, and redeploy access; summarize the blocker instead of running
+  migrations or mutating provider setup.
 - Treat `deploy`, `patch`, `bundle enable`, `bundle disable`, `bundle update`,
   `bundle delete`, `bundle promote`, `rollback`, `channel set`, `keys
   export-public`, `keys remove`, and `db migrate` as state-changing operations.
@@ -59,6 +68,7 @@ $hot-updater promote bundle <bundle-id> to staging
 $hot-updater create a patch from bundle <old-id> to <new-id>
 $hot-updater export the code signing public key
 $hot-updater run doctor with server URL https://updates.example.com/api/check-update
+$hot-updater fix local doctor issues that do not require server credentials
 ```
 
 Translate the request into the safest CLI flow. If a state-changing request is
@@ -120,6 +130,8 @@ If `--json` is unavailable, rerun the same command without `--json`.
 ```sh
 npx hot-updater init
 npx hot-updater doctor --server-base-url <update-server-url>
+npx hot-updater doctor --json
+npx hot-updater doctor --server-base-url <update-server-url> --json
 npx hot-updater fingerprint
 npx hot-updater fingerprint create
 npx hot-updater app-version
@@ -132,6 +144,9 @@ npx hot-updater console
 - `doctor` checks local setup and server health. Provide `--server-base-url`;
   the command appends `/version` for the server check. If the user has not
   provided one, ask for it before running the command.
+- `doctor --json` is the preferred agent surface. It returns stable issue
+  codes, related paths, `fixability`, and command hints for local iterative
+  repair. Do not parse the human-readable doctor output when JSON is available.
 - `fingerprint` and `fingerprint create` generate the app fingerprint.
 - `app-version` reads native iOS and Android app versions. `--json` returns
   `{ "android": string | null, "ios": string | null }` on CLIs that support it.

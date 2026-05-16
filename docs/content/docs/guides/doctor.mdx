@@ -24,6 +24,15 @@ npx hot-updater doctor
 In an interactive terminal, the command asks for your server base URL. Press
 Enter to skip the server check.
 
+For AI agents and other automation, use JSON output:
+
+```package-install
+npx hot-updater doctor --json
+```
+
+`--json` does not prompt for the server URL. Pass `--server-base-url` when you
+want the infrastructure check included.
+
 ## Check Native Setup
 
 When `@hot-updater/react-native` is installed and native iOS or Android
@@ -47,6 +56,32 @@ For fingerprint projects, fix missing or stale native fingerprint settings with:
 ```package-install
 npx hot-updater fingerprint create
 ```
+
+## AI Agent Iteration
+
+`doctor --json` returns structured issues that an agent can use without parsing
+human-readable terminal output.
+
+Each native issue includes:
+
+- `code`: stable issue code, such as `MISSING_ANDROID_BUNDLE_PROVIDER`
+- `platform`: `ios`, `android`, or `project`
+- `paths`: related local files when available
+- `fixability`: whether the issue is suitable for an agent loop
+- `commands`: safe local commands when the fix is command-driven
+
+Use `fixability` as the automation boundary:
+
+| Fixability | Meaning                                                                                            |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| `auto`     | The agent may inspect and edit local project files, then rerun doctor.                             |
+| `command`  | The agent may run the listed local command, then rerun doctor.                                     |
+| `blocked`  | The issue needs credentials, environment variables, server access, or a human deployment decision. |
+
+Native wiring, fingerprint creation, and native public key export/removal are
+intended to be iterated locally by an agent. Infrastructure failures are marked
+as blocked because applying migrations or redeploying a server usually depends
+on provider credentials and environment-specific access.
 
 ## Check Infrastructure
 
@@ -100,6 +135,7 @@ How to fix it depends on how you run Hot Updater:
 
 ## Options
 
-| Option                    | Description                                       |
-| ------------------------- | ------------------------------------------------- |
-| `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`. |
+| Option                    | Description                                             |
+| ------------------------- | ------------------------------------------------------- |
+| `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`.       |
+| `--json`                  | Print a machine-readable result for agents and scripts. |

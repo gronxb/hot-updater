@@ -9,6 +9,7 @@ import {
   areVersionsCompatible,
   doctor,
   getRequiredInfrastructureVersion,
+  handleDoctor,
   isInfrastructureUpdateRequired,
   resolveVersionEndpoint,
 } from "./doctor";
@@ -228,6 +229,25 @@ describe("doctor", () => {
 
     const result = await doctor();
     expect(result).toBe(true);
+  });
+
+  it("prints machine-readable JSON without prompting", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleDoctor({ json: true });
+
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify({ success: true }, null, 2),
+    );
+    logSpy.mockRestore();
   });
 
   it("should return true for a healthy setup", async () => {
@@ -553,6 +573,7 @@ describe("doctor", () => {
           requiredVersion: "0.30.0",
           needsUpdate: true,
           remediation: {
+            fixability: "blocked",
             commands: [
               "hot-updater init",
               "hot-updater db migrate",
@@ -591,6 +612,7 @@ describe("doctor", () => {
           needsUpdate: true,
           updateReason: "Version endpoint not found",
           remediation: {
+            fixability: "blocked",
             commands: [
               "hot-updater init",
               "hot-updater db migrate",
@@ -670,6 +692,9 @@ describe("doctor", () => {
           "MISSING_ANDROID_BUNDLE_PROVIDER",
         ]),
       );
+      expect(
+        result.details?.native?.issues.map((issue) => issue.fixability),
+      ).toEqual(expect.arrayContaining(["auto"]));
     }
   });
 
@@ -953,6 +978,12 @@ describe("doctor", () => {
       expect(
         result.details?.native?.issues.map((issue) => issue.resolution),
       ).toContain("Run `npx hot-updater fingerprint create`.");
+      expect(
+        result.details?.native?.issues.map((issue) => issue.fixability),
+      ).toEqual(["command", "command", "command"]);
+      expect(
+        result.details?.native?.issues.flatMap((issue) => issue.commands ?? []),
+      ).toEqual(expect.arrayContaining(["npx hot-updater fingerprint create"]));
     }
   });
 
