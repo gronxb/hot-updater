@@ -383,6 +383,7 @@ const checkIosNativeStatus = async ({
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
     });
   } else if (
+    requireFingerprint &&
     expectedFingerprintHash &&
     fingerprintHash?.value !== expectedFingerprintHash
   ) {
@@ -502,6 +503,7 @@ const checkAndroidNativeStatus = async ({
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
     });
   } else if (
+    requireFingerprint &&
     expectedFingerprintHash &&
     fingerprintHash?.value !== expectedFingerprintHash
   ) {

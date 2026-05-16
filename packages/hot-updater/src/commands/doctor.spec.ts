@@ -741,6 +741,83 @@ describe("doctor", () => {
     });
   });
 
+  it("ignores fingerprint.json when update strategy is appVersion", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "appVersion",
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeFile(
+      path.join(cwd, "fingerprint.json"),
+      JSON.stringify({
+        ios: { hash: "ios-fingerprint" },
+        android: { hash: "android-fingerprint" },
+      }),
+    );
+    await writeInfoPlist(
+      cwd,
+      [
+        "<key>HOT_UPDATER_CHANNEL</key>",
+        "<string>production</string>",
+        "<key>HOT_UPDATER_FINGERPRINT_HASH</key>",
+        "<string>stale-ios-fingerprint</string>",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      [
+        '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+        '<string name="hot_updater_fingerprint_hash" moduleConfig="true">stale-android-fingerprint</string>',
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          updateStrategy: "appVersion",
+          issues: [],
+        },
+      },
+    });
+  });
+
   it("requires fingerprint.json and native hashes for fingerprint strategy", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
