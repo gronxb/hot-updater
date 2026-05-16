@@ -145,6 +145,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -244,6 +245,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -423,6 +425,7 @@ describe("runtime createHotUpdater", () => {
         basePath: "/api/check-update",
         routes: {
           updateCheck: true,
+          version: true,
           bundles: false,
         },
       });
@@ -528,6 +531,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -593,6 +597,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -646,6 +651,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -752,6 +758,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: false,
+        version: true,
         bundles: false,
       },
     });
@@ -830,6 +837,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
       routes: {
         updateCheck: false,
+        version: true,
         bundles: false,
       },
     });

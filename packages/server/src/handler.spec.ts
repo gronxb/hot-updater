@@ -1,7 +1,7 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createHandler, type HandlerAPI } from "./handler";
+import { createHandler, type HandlerAPI, type HandlerRoutes } from "./handler";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const NEXT_SDK_VERSION_FOR_TEST = "0.31.0";
@@ -51,14 +51,18 @@ const createApi = () =>
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
   }) satisfies HandlerAPI<TestContext>;
 
-const createManagementHandler = (api: HandlerAPI<TestContext>, routes = {}) =>
+const createManagementHandler = (
+  api: HandlerAPI<TestContext>,
+  routes: Partial<HandlerRoutes> = {},
+) =>
   createHandler(api, {
     basePath: "/hot-updater",
     routes: {
+      updateCheck: true,
+      version: true,
       bundles: true,
       ...routes,
     },
-    authorizeBundleRequest: () => true,
   });
 
 describe("createHandler", () => {
@@ -204,6 +208,7 @@ describe("createHandler", () => {
       basePath: "/hot-updater",
       routes: {
         updateCheck: true,
+        version: true,
         bundles: false,
       },
     });
@@ -249,11 +254,23 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(200);
   });
 
-  it("requires authorization when bundle routes are enabled", async () => {
+  it("mounts bundle routes when explicitly enabled", async () => {
     const api = createApi();
+    api.getBundles.mockResolvedValueOnce({
+      data: [],
+      pagination: {
+        total: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 0,
+      },
+    });
     const handler = createHandler(api, {
       basePath: "/hot-updater",
       routes: {
+        updateCheck: true,
+        version: true,
         bundles: true,
       },
     });
@@ -262,11 +279,16 @@ describe("createHandler", () => {
       new Request("http://localhost/hot-updater/api/bundles"),
     );
 
-    expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
-      error: "Unauthorized",
-    });
-    expect(api.getBundles).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        cursor: undefined,
+        limit: 50,
+        page: undefined,
+        where: {},
+      },
+      undefined,
+    );
   });
 
   it("can disable the version route independently", async () => {

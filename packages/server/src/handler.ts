@@ -52,36 +52,32 @@ export interface HandlerOptions {
    * @default "/api"
    */
   basePath?: string;
-  routes?: HandlerRoutes;
   /**
-   * Authorizes bundle management requests when `routes.bundles` is enabled.
-   * Public update-check and version routes do not call this hook.
+   * Route groups to mount. Omit this option to use the default route groups.
+   * When provided, all route groups must be specified explicitly.
    */
-  authorizeBundleRequest?: (
-    request: Request,
-    context?: HotUpdaterContext<unknown>,
-  ) => boolean | Promise<boolean>;
+  routes?: HandlerRoutes;
 }
 
 export interface HandlerRoutes {
   /**
    * Controls whether update-check routes are mounted.
-   * @default true
+   * Defaults to `true` only when `routes` is omitted.
    */
-  updateCheck?: boolean;
+  updateCheck: boolean;
   /**
    * Controls whether the `/version` endpoint is mounted.
    * Useful for diagnostics and lightweight health/version checks.
-   * @default true
+   * Defaults to `true` only when `routes` is omitted.
    */
-  version?: boolean;
+  version: boolean;
   /**
    * Controls whether bundle management routes are mounted.
    * This includes `/api/bundles*`, which are used by the
    * CLI `standaloneRepository` plugin.
-   * @default false
+   * Defaults to `false` only when `routes` is omitted.
    */
-  bundles?: boolean;
+  bundles: boolean;
 }
 
 type RouteHandler<TContext = unknown> = (
@@ -102,14 +98,6 @@ const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 const DEFAULT_BUNDLE_LIST_LIMIT = 50;
 const MAX_BUNDLE_LIST_LIMIT = 100;
-const BUNDLE_MANAGEMENT_ROUTES = new Set([
-  "getBundle",
-  "getBundles",
-  "createBundles",
-  "updateBundle",
-  "deleteBundle",
-  "getChannels",
-]);
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
@@ -555,19 +543,21 @@ export function createHandler<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
-  const updateCheckEnabled = options.routes?.updateCheck ?? true;
-  const versionEnabled = options.routes?.version ?? true;
-  const bundlesEnabled = options.routes?.bundles ?? false;
+  const routeOptions = options.routes ?? {
+    updateCheck: true,
+    version: true,
+    bundles: false,
+  };
 
   // Create and configure router
   const router = createRouter();
 
   // Register routes
-  if (versionEnabled) {
+  if (routeOptions.version) {
     addRoute(router, "GET", "/version", "version");
   }
 
-  if (updateCheckEnabled) {
+  if (routeOptions.updateCheck) {
     addRoute(
       router,
       "GET",
@@ -594,7 +584,7 @@ export function createHandler<TContext = unknown>(
     );
   }
 
-  if (bundlesEnabled) {
+  if (routeOptions.bundles) {
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");
@@ -627,21 +617,7 @@ export function createHandler<TContext = unknown>(
         });
       }
 
-      // Get handler and execute
       const routeName = match.data as string;
-      if (BUNDLE_MANAGEMENT_ROUTES.has(routeName)) {
-        const authorized = await options.authorizeBundleRequest?.(
-          request,
-          context as HotUpdaterContext<unknown> | undefined,
-        );
-        if (!authorized) {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      }
-
       const handler = routes[routeName] as RouteHandler<TContext>;
       if (!handler) {
         return new Response(JSON.stringify({ error: "Handler not found" }), {

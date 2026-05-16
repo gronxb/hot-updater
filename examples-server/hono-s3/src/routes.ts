@@ -4,7 +4,7 @@ import { hotUpdater } from "./db.js";
 
 const app = new Hono();
 
-const authorizeBundleRequest = (request: Request) => {
+const isAuthorizedManagementRequest = (request: Request) => {
   if (process.env.NODE_ENV === "test") {
     return true;
   }
@@ -16,7 +16,7 @@ const authorizeBundleRequest = (request: Request) => {
 };
 
 app.use("/hot-updater/api/*", async (c, next) => {
-  if (!authorizeBundleRequest(c.req.raw)) {
+  if (!isAuthorizedManagementRequest(c.req.raw)) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 

@@ -35,9 +35,10 @@ const api = createHotUpdater({
   }),
   basePath: "/hot-updater",
   routes: {
+    updateCheck: true,
+    version: true,
     bundles: true,
   },
-  authorizeBundleRequest: () => true,
 });
 
 // Setup MSW server to intercept HTTP requests
@@ -346,9 +347,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
       }),
       basePath: "/api/v2",
       routes: {
+        updateCheck: true,
+        version: true,
         bundles: true,
       },
-      authorizeBundleRequest: () => true,
     });
 
     // Setup MSW for custom basePath
@@ -420,9 +422,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
       database: createInMemoryBlobDatabase(store),
       basePath: "/blob-hot-updater",
       routes: {
+        updateCheck: true,
+        version: true,
         bundles: true,
       },
-      authorizeBundleRequest: () => true,
     });
     const handleBlobRequest = async (request: Request) => {
       const response = await blobApi.handler(request);

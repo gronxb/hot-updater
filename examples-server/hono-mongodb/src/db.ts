@@ -13,17 +13,6 @@ import { client, closeDatabase as closeMongo } from "./mongodb";
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 config({ path: path.join(__dirname, ".env.hotupdater") });
 
-const authorizeBundleRequest = (request: Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return (
-    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
-  );
-};
-
 // Create Hot Updater instance for CLI
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
@@ -59,9 +48,10 @@ export const hotUpdater = createHotUpdater({
   ],
   basePath: "/hot-updater",
   routes: {
+    updateCheck: true,
+    version: true,
     bundles: true,
   },
-  authorizeBundleRequest,
 });
 
 // Cleanup function for graceful shutdown

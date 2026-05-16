@@ -19,8 +19,7 @@ Make sure you've set up your database adapter first (see [Database Adapters](../
 
 Hot Updater keeps update-check routes public for React Native clients. Bundle
 management routes are disabled unless `routes.bundles` is enabled, and must be
-protected either with `authorizeBundleRequest` in `createHotUpdater` or with
-framework middleware before mounting the handler:
+protected with framework middleware before mounting the handler:
 
 - Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
 - Optional public diagnostics: `/hot-updater/version`
@@ -43,7 +42,7 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-If you set `routes: { updateCheck: true, bundles: false }`,
+If you set `routes: { updateCheck: true, version: true, bundles: false }`,
 `/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
 available. Set `version: false` as well if you want update-check-only routes.
 

@@ -4,7 +4,7 @@ import { closeDatabase, hotUpdater } from "./db.js";
 
 const port = Number(process.env.PORT) || 3001;
 
-const authorizeBundleRequest = (request: Request) => {
+const isAuthorizedManagementRequest = (request: Request) => {
   if (process.env.NODE_ENV === "test") {
     return true;
   }
@@ -37,7 +37,7 @@ try {
     .all("/hot-updater/*", ({ request }) => {
       if (
         new URL(request.url).pathname.startsWith("/hot-updater/api/") &&
-        !authorizeBundleRequest(request)
+        !isAuthorizedManagementRequest(request)
       ) {
         return unauthorizedResponse();
       }

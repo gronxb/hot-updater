@@ -42,17 +42,6 @@ export const kysely = new Kysely({
 
 let closeDatabasePromise: Promise<void> | null = null;
 
-const authorizeBundleRequest = (request: Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return (
-    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
-  );
-};
-
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({
@@ -73,9 +62,10 @@ export const hotUpdater = createHotUpdater({
   ],
   basePath: "/hot-updater",
   routes: {
+    updateCheck: true,
+    version: true,
     bundles: true,
   },
-  authorizeBundleRequest,
 });
 
 // Cleanup function for graceful shutdown

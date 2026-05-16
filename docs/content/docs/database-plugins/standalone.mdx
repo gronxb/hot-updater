@@ -268,15 +268,17 @@ const hotUpdater = createHotUpdater({
   storages: [storage],
   basePath: "/hot-updater",
   routes: {
+    updateCheck: true,
+    version: true,
     bundles: true,
   },
-  authorizeBundleRequest: (request) =>
-    request.headers.get("Authorization") === `Bearer ${process.env.API_KEY}`,
 });
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`.
+`/hot-updater/api/bundles*`. Protect those routes at the framework or reverse
+proxy layer, and configure matching `commonHeaders` in `standaloneRepository`
+when authentication is required.
 
 ## Next Steps
 

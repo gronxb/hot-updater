@@ -6,7 +6,7 @@ import { toNodeHandler } from "@hot-updater/server/node";
 const app = express();
 const port = process.env.PORT || 3002;
 
-const authorizeBundleRequest = (req: express.Request) => {
+const isAuthorizedManagementRequest = (req: express.Request) => {
   if (process.env.NODE_ENV === "test") {
     return true;
   }
@@ -26,7 +26,7 @@ app.get("/", (_req, res) => {
 
 // Hot Updater routes
 app.use("/hot-updater/api", (req, res, next) => {
-  if (!authorizeBundleRequest(req)) {
+  if (!isAuthorizedManagementRequest(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

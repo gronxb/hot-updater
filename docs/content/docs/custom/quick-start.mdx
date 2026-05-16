@@ -59,15 +59,13 @@ export const hotUpdater = createHotUpdater({
     version: true,
     bundles: true,
   },
-  authorizeBundleRequest: (request) =>
-    request.headers.get("Authorization") === `Bearer ${process.env.API_KEY}`,
 });
 ```
 
 By default, `createHotUpdater` mounts update-check routes and `/version`.
 Bundle management routes used by the CLI `standaloneRepository` plugin must be
-enabled explicitly and protected. The example above enables them and authorizes
-management requests with `authorizeBundleRequest`.
+enabled explicitly and protected by framework middleware before mounting the
+handler. When you provide `routes`, specify every route group explicitly.
 
 ## Server Setup
 
@@ -76,10 +74,12 @@ Create the server entry point.
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
+app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
@@ -96,10 +96,9 @@ Update-check routes must stay public for React Native clients:
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
 They are disabled unless `routes.bundles` is enabled, and
-`authorizeBundleRequest` must allow each management request. The server example
-above uses Bearer authentication through the Hot Updater authorization hook. If
-you prefer framework middleware, protect `/hot-updater/api/*` before mounting
-the handler.
+your framework middleware must protect each management request before mounting
+the handler. The server example above uses Bearer authentication for
+`/hot-updater/api/*`.
 
 Set your API key in environment variables:
 

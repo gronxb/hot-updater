@@ -2,7 +2,7 @@ import { toNodeHandler } from "@hot-updater/server/node";
 import type { Request, Router } from "express";
 import { hotUpdater } from "./db";
 
-const authorizeBundleRequest = (req: Request) => {
+const isAuthorizedManagementRequest = (req: Request) => {
   if (process.env.NODE_ENV === "test") {
     return true;
   }
@@ -14,7 +14,7 @@ const authorizeBundleRequest = (req: Request) => {
 export function setupRoutes(router: Router) {
   // Mount Hot Updater handler using toNodeHandler adapter
   router.use("/hot-updater/api", (req, res, next) => {
-    if (!authorizeBundleRequest(req)) {
+    if (!isAuthorizedManagementRequest(req)) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }

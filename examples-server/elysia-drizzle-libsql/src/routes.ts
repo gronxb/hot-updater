@@ -3,7 +3,7 @@ import { hotUpdater } from "./db.js";
 
 const app = new Elysia();
 
-const authorizeBundleRequest = (request: Request) => {
+const isAuthorizedManagementRequest = (request: Request) => {
   if (process.env.NODE_ENV === "test") {
     return true;
   }
@@ -22,7 +22,7 @@ const unauthorizedResponse = () =>
 
 // Mount Hot Updater handler for all /api/* routes
 app.all("/api/*", ({ request }) => {
-  if (!authorizeBundleRequest(request)) {
+  if (!isAuthorizedManagementRequest(request)) {
     return unauthorizedResponse();
   }
 
