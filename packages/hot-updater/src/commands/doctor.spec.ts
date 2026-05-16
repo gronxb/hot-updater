@@ -1,21 +1,85 @@
-import { readPackageUp } from "@hot-updater/cli-tools";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+
+import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   areVersionsCompatible,
   doctor,
   getRequiredInfrastructureVersion,
+  handleDoctor,
   isInfrastructureUpdateRequired,
   resolveVersionEndpoint,
 } from "./doctor";
 
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(() => "/mock/cwd"),
+  loadConfig: vi.fn(),
   p: {},
   readPackageUp: vi.fn(),
 }));
 
+const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
+const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
+
+const createConfig = (overrides: Record<string, unknown> = {}) => ({
+  updateStrategy: "appVersion",
+  platform: {
+    ios: {
+      infoPlistPaths: [],
+    },
+    android: {
+      stringResourcePaths: [],
+    },
+  },
+  signing: {
+    enabled: false,
+  },
+  ...overrides,
+});
+
+const createTempProject = async () =>
+  await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-doctor-"));
+
+const writeFile = async (filePath: string, content: string) => {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content);
+};
+
+const writeInfoPlist = async (
+  cwd: string,
+  body: string,
+  filePath = "ios/App/Info.plist",
+) => {
+  await writeFile(
+    path.join(cwd, filePath),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+${body}
+</dict>
+</plist>
+`,
+  );
+};
+
+const writeStringsXml = async (
+  cwd: string,
+  body: string,
+  filePath = "android/app/src/main/res/values/strings.xml",
+) => {
+  await writeFile(
+    path.join(cwd, filePath),
+    `<resources>
+${body}
+</resources>
+`,
+  );
+};
 
 describe("areVersionsCompatible", () => {
   // Test cases for exact matches
@@ -131,8 +195,21 @@ describe("infrastructure version helpers", () => {
 });
 
 describe("doctor", () => {
+  const tempProjects: string[] = [];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetCwd.mockReturnValue("/mock/cwd");
+    mockLoadConfig.mockResolvedValue(createConfig());
+  });
+
+  afterEach(async () => {
+    await Promise.all(
+      tempProjects.map((project) =>
+        fs.rm(project, { recursive: true, force: true }),
+      ),
+    );
+    tempProjects.length = 0;
   });
 
   it("should return true for a healthy setup", async () => {
@@ -152,6 +229,25 @@ describe("doctor", () => {
 
     const result = await doctor();
     expect(result).toBe(true);
+  });
+
+  it("prints machine-readable JSON without prompting", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleDoctor({ json: true });
+
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify({ success: true }, null, 2),
+    );
+    logSpy.mockRestore();
   });
 
   it("should return true for a healthy setup", async () => {
@@ -477,6 +573,7 @@ describe("doctor", () => {
           requiredVersion: "0.30.0",
           needsUpdate: true,
           remediation: {
+            fixability: "blocked",
             commands: [
               "hot-updater init",
               "hot-updater db migrate",
@@ -515,6 +612,7 @@ describe("doctor", () => {
           needsUpdate: true,
           updateReason: "Version endpoint not found",
           remediation: {
+            fixability: "blocked",
             commands: [
               "hot-updater init",
               "hot-updater db migrate",
@@ -524,5 +622,435 @@ describe("doctor", () => {
         },
       },
     });
+  });
+
+  it("detects missing native integration in existing React Native projects", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(cwd, "");
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      'import UIKit\nfunc bundleURL() { Bundle.main.url(forResource: "main", withExtension: "jsbundle") }\n',
+    );
+    await writeStringsXml(cwd, "");
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "class MainApplication",
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        native: {
+          updateStrategy: "appVersion",
+          ios: {
+            detected: true,
+            bundleProviderConfigured: false,
+          },
+          android: {
+            detected: true,
+            bundleProviderConfigured: false,
+          },
+        },
+      },
+    });
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
+        expect.arrayContaining([
+          "MISSING_IOS_BUNDLE_PROVIDER",
+          "MISSING_ANDROID_BUNDLE_PROVIDER",
+        ]),
+      );
+      expect(
+        result.details?.native?.issues.map((issue) => issue.fixability),
+      ).toEqual(expect.arrayContaining(["auto"]));
+    }
+  });
+
+  it("passes native integration checks when iOS and Android are configured", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          ios: {
+            channel: "production",
+            bundleProviderConfigured: true,
+          },
+          android: {
+            channel: "production",
+            bundleProviderConfigured: true,
+          },
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("accepts Java Companion Android bundle provider calls", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.java",
+      ),
+      [
+        "import com.hotupdater.HotUpdater;",
+        "public class MainApplication {",
+        "  protected String getJSBundleFile() {",
+        "    return HotUpdater.Companion.getJSBundleFile(this.getApplication().getApplicationContext());",
+        "  }",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          android: {
+            channel: "production",
+            bundleProviderConfigured: true,
+          },
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("ignores fingerprint.json when update strategy is appVersion", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "appVersion",
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeFile(
+      path.join(cwd, "fingerprint.json"),
+      JSON.stringify({
+        ios: { hash: "ios-fingerprint" },
+        android: { hash: "android-fingerprint" },
+      }),
+    );
+    await writeInfoPlist(
+      cwd,
+      [
+        "<key>HOT_UPDATER_CHANNEL</key>",
+        "<string>production</string>",
+        "<key>HOT_UPDATER_FINGERPRINT_HASH</key>",
+        "<string>stale-ios-fingerprint</string>",
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      [
+        '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+        '<string name="hot_updater_fingerprint_hash" moduleConfig="true">stale-android-fingerprint</string>',
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: true,
+      details: {
+        native: {
+          updateStrategy: "appVersion",
+          issues: [],
+        },
+      },
+    });
+  });
+
+  it("requires fingerprint.json and native hashes for fingerprint strategy", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "fingerprint",
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.success).toBe(false);
+      expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
+        [
+          "MISSING_FINGERPRINT_HASH",
+          "MISSING_FINGERPRINT_HASH",
+          "MISSING_FINGERPRINT_JSON",
+        ],
+      );
+      expect(
+        result.details?.native?.issues.map((issue) => issue.resolution),
+      ).toContain("Run `npx hot-updater fingerprint create`.");
+      expect(
+        result.details?.native?.issues.map((issue) => issue.fixability),
+      ).toEqual(["command", "command", "command"]);
+      expect(
+        result.details?.native?.issues.flatMap((issue) => issue.commands ?? []),
+      ).toEqual(expect.arrayContaining(["npx hot-updater fingerprint create"]));
+    }
+  });
+
+  it("requires fingerprint hashes in native files when fingerprint.json exists", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "fingerprint",
+        platform: {
+          ios: {
+            infoPlistPaths: ["ios/App/Info.plist"],
+          },
+          android: {
+            stringResourcePaths: [
+              "android/app/src/main/res/values/strings.xml",
+            ],
+          },
+        },
+      }),
+    );
+
+    await writeFile(
+      path.join(cwd, "fingerprint.json"),
+      JSON.stringify({
+        ios: { hash: "ios-fingerprint" },
+        android: { hash: "android-fingerprint" },
+      }),
+    );
+    await writeInfoPlist(
+      cwd,
+      "<key>HOT_UPDATER_CHANNEL</key>\n<string>production</string>",
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeStringsXml(
+      cwd,
+      '<string name="hot_updater_channel" moduleConfig="true">production</string>',
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.success).toBe(false);
+      expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
+        ["MISSING_FINGERPRINT_HASH", "MISSING_FINGERPRINT_HASH"],
+      );
+    }
   });
 });

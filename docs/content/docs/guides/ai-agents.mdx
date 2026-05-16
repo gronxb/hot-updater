@@ -28,6 +28,7 @@ $hot-updater deploy the current iOS app version to production
 $hot-updater roll back the most recently deployed bundle
 $hot-updater list iOS bundles on the production channel
 $hot-updater run doctor with server URL https://updates.example.com/api/check-update
+$hot-updater fix local doctor issues that do not require server credentials
 ```
 
 The skill gives the agent enough CLI context to translate those requests into
@@ -38,12 +39,19 @@ safe `npx hot-updater ...` flows.
 - The agent should not run `npx hot-updater init` for you. `init` is
   interactive and asks for project-specific provider and build choices, so run
   it directly in your terminal.
-- The agent should ask for the update server URL before running
-  `npx hot-updater doctor` unless you already provided it or it is obvious from
-  local configuration.
+- The agent should ask for the update server URL before running a
+  server/infrastructure doctor check unless you already provided it or it is
+  obvious from local configuration.
+- When iterating on doctor failures, the agent should prefer
+  `npx hot-updater doctor --json`. It should repair issues marked
+  `fixability: "auto"`, run listed commands for `fixability: "command"`, and
+  stop on `fixability: "blocked"`.
 - The agent should not edit provider credentials unless you explicitly ask it
   to. Credentials are commonly stored in `.env.hotupdater`, but projects may
   use a different environment-loading setup.
+- Server infrastructure failures are usually blocked because migrations and
+  redeploys need provider environment variables or deployment access. The agent
+  should summarize those blockers instead of attempting to mutate server state.
 - If a deploy fails, the agent should not keep trying fixes or mutate project
   setup automatically. It should summarize the failed command, the likely
   cause, and the next checks for you to decide.

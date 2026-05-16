@@ -88,6 +88,7 @@ program
     "--server-base-url <url>",
     "server base URL used by update checks (doctor appends /version)",
   )
+  .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 
 const fingerprintCommand = program
