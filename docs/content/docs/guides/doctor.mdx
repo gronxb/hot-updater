@@ -1,15 +1,17 @@
 ---
 title: "Doctor"
-description: "Check Hot Updater package versions and server infrastructure."
+description: "Check Hot Updater package versions, native setup, and server infrastructure."
 icon: Stethoscope
 version: "v0.30.0"
 ---
 
 ## Overview
 
-Use `hot-updater doctor` to check two things:
+Use `hot-updater doctor` to check the parts that must agree for OTA updates to
+work:
 
 - All Hot Updater packages use compatible versions
+- React Native native files are connected to Hot Updater
 - Your deployed infrastructure server is not outdated
 
 Run it after upgrading Hot Updater, or when OTA updates behave differently after
@@ -21,6 +23,30 @@ npx hot-updater doctor
 
 In an interactive terminal, the command asks for your server base URL. Press
 Enter to skip the server check.
+
+## Check Native Setup
+
+When `@hot-updater/react-native` is installed and native iOS or Android
+directories exist, `doctor` checks:
+
+- iOS `AppDelegate` uses `HotUpdater.bundleURL()`
+- Android `MainApplication` uses `HotUpdater.getJSBundleFile(...)`
+- If `updateStrategy` is `fingerprint`, `fingerprint.json` exists and native
+  fingerprint hashes match it
+- Signing settings match native public key entries
+
+If any required native setting is missing, rebuild-time OTA configuration is not
+healthy yet. Run the command shown by `doctor`, then rebuild the native app.
+
+`doctor` does not require a default channel in native files. If
+`HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
+context only.
+
+For fingerprint projects, fix missing or stale native fingerprint settings with:
+
+```package-install
+npx hot-updater fingerprint create
+```
 
 ## Check Infrastructure
 

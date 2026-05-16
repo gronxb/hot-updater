@@ -1,7 +1,7 @@
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 
-import { AndroidConfigParser } from "@/utils/configParser/androidParser";
-import { IosConfigParser } from "@/utils/configParser/iosParser";
+import { AndroidConfigParser } from "../configParser/androidParser";
+import { IosConfigParser } from "../configParser/iosParser";
 
 const ANDROID_KEY = "hot_updater_public_key";
 const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
