@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.31.1
+
+### Patch Changes
+
+- 8eb21d7: Check native OTA wiring in doctor
+  - @hot-updater/android-helper@0.31.1
+  - @hot-updater/apple-helper@0.31.1
+  - @hot-updater/cli-tools@0.31.1
+  - @hot-updater/console@0.31.1
+  - @hot-updater/core@0.31.1
+  - @hot-updater/server@0.31.1
+  - @hot-updater/plugin-core@0.31.1
+
 ## 0.31.0
 
 ### Minor Changes
