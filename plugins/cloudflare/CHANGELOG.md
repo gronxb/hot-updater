@@ -1,5 +1,15 @@
 # @hot-updater/cloudflare
 
+## 0.31.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.31.1
+- @hot-updater/core@0.31.1
+- @hot-updater/server@0.31.1
+- @hot-updater/js@0.31.1
+- @hot-updater/plugin-core@0.31.1
+
 ## 0.31.0
 
 ### Minor Changes
