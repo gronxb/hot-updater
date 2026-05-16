@@ -177,6 +177,7 @@ export function spawnServerProcess(options: {
       ...process.env,
       PORT: String(port),
       TEST_DB_PATH: testDbPath,
+      NODE_ENV: "test",
       // Use test credentials for AWS
       AWS_REGION: "us-east-1",
       AWS_ACCESS_KEY_ID: "test-access-key",

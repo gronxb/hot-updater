@@ -101,7 +101,8 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
 
 `updateCheck` and `version` are mounted by default. `bundles` is disabled by
-default and requires an authorization hook when enabled.
+default and requires an authorization hook when enabled, unless you protect
+`/hot-updater/api/*` with framework middleware before mounting the handler.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({

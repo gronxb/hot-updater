@@ -35,6 +35,17 @@ const options =
         bucketName: process.env.R2_BUCKET_NAME!,
       };
 
+const authorizeBundleRequest = (request: Request) => {
+  if (process.env.NODE_ENV === "test") {
+    return true;
+  }
+
+  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
+  return (
+    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
+  );
+};
+
 export const hotUpdater = createHotUpdater({
   database: s3Database(options),
   storages: [mockStorage({}), s3Storage(options)],
@@ -42,6 +53,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     bundles: true,
   },
+  authorizeBundleRequest,
 });
 
 export async function closeDatabase() {

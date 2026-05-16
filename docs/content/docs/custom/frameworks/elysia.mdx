@@ -17,16 +17,17 @@ npm install elysia @elysiajs/bearer --save-dev
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-The Hot Updater handler does not include built-in authentication. Keep
-update-check routes public for React Native clients, but always protect bundle
-management routes before mounting the handler:
+Hot Updater keeps update-check routes public for React Native clients. Bundle
+management routes are disabled unless `routes.bundles` is enabled, and must be
+protected either with `authorizeBundleRequest` in `createHotUpdater` or with
+framework middleware before mounting the handler:
 
 - Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected: `/hot-updater/api/*`
 
-Import the Hot Updater instance, protect `/api/*`, and mount it to your Elysia
-app:
+This example uses Elysia middleware to protect `/api/*` before mounting the Hot
+Updater handler:
 
 ```typescript
 import { Elysia } from "elysia";
@@ -71,7 +72,8 @@ export default defineConfig({
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+The server automatically creates these endpoints. Bundle management endpoints
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
