@@ -10,7 +10,7 @@ catalog:
   vitest: 4.1.4
 catalogs:
   tools:
-    tsdown: 0.21.6
+    tsdown: 0.22.0
     "@clack/prompts": 1.0.1
     "execa": 9.5.2
   hono:
