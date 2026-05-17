@@ -5,7 +5,7 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 import {
   getBundlePatch,
@@ -190,6 +190,61 @@ function writeExampleManagementAuthToken(authToken: string) {
   if (nextSource !== source) {
     fs.writeFileSync(envPath, nextSource);
   }
+}
+
+function appendNodeImportOption(
+  nodeOptions: string | undefined,
+  preloadPath: string,
+) {
+  const importOption = `--import=${pathToFileURL(preloadPath).href}`;
+  return nodeOptions ? `${nodeOptions} ${importOption}` : importOption;
+}
+
+async function writeManagementAuthPreload(directory: string) {
+  const preloadPath = path.join(directory, "management-auth-preload.mjs");
+  const source = String.raw`const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+const baseUrl = process.env.HOT_UPDATER_E2E_MANAGEMENT_BASE_URL;
+
+if (authToken && baseUrl && typeof globalThis.fetch === "function") {
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  const managementUrl = new URL(baseUrl);
+  const managementPath = managementUrl.pathname.replace(/\/+$/, "");
+
+  globalThis.fetch = (input, init) => {
+    let requestUrl = null;
+    try {
+      if (typeof input === "string" || input instanceof URL) {
+        requestUrl = new URL(input, managementUrl);
+      } else if (input instanceof Request) {
+        requestUrl = new URL(input.url);
+      }
+    } catch {
+      requestUrl = null;
+    }
+
+    if (
+      requestUrl &&
+      requestUrl.origin === managementUrl.origin &&
+      requestUrl.pathname.startsWith(managementPath + "/api/")
+    ) {
+      const nextInit = init ? { ...init } : {};
+      const headers = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : undefined),
+      );
+      if (!headers.has("Authorization")) {
+        headers.set("Authorization", "Bearer " + authToken);
+      }
+      nextInit.headers = headers;
+      return originalFetch(input, nextInit);
+    }
+
+    return originalFetch(input, init);
+  };
+}
+`;
+
+  await fsPromises.writeFile(preloadPath, source);
+  return preloadPath;
 }
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -2569,9 +2624,12 @@ async function deployBundle(request: DeployBundleRequest) {
     `deploy-${request.channel}-${request.marker}.log`,
   );
   const managementAuthToken = getE2eManagementAuthToken();
+  const managementAuthPreloadPath =
+    await writeManagementAuthPreload(deployOutputPath);
   writeExampleManagementAuthToken(managementAuthToken);
   logE2e("deploy start", {
     auth: managementAuthToken ? "set" : "missing",
+    authPreload: path.relative(REPO_DIR, managementAuthPreloadPath),
     bundleProfile,
     channel: request.channel,
     command: `node ${args.join(" ")}`,
@@ -2585,7 +2643,12 @@ async function deployBundle(request: DeployBundleRequest) {
     cwd: session.exampleDir,
     env: {
       HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
+      HOT_UPDATER_E2E_MANAGEMENT_BASE_URL: session.appBaseUrl,
       HOT_UPDATER_E2E_PLATFORM: session.platform,
+      NODE_OPTIONS: appendNodeImportOption(
+        process.env.NODE_OPTIONS,
+        managementAuthPreloadPath,
+      ),
     },
     logPath: deployLogPath,
   });
