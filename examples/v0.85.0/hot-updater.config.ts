@@ -11,7 +11,9 @@ config({ path: ".env.hotupdater" });
 
 const standaloneStorageBaseUrl =
   process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;
-const managementAuthToken = process.env.HOT_UPDATER_AUTH_TOKEN;
+const managementAuthToken =
+  process.env.HOT_UPDATER_AUTH_TOKEN?.trim() ||
+  (process.env.HOT_UPDATER_E2E_PLATFORM ? "hot-updater-e2e-token" : undefined);
 
 export default defineConfig({
   nativeBuild: {
