@@ -23,9 +23,9 @@ Later OTA update:
   -> next OTA bundle
 ```
 
-The download changes by update state:
+What the device downloads depends on what changed:
 
-| Update state | What the device downloads |
+| When this happens | What the device downloads |
 | --- | --- |
 | First OTA after native install | Normal compressed archive |
 | Later OTA, unchanged file | Nothing; the file is copied locally |
@@ -197,6 +197,58 @@ If anything does not match, or if the patch cannot be applied, Hot Updater
 downloads the full changed Hermes bundle when that asset URL is available. If
 the changed file cannot be downloaded, or if manifest-driven installation cannot
 be used, it falls back to the normal compressed archive.
+
+### Inspect downloaded files
+
+Use `useHotUpdaterStore` when you want to check which files were downloaded
+during a bundle diffing update.
+
+Per-file details are available only when `artifactType` is `"diff"`. When
+`artifactType` is `"archive"`, the app is downloading one compressed archive, so
+there is no per-file download list.
+
+```tsx
+import { useMemo } from "react";
+import { Text, View } from "react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+
+function DownloadedFiles() {
+  const artifactType = useHotUpdaterStore((state) => state.artifactType);
+  const details = useHotUpdaterStore((state) => state.details);
+
+  const downloadedFiles = useMemo(() => {
+    if (artifactType !== "diff" || !details) {
+      return [];
+    }
+
+    return details.files.filter((file) => file.status === "downloaded");
+  }, [artifactType, details]);
+
+  if (artifactType !== "diff") {
+    return null;
+  }
+
+  return (
+    <View>
+      <Text>
+        {downloadedFiles.length}/{details?.totalFilesCount ?? 0} changed files
+        downloaded
+      </Text>
+      {downloadedFiles.map((file) => (
+        <Text key={file.path}>
+          {file.path}
+          {file.downloadPath !== file.path ? ` via ${file.downloadPath}` : ""}
+        </Text>
+      ))}
+    </View>
+  );
+}
+```
+
+In `details.files`, `path` is the final file path inside the OTA bundle.
+`downloadPath` is the artifact that was transferred. They are usually the same,
+but can differ when Hot Updater downloads an intermediate artifact such as a
+`.bsdiff` patch.
 
 ## Signing
 
