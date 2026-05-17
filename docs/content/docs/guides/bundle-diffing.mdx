@@ -10,12 +10,17 @@ version: 0.31.0
 Bundle diffing helps OTA updates download less data by reusing files that are
 already installed on the device.
 
-| Without bundle diffing | With bundle diffing |
-| --- | --- |
-| Downloads the full compressed archive for the new bundle. | Copies unchanged files from the current OTA bundle. |
-| Downloads changed assets as part of the archive. | Downloads only assets that changed. |
-| Downloads changed Hermes bundles as full files. | Can download a `.bsdiff` patch for changed Hermes bundles. |
-| First and later OTA updates use the same archive path. | First OTA uses the archive; later OTAs can reuse local files. |
+| Area | Default OTA update | Bundle diffing |
+| --- | --- | --- |
+| Download unit | Full compressed archive | Manifest plus changed files |
+| Unchanged files | Downloaded again inside the archive | Copied from the installed OTA bundle |
+| Changed assets | Downloaded inside the archive | Downloaded individually |
+| Changed Hermes bundle | Downloaded as a full file | `.bsdiff` patch when available |
+| First OTA after native install | Full compressed archive | Full compressed archive |
+| Later OTA updates | Full compressed archive | Reuse local files and download only changes |
+
+In short, regular assets can be reused or downloaded individually. Hermes
+bundles can also use binary patches when a matching patch exists.
 
 For Hermes bundle changes, Hot Updater can go one step further and download a
 binary patch instead of the full changed Hermes bundle. For example, an update
@@ -40,8 +45,12 @@ Hermes bundle file.
 
 | File type | If unchanged | If changed |
 | --- | --- | --- |
-| Regular assets, such as images or fonts | Copied from the current OTA bundle. | Downloaded as full changed asset files. |
-| Hermes bundle | Copied from the current OTA bundle. | Downloaded as a `.bsdiff` patch when available, otherwise as the full changed asset. |
+| Regular assets | Copy local file | Download full asset |
+| Hermes bundle | Copy local file | Apply `.bsdiff` patch, then fallback to full asset |
+
+Regular assets include files such as images and fonts. They are not binary
+patched; if they changed, the changed asset file is downloaded. The Hermes
+bundle is the only file type that gets the extra `.bsdiff` patch optimization.
 
 ## How to use it
 
