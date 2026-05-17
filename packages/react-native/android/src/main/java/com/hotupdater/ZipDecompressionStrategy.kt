@@ -119,7 +119,7 @@ class ZipDecompressionStrategy : DecompressionStrategy {
                         while (entry != null) {
                             val file =
                                 try {
-                                    PathSecurity.resolveInside(destinationDir, entry.name)
+                                    RelativePathResolver.resolveInside(destinationDir, entry.name)
                                 } catch (e: IOException) {
                                     Log.w(TAG, "Failed to resolve canonical path for zip entry: ${entry.name}", e)
                                     null

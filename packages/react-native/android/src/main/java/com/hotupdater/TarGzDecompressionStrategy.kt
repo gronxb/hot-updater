@@ -73,7 +73,7 @@ class TarGzDecompressionStrategy : DecompressionStrategy {
                             var entry = tarInputStream.getNextEntry()
 
                             while (entry != null) {
-                                val file = PathSecurity.resolveInside(destinationDir, entry.name)
+                                val file = RelativePathResolver.resolveInside(destinationDir, entry.name)
 
                                 if (file == null) {
                                     Log.w(TAG, "Skipping potentially malicious tar entry: ${entry.name}")

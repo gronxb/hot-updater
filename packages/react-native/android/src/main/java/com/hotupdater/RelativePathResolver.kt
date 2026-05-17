@@ -2,7 +2,7 @@ package com.hotupdater
 
 import java.io.File
 
-internal object PathSecurity {
+internal object RelativePathResolver {
     fun normalizeRelativePath(path: String): String? {
         if (path.isBlank() || path.indexOf('\u0000') >= 0 || path.contains('\\')) {
             return null
