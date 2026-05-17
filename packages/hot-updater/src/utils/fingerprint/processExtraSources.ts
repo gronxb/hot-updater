@@ -3,8 +3,20 @@
 import fs from "fs";
 import path from "path";
 
-import type { HashSourceContents, HashSourceDir } from "@expo/fingerprint";
 import fg from "fast-glob";
+
+type HashSourceDir = {
+  type: "dir";
+  filePath: string;
+  reasons: string[];
+};
+
+type HashSourceContents = {
+  type: "contents";
+  id: string;
+  contents: string | Buffer;
+  reasons: string[];
+};
 
 /**
  * Processes extra source files and directories for fingerprinting.

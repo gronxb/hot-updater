@@ -1,12 +1,27 @@
-import type { FingerprintDiffItem, FingerprintSource } from "@expo/fingerprint";
 import { diffFingerprintChangesAsync } from "@expo/fingerprint";
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
 
 import {
+  type FingerprintSource,
   type FingerprintOptions,
   type FingerprintResult,
   getOtaFingerprintOptions,
 } from "./common";
+
+export type FingerprintDiffItem =
+  | {
+      op: "added";
+      addedSource: FingerprintSource;
+    }
+  | {
+      op: "removed";
+      removedSource: FingerprintSource;
+    }
+  | {
+      op: "changed";
+      beforeSource: FingerprintSource;
+      afterSource: FingerprintSource;
+    };
 
 export async function getFingerprintDiff(
   oldFingerprint: FingerprintResult,
@@ -14,7 +29,7 @@ export async function getFingerprintDiff(
 ): Promise<FingerprintDiffItem[]> {
   const projectPath = getCwd();
   return await diffFingerprintChangesAsync(
-    oldFingerprint,
+    oldFingerprint as Parameters<typeof diffFingerprintChangesAsync>[0],
     projectPath,
     getOtaFingerprintOptions(options.platform, projectPath, options),
   );
@@ -24,7 +39,10 @@ function getSourcePath(source: FingerprintSource): string {
   if (source.type === "file" || source.type === "dir") {
     return source.filePath;
   }
-  return source.id || source.type;
+  if ("id" in source) {
+    return source.id;
+  }
+  return source.type;
 }
 
 export function formatDiffItem(item: FingerprintDiffItem): string {
