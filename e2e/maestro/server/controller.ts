@@ -176,6 +176,19 @@ function getE2eManagementAuthToken() {
   return authToken ? authToken : DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN;
 }
 
+function writeExampleManagementAuthToken(authToken: string) {
+  const envPath = path.join(session.exampleDir, ".env.hotupdater");
+  const nextLine = `HOT_UPDATER_AUTH_TOKEN=${authToken}`;
+  const source = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  const nextSource = /^HOT_UPDATER_AUTH_TOKEN=.*$/m.test(source)
+    ? source.replace(/^HOT_UPDATER_AUTH_TOKEN=.*$/m, nextLine)
+    : `${source.trimEnd()}\n${nextLine}\n`;
+
+  if (nextSource !== source) {
+    fs.writeFileSync(envPath, nextSource);
+  }
+}
+
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
     return value;
@@ -2552,7 +2565,10 @@ async function deployBundle(request: DeployBundleRequest) {
     session.resultsDir,
     `deploy-${request.channel}-${request.marker}.log`,
   );
+  const managementAuthToken = getE2eManagementAuthToken();
+  writeExampleManagementAuthToken(managementAuthToken);
   logE2e("deploy start", {
+    auth: managementAuthToken ? "set" : "missing",
     bundleProfile,
     channel: request.channel,
     command: `node ${args.join(" ")}`,
@@ -2565,7 +2581,7 @@ async function deployBundle(request: DeployBundleRequest) {
   await runLogged("node", args, {
     cwd: session.exampleDir,
     env: {
-      HOT_UPDATER_AUTH_TOKEN: getE2eManagementAuthToken(),
+      HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
       HOT_UPDATER_E2E_PLATFORM: session.platform,
     },
     logPath: deployLogPath,
