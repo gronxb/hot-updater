@@ -1,8 +1,4 @@
-import {
-  type FingerprintSource,
-  type Options,
-  SourceSkips,
-} from "@expo/fingerprint";
+import { SourceSkips } from "@expo/fingerprint";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 
 import { isExpo } from "../expoDetection";
@@ -40,7 +36,7 @@ export function getOtaFingerprintOptions(
   platform: "ios" | "android",
   path: string,
   options: FingerprintOptions,
-): Options {
+): OtaFingerprintOptions {
   return {
     useRNCoreAutolinkingFromExpo: isExpo(),
     platforms: [platform],
@@ -111,6 +107,24 @@ export type FingerprintSources = {
   extraSources: string[];
 };
 
+export type FingerprintSource =
+  | {
+      type: "file" | "dir";
+      filePath: string;
+      reasons: string[];
+      overrideHashKey?: string;
+      hash: string | null;
+      debugInfo?: any;
+    }
+  | {
+      type: "contents";
+      id: string;
+      contents: string | Buffer;
+      reasons: string[];
+      hash: string | null;
+      debugInfo?: any;
+    };
+
 export type FingerprintOptions = {
   platform: "ios" | "android";
   extraSources?: string[];
@@ -121,6 +135,15 @@ export type FingerprintOptions = {
 export type FingerprintResult = {
   hash: string;
   sources: FingerprintSource[];
+};
+
+type OtaFingerprintOptions = {
+  useRNCoreAutolinkingFromExpo: boolean;
+  platforms: Array<"ios" | "android">;
+  ignorePaths: string[];
+  sourceSkips: number;
+  extraSources: ReturnType<typeof processExtraSources>;
+  debug?: boolean;
 };
 
 export function isFingerprintEquals(

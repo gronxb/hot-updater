@@ -412,11 +412,15 @@ dbCommand
       outputDir: string | undefined,
       options: { yes: boolean; sql?: string | true },
     ) => {
+      const sql = options.sql === true ? true : options.sql || false;
+      const isStandaloneSql = sql !== false;
+
       await generate({
-        configPath: configPath || "",
-        outputDir,
+        configPath: isStandaloneSql ? "" : configPath || "",
+        outputDir:
+          isStandaloneSql && outputDir === undefined ? configPath : outputDir,
         skipConfirm: options.yes,
-        sql: options.sql === true ? true : options.sql || false,
+        sql,
       });
       process.exit(0);
     },
