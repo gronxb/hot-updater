@@ -35,7 +35,7 @@
     "access": "public"
   },
   "dependencies": {
-    "workspace-tools": "^0.18.4"
+    "workspace-tools": "^0.36.4"
   },
   "peerDependencies": {
     "@hot-updater/core": "*",

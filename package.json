@@ -48,5 +48,26 @@
     "typescript": "^6.0.2",
     "vitest": "catalog:"
   },
+  "pnpm": {
+    "overrides": {
+      "@babel/runtime": "^7.26.10",
+      "@fastify/middie": "^9.3.2",
+      "@protobufjs/utf8": "^1.1.1",
+      "@vitejs/plugin-rsc": "^0.5.6",
+      "basic-ftp": "^5.2.0",
+      "cookie": "^0.7.0",
+      "cross-spawn": "^7.0.5",
+      "esbuild": "^0.25.0",
+      "fast-xml-builder": "^1.1.7",
+      "find-my-way@8.2.0": "8.2.2",
+      "form-data@2.5.3": "2.5.4",
+      "form-data@3.0.3": "3.0.4",
+      "hono": "4.12.18",
+      "next": "16.2.6",
+      "on-headers": "^1.1.0",
+      "protobufjs": "^7.5.6",
+      "webpack": "^5.94.0"
+    }
+  },
   "packageManager": "pnpm@10.33.0"
 }

@@ -123,8 +123,9 @@ backend, your server must implement the bundle-management contract below.
 
 <Callout type="info">
 If you use `@hot-updater/server`, you do **not** need to implement these
-endpoints manually. `createHotUpdater()` already provides this contract when
-bundle routes are enabled, including `GET /api/bundles/channels`.
+endpoints manually. `createHotUpdater()` provides this contract when bundle
+routes are explicitly enabled and authorized, including
+`GET /api/bundles/channels`.
 </Callout>
 
 ### Contract Types
@@ -266,11 +267,18 @@ const hotUpdater = createHotUpdater({
   database,
   storages: [storage],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*` by default.
+`/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
+those management APIs; protect them at the framework or reverse proxy layer,
+and configure matching `commonHeaders` in `standaloneRepository` when
+authentication is required.
 
 ## Next Steps
 

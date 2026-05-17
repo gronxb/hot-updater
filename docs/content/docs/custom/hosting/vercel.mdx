@@ -80,7 +80,7 @@ export default app;
 ```
 
 <Callout type="warn">
-With Hono `mount()`, leave `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for update checks. `/hot-updater/version` is mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` when bundle routes are enabled.
+With Hono `mount()`, leave `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for update checks. `/hot-updater/version` is always mounted for diagnostics, so leave it public. Protect `/hot-updater/api/*` when `routes.bundles: true`.
 </Callout>
 
 ## Schema Generation

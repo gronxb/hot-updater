@@ -41,7 +41,7 @@ jobs:
       - run: pnpm install
 
       - name: Library Build
-        run: pnpm build
+        run: pnpm nx run-many --target=build --projects='packages/*,plugins/*'
 
       - name: Build Android
         run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
@@ -63,7 +63,7 @@ jobs:
       - run: pnpm install
 
       - name: Library Build
-        run: pnpm build
+        run: pnpm nx run-many --target=build --projects='packages/*,plugins/*'
 
       - name: Build Android
         run: cd examples/v0.74.1/android && ./gradlew assembleDebug --build-cache && cd ../..

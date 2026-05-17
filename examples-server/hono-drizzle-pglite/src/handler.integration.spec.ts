@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/core";
+import { NIL_UUID, type Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
   setupBundleMethodsTestSuite,
@@ -10,13 +10,14 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
+  TEST_MANAGEMENT_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -103,5 +104,28 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("protects bundle management routes without hiding public update routes", async () => {
+    const unauthorizedBundles = await fetch(
+      `${baseUrl}/hot-updater/api/bundles`,
+    );
+    const authorizedBundles = await fetch(
+      `${baseUrl}/hot-updater/api/bundles`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        },
+      },
+    );
+    const version = await fetch(`${baseUrl}/hot-updater/version`);
+    const updateCheck = await fetch(
+      `${baseUrl}/hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}`,
+    );
+
+    expect(unauthorizedBundles.status).toBe(401);
+    expect(authorizedBundles.status).toBe(200);
+    expect(version.status).toBe(200);
+    expect(updateCheck.status).toBe(200);
   });
 });

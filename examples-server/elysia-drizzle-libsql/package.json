@@ -20,7 +20,7 @@
     "@libsql/client": "catalog:db",
     "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:db",
-    "elysia": "^1.2.17",
+    "elysia": "^1.4.17",
     "memoirist": "^0.4.0"
   },
   "devDependencies": {

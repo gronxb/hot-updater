@@ -17,16 +17,16 @@ npm install express @types/express --save-dev
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-The Hot Updater handler does not include built-in authentication. Keep
-update-check routes public for React Native clients, but always protect bundle
-management routes before mounting the handler:
+Hot Updater keeps update-check routes public for React Native clients. Bundle
+management routes are disabled unless `routes.bundles` is enabled, and must be
+protected with framework middleware before mounting the handler:
 
 - Public: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected: `/hot-updater/api/*`
 
-Import the Hot Updater instance, protect `/api/*`, and mount it to your Express
-app:
+This example uses Express middleware to protect `/api/*` before mounting the Hot
+Updater handler:
 
 ```typescript
 import express from "express";
@@ -35,10 +35,14 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = express();
 const handler = toNodeHandler(hotUpdater); // [!code ++]
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
+
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required when bundle routes are enabled"); // [!code ++]
+} // [!code ++]
 
 const authMiddleware = (req, res, next) => { // [!code ++]
-  const token = req.headers.authorization?.split(" ")[1]; // [!code ++]
-  if (token !== process.env.API_KEY) { // [!code ++]
+  if (req.get("Authorization") !== `Bearer ${managementToken}`) { // [!code ++]
     return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
   } // [!code ++]
   next(); // [!code ++]
@@ -51,13 +55,13 @@ app.all("/hot-updater/*", handler); // [!code ++]
 app.listen(3000);
 ```
 
-Set your API key in environment variables:
+Set your auth token in environment variables:
 
 ```bash
-API_KEY=your-secret-api-key
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI to include the API key when deploying bundles:
+Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts"
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -67,7 +71,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
     },
   }),
 });
@@ -75,7 +79,8 @@ export default defineConfig({
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+The server automatically creates these endpoints. Bundle management endpoints
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

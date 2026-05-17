@@ -142,6 +142,10 @@ struct ArchiveExtractionTests {
                     kind: .file(Data("blocked\n".utf8))
                 ),
                 ZipEntrySpec(
+                    path: "../extracted_evil/escape.txt",
+                    kind: .file(Data("blocked\n".utf8))
+                ),
+                ZipEntrySpec(
                     path: safeFile.path,
                     kind: .file(safeFile.contents)
                 ),
@@ -163,8 +167,11 @@ struct ArchiveExtractionTests {
         try assertExtractedFiles([safeFile], in: extractionDirectory)
 
         let escapedURL = workingDirectory.appendingPathComponent("escape.txt")
+        let siblingEscapedURL = workingDirectory
+            .appendingPathComponent("extracted_evil/escape.txt")
         let skippedLinkURL = extractionDirectory.appendingPathComponent("safe/link.txt")
         #expect(FileManager.default.fileExists(atPath: escapedURL.path) == false)
+        #expect(FileManager.default.fileExists(atPath: siblingEscapedURL.path) == false)
         #expect(FileManager.default.fileExists(atPath: skippedLinkURL.path) == false)
     }
 
@@ -188,6 +195,10 @@ struct ArchiveExtractionTests {
                     kind: .file(Data("blocked\n".utf8))
                 ),
                 TarEntrySpec(
+                    path: "../extracted_evil/escape.txt",
+                    kind: .file(Data("blocked\n".utf8))
+                ),
+                TarEntrySpec(
                     path: safeFile.path,
                     kind: .file(safeFile.contents)
                 ),
@@ -205,7 +216,10 @@ struct ArchiveExtractionTests {
         try assertExtractedFiles([safeFile], in: extractionDirectory)
 
         let escapedURL = workingDirectory.appendingPathComponent("escape.txt")
+        let siblingEscapedURL = workingDirectory
+            .appendingPathComponent("extracted_evil/escape.txt")
         #expect(FileManager.default.fileExists(atPath: escapedURL.path) == false)
+        #expect(FileManager.default.fileExists(atPath: siblingEscapedURL.path) == false)
     }
 
     @Test(arguments: TarArchiveFormat.allCases)

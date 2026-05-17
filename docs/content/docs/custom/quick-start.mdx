@@ -54,20 +54,18 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
-By default, `createHotUpdater` mounts update-check routes, `/version`, and the
-bundle management routes used by the CLI `standaloneRepository` plugin. If you
-want this server to keep `/version` but hide the bundle management routes, add:
-
-```typescript title="src/hotUpdater.ts"
-routes: {
-  updateCheck: true,
-  version: true,
-  bundles: false,
-},
-```
+By default, `createHotUpdater` mounts update-check routes and `/version`.
+Bundle management routes used by the CLI `standaloneRepository` plugin must be
+enabled explicitly and protected by framework middleware before mounting the
+handler. When you provide `routes`, specify both configurable route groups
+explicitly.
 
 ## Server Setup
 
@@ -75,14 +73,18 @@ Create the server entry point.
 
 ```typescript title="src/index.ts"
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { serve } from "@hono/node-server";
+import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
 
-app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required when bundle routes are enabled"); // [!code ++]
+} // [!code ++]
 
+app.use("/hot-updater/api/*", bearerAuth({ token: managementToken })); // [!code ++]
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
@@ -97,14 +99,15 @@ Update-check routes must stay public for React Native clients:
 - `/hot-updater/app-version/*`
 - `/hot-updater/fingerprint/*`
 
-The bundle management routes under `/hot-updater/api/*` are used by the CLI and
-should be protected when `routes.bundles` is enabled. The server example above
-uses Bearer authentication for those routes.
+The bundle management routes under `/hot-updater/api/*` are used by the CLI.
+They are mounted only when `routes.bundles: true`, and your framework
+middleware must protect each management request before mounting the handler.
+The server example above uses Bearer authentication for `/hot-updater/api/*`.
 
-Set your API key in environment variables:
+Set your auth token in environment variables:
 
 ```bash
-API_KEY=your-secret-api-key
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
 ## Schema Generation
@@ -149,7 +152,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
     },
   }),
 });

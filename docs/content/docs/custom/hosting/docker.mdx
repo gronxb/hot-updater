@@ -86,7 +86,7 @@ serve({ fetch: app.fetch, port }, (info) => {
 ```
 
 <Callout type="warn">
-When using Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public. `/hot-updater/version` is mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` whenever bundle routes are enabled.
+When using Hono `mount()`, keep `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public. `/hot-updater/version` is always mounted for diagnostics, so leave it public. Protect `/hot-updater/api/*` when `routes.bundles: true`.
 </Callout>
 
 ## Schema Generation

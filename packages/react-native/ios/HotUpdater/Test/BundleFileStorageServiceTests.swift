@@ -120,6 +120,38 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func manifestDrivenInstallRejectsUnsafeAssetPaths() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences
+        )
+        let activeDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "active-bundle"
+        )
+        try writeBundle(in: activeDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(
+            in: activeDirectory,
+            bundleId: "active-bundle",
+            assetPaths: ["../active-bundle_evil/index.ios.bundle"]
+        )
+        try preferences.setItem(
+            activeDirectory
+                .appendingPathComponent("index.ios.bundle")
+                .absoluteString,
+            forKey: "HotUpdaterBundleURL"
+        )
+
+        #expect(service.canUseManifestDrivenInstall() == false)
+    }
+
+    @Test
     func appliesBsdiffPatchThroughSwiftPackageBridge() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -230,15 +262,17 @@ private func writeBundle(
 
 private func writeManifest(
     in bundleDirectory: URL,
-    bundleId: String
+    bundleId: String,
+    assetPaths: [String] = ["index.ios.bundle"]
 ) throws {
+    let assets = assetPaths.reduce(into: [String: [String: String]]()) { result, path in
+        result[path] = [
+            "fileHash": "bundle-hash",
+        ]
+    }
     let manifest: [String: Any] = [
         "bundleId": bundleId,
-        "assets": [
-            "index.ios.bundle": [
-                "fileHash": "bundle-hash",
-            ],
-        ],
+        "assets": assets,
     ]
     let data = try JSONSerialization.data(withJSONObject: manifest)
     try data.write(to: bundleDirectory.appendingPathComponent("manifest.json"))

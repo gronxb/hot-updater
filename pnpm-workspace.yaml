@@ -10,11 +10,11 @@ catalog:
   vitest: 4.1.4
 catalogs:
   tools:
-    tsdown: 0.22.0
+    tsdown: 0.21.6
     "@clack/prompts": 1.0.1
     "execa": 9.5.2
   hono:
-    hono: 4.12.9
+    hono: 4.12.18
     "@hono/node-server": 1.19.11
   db:
     "@electric-sql/pglite": 0.2.17
