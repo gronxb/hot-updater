@@ -13,6 +13,13 @@ const isAuthorizedManagementRequest = (request: Request) => {
 
 app.use("/hot-updater/api/*", async (c, next) => {
   if (!isAuthorizedManagementRequest(c.req.raw)) {
+    const authorization = c.req.raw.headers.get("Authorization");
+    console.warn("[hono-s3] unauthorized management request", {
+      authorizationLength: authorization?.length ?? 0,
+      hasAuthorization: Boolean(authorization),
+      hasToken: Boolean(process.env.HOT_UPDATER_AUTH_TOKEN),
+      tokenLength: process.env.HOT_UPDATER_AUTH_TOKEN?.length ?? 0,
+    });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
