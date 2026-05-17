@@ -17,12 +17,6 @@ const managementAuthToken =
 const managementHeaders = managementAuthToken
   ? { Authorization: `Bearer ${managementAuthToken}` }
   : undefined;
-const managementRoute = (path: string, headers = {}) => ({
-  path,
-  ...(managementHeaders
-    ? { headers: { ...headers, ...managementHeaders } }
-    : {}),
-});
 
 export default defineConfig({
   nativeBuild: {
@@ -70,27 +64,7 @@ export default defineConfig({
       }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3007/hot-updater",
-    ...(managementHeaders
-      ? {
-          routes: {
-            channels: () =>
-              managementRoute("/api/bundles/channels", {
-                "Cache-Control": "no-cache",
-              }),
-            create: () => managementRoute("/api/bundles"),
-            delete: (bundleId) => managementRoute(`/api/bundles/${bundleId}`),
-            list: () =>
-              managementRoute("/api/bundles", {
-                "Cache-Control": "no-cache",
-              }),
-            retrieve: (bundleId) =>
-              managementRoute(`/api/bundles/${bundleId}`, {
-                Accept: "application/json",
-              }),
-            update: (bundleId) => managementRoute(`/api/bundles/${bundleId}`),
-          },
-        }
-      : {}),
+    ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
   }),
   fingerprint: {
     debug: true,
