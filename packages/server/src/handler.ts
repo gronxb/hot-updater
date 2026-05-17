@@ -54,7 +54,8 @@ export interface HandlerOptions {
   basePath?: string;
   /**
    * Route groups to mount. Omit this option to use the default route groups.
-   * When provided, all route groups must be specified explicitly.
+   * When provided, both route groups must be specified explicitly.
+   * The `/version` endpoint is always mounted for diagnostics.
    */
   routes?: HandlerRoutes;
 }
@@ -65,12 +66,6 @@ export interface HandlerRoutes {
    * Defaults to `true` only when `routes` is omitted.
    */
   updateCheck: boolean;
-  /**
-   * Controls whether the `/version` endpoint is mounted.
-   * Useful for diagnostics and lightweight health/version checks.
-   * Defaults to `true` only when `routes` is omitted.
-   */
-  version: boolean;
   /**
    * Controls whether bundle management routes are mounted.
    * This includes `/api/bundles*`, which are used by the
@@ -545,7 +540,6 @@ export function createHandler<TContext = unknown>(
   const basePath = options.basePath ?? "/api";
   const routeOptions = options.routes ?? {
     updateCheck: true,
-    version: true,
     bundles: false,
   };
 
@@ -553,9 +547,7 @@ export function createHandler<TContext = unknown>(
   const router = createRouter();
 
   // Register routes
-  if (routeOptions.version) {
-    addRoute(router, "GET", "/version", "version");
-  }
+  addRoute(router, "GET", "/version", "version");
 
   if (routeOptions.updateCheck) {
     addRoute(

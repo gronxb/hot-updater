@@ -183,7 +183,6 @@ const createMemoryHotUpdater = () => {
     basePath: BASE_PATH,
     routes: {
       updateCheck: true,
-      version: true,
       bundles: false,
     },
   });

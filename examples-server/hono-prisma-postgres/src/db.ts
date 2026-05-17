@@ -26,7 +26,6 @@ export const hotUpdater = createHotUpdater({
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
-    version: true,
     bundles: true,
   },
 });

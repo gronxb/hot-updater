@@ -59,7 +59,6 @@ const createManagementHandler = (
     basePath: "/hot-updater",
     routes: {
       updateCheck: true,
-      version: true,
       bundles: true,
       ...routes,
     },
@@ -208,7 +207,6 @@ describe("createHandler", () => {
       basePath: "/hot-updater",
       routes: {
         updateCheck: true,
-        version: true,
         bundles: false,
       },
     });
@@ -270,7 +268,6 @@ describe("createHandler", () => {
       basePath: "/hot-updater",
       routes: {
         updateCheck: true,
-        version: true,
         bundles: true,
       },
     });
@@ -291,13 +288,12 @@ describe("createHandler", () => {
     );
   });
 
-  it("can disable the version route independently", async () => {
+  it("keeps the version route mounted when update-check routes are disabled", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
       routes: {
-        updateCheck: true,
-        version: false,
+        updateCheck: false,
         bundles: false,
       },
     });
@@ -314,9 +310,12 @@ describe("createHandler", () => {
       ),
     );
 
-    expect(versionResponse.status).toBe(404);
+    expect(versionResponse.status).toBe(200);
+    await expect(versionResponse.json()).resolves.toEqual({
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
     expect(bundlesResponse.status).toBe(404);
-    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.status).toBe(404);
   });
 
   it("can mount bundle routes without update-check routes", async () => {

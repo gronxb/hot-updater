@@ -236,7 +236,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
       basePath: HOT_UPDATER_BASE_PATH,
       routes: {
         updateCheck: true,
-        version: true,
         bundles: false,
       },
     });

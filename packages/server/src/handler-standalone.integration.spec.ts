@@ -36,7 +36,6 @@ const api = createHotUpdater({
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
-    version: true,
     bundles: true,
   },
 });
@@ -348,7 +347,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
       basePath: "/api/v2",
       routes: {
         updateCheck: true,
-        version: true,
         bundles: true,
       },
     });
@@ -423,7 +421,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
       basePath: "/blob-hot-updater",
       routes: {
         updateCheck: true,
-        version: true,
         bundles: true,
       },
     });

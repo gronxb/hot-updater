@@ -42,9 +42,9 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-If you set `routes: { updateCheck: true, version: true, bundles: false }`,
+If you set `routes: { updateCheck: true, bundles: false }`,
 `/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
-available. Set `version: false` as well if you want update-check-only routes.
+available for diagnostics.
 
 Set your API key in environment variables:
 
