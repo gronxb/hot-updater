@@ -717,7 +717,6 @@ function runHotUpdaterCliCapture(args: string[]) {
     cwd: session.exampleDir,
     env: {
       HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
-      HOT_UPDATER_E2E_DEBUG_AUTH: "1",
       HOT_UPDATER_E2E_PLATFORM: session.platform,
     },
     maxBuffer: 16 * 1024 * 1024,
@@ -745,7 +744,6 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
     cwd: session.exampleDir,
     env: {
       HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
-      HOT_UPDATER_E2E_DEBUG_AUTH: "1",
       HOT_UPDATER_E2E_PLATFORM: session.platform,
     },
     logPath,

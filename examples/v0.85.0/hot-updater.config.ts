@@ -14,13 +14,15 @@ const standaloneStorageBaseUrl =
 const managementAuthToken =
   process.env.HOT_UPDATER_AUTH_TOKEN?.trim() ||
   (process.env.HOT_UPDATER_E2E_PLATFORM ? "hot-updater-e2e-token" : undefined);
-
-if (process.env.HOT_UPDATER_E2E_DEBUG_AUTH === "1") {
-  console.error("[hot-updater-config] management auth", {
-    hasToken: Boolean(managementAuthToken),
-    tokenLength: managementAuthToken?.length ?? 0,
-  });
-}
+const managementHeaders = managementAuthToken
+  ? { Authorization: `Bearer ${managementAuthToken}` }
+  : undefined;
+const managementRoute = (path: string, headers = {}) => ({
+  path,
+  ...(managementHeaders
+    ? { headers: { ...headers, ...managementHeaders } }
+    : {}),
+});
 
 export default defineConfig({
   nativeBuild: {
@@ -68,10 +70,24 @@ export default defineConfig({
       }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3007/hot-updater",
-    ...(managementAuthToken
+    ...(managementHeaders
       ? {
-          commonHeaders: {
-            Authorization: `Bearer ${managementAuthToken}`,
+          routes: {
+            channels: () =>
+              managementRoute("/api/bundles/channels", {
+                "Cache-Control": "no-cache",
+              }),
+            create: () => managementRoute("/api/bundles"),
+            delete: (bundleId) => managementRoute(`/api/bundles/${bundleId}`),
+            list: () =>
+              managementRoute("/api/bundles", {
+                "Cache-Control": "no-cache",
+              }),
+            retrieve: (bundleId) =>
+              managementRoute(`/api/bundles/${bundleId}`, {
+                Accept: "application/json",
+              }),
+            update: (bundleId) => managementRoute(`/api/bundles/${bundleId}`),
           },
         }
       : {}),
