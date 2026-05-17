@@ -13,6 +13,7 @@ already installed on the device.
 | Without bundle diffing | With bundle diffing |
 | --- | --- |
 | Downloads the full compressed archive for the new bundle. | Copies unchanged files from the current OTA bundle. |
+| Downloads changed assets as part of the archive. | Downloads only assets that changed. |
 | Downloads changed Hermes bundles as full files. | Can download a `.bsdiff` patch for changed Hermes bundles. |
 | First and later OTA updates use the same archive path. | First OTA uses the archive; later OTAs can reuse local files. |
 
@@ -31,6 +32,16 @@ data needed for bundle diffing automatically.
 The first OTA update after a native install still uses the normal compressed
 archive because there is no previous OTA bundle to reuse. Bundle diffing becomes
 useful from the next OTA update onward.
+
+### What can be reused
+
+Bundle diffing applies to the files inside an OTA bundle, not only to the
+Hermes bundle file.
+
+| File type | If unchanged | If changed |
+| --- | --- | --- |
+| Regular assets, such as images or fonts | Copied from the current OTA bundle. | Downloaded as full changed asset files. |
+| Hermes bundle | Copied from the current OTA bundle. | Downloaded as a `.bsdiff` patch when available, otherwise as the full changed asset. |
 
 ## How to use it
 
