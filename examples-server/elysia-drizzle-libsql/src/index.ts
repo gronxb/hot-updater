@@ -5,10 +5,6 @@ import { closeDatabase, hotUpdater } from "./db.js";
 const port = Number(process.env.PORT) || 3001;
 
 const isAuthorizedManagementRequest = (request: Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
   const token = process.env.HOT_UPDATER_AUTH_TOKEN;
   return (
     Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`

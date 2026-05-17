@@ -288,6 +288,22 @@ describe("createHandler", () => {
     );
   });
 
+  it("keeps update-check routes mounted for partial runtime route config", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: JSON.parse('{"bundles":true}') as HandlerRoutes,
+    });
+
+    const updateResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
+      ),
+    );
+
+    expect(updateResponse.status).toBe(200);
+  });
+
   it("keeps the version route mounted when update-check routes are disabled", async () => {
     const api = createApi();
     const handler = createHandler(api, {

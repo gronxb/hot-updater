@@ -4,10 +4,6 @@ import { hotUpdater } from "./db.js";
 const app = new Elysia();
 
 const isAuthorizedManagementRequest = (request: Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
   const token = process.env.HOT_UPDATER_AUTH_TOKEN;
   return (
     Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`

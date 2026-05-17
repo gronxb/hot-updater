@@ -38,7 +38,7 @@ const handler = toNodeHandler(hotUpdater); // [!code ++]
 
 const authMiddleware = (req, res, next) => { // [!code ++]
   const token = req.headers.authorization?.split(" ")[1]; // [!code ++]
-  if (token !== process.env.API_KEY) { // [!code ++]
+  if (token !== process.env.HOT_UPDATER_AUTH_TOKEN) { // [!code ++]
     return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
   } // [!code ++]
   next(); // [!code ++]
@@ -51,13 +51,13 @@ app.all("/hot-updater/*", handler); // [!code ++]
 app.listen(3000);
 ```
 
-Set your API key in environment variables:
+Set your auth token in environment variables:
 
 ```bash
-API_KEY=your-secret-api-key
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI to include the API key when deploying bundles:
+Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts"
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -67,7 +67,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
     },
   }),
 });

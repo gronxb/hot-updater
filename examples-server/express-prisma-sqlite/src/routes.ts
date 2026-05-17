@@ -3,10 +3,6 @@ import type { Request, Router } from "express";
 import { hotUpdater } from "./db";
 
 const isAuthorizedManagementRequest = (req: Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
   const token = process.env.HOT_UPDATER_AUTH_TOKEN;
   return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
 };

@@ -79,7 +79,7 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
+app.use("/hot-updater/api/*", bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN! })); // [!code ++]
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
@@ -99,10 +99,10 @@ They are mounted only when `routes.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 
-Set your API key in environment variables:
+Set your auth token in environment variables:
 
 ```bash
-API_KEY=your-secret-api-key
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
 ## Schema Generation
@@ -147,7 +147,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
     },
   }),
 });

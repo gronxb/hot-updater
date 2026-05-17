@@ -35,7 +35,7 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
 
-app.use("/hot-updater/api/*", bearerAuth({ token: process.env.API_KEY! })); // [!code ++]
+app.use("/hot-updater/api/*", bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN! })); // [!code ++]
 
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
@@ -48,13 +48,13 @@ available for diagnostics.
 Set `bundles: true` only when this server accepts bundle-management requests;
 then the `/hot-updater/api/*` middleware above protects those routes.
 
-Set your API key in environment variables:
+Set your auth token in environment variables:
 
 ```bash
-API_KEY=your-secret-api-key
+HOT_UPDATER_AUTH_TOKEN=your-secret-auth-token
 ```
 
-Configure the CLI to include the API key when deploying bundles:
+Configure the CLI to include the auth token when deploying bundles:
 
 ```typescript title="hot-updater.config.ts"
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -64,7 +64,7 @@ export default defineConfig({
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
     commonHeaders: {
-      Authorization: `Bearer ${process.env.API_KEY}`,
+      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
     },
   }),
 });

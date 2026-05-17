@@ -538,9 +538,9 @@ export function createHandler<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
-  const routeOptions = options.routes ?? {
-    updateCheck: true,
-    bundles: false,
+  const routeOptions = {
+    updateCheck: options.routes?.updateCheck ?? true,
+    bundles: options.routes?.bundles ?? false,
   };
 
   // Create and configure router

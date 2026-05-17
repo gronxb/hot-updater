@@ -7,10 +7,6 @@ const app = express();
 const port = process.env.PORT || 3002;
 
 const isAuthorizedManagementRequest = (req: express.Request) => {
-  if (process.env.NODE_ENV === "test") {
-    return true;
-  }
-
   const token = process.env.HOT_UPDATER_AUTH_TOKEN;
   return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
 };
