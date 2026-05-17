@@ -95,10 +95,9 @@ Update-check routes must stay public for React Native clients:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are disabled unless `routes.bundles` is enabled, and
-your framework middleware must protect each management request before mounting
-the handler. The server example above uses Bearer authentication for
-`/hot-updater/api/*`.
+They are mounted only when `routes.bundles: true`, and your framework
+middleware must protect each management request before mounting the handler.
+The server example above uses Bearer authentication for `/hot-updater/api/*`.
 
 Set your API key in environment variables:
 

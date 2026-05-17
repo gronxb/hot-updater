@@ -216,9 +216,9 @@ This example uses
 `/api/check-update/version` stays mounted while `/api/check-update/api/*` is
 not mounted.
 
-Leave `/api/check-update/version` public for diagnostics. If you enable bundle
-routes later, protect `/api/check-update/api/*` with Hono middleware, but keep
-the update-check routes public.
+Leave `/api/check-update/version` public for diagnostics. Set
+`routes.bundles: true` only when this worker accepts bundle-management
+requests, and protect `/api/check-update/api/*` with Hono middleware.
 
 The catch-all download route stays reachable, but each bundle download is still
 guarded by the signed `token` verified with `JWT_SECRET`.

@@ -275,9 +275,10 @@ const hotUpdater = createHotUpdater({
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. Protect those routes at the framework or reverse
-proxy layer, and configure matching `commonHeaders` in `standaloneRepository`
-when authentication is required.
+`/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
+those management APIs; protect them at the framework or reverse proxy layer,
+and configure matching `commonHeaders` in `standaloneRepository` when
+authentication is required.
 
 ## Next Steps
 
