@@ -180,9 +180,12 @@ function writeExampleManagementAuthToken(authToken: string) {
   const envPath = path.join(session.exampleDir, ".env.hotupdater");
   const nextLine = `HOT_UPDATER_AUTH_TOKEN=${authToken}`;
   const source = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
-  const nextSource = /^HOT_UPDATER_AUTH_TOKEN=.*$/m.test(source)
-    ? source.replace(/^HOT_UPDATER_AUTH_TOKEN=.*$/m, nextLine)
-    : `${source.trimEnd()}\n${nextLine}\n`;
+  const retainedSource = source
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith("HOT_UPDATER_AUTH_TOKEN="))
+    .join("\n")
+    .trimEnd();
+  const nextSource = `${retainedSource ? `${retainedSource}\n` : ""}${nextLine}\n`;
 
   if (nextSource !== source) {
     fs.writeFileSync(envPath, nextSource);
