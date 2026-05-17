@@ -11,7 +11,12 @@ import {
   PostgresDialect,
   SqliteDialect,
 } from "kysely";
-import { format } from "sql-formatter";
+import {
+  formatDialect,
+  mysql as mysqlDialect,
+  postgresql as postgresqlDialect,
+  sqlite as sqliteDialect,
+} from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
 import {
@@ -147,12 +152,12 @@ async function generateWithMigrator(
   }
 
   let formattedSql = sql;
-  const formatLanguages = ["postgresql", "mysql"] as const;
+  const formatDialects = [postgresqlDialect, mysqlDialect] as const;
 
-  for (const language of formatLanguages) {
+  for (const dialect of formatDialects) {
     try {
-      formattedSql = format(sql, {
-        language,
+      formattedSql = formatDialect(sql, {
+        dialect,
         tabWidth: 2,
         keywordCase: "upper",
       });
@@ -519,8 +524,14 @@ async function generateStandaloneSQL(options: {
     }
 
     // Format SQL for better readability
-    const formattedSql = format(sql, {
-      language: dbType,
+    const formatterDialects = {
+      postgresql: postgresqlDialect,
+      mysql: mysqlDialect,
+      sqlite: sqliteDialect,
+    } as const satisfies Record<SupportedProvider, unknown>;
+
+    const formattedSql = formatDialect(sql, {
+      dialect: formatterDialects[dbType],
       tabWidth: 2,
       keywordCase: "upper",
     });
