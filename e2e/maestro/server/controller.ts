@@ -152,6 +152,7 @@ const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
 const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
+const DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN = "hot-updater-e2e-token";
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -706,6 +707,10 @@ function runHotUpdaterCliCapture(args: string[]) {
 
   const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: {
+      HOT_UPDATER_AUTH_TOKEN:
+        process.env.HOT_UPDATER_AUTH_TOKEN ?? DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN,
+    },
     maxBuffer: 16 * 1024 * 1024,
   });
 
@@ -726,6 +731,10 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 
   await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: {
+      HOT_UPDATER_AUTH_TOKEN:
+        process.env.HOT_UPDATER_AUTH_TOKEN ?? DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN,
+    },
     logPath,
   });
 
