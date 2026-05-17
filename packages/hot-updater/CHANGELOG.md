@@ -1,5 +1,20 @@
 # hot-updater
 
+## 0.31.2
+
+### Patch Changes
+
+- fe365ef: Bundle CLI-only dependencies so Expo projects do not install a duplicate
+  `@expo/fingerprint` through `hot-updater`.
+- 0084a78: tree-shake sql-formatter dialects
+  - @hot-updater/android-helper@0.31.2
+  - @hot-updater/apple-helper@0.31.2
+  - @hot-updater/cli-tools@0.31.2
+  - @hot-updater/console@0.31.2
+  - @hot-updater/core@0.31.2
+  - @hot-updater/server@0.31.2
+  - @hot-updater/plugin-core@0.31.2
+
 ## 0.31.1
 
 ### Patch Changes
