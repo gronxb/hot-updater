@@ -176,6 +176,19 @@ function getE2eManagementAuthToken() {
   return authToken ? authToken : DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN;
 }
 
+function syncExampleManagementAuthToken(authToken: string) {
+  const envPath = path.join(session.exampleDir, ".env.hotupdater");
+  const nextLine = `HOT_UPDATER_AUTH_TOKEN=${authToken}`;
+  const source = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  const nextSource = /^HOT_UPDATER_AUTH_TOKEN=.*$/m.test(source)
+    ? source.replace(/^HOT_UPDATER_AUTH_TOKEN=.*$/m, nextLine)
+    : `${source.trimEnd()}\n${nextLine}\n`;
+
+  if (nextSource !== source) {
+    fs.writeFileSync(envPath, nextSource);
+  }
+}
+
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
     return value;
@@ -707,6 +720,7 @@ function parseHotUpdaterCliJson<T>(label: string, output: string): T {
 
 function runHotUpdaterCliCapture(args: string[]) {
   const managementAuthToken = getE2eManagementAuthToken();
+  syncExampleManagementAuthToken(managementAuthToken);
   logE2e("hot-updater cli request", {
     auth: managementAuthToken ? "set" : "missing",
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
@@ -733,6 +747,7 @@ function runHotUpdaterCliCapture(args: string[]) {
 async function runHotUpdaterCliLogged(args: string[], logName: string) {
   const logPath = path.join(session.resultsDir, logName);
   const managementAuthToken = getE2eManagementAuthToken();
+  syncExampleManagementAuthToken(managementAuthToken);
   logE2e("hot-updater cli start", {
     auth: managementAuthToken ? "set" : "missing",
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
