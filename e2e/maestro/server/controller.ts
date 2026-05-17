@@ -171,6 +171,11 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
 
+function getE2eManagementAuthToken() {
+  const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+  return authToken ? authToken : DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN;
+}
+
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
     return value;
@@ -708,8 +713,7 @@ function runHotUpdaterCliCapture(args: string[]) {
   const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
     env: {
-      HOT_UPDATER_AUTH_TOKEN:
-        process.env.HOT_UPDATER_AUTH_TOKEN ?? DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN,
+      HOT_UPDATER_AUTH_TOKEN: getE2eManagementAuthToken(),
     },
     maxBuffer: 16 * 1024 * 1024,
   });
@@ -732,8 +736,7 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
     env: {
-      HOT_UPDATER_AUTH_TOKEN:
-        process.env.HOT_UPDATER_AUTH_TOKEN ?? DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN,
+      HOT_UPDATER_AUTH_TOKEN: getE2eManagementAuthToken(),
     },
     logPath,
   });
