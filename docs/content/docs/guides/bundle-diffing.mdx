@@ -46,6 +46,20 @@ This is the default behavior. Add the `patch` block only when you want to
 override it, for example to disable patch generation or change the number of
 base bundles.
 
+### Binary patches
+
+When the Hermes bundle changes, Hot Updater can generate a `.bsdiff` binary
+patch between a previous OTA bundle and the new OTA bundle during deploy. At
+runtime, the app downloads that patch and applies it to the already-installed
+Hermes bundle with the `bspatch` algorithm to reconstruct the new Hermes
+bundle.
+
+This can make the downloaded update much smaller than the full bundle. For
+example, a changed Hermes bundle that would otherwise require downloading about
+20 MB might be delivered as a roughly 500 KB patch when the byte-level changes
+are small. The actual patch size depends on the contents of the change; large
+or widespread bundle changes can still produce a much larger patch.
+
 `maxBaseBundles` controls how many previous compatible OTA bundles are used as
 patch bases when deploying a new OTA update.
 
