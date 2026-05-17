@@ -14,12 +14,35 @@ import {
 import pkg from "../../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 
-const loadCliTools = () => import("@hot-updater/cli-tools");
-const loadHotUpdater = () => import("hot-updater");
+type Fingerprints = {
+  android: { hash: string };
+  ios: { hash: string };
+};
 
-type Fingerprints = Awaited<
-  ReturnType<Awaited<ReturnType<typeof loadHotUpdater>>["generateFingerprints"]>
->;
+type SigningConfig = {
+  enabled?: boolean;
+  privateKeyPath?: string;
+};
+
+type HotUpdaterConfigFile = {
+  signing?: SigningConfig;
+  updateStrategy?: string;
+};
+
+type CliToolsModule = {
+  loadConfig: (configPath: string | null) => Promise<HotUpdaterConfigFile>;
+};
+
+type HotUpdaterModule = {
+  createFingerprintJSON: (fingerprint: Fingerprints) => Promise<void>;
+  generateFingerprints: () => Promise<Fingerprints>;
+  getPublicKeyFromPrivate: (privateKeyPEM: string) => string;
+  loadPrivateKey: (privateKeyPath: string) => Promise<string>;
+};
+
+const loadModule = <T>(specifier: string) => import(specifier) as Promise<T>;
+const loadCliTools = () => loadModule<CliToolsModule>("@hot-updater/cli-tools");
+const loadHotUpdater = () => loadModule<HotUpdaterModule>("hot-updater");
 
 let fingerprintCache: Fingerprints | null = null;
 
