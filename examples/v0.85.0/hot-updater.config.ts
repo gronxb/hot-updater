@@ -11,6 +11,7 @@ config({ path: ".env.hotupdater" });
 
 const standaloneStorageBaseUrl =
   process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;
+const managementAuthToken = process.env.HOT_UPDATER_AUTH_TOKEN;
 
 export default defineConfig({
   nativeBuild: {
@@ -58,6 +59,13 @@ export default defineConfig({
       }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3007/hot-updater",
+    ...(managementAuthToken
+      ? {
+          commonHeaders: {
+            Authorization: `Bearer ${managementAuthToken}`,
+          },
+        }
+      : {}),
   }),
   fingerprint: {
     debug: true,
