@@ -29,8 +29,8 @@ What the device downloads depends on what changed:
 | --- | --- |
 | First OTA after native install | Normal compressed archive |
 | Later OTA, unchanged file | Nothing; the file is copied locally |
-| Later OTA, changed regular asset | Full changed asset file |
-| Later OTA, changed Hermes bundle | `.bsdiff` patch when available, otherwise the full changed Hermes bundle |
+| Later OTA, changed regular asset | Complete new asset file |
+| Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
 For example, an update that would otherwise download a **20 MB archive** might
 only need to download a **500 KB patch file** when the byte-level Hermes changes
@@ -53,18 +53,18 @@ Bundle diffing has two separate optimizations:
    Hermes bundle file.
 2. **Binary patches for changed Hermes bundles.** If the Hermes bundle changed
    and Hot Updater has a matching `.bsdiff` patch, the app can download the
-   patch instead of the full changed Hermes bundle.
+   patch instead of the complete new Hermes bundle file.
 
 The key difference is that assets are reused at the file level, while changed
 Hermes bundles can also be patched at the byte level.
 
 | File type | If unchanged | If changed |
 | --- | --- | --- |
-| Regular assets | Copy local file | Download full asset |
-| Hermes bundle | Copy local file | Apply `.bsdiff` patch, then fallback to full asset |
+| Regular asset | Copy local file | Download the complete new asset file |
+| Hermes bundle file | Copy local file | Apply `.bsdiff` patch, then fallback to the complete new Hermes bundle file |
 
 Regular assets include files such as images and fonts. They are not binary
-patched; if they changed, the changed asset file is downloaded. The Hermes
+patched; if they changed, the complete new asset file is downloaded. The Hermes
 bundle is the only file type that gets the extra `.bsdiff` patch optimization.
 
 ## How to use it
@@ -112,11 +112,11 @@ Binary patches are an extra optimization for Hermes bundle files:
   Hermes bundle and the new Hermes bundle.
 - At runtime, the app downloads that patch and applies it to the
   already-installed Hermes bundle with the `bspatch` algorithm.
-- The result is the new Hermes bundle, without downloading the full changed
-  Hermes bundle.
+- The result is the new Hermes bundle file, without downloading that complete
+  file.
 
 This does not replace manifest-based file reuse. Regular assets are still
-copied from the current OTA bundle or downloaded as changed assets.
+copied from the current OTA bundle or downloaded as complete new files.
 
 `maxBaseBundles` controls how many previous compatible OTA bundles are used as
 patch bases when deploying a new OTA update.
@@ -134,10 +134,10 @@ from:
 - `OTA A` to `OTA C`
 
 This means devices currently on `OTA A` or `OTA B` can download a small patch to
-`OTA C` instead of the full changed Hermes bundle. Devices that only have the
-base bundle still use the compressed archive for their first OTA update. Devices
-on an older OTA outside the selected patch bases download the full changed
-Hermes bundle file instead of a patch.
+`OTA C` instead of the complete new Hermes bundle file. Devices that only have
+the base bundle still use the compressed archive for their first OTA update.
+Devices on an older OTA outside the selected patch bases download the complete
+new Hermes bundle file instead of a patch.
 
 Notes:
 
@@ -194,52 +194,59 @@ Before using a patched Hermes bundle, the app verifies:
 - the final output hash
 
 If anything does not match, or if the patch cannot be applied, Hot Updater
-downloads the full changed Hermes bundle when that asset URL is available. If
-the changed file cannot be downloaded, or if manifest-driven installation cannot
-be used, it falls back to the normal compressed archive.
+downloads the complete new Hermes bundle file when that file URL is available.
+If the changed file cannot be downloaded, or if manifest-driven installation
+cannot be used, it falls back to the normal compressed archive.
 
 ### Inspect downloaded files
 
 Use `useHotUpdaterStore` when you want to check which files were downloaded
 during a bundle diffing update.
 
+Use `progress` for the overall update progress. Use `details.files` for
+per-file progress during manifest-based diffing.
+
 Per-file details are available only when `artifactType` is `"diff"`. When
 `artifactType` is `"archive"`, the app is downloading one compressed archive, so
-there is no per-file download list.
+there is no per-file progress list.
 
 ```tsx
-import { useMemo } from "react";
 import { Text, View } from "react-native";
 import { useHotUpdaterStore } from "@hot-updater/react-native";
 
-function DownloadedFiles() {
-  const artifactType = useHotUpdaterStore((state) => state.artifactType);
-  const details = useHotUpdaterStore((state) => state.details);
+function UpdateDownloadProgress() {
+  const { artifactType, details, progress } = useHotUpdaterStore();
 
-  const downloadedFiles = useMemo(() => {
-    if (artifactType !== "diff" || !details) {
-      return [];
-    }
-
-    return details.files.filter((file) => file.status === "downloaded");
-  }, [artifactType, details]);
-
-  if (artifactType !== "diff") {
-    return null;
-  }
+  const files = artifactType === "diff" ? (details?.files ?? []) : [];
 
   return (
     <View>
-      <Text>
-        {downloadedFiles.length}/{details?.totalFilesCount ?? 0} changed files
-        downloaded
-      </Text>
-      {downloadedFiles.map((file) => (
-        <Text key={file.path}>
-          {file.path}
-          {file.downloadPath !== file.path ? ` via ${file.downloadPath}` : ""}
-        </Text>
-      ))}
+      <Text>Overall progress: {Math.round(progress * 100)}%</Text>
+
+      {artifactType === "archive" ? (
+        <Text>Downloading the normal OTA archive</Text>
+      ) : null}
+
+      {artifactType === "diff" && details ? (
+        <View>
+          <Text>
+            Changed files: {details.completedFilesCount}/
+            {details.totalFilesCount}
+          </Text>
+
+          {files.map((file) => (
+            <View key={file.path}>
+              <Text>{file.path}</Text>
+              <Text>
+                {file.status} · {Math.round(file.progress * 100)}%
+              </Text>
+              {file.downloadPath !== file.path ? (
+                <Text>Downloaded artifact: {file.downloadPath}</Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
