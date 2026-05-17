@@ -172,7 +172,7 @@ const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
 
 function getE2eManagementAuthToken() {
-  const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+  const authToken = process.env.HOT_UPDATER_E2E_AUTH_TOKEN?.trim();
   return authToken ? authToken : DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN;
 }
 
