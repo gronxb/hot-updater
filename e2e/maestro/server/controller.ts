@@ -706,14 +706,18 @@ function parseHotUpdaterCliJson<T>(label: string, output: string): T {
 }
 
 function runHotUpdaterCliCapture(args: string[]) {
+  const managementAuthToken = getE2eManagementAuthToken();
   logE2e("hot-updater cli request", {
+    auth: managementAuthToken ? "set" : "missing",
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    platform: session.platform,
   });
 
   const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
     env: {
-      HOT_UPDATER_AUTH_TOKEN: getE2eManagementAuthToken(),
+      HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
+      HOT_UPDATER_E2E_PLATFORM: session.platform,
     },
     maxBuffer: 16 * 1024 * 1024,
   });
@@ -728,15 +732,19 @@ function runHotUpdaterCliCapture(args: string[]) {
 
 async function runHotUpdaterCliLogged(args: string[], logName: string) {
   const logPath = path.join(session.resultsDir, logName);
+  const managementAuthToken = getE2eManagementAuthToken();
   logE2e("hot-updater cli start", {
+    auth: managementAuthToken ? "set" : "missing",
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
     logPath: path.relative(REPO_DIR, logPath),
+    platform: session.platform,
   });
 
   await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
     env: {
-      HOT_UPDATER_AUTH_TOKEN: getE2eManagementAuthToken(),
+      HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
+      HOT_UPDATER_E2E_PLATFORM: session.platform,
     },
     logPath,
   });
