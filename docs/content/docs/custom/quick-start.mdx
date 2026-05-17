@@ -78,8 +78,13 @@ import { bearerAuth } from "hono/bearer-auth"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = new Hono();
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
 
-app.use("/hot-updater/api/*", bearerAuth({ token: process.env.HOT_UPDATER_AUTH_TOKEN! })); // [!code ++]
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required when bundle routes are enabled"); // [!code ++]
+} // [!code ++]
+
+app.use("/hot-updater/api/*", bearerAuth({ token: managementToken })); // [!code ++]
 app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {

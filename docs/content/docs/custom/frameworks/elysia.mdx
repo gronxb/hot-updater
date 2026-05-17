@@ -33,12 +33,18 @@ import { Elysia } from "elysia";
 import { bearer } from "@elysiajs/bearer"; // [!code ++]
 import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
+const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
+
+if (!managementToken) { // [!code ++]
+  throw new Error("HOT_UPDATER_AUTH_TOKEN is required when bundle routes are enabled"); // [!code ++]
+} // [!code ++]
+
 new Elysia()
   .use(bearer()) // [!code ++]
   .onBeforeHandle(({ bearer, request }) => { // [!code ++]
     const pathname = new URL(request.url).pathname; // [!code ++]
     if (pathname === "/hot-updater/api" || pathname.startsWith("/hot-updater/api/")) { // [!code ++]
-      if (bearer !== process.env.HOT_UPDATER_AUTH_TOKEN) { // [!code ++]
+      if (bearer !== managementToken) { // [!code ++]
         return new Response("Unauthorized", { status: 401 }); // [!code ++]
       } // [!code ++]
     } // [!code ++]

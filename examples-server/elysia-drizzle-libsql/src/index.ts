@@ -18,18 +18,22 @@ const unauthorizedResponse = () =>
   });
 
 try {
-  const app = new Elysia({ adapter: node() })
-    .get("/", () => ({
-      status: "ok",
-      service: "Hot Updater Server (Elysia)",
-      version: "1.0.0",
-    }))
-    .post("/shutdown", async () => {
+  const app = new Elysia({ adapter: node() }).get("/", () => ({
+    status: "ok",
+    service: "Hot Updater Server (Elysia)",
+    version: "1.0.0",
+  }));
+
+  if (process.env.NODE_ENV === "test") {
+    app.post("/shutdown", async () => {
       console.log("Shutdown endpoint called");
       await closeDatabase();
       setTimeout(() => process.exit(0), 100);
       return { status: "shutting down" };
-    })
+    });
+  }
+
+  app
     .all("/hot-updater/*", ({ request }) => {
       if (
         new URL(request.url).pathname.startsWith("/hot-updater/api/") &&

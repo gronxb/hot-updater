@@ -31,14 +31,15 @@ app.use("/hot-updater/api", (req, res, next) => {
 });
 app.all("/hot-updater/*", toNodeHandler(hotUpdater));
 
-// Shutdown endpoint for testing
-app.post("/shutdown", (_req, res) => {
-  console.log("Shutdown endpoint called");
-  res.json({ message: "Shutting down..." });
-  server.close(() => {
-    process.exit(0);
+if (process.env.NODE_ENV === "test") {
+  app.post("/shutdown", (_req, res) => {
+    console.log("Shutdown endpoint called");
+    res.json({ message: "Shutting down..." });
+    server.close(() => {
+      process.exit(0);
+    });
   });
-});
+}
 
 // Start server
 const server = app.listen(port, () => {
