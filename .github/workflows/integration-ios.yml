@@ -33,7 +33,7 @@ jobs:
         run: bundle install
 
       - name: Library Build
-        run: pnpm build
+        run: pnpm nx run-many --target=build --projects='packages/*,plugins/*'
 
       - name: Swift Tests
         run: pnpm test:swift
@@ -71,7 +71,7 @@ jobs:
         run: bundle install
 
       - name: Library Build
-        run: pnpm build
+        run: pnpm nx run-many --target=build --projects='packages/*,plugins/*'
 
       - name: Swift Tests
         run: pnpm test:swift
