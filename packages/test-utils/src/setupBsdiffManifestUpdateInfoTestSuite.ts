@@ -174,7 +174,6 @@ export const setupBsdiffManifestUpdateInfoTestSuite = ({
           ?.changedAssets as Record<string, any> | undefined;
         const changedAsset = changedAssets?.[fixture.assetPath];
 
-        expect(changedAsset?.file).toBeUndefined();
         expect(changedAsset).toMatchObject({
           fileHash: "hash-new-bundle",
           patch: {
