@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.31.3
+
+### Patch Changes
+
+- d5d9c48: fix(hot-updater): match patch bases by semver compatibility
+  - @hot-updater/android-helper@0.31.3
+  - @hot-updater/apple-helper@0.31.3
+  - @hot-updater/cli-tools@0.31.3
+  - @hot-updater/console@0.31.3
+  - @hot-updater/core@0.31.3
+  - @hot-updater/server@0.31.3
+  - @hot-updater/plugin-core@0.31.3
+
 ## 0.31.2
 
 ### Patch Changes
