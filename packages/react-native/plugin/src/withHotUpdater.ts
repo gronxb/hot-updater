@@ -219,9 +219,11 @@ const withHotUpdaterConfigAsync =
         $: {
           name: "hot_updater_channel",
           moduleConfig: "true",
+          translatable: "false",
         } as {
           name: string;
           moduleConfig: string;
+          translatable: string;
         },
         _: channel,
       });
