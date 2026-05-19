@@ -19,9 +19,9 @@ export interface SupabaseApi {
 
 export const supabaseApi = (
   supabaseUrl: string,
-  supabaseAnonKey: string,
+  supabaseServiceRoleKey: string,
 ): SupabaseApi => {
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
   return {
     listBuckets: async () => {

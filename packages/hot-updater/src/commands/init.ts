@@ -76,12 +76,12 @@ export const init = async () => {
   const provider = await p.select({
     message: "Select a provider",
     options: [
-      { value: "supabase", label: "Supabase" },
       {
         value: "cloudflare",
         label: "Cloudflare D1 + R2 + Worker",
       },
       { value: "aws", label: "AWS S3 + Lambda@Edge" },
+      { value: "supabase", label: "Supabase" },
       { value: "firebase", label: "Firebase" },
     ],
   });

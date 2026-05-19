@@ -26,8 +26,8 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface SupabaseDatabaseConfig {
-  supabaseUrl: string;       // Your Supabase project URL
-  supabaseAnonKey: string;   // Your Supabase anon/public key
+  supabaseUrl: string;             // Your Supabase project URL
+  supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
 }
 ```
 
@@ -40,7 +40,7 @@ import { defineConfig } from 'hot-updater';
 export default defineConfig({
   database: supabaseDatabase({
     supabaseUrl: process.env.SUPABASE_URL,
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
   }),
   // ... other config
 });
@@ -57,12 +57,12 @@ import { defineConfig } from 'hot-updater';
 export default defineConfig({
   storage: supabaseStorage({
     supabaseUrl: process.env.SUPABASE_URL,
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucketName: 'hot-updater-bundles'
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.SUPABASE_URL,
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
   }),
   // ... other config
 });
