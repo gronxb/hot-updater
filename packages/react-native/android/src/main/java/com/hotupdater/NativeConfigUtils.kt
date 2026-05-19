@@ -37,12 +37,16 @@ object NativeConfigUtils {
                     )
                 }
 
-            applicationInfo.metaData
-                ?.getString(key)
-                ?.takeIf { it.isNotEmpty() }
+            @Suppress("DEPRECATION")
+            coerceManifestMetaDataString(applicationInfo.metaData?.get(key))
         } catch (e: Exception) {
             null
         }
+
+    internal fun coerceManifestMetaDataString(value: Any?): String? =
+        value
+            ?.toString()
+            ?.takeIf { it.isNotEmpty() }
 
     private fun getStringResource(
         context: Context,
