@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 
+import { ExecaError } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { r2Storage } from "./r2Storage";
@@ -11,6 +12,14 @@ const { wrangler } = vi.hoisted(() => ({
 vi.mock("./utils/createWrangler", () => ({
   createWrangler: vi.fn(() => wrangler),
 }));
+
+const createExecaError = (message: string) =>
+  Object.assign(Object.create(ExecaError.prototype), {
+    message,
+    shortMessage: message,
+    stderr: message,
+    stdout: "",
+  }) as ExecaError;
 
 describe("r2Storage", () => {
   beforeEach(() => {
@@ -81,5 +90,34 @@ describe("r2Storage", () => {
       'Bucket name mismatch: expected "test-bucket", but found "other-bucket".',
     );
     expect(wrangler).not.toHaveBeenCalled();
+  });
+
+  it("returns false when the R2 object does not exist", async () => {
+    wrangler.mockRejectedValueOnce(createExecaError("object not found"));
+
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      cloudflareApiToken: "api-token",
+    })();
+
+    await expect(
+      storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
+    ).resolves.toBe(false);
+  });
+
+  it("rethrows non-missing R2 existence errors", async () => {
+    const error = createExecaError("Authentication failed");
+    wrangler.mockRejectedValueOnce(error);
+
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      cloudflareApiToken: "api-token",
+    })();
+
+    await expect(
+      storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
+    ).rejects.toBe(error);
   });
 });

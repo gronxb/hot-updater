@@ -21,6 +21,19 @@ export interface R2StorageConfig {
   basePath?: string;
 }
 
+const isR2ObjectNotFoundError = (error: ExecaError) => {
+  const output = [error.stderr, error.stdout, error.shortMessage, error.message]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+
+  return (
+    output.includes("not found") ||
+    output.includes("no such object") ||
+    output.includes("does not exist")
+  );
+};
+
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
  */
@@ -116,7 +129,7 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
           );
           return true;
         } catch (error) {
-          if (error instanceof ExecaError) {
+          if (error instanceof ExecaError && isR2ObjectNotFoundError(error)) {
             return false;
           }
 

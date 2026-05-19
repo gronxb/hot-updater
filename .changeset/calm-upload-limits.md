@@ -5,7 +5,7 @@
 "@hot-updater/console": patch
 "@hot-updater/firebase": patch
 "@hot-updater/mock": patch
-"@hot-updater/plugin-core": patch
+"@hot-updater/plugin-core": minor
 "@hot-updater/server": patch
 "@hot-updater/standalone": patch
 "@hot-updater/supabase": patch

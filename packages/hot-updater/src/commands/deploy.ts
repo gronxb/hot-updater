@@ -12,6 +12,7 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
+import { getContentAddressedAssetStoragePath } from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePlugin,
@@ -325,18 +326,6 @@ const getManifestAssetUploadName = (relativePath: string) =>
     ? `${relativePath}.br`
     : relativePath;
 
-const getContentAddressedAssetStoragePath = ({
-  fileHash,
-  name,
-}: {
-  fileHash: string;
-  name: string;
-}) => {
-  const uploadName = getManifestAssetUploadName(name);
-  const extension = path.posix.extname(uploadName);
-  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
-};
-
 const replaceBundleStorageUriPath = (
   storageUri: string,
   bundleId: string,
@@ -411,6 +400,43 @@ const ensureUploadSourcePath = async ({
     await fs.promises.copyFile(targetFile.path, aliasPath);
   }
   return aliasPath;
+};
+
+const getUniqueContentAddressedAssetUploadTargets = ({
+  manifest,
+  targetFiles,
+}: {
+  manifest: Manifest;
+  targetFiles: { path: string; name: string }[];
+}) => {
+  const targets = new Map<
+    string,
+    {
+      storagePath: string;
+      targetFile: { path: string; name: string };
+    }
+  >();
+
+  for (const targetFile of targetFiles) {
+    const manifestAsset = manifest.assets[targetFile.name];
+    if (!manifestAsset?.fileHash) {
+      throw new Error(`Manifest file hash not found for ${targetFile.name}`);
+    }
+
+    const storagePath = getContentAddressedAssetStoragePath({
+      assetPath: getManifestAssetUploadName(targetFile.name),
+      fileHash: manifestAsset.fileHash,
+    });
+
+    if (!targets.has(storagePath)) {
+      targets.set(storagePath, {
+        storagePath,
+        targetFile,
+      });
+    }
+  }
+
+  return [...targets.values()];
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -877,21 +903,33 @@ const deployPlatform = async ({
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
-
-          const uploadStepCount = taskRef.targetFiles.length + 2;
-          let uploadedStepCount = 0;
-          let skippedUploadCount = 0;
-          const updateUploadProgress = () => {
-            message(
-              formatUploadProgress(
-                uploadedStepCount,
-                uploadStepCount,
-                skippedUploadCount,
-              ),
-            );
-          };
+          if (!taskRef.manifestPath) {
+            throw new Error("Manifest path not found");
+          }
+          if (!taskRef.manifest) {
+            throw new Error("Manifest not found");
+          }
 
           try {
+            const assetUploadTargets =
+              getUniqueContentAddressedAssetUploadTargets({
+                manifest: taskRef.manifest,
+                targetFiles: taskRef.targetFiles,
+              });
+
+            const uploadStepCount = assetUploadTargets.length + 2;
+            let uploadedStepCount = 0;
+            let skippedUploadCount = 0;
+            const updateUploadProgress = () => {
+              message(
+                formatUploadProgress(
+                  uploadedStepCount,
+                  uploadStepCount,
+                  skippedUploadCount,
+                ),
+              );
+            };
+
             updateUploadProgress();
             const { storageUri } = await storagePlugin.profiles.node.upload(
               bundleId,
@@ -900,13 +938,6 @@ const deployPlatform = async ({
             taskRef.storageUri = storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();
-
-            if (!taskRef.manifestPath) {
-              throw new Error("Manifest path not found");
-            }
-            if (!taskRef.manifest) {
-              throw new Error("Manifest not found");
-            }
 
             // /assets is a shared content-addressed root, not a per-bundle
             // directory. The server uses this suffix to derive asset object keys
@@ -920,20 +951,9 @@ const deployPlatform = async ({
             );
 
             await runWithConcurrency(
-              taskRef.targetFiles,
+              assetUploadTargets,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
-              async (targetFile) => {
-                const manifestAsset = taskRef.manifest?.assets[targetFile.name];
-                if (!manifestAsset?.fileHash) {
-                  throw new Error(
-                    `Manifest file hash not found for ${targetFile.name}`,
-                  );
-                }
-                const storagePath = getContentAddressedAssetStoragePath({
-                  fileHash: manifestAsset.fileHash,
-                  name: targetFile.name,
-                });
-
+              async ({ storagePath, targetFile }) => {
                 const storageUri = createStorageUriWithRelativePath(
                   taskRef.assetBaseStorageUri!,
                   storagePath,

@@ -686,6 +686,22 @@ describe("deploy rollout wiring", () => {
     let maxActiveAssetUploads = 0;
 
     vi.mocked(getBundleZipTargets).mockResolvedValue(assetFiles);
+    vi.mocked(writeBundleManifest).mockImplementation(
+      async ({ bundleId, targetFiles }) => ({
+        manifest: {
+          assets: Object.fromEntries(
+            targetFiles.map((targetFile, index) => [
+              targetFile.name,
+              {
+                fileHash: `file-hash-${index}`,
+              },
+            ]),
+          ),
+          bundleId,
+        },
+        manifestPath: "/mock/build/manifest.json",
+      }),
+    );
     mockStoragePlugin.profiles.node.upload.mockImplementation(
       async (key, filePath) => {
         if (key === "assets/sha256/fi") {
@@ -715,6 +731,37 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
+  });
+
+  it("deduplicates content-addressed asset uploads with the same object key", async () => {
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+      {
+        name: "assets/src/logo-copy.png",
+        path: "/mock/build/assets/src/logo-copy.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledTimes(1);
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
+      "assets/sha256/fi",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
+    );
   });
 
   it("skips content-addressed asset uploads that already exist", async () => {

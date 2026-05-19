@@ -10,6 +10,7 @@ import {
   getAssetBaseStorageUri,
   getBundlePatch,
   getBundlePatches,
+  getContentAddressedAssetStoragePath,
   getManifestStorageUri,
 } from "@hot-updater/core";
 import type {
@@ -124,23 +125,6 @@ const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
   // needed because the base URI already tells the server which resolver to use.
   const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
   return pathname.endsWith("/assets") || pathname === "/assets";
-};
-
-const getContentAddressedAssetStoragePath = ({
-  assetPath,
-  fileHash,
-}: {
-  assetPath: string;
-  fileHash: string;
-}) => {
-  // The extension comes from the logical download path so Hermes bundles keep
-  // their .br object while images/fonts keep their original file extension.
-  const extension = assetPath.endsWith(".br")
-    ? ".br"
-    : assetPath.includes(".")
-      ? `.${assetPath.split(".").pop()!}`
-      : "";
-  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
 };
 
 const getRelativeStorageDir = (relativePath: string) => {
