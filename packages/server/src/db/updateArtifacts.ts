@@ -89,6 +89,46 @@ const createChildStorageUri = (
   return baseUrl.toString();
 };
 
+const resolveAssetStorageUri = ({
+  asset,
+  assetBaseStorageUri,
+  fallbackPath,
+}: {
+  asset: BundleManifest["assets"][string];
+  assetBaseStorageUri: string;
+  fallbackPath: string;
+}) => {
+  return createChildStorageUri(
+    assetBaseStorageUri,
+    isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
+      ? getContentAddressedAssetStoragePath({
+          assetPath: fallbackPath,
+          fileHash: asset.fileHash,
+        })
+      : fallbackPath,
+  );
+};
+
+const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
+  const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
+  return pathname.endsWith("/assets") || pathname === "/assets";
+};
+
+const getContentAddressedAssetStoragePath = ({
+  assetPath,
+  fileHash,
+}: {
+  assetPath: string;
+  fileHash: string;
+}) => {
+  const extension = assetPath.endsWith(".br")
+    ? ".br"
+    : assetPath.includes(".")
+      ? `.${assetPath.split(".").pop()!}`
+      : "";
+  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
+};
+
 export const parseBundleMetadata = (
   value: unknown,
 ): Bundle["metadata"] | undefined => {
@@ -213,10 +253,11 @@ async function resolveChangedAssets<TContext>({
 
       const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
       const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
-      const storageUri = createChildStorageUri(
+      const storageUri = resolveAssetStorageUri({
+        asset,
         assetBaseStorageUri,
-        downloadPath,
-      );
+        fallbackPath: downloadPath,
+      });
       const patch =
         patchDescriptor?.assetPath === assetPath ? patchDescriptor.patch : null;
 

@@ -27,7 +27,7 @@ import semverValid from "semver/ranges/valid";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
-import { writeBundleManifest } from "@/utils/bundleManifest";
+import { type Manifest, writeBundleManifest } from "@/utils/bundleManifest";
 import {
   isFingerprintEquals,
   nativeFingerprint,
@@ -123,9 +123,14 @@ const runWithConcurrency = async <T>(
   );
 };
 
-const formatUploadProgress = (completed: number, total: number) => {
+const formatUploadProgress = (
+  completed: number,
+  total: number,
+  skipped = 0,
+) => {
   const percent = total === 0 ? 100 : Math.round((completed / total) * 100);
-  return `Uploading ${percent}% (${completed}/${total})`;
+  const skippedText = skipped > 0 ? `, skipped ${skipped}` : "";
+  return `Uploading ${percent}% (${completed}/${total}${skippedText})`;
 };
 
 const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
@@ -315,28 +320,69 @@ const getRelativeStorageDir = (relativePath: string) => {
 const isBrotliManifestBundleAsset = (relativePath: string) =>
   /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
 
-const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
-  const storageUrl = new URL(storageUri);
-  const normalizedPath = storageUrl.pathname.replace(/\/+$/, "");
-  const lastSlashIndex = normalizedPath.lastIndexOf("/");
-  const parentPath =
-    lastSlashIndex >= 0 ? normalizedPath.slice(0, lastSlashIndex) : "";
+const getManifestAssetUploadName = (relativePath: string) =>
+  isBrotliManifestBundleAsset(relativePath)
+    ? `${relativePath}.br`
+    : relativePath;
 
-  storageUrl.pathname = `${parentPath}/${nextLeaf}`;
+const getContentAddressedAssetStoragePath = ({
+  fileHash,
+  name,
+}: {
+  fileHash: string;
+  name: string;
+}) => {
+  const uploadName = getManifestAssetUploadName(name);
+  const extension = path.posix.extname(uploadName);
+  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
+};
+
+const replaceBundleStorageUriPath = (
+  storageUri: string,
+  bundleId: string,
+  nextPath: string,
+) => {
+  const storageUrl = new URL(storageUri);
+  const segments = storageUrl.pathname.split("/").filter(Boolean);
+  const bundleIndex = segments.lastIndexOf(bundleId);
+  const parentSegments =
+    bundleIndex >= 0 ? segments.slice(0, bundleIndex) : segments.slice(0, -2);
+
+  storageUrl.pathname = `/${[...parentSegments, nextPath]
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
+  return storageUrl.toString();
+};
+
+const createStorageUriWithRelativePath = (
+  baseStorageUri: string,
+  relativePath: string,
+) => {
+  const storageUrl = new URL(baseStorageUri);
+  const normalizedBasePath = storageUrl.pathname.replace(/\/+$/, "");
+  const normalizedRelativePath = relativePath
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+
+  storageUrl.pathname = `${normalizedBasePath}/${normalizedRelativePath}`;
   return storageUrl.toString();
 };
 
 const ensureUploadSourcePath = async ({
   outputPath,
   targetFile,
+  uploadFilename,
 }: {
   outputPath: string;
   targetFile: { path: string; name: string };
+  uploadFilename?: string;
 }) => {
-  const uploadName = isBrotliManifestBundleAsset(targetFile.name)
-    ? `${targetFile.name}.br`
-    : targetFile.name;
-  const expectedFilename = path.posix.basename(uploadName);
+  const uploadName = getManifestAssetUploadName(targetFile.name);
+  const expectedFilename = uploadFilename ?? path.posix.basename(uploadName);
   const actualFilename = path.basename(targetFile.path);
 
   if (uploadName === targetFile.name && expectedFilename === actualFilename) {
@@ -346,7 +392,7 @@ const ensureUploadSourcePath = async ({
   const aliasDir = path.join(
     outputPath,
     "upload-artifacts",
-    getRelativeStorageDir(uploadName),
+    uploadFilename ? "" : getRelativeStorageDir(uploadName),
   );
   await fs.promises.mkdir(aliasDir, { recursive: true });
 
@@ -670,6 +716,7 @@ const deployPlatform = async ({
         stdout: string | null;
       } | null;
       targetFiles: { path: string; name: string }[];
+      manifest: Manifest | null;
       manifestPath: string | null;
       manifestStorageUri: string | null;
       assetBaseStorageUri: string | null;
@@ -677,6 +724,7 @@ const deployPlatform = async ({
     } = {
       buildResult: null,
       targetFiles: [],
+      manifest: null,
       manifestPath: null,
       manifestStorageUri: null,
       assetBaseStorageUri: null,
@@ -719,7 +767,7 @@ const deployPlatform = async ({
                   signBundle(assetFileHash, config.signing!.privateKeyPath!)
               : undefined;
 
-          const { manifestPath } = await writeBundleManifest({
+          const { manifest, manifestPath } = await writeBundleManifest({
             buildPath,
             bundleId: currentBundleId,
             signFileHash: manifestSigning,
@@ -734,6 +782,7 @@ const deployPlatform = async ({
             },
           ];
           taskRef.targetFiles = targetFiles;
+          taskRef.manifest = manifest;
           taskRef.manifestPath = manifestPath;
 
           switch (compressStrategy) {
@@ -831,8 +880,15 @@ const deployPlatform = async ({
 
           const uploadStepCount = taskRef.targetFiles.length + 2;
           let uploadedStepCount = 0;
+          let skippedUploadCount = 0;
           const updateUploadProgress = () => {
-            message(formatUploadProgress(uploadedStepCount, uploadStepCount));
+            message(
+              formatUploadProgress(
+                uploadedStepCount,
+                uploadStepCount,
+                skippedUploadCount,
+              ),
+            );
           };
 
           try {
@@ -848,44 +904,71 @@ const deployPlatform = async ({
             if (!taskRef.manifestPath) {
               throw new Error("Manifest path not found");
             }
+            if (!taskRef.manifest) {
+              throw new Error("Manifest not found");
+            }
 
-            const manifestUpload = await storagePlugin.profiles.node.upload(
+            taskRef.assetBaseStorageUri = replaceBundleStorageUriPath(
+              storageUri,
               bundleId,
-              taskRef.manifestPath,
+              "assets",
             );
-            taskRef.manifestStorageUri = manifestUpload.storageUri;
-            taskRef.assetBaseStorageUri = replaceStorageUriLeaf(
-              manifestUpload.storageUri,
-              "files",
-            );
-            uploadedStepCount += 1;
-            updateUploadProgress();
 
             await runWithConcurrency(
               taskRef.targetFiles,
               MANIFEST_ASSET_UPLOAD_CONCURRENCY,
               async (targetFile) => {
-                const uploadName = isBrotliManifestBundleAsset(targetFile.name)
-                  ? `${targetFile.name}.br`
-                  : targetFile.name;
-                const relativeDir = getRelativeStorageDir(uploadName);
-                const uploadKey = [bundleId, "files", relativeDir]
+                const manifestAsset = taskRef.manifest?.assets[targetFile.name];
+                if (!manifestAsset?.fileHash) {
+                  throw new Error(
+                    `Manifest file hash not found for ${targetFile.name}`,
+                  );
+                }
+                const storagePath = getContentAddressedAssetStoragePath({
+                  fileHash: manifestAsset.fileHash,
+                  name: targetFile.name,
+                });
+
+                const storageUri = createStorageUriWithRelativePath(
+                  taskRef.assetBaseStorageUri!,
+                  storagePath,
+                );
+
+                const relativeDir = getRelativeStorageDir(storagePath);
+                const uploadKey = ["assets", relativeDir]
                   .filter(Boolean)
                   .join("/");
 
                 const uploadSourcePath = await ensureUploadSourcePath({
                   outputPath: outputRoot,
                   targetFile,
+                  uploadFilename: path.posix.basename(storagePath),
                 });
 
-                await storagePlugin.profiles.node.upload(
-                  uploadKey,
-                  uploadSourcePath,
-                );
+                const nodeStorage = storagePlugin.profiles
+                  .node as typeof storagePlugin.profiles.node & {
+                  exists?: (storageUri: string) => Promise<boolean>;
+                };
+                if (await nodeStorage.exists?.(storageUri)) {
+                  skippedUploadCount += 1;
+                } else {
+                  await storagePlugin.profiles.node.upload(
+                    uploadKey,
+                    uploadSourcePath,
+                  );
+                }
                 uploadedStepCount += 1;
                 updateUploadProgress();
               },
             );
+
+            const manifestUpload = await storagePlugin.profiles.node.upload(
+              bundleId,
+              taskRef.manifestPath,
+            );
+            taskRef.manifestStorageUri = manifestUpload.storageUri;
+            uploadedStepCount += 1;
+            updateUploadProgress();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);

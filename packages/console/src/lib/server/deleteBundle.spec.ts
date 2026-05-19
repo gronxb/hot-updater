@@ -251,6 +251,62 @@ describe("deleteBundle", () => {
     );
   });
 
+  it("keeps shared content-addressed assets when deleting a bundle", async () => {
+    const bundleWithManifest: Bundle = {
+      ...baseBundle,
+      assetBaseStorageUri: "s3://bucket/assets",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
+    };
+    const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+      getDownloadUrl: vi.fn(async (storageUri) => ({
+        fileUrl:
+          storageUri === bundleWithManifest.manifestStorageUri
+            ? "https://cdn.example.com/manifest.json"
+            : "https://cdn.example.com/unknown",
+      })),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(
+          JSON.stringify({
+            assets: {
+              "assets/logo.png": { fileHash: "logo-hash" },
+              "index.js": { fileHash: "bundle-hash" },
+            },
+          }),
+        );
+      }),
+    );
+
+    await deleteBundle(
+      { bundleId: bundleWithManifest.id },
+      { databasePlugin, storagePlugin },
+    );
+
+    expect(deleteFromStorage).toHaveBeenCalledTimes(2);
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.storageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.manifestStorageUri,
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      bundleWithManifest.assetBaseStorageUri,
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/lo/logo-hash.png",
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/bu/bundle-hash.br",
+    );
+  });
+
   it("falls back to deleting the asset base uri when manifest cleanup lookup fails", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,

@@ -122,6 +122,7 @@ describe("createStoragePlugin", () => {
   });
 
   it("creates a universal storage profile for plugins shared by deploy and runtime", async () => {
+    const exists = vi.fn(async () => true);
     const plugin = createUniversalStoragePlugin({
       name: "testUniversalStorage",
       supportedProtocol: "supabase-storage",
@@ -129,6 +130,7 @@ describe("createStoragePlugin", () => {
         node: {
           delete: vi.fn(),
           downloadFile: vi.fn(),
+          exists,
           upload: vi.fn(async () => ({
             storageUri: "supabase-storage://bucket/bundle.zip",
           })),
@@ -154,6 +156,10 @@ describe("createStoragePlugin", () => {
         "supabase-storage://bucket/manifest.json",
       ),
     ).resolves.toBeNull();
+    await expect(
+      plugin.profiles.node.exists?.("supabase-storage://bucket/bundle.zip"),
+    ).resolves.toBe(true);
+    expect(exists).toHaveBeenCalledWith("supabase-storage://bucket/bundle.zip");
   });
 
   it("throws clear errors when the required profile is missing", () => {

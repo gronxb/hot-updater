@@ -95,6 +95,46 @@ const createChildStorageUri = (
   return baseUrl.toString();
 };
 
+const resolveAssetStorageUri = ({
+  asset,
+  assetBaseStorageUri,
+  fallbackPath,
+}: {
+  asset: BundleManifest["assets"][string];
+  assetBaseStorageUri: string;
+  fallbackPath: string;
+}) => {
+  return createChildStorageUri(
+    assetBaseStorageUri,
+    isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
+      ? getContentAddressedAssetStoragePath({
+          assetPath: fallbackPath,
+          fileHash: asset.fileHash,
+        })
+      : fallbackPath,
+  );
+};
+
+const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
+  const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
+  return pathname.endsWith("/assets") || pathname === "/assets";
+};
+
+const getContentAddressedAssetStoragePath = ({
+  assetPath,
+  fileHash,
+}: {
+  assetPath: string;
+  fileHash: string;
+}) => {
+  const extension = assetPath.endsWith(".br")
+    ? ".br"
+    : assetPath.includes(".")
+      ? `.${assetPath.split(".").pop()!}`
+      : "";
+  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
+};
+
 const getRelativeStorageDir = (relativePath: string) => {
   const normalized = relativePath.replace(/\\/g, "/");
   const dirname = path.posix.dirname(normalized);
@@ -188,18 +228,24 @@ function resolveHbcAssetPath(manifest: BundleManifest) {
 async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
+  manifest: BundleManifest,
   storagePlugin: NodeStoragePlugin | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
     throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
   }
+  const asset = manifest.assets[assetPath];
+  if (!asset) {
+    throw new Error(`Asset ${assetPath} is missing from manifest`);
+  }
 
   if (BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)) {
-    const compressedAssetStorageUri = createChildStorageUri(
+    const compressedAssetStorageUri = resolveAssetStorageUri({
+      asset,
       assetBaseStorageUri,
-      `${assetPath}.br`,
-    );
+      fallbackPath: `${assetPath}.br`,
+    });
 
     let compressedBytes: Uint8Array | null = null;
     try {
@@ -216,7 +262,11 @@ async function fetchAssetBytes(
     }
   }
 
-  const assetStorageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
+  const assetStorageUri = resolveAssetStorageUri({
+    asset,
+    assetBaseStorageUri,
+    fallbackPath: assetPath,
+  });
   return downloadStorageBytes(assetStorageUri, storagePlugin);
 }
 
@@ -300,8 +350,18 @@ export async function createBundleDiff(
   }
 
   const [baseBytes, targetBytes] = await Promise.all([
-    fetchAssetBytes(baseBundle, baseAssetPath, deps.storagePlugin),
-    fetchAssetBytes(targetBundle, targetAssetPath, deps.storagePlugin),
+    fetchAssetBytes(
+      baseBundle,
+      baseAssetPath,
+      baseManifest,
+      deps.storagePlugin,
+    ),
+    fetchAssetBytes(
+      targetBundle,
+      targetAssetPath,
+      targetManifest,
+      deps.storagePlugin,
+    ),
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);

@@ -99,6 +99,11 @@ function createStorageUriWithRelativePath(
   return storageUrl.toString();
 }
 
+function isContentAddressedAssetBaseStorageUri(storageUri: string) {
+  const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
+  return pathname.endsWith("/assets") || pathname === "/assets";
+}
+
 async function loadBundleManifest(
   manifestStorageUri: string,
   storagePlugin: NodeStoragePlugin,
@@ -167,28 +172,37 @@ export async function deleteBundle(
 
     if (assetBaseStorageUri) {
       if (!manifestStorageUri) {
-        addCleanupUri(assetBaseStorageUri);
+        if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+          addCleanupUri(assetBaseStorageUri);
+        }
       } else {
         try {
           const manifest = await loadBundleManifest(
             manifestStorageUri,
             storagePlugin,
           );
-          const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
-            a.localeCompare(b),
-          );
-
-          for (const assetPath of assetPaths) {
-            addCleanupUri(
-              createStorageUriWithRelativePath(assetBaseStorageUri, assetPath),
+          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+            const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
+              a.localeCompare(b),
             );
+
+            for (const assetPath of assetPaths) {
+              addCleanupUri(
+                createStorageUriWithRelativePath(
+                  assetBaseStorageUri,
+                  assetPath,
+                ),
+              );
+            }
           }
         } catch (error) {
           console.error(
             "Failed to load bundle manifest for storage cleanup:",
             error,
           );
-          addCleanupUri(assetBaseStorageUri);
+          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+            addCleanupUri(assetBaseStorageUri);
+          }
         }
       }
     }

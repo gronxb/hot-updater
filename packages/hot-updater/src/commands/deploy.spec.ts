@@ -18,6 +18,7 @@ const {
       node: {
         delete: vi.fn(),
         downloadFile: vi.fn(),
+        exists: vi.fn(),
         upload: vi.fn(),
       },
     },
@@ -410,6 +411,7 @@ describe("deploy rollout wiring", () => {
     mockStoragePlugin.profiles.node.upload.mockResolvedValue({
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
+    mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
     mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
     mockDatabasePlugin.commitBundle.mockResolvedValue(undefined);
     mockDatabasePlugin.getBundles.mockResolvedValue({
@@ -456,13 +458,25 @@ describe("deploy rollout wiring", () => {
     } as Awaited<ReturnType<typeof getLatestGitCommit>>);
     vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
     vi.mocked(getNativeAppVersion).mockResolvedValue("1.0");
-    vi.mocked(writeBundleManifest).mockResolvedValue({
-      manifest: {
-        assets: {},
-        bundleId: "bundle-123",
-      },
-      manifestPath: "/mock/build/manifest.json",
-    });
+    vi.mocked(writeBundleManifest).mockImplementation(
+      async ({ bundleId, targetFiles }) => ({
+        manifest: {
+          assets: Object.fromEntries(
+            targetFiles.map((targetFile) => {
+              const fileHash = "file-hash";
+              return [
+                targetFile.name,
+                {
+                  fileHash,
+                },
+              ];
+            }),
+          ),
+          bundleId,
+        },
+        manifestPath: "/mock/build/manifest.json",
+      }),
+    );
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
         name: "index.bundle",
@@ -653,7 +667,7 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
-        assetBaseStorageUri: "s3://bundles/bundle-123/files",
+        assetBaseStorageUri: "s3://bundles/assets",
         manifestFileHash: "file-hash",
         manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
         metadata: expect.objectContaining({
@@ -674,7 +688,7 @@ describe("deploy rollout wiring", () => {
     vi.mocked(getBundleZipTargets).mockResolvedValue(assetFiles);
     mockStoragePlugin.profiles.node.upload.mockImplementation(
       async (key, filePath) => {
-        if (key === "bundle-123/files/assets") {
+        if (key === "assets/sha256/fi") {
           activeAssetUploads += 1;
           maxActiveAssetUploads = Math.max(
             maxActiveAssetUploads,
@@ -701,6 +715,36 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
+  });
+
+  it("skips content-addressed asset uploads that already exist", async () => {
+    mockStoragePlugin.profiles.node.exists.mockImplementation(
+      async (storageUri) =>
+        storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
+      "assets/sha256/fi",
+      expect.stringContaining("file-hash.png"),
+    );
   });
 
   it("reports upload progress through 100%", async () => {
@@ -764,16 +808,16 @@ describe("deploy rollout wiring", () => {
       "/mock/build/index.ios.bundle.hbc",
     );
     expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",
       expect.any(Buffer),
     );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
-      "bundle-123/files",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/index.ios.bundle.br",
+      "assets/sha256/fi",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",
     );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
-      "bundle-123/files/assets/src",
-      "/mock/build/assets/src/logo.png",
+      "assets/sha256/fi",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
     );
   });
 

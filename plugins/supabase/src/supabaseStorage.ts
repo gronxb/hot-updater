@@ -80,6 +80,32 @@ export const supabaseStorage =
               storageUri: `supabase-storage://${fullPath}`,
             };
           },
+          async exists(storageUri: string) {
+            const { key, bucket: bucketName } = parseStorageUri(
+              storageUri,
+              "supabase-storage",
+            );
+            if (bucketName !== config.bucketName) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+              );
+            }
+
+            const dirname = path.posix.dirname(key);
+            const filename = path.posix.basename(key);
+            const { data, error } = await bucket.list(
+              dirname === "." ? "" : dirname,
+              {
+                limit: 1,
+                search: filename,
+              },
+            );
+            if (error) {
+              throw error;
+            }
+
+            return (data ?? []).some((file) => file.name === filename);
+          },
           async downloadFile(storageUri: string, filePath: string) {
             const { key, bucket: bucketName } = parseStorageUri(
               storageUri,
