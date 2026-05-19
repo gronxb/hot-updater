@@ -35,7 +35,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   })`,
   };
@@ -43,7 +43,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
     configString: `supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   })`,
   };
 
@@ -53,6 +53,52 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
       .setStorage(storageConfig)
       .setDatabase(databaseConfig),
   );
+};
+
+export const getLegacySupabaseConfigReference = (configText: string) => {
+  if (configText.includes("HOT_UPDATER_SUPABASE_ANON_KEY")) {
+    return "HOT_UPDATER_SUPABASE_ANON_KEY";
+  }
+
+  if (/\bsupabaseAnonKey\s*:/.test(configText)) {
+    return "supabaseAnonKey";
+  }
+
+  return null;
+};
+
+const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
+  configWriteResult: Awaited<ReturnType<typeof writeHotUpdaterConfig>>,
+) => {
+  if (configWriteResult.status !== "skipped") {
+    return;
+  }
+
+  const configText = await fs
+    .readFile(configWriteResult.path, "utf-8")
+    .catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null;
+      }
+
+      throw error;
+    });
+
+  const legacyReference =
+    configText === null ? null : getLegacySupabaseConfigReference(configText);
+
+  if (!legacyReference) {
+    return;
+  }
+
+  p.log.error(
+    `Existing '${configWriteResult.path}' still references '${legacyReference}'.`,
+  );
+  p.log.message(
+    "Update it to use 'supabaseServiceRoleKey' with " +
+      "'HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY', then run init again.",
+  );
+  process.exit(1);
 };
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -659,14 +705,14 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
   spinner.stop();
 
-  const serviceRoleKey = apiKeys.find((key) => key.name === "service_role");
-  if (!serviceRoleKey) {
+  const serviceRoleApiKey = apiKeys.find((key) => key.name === "service_role");
+  if (!serviceRoleApiKey) {
     throw new Error("Service role key not found, is your project paused?");
   }
 
   const api = supabaseApi(
     `https://${project.id}.supabase.co`,
-    serviceRoleKey.api_key,
+    serviceRoleApiKey.api_key,
   );
   const bucket = await selectBucket(api);
 
@@ -714,9 +760,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build),
   );
+  await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 
   await makeEnv({
-    HOT_UPDATER_SUPABASE_ANON_KEY: serviceRoleKey.api_key,
+    HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });

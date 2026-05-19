@@ -5,7 +5,36 @@ import path from "node:path";
 import { resolvePackageVersion } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
-import { resolveEdgeFunctionDenoConfig } from "./index";
+import {
+  getLegacySupabaseConfigReference,
+  resolveEdgeFunctionDenoConfig,
+} from "./index";
+
+describe("getLegacySupabaseConfigReference", () => {
+  it("detects legacy Supabase env references", () => {
+    expect(
+      getLegacySupabaseConfigReference(
+        "process.env.HOT_UPDATER_SUPABASE_ANON_KEY!",
+      ),
+    ).toBe("HOT_UPDATER_SUPABASE_ANON_KEY");
+  });
+
+  it("detects legacy Supabase config fields", () => {
+    expect(
+      getLegacySupabaseConfigReference(
+        "supabaseDatabase({ supabaseAnonKey: legacyKey })",
+      ),
+    ).toBe("supabaseAnonKey");
+  });
+
+  it("allows service-role Supabase config", () => {
+    expect(
+      getLegacySupabaseConfigReference(
+        "supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!",
+      ),
+    ).toBeNull();
+  });
+});
 
 describe("resolveEdgeFunctionDenoConfig", () => {
   it("vendors package dist files into the edge function directory", async () => {

@@ -14,12 +14,13 @@ import {
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  resolveSupabaseServiceRoleKey,
+  type SupabaseServiceRoleConfig,
+} from "./supabaseConfig";
 import type { SupabaseBundlePatchRow, SupabaseBundleRow } from "./types";
 
-export interface SupabaseDatabaseConfig {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
-}
+export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
 const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
   if (!value) {
@@ -160,7 +161,10 @@ const bundleToPatchRows = (bundle: Bundle): SupabaseBundlePatchRow[] =>
 export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
   name: "supabaseDatabase",
   factory: (config) => {
-    const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+    const supabase = createClient(
+      config.supabaseUrl,
+      resolveSupabaseServiceRoleKey(config),
+    );
     const fetchPatchMap = async (bundleIds: string[]) => {
       const patchMap = new Map<string, SupabaseBundlePatchRow[]>();
 
