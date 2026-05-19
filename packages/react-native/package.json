@@ -45,9 +45,11 @@
     "!**/.*"
   ],
   "scripts": {
-    "build": "pnpm sync:sdk-version && bob build && tsc -p plugin/tsconfig.build.json",
+    "build": "node ./scripts/sync-sdk-version.mjs run -- bob build && tsc -p plugin/tsconfig.build.json",
     "build:plugin": "tsc -p plugin/tsconfig.build.json",
     "sync:sdk-version": "node ./scripts/sync-sdk-version.mjs",
+    "prepack": "node ./scripts/sync-sdk-version.mjs sync",
+    "postpack": "node ./scripts/sync-sdk-version.mjs restore",
     "test:type": "tsc --noEmit",
     "test": "vitest",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
