@@ -92,7 +92,11 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 
 ## Security Settings
 
-Update-check routes must stay public for React Native clients:
+The Hot Updater handler does not include built-in authentication. Always protect
+bundle management routes before mounting the handler.
+
+Update-check routes are usually exposed for React Native clients, but that is a
+deployment choice:
 
 - `/hot-updater/app-version/*`
 - `/hot-updater/fingerprint/*`
