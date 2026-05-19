@@ -93,6 +93,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
 
 const getDefaultConfig = (): ConfigInput => {
   return {
+    cacheDir: path.join("node_modules", ".hot-updater"),
     releaseChannel: "production",
     updateStrategy: "appVersion",
     compressStrategy: "zip",

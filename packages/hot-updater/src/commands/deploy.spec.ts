@@ -802,6 +802,125 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  it("skips cached content-addressed assets without remote existence checks", async () => {
+    const cachePath = path.join(
+      "/mock/cwd",
+      "node_modules",
+      ".hot-updater",
+      "deploy-upload-cache.json",
+    );
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
+      if (filePath === cachePath) {
+        return JSON.stringify({
+          uploadedAssetStorageUris: [
+            "s3://bundles/assets/sha256/fi/file-hash.png",
+          ],
+          version: 1,
+        });
+      }
+
+      return Buffer.from("bundle");
+    });
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).not.toHaveBeenCalled();
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
+      "assets/sha256/fi",
+      expect.stringContaining("file-hash.png"),
+    );
+  });
+
+  it("records uploaded content-addressed assets in the local cache", async () => {
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(fs.promises.mkdir).toHaveBeenCalledWith(
+      path.join("/mock/cwd", "node_modules", ".hot-updater"),
+      { recursive: true },
+    );
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      path.join(
+        "/mock/cwd",
+        "node_modules",
+        ".hot-updater",
+        "deploy-upload-cache.json",
+      ),
+      `${JSON.stringify(
+        {
+          uploadedAssetStorageUris: [
+            "s3://bundles/assets/sha256/fi/file-hash.png",
+          ],
+          version: 1,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+
+  it("does not read or write the deploy upload cache when cacheDir is null", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      cacheDir: null,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    expect(fs.promises.readFile).not.toHaveBeenCalled();
+    expect(fs.promises.writeFile).not.toHaveBeenCalled();
+  });
+
   it("reports upload progress through 100%", async () => {
     const uploadMessages: string[] = [];
 

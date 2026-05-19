@@ -39,6 +39,7 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.releaseChannel).toBe("production");
+    expect(config.cacheDir).toBe(path.join("node_modules", ".hot-updater"));
     expect(config.updateStrategy).toBe("appVersion");
     expect(config.compressStrategy).toBe("zip");
     expect(config.patch.enabled).toBe(true);
@@ -47,6 +48,19 @@ describe("loadConfig", () => {
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
+  });
+
+  it("allows disabling the local CLI cache", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      ["export default {", "  cacheDir: null,", "};", ""].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.cacheDir).toBeNull();
   });
 
   it("discovers native config files from the project root by default", async () => {

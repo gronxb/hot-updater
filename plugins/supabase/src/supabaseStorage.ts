@@ -93,20 +93,12 @@ export const supabaseStorage =
               );
             }
 
-            const dirname = path.posix.dirname(key);
-            const filename = path.posix.basename(key);
-            const { data, error } = await bucket.list(
-              dirname === "." ? "" : dirname,
-              {
-                limit: 1,
-                search: filename,
-              },
-            );
+            const { data, error } = await bucket.exists(key);
             if (error) {
               throw error;
             }
 
-            return (data ?? []).some((file) => file.name === filename);
+            return data;
           },
           async downloadFile(storageUri: string, filePath: string) {
             const { key, bucket: bucketName } = parseStorageUri(

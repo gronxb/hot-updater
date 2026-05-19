@@ -492,6 +492,13 @@ export type SigningConfig =
 
 export type ConfigInput = {
   /**
+   * @hidden
+   * Local cache directory used by Hot Updater CLI. Set to `null` to disable.
+   *
+   * @default "node_modules/.hot-updater"
+   */
+  cacheDir?: string | null;
+  /**
    * The channel used when building the native app.
    * Used to replace __HOT_UPDATER_CHANNEL at build time.
    *
