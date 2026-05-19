@@ -19,7 +19,7 @@ import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.t
 import type { Bundle } from "../../../packages/core/src/types.ts";
 
 type Platform = "ios" | "android";
-type BundleProfile = "archive300mb" | "default";
+type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
 
 type JobResult = Record<string, unknown>;
 
@@ -63,6 +63,7 @@ type SessionState = {
   iosDerivedDataPath: string;
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
+  multiAssetBackupPaths: Record<string, string | null>;
   platform: Platform;
   resultsDir: string;
   reuseApp: boolean;
@@ -168,6 +169,30 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_HEADER_SIZE +
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
+const MULTI_ASSET_FIXTURES = [
+  {
+    manifestPath: "assets/src/test/_fixture-multi-asset-a.bmp",
+    relativePath: "src/test/_fixture-multi-asset-a.bmp",
+    requirePath: "./src/test/_fixture-multi-asset-a.bmp",
+  },
+  {
+    manifestPath: "assets/src/test/_fixture-multi-asset-b.bmp",
+    relativePath: "src/test/_fixture-multi-asset-b.bmp",
+    requirePath: "./src/test/_fixture-multi-asset-b.bmp",
+  },
+  {
+    manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
+    relativePath: "src/test/_fixture-multi-asset-c.bmp",
+    requirePath: "./src/test/_fixture-multi-asset-c.bmp",
+  },
+] as const;
+const MULTI_ASSET_BMP_WIDTH = 64;
+const MULTI_ASSET_BMP_HEIGHT = 64;
+const MULTI_ASSET_BMP_HEADER_SIZE = 54;
+const MULTI_ASSET_BMP_ROW_SIZE = Math.ceil((MULTI_ASSET_BMP_WIDTH * 3) / 4) * 4;
+const MULTI_ASSET_BMP_SIZE_BYTES =
+  MULTI_ASSET_BMP_HEADER_SIZE +
+  MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -246,6 +271,7 @@ const session: SessionState = {
     EXAMPLE_DIR,
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
+  multiAssetBackupPaths: {},
   platform,
   resultsDir,
   reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
@@ -434,6 +460,69 @@ async function writeDeterministicBmpFile(filePath: string) {
   }
 }
 
+function createMultiAssetBmpHeader() {
+  const header = Buffer.alloc(MULTI_ASSET_BMP_HEADER_SIZE);
+  const pixelDataSize = MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
+
+  header.write("BM", 0, "ascii");
+  header.writeUInt32LE(MULTI_ASSET_BMP_SIZE_BYTES, 2);
+  header.writeUInt32LE(MULTI_ASSET_BMP_HEADER_SIZE, 10);
+  header.writeUInt32LE(40, 14);
+  header.writeInt32LE(MULTI_ASSET_BMP_WIDTH, 18);
+  header.writeInt32LE(MULTI_ASSET_BMP_HEIGHT, 22);
+  header.writeUInt16LE(1, 26);
+  header.writeUInt16LE(24, 28);
+  header.writeUInt32LE(0, 30);
+  header.writeUInt32LE(pixelDataSize, 34);
+  header.writeInt32LE(2835, 38);
+  header.writeInt32LE(2835, 42);
+
+  return header;
+}
+
+function createMultiAssetBmpBuffer(seedInput: string) {
+  const seed = createHash("sha256").update(seedInput).digest().readUInt32LE(0);
+  const pixelData = Buffer.alloc(
+    MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT,
+  );
+
+  fillDeterministicPseudoRandomChunk(pixelData, seed);
+
+  return Buffer.concat([createMultiAssetBmpHeader(), pixelData]);
+}
+
+async function ensureMultiAssetFixtures(marker: string) {
+  for (const fixture of MULTI_ASSET_FIXTURES) {
+    const assetPath = path.join(EXAMPLE_DIR, fixture.relativePath);
+
+    if (!(fixture.relativePath in session.multiAssetBackupPaths)) {
+      session.multiAssetBackupPaths[fixture.relativePath] =
+        await backupFile(assetPath);
+    }
+
+    await fsPromises.mkdir(path.dirname(assetPath), { recursive: true });
+    await fsPromises.writeFile(
+      assetPath,
+      createMultiAssetBmpBuffer(`${marker}:${fixture.relativePath}`),
+    );
+  }
+
+  logE2e("multi asset fixtures ready", {
+    marker,
+    paths: MULTI_ASSET_FIXTURES.map((fixture) => fixture.relativePath),
+    sizeBytes: MULTI_ASSET_BMP_SIZE_BYTES,
+  });
+}
+
+async function restoreMultiAssetFixtures() {
+  for (const fixture of MULTI_ASSET_FIXTURES) {
+    await restoreFile(
+      session.multiAssetBackupPaths[fixture.relativePath] ?? null,
+      path.join(EXAMPLE_DIR, fixture.relativePath),
+    );
+  }
+}
+
 async function ensureLargeArchiveAsset() {
   const existingStats = await fsPromises
     .stat(session.largeArchiveAssetPath)
@@ -519,14 +608,28 @@ async function applyAppScenario({
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
       : `${CRASH_GUARD_START}\n  ${CRASH_GUARD_END}`;
-  const deployAssetSource =
-    bundleProfile === "archive300mb"
-      ? [
-          DEPLOY_ASSET_GUARD_START,
-          `  void Image.resolveAssetSource(require(${JSON.stringify(LARGE_ARCHIVE_ASSET_REQUIRE_PATH)}));`,
-          `  ${DEPLOY_ASSET_GUARD_END}`,
-        ].join("\n")
-      : `${DEPLOY_ASSET_GUARD_START}\n  ${DEPLOY_ASSET_GUARD_END}`;
+  const deployAssetSource = (() => {
+    if (bundleProfile === "archive300mb") {
+      return [
+        DEPLOY_ASSET_GUARD_START,
+        `  void Image.resolveAssetSource(require(${JSON.stringify(LARGE_ARCHIVE_ASSET_REQUIRE_PATH)}));`,
+        `  ${DEPLOY_ASSET_GUARD_END}`,
+      ].join("\n");
+    }
+
+    if (bundleProfile === "multiAssetReplacement") {
+      return [
+        DEPLOY_ASSET_GUARD_START,
+        ...MULTI_ASSET_FIXTURES.map(
+          (fixture) =>
+            `  void Image.resolveAssetSource(require(${JSON.stringify(fixture.requirePath)}));`,
+        ),
+        `  ${DEPLOY_ASSET_GUARD_END}`,
+      ].join("\n");
+    }
+
+    return `${DEPLOY_ASSET_GUARD_START}\n  ${DEPLOY_ASSET_GUARD_END}`;
+  })();
 
   const nextSource = source
     .replace(
@@ -1850,6 +1953,82 @@ function readBundleAssetFileHash(bundleId: string, assetPath: string) {
     : readAndroidBundleAssetFileHash(bundleId, assetPath);
 }
 
+function readBundleAssetsStoredEvidence(args: {
+  assetPaths: string[];
+  bundleId: string;
+}) {
+  const manifest = readBundleManifestSnapshot(args.bundleId);
+  const assets = args.assetPaths.map((assetPath) => {
+    const expectedHash = getManifestAssetFileHash(manifest, assetPath);
+    const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
+
+    return {
+      assetFile,
+      assetPath,
+      expectedHash,
+      ok:
+        expectedHash !== null &&
+        assetFile.exists &&
+        assetFile.readError === null &&
+        assetFile.fileHash === expectedHash,
+    };
+  });
+  const ok =
+    manifest.exists &&
+    manifest.readError === null &&
+    assets.every((asset) => asset.ok);
+
+  return {
+    assets,
+    bundleId: args.bundleId,
+    manifest,
+    ok,
+  };
+}
+
+function readMultipleAssetsReplacementEvidence(args: {
+  assetPaths: string[];
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  const previousManifest = readBundleManifestSnapshot(args.previousBundleId);
+  const currentManifest = readBundleManifestSnapshot(args.bundleId);
+  const assets = args.assetPaths.map((assetPath) => {
+    const previousHash = getManifestAssetFileHash(previousManifest, assetPath);
+    const currentHash = getManifestAssetFileHash(currentManifest, assetPath);
+    const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
+
+    return {
+      assetFile,
+      assetPath,
+      currentHash,
+      ok:
+        previousHash !== null &&
+        currentHash !== null &&
+        previousHash !== currentHash &&
+        assetFile.exists &&
+        assetFile.readError === null &&
+        assetFile.fileHash === currentHash,
+      previousHash,
+    };
+  });
+  const ok =
+    previousManifest.exists &&
+    previousManifest.readError === null &&
+    currentManifest.exists &&
+    currentManifest.readError === null &&
+    assets.every((asset) => asset.ok);
+
+  return {
+    assets,
+    bundleId: args.bundleId,
+    currentManifest,
+    ok,
+    previousBundleId: args.previousBundleId,
+    previousManifest,
+  };
+}
+
 function readFirstOtaArchiveState(bundleId: string) {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
@@ -2456,6 +2635,7 @@ async function bootstrap() {
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
   );
+  await restoreMultiAssetFixtures();
   await restoreFile(session.configBackupPath, session.configSourceFile);
   await applyAppScenario({
     bundleProfile: "default",
@@ -2493,6 +2673,9 @@ async function deployBundle(request: DeployBundleRequest) {
 
   if (bundleProfile === "archive300mb") {
     await ensureLargeArchiveAsset();
+  }
+  if (bundleProfile === "multiAssetReplacement") {
+    await ensureMultiAssetFixtures(request.marker);
   }
 
   await applyDeployConfig({
@@ -2644,6 +2827,10 @@ async function deployBundle(request: DeployBundleRequest) {
     diffPatchAssetPath: diff?.patchAssetPath,
     enabled: bundle.enabled,
     marker: request.marker,
+    multiAssetPaths:
+      bundleProfile === "multiAssetReplacement"
+        ? MULTI_ASSET_FIXTURES.map((fixture) => fixture.manifestPath)
+        : undefined,
     patchBaseBundleIds,
     primaryBundleAssetPath: getPrimaryBundleAssetPath(),
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
@@ -2907,6 +3094,58 @@ async function readManifestDiffState(args: {
     ok,
     record,
   };
+}
+
+async function assertBundleAssetsStored(args: {
+  assetPaths: string[];
+  bundleId: string;
+}) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const evidence = readBundleAssetsStoredEvidence(args);
+    if (evidence.ok) {
+      logE2e("bundle assets stored", {
+        assetPaths: args.assetPaths,
+        bundleId: args.bundleId,
+        evidence: "manifest-and-bundle-store",
+        platform: session.platform,
+      });
+      return {};
+    }
+
+    await sleep(1000);
+  }
+
+  throw createEndpointError(
+    "Timed out waiting for bundle asset storage evidence.",
+    readBundleAssetsStoredEvidence(args),
+  );
+}
+
+async function assertMultipleAssetsReplaced(args: {
+  assetPaths: string[];
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const evidence = readMultipleAssetsReplacementEvidence(args);
+    if (evidence.ok) {
+      logE2e("multiple assets replaced", {
+        assetPaths: args.assetPaths,
+        bundleId: args.bundleId,
+        evidence: "manifest-hash-change-and-bundle-store",
+        platform: session.platform,
+        previousBundleId: args.previousBundleId,
+      });
+      return {};
+    }
+
+    await sleep(1000);
+  }
+
+  throw createEndpointError(
+    "Timed out waiting for multiple asset replacement evidence.",
+    readMultipleAssetsReplacementEvidence(args),
+  );
 }
 
 async function assertBsdiffPatchApplied(args: {
@@ -3364,10 +3603,12 @@ async function cleanup() {
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
   );
+  await restoreMultiAssetFixtures();
 
   session.appBackupPath = null;
   session.configBackupPath = null;
   session.largeArchiveAssetBackupPath = null;
+  session.multiAssetBackupPaths = {};
   return {};
 }
 
@@ -3462,6 +3703,21 @@ export async function handleAssertManifestDiffApplied(args: {
   previousBundleId: string;
 }) {
   return assertManifestDiffApplied(args);
+}
+
+export async function handleAssertBundleAssetsStored(args: {
+  assetPaths: string[];
+  bundleId: string;
+}) {
+  return assertBundleAssetsStored(args);
+}
+
+export async function handleAssertMultipleAssetsReplaced(args: {
+  assetPaths: string[];
+  bundleId: string;
+  previousBundleId: string;
+}) {
+  return assertMultipleAssetsReplaced(args);
 }
 
 export async function handleAssertMetadataActive(bundleId: string) {
