@@ -5,7 +5,7 @@ import fsPromises from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 
 import {
   getBundlePatch,
@@ -152,7 +152,6 @@ const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
 const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
-const DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN = "hot-updater-e2e-token";
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -170,82 +169,6 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
   LARGE_ARCHIVE_BMP_ROW_SIZE * LARGE_ARCHIVE_BMP_HEIGHT;
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const LOG_PREFIX = "[maestro-e2e]";
-
-function getE2eManagementAuthToken() {
-  const authToken = process.env.HOT_UPDATER_E2E_AUTH_TOKEN?.trim();
-  return authToken ? authToken : DEFAULT_E2E_MANAGEMENT_AUTH_TOKEN;
-}
-
-function writeExampleManagementAuthToken(authToken: string) {
-  const envPath = path.join(session.exampleDir, ".env.hotupdater");
-  const nextLine = `HOT_UPDATER_AUTH_TOKEN=${authToken}`;
-  const source = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
-  const retainedSource = source
-    .split(/\r?\n/)
-    .filter((line) => !line.startsWith("HOT_UPDATER_AUTH_TOKEN="))
-    .join("\n")
-    .trimEnd();
-  const nextSource = `${retainedSource ? `${retainedSource}\n` : ""}${nextLine}\n`;
-
-  if (nextSource !== source) {
-    fs.writeFileSync(envPath, nextSource);
-  }
-}
-
-function appendNodeImportOption(
-  nodeOptions: string | undefined,
-  preloadPath: string,
-) {
-  const importOption = `--import=${pathToFileURL(preloadPath).href}`;
-  return nodeOptions ? `${nodeOptions} ${importOption}` : importOption;
-}
-
-async function writeManagementAuthPreload(directory: string) {
-  const preloadPath = path.join(directory, "management-auth-preload.mjs");
-  const source = String.raw`const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
-const baseUrl = process.env.HOT_UPDATER_E2E_MANAGEMENT_BASE_URL;
-
-if (authToken && baseUrl && typeof globalThis.fetch === "function") {
-  const originalFetch = globalThis.fetch.bind(globalThis);
-  const managementUrl = new URL(baseUrl);
-  const managementPath = managementUrl.pathname.replace(/\/+$/, "");
-
-  globalThis.fetch = (input, init) => {
-    let requestUrl = null;
-    try {
-      if (typeof input === "string" || input instanceof URL) {
-        requestUrl = new URL(input, managementUrl);
-      } else if (input instanceof Request) {
-        requestUrl = new URL(input.url);
-      }
-    } catch {
-      requestUrl = null;
-    }
-
-    if (
-      requestUrl &&
-      requestUrl.origin === managementUrl.origin &&
-      requestUrl.pathname.startsWith(managementPath + "/api/")
-    ) {
-      const nextInit = init ? { ...init } : {};
-      const headers = new Headers(
-        init?.headers ?? (input instanceof Request ? input.headers : undefined),
-      );
-      if (!headers.has("Authorization")) {
-        headers.set("Authorization", "Bearer " + authToken);
-      }
-      nextInit.headers = headers;
-      return originalFetch(input, nextInit);
-    }
-
-    return originalFetch(input, init);
-  };
-}
-`;
-
-  await fsPromises.writeFile(preloadPath, source);
-  return preloadPath;
-}
 
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
@@ -764,60 +687,51 @@ function normalizeBundleListResponse(payload: unknown): BundleListPage {
   };
 }
 
-async function requestManagementApi<T>(
-  label: string,
-  apiPath: string,
-  options: {
-    body?: unknown;
-    method?: "DELETE" | "GET" | "PATCH";
-    searchParams?: Record<string, string | undefined>;
-  } = {},
-) {
-  const managementAuthToken = getE2eManagementAuthToken();
-  const url = new URL(
-    `${session.appBaseUrl.replace(/\/+$/, "")}${
-      apiPath.startsWith("/") ? apiPath : `/${apiPath}`
-    }`,
-  );
-  for (const [key, value] of Object.entries(options.searchParams ?? {})) {
-    if (value !== undefined) {
-      url.searchParams.set(key, value);
-    }
-  }
-
-  logE2e("hot-updater management api request", {
-    auth: managementAuthToken ? "set" : "missing",
-    label,
-    method: options.method ?? "GET",
-    path: `${url.pathname}${url.search}`,
-    platform: session.platform,
-  });
-
-  const response = await fetch(url, {
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${managementAuthToken}`,
-      "Content-Type": "application/json",
-    },
-    method: options.method ?? "GET",
-  });
-  const responseText = await response.text();
-
-  if (!response.ok) {
+function parseHotUpdaterCliJson<T>(label: string, output: string): T {
+  try {
+    return JSON.parse(output) as T;
+  } catch (error) {
     throw new Error(
-      `hot-updater management API ${label} failed: ${response.status} ${
-        response.statusText
-      }${responseText ? ` ${responseText}` : ""}`,
+      `Failed to parse hot-updater CLI ${label} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
     );
   }
+}
 
-  logE2e("hot-updater management api response", {
-    label,
-    status: response.status,
+function runHotUpdaterCliCapture(args: string[]) {
+  logE2e("hot-updater cli request", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
   });
 
-  return responseText ? (JSON.parse(responseText) as T) : (null as T);
+  const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+
+  logE2e("hot-updater cli response", {
+    command: args.join(" "),
+    stdout: output,
+  });
+
+  return output;
+}
+
+async function runHotUpdaterCliLogged(args: string[], logName: string) {
+  const logPath = path.join(session.resultsDir, logName);
+  logE2e("hot-updater cli start", {
+    command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    logPath: path.relative(REPO_DIR, logPath),
+  });
+
+  await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: session.exampleDir,
+    logPath,
+  });
+
+  logE2e("hot-updater cli done", {
+    command: args.join(" "),
+  });
 }
 
 async function fetchBundlesPage(args: {
@@ -829,19 +743,25 @@ async function fetchBundlesPage(args: {
     throw new Error("hot-updater CLI bundle list does not support offset");
   }
 
-  const response = await requestManagementApi<BundleListPage>(
+  const cliArgs = [
+    "bundle",
+    "list",
+    "--json",
+    "-p",
+    session.platform,
+    "--limit",
+    String(args.limit),
+  ];
+  if (args.channel) {
+    cliArgs.push("-c", args.channel);
+  }
+
+  const response = parseHotUpdaterCliJson<BundleListPage>(
     "bundle list",
-    "/api/bundles",
-    {
-      searchParams: {
-        channel: args.channel,
-        limit: String(args.limit),
-        platform: session.platform,
-      },
-    },
+    runHotUpdaterCliCapture(cliArgs),
   );
   const bundles = normalizeBundleListResponse(response);
-  logE2e("hot-updater management api bundle list", {
+  logE2e("hot-updater cli bundle list", {
     channel: args.channel ?? null,
     count: bundles.data.length,
     limit: args.limit,
@@ -868,16 +788,16 @@ async function fetchLatestBundle(args: { channel?: string }) {
 }
 
 async function fetchBundleById(bundleId: string) {
-  const bundle = await requestManagementApi<Bundle>(
+  const bundle = parseHotUpdaterCliJson<Bundle>(
     "bundle show",
-    `/api/bundles/${bundleId}`,
+    runHotUpdaterCliCapture(["bundle", "show", bundleId, "--json"]),
   );
 
   if (!bundle) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logE2e("hot-updater management api bundle show", {
+  logE2e("hot-updater cli bundle show", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
@@ -889,40 +809,38 @@ async function fetchBundleById(bundleId: string) {
 
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
   if (patch.enabled !== undefined) {
-    await requestManagementApi(
-      "bundle enabled patch",
-      `/api/bundles/${bundleId}`,
-      {
-        body: {
-          enabled: patch.enabled,
-        },
-        method: "PATCH",
-      },
+    await runHotUpdaterCliLogged(
+      ["bundle", patch.enabled ? "enable" : "disable", bundleId, "-y"],
+      `bundle-${patch.enabled ? "enable" : "disable"}-${bundleId}.log`,
     );
   }
 
-  const updatePatch: Partial<Bundle> = {};
+  const updateArgs = ["bundle", "update", bundleId, "-y", "--json"];
   if (patch.rolloutCohortCount !== undefined) {
     if (patch.rolloutCohortCount === null) {
       throw new Error("Cannot clear rolloutCohortCount through E2E CLI patch");
     }
-    updatePatch.rolloutCohortCount = patch.rolloutCohortCount;
+    updateArgs.push("--rollout-cohort-count", String(patch.rolloutCohortCount));
   }
   if (patch.shouldForceUpdate !== undefined) {
-    updatePatch.shouldForceUpdate = patch.shouldForceUpdate;
+    updateArgs.push("--force-update", String(patch.shouldForceUpdate));
   }
   if (patch.targetCohorts !== undefined) {
-    updatePatch.targetCohorts = patch.targetCohorts;
+    if (patch.targetCohorts === null) {
+      updateArgs.push("--clear-target-cohorts");
+    } else {
+      updateArgs.push("--target-cohorts", patch.targetCohorts.join(","));
+    }
   }
 
-  if (Object.keys(updatePatch).length > 0) {
-    await requestManagementApi("bundle update", `/api/bundles/${bundleId}`, {
-      body: updatePatch,
-      method: "PATCH",
-    });
+  if (updateArgs.length > 5) {
+    parseHotUpdaterCliJson<Bundle>(
+      "bundle update",
+      runHotUpdaterCliCapture(updateArgs),
+    );
   }
 
-  logE2e("hot-updater management api bundle patch", {
+  logE2e("hot-updater cli bundle patch", {
     bundleId,
     patch,
   });
@@ -1056,9 +974,10 @@ async function resolveAutoPatchBundleDiff(
 }
 
 async function deleteBundle(bundleId: string) {
-  await requestManagementApi("bundle delete", `/api/bundles/${bundleId}`, {
-    method: "DELETE",
-  });
+  await runHotUpdaterCliLogged(
+    ["bundle", "delete", bundleId, "-y"],
+    `bundle-delete-${bundleId}.log`,
+  );
 }
 
 async function clearRemoteBundles() {
@@ -2623,13 +2542,7 @@ async function deployBundle(request: DeployBundleRequest) {
     session.resultsDir,
     `deploy-${request.channel}-${request.marker}.log`,
   );
-  const managementAuthToken = getE2eManagementAuthToken();
-  const managementAuthPreloadPath =
-    await writeManagementAuthPreload(deployOutputPath);
-  writeExampleManagementAuthToken(managementAuthToken);
   logE2e("deploy start", {
-    auth: managementAuthToken ? "set" : "missing",
-    authPreload: path.relative(REPO_DIR, managementAuthPreloadPath),
     bundleProfile,
     channel: request.channel,
     command: `node ${args.join(" ")}`,
@@ -2641,15 +2554,6 @@ async function deployBundle(request: DeployBundleRequest) {
   });
   await runLogged("node", args, {
     cwd: session.exampleDir,
-    env: {
-      HOT_UPDATER_AUTH_TOKEN: managementAuthToken,
-      HOT_UPDATER_E2E_MANAGEMENT_BASE_URL: session.appBaseUrl,
-      HOT_UPDATER_E2E_PLATFORM: session.platform,
-      NODE_OPTIONS: appendNodeImportOption(
-        process.env.NODE_OPTIONS,
-        managementAuthPreloadPath,
-      ),
-    },
     logPath: deployLogPath,
   });
 
