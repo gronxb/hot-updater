@@ -4,20 +4,46 @@ import { closeDatabase, hotUpdater } from "./db.js";
 
 const port = Number(process.env.PORT) || 3001;
 
+const isAuthorizedManagementRequest = (request: Request) => {
+  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
+  return (
+    Boolean(token) && request.headers.get("Authorization") === `Bearer ${token}`
+  );
+};
+
+const unauthorizedResponse = () =>
+  new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
+
 try {
-  const app = new Elysia({ adapter: node() })
-    .get("/", () => ({
-      status: "ok",
-      service: "Hot Updater Server (Elysia)",
-      version: "1.0.0",
-    }))
-    .post("/shutdown", async () => {
+  const app = new Elysia({ adapter: node() }).get("/", () => ({
+    status: "ok",
+    service: "Hot Updater Server (Elysia)",
+    version: "1.0.0",
+  }));
+
+  if (process.env.NODE_ENV === "test") {
+    app.post("/shutdown", async () => {
       console.log("Shutdown endpoint called");
       await closeDatabase();
       setTimeout(() => process.exit(0), 100);
       return { status: "shutting down" };
+    });
+  }
+
+  app
+    .all("/hot-updater/*", ({ request }) => {
+      if (
+        new URL(request.url).pathname.startsWith("/hot-updater/api/") &&
+        !isAuthorizedManagementRequest(request)
+      ) {
+        return unauthorizedResponse();
+      }
+
+      return hotUpdater.handler(request);
     })
-    .mount("/hot-updater", hotUpdater.handler)
     .listen(port);
 
   console.log(`

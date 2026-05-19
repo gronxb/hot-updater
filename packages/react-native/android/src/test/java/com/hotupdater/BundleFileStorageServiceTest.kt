@@ -12,6 +12,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.net.URL
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class BundleFileStorageServiceTest {
     @get:Rule
@@ -253,6 +255,41 @@ class BundleFileStorageServiceTest {
         assertTrue(invokeCanUseManifestDrivenInstall(service))
     }
 
+    @Test
+    fun `manifest driven install rejects unsafe asset paths`() {
+        val rootDir = temporaryFolder.newFolder("active-ota-unsafe-manifest")
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+        val activeDir = createBundleDir(rootDir, "active-bundle")
+        val activeBundleFile = writeFile(activeDir, "index.android.bundle")
+        writeManifest(activeDir, listOf("../active-bundle_evil/index.android.bundle"))
+
+        preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
+
+        assertFalse(invokeCanUseManifestDrivenInstall(service))
+    }
+
+    @Test
+    fun `zip decompression does not write sibling prefix traversal entries`() {
+        val rootDir = temporaryFolder.newFolder("zip-sibling-prefix")
+        val zipFile = File(rootDir, "bundle.zip")
+        ZipOutputStream(zipFile.outputStream()).use { zip ->
+            writeZipEntry(zip, "../bundle-temp_evil/escape.txt", "blocked")
+            writeZipEntry(zip, "safe/kept.txt", "kept")
+        }
+
+        val destinationDir = File(rootDir, "bundle-temp")
+        val extracted =
+            ZipDecompressionStrategy().decompress(
+                zipFile.absolutePath,
+                destinationDir.absolutePath,
+            ) {}
+
+        assertTrue(extracted)
+        assertTrue(File(destinationDir, "safe/kept.txt").isFile)
+        assertFalse(File(rootDir, "bundle-temp_evil/escape.txt").exists())
+    }
+
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
@@ -312,6 +349,16 @@ class BundleFileStorageServiceTest {
             parentFile?.mkdirs()
             writeText(content)
         }
+
+    private fun writeZipEntry(
+        zip: ZipOutputStream,
+        path: String,
+        content: String,
+    ) {
+        zip.putNextEntry(ZipEntry(path))
+        zip.write(content.toByteArray())
+        zip.closeEntry()
+    }
 
     private fun bundleStoreDir(rootDir: File): File = File(rootDir, "bundle-store").apply { mkdirs() }
 

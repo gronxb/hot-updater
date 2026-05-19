@@ -1,0 +1,14 @@
+---
+"@hot-updater/server": minor
+"@hot-updater/react-native": patch
+---
+
+Harden self-hosted bundle management and native bundle extraction.
+
+Bundle management routes are now disabled by default and require an
+explicit `routes.bundles: true` opt-in when enabled. Protect those routes with
+framework middleware or an equivalent reverse-proxy/auth layer. Bundle list
+requests also validate `limit` against a bounded range.
+
+Android and iOS bundle extraction now reject unsafe archive entries and
+manifest asset paths before writing or reusing files.

@@ -661,7 +661,7 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
-  it("can disable the version route independently", async () => {
+  it("keeps the version route mounted when update-check routes are disabled", async () => {
     const database = createDatabasePlugin({
       name: "version-disabled-plugin",
       factory: () => ({
@@ -691,8 +691,7 @@ describe("runtime createHotUpdater", () => {
       database,
       basePath: "/api/check-update",
       routes: {
-        updateCheck: true,
-        version: false,
+        updateCheck: false,
         bundles: false,
       },
     });
@@ -701,7 +700,10 @@ describe("runtime createHotUpdater", () => {
       new Request("https://updates.example.com/api/check-update/version"),
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      version: HOT_UPDATER_SERVER_VERSION,
+    });
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {

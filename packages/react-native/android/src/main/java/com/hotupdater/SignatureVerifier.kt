@@ -27,7 +27,7 @@ sealed class SignatureVerificationException(
     class PublicKeyNotConfigured :
         SignatureVerificationException(
             "Public key not configured for signature verification. " +
-                "Add 'hot_updater_public_key' to res/values/strings.xml",
+                "Add 'com.hotupdater.PUBLIC_KEY' to AndroidManifest.xml",
         )
 
     class InvalidPublicKeyFormat :
@@ -97,16 +97,15 @@ object SignatureVerifier {
      * @return Public key PEM string or null if not configured
      */
     private fun getPublicKeyFromConfig(context: Context): String? {
-        val resourceId = StringResourceUtils.getIdentifier(context, "hot_updater_public_key")
+        val publicKeyPEM =
+            NativeConfigUtils.getString(
+                context,
+                NativeConfigUtils.PUBLIC_KEY_META_DATA_KEY,
+                "hot_updater_public_key",
+            )
 
-        if (resourceId == 0) {
-            Log.d(TAG, "hot_updater_public_key not found in strings.xml")
-            return null
-        }
-
-        val publicKeyPEM = context.getString(resourceId)
-        if (publicKeyPEM.isEmpty()) {
-            Log.d(TAG, "hot_updater_public_key is empty")
+        if (publicKeyPEM.isNullOrEmpty()) {
+            Log.d(TAG, "com.hotupdater.PUBLIC_KEY is not configured")
             return null
         }
 
@@ -229,7 +228,7 @@ object SignatureVerifier {
         val publicKeyPEM =
             getPublicKeyFromConfig(context)
                 ?: run {
-                    Log.e(TAG, "Cannot verify signature: public key not configured in strings.xml")
+                    Log.e(TAG, "Cannot verify signature: public key not configured")
                     throw SignatureVerificationException.PublicKeyNotConfigured()
                 }
 
@@ -267,7 +266,7 @@ object SignatureVerifier {
         val publicKeyPEM =
             getPublicKeyFromConfig(context)
                 ?: run {
-                    Log.e(TAG, "Cannot verify signature: public key not configured in strings.xml")
+                    Log.e(TAG, "Cannot verify signature: public key not configured")
                     throw SignatureVerificationException.PublicKeyNotConfigured()
                 }
 

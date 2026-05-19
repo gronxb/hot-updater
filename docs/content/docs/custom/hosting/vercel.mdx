@@ -80,7 +80,10 @@ export default app;
 ```
 
 <Callout type="warn">
-With Hono `mount()`, leave `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` public for update checks. `/hot-updater/version` is mounted by default for diagnostics, so leave it public or disable it with `routes.version: false`. Protect `/hot-updater/api/*` when bundle routes are enabled.
+With Hono `mount()`, update-check routes such as `/hot-updater/app-version/*`
+and `/hot-updater/fingerprint/*` are usually exposed for React Native clients,
+but that is a deployment choice. `/hot-updater/version` is always mounted for
+diagnostics. Always protect `/hot-updater/api/*` when `routes.bundles: true`.
 </Callout>
 
 ## Schema Generation

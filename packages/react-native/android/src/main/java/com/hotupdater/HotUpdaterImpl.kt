@@ -105,14 +105,7 @@ class HotUpdaterImpl {
          * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
          */
         private fun getIsolationKey(context: Context): String {
-            // Get fingerprint hash directly from resources
-            val fingerprintId = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
-            val fingerprintHash =
-                if (fingerprintId != 0) {
-                    context.getString(fingerprintId).takeIf { it.isNotEmpty() }
-                } else {
-                    null
-                }
+            val fingerprintHash = getFingerprintHash(context)
 
             // Get app version and channel
             val appVersion = getAppVersion(context) ?: "unknown"
@@ -147,14 +140,12 @@ class HotUpdaterImpl {
                 null
             }
 
-        fun getChannel(context: Context): String {
-            val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
-            return if (id != 0) {
-                context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
-            } else {
-                DEFAULT_CHANNEL
-            }
-        }
+        fun getChannel(context: Context): String =
+            NativeConfigUtils.getString(
+                context,
+                NativeConfigUtils.CHANNEL_META_DATA_KEY,
+                "hot_updater_channel",
+            ) ?: DEFAULT_CHANNEL
 
         /**
          * Get minimum bundle ID string
@@ -221,28 +212,24 @@ class HotUpdaterImpl {
          * @param context Application context
          * @return The fingerprint hash or null if not set
          */
-        fun getFingerprintHash(context: Context): String? {
-            val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
-            return if (id != 0) {
-                context.getString(id).takeIf { it.isNotEmpty() }
-            } else {
-                null
-            }
-        }
+        fun getFingerprintHash(context: Context): String? =
+            NativeConfigUtils.getString(
+                context,
+                NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
+                "hot_updater_fingerprint_hash",
+            )
     }
 
     /**
      * Gets the current fingerprint hash
      * @return The fingerprint hash or null if not set
      */
-    fun getFingerprintHash(): String? {
-        val id = StringResourceUtils.getIdentifier(context, "hot_updater_fingerprint_hash")
-        return if (id != 0) {
-            context.getString(id).takeIf { it.isNotEmpty() }
-        } else {
-            null
-        }
-    }
+    fun getFingerprintHash(): String? =
+        NativeConfigUtils.getString(
+            context,
+            NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
+            "hot_updater_fingerprint_hash",
+        )
 
     /**
      * Gets the current update channel
@@ -254,12 +241,11 @@ class HotUpdaterImpl {
             return overriddenChannel
         }
 
-        val id = StringResourceUtils.getIdentifier(context, "hot_updater_channel")
-        return if (id != 0) {
-            context.getString(id).takeIf { it.isNotEmpty() } ?: DEFAULT_CHANNEL
-        } else {
-            DEFAULT_CHANNEL
-        }
+        return NativeConfigUtils.getString(
+            context,
+            NativeConfigUtils.CHANNEL_META_DATA_KEY,
+            "hot_updater_channel",
+        ) ?: DEFAULT_CHANNEL
     }
 
     fun getDefaultChannel(): String = getChannel(context)

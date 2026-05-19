@@ -556,7 +556,15 @@ class BundleFileStorageService: BundleStorageService {
             return false
         }
 
-        let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
+        let sourcePath: String
+        do {
+            sourcePath = try ArchiveExtractionUtilities.extractionURL(
+                for: assetPath,
+                destinationRoot: currentBundleDir
+            ).path
+        } catch {
+            return false
+        }
         guard self.fileSystem.fileExists(atPath: sourcePath),
               HashUtils.verifyHash(
                 fileURL: URL(fileURLWithPath: sourcePath),
@@ -969,6 +977,9 @@ class BundleFileStorageService: BundleStorageService {
 
         var assets: [String: ParsedManifestAsset] = [:]
         for (assetPath, assetValue) in rawAssets {
+            guard ArchiveExtractionUtilities.normalizedRelativePath(from: assetPath) == assetPath else {
+                return nil
+            }
             guard let asset = assetValue as? [String: Any],
                   let fileHash = asset["fileHash"] as? String,
                   !fileHash.isEmpty
@@ -1738,7 +1749,10 @@ class BundleFileStorageService: BundleStorageService {
                 let assetPath = asset.key
                 let expectedAsset = asset.value
                 let expectedHash = expectedAsset.fileHash
-                let destinationPath = (tmpDir as NSString).appendingPathComponent(assetPath)
+                let destinationPath = try ArchiveExtractionUtilities.extractionURL(
+                    for: assetPath,
+                    destinationRoot: tmpDir
+                ).path
                 let destinationDir = (destinationPath as NSString).deletingLastPathComponent
                 guard self.fileSystem.createDirectory(atPath: destinationDir) else {
                     throw BundleStorageError.directoryCreationFailed
@@ -1755,7 +1769,10 @@ class BundleFileStorageService: BundleStorageService {
                         )
                     }
 
-                    let sourcePath = (currentBundleDir as NSString).appendingPathComponent(assetPath)
+                    let sourcePath = try ArchiveExtractionUtilities.extractionURL(
+                        for: assetPath,
+                        destinationRoot: currentBundleDir
+                    ).path
                     guard self.fileSystem.fileExists(atPath: sourcePath),
                           HashUtils.verifyHash(fileURL: URL(fileURLWithPath: sourcePath), expectedHash: expectedHash)
                     else {

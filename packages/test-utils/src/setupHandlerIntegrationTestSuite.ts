@@ -7,7 +7,14 @@ import { execa } from "execa";
 
 export interface TestApiConfig {
   baseUrl: string;
+  authToken?: string;
 }
+
+export const TEST_MANAGEMENT_AUTH_TOKEN = "hot-updater-test-token";
+
+const createManagementHeaders = (config: TestApiConfig) => ({
+  Authorization: `Bearer ${config.authToken ?? TEST_MANAGEMENT_AUTH_TOKEN}`,
+});
 
 async function fetchWithRetry(
   input: Parameters<typeof fetch>[0],
@@ -42,6 +49,7 @@ export function createGetUpdateInfo(
 ) => Promise<AppUpdateInfo | null> {
   // Single source URL builder
   const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+  const managementHeaders = createManagementHeaders(config);
 
   return async (bundles, options) => {
     try {
@@ -49,7 +57,10 @@ export function createGetUpdateInfo(
       for (const bundle of bundles) {
         const createResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...managementHeaders,
+            "Content-Type": "application/json",
+          },
           body: JSON.stringify(bundle),
         });
 
@@ -62,7 +73,10 @@ export function createGetUpdateInfo(
 
       // Step 2: List bundles via GET
       const listResponse = await fetchWithRetry(buildUrl("/api/bundles"), {
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          ...managementHeaders,
+          "Content-Type": "application/json",
+        },
       });
 
       if (!listResponse.ok) {
@@ -97,6 +111,7 @@ export function createGetUpdateInfo(
       for (const bundle of bundles) {
         await fetchWithRetry(buildUrl(`/api/bundles/${bundle.id}`), {
           method: "DELETE",
+          headers: managementHeaders,
         });
       }
 
@@ -177,6 +192,8 @@ export function spawnServerProcess(options: {
       ...process.env,
       PORT: String(port),
       TEST_DB_PATH: testDbPath,
+      NODE_ENV: "test",
+      HOT_UPDATER_AUTH_TOKEN: TEST_MANAGEMENT_AUTH_TOKEN,
       // Use test credentials for AWS
       AWS_REGION: "us-east-1",
       AWS_ACCESS_KEY_ID: "test-access-key",

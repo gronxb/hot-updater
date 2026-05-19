@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -7,9 +8,17 @@ import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type { ResolverCheckUpdateParams } from "./types";
 
-const mocks = vi.hoisted(() => ({
-  fetchUpdateInfo: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  (
+    globalThis as typeof globalThis & {
+      HotUpdater: { SDK_VERSION: string };
+    }
+  ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
+
+  return {
+    fetchUpdateInfo: vi.fn(),
+  };
+});
 
 vi.mock("./fetchUpdateInfo", () => ({
   fetchUpdateInfo: mocks.fetchUpdateInfo,
@@ -90,14 +99,20 @@ describe("createDefaultResolver", () => {
     });
   });
 
-  it("keeps the SDK version header aligned with package.json", async () => {
-    const [{ HOT_UPDATER_SDK_VERSION }, packageJson] = await Promise.all([
-      import("./sdkVersion"),
-      readFile(join(__dirname, "../package.json"), "utf-8"),
-    ]);
-    const pkg = JSON.parse(packageJson) as { version: string };
+  it("keeps SDK version sync from leaving source changes behind", async () => {
+    const sdkVersionPath = join(__dirname, "sdkVersion.ts");
+    const before = await readFile(sdkVersionPath, "utf-8");
+    const result = spawnSync(
+      process.execPath,
+      [join(__dirname, "../scripts/sync-sdk-version.mjs")],
+      {
+        cwd: join(__dirname, ".."),
+        encoding: "utf-8",
+      },
+    );
 
-    expect(HOT_UPDATER_SDK_VERSION).toBe(pkg.version);
+    expect(result.status, result.stderr).toBe(0);
+    await expect(readFile(sdkVersionPath, "utf-8")).resolves.toBe(before);
   });
 
   it("propagates fetchUpdateInfo errors", async () => {

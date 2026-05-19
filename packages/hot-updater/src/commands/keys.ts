@@ -95,16 +95,20 @@ interface WriteResult {
 async function writePublicKeyToAndroid(
   publicKey: string,
   customPaths: string[],
+  androidManifestPaths: string[],
 ): Promise<WriteResult> {
   try {
-    const androidParser = new AndroidConfigParser(customPaths);
+    const androidParser = new AndroidConfigParser(
+      customPaths,
+      androidManifestPaths,
+    );
 
     if (!(await androidParser.exists())) {
       return {
         platform: "android",
         paths: [],
         success: false,
-        error: "No strings.xml files found",
+        error: "No Android native config files found",
       };
     }
 
@@ -159,9 +163,10 @@ function printPublicKeyInstructions(publicKeyPEM: string): void {
   console.log(`<string>${publicKeyPEM.trim().replace(/\n/g, "\\n")}</string>`);
   console.log("");
   console.log(ui.title("Android"));
-  console.log('<string name="hot_updater_public_key">');
-  console.log(publicKeyPEM.trim());
-  console.log("</string>");
+  console.log('<meta-data android:name="com.hotupdater.PUBLIC_KEY"');
+  console.log(
+    `  android:value="${publicKeyPEM.trim().replace(/\n/g, "\\n")}" />`,
+  );
 }
 
 const formatNativeTarget = (
@@ -175,7 +180,7 @@ const formatNativeTarget = (
 
 /**
  * Export public key for embedding in native configuration.
- * By default, writes the public key to iOS Info.plist and Android strings.xml.
+ * By default, writes the public key to iOS Info.plist and AndroidManifest.xml.
  * Use --print-only to only display the key without modifying files.
  *
  * The private key path is read from hot-updater.config.ts (signing.privateKeyPath)
@@ -217,9 +222,15 @@ export const keysExportPublic = async (
       return;
     }
 
+    const androidStringPaths =
+      config.platform.android.stringResourcePaths ?? [];
+    const androidManifestPaths =
+      config.platform.android.androidManifestPaths ?? [];
+
     // Check which files exist (config already loaded above)
     const androidParser = new AndroidConfigParser(
-      config.platform.android.stringResourcePaths,
+      androidStringPaths,
+      androidManifestPaths,
     );
     const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
 
@@ -236,12 +247,7 @@ export const keysExportPublic = async (
 
     p.log.message(ui.title("Native files"));
     if (androidExists) {
-      p.log.message(
-        formatNativeTarget(
-          "android",
-          config.platform.android.stringResourcePaths,
-        ),
-      );
+      p.log.message(formatNativeTarget("android", androidManifestPaths));
     }
     if (iosExists) {
       p.log.message(
@@ -269,7 +275,8 @@ export const keysExportPublic = async (
       results.push(
         await writePublicKeyToAndroid(
           publicKeyPEM.trim(),
-          config.platform.android.stringResourcePaths,
+          androidStringPaths,
+          androidManifestPaths,
         ),
       );
     }
@@ -325,9 +332,13 @@ interface RemoveResult {
 
 async function removePublicKeyFromAndroid(
   customPaths: string[],
+  androidManifestPaths: string[],
 ): Promise<RemoveResult> {
   try {
-    const androidParser = new AndroidConfigParser(customPaths);
+    const androidParser = new AndroidConfigParser(
+      customPaths,
+      androidManifestPaths,
+    );
 
     if (!(await androidParser.exists())) {
       return {
@@ -419,9 +430,13 @@ async function removePublicKeyFromIos(
  */
 export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   const config = await loadConfig(null);
+  const androidStringPaths = config.platform.android.stringResourcePaths ?? [];
+  const androidManifestPaths =
+    config.platform.android.androidManifestPaths ?? [];
 
   const androidParser = new AndroidConfigParser(
-    config.platform.android.stringResourcePaths,
+    androidStringPaths,
+    androidManifestPaths,
   );
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
 
@@ -495,7 +510,8 @@ export const keysRemove = async (options: KeysRemoveOptions = {}) => {
   if (androidKey.value) {
     results.push(
       await removePublicKeyFromAndroid(
-        config.platform.android.stringResourcePaths,
+        androidStringPaths,
+        androidManifestPaths,
       ),
     );
   }

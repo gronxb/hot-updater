@@ -1,3 +1,6 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
@@ -5,8 +8,6 @@ import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely, MysqlDialect } from "kysely";
 import { createPool } from "mysql2";
-import path from "path";
-import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,6 +61,10 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 
 // Cleanup function for graceful shutdown
