@@ -9,6 +9,7 @@ import {
   getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
+  Bundle,
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
@@ -28,6 +29,8 @@ interface BundleManifest {
 }
 
 const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
+const BUNDLE_PAGE_LIMIT = 500;
+const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 
 function resolveStorageUriForDeletion(
   storageUri: string,
@@ -100,10 +103,45 @@ function createStorageUriWithRelativePath(
 }
 
 function isContentAddressedAssetBaseStorageUri(storageUri: string) {
-  // Content-addressed assets are shared across bundles, so bundle deletion must
-  // not remove the shared /assets root or hash-addressed objects under it.
+  // Content-addressed assets are shared across bundles, so deletion must never
+  // remove the shared /assets root. Individual objects are GC'd only after a
+  // remaining-manifest reference scan proves they are unreferenced.
   const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
   return pathname.endsWith("/assets") || pathname === "/assets";
+}
+
+function getContentAddressedAssetStoragePath({
+  assetPath,
+  fileHash,
+}: {
+  assetPath: string;
+  fileHash: string;
+}) {
+  const uploadPath = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)
+    ? `${assetPath}.br`
+    : assetPath;
+  const extension = path.posix.extname(uploadPath);
+  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
+}
+
+function getContentAddressedManifestAssetStorageUris({
+  assetBaseStorageUri,
+  manifest,
+}: {
+  assetBaseStorageUri: string;
+  manifest: BundleManifest;
+}) {
+  return new Set(
+    Object.entries(manifest.assets ?? {}).map(([assetPath, asset]) =>
+      createStorageUriWithRelativePath(
+        assetBaseStorageUri,
+        getContentAddressedAssetStoragePath({
+          assetPath,
+          fileHash: asset.fileHash,
+        }),
+      ),
+    ),
+  );
 }
 
 async function loadBundleManifest(
@@ -116,6 +154,68 @@ async function loadBundleManifest(
   );
 
   return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
+}
+
+async function getAllBundles(databasePlugin: DatabasePlugin) {
+  const bundles: Bundle[] = [];
+  let after: string | undefined;
+
+  for (;;) {
+    const result = await databasePlugin.getBundles({
+      limit: BUNDLE_PAGE_LIMIT,
+      cursor: after ? { after } : undefined,
+      orderBy: { field: "id", direction: "asc" },
+    });
+    bundles.push(...(result?.data ?? []));
+
+    if (!result?.pagination.hasNextPage) {
+      return bundles;
+    }
+
+    after =
+      result.pagination.nextCursor ??
+      result.data[result.data.length - 1]?.id ??
+      undefined;
+    if (!after) {
+      return bundles;
+    }
+  }
+}
+
+async function getReferencedContentAddressedAssetUris({
+  databasePlugin,
+  storagePlugin,
+}: {
+  databasePlugin: DatabasePlugin;
+  storagePlugin: NodeStoragePlugin;
+}) {
+  const referencedUris = new Set<string>();
+  const bundles = await getAllBundles(databasePlugin);
+
+  for (const bundle of bundles) {
+    const manifestStorageUri = getManifestStorageUri(bundle);
+    const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
+    if (
+      !manifestStorageUri ||
+      !assetBaseStorageUri ||
+      !isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
+    ) {
+      continue;
+    }
+
+    const manifest = await loadBundleManifest(
+      manifestStorageUri,
+      storagePlugin,
+    );
+    for (const storageUri of getContentAddressedManifestAssetStorageUris({
+      assetBaseStorageUri,
+      manifest,
+    })) {
+      referencedUris.add(storageUri);
+    }
+  }
+
+  return referencedUris;
 }
 
 export async function deleteBundle(
@@ -183,7 +283,32 @@ export async function deleteBundle(
             manifestStorageUri,
             storagePlugin,
           );
-          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+          if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+            try {
+              const candidateUris = getContentAddressedManifestAssetStorageUris(
+                {
+                  assetBaseStorageUri,
+                  manifest,
+                },
+              );
+              const referencedUris =
+                await getReferencedContentAddressedAssetUris({
+                  databasePlugin,
+                  storagePlugin,
+                });
+
+              for (const storageUri of candidateUris) {
+                if (!referencedUris.has(storageUri)) {
+                  addCleanupUri(storageUri);
+                }
+              }
+            } catch (error) {
+              console.error(
+                "Failed to resolve content-addressed asset references for storage cleanup:",
+                error,
+              );
+            }
+          } else {
             const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
               a.localeCompare(b),
             );

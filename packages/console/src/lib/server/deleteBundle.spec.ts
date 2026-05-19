@@ -225,7 +225,7 @@ describe("deleteBundle", () => {
           JSON.stringify({
             assets: {
               "assets/logo.png": { fileHash: "logo-hash" },
-              "index.js": { fileHash: "bundle-hash" },
+              "index.ios.bundle": { fileHash: "bundle-hash" },
             },
           }),
         );
@@ -248,11 +248,11 @@ describe("deleteBundle", () => {
       "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
-      "s3://bucket/bundles/bundle-copy-id/files/index.js",
+      "s3://bucket/bundles/bundle-copy-id/files/index.ios.bundle",
     );
   });
 
-  it("keeps shared content-addressed assets when deleting a bundle", async () => {
+  it("garbage collects unreferenced content-addressed assets when deleting a bundle", async () => {
     const bundleWithManifest: Bundle = {
       ...baseBundle,
       assetBaseStorageUri: "s3://bucket/assets",
@@ -260,6 +260,16 @@ describe("deleteBundle", () => {
       manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
     const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    databasePlugin.getBundles.mockResolvedValue({
+      data: [],
+      pagination: {
+        total: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 0,
+      },
+    });
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
@@ -278,7 +288,7 @@ describe("deleteBundle", () => {
           JSON.stringify({
             assets: {
               "assets/logo.png": { fileHash: "logo-hash" },
-              "index.js": { fileHash: "bundle-hash" },
+              "index.ios.bundle": { fileHash: "bundle-hash" },
             },
           }),
         );
@@ -290,7 +300,7 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
-    expect(deleteFromStorage).toHaveBeenCalledTimes(2);
+    expect(deleteFromStorage).toHaveBeenCalledTimes(4);
     expect(deleteFromStorage).toHaveBeenCalledWith(
       bundleWithManifest.storageUri,
     );
@@ -300,10 +310,89 @@ describe("deleteBundle", () => {
     expect(deleteFromStorage).not.toHaveBeenCalledWith(
       bundleWithManifest.assetBaseStorageUri,
     );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/lo/logo-hash.png",
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/bu/bundle-hash.br",
+    );
+  });
+
+  it("keeps content-addressed assets referenced by remaining bundles", async () => {
+    const bundleWithManifest: Bundle = {
+      ...baseBundle,
+      assetBaseStorageUri: "s3://bucket/assets",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
+    };
+    const remainingBundle: Bundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-remainingbundle",
+      manifestFileHash: "remaining-manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/remaining/manifest.json",
+      assetBaseStorageUri: "s3://bucket/assets",
+    };
+    const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    databasePlugin.getBundles.mockResolvedValue({
+      data: [remainingBundle],
+      pagination: {
+        total: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+      getDownloadUrl: vi.fn(async (storageUri) => ({
+        fileUrl:
+          storageUri === bundleWithManifest.manifestStorageUri
+            ? "https://cdn.example.com/deleted-manifest.json"
+            : "https://cdn.example.com/remaining-manifest.json",
+      })),
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL) => {
+        if (String(url).endsWith("/remaining-manifest.json")) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "assets/logo.png": { fileHash: "logo-hash" },
+              },
+            }),
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            assets: {
+              "assets/logo.png": { fileHash: "logo-hash" },
+              "index.ios.bundle": { fileHash: "bundle-hash" },
+            },
+          }),
+        );
+      }),
+    );
+
+    await deleteBundle(
+      { bundleId: bundleWithManifest.id },
+      { databasePlugin, storagePlugin },
+    );
+
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.storageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.manifestStorageUri,
+    );
     expect(deleteFromStorage).not.toHaveBeenCalledWith(
       "s3://bucket/assets/sha256/lo/logo-hash.png",
     );
-    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+    expect(deleteFromStorage).toHaveBeenCalledWith(
       "s3://bucket/assets/sha256/bu/bundle-hash.br",
     );
   });
