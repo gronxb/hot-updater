@@ -111,8 +111,10 @@ describe("areVersionsCompatible", () => {
   });
 
   // Test cases for non-compatible versions/ranges
-  it("should return false for non-compatible versions", () => {
-    expect(areVersionsCompatible("1.0.0", "1.0.1")).toBe(false);
+  it("should ignore patch differences for package versions", () => {
+    expect(areVersionsCompatible("1.0.0", "1.0.1")).toBe(true);
+    expect(areVersionsCompatible("0.31.4", "0.31.9")).toBe(true);
+    expect(areVersionsCompatible("^0.31.4", "0.31.9")).toBe(true);
   });
 
   it("should return false when versionA does not satisfy versionB range", () => {
@@ -422,6 +424,21 @@ describe("doctor", () => {
       packageJson: {
         dependencies: {
           "hot-updater": "^1.0.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    const result = await doctor();
+    expect(result).toBe(true);
+  });
+
+  it("should not report package mismatches for patch differences", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "1.0.0",
+          "@hot-updater/core": "1.0.1",
         },
       },
       path: "/mock/cwd/package.json",

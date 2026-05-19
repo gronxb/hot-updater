@@ -206,6 +206,24 @@ export function areVersionsCompatible(
     return true;
   }
 
+  const comparableVersionA = semver.validRange(versionA)
+    ? semver.minVersion(versionA)
+    : null;
+  const comparableVersionB = semver.validRange(versionB)
+    ? semver.minVersion(versionB)
+    : null;
+
+  if (
+    comparableVersionA &&
+    comparableVersionB &&
+    comparableVersionA.prerelease.length === 0 &&
+    comparableVersionB.prerelease.length === 0 &&
+    comparableVersionA.major === comparableVersionB.major &&
+    comparableVersionA.minor === comparableVersionB.minor
+  ) {
+    return true;
+  }
+
   const options = { includePrerelease: true };
 
   // Check if versionA satisfies versionB (when versionB is a range)
