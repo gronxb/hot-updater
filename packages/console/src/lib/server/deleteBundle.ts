@@ -185,6 +185,9 @@ export async function deleteBundle(
         // either reference metadata or a storage/DB scan, so bundle deletion
         // leaves them in place and only removes per-bundle archive/manifest data.
       } else {
+        // LEGACY: older /files bundles own a per-bundle asset directory, so
+        // console deletion can still remove those objects. Drop this path when
+        // legacy storage layouts are no longer supported.
         try {
           const manifest = await loadBundleManifest(
             manifestStorageUri,

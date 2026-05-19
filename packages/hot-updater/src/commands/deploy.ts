@@ -910,7 +910,9 @@ const deployPlatform = async ({
 
             // /assets is a shared content-addressed root, not a per-bundle
             // directory. The server uses this suffix to derive asset object keys
-            // from manifest fileHash values and to preserve legacy /files bundles.
+            // from manifest fileHash values. LEGACY: existing /files bundles
+            // still resolve through the server fallback until that layout is
+            // intentionally removed.
             taskRef.assetBaseStorageUri = replaceBundleStorageUriPath(
               storageUri,
               bundleId,

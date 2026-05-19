@@ -105,7 +105,9 @@ const resolveAssetStorageUri = ({
   fallbackPath: string;
 }) => {
   // Deploys that use the shared /assets root store files by content hash.
-  // Older /files roots keep using the manifest asset path for compatibility.
+  // LEGACY: non-/assets roots are older /files bundle layouts. Keep this
+  // fallback only while old deployments are supported; remove it with the
+  // legacy storage cleanup.
   return createChildStorageUri(
     assetBaseStorageUri,
     isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
