@@ -8,9 +8,17 @@ import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import type { ResolverCheckUpdateParams } from "./types";
 
-const mocks = vi.hoisted(() => ({
-  fetchUpdateInfo: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  (
+    globalThis as typeof globalThis & {
+      HotUpdater: { SDK_VERSION: string };
+    }
+  ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
+
+  return {
+    fetchUpdateInfo: vi.fn(),
+  };
+});
 
 vi.mock("./fetchUpdateInfo", () => ({
   fetchUpdateInfo: mocks.fetchUpdateInfo,

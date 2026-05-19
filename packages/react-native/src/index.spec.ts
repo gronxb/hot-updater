@@ -3,30 +3,38 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HotUpdater as HotUpdaterValue } from "./index";
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
 
-const mocks = vi.hoisted(() => ({
-  addListener: vi.fn(() => () => {}),
-  checkForUpdate: vi.fn(),
-  clearCrashHistory: vi.fn(() => true),
-  createDefaultResolver: vi.fn(),
-  getAppVersion: vi.fn(() => "1.0.0"),
-  getBaseURL: vi.fn(() => null),
-  getBundleId: vi.fn(() => "bundle-id"),
-  getChannel: vi.fn(() => "production"),
-  getCohort: vi.fn(() => "123"),
-  getCrashHistory: vi.fn(() => []),
-  getDefaultChannel: vi.fn(() => "production"),
-  getFingerprintHash: vi.fn(() => null),
-  getManifest: vi.fn(() => null),
-  getMinBundleId: vi.fn(() => "min-bundle-id"),
-  init: vi.fn(),
-  isChannelSwitched: vi.fn(() => false),
-  reload: vi.fn(),
-  resetChannel: vi.fn(),
-  setCohort: vi.fn(),
-  setReloadBehavior: vi.fn(),
-  updateBundle: vi.fn(),
-  wrap: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  (
+    globalThis as typeof globalThis & {
+      HotUpdater: { SDK_VERSION: string };
+    }
+  ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
+
+  return {
+    addListener: vi.fn(() => () => {}),
+    checkForUpdate: vi.fn(),
+    clearCrashHistory: vi.fn(() => true),
+    createDefaultResolver: vi.fn(),
+    getAppVersion: vi.fn(() => "1.0.0"),
+    getBaseURL: vi.fn(() => null),
+    getBundleId: vi.fn(() => "bundle-id"),
+    getChannel: vi.fn(() => "production"),
+    getCohort: vi.fn(() => "123"),
+    getCrashHistory: vi.fn(() => []),
+    getDefaultChannel: vi.fn(() => "production"),
+    getFingerprintHash: vi.fn(() => null),
+    getManifest: vi.fn(() => null),
+    getMinBundleId: vi.fn(() => "min-bundle-id"),
+    init: vi.fn(),
+    isChannelSwitched: vi.fn(() => false),
+    reload: vi.fn(),
+    resetChannel: vi.fn(),
+    setCohort: vi.fn(),
+    setReloadBehavior: vi.fn(),
+    updateBundle: vi.fn(),
+    wrap: vi.fn(),
+  };
+});
 
 vi.mock("./DefaultResolver", () => ({
   createDefaultResolver: mocks.createDefaultResolver,
