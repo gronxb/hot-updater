@@ -171,16 +171,19 @@ const LARGE_ARCHIVE_ASSET_SIZE_BYTES =
 const LARGE_ARCHIVE_MIN_EXPECTED_SIZE_BYTES = 280 * 1024 * 1024;
 const MULTI_ASSET_FIXTURES = [
   {
+    androidManifestPath: "raw/src_test__fixturemultiasseta.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-a.bmp",
     relativePath: "src/test/_fixture-multi-asset-a.bmp",
     requirePath: "./src/test/_fixture-multi-asset-a.bmp",
   },
   {
+    androidManifestPath: "raw/src_test__fixturemultiassetb.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-b.bmp",
     relativePath: "src/test/_fixture-multi-asset-b.bmp",
     requirePath: "./src/test/_fixture-multi-asset-b.bmp",
   },
   {
+    androidManifestPath: "raw/src_test__fixturemultiassetc.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
     relativePath: "src/test/_fixture-multi-asset-c.bmp",
     requirePath: "./src/test/_fixture-multi-asset-c.bmp",
@@ -1868,6 +1871,17 @@ function getManifestAssetFileHash(manifest: JsonSnapshot, assetPath: string) {
   return typeof fileHash === "string" && fileHash.length > 0 ? fileHash : null;
 }
 
+function resolveManifestAssetPath(assetPath: string) {
+  if (session.platform === "ios") {
+    return assetPath;
+  }
+
+  return (
+    MULTI_ASSET_FIXTURES.find((fixture) => fixture.manifestPath === assetPath)
+      ?.androidManifestPath ?? assetPath
+  );
+}
+
 function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
   const filePath = path.join(ensureStorePath(), bundleId, assetPath);
   if (!fs.existsSync(filePath)) {
@@ -1959,18 +1973,20 @@ function readBundleAssetsStoredEvidence(args: {
 }) {
   const manifest = readBundleManifestSnapshot(args.bundleId);
   const assets = args.assetPaths.map((assetPath) => {
-    const expectedHash = getManifestAssetFileHash(manifest, assetPath);
-    const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
+    const manifestAssetPath = resolveManifestAssetPath(assetPath);
+    const expectedHash = getManifestAssetFileHash(manifest, manifestAssetPath);
+    const assetFile = readBundleAssetFileHash(args.bundleId, manifestAssetPath);
 
     return {
       assetFile,
-      assetPath,
+      assetPath: manifestAssetPath,
       expectedHash,
       ok:
         expectedHash !== null &&
         assetFile.exists &&
         assetFile.readError === null &&
         assetFile.fileHash === expectedHash,
+      requestedAssetPath: assetPath,
     };
   });
   const ok =
@@ -1994,13 +2010,20 @@ function readMultipleAssetsReplacementEvidence(args: {
   const previousManifest = readBundleManifestSnapshot(args.previousBundleId);
   const currentManifest = readBundleManifestSnapshot(args.bundleId);
   const assets = args.assetPaths.map((assetPath) => {
-    const previousHash = getManifestAssetFileHash(previousManifest, assetPath);
-    const currentHash = getManifestAssetFileHash(currentManifest, assetPath);
-    const assetFile = readBundleAssetFileHash(args.bundleId, assetPath);
+    const manifestAssetPath = resolveManifestAssetPath(assetPath);
+    const previousHash = getManifestAssetFileHash(
+      previousManifest,
+      manifestAssetPath,
+    );
+    const currentHash = getManifestAssetFileHash(
+      currentManifest,
+      manifestAssetPath,
+    );
+    const assetFile = readBundleAssetFileHash(args.bundleId, manifestAssetPath);
 
     return {
       assetFile,
-      assetPath,
+      assetPath: manifestAssetPath,
       currentHash,
       ok:
         previousHash !== null &&
@@ -2010,6 +2033,7 @@ function readMultipleAssetsReplacementEvidence(args: {
         assetFile.readError === null &&
         assetFile.fileHash === currentHash,
       previousHash,
+      requestedAssetPath: assetPath,
     };
   });
   const ok =
@@ -2829,7 +2853,11 @@ async function deployBundle(request: DeployBundleRequest) {
     marker: request.marker,
     multiAssetPaths:
       bundleProfile === "multiAssetReplacement"
-        ? MULTI_ASSET_FIXTURES.map((fixture) => fixture.manifestPath)
+        ? MULTI_ASSET_FIXTURES.map((fixture) =>
+            session.platform === "ios"
+              ? fixture.manifestPath
+              : fixture.androidManifestPath,
+          )
         : undefined,
     patchBaseBundleIds,
     primaryBundleAssetPath: getPrimaryBundleAssetPath(),
