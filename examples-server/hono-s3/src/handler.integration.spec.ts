@@ -19,6 +19,7 @@ import {
   createGetUpdateInfo,
   killPort,
   spawnServerProcess,
+  TEST_MANAGEMENT_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -162,6 +163,9 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   it("updates targetAppVersion through standaloneRepository", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
+      commonHeaders: {
+        Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+      },
     })();
 
     const bundleId = "hono-s3-update-target-app-version";

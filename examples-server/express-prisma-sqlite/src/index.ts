@@ -6,6 +6,11 @@ import { toNodeHandler } from "@hot-updater/server/node";
 const app = express();
 const port = process.env.PORT || 3002;
 
+const isAuthorizedManagementRequest = (req: express.Request) => {
+  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
+  return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
+};
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -16,16 +21,25 @@ app.get("/", (_req, res) => {
 });
 
 // Hot Updater routes
+app.use("/hot-updater/api", (req, res, next) => {
+  if (!isAuthorizedManagementRequest(req)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
+});
 app.all("/hot-updater/*", toNodeHandler(hotUpdater));
 
-// Shutdown endpoint for testing
-app.post("/shutdown", (_req, res) => {
-  console.log("Shutdown endpoint called");
-  res.json({ message: "Shutting down..." });
-  server.close(() => {
-    process.exit(0);
+if (process.env.NODE_ENV === "test") {
+  app.post("/shutdown", (_req, res) => {
+    console.log("Shutdown endpoint called");
+    res.json({ message: "Shutting down..." });
+    server.close(() => {
+      process.exit(0);
+    });
   });
-});
+}
 
 // Start server
 const server = app.listen(port, () => {
