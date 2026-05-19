@@ -27,21 +27,7 @@ interface BundleManifest {
   assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
-interface ContentAddressedAssetReferenceFile {
-  version: 1;
-  storageUri: string;
-  references: Record<
-    string,
-    {
-      assetPath: string;
-      bundleId: string;
-    }
-  >;
-}
-
 const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
-const HOT_UPDATER_UPLOAD_DIR_PREFIX = "uploads-";
-const BR_COMPRESSED_ASSET_PATH_RE = /(^|\/)index\.[^/]+\.bundle$/;
 
 function resolveStorageUriForDeletion(
   storageUri: string,
@@ -115,74 +101,11 @@ function createStorageUriWithRelativePath(
 
 function isContentAddressedAssetBaseStorageUri(storageUri: string) {
   // Content-addressed assets are shared across bundles, so deletion must never
-  // remove the shared /assets root. Individual objects are GC'd only after the
-  // storage-side reference file says this bundle is the final owner.
+  // remove the shared /assets root. We intentionally do not GC these objects
+  // during bundle deletion because ownership cannot be proven without extra
+  // reference state or a broad scan.
   const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
   return pathname.endsWith("/assets") || pathname === "/assets";
-}
-
-function getRelativeStorageDir(storagePath: string) {
-  const relativeDir = path.posix.dirname(storagePath);
-  return relativeDir === "." ? "" : relativeDir;
-}
-
-function getContentAddressedAssetStoragePath({
-  assetPath,
-  fileHash,
-}: {
-  assetPath: string;
-  fileHash: string;
-}) {
-  const uploadPath = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)
-    ? `${assetPath}.br`
-    : assetPath;
-  const extension = path.posix.extname(uploadPath);
-  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
-}
-
-function getContentAddressedAssetReferenceStoragePath(storagePath: string) {
-  return `refs/${storagePath}.json`;
-}
-
-function getContentAddressedManifestAssetStorageReferences({
-  assetBaseStorageUri,
-  manifest,
-}: {
-  assetBaseStorageUri: string;
-  manifest: BundleManifest;
-}) {
-  const references = new Map<
-    string,
-    {
-      assetStorageUri: string;
-      referenceStoragePath: string;
-      referenceStorageUri: string;
-    }
-  >();
-
-  for (const [assetPath, asset] of Object.entries(manifest.assets ?? {})) {
-    const storagePath = getContentAddressedAssetStoragePath({
-      assetPath,
-      fileHash: asset.fileHash,
-    });
-    const assetStorageUri = createStorageUriWithRelativePath(
-      assetBaseStorageUri,
-      storagePath,
-    );
-    const referenceStoragePath =
-      getContentAddressedAssetReferenceStoragePath(storagePath);
-
-    references.set(assetStorageUri, {
-      assetStorageUri,
-      referenceStoragePath,
-      referenceStorageUri: createStorageUriWithRelativePath(
-        assetBaseStorageUri,
-        referenceStoragePath,
-      ),
-    });
-  }
-
-  return [...references.values()];
 }
 
 async function loadBundleManifest(
@@ -195,53 +118,6 @@ async function loadBundleManifest(
   );
 
   return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
-}
-
-async function loadContentAddressedAssetReference({
-  referenceStorageUri,
-  storagePlugin,
-}: {
-  referenceStorageUri: string;
-  storagePlugin: NodeStoragePlugin;
-}) {
-  const referenceBytes = await downloadStorageBytes(
-    referenceStorageUri,
-    storagePlugin,
-  );
-  return JSON.parse(
-    new TextDecoder().decode(referenceBytes),
-  ) as ContentAddressedAssetReferenceFile;
-}
-
-async function uploadContentAddressedAssetReference({
-  referenceFile,
-  referenceStoragePath,
-  storagePlugin,
-}: {
-  referenceFile: ContentAddressedAssetReferenceFile;
-  referenceStoragePath: string;
-  storagePlugin: NodeStoragePlugin;
-}) {
-  const uploadRoot = path.join(process.cwd(), ".hot-updater");
-  await fs.mkdir(uploadRoot, { recursive: true });
-  const workDir = await fs.mkdtemp(
-    path.join(uploadRoot, HOT_UPDATER_UPLOAD_DIR_PREFIX),
-  );
-  const filePath = path.join(workDir, referenceStoragePath);
-
-  try {
-    await fs.mkdir(path.dirname(filePath), { recursive: true });
-    await fs.writeFile(filePath, JSON.stringify(referenceFile, null, 2));
-
-    // Providers prepend their configured base path, so the upload key mirrors
-    // deploy's "assets/<relative dir>" convention instead of using a full URI.
-    const uploadKey = ["assets", getRelativeStorageDir(referenceStoragePath)]
-      .filter(Boolean)
-      .join("/");
-    await storagePlugin.profiles.node.upload(uploadKey, filePath);
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
-  }
 }
 
 export async function deleteBundle(
@@ -303,59 +179,26 @@ export async function deleteBundle(
         if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
           addCleanupUri(assetBaseStorageUri);
         }
+      } else if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+        // New deploys store manifest assets under a shared content-addressed
+        // /assets root. Deleting individual shared objects here would require
+        // either reference metadata or a storage/DB scan, so bundle deletion
+        // leaves them in place and only removes per-bundle archive/manifest data.
       } else {
         try {
           const manifest = await loadBundleManifest(
             manifestStorageUri,
             storagePlugin,
           );
-          if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
-            const assetReferences =
-              getContentAddressedManifestAssetStorageReferences({
-                assetBaseStorageUri,
-                manifest,
-              });
 
-            for (const assetReference of assetReferences) {
-              try {
-                const referenceFile = await loadContentAddressedAssetReference({
-                  referenceStorageUri: assetReference.referenceStorageUri,
-                  storagePlugin,
-                });
+          const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
+            a.localeCompare(b),
+          );
 
-                delete referenceFile.references[bundle.id];
-
-                if (Object.keys(referenceFile.references).length === 0) {
-                  addCleanupUri(assetReference.assetStorageUri);
-                  addCleanupUri(assetReference.referenceStorageUri);
-                  continue;
-                }
-
-                await uploadContentAddressedAssetReference({
-                  referenceFile,
-                  referenceStoragePath: assetReference.referenceStoragePath,
-                  storagePlugin,
-                });
-              } catch (error) {
-                console.error(
-                  "Failed to resolve content-addressed asset reference for storage cleanup:",
-                  error,
-                );
-              }
-            }
-          } else {
-            const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
-              a.localeCompare(b),
+          for (const assetPath of assetPaths) {
+            addCleanupUri(
+              createStorageUriWithRelativePath(assetBaseStorageUri, assetPath),
             );
-
-            for (const assetPath of assetPaths) {
-              addCleanupUri(
-                createStorageUriWithRelativePath(
-                  assetBaseStorageUri,
-                  assetPath,
-                ),
-              );
-            }
           }
         } catch (error) {
           console.error(

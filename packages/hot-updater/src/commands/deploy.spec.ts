@@ -664,24 +664,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(4);
-    expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      "/mock/cwd/.hot-updater/output/upload-artifacts/refs/sha256/fi/file-hash.bundle.json",
-      JSON.stringify(
-        {
-          references: {
-            "bundle-123": {
-              assetPath: "index.bundle",
-              bundleId: "bundle-123",
-            },
-          },
-          storageUri: "s3://bundles/assets/sha256/fi/file-hash.bundle",
-          version: 1,
-        },
-        null,
-        2,
-      ),
-    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         assetBaseStorageUri: "s3://bundles/assets",
@@ -729,7 +712,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(42);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
@@ -757,7 +740,7 @@ describe("deploy rollout wiring", () => {
     expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
       "s3://bundles/assets/sha256/fi/file-hash.png",
     );
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
       "assets/sha256/fi",
       expect.stringContaining("file-hash.png"),

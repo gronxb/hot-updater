@@ -337,9 +337,6 @@ const getContentAddressedAssetStoragePath = ({
   return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
 };
 
-const getContentAddressedAssetReferenceStoragePath = (storagePath: string) =>
-  `refs/${storagePath}.json`;
-
 const replaceBundleStorageUriPath = (
   storageUri: string,
   bundleId: string,
@@ -414,115 +411,6 @@ const ensureUploadSourcePath = async ({
     await fs.promises.copyFile(targetFile.path, aliasPath);
   }
   return aliasPath;
-};
-
-interface ContentAddressedAssetReferenceFile {
-  version: 1;
-  storageUri: string;
-  references: Record<
-    string,
-    {
-      assetPath: string;
-      bundleId: string;
-    }
-  >;
-}
-
-const readStorageJson = async <T>({
-  outputPath,
-  storagePath,
-  storagePlugin,
-  storageUri,
-}: {
-  outputPath: string;
-  storagePath: string;
-  storagePlugin: NodeStoragePlugin;
-  storageUri: string;
-}): Promise<T | null> => {
-  if (!(await storagePlugin.profiles.node.exists(storageUri))) {
-    return null;
-  }
-
-  const filePath = path.join(outputPath, "downloads", storagePath);
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
-  const contents = await fs.promises.readFile(filePath, "utf8");
-  return JSON.parse(String(contents)) as T;
-};
-
-const uploadJson = async ({
-  outputPath,
-  storagePath,
-  storagePlugin,
-  uploadKey,
-  value,
-}: {
-  outputPath: string;
-  storagePath: string;
-  storagePlugin: NodeStoragePlugin;
-  uploadKey: string;
-  value: unknown;
-}) => {
-  const filePath = path.join(outputPath, "upload-artifacts", storagePath);
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.promises.writeFile(filePath, JSON.stringify(value, null, 2));
-  return storagePlugin.profiles.node.upload(uploadKey, filePath);
-};
-
-const upsertContentAddressedAssetReference = async ({
-  assetPath,
-  assetBaseStorageUri,
-  assetStorageUri,
-  bundleId,
-  outputPath,
-  storagePath,
-  storagePlugin,
-}: {
-  assetPath: string;
-  assetBaseStorageUri: string;
-  assetStorageUri: string;
-  bundleId: string;
-  outputPath: string;
-  storagePath: string;
-  storagePlugin: NodeStoragePlugin;
-}) => {
-  const referenceStoragePath =
-    getContentAddressedAssetReferenceStoragePath(storagePath);
-  const referenceStorageUri = createStorageUriWithRelativePath(
-    assetBaseStorageUri,
-    referenceStoragePath,
-  );
-  // The content-addressed asset object is shared by every bundle with the same
-  // fileHash. This small sidecar tracks bundle ownership in storage itself, so
-  // console deletion can GC a shared object without scanning all DB bundles.
-  const referenceFile =
-    (await readStorageJson<ContentAddressedAssetReferenceFile>({
-      outputPath,
-      storagePath: referenceStoragePath,
-      storagePlugin,
-      storageUri: referenceStorageUri,
-    })) ?? {
-      references: {},
-      storageUri: assetStorageUri,
-      version: 1,
-    };
-
-  referenceFile.storageUri = assetStorageUri;
-  referenceFile.references[bundleId] = {
-    assetPath,
-    bundleId,
-  };
-
-  const uploadKey = ["assets", getRelativeStorageDir(referenceStoragePath)]
-    .filter(Boolean)
-    .join("/");
-  await uploadJson({
-    outputPath,
-    storagePath: referenceStoragePath,
-    storagePlugin,
-    uploadKey,
-    value: referenceFile,
-  });
 };
 
 const getPlatformName = (platform: Platform) =>
@@ -1028,8 +916,6 @@ const deployPlatform = async ({
               bundleId,
               "assets",
             );
-            const assetBaseStorageUri = taskRef.assetBaseStorageUri;
-            const resolvedBundleId = bundleId;
 
             await runWithConcurrency(
               taskRef.targetFiles,
@@ -1070,15 +956,6 @@ const deployPlatform = async ({
                     uploadSourcePath,
                   );
                 }
-                await upsertContentAddressedAssetReference({
-                  assetBaseStorageUri,
-                  assetPath: targetFile.name,
-                  assetStorageUri: storageUri,
-                  bundleId: resolvedBundleId,
-                  outputPath: outputRoot,
-                  storagePath,
-                  storagePlugin,
-                });
                 uploadedStepCount += 1;
                 updateUploadProgress();
               },
