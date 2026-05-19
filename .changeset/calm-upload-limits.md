@@ -11,4 +11,4 @@
 "@hot-updater/supabase": patch
 ---
 
-Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, and report upload progress through 100%.
+Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, write storage-side asset reference metadata for deletion GC, limit deploy upload concurrency, and report upload progress through 100%.

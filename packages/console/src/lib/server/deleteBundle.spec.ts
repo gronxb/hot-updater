@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import fs from "node:fs/promises";
+import path from "node:path";
 
 import type {
   Bundle,
@@ -260,36 +261,35 @@ describe("deleteBundle", () => {
       manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
     const databasePlugin = createDatabasePlugin(bundleWithManifest);
-    databasePlugin.getBundles.mockResolvedValue({
-      data: [],
-      pagination: {
-        total: 0,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 0,
-      },
-    });
     const deleteFromStorage = vi.fn();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
-      getDownloadUrl: vi.fn(async (storageUri) => ({
-        fileUrl:
-          storageUri === bundleWithManifest.manifestStorageUri
-            ? "https://cdn.example.com/manifest.json"
-            : "https://cdn.example.com/unknown",
-      })),
     });
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
+      vi.fn(async (url: string | URL) => {
+        if (String(url).endsWith("/manifest.json")) {
+          return new Response(
+            JSON.stringify({
+              assets: {
+                "assets/logo.png": { fileHash: "logo-hash" },
+                "index.ios.bundle": { fileHash: "bundle-hash" },
+              },
+            }),
+          );
+        }
+
         return new Response(
           JSON.stringify({
-            assets: {
-              "assets/logo.png": { fileHash: "logo-hash" },
-              "index.ios.bundle": { fileHash: "bundle-hash" },
+            references: {
+              [bundleWithManifest.id]: {
+                assetPath: "assets/logo.png",
+                bundleId: bundleWithManifest.id,
+              },
             },
+            storageUri: "s3://bucket/assets/sha256/lo/logo-hash.png",
+            version: 1,
           }),
         );
       }),
@@ -300,7 +300,8 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
-    expect(deleteFromStorage).toHaveBeenCalledTimes(4);
+    expect(databasePlugin.getBundles).not.toHaveBeenCalled();
+    expect(deleteFromStorage).toHaveBeenCalledTimes(6);
     expect(deleteFromStorage).toHaveBeenCalledWith(
       bundleWithManifest.storageUri,
     );
@@ -314,7 +315,13 @@ describe("deleteBundle", () => {
       "s3://bucket/assets/sha256/lo/logo-hash.png",
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/assets/refs/sha256/lo/logo-hash.png.json",
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
       "s3://bucket/assets/sha256/bu/bundle-hash.br",
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/assets/refs/sha256/bu/bundle-hash.br.json",
     );
   });
 
@@ -325,54 +332,62 @@ describe("deleteBundle", () => {
       manifestFileHash: "manifest-hash",
       manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
     };
-    const remainingBundle: Bundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-remainingbundle",
-      manifestFileHash: "remaining-manifest-hash",
-      manifestStorageUri: "s3://bucket/bundles/remaining/manifest.json",
-      assetBaseStorageUri: "s3://bucket/assets",
-    };
     const databasePlugin = createDatabasePlugin(bundleWithManifest);
-    databasePlugin.getBundles.mockResolvedValue({
-      data: [remainingBundle],
-      pagination: {
-        total: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
     const deleteFromStorage = vi.fn();
+    const uploadedRefs = new Map<string, unknown>();
     const storagePlugin = createStoragePlugin("s3", {
       delete: deleteFromStorage,
-      getDownloadUrl: vi.fn(async (storageUri) => ({
-        fileUrl:
-          storageUri === bundleWithManifest.manifestStorageUri
-            ? "https://cdn.example.com/deleted-manifest.json"
-            : "https://cdn.example.com/remaining-manifest.json",
-      })),
+      upload: vi.fn(async (key: string, filePath: string) => {
+        uploadedRefs.set(key, JSON.parse(await fs.readFile(filePath, "utf8")));
+        return {
+          storageUri: `s3://bucket/${key}/${path.basename(filePath)}`,
+        };
+      }),
     });
 
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string | URL) => {
-        if (String(url).endsWith("/remaining-manifest.json")) {
+        if (String(url).endsWith("/manifest.json")) {
           return new Response(
             JSON.stringify({
               assets: {
                 "assets/logo.png": { fileHash: "logo-hash" },
+                "index.ios.bundle": { fileHash: "bundle-hash" },
               },
+            }),
+          );
+        }
+
+        if (String(url).endsWith("/refs/sha256/lo/logo-hash.png.json")) {
+          return new Response(
+            JSON.stringify({
+              references: {
+                [bundleWithManifest.id]: {
+                  assetPath: "assets/logo.png",
+                  bundleId: bundleWithManifest.id,
+                },
+                "0195a408-8f13-7d9b-8df4-remainingbundle": {
+                  assetPath: "assets/logo.png",
+                  bundleId: "0195a408-8f13-7d9b-8df4-remainingbundle",
+                },
+              },
+              storageUri: "s3://bucket/assets/sha256/lo/logo-hash.png",
+              version: 1,
             }),
           );
         }
 
         return new Response(
           JSON.stringify({
-            assets: {
-              "assets/logo.png": { fileHash: "logo-hash" },
-              "index.ios.bundle": { fileHash: "bundle-hash" },
+            references: {
+              [bundleWithManifest.id]: {
+                assetPath: "index.ios.bundle",
+                bundleId: bundleWithManifest.id,
+              },
             },
+            storageUri: "s3://bucket/assets/sha256/bu/bundle-hash.br",
+            version: 1,
           }),
         );
       }),
@@ -383,6 +398,7 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
+    expect(databasePlugin.getBundles).not.toHaveBeenCalled();
     expect(deleteFromStorage).toHaveBeenCalledWith(
       bundleWithManifest.storageUri,
     );
@@ -392,9 +408,25 @@ describe("deleteBundle", () => {
     expect(deleteFromStorage).not.toHaveBeenCalledWith(
       "s3://bucket/assets/sha256/lo/logo-hash.png",
     );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      "s3://bucket/assets/refs/sha256/lo/logo-hash.png.json",
+    );
     expect(deleteFromStorage).toHaveBeenCalledWith(
       "s3://bucket/assets/sha256/bu/bundle-hash.br",
     );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      "s3://bucket/assets/refs/sha256/bu/bundle-hash.br.json",
+    );
+    expect(uploadedRefs.get("assets/refs/sha256/lo")).toEqual({
+      references: {
+        "0195a408-8f13-7d9b-8df4-remainingbundle": {
+          assetPath: "assets/logo.png",
+          bundleId: "0195a408-8f13-7d9b-8df4-remainingbundle",
+        },
+      },
+      storageUri: "s3://bucket/assets/sha256/lo/logo-hash.png",
+      version: 1,
+    });
   });
 
   it("falls back to deleting the asset base uri when manifest cleanup lookup fails", async () => {
