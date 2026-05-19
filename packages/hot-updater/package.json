@@ -82,6 +82,7 @@
     "open": "^10.1.0",
     "plist": "^3.1.0",
     "semver": "^7.6.3",
+    "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
     "typescript": "6.0.2"
   },
@@ -205,6 +206,7 @@
       "8.1.1"
     ],
     "to-regex-range": "5.0.1",
+    "tsdown": "0.21.6",
     "unicorn-magic": "0.3.0",
     "which": "2.0.2",
     "xmlbuilder": [

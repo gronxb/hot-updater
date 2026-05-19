@@ -1644,6 +1644,9 @@ importers:
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
+      tsdown:
+        specifier: catalog:tools
+        version: 0.21.6(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(synckit@0.11.11)(typescript@6.0.2)
       typescript:
         specifier: 6.0.2
         version: 6.0.2
