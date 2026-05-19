@@ -51,10 +51,10 @@ During the setup, you will be prompted to:
   </Accordion>
 </Accordions>
 
-Once the setup is complete, a `.env` file will be generated containing the following keys:
+Once the setup is complete, a `.env.hotupdater` file will be generated containing the following keys:
 
 ```
-HOT_UPDATER_SUPABASE_ANON_KEY=your-anon-key
+HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 ```
@@ -87,15 +87,21 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey:
+      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey:
+      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
 });
 ```
+
+The generated Supabase migrations enable Row Level Security on Hot Updater
+tables and keep direct table/function access limited to the service role used by
+the CLI and deployed Edge Function.
 
 ## Step 4: Add HotUpdater to Your Project
 

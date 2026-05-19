@@ -9,17 +9,19 @@ import {
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  resolveSupabaseServiceRoleKey,
+  type SupabaseServiceRoleConfig,
+} from "./supabaseConfig";
 import type { Database } from "./types";
 
-export interface SupabaseStorageConfig {
-  supabaseUrl: string;
-  supabaseAnonKey: string;
+export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /**
    * Base path where bundles will be stored in the bucket
    */
   basePath?: string;
-}
+};
 
 export const supabaseStorage =
   createUniversalStoragePlugin<SupabaseStorageConfig>({
@@ -28,7 +30,7 @@ export const supabaseStorage =
     factory: (config) => {
       const supabase = createClient<Database>(
         config.supabaseUrl,
-        config.supabaseAnonKey,
+        resolveSupabaseServiceRoleKey(config),
       );
 
       const bucket = supabase.storage.from(config.bucketName);

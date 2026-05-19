@@ -26,10 +26,10 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface SupabaseStorageConfig {
-  supabaseUrl: string;       // Your Supabase project URL
-  supabaseAnonKey: string;   // Your Supabase anon/public key
-  bucketName: string;        // Storage bucket name
-  basePath?: string;         // Optional base path within bucket
+  supabaseUrl: string;             // Your Supabase project URL
+  supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
+  bucketName: string;              // Storage bucket name
+  basePath?: string;               // Optional base path within bucket
 }
 ```
 
@@ -42,7 +42,7 @@ import { defineConfig } from 'hot-updater';
 export default defineConfig({
   storage: supabaseStorage({
     supabaseUrl: process.env.SUPABASE_URL,
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucketName: 'hot-updater-bundles',
     basePath: 'bundles'  // Optional
   }),

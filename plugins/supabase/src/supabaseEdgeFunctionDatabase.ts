@@ -14,7 +14,7 @@ export const supabaseEdgeFunctionDatabase = (
   return supabaseDatabase(
     {
       supabaseUrl: config.supabaseUrl,
-      supabaseAnonKey: config.supabaseServiceRoleKey,
+      supabaseServiceRoleKey: config.supabaseServiceRoleKey,
     },
     hooks,
   );
