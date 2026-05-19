@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/test-utils",
   "private": true,
-  "version": "0.31.2",
+  "version": "0.31.4",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -35,7 +35,7 @@
     "access": "public"
   },
   "dependencies": {
-    "workspace-tools": "^0.36.4"
+    "workspace-tools": "^0.18.4"
   },
   "peerDependencies": {
     "@hot-updater/core": "*",
