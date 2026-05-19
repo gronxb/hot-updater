@@ -94,6 +94,9 @@ export const supabaseStorage =
             }
 
             const { data, error } = await bucket.exists(key);
+            if (data === false) {
+              return false;
+            }
             if (error) {
               throw error;
             }

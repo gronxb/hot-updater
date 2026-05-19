@@ -48,7 +48,10 @@ describe("supabaseStorage", () => {
   });
 
   it("returns false when Supabase reports the object is missing", async () => {
-    bucket.exists.mockResolvedValueOnce({ data: false, error: null });
+    bucket.exists.mockResolvedValueOnce({
+      data: false,
+      error: new Error("Object not found"),
+    });
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -65,7 +68,7 @@ describe("supabaseStorage", () => {
 
   it("rethrows Supabase storage existence errors", async () => {
     const error = new Error("Storage API failed");
-    bucket.exists.mockResolvedValueOnce({ data: false, error });
+    bucket.exists.mockRejectedValueOnce(error);
 
     const storage = supabaseStorage({
       bucketName: "updates",
