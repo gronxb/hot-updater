@@ -1,5 +1,6 @@
 ---
 "hot-updater": patch
+"@hot-updater/cli-tools": patch
 "@hot-updater/aws": patch
 "@hot-updater/cloudflare": patch
 "@hot-updater/console": patch
@@ -11,4 +12,4 @@
 "@hot-updater/supabase": patch
 ---
 
-Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, and report upload progress through 100%.
+Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, stream hashing/compression work to reduce memory pressure, and report upload progress through 100%.

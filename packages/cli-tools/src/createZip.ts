@@ -1,5 +1,7 @@
+import { createReadStream, createWriteStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { pipeline } from "stream/promises";
 
 import JSZip from "jszip";
 
@@ -12,6 +14,7 @@ export const createZipTargetFiles = async ({
 }) => {
   const zip = new JSZip();
   await fs.rm(outfile, { force: true });
+  const zipFileOptions = { date: new Date(0) };
 
   async function addFiles(dir: string, zipFolder: JSZip) {
     const files = await fs.readdir(dir);
@@ -26,8 +29,7 @@ export const createZipTargetFiles = async ({
         if (!folder) continue;
         await addFiles(fullPath, folder);
       } else {
-        const data = await fs.readFile(fullPath);
-        zipFolder.file(file, data);
+        zipFolder.file(file, createReadStream(fullPath), zipFileOptions);
       }
     }
   }
@@ -40,22 +42,23 @@ export const createZipTargetFiles = async ({
         await addFiles(target.path, folder);
       }
     } else {
-      const data = await fs.readFile(target.path);
-      zip.file(target.name, data);
+      zip.file(target.name, createReadStream(target.path), zipFileOptions);
     }
   }
 
-  const content = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-    compressionOptions: {
-      level: 9,
-    },
-    platform: "UNIX",
-  });
-
   await fs.mkdir(path.dirname(outfile), { recursive: true });
-  await fs.writeFile(outfile, content);
+  await pipeline(
+    zip.generateNodeStream({
+      type: "nodebuffer",
+      streamFiles: true,
+      compression: "DEFLATE",
+      compressionOptions: {
+        level: 9,
+      },
+      platform: "UNIX",
+    }),
+    createWriteStream(outfile),
+  );
   return outfile;
 };
 
@@ -70,6 +73,7 @@ export const createZip = async ({
 }) => {
   const zip = new JSZip();
   await fs.rm(outfile, { force: true });
+  const zipFileOptions = { date: new Date(0) };
 
   async function addFiles(dir: string, zipFolder: JSZip) {
     const files = await fs.readdir(dir);
@@ -91,28 +95,25 @@ export const createZip = async ({
 
         await addFiles(fullPath, folder);
       } else {
-        const data = await fs.readFile(fullPath);
-        zipFolder.file(file, data);
+        zipFolder.file(file, createReadStream(fullPath), zipFileOptions);
       }
     }
   }
 
   await addFiles(targetDir, zip);
 
-  // fix hash
-  zip.forEach((_, file) => {
-    file.date = new Date(0);
-  });
-
-  const content = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-    compressionOptions: {
-      level: 9,
-    },
-    platform: "UNIX",
-  });
-
-  await fs.writeFile(outfile, content);
+  await fs.mkdir(path.dirname(outfile), { recursive: true });
+  await pipeline(
+    zip.generateNodeStream({
+      type: "nodebuffer",
+      streamFiles: true,
+      compression: "DEFLATE",
+      compressionOptions: {
+        level: 9,
+      },
+      platform: "UNIX",
+    }),
+    createWriteStream(outfile),
+  );
   return outfile;
 };

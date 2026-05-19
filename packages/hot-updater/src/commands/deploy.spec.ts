@@ -105,6 +105,8 @@ vi.mock("fs", async () => {
     ...actual,
     default: {
       ...actual,
+      createReadStream: vi.fn(),
+      createWriteStream: vi.fn(),
       existsSync: vi.fn(),
       promises: {
         ...actual.promises,
@@ -117,6 +119,8 @@ vi.mock("fs", async () => {
       },
       statSync: vi.fn(),
     },
+    createReadStream: vi.fn(),
+    createWriteStream: vi.fn(),
     existsSync: vi.fn(),
     promises: {
       ...actual.promises,
@@ -137,6 +141,10 @@ vi.mock("is-port-reachable", () => ({
 
 vi.mock("open", () => ({
   default: vi.fn(),
+}));
+
+vi.mock("stream/promises", () => ({
+  pipeline: vi.fn(async () => {}),
 }));
 
 vi.mock("@/prompts/getPlatform", () => ({
@@ -851,13 +859,6 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(fs.promises.readFile).toHaveBeenCalledWith(
-      "/mock/build/index.ios.bundle.hbc",
-    );
-    expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",
-      expect.any(Buffer),
-    );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
       "assets/sha256/fi",
       "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",

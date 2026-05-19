@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { promisify } from "util";
-import { brotliCompress, constants as zlibConstants } from "zlib";
+import { pipeline } from "stream/promises";
+import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
   createTarBrTargetFiles,
@@ -50,7 +50,6 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
 
-const compressBrotli = promisify(brotliCompress);
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 export interface DeployOptions {
@@ -387,14 +386,14 @@ const ensureUploadSourcePath = async ({
 
   const aliasPath = path.join(aliasDir, expectedFilename);
   if (uploadName !== targetFile.name) {
-    const source = await fs.promises.readFile(targetFile.path);
-    await fs.promises.writeFile(
-      aliasPath,
-      await compressBrotli(source, {
+    await pipeline(
+      fs.createReadStream(targetFile.path),
+      createBrotliCompress({
         params: {
           [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
         },
       }),
+      fs.createWriteStream(aliasPath),
     );
   } else {
     await fs.promises.copyFile(targetFile.path, aliasPath);
