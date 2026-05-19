@@ -163,7 +163,7 @@ const createProfiledStoragePlugin = <TContext>(
         return requireNodeProfile().downloadFile(storageUri, filePath);
       },
       async exists(storageUri) {
-        return requireNodeProfile().exists?.(storageUri) ?? false;
+        return requireNodeProfile().exists(storageUri);
       },
       async upload(key, filePath) {
         return requireNodeProfile().upload(key, filePath);

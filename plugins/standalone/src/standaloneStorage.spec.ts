@@ -57,4 +57,28 @@ describe("standaloneStorage", () => {
       await rm(tempDir, { force: true, recursive: true });
     }
   });
+
+  it("checks object existence with the resolved download URL", async () => {
+    const fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input) === "http://localhost/getDownloadUrl") {
+        return new Response(
+          JSON.stringify({ fileUrl: "https://cdn.example.com/bundle.zip" }),
+          { status: 200 },
+        );
+      }
+
+      expect(String(input)).toBe("https://cdn.example.com/bundle.zip");
+      expect(init?.method).toBe("HEAD");
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const storage = standaloneStorage({
+      baseUrl: "http://localhost",
+    })();
+
+    await expect(
+      storage.profiles.node.exists("http://localhost/bundle.zip"),
+    ).resolves.toBe(true);
+  });
 });

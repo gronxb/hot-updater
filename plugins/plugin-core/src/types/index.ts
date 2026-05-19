@@ -360,7 +360,7 @@ export interface NodeStorageProfile {
     storageUri: string;
   }>;
 
-  exists?: (storageUri: string) => Promise<boolean>;
+  exists: (storageUri: string) => Promise<boolean>;
 
   delete: (storageUri: string) => Promise<void>;
 

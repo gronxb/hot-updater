@@ -149,6 +149,11 @@ export const standaloneStorage =
               storageUri: result.storageUri,
             };
           },
+          async exists(storageUri: string) {
+            const { fileUrl } = await getDownloadUrl(storageUri);
+            const response = await fetch(fileUrl, { method: "HEAD" });
+            return response.ok;
+          },
           async downloadFile(storageUri: string, filePath: string) {
             const { fileUrl } = await getDownloadUrl(storageUri);
             const response = await fetch(fileUrl);

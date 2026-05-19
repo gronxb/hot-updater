@@ -34,6 +34,12 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
       cloudflareApiToken: cloudflareApiToken,
       cwd: process.cwd(),
     });
+    const quietWrangler = createWrangler({
+      accountId,
+      cloudflareApiToken: cloudflareApiToken,
+      cwd: process.cwd(),
+      stdio: "ignore",
+    });
 
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
@@ -90,6 +96,32 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
         return {
           storageUri: `r2://${bucketName}/${Key}`,
         };
+      },
+      async exists(storageUri: string) {
+        const { bucket, key } = parseStorageUri(storageUri, "r2");
+        if (bucket !== bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+          );
+        }
+
+        try {
+          await quietWrangler(
+            "r2",
+            "object",
+            "get",
+            [bucketName, key].join("/"),
+            "--pipe",
+            "--remote",
+          );
+          return true;
+        } catch (error) {
+          if (error instanceof ExecaError) {
+            return false;
+          }
+
+          throw error;
+        }
       },
       async downloadFile(storageUri, filePath) {
         const { bucket, key } = parseStorageUri(storageUri, "r2");

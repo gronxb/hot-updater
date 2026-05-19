@@ -25,6 +25,7 @@ describe("createStoragePlugin", () => {
       factory: () => ({
         delete: vi.fn(),
         downloadFile: vi.fn(),
+        exists: vi.fn(async () => false),
         upload,
       }),
     })({}, { onStorageUploaded })();
@@ -44,6 +45,7 @@ describe("createStoragePlugin", () => {
     const factory = vi.fn(() => ({
       delete: vi.fn(),
       downloadFile: vi.fn(),
+      exists: vi.fn(async () => false),
       upload: vi.fn(async () => ({ storageUri: "s3://bucket/bundle.zip" })),
     }));
 
@@ -169,6 +171,7 @@ describe("createStoragePlugin", () => {
       factory: () => ({
         delete: vi.fn(),
         downloadFile: vi.fn(),
+        exists: vi.fn(async () => false),
         upload: vi.fn(),
       }),
     })({})();

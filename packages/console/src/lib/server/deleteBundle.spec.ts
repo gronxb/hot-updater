@@ -61,6 +61,7 @@ function createStoragePlugin(
       node: {
         upload: overrides?.upload ?? vi.fn(),
         delete: overrides?.delete ?? vi.fn(),
+        exists: overrides?.exists ?? vi.fn(async () => false),
         downloadFile:
           overrides?.downloadFile ??
           vi.fn(async (storageUri: string, filePath: string) => {

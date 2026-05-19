@@ -945,11 +945,7 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                const nodeStorage = storagePlugin.profiles
-                  .node as typeof storagePlugin.profiles.node & {
-                  exists?: (storageUri: string) => Promise<boolean>;
-                };
-                if (await nodeStorage.exists?.(storageUri)) {
+                if (await storagePlugin.profiles.node.exists(storageUri)) {
                   skippedUploadCount += 1;
                 } else {
                   await storagePlugin.profiles.node.upload(
