@@ -60,6 +60,8 @@ describe("AndroidConfigParser", () => {
   let mockBuilder: any;
   const mockStringsXmlPath =
     "/mock/project/android/app/src/main/res/values/strings.xml";
+  const mockAndroidManifestPath =
+    "/mock/project/android/app/src/main/AndroidManifest.xml";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -166,6 +168,7 @@ describe("AndroidConfigParser", () => {
           string: {
             "@_name": "test_key",
             "@_moduleConfig": "true",
+            "@_translatable": "false",
             "#text": "test_value",
           },
         },
@@ -186,6 +189,71 @@ describe("AndroidConfigParser", () => {
         "utf-8",
       );
       expect(mockParser.parse).toHaveBeenCalledWith("xml content");
+    });
+
+    it("should prefer AndroidManifest metadata for Hot Updater keys", async () => {
+      const parser = new AndroidConfigParser(
+        [mockStringsXmlPath],
+        [mockAndroidManifestPath],
+      );
+      const mockManifestData = {
+        manifest: {
+          application: {
+            "meta-data": {
+              "@_android:name": "com.hotupdater.CHANNEL",
+              "@_android:value": "manifest-channel",
+            },
+          },
+        },
+      };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile).mockResolvedValue("manifest content");
+      mockParser.parse.mockReturnValue(mockManifestData);
+
+      const result = await parser.get("hot_updater_channel");
+
+      expect(result).toEqual({
+        value: "manifest-channel",
+        paths: ["android/app/src/main/AndroidManifest.xml"],
+      });
+    });
+
+    it("should fall back to strings.xml when manifest metadata is missing", async () => {
+      const parser = new AndroidConfigParser(
+        [mockStringsXmlPath],
+        [mockAndroidManifestPath],
+      );
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile)
+        .mockResolvedValueOnce("manifest content")
+        .mockResolvedValueOnce("strings content");
+      mockParser.parse
+        .mockReturnValueOnce({
+          manifest: {
+            application: {},
+          },
+        })
+        .mockReturnValueOnce({
+          resources: {
+            string: {
+              "@_name": "hot_updater_channel",
+              "@_moduleConfig": "true",
+              "#text": "legacy-channel",
+            },
+          },
+        });
+
+      const result = await parser.get("hot_updater_channel");
+
+      expect(result).toEqual({
+        value: "legacy-channel",
+        paths: [
+          "android/app/src/main/AndroidManifest.xml",
+          "android/app/src/main/res/values/strings.xml",
+        ],
+      });
     });
 
     it("should return null when key exists but moduleConfig is not true", async () => {
@@ -295,6 +363,7 @@ describe("AndroidConfigParser", () => {
           string: {
             "@_name": "test_key",
             "@_moduleConfig": "true",
+            "@_translatable": "false",
             "#text": "test_value",
           },
         },
@@ -306,6 +375,58 @@ describe("AndroidConfigParser", () => {
       );
       expect(result).toEqual({
         paths: ["android/app/src/main/res/values/strings.xml"],
+      });
+    });
+
+    it("should set Hot Updater keys in AndroidManifest metadata", async () => {
+      const parser = new AndroidConfigParser(
+        [mockStringsXmlPath],
+        [mockAndroidManifestPath],
+      );
+      const mockManifestData = {
+        manifest: {
+          application: {
+            "meta-data": {
+              "@_android:name": "existing_key",
+              "@_android:value": "existing_value",
+            },
+          },
+        },
+      };
+      const mockStringsData = {
+        resources: {},
+      };
+
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.promises.readFile)
+        .mockResolvedValueOnce("manifest content")
+        .mockResolvedValueOnce("strings content");
+      mockParser.parse
+        .mockReturnValueOnce(mockManifestData)
+        .mockReturnValueOnce(mockStringsData);
+      mockBuilder.build.mockReturnValue("new xml content");
+      vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
+
+      const result = await parser.set("hot_updater_channel", "production");
+
+      expect(mockBuilder.build).toHaveBeenCalledWith({
+        manifest: {
+          application: {
+            "meta-data": [
+              {
+                "@_android:name": "existing_key",
+                "@_android:value": "existing_value",
+              },
+              {
+                "@_android:name": "com.hotupdater.CHANNEL",
+                "@_android:value": "production",
+              },
+            ],
+          },
+        },
+      });
+      expect(result).toEqual({
+        paths: ["android/app/src/main/AndroidManifest.xml"],
       });
     });
 
@@ -334,6 +455,7 @@ describe("AndroidConfigParser", () => {
           string: {
             "@_name": "test_key",
             "@_moduleConfig": "true",
+            "@_translatable": "false",
             "#text": "new_value",
           },
         },
@@ -372,6 +494,7 @@ describe("AndroidConfigParser", () => {
             {
               "@_name": "test_key",
               "@_moduleConfig": "true",
+              "@_translatable": "false",
               "#text": "test_value",
             },
           ],

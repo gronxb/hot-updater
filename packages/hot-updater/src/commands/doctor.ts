@@ -491,7 +491,14 @@ const checkAndroidNativeStatus = async ({
   requireFingerprint: boolean;
   expectedFingerprintHash?: string;
 }): Promise<{ status?: NativePlatformStatus; issues: NativeCheckIssue[] }> => {
-  const configuredPaths = config.platform.android.stringResourcePaths;
+  const configuredManifestPaths =
+    config.platform.android.androidManifestPaths ?? [];
+  const configuredStringPaths =
+    config.platform.android.stringResourcePaths ?? [];
+  const configuredPaths = [
+    ...configuredManifestPaths,
+    ...configuredStringPaths,
+  ];
   const androidDetected =
     fs.existsSync(path.join(cwd, "android")) || configuredPaths.length > 0;
 
@@ -499,7 +506,10 @@ const checkAndroidNativeStatus = async ({
     return { issues: [] };
   }
 
-  const androidParser = new AndroidConfigParser(configuredPaths);
+  const androidParser = new AndroidConfigParser(
+    configuredStringPaths,
+    configuredManifestPaths,
+  );
   const files = configuredPaths.filter((filePath) =>
     fs.existsSync(resolveProjectPath(cwd, filePath)),
   );
@@ -510,9 +520,9 @@ const checkAndroidNativeStatus = async ({
       type: "error",
       platform: "android",
       code: "NATIVE_FILES_NOT_FOUND",
-      message: "Android strings.xml files were not found.",
+      message: "Android native config files were not found.",
       resolution:
-        "Check platform.android.stringResourcePaths in hot-updater.config.ts or run Android prebuild first.",
+        "Check platform.android.androidManifestPaths in hot-updater.config.ts or run Android prebuild first.",
       fixability: "auto",
       paths: configuredPaths,
     });
@@ -528,7 +538,8 @@ const checkAndroidNativeStatus = async ({
       type: "error",
       platform: "android",
       code: "MISSING_FINGERPRINT_HASH",
-      message: "hot_updater_fingerprint_hash is missing from strings.xml.",
+      message:
+        "com.hotupdater.FINGERPRINT_HASH is missing from AndroidManifest.xml.",
       resolution:
         "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
       fixability: "command",

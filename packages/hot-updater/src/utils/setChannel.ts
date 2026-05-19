@@ -10,8 +10,11 @@ const setAndroidChannel = async (
   channel: string,
 ): Promise<{ paths: string[] }> => {
   const config = await loadConfig(null);
-  const customPaths = config.platform.android.stringResourcePaths;
-  const androidParser = new AndroidConfigParser(customPaths);
+  const customPaths = config.platform.android.stringResourcePaths ?? [];
+  const androidParser = new AndroidConfigParser(
+    customPaths,
+    config.platform.android.androidManifestPaths ?? [],
+  );
   return await androidParser.set("hot_updater_channel", channel);
 };
 
@@ -20,10 +23,13 @@ const getAndroidChannel = async (): Promise<{
   paths: string[];
 }> => {
   const config = await loadConfig(null);
-  const customPaths = config.platform.android.stringResourcePaths;
-  const androidParser = new AndroidConfigParser(customPaths);
+  const customPaths = config.platform.android.stringResourcePaths ?? [];
+  const androidParser = new AndroidConfigParser(
+    customPaths,
+    config.platform.android.androidManifestPaths ?? [],
+  );
   if (!(await androidParser.exists())) {
-    throw new Error("No Android strings.xml files found");
+    throw new Error("No Android native config files found");
   }
   return merge(
     { value: DEFAULT_CHANNEL },

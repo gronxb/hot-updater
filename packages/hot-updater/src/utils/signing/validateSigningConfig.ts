@@ -35,7 +35,8 @@ export async function validateSigningConfig(
 
   const iosParser = new IosConfigParser(config.platform.ios.infoPlistPaths);
   const androidParser = new AndroidConfigParser(
-    config.platform.android.stringResourcePaths,
+    config.platform.android.stringResourcePaths ?? [],
+    config.platform.android.androidManifestPaths ?? [],
   );
 
   const [iosExists, androidExists] = await Promise.all([
@@ -73,7 +74,7 @@ export async function validateSigningConfig(
         platform: "android",
         code: "MISSING_PUBLIC_KEY",
         message:
-          "Signing is enabled but hot_updater_public_key is missing from strings.xml",
+          "Signing is enabled but com.hotupdater.PUBLIC_KEY is missing from AndroidManifest.xml",
         resolution:
           "Run `npx hot-updater keys export-public` to add the public key, then rebuild your Android app.",
       });
@@ -97,7 +98,7 @@ export async function validateSigningConfig(
         platform: "android",
         code: "ORPHAN_PUBLIC_KEY",
         message:
-          "Signing is disabled but hot_updater_public_key exists in strings.xml. This will cause OTA updates to be rejected.",
+          "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml or legacy strings.xml. This will cause OTA updates to be rejected.",
         resolution:
           "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });

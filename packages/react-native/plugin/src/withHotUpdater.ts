@@ -4,6 +4,7 @@ import path from "path";
 import type { ExpoConfig } from "expo/config";
 import {
   createRunOncePlugin,
+  withAndroidManifest,
   withAppDelegate,
   withInfoPlist,
   withMainApplication,
@@ -16,6 +17,62 @@ import { transformAndroid, transformIOS } from "./transformers";
 
 const loadCliTools = () => import("@hot-updater/cli-tools");
 const loadHotUpdater = () => import("hot-updater");
+
+const ANDROID_META_DATA_KEYS = {
+  channel: "com.hotupdater.CHANNEL",
+  fingerprintHash: "com.hotupdater.FINGERPRINT_HASH",
+  publicKey: "com.hotupdater.PUBLIC_KEY",
+} as const;
+
+type AndroidMetaData = {
+  $?: Record<string, string>;
+};
+
+type AndroidApplication = {
+  "meta-data"?: AndroidMetaData | AndroidMetaData[];
+};
+
+const removeAndroidMetaData = (
+  application: AndroidApplication,
+  name: string,
+) => {
+  const metaData = application["meta-data"];
+  if (!metaData) {
+    return;
+  }
+
+  const filtered = (Array.isArray(metaData) ? metaData : [metaData]).filter(
+    (item) => item?.$?.["android:name"] !== name,
+  );
+
+  if (filtered.length === 0) {
+    delete application["meta-data"];
+  } else {
+    application["meta-data"] = filtered;
+  }
+};
+
+const upsertAndroidMetaData = (
+  application: AndroidApplication,
+  name: string,
+  value: string,
+) => {
+  removeAndroidMetaData(application, name);
+
+  const metaData = Array.isArray(application["meta-data"])
+    ? application["meta-data"]
+    : application["meta-data"]
+      ? [application["meta-data"]]
+      : [];
+
+  metaData.push({
+    $: {
+      "android:name": name,
+      "android:value": value,
+    },
+  });
+  application["meta-data"] = metaData;
+};
 
 type Fingerprints = Awaited<
   ReturnType<Awaited<ReturnType<typeof loadHotUpdater>>["generateFingerprints"]>
@@ -188,8 +245,8 @@ const withHotUpdaterConfigAsync =
       return cfg;
     });
 
-    // === Android: Add channel and fingerprint to strings.xml ===
-    modifiedConfig = withStringsXml(modifiedConfig, async (cfg) => {
+    // === Android: Add channel and fingerprint to AndroidManifest.xml ===
+    modifiedConfig = withAndroidManifest(modifiedConfig, async (cfg) => {
       let fingerprintHash = null;
       const { loadConfig } = await loadCliTools();
       const config = await loadConfig(null);
@@ -201,73 +258,51 @@ const withHotUpdaterConfigAsync =
       // Load public key if signing is enabled
       const publicKey = await getPublicKeyFromConfig(config.signing);
 
-      // Ensure resources object exists
-      if (!cfg.modResults.resources) {
-        cfg.modResults.resources = {};
-      }
-      if (!cfg.modResults.resources.string) {
-        cfg.modResults.resources.string = [];
+      const application = cfg.modResults.manifest.application?.[0];
+      if (!application) {
+        return cfg;
       }
 
-      // Remove existing hot_updater_channel entry if it exists
-      cfg.modResults.resources.string = cfg.modResults.resources.string.filter(
-        (item) => !(item.$ && item.$.name === "hot_updater_channel"),
+      upsertAndroidMetaData(
+        application,
+        ANDROID_META_DATA_KEYS.channel,
+        channel,
       );
 
-      // Add the new hot_updater_channel entry
-      cfg.modResults.resources.string.push({
-        $: {
-          name: "hot_updater_channel",
-          moduleConfig: "true",
-          translatable: "false",
-        } as {
-          name: string;
-          moduleConfig: string;
-          translatable: string;
-        },
-        _: channel,
-      });
-
       if (fingerprintHash) {
-        // Remove existing hot_updater_fingerprint_hash entry if it exists
-        cfg.modResults.resources.string =
-          cfg.modResults.resources.string.filter(
-            (item) =>
-              !(item.$ && item.$.name === "hot_updater_fingerprint_hash"),
-          );
-
-        // Add the new hot_updater_fingerprint_hash entry
-        cfg.modResults.resources.string.push({
-          $: {
-            name: "hot_updater_fingerprint_hash",
-            moduleConfig: "true",
-          } as {
-            name: string;
-            moduleConfig: string;
-          },
-          _: fingerprintHash,
-        });
+        upsertAndroidMetaData(
+          application,
+          ANDROID_META_DATA_KEYS.fingerprintHash,
+          fingerprintHash,
+        );
       }
 
       if (publicKey) {
-        // Remove existing hot_updater_public_key entry if it exists
-        cfg.modResults.resources.string =
-          cfg.modResults.resources.string.filter(
-            (item) => !(item.$ && item.$.name === "hot_updater_public_key"),
-          );
-
-        // Add the new hot_updater_public_key entry
-        cfg.modResults.resources.string.push({
-          $: {
-            name: "hot_updater_public_key",
-            moduleConfig: "true",
-          } as {
-            name: string;
-            moduleConfig: string;
-          },
-          _: publicKey,
-        });
+        upsertAndroidMetaData(
+          application,
+          ANDROID_META_DATA_KEYS.publicKey,
+          publicKey,
+        );
       }
+
+      return cfg;
+    });
+
+    // Remove legacy Hot Updater string resources when prebuild reuses a tree.
+    modifiedConfig = withStringsXml(modifiedConfig, (cfg) => {
+      const strings = cfg.modResults.resources?.string;
+      if (!strings) {
+        return cfg;
+      }
+
+      cfg.modResults.resources.string = (
+        Array.isArray(strings) ? strings : [strings]
+      ).filter(
+        (item) =>
+          item.$?.name !== "hot_updater_channel" &&
+          item.$?.name !== "hot_updater_fingerprint_hash" &&
+          item.$?.name !== "hot_updater_public_key",
+      );
 
       return cfg;
     });

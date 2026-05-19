@@ -41,6 +41,26 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
     // Keep fallback value if glob fails
   }
 
+  // Find actual AndroidManifest.xml files in the android directory
+  let androidManifestPaths: string[] = []; // fallback
+  try {
+    const manifestFiles = fg.sync(path.join("**", "AndroidManifest.xml"), {
+      cwd: path.join(getCwd(), "android"),
+      absolute: false,
+      onlyFiles: true,
+      ignore: ["**/build/**", "**/.gradle/**"],
+    });
+
+    if (manifestFiles.length > 0) {
+      // Convert to relative paths from project root
+      androidManifestPaths = manifestFiles.map((file: string) =>
+        path.join("android", file),
+      );
+    }
+  } catch {
+    // Keep fallback value if glob fails
+  }
+
   // Find actual strings.xml files in the android directory
   let stringResourcePaths: string[] = []; // fallback
   try {
@@ -62,6 +82,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
 
   return {
     android: {
+      androidManifestPaths,
       stringResourcePaths,
     },
     ios: {
