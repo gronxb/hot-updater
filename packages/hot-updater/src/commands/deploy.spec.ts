@@ -200,6 +200,7 @@ vi.mock("./console", () => ({
 }));
 
 import fs from "fs";
+import path from "path";
 
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 
@@ -660,6 +661,46 @@ describe("deploy rollout wiring", () => {
         }),
       }),
     );
+  });
+
+  it("limits concurrent manifest asset uploads", async () => {
+    const assetFiles = Array.from({ length: 20 }, (_, index) => ({
+      name: `assets/file-${index}.png`,
+      path: `/mock/build/assets/file-${index}.png`,
+    }));
+    let activeAssetUploads = 0;
+    let maxActiveAssetUploads = 0;
+
+    vi.mocked(getBundleZipTargets).mockResolvedValue(assetFiles);
+    mockStoragePlugin.profiles.node.upload.mockImplementation(
+      async (key, filePath) => {
+        if (key === "bundle-123/files/assets") {
+          activeAssetUploads += 1;
+          maxActiveAssetUploads = Math.max(
+            maxActiveAssetUploads,
+            activeAssetUploads,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          activeAssetUploads -= 1;
+        }
+
+        return {
+          storageUri: `s3://bundles/${key}/${path.basename(filePath)}`,
+        };
+      },
+    );
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(22);
+    expect(maxActiveAssetUploads).toBeGreaterThan(1);
+    expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
 
   it("uploads hermes bundle artifacts using the manifest filename", async () => {

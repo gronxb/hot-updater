@@ -50,6 +50,7 @@ import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
 
 const compressBrotli = promisify(brotliCompress);
+const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -101,6 +102,25 @@ export const normalizePatchMaxBaseBundles = (
   }
 
   return maxBaseBundles;
+};
+
+const runWithConcurrency = async <T>(
+  items: T[],
+  concurrency: number,
+  task: (item: T) => Promise<void>,
+) => {
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const itemIndex = nextIndex;
+        nextIndex += 1;
+        await task(items[itemIndex]!);
+      }
+    }),
+  );
 };
 
 const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
@@ -825,8 +845,10 @@ const deployPlatform = async ({
               "files",
             );
 
-            await Promise.all(
-              taskRef.targetFiles.map(async (targetFile) => {
+            await runWithConcurrency(
+              taskRef.targetFiles,
+              MANIFEST_ASSET_UPLOAD_CONCURRENCY,
+              async (targetFile) => {
                 const uploadName = isBrotliManifestBundleAsset(targetFile.name)
                   ? `${targetFile.name}.br`
                   : targetFile.name;
@@ -840,11 +862,11 @@ const deployPlatform = async ({
                   targetFile,
                 });
 
-                return storagePlugin.profiles.node.upload(
+                await storagePlugin.profiles.node.upload(
                   uploadKey,
                   uploadSourcePath,
                 );
-              }),
+              },
             );
           } catch (e) {
             if (e instanceof Error) {
