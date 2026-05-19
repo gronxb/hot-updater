@@ -160,6 +160,9 @@ describe("infrastructure version helpers", () => {
     expect(getRequiredInfrastructureVersion("0.30.0")).toBe("0.30.0");
     expect(getRequiredInfrastructureVersion("0.30.1")).toBe("0.30.0");
     expect(getRequiredInfrastructureVersion("0.31.0")).toBe("0.31.0");
+    expect(getRequiredInfrastructureVersion("0.31.9")).toBe("0.31.0");
+    expect(getRequiredInfrastructureVersion("0.32.0")).toBe("0.32.0");
+    expect(getRequiredInfrastructureVersion("0.32.1")).toBe("0.32.0");
   });
 
   it("does not require an update just because the server package version is newer", () => {
@@ -182,6 +185,12 @@ describe("infrastructure version helpers", () => {
       isInfrastructureUpdateRequired({
         serverVersion: "0.30.2",
         requiredVersion: "0.31.0",
+      }),
+    ).toBe(true);
+    expect(
+      isInfrastructureUpdateRequired({
+        serverVersion: "0.31.9",
+        requiredVersion: "0.32.0",
       }),
     ).toBe(true);
   });
@@ -596,6 +605,43 @@ describe("doctor", () => {
               "hot-updater db migrate",
               "hot-updater db generate",
             ],
+          },
+        },
+      },
+    });
+  });
+
+  it("should require 0.32.0 server infrastructure for 0.32.x packages", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.32.0",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => {
+      return new Response(JSON.stringify({ version: "0.31.9" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await doctor({
+      serverBaseUrl: "https://example.com/api/check-update",
+      fetch: fetchImpl,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        hotUpdaterVersion: "0.32.0",
+        infrastructure: {
+          serverVersion: "0.31.9",
+          requiredVersion: "0.32.0",
+          needsUpdate: true,
+          remediation: {
+            fixability: "blocked",
           },
         },
       },

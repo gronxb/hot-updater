@@ -179,6 +179,10 @@ export const INFRASTRUCTURE_UPDATE_TARGETS = [
     version: "0.31.0",
     note: "Bundle artifact storage fields",
   },
+  {
+    version: "0.32.0",
+    note: "Content-addressed manifest asset routing",
+  },
 ] as const satisfies readonly [
   InfrastructureUpdateTarget,
   ...InfrastructureUpdateTarget[],
