@@ -908,6 +908,9 @@ const deployPlatform = async ({
               throw new Error("Manifest not found");
             }
 
+            // /assets is a shared content-addressed root, not a per-bundle
+            // directory. The server uses this suffix to derive asset object keys
+            // from manifest fileHash values and to preserve legacy /files bundles.
             taskRef.assetBaseStorageUri = replaceBundleStorageUriPath(
               storageUri,
               bundleId,

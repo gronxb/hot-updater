@@ -98,6 +98,8 @@ const resolveAssetStorageUri = ({
   assetBaseStorageUri: string;
   fallbackPath: string;
 }) => {
+  // Deploys that use the shared /assets root store files by content hash.
+  // Older /files roots keep using the manifest asset path for compatibility.
   return createChildStorageUri(
     assetBaseStorageUri,
     isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
@@ -110,6 +112,8 @@ const resolveAssetStorageUri = ({
 };
 
 const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
+  // /assets is the storage-layout marker; no DB or manifest version flag is
+  // needed because the base URI already tells the server which resolver to use.
   const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
   return pathname.endsWith("/assets") || pathname === "/assets";
 };
@@ -121,6 +125,8 @@ const getContentAddressedAssetStoragePath = ({
   assetPath: string;
   fileHash: string;
 }) => {
+  // The extension comes from the logical download path so Hermes bundles keep
+  // their .br object while images/fonts keep their original file extension.
   const extension = assetPath.endsWith(".br")
     ? ".br"
     : assetPath.includes(".")

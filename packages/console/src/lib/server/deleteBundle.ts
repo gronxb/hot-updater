@@ -100,6 +100,8 @@ function createStorageUriWithRelativePath(
 }
 
 function isContentAddressedAssetBaseStorageUri(storageUri: string) {
+  // Content-addressed assets are shared across bundles, so bundle deletion must
+  // not remove the shared /assets root or hash-addressed objects under it.
   const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
   return pathname.endsWith("/assets") || pathname === "/assets";
 }
