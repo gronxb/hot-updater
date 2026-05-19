@@ -10,7 +10,6 @@ import {
   getAssetBaseStorageUri,
   getBundlePatch,
   getBundlePatches,
-  getContentAddressedAssetStoragePath,
   getManifestStorageUri,
 } from "@hot-updater/core";
 import type {
@@ -18,6 +17,7 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;

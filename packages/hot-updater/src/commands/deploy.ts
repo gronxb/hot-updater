@@ -12,7 +12,6 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import { getContentAddressedAssetStoragePath } from "@hot-updater/core";
 import type {
   Bundle,
   DatabasePlugin,
@@ -20,6 +19,7 @@ import type {
   Platform,
 } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";

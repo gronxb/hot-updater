@@ -1,7 +1,6 @@
 import {
   getAssetBaseStorageUri,
   getBundlePatch,
-  getContentAddressedAssetStoragePath,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
@@ -9,7 +8,10 @@ import {
   type Bundle,
   type ChangedAsset,
 } from "@hot-updater/core";
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
+import {
+  getContentAddressedAssetStoragePath,
+  type HotUpdaterContext,
+} from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;

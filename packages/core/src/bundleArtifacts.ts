@@ -16,23 +16,6 @@ export const getAssetBaseStorageUri = (
   bundle: Pick<Bundle, "assetBaseStorageUri" | "metadata">,
 ) => bundle.assetBaseStorageUri ?? null;
 
-export const getContentAddressedAssetStoragePath = ({
-  assetPath,
-  fileHash,
-}: {
-  assetPath: string;
-  fileHash: string;
-}) => {
-  // The extension comes from the logical download path so Hermes bundles keep
-  // their .br object while images/fonts keep their original file extension.
-  const extension = assetPath.endsWith(".br")
-    ? ".br"
-    : assetPath.includes(".")
-      ? `.${assetPath.split(".").pop()!}`
-      : "";
-  return `sha256/${fileHash.slice(0, 2)}/${fileHash}${extension}`;
-};
-
 const isBundlePatchArtifact = (
   value: unknown,
 ): value is BundlePatchArtifact => {
