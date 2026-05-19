@@ -140,13 +140,12 @@ class HotUpdaterImpl {
                 null
             }
 
-        fun getChannel(context: Context): String {
-            return NativeConfigUtils.getString(
+        fun getChannel(context: Context): String =
+            NativeConfigUtils.getString(
                 context,
                 NativeConfigUtils.CHANNEL_META_DATA_KEY,
                 "hot_updater_channel",
             ) ?: DEFAULT_CHANNEL
-        }
 
         /**
          * Get minimum bundle ID string
@@ -213,26 +212,24 @@ class HotUpdaterImpl {
          * @param context Application context
          * @return The fingerprint hash or null if not set
          */
-        fun getFingerprintHash(context: Context): String? {
-            return NativeConfigUtils.getString(
+        fun getFingerprintHash(context: Context): String? =
+            NativeConfigUtils.getString(
                 context,
                 NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
                 "hot_updater_fingerprint_hash",
             )
-        }
     }
 
     /**
      * Gets the current fingerprint hash
      * @return The fingerprint hash or null if not set
      */
-    fun getFingerprintHash(): String? {
-        return NativeConfigUtils.getString(
+    fun getFingerprintHash(): String? =
+        NativeConfigUtils.getString(
             context,
             NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
             "hot_updater_fingerprint_hash",
         )
-    }
 
     /**
      * Gets the current update channel
