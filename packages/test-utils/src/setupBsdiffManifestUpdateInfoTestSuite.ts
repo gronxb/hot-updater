@@ -142,5 +142,52 @@ export const setupBsdiffManifestUpdateInfoTestSuite = ({
         await prepared.cleanup?.();
       }
     });
+
+    it("returns patch metadata when the deployed target app version is semver-compatible with the app version", async () => {
+      const fixture = DEFAULT_FIXTURE;
+      const prepared = await prepareArtifacts(fixture);
+
+      try {
+        await seedBundles([
+          createBundle(fixture.currentBundleId, prepared.currentArtifacts, {
+            targetAppVersion: "1.1.0",
+          }),
+          createBundle(fixture.nextBundleId, prepared.nextArtifacts, {
+            targetAppVersion: "1.1",
+          }),
+        ]);
+
+        const updateInfo = await getUpdateInfo({
+          appVersion: "1.1.0",
+          bundleId: fixture.currentBundleId,
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        });
+
+        expect(updateInfo).toMatchObject({
+          id: fixture.nextBundleId,
+          manifestFileHash: "sig:manifest-next",
+          status: "UPDATE",
+        });
+
+        const changedAssets = (updateInfo as AppUpdateAvailableInfo | null)
+          ?.changedAssets as Record<string, any> | undefined;
+        const changedAsset = changedAssets?.[fixture.assetPath];
+
+        expect(changedAsset).toMatchObject({
+          fileHash: "hash-new-bundle",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: fixture.currentBundleId,
+            baseFileHash: "hash-old-bundle",
+            patchFileHash: "hash-bsdiff",
+          },
+        });
+
+        await expectPatchUrl(changedAsset?.patch?.patchUrl, fixture);
+      } finally {
+        await prepared.cleanup?.();
+      }
+    });
   });
 };

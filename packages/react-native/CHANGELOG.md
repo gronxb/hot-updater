@@ -1,5 +1,24 @@
 # @hot-updater/react-native
 
+## 0.31.4
+
+### Patch Changes
+
+- f74c6f4: fix(android): mark channel string non-translatable
+  - @hot-updater/cli-tools@0.31.4
+  - @hot-updater/core@0.31.4
+  - @hot-updater/js@0.31.4
+  - @hot-updater/plugin-core@0.31.4
+
+## 0.31.3
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.31.3
+- @hot-updater/core@0.31.3
+- @hot-updater/js@0.31.3
+- @hot-updater/plugin-core@0.31.3
+
 ## 0.31.2
 
 ### Patch Changes

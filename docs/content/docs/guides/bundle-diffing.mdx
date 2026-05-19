@@ -7,29 +7,82 @@ version: 0.31.0
 
 ## What it is
 
-Bundle diffing helps OTA updates download less data.
+> Bundle diffing means: do not download the whole OTA archive again when the
+> device can reuse files it already has.
 
-Instead of always installing the full archive, Hot Updater can reuse files that
-already exist in the currently installed OTA bundle and download only the files
-that changed.
+Think of an OTA bundle as a folder of files installed on the device.
+
+```txt
+First OTA update:
+  download compressed archive -> install OTA bundle
+
+Later OTA update:
+  local unchanged files
+  + downloaded changed files
+  + optional Hermes patch
+  -> next OTA bundle
+```
+
+What the device downloads depends on what changed:
+
+| When this happens | What the device downloads |
+| --- | --- |
+| First OTA after native install | Normal compressed archive |
+| Later OTA, unchanged file | Nothing; the file is copied locally |
+| Later OTA, changed regular asset | Complete new asset file |
+| Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
+
+For example, an update that would otherwise download a **20 MB archive** might
+only need to download a **500 KB patch file** when the byte-level Hermes changes
+are small.
+
+Those numbers are only an example. The archive and the patch file are different
+artifacts, and the patch file size always depends on what changed between the
+two bundles. Large or widespread changes can still produce a much larger patch.
 
 You do not need to change your update-check code or deploy command. After your
 app is using a diff-enabled Hot Updater runtime, new deployments include the
 data needed for bundle diffing automatically.
 
+### Two layers
+
+Bundle diffing has two separate optimizations:
+
+1. **File reuse for the whole OTA bundle.** Files that already exist locally can
+   be copied into the next OTA bundle. This applies to regular assets and the
+   Hermes bundle file.
+2. **Binary patches for changed Hermes bundles.** If the Hermes bundle changed
+   and Hot Updater has a matching `.bsdiff` patch, the app can download the
+   patch instead of the complete new Hermes bundle file.
+
+The key difference is that assets are reused at the file level, while changed
+Hermes bundles can also be patched at the byte level.
+
+| File type | If unchanged | If changed |
+| --- | --- | --- |
+| Regular asset | Copy local file | Download the complete new asset file |
+| Hermes bundle file | Copy local file | Apply `.bsdiff` patch, then fallback to the complete new Hermes bundle file |
+
+Regular assets include files such as images and fonts. They are not binary
+patched; if they changed, the complete new asset file is downloaded. The Hermes
+bundle is the only file type that gets the extra `.bsdiff` patch optimization.
+
 ## How to use it
 
-No special command is required. Deploy as usual:
+No special command is required:
 
 ```bash
 npx hot-updater deploy -p ios
 npx hot-updater deploy -p android
 ```
 
-For apps running a bundle-diffing capable runtime, that is enough for
+For apps running a bundle-diffing capable runtime, that is enough to enable
 manifest-based diffing.
 
-Binary patch optimization for Hermes bundle changes is enabled by default:
+A diff-enabled runtime means the native app was built with a Hot Updater version
+that includes bundle diffing support.
+
+Hermes binary patch optimization is also enabled by default:
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
@@ -43,8 +96,27 @@ export default defineConfig({
 ```
 
 This is the default behavior. Add the `patch` block only when you want to
-override it, for example to disable patch generation or change the number of
-base bundles.
+override it, for example to disable binary patch generation or change how many
+previous OTA bundles are used as patch bases.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `patch.enabled` | `true` | Generates `.bsdiff` patches for changed Hermes bundles. |
+| `patch.maxBaseBundles` | `3` | Uses up to this many previous compatible OTA bundles as patch bases. |
+
+### Binary patches
+
+Binary patches are an extra optimization for Hermes bundle files:
+
+- During deploy, Hot Updater creates a `.bsdiff` patch between a previous
+  Hermes bundle and the new Hermes bundle.
+- At runtime, the app downloads that patch and applies it to the
+  already-installed Hermes bundle with the `bspatch` algorithm.
+- The result is the new Hermes bundle file, without downloading that complete
+  file.
+
+This does not replace manifest-based file reuse. Regular assets are still
+copied from the current OTA bundle or downloaded as complete new files.
 
 `maxBaseBundles` controls how many previous compatible OTA bundles are used as
 patch bases when deploying a new OTA update.
@@ -62,38 +134,128 @@ from:
 - `OTA A` to `OTA C`
 
 This means devices currently on `OTA A` or `OTA B` can download a small patch to
-`OTA C` instead of the full changed Hermes bundle. Devices that only have the
-base bundle still use the compressed archive for their first OTA update. Devices
-on an older OTA outside the selected patch bases download the full changed
-Hermes bundle file instead of a patch.
+`OTA C` instead of the complete new Hermes bundle file. Devices that only have
+the base bundle still use the compressed archive for their first OTA update.
+Devices on an older OTA outside the selected patch bases download the complete
+new Hermes bundle file instead of a patch.
 
 Notes:
 
 - Defaults to `3`.
-- Uses recent compatible bundles from the same channel and platform.
+- Compatible patch bases are older enabled bundles from the same channel and
+  platform.
+- Hot Updater also matches by fingerprint when fingerprinting is used, or by
+  target app version when fingerprinting is not used.
 - Higher values increase the range of OTA versions covered by patches, but can
   make deployment time grow exponentially because more patch artifacts must be
   generated.
 
-If a patch cannot be created or applied, Hot Updater downloads the full changed
-Hermes bundle file instead. If the bundle-diffing path itself cannot be used, it
-falls back to the compressed archive.
+If a patch cannot be created, Hot Updater still deploys the normal OTA update.
+Patch generation is an optimization, not a requirement for delivery.
 
 ## How it works
 
-The first OTA update after installing a native app uses the normal compressed
-archive. At that point, the app does not have a previous OTA bundle directory
-that can be reused.
+### During deploy
 
-From the second OTA update onward, the app can compare the new update with the
-currently installed OTA bundle:
+Hot Updater prepares both the normal delivery path and the diffing data:
 
-1. Files that did not change are copied from the current OTA bundle.
-2. Files that changed are downloaded from the new update.
-3. If a compatible patch exists for the Hermes bundle, the app downloads and
-   applies the patch instead of downloading the full changed Hermes bundle.
-4. If reuse or patching fails, the app falls back to the normal compressed
-   archive.
+- Uploads the normal OTA archive.
+- Uploads the manifest and per-file manifest assets.
+- Records manifest and asset storage metadata.
+- Creates `.bsdiff` patch files for changed Hermes bundles when binary patching
+  is enabled.
+
+### First OTA update
+
+The first OTA update after installing the native app downloads the normal
+compressed archive.
+
+There is no older OTA bundle on the device yet, so Hot Updater cannot copy local
+files or apply a patch.
+
+### Later OTA updates
+
+After that, updates can be assembled from smaller pieces:
+
+1. The app reads the new update manifest.
+2. Files that already exist in the current OTA bundle are copied locally.
+3. Files that are new or changed are downloaded.
+4. For the Hermes bundle, the app first checks whether there is a `.bsdiff`
+   patch that matches the currently installed OTA bundle.
+5. If the patch matches, the app downloads the patch and applies it to the
+   existing Hermes bundle to produce the new Hermes bundle.
+
+### Verification and fallback
+
+Before using a patched Hermes bundle, the app verifies:
+
+- the base file hash
+- the patch file hash
+- the final output hash
+
+If anything does not match, or if the patch cannot be applied, Hot Updater
+downloads the complete new Hermes bundle file when that file URL is available.
+If the changed file cannot be downloaded, or if manifest-driven installation
+cannot be used, it falls back to the normal compressed archive.
+
+### Inspect downloaded files
+
+Use `useHotUpdaterStore` when you want to check which files were downloaded
+during a bundle diffing update.
+
+Use `progress` for the overall update progress. Use `details.files` for
+per-file progress during manifest-based diffing.
+
+Per-file details are available only when `artifactType` is `"diff"`. When
+`artifactType` is `"archive"`, the app is downloading one compressed archive, so
+there is no per-file progress list.
+
+```tsx
+import { Text, View } from "react-native";
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+
+function UpdateDownloadProgress() {
+  const { artifactType, details, progress } = useHotUpdaterStore();
+
+  const files = artifactType === "diff" ? (details?.files ?? []) : [];
+
+  return (
+    <View>
+      <Text>Overall progress: {Math.round(progress * 100)}%</Text>
+
+      {artifactType === "archive" ? (
+        <Text>Downloading the normal OTA archive</Text>
+      ) : null}
+
+      {artifactType === "diff" && details ? (
+        <View>
+          <Text>
+            Changed files: {details.completedFilesCount}/
+            {details.totalFilesCount}
+          </Text>
+
+          {files.map((file) => (
+            <View key={file.path}>
+              <Text>{file.path}</Text>
+              <Text>
+                {file.status} · {Math.round(file.progress * 100)}%
+              </Text>
+              {file.downloadPath !== file.path ? (
+                <Text>Downloaded artifact: {file.downloadPath}</Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+```
+
+In `details.files`, `path` is the final file path inside the OTA bundle.
+`downloadPath` is the artifact that was transferred. They are usually the same,
+but can differ when Hot Updater downloads an intermediate artifact such as a
+`.bsdiff` patch.
 
 ## Signing
 

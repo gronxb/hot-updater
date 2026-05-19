@@ -201,6 +201,8 @@ vi.mock("./console", () => ({
 
 import fs from "fs";
 
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
@@ -218,6 +220,115 @@ import {
   normalizePatchMaxBaseBundles,
   normalizeRolloutPercentage,
 } from "./deploy";
+
+type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
+type GetBundlesOptions = Parameters<DatabasePlugin["getBundles"]>[0];
+
+const compareBundleIds = (a: string, b: string): number => a.localeCompare(b);
+
+const matchesIdFilter = (
+  id: string,
+  filter: NonNullable<GetBundlesOptions["where"]>["id"],
+): boolean => {
+  if (!filter) return true;
+  if (filter.eq !== undefined && id !== filter.eq) return false;
+  if (filter.lt !== undefined && compareBundleIds(id, filter.lt) >= 0) {
+    return false;
+  }
+  if (filter.lte !== undefined && compareBundleIds(id, filter.lte) > 0) {
+    return false;
+  }
+  if (filter.gt !== undefined && compareBundleIds(id, filter.gt) <= 0) {
+    return false;
+  }
+  if (filter.gte !== undefined && compareBundleIds(id, filter.gte) < 0) {
+    return false;
+  }
+  if (filter.in !== undefined && !filter.in.includes(id)) return false;
+  return true;
+};
+
+const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
+  mockDatabasePlugin.getBundles.mockImplementation(
+    async (options: GetBundlesOptions) => {
+      const { cursor, limit, orderBy, where = {} } = options;
+      const sortedBundles = fixtures
+        .map((fixture) => ({
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          platform: "ios",
+          targetAppVersion: null,
+          ...fixture,
+        }))
+        .filter((bundle) => {
+          if (where.channel !== undefined && bundle.channel !== where.channel) {
+            return false;
+          }
+          if (
+            where.platform !== undefined &&
+            bundle.platform !== where.platform
+          ) {
+            return false;
+          }
+          if (where.enabled !== undefined && bundle.enabled !== where.enabled) {
+            return false;
+          }
+          if (!matchesIdFilter(bundle.id, where.id)) return false;
+          if (
+            where.targetAppVersion !== undefined &&
+            bundle.targetAppVersion !== where.targetAppVersion
+          ) {
+            return false;
+          }
+          if (
+            where.targetAppVersionNotNull &&
+            bundle.targetAppVersion === null
+          ) {
+            return false;
+          }
+          if (
+            where.fingerprintHash !== undefined &&
+            bundle.fingerprintHash !== where.fingerprintHash
+          ) {
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) =>
+          orderBy?.direction === "asc"
+            ? compareBundleIds(a.id, b.id)
+            : compareBundleIds(b.id, a.id),
+        );
+
+      const cursorIndex = cursor?.after
+        ? sortedBundles.findIndex((bundle) => bundle.id === cursor.after)
+        : -1;
+      const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+      const data = sortedBundles.slice(startIndex, startIndex + limit);
+
+      return {
+        data: data as Bundle[],
+        pagination: {
+          currentPage: Math.floor(startIndex / limit) + 1,
+          hasNextPage: startIndex + data.length < sortedBundles.length,
+          hasPreviousPage: startIndex > 0,
+          total: sortedBundles.length,
+          totalPages:
+            sortedBundles.length === 0
+              ? 0
+              : Math.ceil(sortedBundles.length / limit),
+          ...(startIndex + data.length < sortedBundles.length && data.length > 0
+            ? { nextCursor: data.at(-1)?.id }
+            : {}),
+          ...(startIndex > 0 && data.length > 0
+            ? { previousCursor: data[0]?.id }
+            : {}),
+        },
+      };
+    },
+  );
+};
 
 describe("normalizeRolloutPercentage", () => {
   it("defaults to 100 when rollout is omitted", () => {
@@ -658,9 +769,11 @@ describe("deploy rollout wiring", () => {
       data: [
         {
           id: "bundle-122",
+          targetAppVersion: "1.0.x",
         },
         {
           id: "bundle-121",
+          targetAppVersion: "1.0.x",
         },
       ],
       pagination: {
@@ -680,21 +793,6 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
-      limit: 2,
-      orderBy: {
-        direction: "desc",
-        field: "id",
-      },
-      where: {
-        channel: "production",
-        enabled: true,
-        id: { lt: "bundle-123" },
-        platform: "ios",
-        targetAppVersion: "1.0.x",
-        targetAppVersionNotNull: true,
-      },
-    });
     expect(mockServer.createBundleDiff).toHaveBeenNthCalledWith(
       1,
       {
@@ -725,6 +823,99 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  it("creates an automatic patch when target app versions are semver-compatible but not exact", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockGetBundlesWithFixtures([
+      {
+        id: "bundle-122",
+        targetAppVersion: "1.1.0",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.1",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: "bundle-122",
+        bundleId: "bundle-123",
+      },
+      {
+        databasePlugin: mockDatabasePlugin,
+        storagePlugin: mockStoragePlugin,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
+  it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockGetBundlesWithFixtures([
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `bundle-${String(122 - index).padStart(3, "0")}`,
+        targetAppVersion: "1.0.0",
+      })),
+      {
+        id: "bundle-112",
+        targetAppVersion: "1.1.0",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.1",
+    });
+
+    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: "bundle-112",
+        bundleId: "bundle-123",
+      },
+      {
+        databasePlugin: mockDatabasePlugin,
+        storagePlugin: mockStoragePlugin,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
   it("keeps deploy successful when automatic patch generation fails", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -743,6 +934,7 @@ describe("deploy rollout wiring", () => {
       data: [
         {
           id: "bundle-122",
+          targetAppVersion: "1.0.x",
         },
       ],
       pagination: {

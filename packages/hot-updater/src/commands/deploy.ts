@@ -22,6 +22,7 @@ import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server";
 import isPortReachable from "is-port-reachable";
 import open from "open";
+import semverIntersects from "semver/ranges/intersects";
 import semverValid from "semver/ranges/valid";
 
 import { getPlatform } from "@/prompts/getPlatform";
@@ -102,6 +103,17 @@ export const normalizePatchMaxBaseBundles = (
   return maxBaseBundles;
 };
 
+const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
+  const aRange = semverValid(a);
+  const bRange = semverValid(b);
+
+  if (!aRange || !bRange) {
+    return false;
+  }
+
+  return semverIntersects(aRange, bRange);
+};
+
 const getPatchBaseBundles = async ({
   bundleId,
   channel,
@@ -120,32 +132,78 @@ const getPatchBaseBundles = async ({
     fingerprintHash: string | null;
   };
 }): Promise<Bundle[]> => {
-  const where = {
+  const baseWhere = {
     channel,
     enabled: true,
     id: { lt: bundleId },
     platform,
-    ...(target.fingerprintHash
-      ? {
-          fingerprintHash: target.fingerprintHash,
-        }
-      : {
-          targetAppVersion: target.appVersion,
-          targetAppVersionNotNull: true,
-        }),
   } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
-  const { data } = await databasePlugin.getBundles({
-    limit: maxBaseBundles,
-    orderBy: {
-      direction: "desc",
-      field: "id",
-    },
-    where,
-  });
 
-  return data
-    .filter((bundle) => bundle.id !== bundleId)
-    .slice(0, maxBaseBundles);
+  if (target.fingerprintHash) {
+    const { data } = await databasePlugin.getBundles({
+      limit: maxBaseBundles,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        ...baseWhere,
+        fingerprintHash: target.fingerprintHash,
+      },
+    });
+
+    return data
+      .filter((bundle) => bundle.id !== bundleId)
+      .slice(0, maxBaseBundles);
+  }
+
+  if (!target.appVersion) {
+    return [];
+  }
+
+  const pageSize = Math.max(maxBaseBundles * 3, 10);
+  const compatibleBundles: Bundle[] = [];
+  let cursorAfter: string | undefined;
+
+  while (compatibleBundles.length < maxBaseBundles) {
+    const { data, pagination } = await databasePlugin.getBundles({
+      ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
+      limit: pageSize,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        ...baseWhere,
+        targetAppVersionNotNull: true,
+      },
+    });
+
+    for (const bundle of data) {
+      if (
+        bundle.id !== bundleId &&
+        bundle.targetAppVersion &&
+        areTargetAppVersionsPatchCompatible(
+          target.appVersion,
+          bundle.targetAppVersion,
+        )
+      ) {
+        compatibleBundles.push(bundle);
+      }
+
+      if (compatibleBundles.length >= maxBaseBundles) {
+        break;
+      }
+    }
+
+    if (!pagination.hasNextPage || !pagination.nextCursor) {
+      break;
+    }
+
+    cursorAfter = pagination.nextCursor;
+  }
+
+  return compatibleBundles;
 };
 
 const createAutoPatches = async ({
