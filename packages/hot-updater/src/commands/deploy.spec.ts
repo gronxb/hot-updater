@@ -703,6 +703,43 @@ describe("deploy rollout wiring", () => {
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
 
+  it("reports upload progress through 100%", async () => {
+    const uploadMessages: string[] = [];
+
+    mockCli.p.tasks.mockImplementation(async (tasks) => {
+      for (const task of tasks) {
+        await task.task((message: string) => {
+          uploadMessages.push(message);
+        });
+      }
+    });
+
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "index.bundle",
+        path: "/mock/build/index.bundle",
+      },
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(uploadMessages).toContain("Uploading 0% (0/4)");
+    expect(uploadMessages).toContain("Uploading 25% (1/4)");
+    expect(uploadMessages).toContain("Uploading 50% (2/4)");
+    expect(uploadMessages).toContain("Uploading 75% (3/4)");
+    expect(uploadMessages).toContain("Uploading 100% (4/4)");
+  });
+
   it("uploads hermes bundle artifacts using the manifest filename", async () => {
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {

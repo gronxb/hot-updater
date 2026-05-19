@@ -123,6 +123,11 @@ const runWithConcurrency = async <T>(
   );
 };
 
+const formatUploadProgress = (completed: number, total: number) => {
+  const percent = total === 0 ? 100 : Math.round((completed / total) * 100);
+  return `Uploading ${percent}% (${completed}/${total})`;
+};
+
 const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
   const aRange = semverValid(a);
   const bRange = semverValid(b);
@@ -819,17 +824,26 @@ const deployPlatform = async ({
     await p.tasks([
       {
         title: `📦 Uploading to Storage (${platformName} • ${storagePlugin.name})`,
-        task: async () => {
+        task: async (message = () => {}) => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
           }
 
+          const uploadStepCount = taskRef.targetFiles.length + 2;
+          let uploadedStepCount = 0;
+          const updateUploadProgress = () => {
+            message(formatUploadProgress(uploadedStepCount, uploadStepCount));
+          };
+
           try {
+            updateUploadProgress();
             const { storageUri } = await storagePlugin.profiles.node.upload(
               bundleId,
               bundlePath,
             );
             taskRef.storageUri = storageUri;
+            uploadedStepCount += 1;
+            updateUploadProgress();
 
             if (!taskRef.manifestPath) {
               throw new Error("Manifest path not found");
@@ -844,6 +858,8 @@ const deployPlatform = async ({
               manifestUpload.storageUri,
               "files",
             );
+            uploadedStepCount += 1;
+            updateUploadProgress();
 
             await runWithConcurrency(
               taskRef.targetFiles,
@@ -866,6 +882,8 @@ const deployPlatform = async ({
                   uploadKey,
                   uploadSourcePath,
                 );
+                uploadedStepCount += 1;
+                updateUploadProgress();
               },
             );
           } catch (e) {
@@ -874,7 +892,7 @@ const deployPlatform = async ({
             }
             throw new Error("Failed to upload bundle to storage");
           }
-          return `✅ Upload Complete (${storagePlugin.name})`;
+          return `✅ Upload Complete (${storagePlugin.name}) • 100%`;
         },
       },
       {
