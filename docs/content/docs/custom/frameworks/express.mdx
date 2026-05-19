@@ -35,14 +35,9 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 const app = express();
 const handler = toNodeHandler(hotUpdater); // [!code ++]
-const managementToken = process.env.HOT_UPDATER_AUTH_TOKEN; // [!code ++]
-
-if (!managementToken) { // [!code ++]
-  throw new Error("HOT_UPDATER_AUTH_TOKEN is required when bundle routes are enabled"); // [!code ++]
-} // [!code ++]
 
 const authMiddleware = (req, res, next) => { // [!code ++]
-  if (req.get("Authorization") !== `Bearer ${managementToken}`) { // [!code ++]
+  if (req.get("Authorization") !== `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`) { // [!code ++]
     return res.status(401).json({ error: "Unauthorized" }); // [!code ++]
   } // [!code ++]
   next(); // [!code ++]
