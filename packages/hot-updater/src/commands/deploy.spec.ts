@@ -802,7 +802,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("skips cached content-addressed assets only after remote existence checks", async () => {
+  it("skips scoped cached content-addressed assets without remote existence checks", async () => {
     const cachePath = path.join(
       "/mock/cwd",
       "node_modules",
@@ -812,6 +812,7 @@ describe("deploy rollout wiring", () => {
     vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
       if (filePath === cachePath) {
         return JSON.stringify({
+          storageScope: "mock-storage\ns3\ns3://bundles/assets",
           uploadedAssetStorageUris: [
             "s3://bundles/assets/sha256/fi/file-hash.png",
           ],
@@ -821,10 +822,6 @@ describe("deploy rollout wiring", () => {
 
       return Buffer.from("bundle");
     });
-    mockStoragePlugin.profiles.node.exists.mockImplementation(
-      async (storageUri) =>
-        storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
         name: "assets/src/logo.png",
@@ -840,9 +837,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    expect(mockStoragePlugin.profiles.node.exists).not.toHaveBeenCalled();
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
       "assets/sha256/fi",
@@ -850,7 +845,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("uploads cached content-addressed assets when remote existence is not trusted", async () => {
+  it("uploads stale cached content-addressed assets when remote existence is not trusted", async () => {
     const cachePath = path.join(
       "/mock/cwd",
       "node_modules",
@@ -860,8 +855,9 @@ describe("deploy rollout wiring", () => {
     vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
       if (filePath === cachePath) {
         return JSON.stringify({
+          storageScope: "mock-storage\ns3\ns3://old-bundles/assets",
           uploadedAssetStorageUris: [
-            "s3://bundles/assets/sha256/fi/file-hash.png",
+            "s3://old-bundles/assets/sha256/fi/file-hash.png",
           ],
           version: 1,
         });
@@ -894,6 +890,95 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  it("starts with an empty deploy upload cache when the cache file is missing", async () => {
+    const cachePath = path.join(
+      "/mock/cwd",
+      "node_modules",
+      ".hot-updater",
+      "deploy-upload-cache.json",
+    );
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
+      if (filePath === cachePath) {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      }
+
+      return Buffer.from("bundle");
+    });
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
+      "assets/sha256/fi",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
+    );
+  });
+
+  it("resets cached content-addressed assets when the storage scope changes", async () => {
+    const cachePath = path.join(
+      "/mock/cwd",
+      "node_modules",
+      ".hot-updater",
+      "deploy-upload-cache.json",
+    );
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
+      if (filePath === cachePath) {
+        return JSON.stringify({
+          storageScope: "mock-storage\ns3\ns3://old-bundles/assets",
+          uploadedAssetStorageUris: [
+            "s3://old-bundles/assets/sha256/fi/file-hash.png",
+          ],
+          version: 1,
+        });
+      }
+
+      return Buffer.from("bundle");
+    });
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(fs.promises.writeFile).toHaveBeenCalledWith(
+      cachePath,
+      `${JSON.stringify(
+        {
+          storageScope: "mock-storage\ns3\ns3://bundles/assets",
+          uploadedAssetStorageUris: [
+            "s3://bundles/assets/sha256/fi/file-hash.png",
+          ],
+          version: 1,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  });
+
   it("records uploaded content-addressed assets in the local cache", async () => {
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
@@ -923,6 +1008,7 @@ describe("deploy rollout wiring", () => {
       ),
       `${JSON.stringify(
         {
+          storageScope: "mock-storage\ns3\ns3://bundles/assets",
           uploadedAssetStorageUris: [
             "s3://bundles/assets/sha256/fi/file-hash.png",
           ],
@@ -932,6 +1018,35 @@ describe("deploy rollout wiring", () => {
         2,
       )}\n`,
     );
+  });
+
+  it("does not cache content-addressed assets when their upload fails", async () => {
+    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => {
+      if (key === "assets/sha256/fi") {
+        throw new Error("asset upload failed");
+      }
+
+      return { storageUri: "s3://bundles/bundle-123/bundle.tar.br" };
+    });
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).rejects.toThrow("process.exit unexpectedly called");
+
+    expect(mockCli.p.log.error).toHaveBeenCalledWith("asset upload failed");
+    expect(fs.promises.writeFile).not.toHaveBeenCalled();
   });
 
   it("does not read or write the deploy upload cache when cacheDir is null", async () => {

@@ -68,6 +68,20 @@ async function createSignedUrlOrThrow({
   );
 }
 
+async function verifyObjectCanBeSignedForRuntime({
+  bucket,
+  key,
+}: {
+  bucket: SupabaseStorageBucket;
+  key: string;
+}) {
+  await createSignedUrlOrThrow({
+    bucket,
+    key,
+    expiresIn: 3600,
+  });
+}
+
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   bucketName: string;
   /**
@@ -129,10 +143,9 @@ export const supabaseStorage =
               throw upload.error;
             }
 
-            await createSignedUrlOrThrow({
+            await verifyObjectCanBeSignedForRuntime({
               bucket,
               key: Key,
-              expiresIn: 3600,
             });
 
             const fullPath = upload.data.fullPath;
@@ -160,10 +173,9 @@ export const supabaseStorage =
               throw error;
             }
 
-            await createSignedUrlOrThrow({
+            await verifyObjectCanBeSignedForRuntime({
               bucket,
               key,
-              expiresIn: 3600,
             });
 
             return data;

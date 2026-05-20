@@ -371,6 +371,11 @@ export interface NodeStorageProfile {
     storageUri: string;
   }>;
 
+  /**
+   * Returns true when the object can be safely reused by deploy without
+   * uploading it again. Providers may validate more than physical existence
+   * when runtime access needs an additional readiness check.
+   */
   exists: (storageUri: string) => Promise<boolean>;
 
   delete: (storageUri: string) => Promise<void>;

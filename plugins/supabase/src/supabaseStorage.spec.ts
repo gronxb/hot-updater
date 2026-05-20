@@ -35,7 +35,7 @@ describe("supabaseStorage", () => {
     createClient.mockClear();
   });
 
-  it("checks object existence with the Supabase storage exists API", async () => {
+  it("returns true for existing objects that can be signed for runtime", async () => {
     bucket.exists.mockResolvedValueOnce({ data: true, error: null });
     bucket.createSignedUrl.mockResolvedValueOnce({
       data: { signedUrl: "https://example.supabase.co/signed-url" },

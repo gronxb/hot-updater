@@ -55,10 +55,12 @@ const DEPLOY_UPLOAD_CACHE_FILENAME = "deploy-upload-cache.json";
 
 type DeployUploadCache = {
   add: (storageUri: string) => void;
+  has: (storageUri: string) => boolean;
   save: () => Promise<void>;
 };
 
 type DeployUploadCacheFile = {
+  storageScope?: string;
   uploadedAssetStorageUris?: string[];
   version?: 1;
 };
@@ -167,9 +169,11 @@ const readDeployUploadCacheFile = async (
 const createDeployUploadCache = async ({
   cacheDir,
   cwd,
+  storageScope,
 }: {
   cacheDir: string | null | undefined;
   cwd: string;
+  storageScope: string;
 }): Promise<DeployUploadCache | null> => {
   const resolvedCacheDir = resolveDeployUploadCacheDir({ cacheDir, cwd });
   if (!resolvedCacheDir) {
@@ -178,22 +182,27 @@ const createDeployUploadCache = async ({
 
   const cachePath = path.join(resolvedCacheDir, DEPLOY_UPLOAD_CACHE_FILENAME);
   const cacheFile = await readDeployUploadCacheFile(cachePath);
+  const canReuseCacheFile = cacheFile.storageScope === storageScope;
   const uploadedAssetStorageUris = new Set(
-    cacheFile.uploadedAssetStorageUris?.filter(
-      (storageUri): storageUri is string => typeof storageUri === "string",
-    ) ?? [],
+    canReuseCacheFile
+      ? (cacheFile.uploadedAssetStorageUris?.filter(
+          (storageUri): storageUri is string => typeof storageUri === "string",
+        ) ?? [])
+      : [],
   );
 
   return {
     add: (storageUri) => {
       uploadedAssetStorageUris.add(storageUri);
     },
+    has: (storageUri) => uploadedAssetStorageUris.has(storageUri),
     save: async () => {
       await fs.promises.mkdir(resolvedCacheDir, { recursive: true });
       await fs.promises.writeFile(
         cachePath,
         `${JSON.stringify(
           {
+            storageScope,
             uploadedAssetStorageUris: [...uploadedAssetStorageUris].sort(),
             version: 1,
           } satisfies DeployUploadCacheFile,
@@ -204,6 +213,19 @@ const createDeployUploadCache = async ({
     },
   };
 };
+
+const createDeployUploadCacheStorageScope = ({
+  assetBaseStorageUri,
+  storagePlugin,
+}: {
+  assetBaseStorageUri: string;
+  storagePlugin: NodeStoragePlugin;
+}) =>
+  [
+    storagePlugin.name,
+    storagePlugin.supportedProtocol,
+    assetBaseStorageUri,
+  ].join("\n");
 
 const formatUploadProgress = (
   completed: number,
@@ -997,10 +1019,6 @@ const deployPlatform = async ({
                 manifest: taskRef.manifest,
                 targetFiles: taskRef.targetFiles,
               });
-            const deployUploadCache = await createDeployUploadCache({
-              cacheDir: config.cacheDir,
-              cwd,
-            });
 
             const uploadStepCount = assetUploadTargets.length + 2;
             let uploadedStepCount = 0;
@@ -1034,6 +1052,14 @@ const deployPlatform = async ({
               bundleId,
               "assets",
             );
+            const deployUploadCache = await createDeployUploadCache({
+              cacheDir: config.cacheDir,
+              cwd,
+              storageScope: createDeployUploadCacheStorageScope({
+                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                storagePlugin,
+              }),
+            });
 
             await runWithConcurrency(
               assetUploadTargets,
@@ -1055,10 +1081,11 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                const remoteExists =
-                  await storagePlugin.profiles.node.exists(storageUri);
-
-                if (remoteExists) {
+                if (deployUploadCache?.has(storageUri)) {
+                  skippedUploadCount += 1;
+                } else if (
+                  await storagePlugin.profiles.node.exists(storageUri)
+                ) {
                   deployUploadCache?.add(storageUri);
                   skippedUploadCount += 1;
                 } else {
