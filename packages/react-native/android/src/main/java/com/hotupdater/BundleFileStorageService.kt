@@ -1208,16 +1208,27 @@ class BundleFileStorageService(
                 changedAssets != null
 
         if (hasManifestDrivenArtifacts && canUseManifestDrivenInstall()) {
-            updateBundleFromManifest(
-                bundleId = bundleId,
-                manifestUrl = manifestUrl!!,
-                manifestFileHash = manifestFileHash!!,
-                changedAssets = changedAssets!!,
-                bundleStoreDir = bundleStoreDir,
-                finalBundleDir = finalBundleDir,
-                progressCallback = progressCallback,
-            )
-            return
+            try {
+                updateBundleFromManifest(
+                    bundleId = bundleId,
+                    manifestUrl = manifestUrl!!,
+                    manifestFileHash = manifestFileHash!!,
+                    changedAssets = changedAssets!!,
+                    bundleStoreDir = bundleStoreDir,
+                    finalBundleDir = finalBundleDir,
+                    progressCallback = progressCallback,
+                )
+                return
+            } catch (e: Exception) {
+                if (fileUrl.isNullOrEmpty()) {
+                    throw e
+                }
+                Log.w(
+                    TAG,
+                    "Manifest-driven install failed for $bundleId. Falling back to archive: ${e.message}",
+                    e,
+                )
+            }
         } else if (hasManifestDrivenArtifacts) {
             Log.d(
                 TAG,
