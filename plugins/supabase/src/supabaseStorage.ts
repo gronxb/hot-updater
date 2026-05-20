@@ -191,6 +191,13 @@ export const supabaseStorage =
               throw error;
             }
 
+            await createSignedUrlWithRetry({
+              bucket,
+              key,
+              expiresIn: 3600,
+              retryDelays: signedUrlRetryDelays,
+            });
+
             return data;
           },
           async downloadFile(storageUri: string, filePath: string) {

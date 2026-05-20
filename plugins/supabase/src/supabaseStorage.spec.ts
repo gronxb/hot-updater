@@ -37,6 +37,10 @@ describe("supabaseStorage", () => {
 
   it("checks object existence with the Supabase storage exists API", async () => {
     bucket.exists.mockResolvedValueOnce({ data: true, error: null });
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: { signedUrl: "https://example.supabase.co/signed-url" },
+      error: null,
+    });
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -52,6 +56,10 @@ describe("supabaseStorage", () => {
 
     expect(bucket.exists).toHaveBeenCalledWith(
       "assets/sha256/fi/file-hash.png",
+    );
+    expect(bucket.createSignedUrl).toHaveBeenCalledWith(
+      "assets/sha256/fi/file-hash.png",
+      3600,
     );
   });
 
@@ -72,6 +80,34 @@ describe("supabaseStorage", () => {
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
     ).resolves.toBe(false);
+    expect(bucket.createSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it("waits for existing objects to become signable", async () => {
+    bucket.exists.mockResolvedValueOnce({ data: true, error: null });
+    bucket.createSignedUrl
+      .mockResolvedValueOnce({
+        data: null,
+        error: new Error("Object not found"),
+      })
+      .mockResolvedValueOnce({
+        data: { signedUrl: "https://example.supabase.co/signed-url" },
+        error: null,
+      });
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await expect(
+      storage.profiles.node.exists(
+        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      ),
+    ).resolves.toBe(true);
+
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
   });
 
   it("rethrows Supabase storage existence errors", async () => {
