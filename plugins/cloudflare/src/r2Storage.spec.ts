@@ -104,6 +104,15 @@ describe("r2Storage", () => {
     await expect(
       storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
     ).resolves.toBe(false);
+    expect(wrangler).toHaveBeenCalledWith(
+      "r2",
+      "object",
+      "get",
+      "test-bucket/releases/logo.png",
+      "--file",
+      expect.any(String),
+      "--remote",
+    );
   });
 
   it("rethrows non-missing R2 existence errors", async () => {

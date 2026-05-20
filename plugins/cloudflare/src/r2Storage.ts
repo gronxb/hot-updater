@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -47,13 +48,6 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
       cloudflareApiToken: cloudflareApiToken,
       cwd: process.cwd(),
     });
-    const quietWrangler = createWrangler({
-      accountId,
-      cloudflareApiToken: cloudflareApiToken,
-      cwd: process.cwd(),
-      stdio: "ignore",
-    });
-
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
@@ -118,13 +112,19 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
           );
         }
 
+        const tempDir = await fs.mkdtemp(
+          path.join(os.tmpdir(), "hot-updater-r2-exists-"),
+        );
+        const tempFilePath = path.join(tempDir, "object");
+
         try {
-          await quietWrangler(
+          await wrangler(
             "r2",
             "object",
             "get",
             [bucketName, key].join("/"),
-            "--pipe",
+            "--file",
+            tempFilePath,
             "--remote",
           );
           return true;
@@ -134,6 +134,8 @@ export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
           }
 
           throw error;
+        } finally {
+          await fs.rm(tempDir, { force: true, recursive: true });
         }
       },
       async downloadFile(storageUri, filePath) {
