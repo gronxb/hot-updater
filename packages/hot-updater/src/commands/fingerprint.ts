@@ -11,6 +11,7 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
+import { isMissingFingerprintDependencyError } from "@/utils/fingerprint/dependency";
 import {
   getFingerprintDiff,
   showFingerprintDiff,
@@ -18,11 +19,30 @@ import {
 
 import { ui } from "../utils/cli-ui";
 
+const exitWithFingerprintError = (error: unknown): never => {
+  if (error instanceof Error) {
+    p.log.error(error.message);
+  } else {
+    p.log.error(String(error));
+  }
+
+  if (!isMissingFingerprintDependencyError(error)) {
+    console.error(error);
+  }
+  process.exit(1);
+};
+
 export const handleFingerprint = async () => {
   const s = p.spinner();
   s.start("Generating fingerprints");
 
-  const fingerPrintRef = await generateFingerprints();
+  let fingerPrintRef: Awaited<ReturnType<typeof generateFingerprints>>;
+  try {
+    fingerPrintRef = await generateFingerprints();
+  } catch (error) {
+    s.error("Fingerprint generation failed");
+    return exitWithFingerprintError(error);
+  }
 
   s.stop("Fingerprint generated");
   p.log.message(
@@ -113,11 +133,8 @@ export const handleCreateFingerprint = async () => {
     }
     s.stop("Created fingerprint.json");
   } catch (error) {
-    if (error instanceof Error) {
-      p.log.error(error.message);
-    }
-    console.error(error);
-    process.exit(1);
+    s.error("Creating fingerprint.json failed");
+    exitWithFingerprintError(error);
   }
 
   if (diffChanged && result) {

@@ -6,6 +6,7 @@ export default defineConfig({
     index: "./src/index.ts",
   },
   deps: {
+    neverBundle: ["@expo/fingerprint"],
     onlyBundle: false,
   },
   exports: {

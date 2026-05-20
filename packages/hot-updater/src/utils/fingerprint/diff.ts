@@ -1,4 +1,3 @@
-import { diffFingerprintChangesAsync } from "@expo/fingerprint";
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
 
 import {
@@ -7,6 +6,7 @@ import {
   type FingerprintResult,
   getOtaFingerprintOptions,
 } from "./common";
+import { type ExpoFingerprint, loadExpoFingerprint } from "./dependency";
 
 export type FingerprintDiffItem =
   | {
@@ -28,10 +28,13 @@ export async function getFingerprintDiff(
   options: FingerprintOptions,
 ): Promise<FingerprintDiffItem[]> {
   const projectPath = getCwd();
+  const { diffFingerprintChangesAsync } = await loadExpoFingerprint();
   return await diffFingerprintChangesAsync(
-    oldFingerprint as Parameters<typeof diffFingerprintChangesAsync>[0],
+    oldFingerprint as Parameters<
+      ExpoFingerprint["diffFingerprintChangesAsync"]
+    >[0],
     projectPath,
-    getOtaFingerprintOptions(options.platform, projectPath, options),
+    await getOtaFingerprintOptions(options.platform, projectPath, options),
   );
 }
 
