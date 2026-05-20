@@ -1,3 +1,7 @@
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseStorage } from "./supabaseStorage";
@@ -6,6 +10,7 @@ const { bucket, createClient } = vi.hoisted(() => {
   const bucket = {
     createSignedUrl: vi.fn(),
     exists: vi.fn(),
+    upload: vi.fn(),
   };
 
   return {
@@ -26,6 +31,7 @@ describe("supabaseStorage", () => {
   beforeEach(() => {
     bucket.createSignedUrl.mockReset();
     bucket.exists.mockReset();
+    bucket.upload.mockReset();
     createClient.mockClear();
   });
 
@@ -133,6 +139,53 @@ describe("supabaseStorage", () => {
       "assets/sha256/fi/file-hash.png",
       3600,
     );
+  });
+
+  it("waits for uploaded objects to become signable", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hu-supabase-"));
+    const uploadPath = path.join(tmpDir, "bundle.zip");
+    await fs.writeFile(uploadPath, "bundle");
+    bucket.upload.mockResolvedValueOnce({
+      data: { fullPath: "updates/bundles/bundle.zip" },
+      error: null,
+    });
+    bucket.createSignedUrl
+      .mockResolvedValueOnce({
+        data: null,
+        error: new Error("Object not found"),
+      })
+      .mockResolvedValueOnce({
+        data: { signedUrl: "https://example.supabase.co/signed-url" },
+        error: null,
+      });
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await expect(
+      storage.profiles.node.upload("bundles", uploadPath),
+    ).resolves.toEqual({
+      storageUri: "supabase-storage://updates/bundles/bundle.zip",
+    });
+
+    expect(bucket.upload).toHaveBeenCalledWith(
+      "bundles/bundle.zip",
+      expect.any(Buffer),
+      expect.objectContaining({
+        cacheControl: "max-age=31536000",
+        contentType: "application/zip",
+      }),
+    );
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledWith(
+      "bundles/bundle.zip",
+      3600,
+    );
+
+    await fs.rm(tmpDir, { force: true, recursive: true });
   });
 
   it("retries signed URL generation when Supabase throws a missing object error", async () => {
