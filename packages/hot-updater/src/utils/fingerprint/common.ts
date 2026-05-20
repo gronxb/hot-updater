@@ -1,7 +1,7 @@
-import { SourceSkips } from "@expo/fingerprint";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 
 import { isExpo } from "../expoDetection";
+import { loadExpoFingerprint } from "./dependency";
 import { processExtraSources } from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {
@@ -32,11 +32,13 @@ function getDefaultIgnorePaths(): string[] {
   return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
 }
 
-export function getOtaFingerprintOptions(
+export async function getOtaFingerprintOptions(
   platform: "ios" | "android",
   path: string,
   options: FingerprintOptions,
-): OtaFingerprintOptions {
+): Promise<OtaFingerprintOptions> {
+  const { SourceSkips } = await loadExpoFingerprint();
+
   return {
     useRNCoreAutolinkingFromExpo: isExpo(),
     platforms: [platform],

@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { createFingerprintAsync } from "@expo/fingerprint";
 import { getCwd } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
@@ -12,6 +11,7 @@ import {
   type FingerprintResult,
   getOtaFingerprintOptions,
 } from "./common";
+import { loadExpoFingerprint } from "./dependency";
 
 export * from "./common";
 export * from "./diff";
@@ -24,9 +24,10 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
+  const { createFingerprintAsync } = await loadExpoFingerprint();
   return createFingerprintAsync(
     path,
-    getOtaFingerprintOptions(platform, path, options),
+    await getOtaFingerprintOptions(platform, path, options),
   );
 }
 
