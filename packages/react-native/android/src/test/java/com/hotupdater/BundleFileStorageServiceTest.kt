@@ -1,16 +1,19 @@
 package com.hotupdater
 
 import android.content.ContextWrapper
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.net.URL
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -270,6 +273,47 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `manifest driven install failure does not fall back to archive`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("manifest-failure-no-archive-fallback")
+            val preferences = InMemoryPreferencesService()
+            val downloadService = RecordingFailingDownloadService()
+            val service = createService(rootDir, preferences, downloadService)
+            val activeDir = createBundleDir(rootDir, "active-bundle")
+            val activeBundleFile = writeFile(activeDir, "index.android.bundle")
+            writeManifest(activeDir, listOf("index.android.bundle"))
+
+            preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
+
+            try {
+                service.updateBundle(
+                    bundleId = "next-bundle",
+                    fileUrl = "https://example.com/archive.zip",
+                    fileHash = "archive-hash",
+                    manifestUrl = "https://example.com/manifest.json",
+                    manifestFileHash = "manifest-hash",
+                    changedAssets =
+                        mapOf(
+                            "index.android.bundle" to
+                                ChangedAssetDescriptor(
+                                    fileUrl = "https://example.com/index.android.bundle.br",
+                                    fileHash = "next-hash",
+                                    fileCompression = "br",
+                                ),
+                        ),
+                    progressCallback = {},
+                )
+                fail("Expected manifest-driven install failure")
+            } catch (_: HotUpdaterException) {
+            }
+
+            assertEquals(
+                listOf("https://example.com/manifest.json"),
+                downloadService.downloadedUrls,
+            )
+        }
+
+    @Test
     fun `zip decompression does not write sibling prefix traversal entries`() {
         val rootDir = temporaryFolder.newFolder("zip-sibling-prefix")
         val zipFile = File(rootDir, "bundle.zip")
@@ -293,11 +337,12 @@ class BundleFileStorageServiceTest {
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
+        downloadService: DownloadService = UnusedDownloadService,
     ): BundleFileStorageService =
         BundleFileStorageService(
             ContextWrapper(null),
             TestFileSystemService(rootDir),
-            UnusedDownloadService,
+            downloadService,
             DecompressService(),
             preferences,
             TEST_ISOLATION_KEY,
@@ -445,6 +490,20 @@ class BundleFileStorageServiceTest {
             fileSizeCallback: ((Long) -> Unit)?,
             progressCallback: (DownloadProgress) -> Unit,
         ): DownloadResult = error("downloadFile should not be called in these tests")
+    }
+
+    private class RecordingFailingDownloadService : DownloadService {
+        val downloadedUrls = mutableListOf<String>()
+
+        override suspend fun downloadFile(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult {
+            downloadedUrls += fileUrl.toString()
+            return DownloadResult.Error(IOException("download unavailable"))
+        }
     }
 
     companion object {
