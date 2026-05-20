@@ -548,61 +548,40 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     r2SecretAccessKey = credentials.secretAccessKey;
   } else {
     p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
-
-    const r2CredentialMode = await p.select({
-      message: "Set up R2 API credentials",
-      options: [
-        {
-          value: "create",
-          label: "Create new R2 API credentials",
-        },
-        {
-          value: "manual",
-          label: "Enter existing R2 API credentials",
-        },
-      ],
-    });
-
-    if (p.isCancel(r2CredentialMode)) {
-      process.exit(1);
-    }
-
-    if (r2CredentialMode === "create") {
-      if (apiToken) {
-        try {
-          let createdCredentials: R2ApiCredentials | undefined;
-          await p.tasks([
-            {
-              title: "Creating R2 API credentials...",
-              task: async () => {
-                createdCredentials = await createR2ApiCredentials({
-                  apiToken,
-                  accountId,
-                  bucketName: selectedBucketName,
-                });
-              },
+    if (apiToken) {
+      try {
+        let createdCredentials: R2ApiCredentials | undefined;
+        await p.tasks([
+          {
+            title: "Creating R2 API credentials...",
+            task: async () => {
+              createdCredentials = await createR2ApiCredentials({
+                apiToken,
+                accountId,
+                bucketName: selectedBucketName,
+              });
             },
-          ]);
+          },
+        ]);
 
-          if (!createdCredentials) {
-            throw new Error("Failed to create R2 API credentials.");
-          }
-
-          r2AccessKeyId = createdCredentials.accessKeyId;
-          r2SecretAccessKey = createdCredentials.secretAccessKey;
-        } catch (e) {
-          if (e instanceof Error) {
-            p.log.warn(e.message);
-          }
-          p.log.warn(
-            "Could not create R2 API credentials automatically. Enter existing credentials instead.",
-          );
+        if (!createdCredentials) {
+          throw new Error("Failed to create R2 API credentials.");
         }
-      } else {
+
+        r2AccessKeyId = createdCredentials.accessKeyId;
+        r2SecretAccessKey = createdCredentials.secretAccessKey;
+      } catch (e) {
+        if (e instanceof Error) {
+          p.log.warn(e.message);
+        }
         p.log.warn(
-          "Cloudflare API token is required to create R2 API credentials automatically.",
+          "Could not create R2 API credentials automatically. Enter existing credentials instead.",
         );
       }
+    } else {
+      p.log.warn(
+        "Cloudflare API token is required to create R2 API credentials automatically.",
+      );
     }
 
     if (!r2AccessKeyId || !r2SecretAccessKey) {
