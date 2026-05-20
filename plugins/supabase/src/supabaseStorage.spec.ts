@@ -83,17 +83,12 @@ describe("supabaseStorage", () => {
     expect(bucket.createSignedUrl).not.toHaveBeenCalled();
   });
 
-  it("waits for existing objects to become signable", async () => {
+  it("rejects existing objects that are not signable", async () => {
     bucket.exists.mockResolvedValueOnce({ data: true, error: null });
-    bucket.createSignedUrl
-      .mockResolvedValueOnce({
-        data: null,
-        error: new Error("Object not found"),
-      })
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: null,
+      error: new Error("Object not found"),
+    });
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -105,9 +100,11 @@ describe("supabaseStorage", () => {
       storage.profiles.node.exists(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
-    ).resolves.toBe(true);
+    ).rejects.toThrow(
+      'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Object not found',
+    );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
   });
 
   it("rethrows Supabase storage existence errors", async () => {
@@ -144,16 +141,11 @@ describe("supabaseStorage", () => {
     expect(bucket.exists).not.toHaveBeenCalled();
   });
 
-  it("retries signed URL generation when Supabase reports a missing object", async () => {
-    bucket.createSignedUrl
-      .mockResolvedValueOnce({
-        data: null,
-        error: new Error("Object not found"),
-      })
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+  it("surfaces signed URL generation errors", async () => {
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: null,
+      error: new Error("Object not found"),
+    });
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -166,18 +158,18 @@ describe("supabaseStorage", () => {
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
-    ).resolves.toEqual({
-      fileUrl: "https://example.supabase.co/signed-url",
-    });
+    ).rejects.toThrow(
+      'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Object not found',
+    );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
     expect(bucket.createSignedUrl).toHaveBeenCalledWith(
       "assets/sha256/fi/file-hash.png",
       3600,
     );
   });
 
-  it("waits for uploaded objects to become signable", async () => {
+  it("verifies uploaded objects are signable before returning", async () => {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hu-supabase-"));
     const uploadPath = path.join(tmpDir, "bundle.zip");
     await fs.writeFile(uploadPath, "bundle");
@@ -185,15 +177,10 @@ describe("supabaseStorage", () => {
       data: { fullPath: "updates/bundles/bundle.zip" },
       error: null,
     });
-    bucket.createSignedUrl
-      .mockResolvedValueOnce({
-        data: null,
-        error: new Error("Object not found"),
-      })
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: { signedUrl: "https://example.supabase.co/signed-url" },
+      error: null,
+    });
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -215,7 +202,7 @@ describe("supabaseStorage", () => {
         contentType: "application/zip",
       }),
     );
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
     expect(bucket.createSignedUrl).toHaveBeenCalledWith(
       "bundles/bundle.zip",
       3600,
@@ -224,15 +211,10 @@ describe("supabaseStorage", () => {
     await fs.rm(tmpDir, { force: true, recursive: true });
   });
 
-  it("retries signed URL generation when Supabase throws a missing object error", async () => {
-    bucket.createSignedUrl
-      .mockRejectedValueOnce(
-        new Error("Failed to generate download URL: Object not found"),
-      )
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+  it("surfaces thrown signed URL generation errors", async () => {
+    bucket.createSignedUrl.mockRejectedValueOnce(
+      new Error("Failed to generate download URL: Object not found"),
+    );
 
     const storage = supabaseStorage({
       bucketName: "updates",
@@ -245,14 +227,14 @@ describe("supabaseStorage", () => {
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
-    ).resolves.toEqual({
-      fileUrl: "https://example.supabase.co/signed-url",
-    });
+    ).rejects.toThrow(
+      'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
+    );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry signed URL generation for non-missing object errors", async () => {
+  it("surfaces non-missing signed URL errors after one attempt", async () => {
     bucket.createSignedUrl.mockResolvedValueOnce({
       data: null,
       error: new Error("Storage API failed"),

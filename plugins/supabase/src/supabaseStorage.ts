@@ -15,11 +15,6 @@ import {
 } from "./supabaseConfig";
 import type { Database } from "./types";
 
-const signedUrlRetryDelays = [100, 250, 500, 1000, 2000] as const;
-const uploadedObjectSignedUrlRetryDelays = [
-  100, 250, 500, 1000, 2000, 5000, 10000, 15000, 30000,
-] as const;
-
 type SupabaseStorageBucket = {
   createSignedUrl: (
     path: string,
@@ -45,56 +40,31 @@ function getErrorMessage(error: unknown) {
   return String(error);
 }
 
-function isObjectNotFoundError(error: unknown) {
-  return getErrorMessage(error).toLowerCase().includes("object not found");
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function createSignedUrlWithRetry({
+async function createSignedUrlOrThrow({
   bucket,
   key,
   expiresIn,
-  retryDelays,
 }: {
   bucket: SupabaseStorageBucket;
   key: string;
   expiresIn: number;
-  retryDelays: readonly number[];
 }) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
-    let data: { signedUrl?: string } | null = null;
-    let error: unknown = null;
-    try {
-      const response = await bucket.createSignedUrl(key, expiresIn);
-      data = response.data;
-      error = response.error;
-    } catch (thrownError) {
-      error = thrownError;
-    }
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
-    }
+  let data: { signedUrl?: string } | null = null;
+  let error: unknown = null;
+  try {
+    const response = await bucket.createSignedUrl(key, expiresIn);
+    data = response.data;
+    error = response.error;
+  } catch (thrownError) {
+    error = thrownError;
+  }
 
-    lastError = error ?? new Error("missing signed URL");
-    if (error && !isObjectNotFoundError(error)) {
-      throw new Error(
-        `Failed to generate download URL for "${key}": ${getErrorMessage(error)}`,
-      );
-    }
-
-    const retryDelay = retryDelays[attempt];
-    if (retryDelay === undefined) {
-      break;
-    }
-    await delay(retryDelay);
+  if (!error && data?.signedUrl) {
+    return data.signedUrl;
   }
 
   throw new Error(
-    `Failed to generate download URL for "${key}": ${getErrorMessage(lastError)}`,
+    `Failed to generate download URL for "${key}": ${getErrorMessage(error ?? new Error("missing signed URL"))}`,
   );
 }
 
@@ -159,11 +129,10 @@ export const supabaseStorage =
               throw upload.error;
             }
 
-            await createSignedUrlWithRetry({
+            await createSignedUrlOrThrow({
               bucket,
               key: Key,
               expiresIn: 3600,
-              retryDelays: uploadedObjectSignedUrlRetryDelays,
             });
 
             const fullPath = upload.data.fullPath;
@@ -191,11 +160,10 @@ export const supabaseStorage =
               throw error;
             }
 
-            await createSignedUrlWithRetry({
+            await createSignedUrlOrThrow({
               bucket,
               key,
               expiresIn: 3600,
-              retryDelays: signedUrlRetryDelays,
             });
 
             return data;
@@ -267,11 +235,10 @@ export const supabaseStorage =
               key = key.substring(`${config.bucketName}/`.length);
             }
 
-            const signedUrl = await createSignedUrlWithRetry({
+            const signedUrl = await createSignedUrlOrThrow({
               bucket,
               key,
               expiresIn: 3600,
-              retryDelays: signedUrlRetryDelays,
             });
 
             return { fileUrl: signedUrl };

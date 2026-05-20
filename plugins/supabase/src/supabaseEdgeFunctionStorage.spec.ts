@@ -29,16 +29,11 @@ describe("supabaseEdgeFunctionStorage", () => {
     createClient.mockClear();
   });
 
-  it("retries signed URL generation when Supabase reports a missing object", async () => {
-    bucket.createSignedUrl
-      .mockResolvedValueOnce({
-        data: null,
-        error: new Error("Object not found"),
-      })
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+  it("surfaces signed URL generation errors", async () => {
+    bucket.createSignedUrl.mockResolvedValueOnce({
+      data: null,
+      error: new Error("Object not found"),
+    });
 
     const storage = supabaseEdgeFunctionStorage({
       supabaseServiceRoleKey: "service-role-key",
@@ -50,26 +45,21 @@ describe("supabaseEdgeFunctionStorage", () => {
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
-    ).resolves.toEqual({
-      fileUrl: "https://example.supabase.co/signed-url",
-    });
+    ).rejects.toThrow(
+      'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Object not found',
+    );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
     expect(bucket.createSignedUrl).toHaveBeenCalledWith(
       "assets/sha256/fi/file-hash.png",
       3600,
     );
   });
 
-  it("retries signed URL generation when Supabase throws a missing object error", async () => {
-    bucket.createSignedUrl
-      .mockRejectedValueOnce(
-        new Error("Failed to generate download URL: Object not found"),
-      )
-      .mockResolvedValueOnce({
-        data: { signedUrl: "https://example.supabase.co/signed-url" },
-        error: null,
-      });
+  it("surfaces thrown signed URL generation errors", async () => {
+    bucket.createSignedUrl.mockRejectedValueOnce(
+      new Error("Failed to generate download URL: Object not found"),
+    );
 
     const storage = supabaseEdgeFunctionStorage({
       supabaseServiceRoleKey: "service-role-key",
@@ -81,14 +71,14 @@ describe("supabaseEdgeFunctionStorage", () => {
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
-    ).resolves.toEqual({
-      fileUrl: "https://example.supabase.co/signed-url",
-    });
+    ).rejects.toThrow(
+      'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
+    );
 
-    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry signed URL generation for non-missing object errors", async () => {
+  it("surfaces non-missing signed URL errors after one attempt", async () => {
     bucket.createSignedUrl.mockResolvedValueOnce({
       data: null,
       error: new Error("Storage API failed"),

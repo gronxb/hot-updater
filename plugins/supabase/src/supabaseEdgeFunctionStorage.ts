@@ -9,8 +9,6 @@ export interface SupabaseEdgeFunctionStorageConfig {
   signedUrlExpiresIn?: number;
 }
 
-const signedUrlRetryDelays = [100, 250, 500, 1000, 2000] as const;
-
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -24,14 +22,6 @@ function getErrorMessage(error: unknown) {
     return error.message;
   }
   return String(error);
-}
-
-function isObjectNotFoundError(error: unknown) {
-  return getErrorMessage(error).toLowerCase().includes("object not found");
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const parseSupabaseStorageUri = (storageUri: string) => {
@@ -90,41 +80,22 @@ export const supabaseEdgeFunctionStorage =
           const bucket = supabase.storage.from(bucketName);
           const expiresIn = config.signedUrlExpiresIn ?? 3600;
 
-          let lastError: unknown;
-          for (
-            let attempt = 0;
-            attempt <= signedUrlRetryDelays.length;
-            attempt++
-          ) {
-            let data: { signedUrl?: string } | null = null;
-            let error: unknown = null;
-            try {
-              const response = await bucket.createSignedUrl(key, expiresIn);
-              data = response.data;
-              error = response.error;
-            } catch (thrownError) {
-              error = thrownError;
-            }
-            if (!error && data?.signedUrl) {
-              return { fileUrl: data.signedUrl };
-            }
+          let data: { signedUrl?: string } | null = null;
+          let error: unknown = null;
+          try {
+            const response = await bucket.createSignedUrl(key, expiresIn);
+            data = response.data;
+            error = response.error;
+          } catch (thrownError) {
+            error = thrownError;
+          }
 
-            lastError = error ?? new Error("missing signed URL");
-            if (error && !isObjectNotFoundError(error)) {
-              throw new Error(
-                `Failed to generate download URL for "${bucketName}/${key}": ${getErrorMessage(error)}`,
-              );
-            }
-
-            const retryDelay = signedUrlRetryDelays[attempt];
-            if (retryDelay === undefined) {
-              break;
-            }
-            await delay(retryDelay);
+          if (!error && data?.signedUrl) {
+            return { fileUrl: data.signedUrl };
           }
 
           throw new Error(
-            `Failed to generate download URL for "${bucketName}/${key}": ${getErrorMessage(lastError)}`,
+            `Failed to generate download URL for "${bucketName}/${key}": ${getErrorMessage(error ?? new Error("missing signed URL"))}`,
           );
         },
       };
