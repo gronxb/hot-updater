@@ -96,10 +96,15 @@ export const supabaseEdgeFunctionStorage =
             attempt <= signedUrlRetryDelays.length;
             attempt++
           ) {
-            const { data, error } = await bucket.createSignedUrl(
-              key,
-              expiresIn,
-            );
+            let data: { signedUrl?: string } | null = null;
+            let error: unknown = null;
+            try {
+              const response = await bucket.createSignedUrl(key, expiresIn);
+              data = response.data;
+              error = response.error;
+            } catch (thrownError) {
+              error = thrownError;
+            }
             if (!error && data?.signedUrl) {
               return { fileUrl: data.signedUrl };
             }

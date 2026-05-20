@@ -135,6 +135,34 @@ describe("supabaseStorage", () => {
     );
   });
 
+  it("retries signed URL generation when Supabase throws a missing object error", async () => {
+    bucket.createSignedUrl
+      .mockRejectedValueOnce(
+        new Error("Failed to generate download URL: Object not found"),
+      )
+      .mockResolvedValueOnce({
+        data: { signedUrl: "https://example.supabase.co/signed-url" },
+        error: null,
+      });
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await expect(
+      storage.profiles.runtime.getDownloadUrl(
+        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+        {},
+      ),
+    ).resolves.toEqual({
+      fileUrl: "https://example.supabase.co/signed-url",
+    });
+
+    expect(bucket.createSignedUrl).toHaveBeenCalledTimes(2);
+  });
+
   it("does not retry signed URL generation for non-missing object errors", async () => {
     bucket.createSignedUrl.mockResolvedValueOnce({
       data: null,

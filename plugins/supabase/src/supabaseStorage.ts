@@ -201,7 +201,15 @@ export const supabaseStorage =
               attempt <= signedUrlRetryDelays.length;
               attempt++
             ) {
-              const { data, error } = await bucket.createSignedUrl(key, 3600);
+              let data: { signedUrl?: string } | null = null;
+              let error: unknown = null;
+              try {
+                const response = await bucket.createSignedUrl(key, 3600);
+                data = response.data;
+                error = response.error;
+              } catch (thrownError) {
+                error = thrownError;
+              }
               if (!error && data?.signedUrl) {
                 return { fileUrl: data.signedUrl };
               }
