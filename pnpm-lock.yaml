@@ -1886,6 +1886,12 @@ importers:
 
   plugins/cloudflare:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: 3.1008.0
+        version: 3.1008.0
+      '@aws-sdk/lib-storage':
+        specifier: 3.1008.0
+        version: 3.1008.0(@aws-sdk/client-s3@3.1008.0)
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools

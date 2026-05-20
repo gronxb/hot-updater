@@ -29,7 +29,10 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
     configString: `r2Storage({
     bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
   })`,
   };
   const databaseConfig: ProviderConfig = {
@@ -61,6 +64,160 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
+const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
+const R2_API_TOKEN_DOCS_URL =
+  "https://developers.cloudflare.com/r2/api/tokens/";
+const R2_BUCKET_ITEM_WRITE_PERMISSION = "Workers R2 Storage Bucket Item Write";
+
+type R2ApiCredentials = {
+  accessKeyId: string;
+  secretAccessKey: string;
+};
+
+const unquoteEnvValue = (value: string) => {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+};
+
+const readHotUpdaterEnv = async (cwd: string) => {
+  const envPath = path.join(cwd, HOT_UPDATER_ENV_PATH);
+  const content = await fs.readFile(envPath, "utf-8").catch(() => "");
+  const env: Record<string, string> = {};
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const [key, ...valueParts] = trimmed.split("=");
+    if (!key) {
+      continue;
+    }
+
+    env[key.trim()] = unquoteEnvValue(valueParts.join("="));
+  }
+
+  return env;
+};
+
+const getEnvValue = (env: Record<string, string>, key: string) => {
+  const value = process.env[key]?.trim() || env[key]?.trim();
+  return value || undefined;
+};
+
+const createR2ApiCredentials = async ({
+  apiToken,
+  accountId,
+  bucketName,
+}: {
+  apiToken: string;
+  accountId: string;
+  bucketName: string;
+}): Promise<R2ApiCredentials> => {
+  const cf = new Cloudflare({
+    apiToken,
+  });
+  const permissionGroups = await cf.user.tokens.permissionGroups.list();
+  const r2WritePermissionGroup = permissionGroups.result.find(
+    (group) =>
+      group.name?.trim() === R2_BUCKET_ITEM_WRITE_PERMISSION &&
+      group.scopes?.includes("com.cloudflare.edge.r2.bucket"),
+  );
+
+  if (!r2WritePermissionGroup?.id) {
+    throw new Error(
+      `Could not find "${R2_BUCKET_ITEM_WRITE_PERMISSION}" permission group.`,
+    );
+  }
+
+  const token = await cf.user.tokens.create({
+    name: `hot-updater-r2-${bucketName}`.slice(0, 120),
+    policies: [
+      {
+        effect: "allow",
+        resources: {
+          [`com.cloudflare.edge.r2.bucket.${accountId}_default_${bucketName}`]:
+            "*",
+        },
+        permission_groups: [{ id: r2WritePermissionGroup.id }],
+      },
+    ],
+  });
+
+  if (!token.id || !token.value) {
+    throw new Error("Cloudflare did not return R2 API token credentials.");
+  }
+
+  return {
+    accessKeyId: token.id,
+    secretAccessKey: crypto
+      .createHash("sha256")
+      .update(token.value)
+      .digest("hex"),
+  };
+};
+
+const inputR2ApiCredentials = async ({
+  accountId,
+  bucketName,
+  accessKeyId,
+  secretAccessKey,
+}: {
+  accountId: string;
+  bucketName: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}): Promise<R2ApiCredentials> => {
+  p.log.step(
+    `Please visit this link to create R2 API Tokens: ${link(
+      `https://dash.cloudflare.com/${accountId}/r2/api-tokens`,
+    )}`,
+  );
+  p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
+  p.log.step(
+    `You need Object Read & Write permissions for R2 bucket "${bucketName}"`,
+  );
+
+  let resolvedAccessKeyId = accessKeyId;
+  if (!resolvedAccessKeyId) {
+    const inputR2AccessKeyId = await p.password({
+      message: "Enter the R2 Access Key ID",
+    });
+
+    if (p.isCancel(inputR2AccessKeyId)) {
+      process.exit(1);
+    }
+
+    resolvedAccessKeyId = inputR2AccessKeyId;
+  }
+
+  let resolvedSecretAccessKey = secretAccessKey;
+  if (!resolvedSecretAccessKey) {
+    const inputR2SecretAccessKey = await p.password({
+      message: "Enter the R2 Secret Access Key",
+    });
+
+    if (p.isCancel(inputR2SecretAccessKey)) {
+      process.exit(1);
+    }
+
+    resolvedSecretAccessKey = inputR2SecretAccessKey;
+  }
+
+  return {
+    accessKeyId: resolvedAccessKeyId,
+    secretAccessKey: resolvedSecretAccessKey,
+  };
+};
+
 const deployWorker = async (
   oauth_token: string,
   accountId: string,
@@ -68,7 +225,13 @@ const deployWorker = async (
     d1DatabaseId,
     d1DatabaseName,
     r2BucketName,
-  }: { d1DatabaseId: string; d1DatabaseName: string; r2BucketName: string },
+    workerName,
+  }: {
+    d1DatabaseId: string;
+    d1DatabaseName: string;
+    r2BucketName: string;
+    workerName?: string;
+  },
 ) => {
   const cwd = getCwd();
   const cloudflarePackagePath = require.resolve(
@@ -136,17 +299,23 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    const workerName = await p.text({
-      message: "Enter the name of the worker",
-      defaultValue: "hot-updater",
-      placeholder: "hot-updater",
-    });
-    if (p.isCancel(workerName)) {
-      process.exit(1);
+    let resolvedWorkerName = workerName;
+    if (resolvedWorkerName) {
+      p.log.info("Using existing Cloudflare Worker name.");
+    } else {
+      const inputWorkerName = await p.text({
+        message: "Enter the name of the worker",
+        defaultValue: "hot-updater",
+        placeholder: "hot-updater",
+      });
+      if (p.isCancel(inputWorkerName)) {
+        process.exit(1);
+      }
+      resolvedWorkerName = inputWorkerName;
     }
 
-    await wrangler("deploy", "--name", workerName);
-    return workerName;
+    await wrangler("deploy", "--name", resolvedWorkerName);
+    return resolvedWorkerName;
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
   } finally {
@@ -156,6 +325,7 @@ const deployWorker = async (
 
 export const runInit = async ({ build }: { build: BuildType }) => {
   const cwd = getCwd();
+  const existingEnv = await readHotUpdaterEnv(cwd);
 
   let auth = getWranglerLoginAuthToken();
 
@@ -186,134 +356,272 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
-  const accounts: { id: string; name: string }[] = [];
-
-  try {
-    await p.tasks([
-      {
-        title: "Checking Account List...",
-        task: async () => {
-          accounts.push(
-            ...(await cf.accounts.list()).result.map((account) => ({
-              id: account.id,
-              name: account.name,
-            })),
-          );
-        },
-      },
-    ]);
-  } catch (e) {
-    if (e instanceof Error) {
-      p.log.error(e.message);
-    }
-    throw e;
-  }
-
-  const accountId = await p.select({
-    message: "Account List",
-    options: accounts.map((account) => ({
-      value: account.id,
-      label: `${account.name} (${account.id})`,
-    })),
-  });
-
-  if (p.isCancel(accountId)) {
-    process.exit(1);
-  }
-
-  p.log.step(
-    `Please visit this link to create an API Token: ${link(
-      `https://dash.cloudflare.com/${accountId}/api-tokens`,
-    )}`,
+  const existingAccountId = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",
   );
-  p.log.step("You need edit permissions for both D1 and R2");
 
-  const apiToken = await p.password({
-    message: "Enter the API Token",
-  });
+  let accountId = existingAccountId;
+  if (accountId) {
+    p.log.info("Using existing Cloudflare account ID.");
+  } else {
+    const accounts: { id: string; name: string }[] = [];
 
-  if (!apiToken) {
-    p.log.warn(
-      "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
-    );
-  }
-
-  if (p.isCancel(apiToken)) {
-    process.exit(1);
-  }
-
-  const availableBuckets: { name: string }[] = [];
-  try {
-    await p.tasks([
-      {
-        title: "Checking R2 Buckets...",
-        task: async () => {
-          const buckets =
-            (
-              await cf.r2.buckets.list({
-                account_id: accountId,
-              })
-            ).buckets ?? [];
-
-          availableBuckets.push(
-            ...buckets
-              .filter((bucket) => bucket.name)
-              .map((bucket) => ({
-                name: bucket.name!,
+    try {
+      await p.tasks([
+        {
+          title: "Checking Account List...",
+          task: async () => {
+            accounts.push(
+              ...(await cf.accounts.list()).result.map((account) => ({
+                id: account.id,
+                name: account.name,
               })),
-          );
+            );
+          },
         },
-      },
-    ]);
-  } catch (e) {
-    if (e instanceof Error) {
-      p.log.error(e.message);
+      ]);
+    } catch (e) {
+      if (e instanceof Error) {
+        p.log.error(e.message);
+      }
+      throw e;
     }
-    throw e;
-  }
 
-  let selectedBucketName = await p.select({
-    message: "R2 List",
-    options: [
-      ...availableBuckets.map((bucket) => ({
-        value: bucket.name,
-        label: bucket.name,
+    const selectedAccountId = await p.select({
+      message: "Account List",
+      options: accounts.map((account) => ({
+        value: account.id,
+        label: `${account.name} (${account.id})`,
       })),
-      {
-        value: createKey,
-        label: "Create New R2 Bucket",
-      },
-    ],
-  });
-
-  if (p.isCancel(selectedBucketName)) {
-    process.exit(1);
-  }
-
-  if (selectedBucketName === createKey) {
-    const name = await p.text({
-      message: "Enter the name of the new R2 Bucket",
     });
-    if (p.isCancel(name)) {
+
+    if (p.isCancel(selectedAccountId)) {
       process.exit(1);
     }
-    const newR2 = await cf.r2.buckets.create({
-      account_id: accountId,
-      name,
+
+    accountId = selectedAccountId;
+  }
+
+  const existingApiToken = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
+  );
+  let apiToken = existingApiToken;
+  if (apiToken) {
+    p.log.info("Using existing Cloudflare API token.");
+  } else {
+    p.log.step(
+      `Please visit this link to create an API Token: ${link(
+        `https://dash.cloudflare.com/${accountId}/api-tokens`,
+      )}`,
+    );
+    p.log.step(
+      "You need D1 and R2 edit permissions. Add API Tokens Write to create R2 credentials automatically.",
+    );
+
+    const inputApiToken = await p.password({
+      message: "Enter the API Token",
     });
-    if (!newR2.name) {
-      throw new Error("Failed to create new R2 Bucket");
+
+    if (p.isCancel(inputApiToken)) {
+      process.exit(1);
     }
 
-    selectedBucketName = newR2.name;
+    apiToken = inputApiToken;
+
+    if (!apiToken) {
+      p.log.warn(
+        "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
+      );
+    }
+  }
+
+  const existingBucketName = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME",
+  );
+
+  let selectedBucketName: string;
+  if (existingBucketName) {
+    selectedBucketName = existingBucketName;
+    p.log.info("Using existing Cloudflare R2 bucket name.");
+  } else {
+    const availableBuckets: { name: string }[] = [];
+    try {
+      await p.tasks([
+        {
+          title: "Checking R2 Buckets...",
+          task: async () => {
+            const buckets =
+              (
+                await cf.r2.buckets.list({
+                  account_id: accountId,
+                })
+              ).buckets ?? [];
+
+            availableBuckets.push(
+              ...buckets
+                .filter((bucket) => bucket.name)
+                .map((bucket) => ({
+                  name: bucket.name!,
+                })),
+            );
+          },
+        },
+      ]);
+    } catch (e) {
+      if (e instanceof Error) {
+        p.log.error(e.message);
+      }
+      throw e;
+    }
+
+    if (availableBuckets.length === 1) {
+      selectedBucketName = availableBuckets[0].name;
+      p.log.info("Using the only Cloudflare R2 bucket.");
+    } else {
+      const selectedR2BucketName = await p.select({
+        message: "R2 List",
+        options: [
+          ...availableBuckets.map((bucket) => ({
+            value: bucket.name,
+            label: bucket.name,
+          })),
+          {
+            value: createKey,
+            label: "Create New R2 Bucket",
+          },
+        ],
+      });
+
+      if (p.isCancel(selectedR2BucketName)) {
+        process.exit(1);
+      }
+
+      selectedBucketName = selectedR2BucketName;
+    }
+
+    if (selectedBucketName === createKey) {
+      const name = await p.text({
+        message: "Enter the name of the new R2 Bucket",
+      });
+      if (p.isCancel(name)) {
+        process.exit(1);
+      }
+      const newR2 = await cf.r2.buckets.create({
+        account_id: accountId,
+        name,
+      });
+      if (!newR2.name) {
+        throw new Error("Failed to create new R2 Bucket");
+      }
+
+      selectedBucketName = newR2.name;
+    }
   }
   p.log.info(`Selected R2: ${selectedBucketName}`);
 
+  const existingR2AccessKeyId = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+  );
+  const existingR2SecretAccessKey = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+  );
+
+  let r2AccessKeyId = existingR2AccessKeyId;
+  let r2SecretAccessKey = existingR2SecretAccessKey;
+
+  if (r2AccessKeyId && r2SecretAccessKey) {
+    p.log.info("Using existing Cloudflare R2 API credentials.");
+  } else if (r2AccessKeyId || r2SecretAccessKey) {
+    p.log.warn("Existing Cloudflare R2 API credentials are incomplete.");
+    const credentials = await inputR2ApiCredentials({
+      accountId,
+      bucketName: selectedBucketName,
+      accessKeyId: r2AccessKeyId,
+      secretAccessKey: r2SecretAccessKey,
+    });
+    r2AccessKeyId = credentials.accessKeyId;
+    r2SecretAccessKey = credentials.secretAccessKey;
+  } else {
+    p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
+
+    const r2CredentialMode = await p.select({
+      message: "Set up R2 API credentials",
+      options: [
+        {
+          value: "create",
+          label: "Create new R2 API credentials",
+        },
+        {
+          value: "manual",
+          label: "Enter existing R2 API credentials",
+        },
+      ],
+    });
+
+    if (p.isCancel(r2CredentialMode)) {
+      process.exit(1);
+    }
+
+    if (r2CredentialMode === "create") {
+      if (apiToken) {
+        try {
+          let createdCredentials: R2ApiCredentials | undefined;
+          await p.tasks([
+            {
+              title: "Creating R2 API credentials...",
+              task: async () => {
+                createdCredentials = await createR2ApiCredentials({
+                  apiToken,
+                  accountId,
+                  bucketName: selectedBucketName,
+                });
+              },
+            },
+          ]);
+
+          if (!createdCredentials) {
+            throw new Error("Failed to create R2 API credentials.");
+          }
+
+          r2AccessKeyId = createdCredentials.accessKeyId;
+          r2SecretAccessKey = createdCredentials.secretAccessKey;
+        } catch (e) {
+          if (e instanceof Error) {
+            p.log.warn(e.message);
+          }
+          p.log.warn(
+            "Could not create R2 API credentials automatically. Enter existing credentials instead.",
+          );
+        }
+      } else {
+        p.log.warn(
+          "Cloudflare API token is required to create R2 API credentials automatically.",
+        );
+      }
+    }
+
+    if (!r2AccessKeyId || !r2SecretAccessKey) {
+      const credentials = await inputR2ApiCredentials({
+        accountId,
+        bucketName: selectedBucketName,
+      });
+      r2AccessKeyId = credentials.accessKeyId;
+      r2SecretAccessKey = credentials.secretAccessKey;
+    }
+  }
+
   //
 
-  const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
-    account_id: accountId,
-  });
+  const domains = existingBucketName
+    ? { enabled: false }
+    : await cf.r2.buckets.domains.managed.list(selectedBucketName, {
+        account_id: accountId,
+      });
 
   if (domains.enabled) {
     const isPrivate = await p.confirm({
@@ -368,22 +676,44 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     throw e;
   }
 
-  let selectedD1DatabaseId = await p.select({
-    message: "D1 List",
-    options: [
-      ...availableD1List.map((d1) => ({
-        value: d1.uuid,
-        label: `${d1.name} (${d1.uuid})`,
-      })),
-      {
-        value: createKey,
-        label: "Create New D1 Database",
-      },
-    ],
-  });
+  const existingD1DatabaseId = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
+  );
+  const hasExistingD1Database = availableD1List.some(
+    (d1) => d1.uuid === existingD1DatabaseId,
+  );
 
-  if (p.isCancel(selectedD1DatabaseId)) {
-    process.exit(1);
+  let selectedD1DatabaseId: string;
+  if (existingD1DatabaseId && hasExistingD1Database) {
+    selectedD1DatabaseId = existingD1DatabaseId;
+    p.log.info("Using existing Cloudflare D1 database ID.");
+  } else {
+    if (existingD1DatabaseId) {
+      p.log.warn(
+        "Existing Cloudflare D1 database ID was not found. Select a database again.",
+      );
+    }
+
+    const selectedD1 = await p.select({
+      message: "D1 List",
+      options: [
+        ...availableD1List.map((d1) => ({
+          value: d1.uuid,
+          label: `${d1.name} (${d1.uuid})`,
+        })),
+        {
+          value: createKey,
+          label: "Create New D1 Database",
+        },
+      ],
+    });
+
+    if (p.isCancel(selectedD1)) {
+      process.exit(1);
+    }
+
+    selectedD1DatabaseId = selectedD1;
   }
 
   if (selectedD1DatabaseId === createKey) {
@@ -423,10 +753,16 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     account_id: accountId,
   });
 
+  const existingWorkerName = getEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
+  );
+
   const workerName = await deployWorker(auth.oauth_token, accountId, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     r2BucketName: selectedBucketName,
+    workerName: existingWorkerName,
   });
 
   const configWriteResult = await writeHotUpdaterConfig(
@@ -437,7 +773,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
     HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
     HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
+    HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: r2AccessKeyId,
+    HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
     HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
+    HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
   });
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
   if (configWriteResult.status === "created") {
