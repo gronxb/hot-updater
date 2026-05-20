@@ -3,20 +3,18 @@ import { getPackageManager } from "../getPackageManager";
 export type ExpoFingerprint = typeof import("@expo/fingerprint");
 
 const PACKAGE_NAME = "@expo/fingerprint";
-const PACKAGE_RANGE = "^0.15.4";
 const MISSING_DEPENDENCY_ERROR_NAME = "MissingFingerprintDependencyError";
 
 const getInstallCommand = () => {
-  const pkg = `${PACKAGE_NAME}@${PACKAGE_RANGE}`;
   switch (getPackageManager()) {
     case "pnpm":
-      return `pnpm add -D ${pkg}`;
+      return `pnpm add -D ${PACKAGE_NAME}`;
     case "yarn":
-      return `yarn add -D ${pkg}`;
+      return `yarn add -D ${PACKAGE_NAME}`;
     case "bun":
-      return `bun add -d ${pkg}`;
+      return `bun add -d ${PACKAGE_NAME}`;
     default:
-      return `npm install -D ${pkg}`;
+      return `npm install -D ${PACKAGE_NAME}`;
   }
 };
 

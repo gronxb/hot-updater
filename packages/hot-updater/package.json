@@ -86,7 +86,7 @@
     "typescript": "6.0.2"
   },
   "peerDependencies": {
-    "@expo/fingerprint": "^0.15.4",
+    "@expo/fingerprint": "*",
     "@hot-updater/aws": "*",
     "@hot-updater/cloudflare": "*",
     "@hot-updater/firebase": "*",
