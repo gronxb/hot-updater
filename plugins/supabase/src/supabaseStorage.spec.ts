@@ -9,7 +9,6 @@ import { supabaseStorage } from "./supabaseStorage";
 const { bucket, createClient } = vi.hoisted(() => {
   const bucket = {
     createSignedUrl: vi.fn(),
-    download: vi.fn(),
     exists: vi.fn(),
     upload: vi.fn(),
   };
@@ -31,7 +30,6 @@ vi.mock("@supabase/supabase-js", () => ({
 describe("supabaseStorage", () => {
   beforeEach(() => {
     bucket.createSignedUrl.mockReset();
-    bucket.download.mockReset();
     bucket.exists.mockReset();
     bucket.upload.mockReset();
     createClient.mockClear();
@@ -276,60 +274,5 @@ describe("supabaseStorage", () => {
     );
 
     expect(bucket.createSignedUrl).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries bundle downloads when Supabase reports a missing object", async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hu-supabase-"));
-    const downloadPath = path.join(tmpDir, "bundle.zip");
-    bucket.download
-      .mockResolvedValueOnce({
-        data: null,
-        error: { message: "Object not found", statusCode: 404 },
-      })
-      .mockResolvedValueOnce({
-        data: new Blob(["bundle"]),
-        error: null,
-      });
-
-    const storage = supabaseStorage({
-      bucketName: "updates",
-      supabaseAnonKey: "anon-key",
-      supabaseUrl: "https://example.supabase.co",
-    })();
-
-    await expect(
-      storage.profiles.node.downloadFile(
-        "supabase-storage://updates/bundles/bundle.zip",
-        downloadPath,
-      ),
-    ).resolves.toBeUndefined();
-
-    await expect(fs.readFile(downloadPath, "utf8")).resolves.toBe("bundle");
-    expect(bucket.download).toHaveBeenCalledTimes(2);
-    expect(bucket.download).toHaveBeenCalledWith("bundles/bundle.zip");
-
-    await fs.rm(tmpDir, { force: true, recursive: true });
-  });
-
-  it("does not retry bundle downloads for non-missing object errors", async () => {
-    bucket.download.mockResolvedValueOnce({
-      data: null,
-      error: new Error("Storage API failed"),
-    });
-
-    const storage = supabaseStorage({
-      bucketName: "updates",
-      supabaseAnonKey: "anon-key",
-      supabaseUrl: "https://example.supabase.co",
-    })();
-
-    await expect(
-      storage.profiles.node.downloadFile(
-        "supabase-storage://updates/bundles/bundle.zip",
-        path.join(os.tmpdir(), "bundle.zip"),
-      ),
-    ).rejects.toThrow("Failed to download bundle: Storage API failed");
-
-    expect(bucket.download).toHaveBeenCalledTimes(1);
   });
 });

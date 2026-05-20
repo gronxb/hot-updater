@@ -28,10 +28,6 @@ type SupabaseStorageBucket = {
     data: { signedUrl?: string } | null;
     error?: unknown;
   }>;
-  download: (path: string) => Promise<{
-    data: { arrayBuffer: () => Promise<ArrayBuffer> } | null;
-    error?: unknown;
-  }>;
 };
 
 function getErrorMessage(error: unknown) {
@@ -50,16 +46,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function isObjectNotFoundError(error: unknown) {
-  const message = getErrorMessage(error).toLowerCase();
-  if (message.includes("object not found") || message.includes("not found")) {
-    return true;
-  }
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "statusCode" in error &&
-    (error.statusCode === "404" || error.statusCode === 404)
-  );
+  return getErrorMessage(error).toLowerCase().includes("object not found");
 }
 
 function delay(ms: number) {
@@ -109,46 +96,6 @@ async function createSignedUrlWithRetry({
   throw new Error(
     `Failed to generate download URL for "${key}": ${getErrorMessage(lastError)}`,
   );
-}
-
-async function downloadWithRetry({
-  bucket,
-  key,
-  retryDelays,
-}: {
-  bucket: SupabaseStorageBucket;
-  key: string;
-  retryDelays: readonly number[];
-}) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
-    let data: { arrayBuffer: () => Promise<ArrayBuffer> } | null = null;
-    let error: unknown = null;
-    try {
-      const response = await bucket.download(key);
-      data = response.data;
-      error = response.error;
-    } catch (thrownError) {
-      error = thrownError;
-    }
-
-    if (!error && data) {
-      return data;
-    }
-
-    lastError = error ?? new Error("missing download data");
-    if (error && !isObjectNotFoundError(error)) {
-      throw new Error(`Failed to download bundle: ${getErrorMessage(error)}`);
-    }
-
-    const retryDelay = retryDelays[attempt];
-    if (retryDelay === undefined) {
-      break;
-    }
-    await delay(retryDelay);
-  }
-
-  throw new Error(`Failed to download bundle: ${getErrorMessage(lastError)}`);
 }
 
 export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
@@ -264,11 +211,13 @@ export const supabaseStorage =
               );
             }
 
-            const data = await downloadWithRetry({
-              bucket,
-              key,
-              retryDelays: signedUrlRetryDelays,
-            });
+            const { data, error } = await bucket.download(key);
+            if (error) {
+              throw new Error(`Failed to download bundle: ${error.message}`);
+            }
+            if (!data) {
+              throw new Error("Failed to download bundle");
+            }
 
             await fs.mkdir(path.dirname(filePath), { recursive: true });
             await fs.writeFile(
