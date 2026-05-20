@@ -802,7 +802,7 @@ describe("deploy rollout wiring", () => {
     );
   });
 
-  it("skips cached content-addressed assets without remote existence checks", async () => {
+  it("skips cached content-addressed assets only after remote existence checks", async () => {
     const cachePath = path.join(
       "/mock/cwd",
       "node_modules",
@@ -821,6 +821,10 @@ describe("deploy rollout wiring", () => {
 
       return Buffer.from("bundle");
     });
+    mockStoragePlugin.profiles.node.exists.mockImplementation(
+      async (storageUri) =>
+        storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
     vi.mocked(getBundleZipTargets).mockResolvedValue([
       {
         name: "assets/src/logo.png",
@@ -836,11 +840,57 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.exists).not.toHaveBeenCalled();
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
       "assets/sha256/fi",
       expect.stringContaining("file-hash.png"),
+    );
+  });
+
+  it("uploads cached content-addressed assets when remote existence is not trusted", async () => {
+    const cachePath = path.join(
+      "/mock/cwd",
+      "node_modules",
+      ".hot-updater",
+      "deploy-upload-cache.json",
+    );
+    vi.mocked(fs.promises.readFile).mockImplementation(async (filePath) => {
+      if (filePath === cachePath) {
+        return JSON.stringify({
+          uploadedAssetStorageUris: [
+            "s3://bundles/assets/sha256/fi/file-hash.png",
+          ],
+          version: 1,
+        });
+      }
+
+      return Buffer.from("bundle");
+    });
+    mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
+    vi.mocked(getBundleZipTargets).mockResolvedValue([
+      {
+        name: "assets/src/logo.png",
+        path: "/mock/build/assets/src/logo.png",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
+      "s3://bundles/assets/sha256/fi/file-hash.png",
+    );
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
+      "assets/sha256/fi",
+      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
     );
   });
 

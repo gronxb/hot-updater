@@ -55,7 +55,6 @@ const DEPLOY_UPLOAD_CACHE_FILENAME = "deploy-upload-cache.json";
 
 type DeployUploadCache = {
   add: (storageUri: string) => void;
-  has: (storageUri: string) => boolean;
   save: () => Promise<void>;
 };
 
@@ -189,7 +188,6 @@ const createDeployUploadCache = async ({
     add: (storageUri) => {
       uploadedAssetStorageUris.add(storageUri);
     },
-    has: (storageUri) => uploadedAssetStorageUris.has(storageUri),
     save: async () => {
       await fs.promises.mkdir(resolvedCacheDir, { recursive: true });
       await fs.promises.writeFile(
@@ -1057,11 +1055,10 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (deployUploadCache?.has(storageUri)) {
-                  skippedUploadCount += 1;
-                } else if (
-                  await storagePlugin.profiles.node.exists(storageUri)
-                ) {
+                const remoteExists =
+                  await storagePlugin.profiles.node.exists(storageUri);
+
+                if (remoteExists) {
                   deployUploadCache?.add(storageUri);
                   skippedUploadCount += 1;
                 } else {
