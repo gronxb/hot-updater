@@ -1,5 +1,25 @@
 # @hot-updater/react-native
 
+## 0.32.0
+
+### Patch Changes
+
+- 499e139: Harden self-hosted bundle management and native bundle extraction.
+
+  Bundle management routes are now disabled by default and require an
+  explicit `routes.bundles: true` opt-in when enabled. Protect those routes with
+  framework middleware or an equivalent reverse-proxy/auth layer. Bundle list
+  requests also validate `limit` against a bounded range.
+
+  Android and iOS bundle extraction now reject unsafe archive entries and
+  manifest asset paths before writing or reusing files.
+
+- Updated dependencies [4e6d2ec]
+  - @hot-updater/cli-tools@0.32.0
+  - @hot-updater/plugin-core@0.32.0
+  - @hot-updater/core@0.32.0
+  - @hot-updater/js@0.32.0
+
 ## 0.31.4
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @hot-updater/supabase
 
+## 0.32.0
+
+### Patch Changes
+
+- 4e6d2ec: Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, stream hashing/compression work to reduce memory pressure, and report upload progress through 100%.
+- 8e87b5f: Harden Supabase init by enabling RLS for Hot Updater tables, pinning
+  Supabase function search paths, and generating service-role env naming while
+  failing skipped legacy configs before writing the service-role env key.
+- Updated dependencies [4e6d2ec]
+- Updated dependencies [499e139]
+  - @hot-updater/cli-tools@0.32.0
+  - @hot-updater/plugin-core@0.32.0
+  - @hot-updater/server@0.32.0
+  - @hot-updater/core@0.32.0
+
 ## 0.31.4
 
 ### Patch Changes

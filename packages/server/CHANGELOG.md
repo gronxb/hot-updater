@@ -1,5 +1,28 @@
 # @hot-updater/server
 
+## 0.32.0
+
+### Minor Changes
+
+- 499e139: Harden self-hosted bundle management and native bundle extraction.
+
+  Bundle management routes are now disabled by default and require an
+  explicit `routes.bundles: true` opt-in when enabled. Protect those routes with
+  framework middleware or an equivalent reverse-proxy/auth layer. Bundle list
+  requests also validate `limit` against a bounded range.
+
+  Android and iOS bundle extraction now reject unsafe archive entries and
+  manifest asset paths before writing or reusing files.
+
+### Patch Changes
+
+- 4e6d2ec: Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, stream hashing/compression work to reduce memory pressure, and report upload progress through 100%.
+- Updated dependencies [4e6d2ec]
+  - @hot-updater/plugin-core@0.32.0
+  - @hot-updater/bsdiff@0.32.0
+  - @hot-updater/core@0.32.0
+  - @hot-updater/js@0.32.0
+
 ## 0.31.4
 
 ### Patch Changes
