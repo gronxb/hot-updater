@@ -549,34 +549,45 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   } else {
     p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
     if (apiToken) {
-      try {
-        let createdCredentials: R2ApiCredentials | undefined;
-        await p.tasks([
-          {
-            title: "Creating R2 API credentials...",
-            task: async () => {
-              createdCredentials = await createR2ApiCredentials({
-                apiToken,
-                accountId,
-                bucketName: selectedBucketName,
-              });
+      const shouldCreateR2Credentials = await p.confirm({
+        message: "Create new R2 API credentials automatically?",
+        initialValue: false,
+      });
+
+      if (p.isCancel(shouldCreateR2Credentials)) {
+        process.exit(1);
+      }
+
+      if (shouldCreateR2Credentials) {
+        try {
+          let createdCredentials: R2ApiCredentials | undefined;
+          await p.tasks([
+            {
+              title: "Creating R2 API credentials...",
+              task: async () => {
+                createdCredentials = await createR2ApiCredentials({
+                  apiToken,
+                  accountId,
+                  bucketName: selectedBucketName,
+                });
+              },
             },
-          },
-        ]);
+          ]);
 
-        if (!createdCredentials) {
-          throw new Error("Failed to create R2 API credentials.");
-        }
+          if (!createdCredentials) {
+            throw new Error("Failed to create R2 API credentials.");
+          }
 
-        r2AccessKeyId = createdCredentials.accessKeyId;
-        r2SecretAccessKey = createdCredentials.secretAccessKey;
-      } catch (e) {
-        if (e instanceof Error) {
-          p.log.warn(e.message);
+          r2AccessKeyId = createdCredentials.accessKeyId;
+          r2SecretAccessKey = createdCredentials.secretAccessKey;
+        } catch (e) {
+          if (e instanceof Error) {
+            p.log.warn(e.message);
+          }
+          p.log.warn(
+            "Could not create R2 API credentials automatically. Enter existing credentials instead.",
+          );
         }
-        p.log.warn(
-          "Could not create R2 API credentials automatically. Enter existing credentials instead.",
-        );
       }
     } else {
       p.log.warn(
