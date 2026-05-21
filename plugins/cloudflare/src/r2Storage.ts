@@ -1,126 +1,66 @@
-import fs from "node:fs/promises";
-import path from "node:path";
+import {
+  createUniversalStoragePlugin,
+  type StoragePluginHooks,
+  type UniversalStoragePlugin,
+} from "@hot-updater/plugin-core";
 
 import {
-  createStorageKeyBuilder,
-  createNodeStoragePlugin,
-  getContentType,
-  parseStorageUri,
-} from "@hot-updater/plugin-core";
-import { ExecaError } from "execa";
+  createS3RuntimeStorageProfile,
+  createS3StorageProfile,
+  type R2S3StorageConfig,
+} from "./r2S3Storage";
+import {
+  createWranglerRuntimeStorageProfile,
+  createWranglerStorageProfile,
+  type R2WranglerStorageConfig,
+} from "./r2WranglerStorage";
 
-import { createWrangler } from "./utils/createWrangler";
+export type R2StorageConfig = R2S3StorageConfig | R2WranglerStorageConfig;
 
-export interface R2StorageConfig {
-  cloudflareApiToken: string;
-  accountId: string;
-  bucketName: string;
-  /**
-   * Base path where bundles will be stored in the bucket
-   */
-  basePath?: string;
-}
+export type { R2S3StorageConfig, R2WranglerStorageConfig };
+
+const hasS3Credentials = (
+  config: R2StorageConfig,
+): config is R2S3StorageConfig => {
+  return Boolean(config.credentials);
+};
 
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
  */
-export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
+interface R2Storage {
+  (
+    config: R2S3StorageConfig,
+    hooks?: StoragePluginHooks,
+  ): () => UniversalStoragePlugin;
+  /**
+   * @deprecated `cloudflareApiToken` uses the Wrangler CLI for R2 operations,
+   * which is slower than direct S3-compatible API access. Create R2
+   * S3-compatible credentials in the Cloudflare dashboard and pass them with
+   * `r2Storage({ credentials })` instead.
+   */
+  (
+    config: R2WranglerStorageConfig,
+    hooks?: StoragePluginHooks,
+  ): () => UniversalStoragePlugin;
+}
+
+const createR2StoragePlugin = createUniversalStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
   factory: (config) => {
-    const { bucketName, cloudflareApiToken, accountId } = config;
-    const wrangler = createWrangler({
-      accountId,
-      cloudflareApiToken: cloudflareApiToken,
-      cwd: process.cwd(),
-    });
-
-    const getStorageKey = createStorageKeyBuilder(config.basePath);
+    if (hasS3Credentials(config)) {
+      return {
+        node: createS3StorageProfile(config),
+        runtime: createS3RuntimeStorageProfile(config),
+      };
+    }
 
     return {
-      async delete(storageUri) {
-        const { bucket, key } = parseStorageUri(storageUri, "r2");
-        if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-          );
-        }
-
-        try {
-          await wrangler(
-            "r2",
-            "object",
-            "delete",
-            [bucketName, key].join("/"),
-            "--remote",
-          );
-        } catch {
-          throw new Error("Can not delete bundle");
-        }
-      },
-      async upload(key, filePath) {
-        const contentType = getContentType(filePath);
-
-        const filename = path.basename(filePath);
-
-        const Key = getStorageKey(key, filename);
-        try {
-          const { stderr, exitCode } = await wrangler(
-            "r2",
-            "object",
-            "put",
-            [bucketName, Key].join("/"),
-            "--file",
-            filePath,
-            "--content-type",
-            contentType,
-            "--remote",
-          );
-          if (exitCode !== 0 && stderr) {
-            throw new Error(stderr);
-          }
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            throw new Error(error.stderr || error.stdout);
-          }
-
-          throw error;
-        }
-
-        return {
-          storageUri: `r2://${bucketName}/${Key}`,
-        };
-      },
-      async downloadFile(storageUri, filePath) {
-        const { bucket, key } = parseStorageUri(storageUri, "r2");
-        if (bucket !== bucketName) {
-          throw new Error(
-            `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
-          );
-        }
-
-        try {
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          const { stderr, exitCode } = await wrangler(
-            "r2",
-            "object",
-            "get",
-            [bucketName, key].join("/"),
-            "--file",
-            filePath,
-            "--remote",
-          );
-          if (exitCode !== 0 && stderr) {
-            throw new Error(stderr);
-          }
-        } catch (error) {
-          if (error instanceof ExecaError) {
-            throw new Error(error.stderr || error.stdout);
-          }
-
-          throw error;
-        }
-      },
+      node: createWranglerStorageProfile(config),
+      runtime: createWranglerRuntimeStorageProfile(),
     };
   },
 });
+
+export const r2Storage: R2Storage = createR2StoragePlugin;

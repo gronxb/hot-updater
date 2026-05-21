@@ -99,7 +99,7 @@ export const createZip = async ({
 
   await addFiles(targetDir, zip);
 
-  // fix hash
+  // Keep the timestamp deterministic so generated archives have stable hashes.
   zip.forEach((_, file) => {
     file.date = new Date(0);
   });
@@ -113,6 +113,7 @@ export const createZip = async ({
     platform: "UNIX",
   });
 
+  await fs.mkdir(path.dirname(outfile), { recursive: true });
   await fs.writeFile(outfile, content);
   return outfile;
 };

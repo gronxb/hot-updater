@@ -80,6 +80,20 @@ export const firebaseStorage =
               throw error;
             }
           },
+          async exists(storageUri: string) {
+            const { bucket: bucketName, key } = parseStorageUri(
+              storageUri,
+              "gs",
+            );
+            if (bucketName !== config.storageBucket) {
+              throw new Error(
+                `Bucket name mismatch: expected "${config.storageBucket}", but found "${bucketName}".`,
+              );
+            }
+
+            const [exists] = await bucket.file(key).exists();
+            return exists;
+          },
           async downloadFile(storageUri: string, filePath: string) {
             const { bucket: bucketName, key } = parseStorageUri(
               storageUri,

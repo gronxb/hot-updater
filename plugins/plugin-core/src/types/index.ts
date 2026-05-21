@@ -371,6 +371,13 @@ export interface NodeStorageProfile {
     storageUri: string;
   }>;
 
+  /**
+   * Returns true when the object can be safely reused by deploy without
+   * uploading it again. Providers may validate more than physical existence
+   * when runtime access needs an additional readiness check.
+   */
+  exists: (storageUri: string) => Promise<boolean>;
+
   delete: (storageUri: string) => Promise<void>;
 
   downloadFile: (storageUri: string, filePath: string) => Promise<void>;
@@ -489,6 +496,13 @@ export type SigningConfig =
     };
 
 export type ConfigInput = {
+  /**
+   * @hidden
+   * Local cache directory used by Hot Updater CLI. Set to `null` to disable.
+   *
+   * @default "node_modules/.hot-updater"
+   */
+  cacheDir?: string | null;
   /**
    * The channel used when building the native app.
    * Used to replace __HOT_UPDATER_CHANNEL at build time.

@@ -13,6 +13,7 @@ export const mockStorage = (_: any) => (): UniversalStoragePlugin => {
           Promise.resolve({
             storageUri: `storage://my-app/${key}/bundle.zip`,
           }),
+        exists: (_storageUri: string) => Promise.resolve(false),
         delete: (_storageUri: string) => Promise.resolve(),
         async downloadFile(storageUri: string, filePath: string) {
           await fs.mkdir(path.dirname(filePath), { recursive: true });

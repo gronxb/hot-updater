@@ -61,6 +61,7 @@ function createStoragePlugin(
       node: {
         upload: overrides?.upload ?? vi.fn(),
         delete: overrides?.delete ?? vi.fn(),
+        exists: overrides?.exists ?? vi.fn(async () => false),
         downloadFile:
           overrides?.downloadFile ??
           vi.fn(async (storageUri: string, filePath: string) => {
@@ -224,7 +225,7 @@ describe("deleteBundle", () => {
           JSON.stringify({
             assets: {
               "assets/logo.png": { fileHash: "logo-hash" },
-              "index.js": { fileHash: "bundle-hash" },
+              "index.ios.bundle": { fileHash: "bundle-hash" },
             },
           }),
         );
@@ -247,7 +248,48 @@ describe("deleteBundle", () => {
       "s3://bucket/bundles/bundle-copy-id/files/assets/logo.png",
     );
     expect(deleteFromStorage).toHaveBeenCalledWith(
-      "s3://bucket/bundles/bundle-copy-id/files/index.js",
+      "s3://bucket/bundles/bundle-copy-id/files/index.ios.bundle",
+    );
+  });
+
+  it("leaves content-addressed assets in place when deleting a bundle", async () => {
+    const bundleWithManifest: Bundle = {
+      ...baseBundle,
+      assetBaseStorageUri: "s3://bucket/assets",
+      manifestFileHash: "manifest-hash",
+      manifestStorageUri: "s3://bucket/bundles/bundle-copy-id/manifest.json",
+    };
+    const databasePlugin = createDatabasePlugin(bundleWithManifest);
+    const deleteFromStorage = vi.fn();
+    const storagePlugin = createStoragePlugin("s3", {
+      delete: deleteFromStorage,
+    });
+
+    const fetchManifest = vi.fn();
+    vi.stubGlobal("fetch", fetchManifest);
+
+    await deleteBundle(
+      { bundleId: bundleWithManifest.id },
+      { databasePlugin, storagePlugin },
+    );
+
+    expect(databasePlugin.getBundles).not.toHaveBeenCalled();
+    expect(fetchManifest).not.toHaveBeenCalled();
+    expect(deleteFromStorage).toHaveBeenCalledTimes(2);
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.storageUri,
+    );
+    expect(deleteFromStorage).toHaveBeenCalledWith(
+      bundleWithManifest.manifestStorageUri,
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      bundleWithManifest.assetBaseStorageUri,
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/lo/logo-hash.png",
+    );
+    expect(deleteFromStorage).not.toHaveBeenCalledWith(
+      "s3://bucket/assets/sha256/bu/bundle-hash.br",
     );
   });
 

@@ -17,6 +17,7 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -78,21 +79,6 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
       );
     },
   );
-};
-
-const createChildStorageUri = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const baseUrl = new URL(baseStorageUri);
-  const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
-  const relativeSegments = relativePath
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-
-  baseUrl.pathname = `${normalizedBasePath}/${relativeSegments.join("/")}`;
-  return baseUrl.toString();
 };
 
 const getRelativeStorageDir = (relativePath: string) => {
@@ -188,18 +174,24 @@ function resolveHbcAssetPath(manifest: BundleManifest) {
 async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
+  manifest: BundleManifest,
   storagePlugin: NodeStoragePlugin | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
     throw new Error(`Bundle ${bundle.id} does not have asset storage metadata`);
   }
+  const asset = manifest.assets[assetPath];
+  if (!asset) {
+    throw new Error(`Asset ${assetPath} is missing from manifest`);
+  }
 
   if (BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)) {
-    const compressedAssetStorageUri = createChildStorageUri(
+    const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
-      `${assetPath}.br`,
-    );
+      assetPath: `${assetPath}.br`,
+      fileHash: asset.fileHash,
+    });
 
     let compressedBytes: Uint8Array | null = null;
     try {
@@ -216,7 +208,11 @@ async function fetchAssetBytes(
     }
   }
 
-  const assetStorageUri = createChildStorageUri(assetBaseStorageUri, assetPath);
+  const assetStorageUri = resolveManifestAssetStorageUri({
+    assetBaseStorageUri,
+    assetPath,
+    fileHash: asset.fileHash,
+  });
   return downloadStorageBytes(assetStorageUri, storagePlugin);
 }
 
@@ -300,8 +296,18 @@ export async function createBundleDiff(
   }
 
   const [baseBytes, targetBytes] = await Promise.all([
-    fetchAssetBytes(baseBundle, baseAssetPath, deps.storagePlugin),
-    fetchAssetBytes(targetBundle, targetAssetPath, deps.storagePlugin),
+    fetchAssetBytes(
+      baseBundle,
+      baseAssetPath,
+      baseManifest,
+      deps.storagePlugin,
+    ),
+    fetchAssetBytes(
+      targetBundle,
+      targetAssetPath,
+      targetManifest,
+      deps.storagePlugin,
+    ),
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);

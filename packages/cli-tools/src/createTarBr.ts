@@ -1,6 +1,8 @@
+import { createWriteStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
-import { brotliCompressSync, constants as zlibConstants } from "zlib";
+import { pipeline } from "stream/promises";
+import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import * as tar from "tar";
 
@@ -37,42 +39,26 @@ export const createTarBrTargetFiles = async ({
       }
     }
 
-    // Create a temporary tar file path
-    const tmpTarFile = outfile.replace(/\.tar\.br$/, ".tar");
-
-    // Create tar archive from temp directory
-    await tar.create(
-      {
-        file: tmpTarFile,
-        cwd: tmpDir,
-        portable: true,
-        mtime: new Date(0), // Set consistent timestamp for deterministic builds
-        gzip: false,
-      },
-      await fs.readdir(tmpDir),
-    );
-
-    // Read the tar file
-    const tarData = await fs.readFile(tmpTarFile);
-
-    // Compress with Brotli at maximum compression level
-    const compressedData = brotliCompressSync(tarData, {
-      params: {
-        // Use maximum compression level (11)
-        [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-        // Use large window size for better compression
-        [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
-      },
-    });
-
-    // Ensure output directory exists
     await fs.mkdir(path.dirname(outfile), { recursive: true });
 
-    // Write the compressed file
-    await fs.writeFile(outfile, compressedData);
-
-    // Clean up temporary tar file
-    await fs.rm(tmpTarFile, { force: true });
+    await pipeline(
+      tar.create(
+        {
+          cwd: tmpDir,
+          portable: true,
+          mtime: new Date(0),
+          gzip: false,
+        },
+        await fs.readdir(tmpDir),
+      ),
+      createBrotliCompress({
+        params: {
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+          [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
+        },
+      }),
+      createWriteStream(outfile),
+    );
 
     return outfile;
   } finally {
@@ -97,6 +83,37 @@ async function copyDir(src: string, dest: string): Promise<void> {
   }
 }
 
+const createBrotliTar = async ({
+  cwd,
+  files,
+  outfile,
+}: {
+  cwd: string;
+  files: string[];
+  outfile: string;
+}) => {
+  await fs.mkdir(path.dirname(outfile), { recursive: true });
+
+  await pipeline(
+    tar.create(
+      {
+        cwd,
+        portable: true,
+        mtime: new Date(0),
+        gzip: false,
+      },
+      files,
+    ),
+    createBrotliCompress({
+      params: {
+        [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
+        [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
+      },
+    }),
+    createWriteStream(outfile),
+  );
+};
+
 export const createTarBr = async ({
   outfile,
   targetDir,
@@ -108,9 +125,6 @@ export const createTarBr = async ({
 }) => {
   // Remove existing output file
   await fs.rm(outfile, { force: true });
-
-  // Create a temporary tar file path
-  const tmpTarFile = outfile.replace(/\.tar\.br$/, ".tar");
 
   // Get all files from target directory
   async function getFiles(
@@ -143,36 +157,11 @@ export const createTarBr = async ({
   const filesToInclude = await getFiles(targetDir);
   filesToInclude.sort(); // Sort for deterministic output
 
-  // Create tar archive
-  await tar.create(
-    {
-      file: tmpTarFile,
-      cwd: targetDir,
-      portable: true,
-      mtime: new Date(0), // Set consistent timestamp for deterministic builds
-      gzip: false,
-    },
-    filesToInclude,
-  );
-
-  // Read the tar file
-  const tarData = await fs.readFile(tmpTarFile);
-
-  // Compress with Brotli at maximum compression level
-  const compressedData = brotliCompressSync(tarData, {
-    params: {
-      // Use maximum compression level (11)
-      [zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-      // Use large window size for better compression
-      [zlibConstants.BROTLI_PARAM_LGWIN]: 24,
-    },
+  await createBrotliTar({
+    cwd: targetDir,
+    files: filesToInclude,
+    outfile,
   });
-
-  // Write the compressed file
-  await fs.writeFile(outfile, compressedData);
-
-  // Clean up temporary tar file
-  await fs.rm(tmpTarFile, { force: true });
 
   return outfile;
 };

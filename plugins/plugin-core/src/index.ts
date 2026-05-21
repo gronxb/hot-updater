@@ -1,5 +1,7 @@
 export * from "./calculatePagination";
 export * from "./compressionFormat";
+export * from "./assetStorageLayout";
+export * from "./contentAddressedAssets";
 export * from "./createBlobDatabasePlugin";
 export * from "./createDatabasePlugin";
 export * from "./createDatabasePluginGetUpdateInfo";

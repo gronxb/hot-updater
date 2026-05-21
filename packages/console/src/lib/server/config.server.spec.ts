@@ -34,6 +34,7 @@ function createStoragePlugin(): NodeStoragePlugin {
     profiles: {
       node: {
         upload: vi.fn(),
+        exists: vi.fn(async () => false),
         delete: vi.fn(),
         downloadFile: vi.fn(),
       },

@@ -116,4 +116,41 @@ describe("bundleManifest", () => {
       signature: `signed:${expectedHash}`,
     });
   });
+
+  it("limits concurrent file hash and signing work", async () => {
+    const buildPath = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-manifest-"),
+    );
+    createdDirectories.push(buildPath);
+
+    const targetFiles = await Promise.all(
+      Array.from({ length: 6 }, async (_, index) => {
+        const filePath = path.join(buildPath, `asset-${index}.txt`);
+        await fs.writeFile(filePath, `asset-${index}`);
+        return {
+          path: filePath,
+          name: `asset-${index}.txt`,
+        };
+      }),
+    );
+
+    let active = 0;
+    let maxActive = 0;
+    const signFileHash = async (fileHash: string) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return `signed:${fileHash}`;
+    };
+
+    await createBundleManifest({
+      bundleId: "bundle-concurrency",
+      hashConcurrency: 2,
+      signFileHash,
+      targetFiles,
+    });
+
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
 });

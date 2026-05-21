@@ -241,6 +241,7 @@ describe("createCopiedBundleArchive", () => {
             downloadFile: vi.fn(async (_storageUri, filePath) => {
               await fs.copyFile(archivePath, filePath);
             }),
+            exists: vi.fn(async () => false),
             upload: vi.fn(async (key, filePath) => {
               const uploadPath = path.join(
                 path.dirname(archivePath),
@@ -348,6 +349,7 @@ describe("createCopiedBundleArchive", () => {
           downloadFile: vi.fn(async (_storageUri, filePath) => {
             await fs.copyFile(archivePath, filePath);
           }),
+          exists: vi.fn(async () => false),
           upload: vi.fn(),
         },
       },
@@ -401,6 +403,7 @@ describe("createCopiedBundleArchive", () => {
           downloadFile: vi.fn(async (_storageUri, filePath) => {
             await fs.copyFile(archivePath, filePath);
           }),
+          exists: vi.fn(async () => false),
           upload: vi.fn(async (key, filePath) => {
             return {
               storageUri: `s3://bucket/${path.posix

@@ -156,6 +156,14 @@ function maybeCsv(value) {
   return parseCsv(value);
 }
 
+function requireCsv(value, name) {
+  const entries = parseCsv(value);
+  if (entries.length === 0) {
+    throw new Error(`${name} is required`);
+  }
+  return entries;
+}
+
 function assignIfPresent(key, value) {
   if (key && value !== undefined) {
     output[key] = value;
@@ -199,6 +207,7 @@ switch (ACTION) {
     assignIfPresent(`${outputKey}Channel`, result.channel);
     assignIfPresent(`${outputKey}Enabled`, result.enabled);
     assignIfPresent(`${outputKey}Marker`, result.marker);
+    assignIfPresent(`${outputKey}MultiAssetPaths`, result.multiAssetPaths);
     assignIfPresent(`${outputKey}DiffBaseBundleId`, result.diffBaseBundleId);
     assignIfPresent(`${outputKey}DiffPatchAssetPath`, result.diffPatchAssetPath);
     assignIfPresent(
@@ -344,6 +353,25 @@ switch (ACTION) {
       previousBundleId: PREVIOUS_BUNDLE_ID,
     });
     expectOk(response, "assert manifest diff applied");
+    break;
+  }
+
+  case "assertBundleAssetsStored": {
+    const response = request("POST", "/e2e/assert-bundle-assets-stored", {
+      assetPaths: requireCsv(ASSET_PATHS, "ASSET_PATHS"),
+      bundleId: BUNDLE_ID,
+    });
+    expectOk(response, "assert bundle assets stored");
+    break;
+  }
+
+  case "assertMultipleAssetsReplaced": {
+    const response = request("POST", "/e2e/assert-multiple-assets-replaced", {
+      assetPaths: requireCsv(ASSET_PATHS, "ASSET_PATHS"),
+      bundleId: BUNDLE_ID,
+      previousBundleId: PREVIOUS_BUNDLE_ID,
+    });
+    expectOk(response, "assert multiple assets replaced");
     break;
   }
 

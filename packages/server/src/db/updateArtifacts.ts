@@ -8,7 +8,10 @@ import {
   type Bundle,
   type ChangedAsset,
 } from "@hot-updater/core";
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
+import {
+  resolveManifestAssetStorageUri,
+  type HotUpdaterContext,
+} from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -72,21 +75,6 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
       );
     },
   );
-};
-
-const createChildStorageUri = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const baseUrl = new URL(baseStorageUri);
-  const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
-  const relativeSegments = relativePath
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-
-  baseUrl.pathname = `${normalizedBasePath}/${relativeSegments.join("/")}`;
-  return baseUrl.toString();
 };
 
 export const parseBundleMetadata = (
@@ -213,10 +201,11 @@ async function resolveChangedAssets<TContext>({
 
       const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
       const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
-      const storageUri = createChildStorageUri(
+      const storageUri = resolveManifestAssetStorageUri({
         assetBaseStorageUri,
-        downloadPath,
-      );
+        assetPath: downloadPath,
+        fileHash: asset.fileHash,
+      });
       const patch =
         patchDescriptor?.assetPath === assetPath ? patchDescriptor.patch : null;
 

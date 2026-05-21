@@ -4,6 +4,7 @@ import path from "path";
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   S3Client,
   type S3ClientConfig,
@@ -97,6 +98,30 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
             storageUri: `s3://${bucketName}/${Key}`,
           };
         },
+        async exists(storageUri: string) {
+          const { bucket, key } = parseStorageUri(storageUri, "s3");
+          if (bucket !== bucketName) {
+            throw new Error(
+              `Bucket name mismatch: expected "${bucketName}", but found "${bucket}".`,
+            );
+          }
+
+          try {
+            await client.send(
+              new HeadObjectCommand({ Bucket: bucketName, Key: key }),
+            );
+            return true;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              (error.name === "NotFound" || error.name === "NoSuchKey")
+            ) {
+              return false;
+            }
+
+            throw error;
+          }
+        },
         async downloadFile(storageUri: string, filePath: string) {
           const { bucket, key } = parseStorageUri(storageUri, "s3");
           if (bucket !== bucketName) {
@@ -160,9 +185,13 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
           }
           try {
             const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-            const signedUrl = await getSignedUrl(client, command, {
-              expiresIn: 3600,
-            });
+            const signedUrl = await getSignedUrl(
+              client as unknown as Parameters<typeof getSignedUrl>[0],
+              command,
+              {
+                expiresIn: 3600,
+              },
+            );
             if (!signedUrl) throw new Error("Failed to presign S3 URL");
             return { fileUrl: signedUrl };
           } catch (e) {

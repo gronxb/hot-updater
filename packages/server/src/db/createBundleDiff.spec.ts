@@ -93,6 +93,9 @@ const createStoragePlugin = (
           new Uint8Array(await response.arrayBuffer()),
         );
       },
+      async exists() {
+        return false;
+      },
       upload,
     },
   },

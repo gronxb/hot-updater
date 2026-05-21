@@ -12,6 +12,9 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
+
+import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
 interface DeleteBundleInput {
   bundleId: string;
@@ -83,22 +86,6 @@ async function downloadStorageBytes(
   }
 }
 
-function createStorageUriWithRelativePath(
-  baseStorageUri: string,
-  relativePath: string,
-) {
-  const storageUrl = new URL(baseStorageUri);
-  const normalizedBasePath = storageUrl.pathname.replace(/\/+$/, "");
-  const normalizedRelativePath = relativePath
-    .replace(/\\/g, "/")
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-
-  storageUrl.pathname = `${normalizedBasePath}/${normalizedRelativePath}`;
-  return storageUrl.toString();
-}
-
 async function loadBundleManifest(
   manifestStorageUri: string,
   storagePlugin: NodeStoragePlugin,
@@ -167,28 +154,35 @@ export async function deleteBundle(
 
     if (assetBaseStorageUri) {
       if (!manifestStorageUri) {
-        addCleanupUri(assetBaseStorageUri);
+        if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+          addCleanupUri(assetBaseStorageUri);
+        }
+      } else if (isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+        // New deploys store manifest assets under a shared content-addressed
+        // /assets root. Deleting individual shared objects here would require
+        // either reference metadata or a storage/DB scan, so bundle deletion
+        // leaves them in place and only removes per-bundle archive/manifest data.
       } else {
         try {
           const manifest = await loadBundleManifest(
             manifestStorageUri,
             storagePlugin,
           );
-          const assetPaths = Object.keys(manifest.assets ?? {}).sort((a, b) =>
-            a.localeCompare(b),
-          );
 
-          for (const assetPath of assetPaths) {
-            addCleanupUri(
-              createStorageUriWithRelativePath(assetBaseStorageUri, assetPath),
-            );
+          for (const storageUri of getLegacyBundleAssetCleanupUris({
+            assetBaseStorageUri,
+            manifest,
+          })) {
+            addCleanupUri(storageUri);
           }
         } catch (error) {
           console.error(
             "Failed to load bundle manifest for storage cleanup:",
             error,
           );
-          addCleanupUri(assetBaseStorageUri);
+          if (!isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)) {
+            addCleanupUri(assetBaseStorageUri);
+          }
         }
       }
     }

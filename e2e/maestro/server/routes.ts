@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import {
   getJob,
+  handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
   handleAssertBsdiffPatchApplied,
   handleAssertCrashHistory,
@@ -10,6 +11,7 @@ import {
   handleAssertManifestDiffApplied,
   handleAssertMetadataActive,
   handleAssertMetadataReset,
+  handleAssertMultipleAssetsReplaced,
   handleEnsureAppForeground,
   handlePrepareAppLaunch,
   handleCaptureBuiltInBundleId,
@@ -54,7 +56,7 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?: "archive300mb" | "default";
+    bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
     channel?: string;
     disabled?: boolean;
     diffBaseBundleId?: string;
@@ -81,10 +83,14 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
-    payload.bundleProfile !== "archive300mb"
+    payload.bundleProfile !== "archive300mb" &&
+    payload.bundleProfile !== "multiAssetReplacement"
   ) {
     return c.json(
-      { error: "bundleProfile must be default or archive300mb" },
+      {
+        error:
+          "bundleProfile must be default, archive300mb, or multiAssetReplacement",
+      },
       400,
     );
   }
@@ -291,6 +297,49 @@ app.post("/e2e/assert-manifest-diff-applied", async (c) => {
 
   return c.json(
     await handleAssertManifestDiffApplied({
+      bundleId: payload.bundleId,
+      previousBundleId: payload.previousBundleId,
+    }),
+  );
+});
+
+app.post("/e2e/assert-bundle-assets-stored", async (c) => {
+  const payload = (await c.req.json()) as {
+    assetPaths?: string[];
+    bundleId?: string;
+  };
+  if (!payload.bundleId || !payload.assetPaths?.length) {
+    return c.json({ error: "bundleId and assetPaths are required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertBundleAssetsStored({
+      assetPaths: payload.assetPaths,
+      bundleId: payload.bundleId,
+    }),
+  );
+});
+
+app.post("/e2e/assert-multiple-assets-replaced", async (c) => {
+  const payload = (await c.req.json()) as {
+    assetPaths?: string[];
+    bundleId?: string;
+    previousBundleId?: string;
+  };
+  if (
+    !payload.bundleId ||
+    !payload.previousBundleId ||
+    !payload.assetPaths?.length
+  ) {
+    return c.json(
+      { error: "bundleId, previousBundleId, and assetPaths are required" },
+      400,
+    );
+  }
+
+  return c.json(
+    await handleAssertMultipleAssetsReplaced({
+      assetPaths: payload.assetPaths,
       bundleId: payload.bundleId,
       previousBundleId: payload.previousBundleId,
     }),

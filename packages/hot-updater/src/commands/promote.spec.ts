@@ -26,6 +26,7 @@ const {
       node: {
         delete: vi.fn(),
         downloadFile: vi.fn(),
+        exists: vi.fn(async () => false),
         upload: vi.fn(),
       },
     },

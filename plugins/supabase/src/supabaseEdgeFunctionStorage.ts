@@ -9,6 +9,21 @@ export interface SupabaseEdgeFunctionStorageConfig {
   signedUrlExpiresIn?: number;
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return String(error);
+}
+
 const parseSupabaseStorageUri = (storageUri: string) => {
   const storageUrl = new URL(storageUri);
 
@@ -62,21 +77,26 @@ export const supabaseEdgeFunctionStorage =
         },
         async getDownloadUrl(storageUri) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
-          const { data, error } = await supabase.storage
-            .from(bucketName)
-            .createSignedUrl(key, config.signedUrlExpiresIn ?? 3600);
+          const bucket = supabase.storage.from(bucketName);
+          const expiresIn = config.signedUrlExpiresIn ?? 3600;
 
-          if (error) {
-            throw new Error(
-              `Failed to generate download URL: ${error.message}`,
-            );
+          let data: { signedUrl?: string } | null = null;
+          let error: unknown = null;
+          try {
+            const response = await bucket.createSignedUrl(key, expiresIn);
+            data = response.data;
+            error = response.error;
+          } catch (thrownError) {
+            error = thrownError;
           }
 
-          if (!data?.signedUrl) {
-            throw new Error("Failed to generate download URL");
+          if (!error && data?.signedUrl) {
+            return { fileUrl: data.signedUrl };
           }
 
-          return { fileUrl: data.signedUrl };
+          throw new Error(
+            `Failed to generate download URL for "${bucketName}/${key}": ${getErrorMessage(error ?? new Error("missing signed URL"))}`,
+          );
         },
       };
     },

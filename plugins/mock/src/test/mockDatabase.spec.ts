@@ -458,18 +458,29 @@ describe("mockDatabase", () => {
   });
 
   it("should handle latency simulation during deletion", async () => {
+    vi.useFakeTimers();
     const latencyPlugin = mockDatabase({
-      latency: { min: 10, max: 20 },
+      latency: { min: 10, max: 10 },
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     })();
 
-    const startTime = Date.now();
-    await latencyPlugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await latencyPlugin.commitBundle();
-    const endTime = Date.now();
+    try {
+      await latencyPlugin.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
+      const commitPromise = latencyPlugin.commitBundle();
+      let committed = false;
+      void commitPromise.then(() => {
+        committed = true;
+      });
 
-    // Should take at least minimum latency
-    expect(endTime - startTime).toBeGreaterThanOrEqual(10);
+      await vi.advanceTimersByTimeAsync(9);
+      expect(committed).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await commitPromise;
+      expect(committed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("should work with appendBundle and deleteBundle workflow", async () => {

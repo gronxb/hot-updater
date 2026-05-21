@@ -4,6 +4,8 @@ import { RootProvider } from "fumadocs-ui/provider/waku";
 import type { ComponentProps } from "react";
 import { Link } from "waku";
 
+type WakuLinkChildren = ComponentProps<typeof Link>["children"];
+
 const PrefetchLink = (({ href, children, ...props }) => {
   const { ref: _ref, ...linkProps } = props as Record<string, unknown> & {
     ref?: unknown;
@@ -15,7 +17,7 @@ const PrefetchLink = (({ href, children, ...props }) => {
       unstable_prefetchOnView
       {...(linkProps as Record<string, never>)}
     >
-      {children}
+      {children as WakuLinkChildren}
     </Link>
   );
 }) satisfies Framework["Link"];
