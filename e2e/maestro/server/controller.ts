@@ -196,6 +196,12 @@ const MULTI_ASSET_BMP_ROW_SIZE = Math.ceil((MULTI_ASSET_BMP_WIDTH * 3) / 4) * 4;
 const MULTI_ASSET_BMP_SIZE_BYTES =
   MULTI_ASSET_BMP_HEADER_SIZE +
   MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
+const ANDROID_E2E_ARCHITECTURES = new Set([
+  "armeabi-v7a",
+  "arm64-v8a",
+  "x86",
+  "x86_64",
+]);
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -1384,18 +1390,50 @@ async function prepareAndroidRelease() {
 }
 
 async function buildDebuggableAndroidRelease(logFileName: string) {
-  await runLogged(
-    "./gradlew",
-    [
-      ":app:assembleRelease",
-      "--build-cache",
-      "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-    ],
-    {
-      cwd: path.join(session.exampleDir, "android"),
-      logPath: path.join(session.resultsDir, logFileName),
-    },
-  );
+  const architecture = resolveAndroidE2eArchitecture();
+  const args = [
+    ":app:assembleRelease",
+    "--build-cache",
+    "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
+  ];
+
+  if (architecture) {
+    logE2e("android e2e release build architecture", { architecture });
+  }
+
+  await runLogged("./gradlew", args, {
+    cwd: path.join(session.exampleDir, "android"),
+    logPath: path.join(session.resultsDir, logFileName),
+  });
+}
+
+function resolveAndroidE2eArchitecture() {
+  try {
+    const architecture = runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "getprop", "ro.product.cpu.abi"],
+      { allowFailure: true },
+    )
+      .replaceAll("\r", "")
+      .trim();
+
+    if (ANDROID_E2E_ARCHITECTURES.has(architecture)) {
+      return architecture;
+    }
+
+    if (architecture) {
+      logE2e("android e2e release build architecture ignored", {
+        architecture,
+      });
+    }
+  } catch (error) {
+    logE2e("android e2e release build architecture detection failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return null;
 }
 
 function ensureAndroidFilesDir() {
