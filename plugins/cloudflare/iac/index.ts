@@ -65,9 +65,6 @@ export default HotUpdater.wrap({
 })(App);`;
 
 const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
-const R2_API_TOKEN_DOCS_URL =
-  "https://developers.cloudflare.com/r2/api/tokens/";
-const R2_BUCKET_ITEM_WRITE_PERMISSION = "Workers R2 Storage Bucket Item Write";
 
 type R2ApiCredentials = {
   accessKeyId: string;
@@ -113,58 +110,6 @@ const getEnvValue = (env: Record<string, string>, key: string) => {
   return value || undefined;
 };
 
-const createR2ApiCredentials = async ({
-  apiToken,
-  accountId,
-  bucketName,
-}: {
-  apiToken: string;
-  accountId: string;
-  bucketName: string;
-}): Promise<R2ApiCredentials> => {
-  const cf = new Cloudflare({
-    apiToken,
-  });
-  const permissionGroups = await cf.user.tokens.permissionGroups.list();
-  const r2WritePermissionGroup = permissionGroups.result.find(
-    (group) =>
-      group.name?.trim() === R2_BUCKET_ITEM_WRITE_PERMISSION &&
-      group.scopes?.includes("com.cloudflare.edge.r2.bucket"),
-  );
-
-  if (!r2WritePermissionGroup?.id) {
-    throw new Error(
-      `Could not find "${R2_BUCKET_ITEM_WRITE_PERMISSION}" permission group.`,
-    );
-  }
-
-  const token = await cf.user.tokens.create({
-    name: `hot-updater-r2-${bucketName}`.slice(0, 120),
-    policies: [
-      {
-        effect: "allow",
-        resources: {
-          [`com.cloudflare.edge.r2.bucket.${accountId}_default_${bucketName}`]:
-            "*",
-        },
-        permission_groups: [{ id: r2WritePermissionGroup.id }],
-      },
-    ],
-  });
-
-  if (!token.id || !token.value) {
-    throw new Error("Cloudflare did not return R2 API token credentials.");
-  }
-
-  return {
-    accessKeyId: token.id,
-    secretAccessKey: crypto
-      .createHash("sha256")
-      .update(token.value)
-      .digest("hex"),
-  };
-};
-
 const inputR2ApiCredentials = async ({
   accountId,
   bucketName,
@@ -177,14 +122,12 @@ const inputR2ApiCredentials = async ({
   secretAccessKey?: string;
 }): Promise<R2ApiCredentials> => {
   p.log.step(
-    `Please visit this link to create R2 API Tokens: ${link(
+    `R2 API Tokens dashboard: ${link(
       `https://dash.cloudflare.com/${accountId}/r2/api-tokens`,
     )}`,
   );
-  p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
-  p.log.step(
-    `You need Object Read & Write permissions for R2 bucket "${bucketName}"`,
-  );
+  p.log.step("Required permission: Object Read & Write");
+  p.log.step(`Target bucket: ${bucketName}`);
 
   let resolvedAccessKeyId = accessKeyId;
   if (!resolvedAccessKeyId) {
@@ -416,9 +359,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         `https://dash.cloudflare.com/${accountId}/api-tokens`,
       )}`,
     );
-    p.log.step(
-      "You need D1 and R2 edit permissions. Add API Tokens Write to create R2 credentials automatically.",
-    );
+    p.log.step("You need D1 and R2 edit permissions.");
 
     const inputApiToken = await p.password({
       message: "Enter the API Token",
@@ -547,62 +488,12 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     r2AccessKeyId = credentials.accessKeyId;
     r2SecretAccessKey = credentials.secretAccessKey;
   } else {
-    p.log.step(`Cloudflare R2 API token guide: ${link(R2_API_TOKEN_DOCS_URL)}`);
-    if (apiToken) {
-      const shouldCreateR2Credentials = await p.confirm({
-        message: "Create new R2 API credentials automatically?",
-        initialValue: false,
-      });
-
-      if (p.isCancel(shouldCreateR2Credentials)) {
-        process.exit(1);
-      }
-
-      if (shouldCreateR2Credentials) {
-        try {
-          let createdCredentials: R2ApiCredentials | undefined;
-          await p.tasks([
-            {
-              title: "Creating R2 API credentials...",
-              task: async () => {
-                createdCredentials = await createR2ApiCredentials({
-                  apiToken,
-                  accountId,
-                  bucketName: selectedBucketName,
-                });
-              },
-            },
-          ]);
-
-          if (!createdCredentials) {
-            throw new Error("Failed to create R2 API credentials.");
-          }
-
-          r2AccessKeyId = createdCredentials.accessKeyId;
-          r2SecretAccessKey = createdCredentials.secretAccessKey;
-        } catch (e) {
-          if (e instanceof Error) {
-            p.log.warn(e.message);
-          }
-          p.log.warn(
-            "Could not create R2 API credentials automatically. Enter existing credentials instead.",
-          );
-        }
-      }
-    } else {
-      p.log.warn(
-        "Cloudflare API token is required to create R2 API credentials automatically.",
-      );
-    }
-
-    if (!r2AccessKeyId || !r2SecretAccessKey) {
-      const credentials = await inputR2ApiCredentials({
-        accountId,
-        bucketName: selectedBucketName,
-      });
-      r2AccessKeyId = credentials.accessKeyId;
-      r2SecretAccessKey = credentials.secretAccessKey;
-    }
+    const credentials = await inputR2ApiCredentials({
+      accountId,
+      bucketName: selectedBucketName,
+    });
+    r2AccessKeyId = credentials.accessKeyId;
+    r2SecretAccessKey = credentials.secretAccessKey;
   }
 
   //

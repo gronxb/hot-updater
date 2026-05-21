@@ -14,7 +14,7 @@ import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
 Before you begin, make sure the following are ready:
 - **Node.js**: Version 20 or later is recommended.
 - **Cloudflare Account**: Sign up at [Cloudflare](https://cloudflare.com) if you don't have one.
-- **Cloudflare API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **R2 Edit** & **D1 Edit** permissions. Add **API Tokens Write** if you want `init` to create R2 API credentials for you.
+- **Cloudflare API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **R2 Edit** & **D1 Edit** permissions.
 
 ## Step 1: Install Required Packages
 
@@ -40,9 +40,9 @@ npx hot-updater init
 
 During the setup, you will be prompted to:
 1. **Login to Cloudflare**: Sign in to your Cloudflare account with wrangler
-2. **Enter R2 & D1 API Token**: Input your API token with R2 and D1 permissions. If it also has API Tokens Write, `init` can create R2 API credentials automatically.
+2. **Enter R2 & D1 API Token**: Input your API token with R2 and D1 permissions.
 3. **Select R2 Bucket**: Choose an existing R2 bucket or create a new one
-4. **Set Up R2 API Credentials**: Create new R2 API credentials or enter existing Access Key ID and Secret Access Key values
+4. **Set Up R2 API Credentials**: Enter existing Access Key ID and Secret Access Key values
 5. **Select D1 Database**: Choose an existing D1 database or create a new one
 6. **Run D1 Migration**: Execute database migrations for D1
 7. **Deploy Worker**: Deploy the Cloudflare Worker for update management
