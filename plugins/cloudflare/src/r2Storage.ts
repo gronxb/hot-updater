@@ -34,8 +34,10 @@ interface R2Storage {
     hooks?: StoragePluginHooks,
   ): () => UniversalStoragePlugin;
   /**
-   * @deprecated Use R2 S3 API credentials with `r2Storage({ credentials })`
-   * instead of Wrangler-based R2 access.
+   * @deprecated `cloudflareApiToken` uses the Wrangler CLI for R2 operations,
+   * which is slower than direct S3-compatible API access. Create R2
+   * S3-compatible credentials in the Cloudflare dashboard and pass them with
+   * `r2Storage({ credentials })` instead.
    */
   (
     config: R2WranglerStorageConfig,
