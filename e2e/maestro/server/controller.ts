@@ -1290,6 +1290,7 @@ async function prepareIosRelease() {
       `id=${deviceId}`,
       "-derivedDataPath",
       session.iosDerivedDataPath,
+      "ONLY_ACTIVE_ARCH=YES",
     ];
 
     if (serialized) {
