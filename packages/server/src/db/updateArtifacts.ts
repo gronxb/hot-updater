@@ -9,7 +9,7 @@ import {
   type ChangedAsset,
 } from "@hot-updater/core";
 import {
-  getContentAddressedAssetStoragePath,
+  resolveManifestAssetStorageUri,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -75,51 +75,6 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
       );
     },
   );
-};
-
-const createChildStorageUri = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const baseUrl = new URL(baseStorageUri);
-  const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
-  const relativeSegments = relativePath
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-
-  baseUrl.pathname = `${normalizedBasePath}/${relativeSegments.join("/")}`;
-  return baseUrl.toString();
-};
-
-const resolveAssetStorageUri = ({
-  asset,
-  assetBaseStorageUri,
-  fallbackPath,
-}: {
-  asset: BundleManifest["assets"][string];
-  assetBaseStorageUri: string;
-  fallbackPath: string;
-}) => {
-  // LEGACY: non-/assets roots are older /files bundle layouts. Keep this
-  // fallback only while old deployments are supported; remove it with the
-  // legacy storage cleanup.
-  return createChildStorageUri(
-    assetBaseStorageUri,
-    isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
-      ? getContentAddressedAssetStoragePath({
-          assetPath: fallbackPath,
-          fileHash: asset.fileHash,
-        })
-      : fallbackPath,
-  );
-};
-
-const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
-  // /assets is the storage-layout marker; no DB or manifest version flag is
-  // needed because the base URI already tells the server which resolver to use.
-  const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
-  return pathname.endsWith("/assets") || pathname === "/assets";
 };
 
 export const parseBundleMetadata = (
@@ -246,10 +201,10 @@ async function resolveChangedAssets<TContext>({
 
       const usesBrotliAsset = BR_COMPRESSED_ASSET_PATH_RE.test(assetPath);
       const downloadPath = usesBrotliAsset ? `${assetPath}.br` : assetPath;
-      const storageUri = resolveAssetStorageUri({
-        asset,
+      const storageUri = resolveManifestAssetStorageUri({
         assetBaseStorageUri,
-        fallbackPath: downloadPath,
+        assetPath: downloadPath,
+        fileHash: asset.fileHash,
       });
       const patch =
         patchDescriptor?.assetPath === assetPath ? patchDescriptor.patch : null;

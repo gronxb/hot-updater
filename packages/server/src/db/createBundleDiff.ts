@@ -17,7 +17,7 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
+import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -79,52 +79,6 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
       );
     },
   );
-};
-
-const createChildStorageUri = (
-  baseStorageUri: string,
-  relativePath: string,
-) => {
-  const baseUrl = new URL(baseStorageUri);
-  const normalizedBasePath = baseUrl.pathname.replace(/\/+$/, "");
-  const relativeSegments = relativePath
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-
-  baseUrl.pathname = `${normalizedBasePath}/${relativeSegments.join("/")}`;
-  return baseUrl.toString();
-};
-
-const resolveAssetStorageUri = ({
-  asset,
-  assetBaseStorageUri,
-  fallbackPath,
-}: {
-  asset: BundleManifest["assets"][string];
-  assetBaseStorageUri: string;
-  fallbackPath: string;
-}) => {
-  // Deploys that use the shared /assets root store files by content hash.
-  // LEGACY: non-/assets roots are older /files bundle layouts. Keep this
-  // fallback only while old deployments are supported; remove it with the
-  // legacy storage cleanup.
-  return createChildStorageUri(
-    assetBaseStorageUri,
-    isContentAddressedAssetBaseStorageUri(assetBaseStorageUri)
-      ? getContentAddressedAssetStoragePath({
-          assetPath: fallbackPath,
-          fileHash: asset.fileHash,
-        })
-      : fallbackPath,
-  );
-};
-
-const isContentAddressedAssetBaseStorageUri = (storageUri: string) => {
-  // /assets is the storage-layout marker; no DB or manifest version flag is
-  // needed because the base URI already tells the server which resolver to use.
-  const pathname = new URL(storageUri).pathname.replace(/\/+$/, "");
-  return pathname.endsWith("/assets") || pathname === "/assets";
 };
 
 const getRelativeStorageDir = (relativePath: string) => {
@@ -233,10 +187,10 @@ async function fetchAssetBytes(
   }
 
   if (BR_COMPRESSED_ASSET_PATH_RE.test(assetPath)) {
-    const compressedAssetStorageUri = resolveAssetStorageUri({
-      asset,
+    const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
-      fallbackPath: `${assetPath}.br`,
+      assetPath: `${assetPath}.br`,
+      fileHash: asset.fileHash,
     });
 
     let compressedBytes: Uint8Array | null = null;
@@ -254,10 +208,10 @@ async function fetchAssetBytes(
     }
   }
 
-  const assetStorageUri = resolveAssetStorageUri({
-    asset,
+  const assetStorageUri = resolveManifestAssetStorageUri({
     assetBaseStorageUri,
-    fallbackPath: assetPath,
+    assetPath,
+    fileHash: asset.fileHash,
   });
   return downloadStorageBytes(assetStorageUri, storagePlugin);
 }
