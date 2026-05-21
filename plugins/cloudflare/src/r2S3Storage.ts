@@ -9,11 +9,13 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
   getContentType,
   type NodeStorageProfile,
   parseStorageUri,
+  type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 
 export interface R2S3StorageConfig extends S3ClientConfig {
@@ -137,6 +139,59 @@ export const createS3StorageProfile = (
 
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, await response.Body.transformToByteArray());
+    },
+  };
+};
+
+export const createS3RuntimeStorageProfile = (
+  config: R2S3StorageConfig,
+): RuntimeStorageProfile => {
+  const { bucketName } = config;
+  const client = createS3Client(config);
+
+  return {
+    async readText(storageUri) {
+      const { bucket, key } = parseStorageUri(storageUri, "r2");
+      ensureExpectedR2Bucket(bucket, bucketName);
+
+      try {
+        const response = await client.send(
+          new GetObjectCommand({ Bucket: bucketName, Key: key }),
+        );
+
+        if (!response.Body) {
+          return null;
+        }
+
+        return response.Body.transformToString();
+      } catch (error) {
+        if (isS3ObjectNotFoundError(error)) {
+          return null;
+        }
+
+        throw error;
+      }
+    },
+    async getDownloadUrl(storageUri) {
+      const { bucket, key } = parseStorageUri(storageUri, "r2");
+      ensureExpectedR2Bucket(bucket, bucketName);
+
+      const command = new GetObjectCommand({ Bucket: bucketName, Key: key });
+      const signedUrl = await getSignedUrl(
+        client as unknown as Parameters<typeof getSignedUrl>[0],
+        command,
+        {
+          expiresIn: 3600,
+        },
+      );
+
+      if (!signedUrl) {
+        throw new Error("Failed to presign R2 URL");
+      }
+
+      return {
+        fileUrl: signedUrl,
+      };
     },
   };
 };

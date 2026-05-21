@@ -1892,6 +1892,9 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: 3.1008.0
         version: 3.1008.0(@aws-sdk/client-s3@3.1008.0)
+      '@aws-sdk/s3-request-presigner':
+        specifier: 3.1008.0
+        version: 3.1008.0
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -21663,7 +21666,7 @@ snapshots:
       '@aws-sdk/util-user-agent-browser': 3.972.8
       '@aws-sdk/util-user-agent-node': 3.973.7
       '@smithy/config-resolver': 4.4.11
-      '@smithy/core': 3.23.11
+      '@smithy/core': 3.23.12
       '@smithy/fetch-http-handler': 5.3.15
       '@smithy/hash-node': 4.2.12
       '@smithy/invalid-dependency': 4.2.12
@@ -22006,7 +22009,7 @@ snapshots:
     dependencies:
       '@aws-sdk/types': 3.973.6
       '@aws-sdk/xml-builder': 3.972.16
-      '@smithy/core': 3.23.12
+      '@smithy/core': 3.23.11
       '@smithy/node-config-provider': 4.3.12
       '@smithy/property-provider': 4.2.12
       '@smithy/protocol-http': 5.3.12
@@ -22166,8 +22169,8 @@ snapshots:
     dependencies:
       '@aws-sdk/client-s3': 3.1008.0
       '@smithy/abort-controller': 4.2.12
-      '@smithy/middleware-endpoint': 4.4.25
-      '@smithy/smithy-client': 4.12.5
+      '@smithy/middleware-endpoint': 4.4.27
+      '@smithy/smithy-client': 4.12.7
       buffer: 5.6.0
       events: 3.3.0
       stream-browserify: 3.0.0
@@ -22281,7 +22284,7 @@ snapshots:
       '@aws-sdk/core': 3.973.25
       '@aws-sdk/types': 3.973.6
       '@aws-sdk/util-endpoints': 3.996.5
-      '@smithy/core': 3.23.12
+      '@smithy/core': 3.23.11
       '@smithy/protocol-http': 5.3.12
       '@smithy/types': 4.13.1
       '@smithy/util-retry': 4.2.12
@@ -22302,7 +22305,7 @@ snapshots:
       '@aws-sdk/util-user-agent-browser': 3.972.8
       '@aws-sdk/util-user-agent-node': 3.973.7
       '@smithy/config-resolver': 4.4.11
-      '@smithy/core': 3.23.11
+      '@smithy/core': 3.23.12
       '@smithy/fetch-http-handler': 5.3.15
       '@smithy/hash-node': 4.2.12
       '@smithy/invalid-dependency': 4.2.12
@@ -22350,14 +22353,14 @@ snapshots:
       '@smithy/hash-node': 4.2.12
       '@smithy/invalid-dependency': 4.2.12
       '@smithy/middleware-content-length': 4.2.12
-      '@smithy/middleware-endpoint': 4.4.27
+      '@smithy/middleware-endpoint': 4.4.25
       '@smithy/middleware-retry': 4.4.44
       '@smithy/middleware-serde': 4.2.15
       '@smithy/middleware-stack': 4.2.12
       '@smithy/node-config-provider': 4.3.12
       '@smithy/node-http-handler': 4.5.0
       '@smithy/protocol-http': 5.3.12
-      '@smithy/smithy-client': 4.12.7
+      '@smithy/smithy-client': 4.12.5
       '@smithy/types': 4.13.1
       '@smithy/url-parser': 4.2.12
       '@smithy/util-base64': 4.3.2

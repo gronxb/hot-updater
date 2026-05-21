@@ -1,7 +1,12 @@
-import { createNodeStoragePlugin } from "@hot-updater/plugin-core";
+import { createUniversalStoragePlugin } from "@hot-updater/plugin-core";
 
-import { createS3StorageProfile, type R2S3StorageConfig } from "./r2S3Storage";
 import {
+  createS3RuntimeStorageProfile,
+  createS3StorageProfile,
+  type R2S3StorageConfig,
+} from "./r2S3Storage";
+import {
+  createWranglerRuntimeStorageProfile,
   createWranglerStorageProfile,
   type R2WranglerStorageConfig,
 } from "./r2WranglerStorage";
@@ -19,14 +24,20 @@ const hasS3Credentials = (
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
  */
-export const r2Storage = createNodeStoragePlugin<R2StorageConfig>({
+export const r2Storage = createUniversalStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
   factory: (config) => {
     if (hasS3Credentials(config)) {
-      return createS3StorageProfile(config);
+      return {
+        node: createS3StorageProfile(config),
+        runtime: createS3RuntimeStorageProfile(config),
+      };
     }
 
-    return createWranglerStorageProfile(config);
+    return {
+      node: createWranglerStorageProfile(config),
+      runtime: createWranglerRuntimeStorageProfile(),
+    };
   },
 });

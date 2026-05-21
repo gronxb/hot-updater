@@ -7,6 +7,7 @@ import {
   HeadObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ExecaError } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,6 +52,10 @@ vi.mock("@aws-sdk/lib-storage", () => ({
       };
     }
   },
+}));
+
+vi.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: vi.fn(async () => "https://signed-r2.example.com/object"),
 }));
 
 vi.mock("./utils/createWrangler", () => ({
@@ -103,6 +108,7 @@ describe("r2Storage", () => {
           return {
             Body: {
               transformToByteArray: async () => new Uint8Array(object),
+              transformToString: async () => object.toString("utf8"),
             },
           };
         }
@@ -218,6 +224,61 @@ describe("r2Storage", () => {
     expect(wrangler).not.toHaveBeenCalled();
   });
 
+  it("reads R2 text through the runtime S3 API when credentials are provided", async () => {
+    mockS3Client();
+    fakeStore["releases/bundle-1/manifest.json"] = Buffer.from(
+      JSON.stringify({
+        assets: {},
+        bundleId: "bundle-1",
+      }),
+    );
+
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
+    })();
+
+    await expect(
+      storage.profiles.runtime.readText(
+        "r2://test-bucket/releases/bundle-1/manifest.json",
+      ),
+    ).resolves.toBe('{"assets":{},"bundleId":"bundle-1"}');
+    await expect(
+      storage.profiles.runtime.readText(
+        "r2://test-bucket/releases/missing.json",
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("creates signed R2 download URLs through the runtime S3 API", async () => {
+    mockS3Client();
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
+    })();
+
+    await expect(
+      storage.profiles.runtime.getDownloadUrl(
+        "r2://test-bucket/releases/bundle-1/index.bundle",
+      ),
+    ).resolves.toEqual({
+      fileUrl: "https://signed-r2.example.com/object",
+    });
+    expect(getSignedUrl).toHaveBeenCalledWith(
+      expect.any(S3Client),
+      expect.any(GetObjectCommand),
+      { expiresIn: 3600 },
+    );
+  });
+
   it("falls back to wrangler without S3 credentials", async () => {
     wrangler.mockImplementation(async (...args: string[]) => {
       const fileIndex = args.indexOf("--file");
@@ -264,6 +325,20 @@ describe("r2Storage", () => {
       downloadPath,
       "--remote",
     );
+  });
+
+  it("keeps the deprecated wrangler path node-only at runtime", async () => {
+    const storage = r2Storage({
+      accountId: "account-id",
+      bucketName: "test-bucket",
+      cloudflareApiToken: "api-token",
+    })();
+
+    await expect(
+      storage.profiles.runtime.readText(
+        "r2://test-bucket/releases/bundle-1/manifest.json",
+      ),
+    ).rejects.toThrow("r2Storage runtime profile requires R2 S3 credentials.");
   });
 
   it("rejects downloads from a different bucket", async () => {

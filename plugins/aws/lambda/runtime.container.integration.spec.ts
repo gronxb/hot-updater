@@ -624,7 +624,7 @@ const createRuntimeS3Client = () => {
 
 const createRuntimeReadableS3Url = async (key: string) => {
   return await getS3SignedUrl(
-    createRuntimeS3Client(),
+    createRuntimeS3Client() as unknown as Parameters<typeof getS3SignedUrl>[0],
     new GetObjectCommand({
       Bucket: S3_BUCKET_NAME,
       Key: key,

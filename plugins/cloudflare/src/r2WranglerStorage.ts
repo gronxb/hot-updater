@@ -7,6 +7,7 @@ import {
   getContentType,
   type NodeStorageProfile,
   parseStorageUri,
+  type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
@@ -171,3 +172,19 @@ export const createWranglerStorageProfile = (
     },
   };
 };
+
+export const createWranglerRuntimeStorageProfile =
+  (): RuntimeStorageProfile => {
+    const error = new Error(
+      "r2Storage runtime profile requires R2 S3 credentials. Wrangler-based R2 access is only supported by the node profile.",
+    );
+
+    return {
+      async readText() {
+        throw error;
+      },
+      async getDownloadUrl() {
+        throw error;
+      },
+    };
+  };

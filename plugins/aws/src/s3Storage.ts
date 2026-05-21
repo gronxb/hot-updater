@@ -185,9 +185,13 @@ export const s3Storage = createUniversalStoragePlugin<S3StorageConfig>({
           }
           try {
             const command = new GetObjectCommand({ Bucket: bucket, Key: key });
-            const signedUrl = await getSignedUrl(client, command, {
-              expiresIn: 3600,
-            });
+            const signedUrl = await getSignedUrl(
+              client as unknown as Parameters<typeof getSignedUrl>[0],
+              command,
+              {
+                expiresIn: 3600,
+              },
+            );
             if (!signedUrl) throw new Error("Failed to presign S3 URL");
             return { fileUrl: signedUrl };
           } catch (e) {
