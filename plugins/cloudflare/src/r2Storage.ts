@@ -1,4 +1,8 @@
-import { createUniversalStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  createUniversalStoragePlugin,
+  type StoragePluginHooks,
+  type UniversalStoragePlugin,
+} from "@hot-updater/plugin-core";
 
 import {
   createS3RuntimeStorageProfile,
@@ -24,7 +28,22 @@ const hasS3Credentials = (
 /**
  * Cloudflare R2 storage plugin for Hot Updater.
  */
-export const r2Storage = createUniversalStoragePlugin<R2StorageConfig>({
+interface R2Storage {
+  (
+    config: R2S3StorageConfig,
+    hooks?: StoragePluginHooks,
+  ): () => UniversalStoragePlugin;
+  /**
+   * @deprecated Use R2 S3 API credentials with `r2Storage({ credentials })`
+   * instead of Wrangler-based R2 access.
+   */
+  (
+    config: R2WranglerStorageConfig,
+    hooks?: StoragePluginHooks,
+  ): () => UniversalStoragePlugin;
+}
+
+const createR2StoragePlugin = createUniversalStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
   factory: (config) => {
@@ -41,3 +60,5 @@ export const r2Storage = createUniversalStoragePlugin<R2StorageConfig>({
     };
   },
 });
+
+export const r2Storage: R2Storage = createR2StoragePlugin;
