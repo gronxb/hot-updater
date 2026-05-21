@@ -435,6 +435,16 @@ export function createPluginDatabaseCore<TContext = unknown>(
     },
   };
 
+  if (getPlugin().checkBundleIndex) {
+    api.checkBundleIndex = (context?: HotUpdaterContext<TContext>) =>
+      getPlugin().checkBundleIndex!(context);
+  }
+
+  if (getPlugin().repairBundleIndex) {
+    api.repairBundleIndex = (context?: HotUpdaterContext<TContext>) =>
+      getPlugin().repairBundleIndex!(context);
+  }
+
   return {
     api,
     adapterName: getPlugin().name,

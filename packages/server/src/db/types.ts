@@ -5,6 +5,8 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
+  BundleIndexHealth,
+  BundleIndexRepairResult,
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   HotUpdaterContext,
@@ -108,6 +110,12 @@ export interface DatabaseAPI<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
+  checkBundleIndex?(
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleIndexHealth>;
+  repairBundleIndex?(
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleIndexRepairResult>;
 }
 
 export type StoragePluginFactory<TContext = unknown> =

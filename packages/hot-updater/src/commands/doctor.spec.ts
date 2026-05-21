@@ -13,6 +13,7 @@ import {
   isInfrastructureUpdateRequired,
   resolveVersionEndpoint,
 } from "./doctor";
+import { loadHotUpdater } from "./utils/load-hot-updater";
 
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(() => "/mock/cwd"),
@@ -21,9 +22,14 @@ vi.mock("@hot-updater/cli-tools", () => ({
   readPackageUp: vi.fn(),
 }));
 
+vi.mock("./utils/load-hot-updater", () => ({
+  loadHotUpdater: vi.fn(),
+}));
+
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
+const mockLoadHotUpdater = loadHotUpdater as ReturnType<typeof vi.fn>;
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   updateStrategy: "appVersion",
@@ -212,6 +218,12 @@ describe("doctor", () => {
     vi.clearAllMocks();
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
+    mockLoadHotUpdater.mockResolvedValue({
+      adapterName: "memory",
+      hotUpdater: {
+        adapterName: "memory",
+      },
+    });
   });
 
   afterEach(async () => {
@@ -242,6 +254,98 @@ describe("doctor", () => {
     expect(result).toBe(true);
   });
 
+  it("does not load the hot-updater config unless fix is enabled", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    await expect(doctor()).resolves.toBe(true);
+
+    expect(mockLoadHotUpdater).not.toHaveBeenCalled();
+  });
+
+  it("reports bundle index repair as not applicable for adapters without maintenance hooks", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    await expect(doctor({ fix: true })).resolves.toEqual({
+      success: true,
+      details: expect.objectContaining({
+        bundleIndex: {
+          adapterName: "memory",
+          status: "not-applicable",
+        },
+      }),
+    });
+  });
+
+  it("repairs stale bundle indexes when fix is enabled", async () => {
+    const checkBundleIndex = vi.fn().mockResolvedValue({
+      status: "stale",
+      canonicalBundles: 2,
+      indexedBundles: 1,
+      missingBundles: 1,
+      extraBundles: 0,
+      missingBundleIds: ["bundle-B"],
+      extraBundleIds: [],
+    });
+    const repairBundleIndex = vi.fn().mockResolvedValue({
+      scannedBundles: 2,
+      indexedBundles: 2,
+      pagesWritten: 1,
+      scopesWritten: 4,
+    });
+    mockLoadHotUpdater.mockResolvedValue({
+      adapterName: "s3",
+      hotUpdater: {
+        adapterName: "s3",
+        checkBundleIndex,
+        repairBundleIndex,
+      },
+    });
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    await expect(doctor({ fix: true })).resolves.toEqual({
+      success: true,
+      details: expect.objectContaining({
+        bundleIndex: {
+          adapterName: "s3",
+          status: "repaired",
+          health: expect.objectContaining({
+            status: "stale",
+            missingBundles: 1,
+          }),
+          repair: {
+            scannedBundles: 2,
+            indexedBundles: 2,
+            pagesWritten: 1,
+            scopesWritten: 4,
+          },
+        },
+      }),
+    });
+    expect(checkBundleIndex).toHaveBeenCalledTimes(1);
+    expect(repairBundleIndex).toHaveBeenCalledTimes(1);
+  });
+
   it("prints machine-readable JSON without prompting", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
@@ -257,6 +361,41 @@ describe("doctor", () => {
 
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify({ success: true }, null, 2),
+    );
+    logSpy.mockRestore();
+  });
+
+  it("passes fix through machine-readable doctor output", async () => {
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await handleDoctor({ json: true, fix: true });
+
+    expect(mockLoadHotUpdater).toHaveBeenCalledWith("");
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify(
+        {
+          success: true,
+          details: {
+            hotUpdaterVersion: "^0.18.2",
+            packageJsonPath: "/mock/cwd/package.json",
+            installedHotUpdaterPackages: [],
+            bundleIndex: {
+              adapterName: "memory",
+              status: "not-applicable",
+            },
+          },
+        },
+        null,
+        2,
+      ),
     );
     logSpy.mockRestore();
   });
