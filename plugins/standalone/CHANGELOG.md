@@ -1,5 +1,14 @@
 # @hot-updater/standalone
 
+## 0.32.0
+
+### Patch Changes
+
+- 4e6d2ec: Use deterministic content-addressed storage keys for manifest assets, require storage plugins to implement object existence checks, skip uploads when the object already exists, limit deploy upload concurrency, stream hashing/compression work to reduce memory pressure, and report upload progress through 100%.
+- Updated dependencies [4e6d2ec]
+  - @hot-updater/plugin-core@0.32.0
+  - @hot-updater/core@0.32.0
+
 ## 0.31.4
 
 ### Patch Changes
