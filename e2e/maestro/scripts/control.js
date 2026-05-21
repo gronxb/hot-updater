@@ -1,8 +1,9 @@
 // Maestro runScript loads JavaScript files directly, so this helper stays JS.
 
-// The first iOS bootstrap can include a full release build, pod install, and app reinstall.
-// Keep the polling window long enough for that path instead of failing at 12 minutes.
-const JOB_TIMEOUT_SECONDS = 1800;
+// The first bootstrap can include full native release builds, pod install,
+// and app reinstall. Keep that window separate from normal OTA job polling.
+const DEFAULT_JOB_TIMEOUT_SECONDS = 720;
+const BOOTSTRAP_JOB_TIMEOUT_SECONDS = 3600;
 
 function request(method, pathname, body) {
   const url = `${CONTROL_URL}${pathname}`;
@@ -68,21 +69,10 @@ function startJob(pathname, body) {
   const response = request("POST", pathname, body);
   const payload = expectOk(response, "job start");
   const jobId = payload.jobId;
-  const timeoutSeconds = (() => {
-    if (JOB_TIMEOUT_SECONDS) {
-      const parsed = Number(JOB_TIMEOUT_SECONDS);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-
-    // Bootstrap can include a full clean release build on iOS.
-    if (pathname === "/e2e/jobs/bootstrap") {
-      return 1800;
-    }
-
-    return 720;
-  })();
+  const timeoutSeconds =
+    pathname === "/e2e/jobs/bootstrap"
+      ? BOOTSTRAP_JOB_TIMEOUT_SECONDS
+      : DEFAULT_JOB_TIMEOUT_SECONDS;
 
   if (!jobId) {
     throw new Error("job start response missing jobId");

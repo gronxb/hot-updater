@@ -1387,7 +1387,7 @@ async function buildDebuggableAndroidRelease(logFileName: string) {
     "./gradlew",
     [
       ":app:assembleRelease",
-      "--rerun-tasks",
+      "--build-cache",
       "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
     ],
     {
