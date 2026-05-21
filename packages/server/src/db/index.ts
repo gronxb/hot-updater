@@ -104,19 +104,15 @@ export function createHotUpdater<TContext = unknown>(
         });
 
   const api = {
-    ...core.api,
+    basePath,
+    adapterName: core.adapterName,
+    createMigrator: core.createMigrator,
+    generateSchema: core.generateSchema,
     handler: createHandler(core.api, {
       basePath,
       routes: options.routes,
     }),
-    adapterName: core.adapterName,
-    createMigrator: core.createMigrator,
-    generateSchema: core.generateSchema,
   };
-
-  return {
-    ...api,
-    basePath,
-    handler: api.handler,
-  };
+  Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
+  return api as HotUpdaterAPI<TContext>;
 }

@@ -435,15 +435,57 @@ export function createPluginDatabaseCore<TContext = unknown>(
     },
   };
 
-  if (getPlugin().checkBundleIndex) {
-    api.checkBundleIndex = (context?: HotUpdaterContext<TContext>) =>
-      getPlugin().checkBundleIndex!(context);
-  }
+  Object.defineProperty(api, "checkBundleIndex", {
+    configurable: true,
+    enumerable: true,
+    get(this: DatabaseAPI<TContext>) {
+      const checkBundleIndex = getPlugin().checkBundleIndex;
+      if (!checkBundleIndex) {
+        Object.defineProperty(this, "checkBundleIndex", {
+          configurable: true,
+          enumerable: true,
+          value: undefined,
+        });
+        return undefined;
+      }
 
-  if (getPlugin().repairBundleIndex) {
-    api.repairBundleIndex = (context?: HotUpdaterContext<TContext>) =>
-      getPlugin().repairBundleIndex!(context);
-  }
+      const wrapped: NonNullable<DatabaseAPI<TContext>["checkBundleIndex"]> = (
+        context?: HotUpdaterContext<TContext>,
+      ) => getPlugin().checkBundleIndex!(context);
+      Object.defineProperty(this, "checkBundleIndex", {
+        configurable: true,
+        enumerable: true,
+        value: wrapped,
+      });
+      return wrapped;
+    },
+  });
+
+  Object.defineProperty(api, "repairBundleIndex", {
+    configurable: true,
+    enumerable: true,
+    get(this: DatabaseAPI<TContext>) {
+      const repairBundleIndex = getPlugin().repairBundleIndex;
+      if (!repairBundleIndex) {
+        Object.defineProperty(this, "repairBundleIndex", {
+          configurable: true,
+          enumerable: true,
+          value: undefined,
+        });
+        return undefined;
+      }
+
+      const wrapped: NonNullable<DatabaseAPI<TContext>["repairBundleIndex"]> = (
+        context?: HotUpdaterContext<TContext>,
+      ) => getPlugin().repairBundleIndex!(context);
+      Object.defineProperty(this, "repairBundleIndex", {
+        configurable: true,
+        enumerable: true,
+        value: wrapped,
+      });
+      return wrapped;
+    },
+  });
 
   return {
     api,

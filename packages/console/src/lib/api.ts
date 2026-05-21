@@ -1,5 +1,11 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  type QueryKey,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   createBundle as createBundleApi,
@@ -65,6 +71,13 @@ function replaceBundleInQueryData(
 
 const hasOwn = (value: object, key: PropertyKey) =>
   Object.prototype.hasOwnProperty.call(value, key);
+
+const invalidateInBackground = (
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+) => {
+  void queryClient.invalidateQueries({ queryKey }).catch(() => undefined);
+};
 
 // Query Hooks
 export function useConfigQuery() {
@@ -154,20 +167,18 @@ export function useUpdateBundleMutation() {
           replaceBundleInQueryData(data, updatedBundle),
       );
 
-      void queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all });
+      invalidateInBackground(queryClient, queryKeys.bundles.all);
 
       if (
         hasOwn(vars.bundle, "patches") ||
         hasOwn(vars.bundle, "channel") ||
         hasOwn(vars.bundle, "platform")
       ) {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.bundleChildren.all,
-        });
+        invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
       }
 
       if (hasOwn(vars.bundle, "channel")) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.channels });
+        invalidateInBackground(queryClient, queryKeys.channels);
       }
     },
   });
