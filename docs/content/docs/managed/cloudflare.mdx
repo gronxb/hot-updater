@@ -4,17 +4,24 @@ description: "This guide walks you through setting up `hot-updater` with Cloudfl
 icon: cloudflare
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
-import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video src={"/docs/get-started/init-cloudflare.mp4"} controls autoPlay loop muted />
+<video
+  src={"/docs/get-started/init-cloudflare.mp4"}
+  controls
+  autoPlay
+  loop
+  muted
+/>
 
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
+
 - **Node.js**: Version 20 or later is recommended.
 - **Cloudflare Account**: Sign up at [Cloudflare](https://cloudflare.com) if you don't have one.
-- **Cloudflare API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **R2 Edit** & **D1 Edit** permissions.
+- **Cloudflare D1 API Token**: Create an API Token at https://dash.cloudflare.com/{your-account-id}/api-tokens with **D1 Edit** permission.
 
 ## Step 1: Install Required Packages
 
@@ -39,8 +46,9 @@ npx hot-updater init
 2. **Select a Provider**: Select Cloudflare as the provider for handling updates.
 
 During the setup, you will be prompted to:
+
 1. **Login to Cloudflare**: Sign in to your Cloudflare account with wrangler
-2. **Enter R2 & D1 API Token**: Input your API token with R2 and D1 permissions.
+2. **Enter D1 API Token**: Input your API token with D1 Edit permission.
 3. **Select R2 Bucket**: Choose an existing R2 bucket or create a new one
 4. **Set Up R2 API Credentials**: Enter existing Access Key ID and Secret Access Key values
 5. **Select D1 Database**: Choose an existing D1 database or create a new one
@@ -62,18 +70,17 @@ HOT_UPDATER_CLOUDFLARE_API_TOKEN=your-api-token
 HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
 ```
 
-
-
 <Callout type="warn">
 
 If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
 [Security](/docs/policy/security#plugin-token-protection)
+
 </Callout>
 
-
 ## Step 3: Generated Configurations
+
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Cloudflare with your project.
@@ -102,7 +109,6 @@ export default defineConfig({
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
 });
-
 ```
 
 ## Step 4: Add HotUpdater to Your Project
@@ -121,7 +127,8 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<your-worker-name>.<your-subdomain>.workers.dev/api/check-update", // [!code ++]
+  baseURL:
+    "https://<your-worker-name>.<your-subdomain>.workers.dev/api/check-update", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -150,7 +157,6 @@ export default HotUpdater.wrap({
     </View>
   ),
 })(App);
-
 ```
 
 <Callout type="info">
@@ -181,14 +187,15 @@ npx expo prebuild
 ```
 
 <Callout>
-This process automatically generates the code that needs to be added in Step 6.
-Skip this step if you are using bare or Rock.
+  This process automatically generates the code that needs to be added in Step
+  6. Skip this step if you are using bare or Rock.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
+  If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the
+  additional Babel plugin setup.
 </Callout>
-
 
 ## Step 6: Add Native Code
 
@@ -251,13 +258,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-      object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+override val reactNativeHost: ReactNativeHost =
+object : DefaultReactNativeHost(this) {
+override fun getPackages(): List<ReactPackage> =
+PackageList(this).packages.apply {
+// Packages that cannot be autolinked yet can be added manually here, for example:
+// add(MyReactNativePackage())
+}
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -271,19 +278,20 @@ class MainApplication : Application(), ReactApplication {
         }  // [!code ++]
       }
 
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+override val reactHost: ReactHost
+get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
-  }
+override fun onCreate() {
+super.onCreate()
+SoLoader.init(this, OpenSourceMergedSoMapping)
+if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+// If you opted-in for the New Architecture, we load the native entry point for this app.
+load()
 }
-```
+}
+}
+
+````
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -357,7 +365,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-```
+````
 
   </Tab>
 </Tabs>
@@ -375,32 +383,33 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    self.moduleName = "HotUpdaterExample"
-    self.dependencyProvider = RCTAppDependencyProvider()
+override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+self.moduleName = "HotUpdaterExample"
+self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-    HotUpdater.bundleURL() // [!code ++]
-#endif
-  }
 }
 
-```
+override func sourceURL(for bridge: RCTBridge) -> URL? {
+self.bundleURL()
+}
+
+override func bundleURL() -> URL? {
+#if DEBUG
+RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+HotUpdater.bundleURL() // [!code ++]
+#endif
+}
+}
+
+````
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -436,18 +445,22 @@ class AppDelegate: RCTAppDelegate {
 }
 
 @end
-```
+````
+
 </Tab>
 </Tabs>
 
 <Callout type="info">
-For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
 
 ## Verifying the Setup
+
 1. Check your Cloudflare dashboard for the newly created bucket, D1 database, and worker.
 2. Test the HotUpdater integration in your React Native app.
-
 
 You're all set! 🎉 Start using hot-updater with Cloudflare for seamless updates in your React Native app.
 

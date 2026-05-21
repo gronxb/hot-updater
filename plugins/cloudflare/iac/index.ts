@@ -355,14 +355,15 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     p.log.info("Using existing Cloudflare API token.");
   } else {
     p.log.step(
-      `Please visit this link to create an API Token: ${link(
+      `D1 API Token dashboard: ${link(
         `https://dash.cloudflare.com/${accountId}/api-tokens`,
       )}`,
     );
-    p.log.step("You need D1 and R2 edit permissions.");
+    p.log.step("Required permission: D1 Edit");
+    p.log.step("Used for bundle metadata writes after init.");
 
     const inputApiToken = await p.password({
-      message: "Enter the API Token",
+      message: "Enter the D1 API Token",
     });
 
     if (p.isCancel(inputApiToken)) {
