@@ -170,6 +170,8 @@ const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
 const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
+const BARE_BUILD_INLINE_PATTERN =
+  /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -918,13 +920,32 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
+  const sourceWithWarmMetroCache = source.replace(
+    BARE_BUILD_INLINE_PATTERN,
+    (match, prefix: string, options: string, suffix: string) => {
+      if (/\bresetCache\s*:/.test(options)) {
+        return match;
+      }
+
+      const trimmedOptions = options.trim();
+      const nextOptions = trimmedOptions
+        ? `${trimmedOptions}, resetCache: false`
+        : "resetCache: false";
+      return `${prefix}${nextOptions}${suffix}`;
+    },
+  );
+
   await fsPromises.writeFile(
     session.configSourceFile,
-    source.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
+    sourceWithWarmMetroCache.replace(
+      AUTO_PATCH_CONFIG_PATTERN,
+      autoPatchSource,
+    ),
   );
   logE2e("deploy config applied", {
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
+    resetMetroCache: false,
     sourceFile: path.relative(REPO_DIR, session.configSourceFile),
   });
 }
