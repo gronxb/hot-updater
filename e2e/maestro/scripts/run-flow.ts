@@ -61,6 +61,13 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
 );
+const MAESTRO_ANDROID_TRANSPORT_ATTEMPTS = 2;
+const MAESTRO_ANDROID_TRANSPORT_RETRY_DELAY_MS = 2000;
+const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
+  /Not able to reach the gRPC server while processing deviceInfo command/i,
+  /StatusRuntimeException:\s*UNAVAILABLE/i,
+  /Command failed \(tcp:\d+\): closed/i,
+];
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -318,6 +325,14 @@ async function readLogSummary(logPath: string, header: string) {
   return [header, ...lines.map((line) => `  ${line}`)].join("\n");
 }
 
+async function readTextIfExists(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    return "";
+  }
+
+  return fsPromises.readFile(filePath, "utf8");
+}
+
 async function readMaestroFailureSummary(args: string[]) {
   const debugOutputIndex = args.indexOf("--debug-output");
   const debugOutputPath =
@@ -445,6 +460,142 @@ async function runLogged(
   }
 }
 
+async function isRetryableAndroidMaestroTransportFailure({
+  debugOutputPath,
+  serverLogPath,
+}: {
+  debugOutputPath: string;
+  serverLogPath: string;
+}) {
+  const debugLog = await readTextIfExists(
+    path.join(debugOutputPath, "maestro.log"),
+  );
+  const commandLog = await readTextIfExists(
+    path.join(path.dirname(debugOutputPath), "maestro.log"),
+  );
+  const serverLog = await readTextIfExists(serverLogPath);
+  const combinedLog = `${debugLog}\n${commandLog}`;
+
+  if (
+    !MAESTRO_ANDROID_TRANSPORT_PATTERNS.some((pattern) =>
+      pattern.test(combinedLog),
+    )
+  ) {
+    return false;
+  }
+
+  return !/<--\s+POST\s+\/e2e\//.test(stripAnsi(serverLog));
+}
+
+async function moveIfExists(sourcePath: string, targetPath: string) {
+  if (!fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  await fsPromises.rm(targetPath, { force: true, recursive: true });
+  await fsPromises.rename(sourcePath, targetPath);
+}
+
+async function preserveMaestroAttemptArtifacts(
+  resultsDir: string,
+  attempt: number,
+) {
+  await Promise.all([
+    moveIfExists(
+      path.join(resultsDir, "maestro.log"),
+      path.join(resultsDir, `maestro.attempt-${attempt}.log`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "junit.xml"),
+      path.join(resultsDir, `junit.attempt-${attempt}.xml`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "debug"),
+      path.join(resultsDir, `debug.attempt-${attempt}`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "artifacts"),
+      path.join(resultsDir, `artifacts.attempt-${attempt}`),
+    ),
+  ]);
+}
+
+async function runMaestroWithAndroidTransportRetry({
+  appId,
+  controlUrl,
+  deviceId,
+  flow,
+  maestroBin,
+  platform,
+  resultsDir,
+  serverLogPath,
+  scenarioName,
+}: {
+  appId: string;
+  controlUrl: string;
+  deviceId: string;
+  flow: string;
+  maestroBin: string;
+  platform: Platform;
+  resultsDir: string;
+  serverLogPath: string;
+  scenarioName: string;
+}) {
+  const debugOutputPath = path.join(resultsDir, "debug");
+  const maestroArgs = [
+    "test",
+    "--device",
+    deviceId,
+    "--debug-output",
+    debugOutputPath,
+    "--flatten-debug-output",
+    "--format",
+    "JUNIT",
+    "--output",
+    path.join(resultsDir, "junit.xml"),
+    "--test-output-dir",
+    path.join(resultsDir, "artifacts"),
+    "-e",
+    `APP_ID=${appId}`,
+    "-e",
+    `CONTROL_URL=${controlUrl}`,
+    flow,
+  ];
+
+  for (
+    let attempt = 1;
+    attempt <= MAESTRO_ANDROID_TRANSPORT_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      await runLogged(maestroBin, maestroArgs, {
+        cwd: REPO_DIR,
+        logPath: path.join(resultsDir, "maestro.log"),
+        streamOutput: true,
+      });
+      return;
+    } catch (error) {
+      const canRetry =
+        platform === "android" &&
+        attempt < MAESTRO_ANDROID_TRANSPORT_ATTEMPTS &&
+        (await isRetryableAndroidMaestroTransportFailure({
+          debugOutputPath,
+          serverLogPath,
+        }));
+
+      if (!canRetry) {
+        throw error;
+      }
+
+      p.log.warning(
+        `Retry ${platform}/${scenarioName} after transient Maestro Android transport failure`,
+      );
+      await preserveMaestroAttemptArtifacts(resultsDir, attempt);
+      await sleep(MAESTRO_ANDROID_TRANSPORT_RETRY_DELAY_MS);
+    }
+  }
+}
+
 async function resolveServerPort(
   preferredPort: number,
   allowRandomFallback: boolean,
@@ -483,87 +634,6 @@ async function resolveServerPort(
   }
 
   return attempt(0);
-}
-
-function findListeningPids(port: number) {
-  const result = spawnSync(
-    "lsof",
-    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    return [];
-  }
-
-  return result.stdout
-    .split("\n")
-    .map((entry) => Number.parseInt(entry.trim(), 10))
-    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
-}
-
-async function terminateListenersOnPort(port: number) {
-  const initialPids = findListeningPids(port);
-
-  if (initialPids.length === 0) {
-    return;
-  }
-
-  p.log.warning(
-    `Port ${port} is in use. Terminating existing listener(s): ${initialPids.join(", ")}`,
-  );
-
-  for (const pid of initialPids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch (error) {
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (code !== "ESRCH") {
-        throw error;
-      }
-    }
-  }
-
-  for (let index = 0; index < 20; index += 1) {
-    if (findListeningPids(port).length === 0) {
-      return;
-    }
-    await sleep(250);
-  }
-
-  const remainingPids = findListeningPids(port);
-  for (const pid of remainingPids) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (error) {
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (code !== "ESRCH") {
-        throw error;
-      }
-    }
-  }
-
-  for (let index = 0; index < 20; index += 1) {
-    if (findListeningPids(port).length === 0) {
-      return;
-    }
-    await sleep(250);
-  }
-
-  throw new Error(`Failed to release port ${port}`);
 }
 
 async function waitForHttp(url: string, attempts = 90) {
@@ -841,33 +911,17 @@ async function main() {
   try {
     await waitForHttp(serverBaseUrl);
 
-    await runLogged(
+    await runMaestroWithAndroidTransportRetry({
+      appId,
+      controlUrl: serverBaseUrl,
+      deviceId,
+      flow: options.flow,
       maestroBin,
-      [
-        "test",
-        "--device",
-        deviceId,
-        "--debug-output",
-        path.join(resultsDir, "debug"),
-        "--flatten-debug-output",
-        "--format",
-        "JUNIT",
-        "--output",
-        path.join(resultsDir, "junit.xml"),
-        "--test-output-dir",
-        path.join(resultsDir, "artifacts"),
-        "-e",
-        `APP_ID=${appId}`,
-        "-e",
-        `CONTROL_URL=${serverBaseUrl}`,
-        options.flow,
-      ],
-      {
-        cwd: REPO_DIR,
-        logPath: path.join(resultsDir, "maestro.log"),
-        streamOutput: true,
-      },
-    );
+      platform,
+      resultsDir,
+      scenarioName,
+      serverLogPath,
+    });
     p.log.success(`Pass ${platform}/${scenarioName}`);
   } catch (error) {
     p.log.error(`Fail ${platform}/${scenarioName}`);
