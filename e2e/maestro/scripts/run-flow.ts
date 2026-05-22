@@ -60,6 +60,11 @@ const HTTP_TIMEOUT_MS = 5000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
+const ANDROID_MAESTRO_DRIVER_PACKAGES = [
+  "dev.mobile.maestro",
+  "dev.mobile.maestro.test",
+];
+const ANDROID_MAESTRO_DRIVER_PORT = 7001;
 const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
@@ -99,6 +104,8 @@ const MAESTRO_FLOW_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
 );
 const COMMAND_TERMINATE_GRACE_MS = 5000;
+const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
+let terminationSignal: NodeJS.Signals | null = null;
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -480,6 +487,28 @@ function terminateChildProcess(
   }
 }
 
+function installTerminationHandlers() {
+  const handleSignal = (signal: NodeJS.Signals) => {
+    terminationSignal = signal;
+    for (const child of ACTIVE_LOGGED_CHILDREN) {
+      terminateChildProcess(child, "SIGTERM");
+    }
+    if (ACTIVE_LOGGED_CHILDREN.size === 0) {
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    }
+
+    const killTimer = setTimeout(() => {
+      for (const child of ACTIVE_LOGGED_CHILDREN) {
+        terminateChildProcess(child, "SIGKILL");
+      }
+    }, COMMAND_TERMINATE_GRACE_MS);
+    killTimer.unref();
+  };
+
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -494,6 +523,7 @@ async function runLogged(
     env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  ACTIVE_LOGGED_CHILDREN.add(child);
   let timeoutReason: string | null = null;
   let killTimer: NodeJS.Timeout | null = null;
   let idleTimer: NodeJS.Timeout | null = null;
@@ -568,6 +598,7 @@ async function runLogged(
     child.once("error", reject);
     child.once("close", resolve);
   });
+  ACTIVE_LOGGED_CHILDREN.delete(child);
   if (idleTimer) {
     clearTimeout(idleTimer);
   }
@@ -582,6 +613,15 @@ async function runLogged(
     logStream.once("error", reject);
     logStream.end(() => resolve());
   });
+
+  if (terminationSignal && !options.allowFailure) {
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} terminated after ${terminationSignal}.`,
+        `Full log: ${options.logPath}`,
+      ].join("\n\n"),
+    );
+  }
 
   if (timeoutReason && !options.allowFailure) {
     throw new Error(
@@ -727,6 +767,9 @@ async function runMaestroWithTransportRetry({
 
   for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
     try {
+      if (platform === "android") {
+        resetAndroidMaestroDriver(deviceId);
+      }
       await runLogged(maestroBin, maestroArgs, {
         abortOnOutput: (output) =>
           getPreMutationTransportAbortReason(platform, output, serverLogPath),
@@ -906,6 +949,29 @@ function resolveAndroidSerial() {
   return match[0];
 }
 
+function resetAndroidMaestroDriver(deviceId: string) {
+  for (const packageName of ANDROID_MAESTRO_DRIVER_PACKAGES) {
+    runCapture(
+      "adb",
+      ["-s", deviceId, "shell", "am", "force-stop", packageName],
+      {
+        allowFailure: true,
+      },
+    );
+  }
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId,
+      "forward",
+      "--remove",
+      `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+    ],
+    { allowFailure: true },
+  );
+}
+
 function getScenarioName(flowPath: string) {
   return path.basename(flowPath, path.extname(flowPath));
 }
@@ -1046,6 +1112,7 @@ async function main() {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  ACTIVE_LOGGED_CHILDREN.add(serverProcess);
 
   serverProcess.stdout?.on("data", (chunk: Buffer | string) =>
     serverLogStream.write(chunk),
@@ -1068,6 +1135,7 @@ async function main() {
       serverProcess.once("close", () => resolve());
       setTimeout(() => resolve(), 3000);
     });
+    ACTIVE_LOGGED_CHILDREN.delete(serverProcess);
     serverLogStream.end();
   };
 
@@ -1093,6 +1161,8 @@ async function main() {
     await stopServer();
   }
 }
+
+installTerminationHandlers();
 
 try {
   await main();
