@@ -138,7 +138,7 @@ const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
-const NATIVE_ARTIFACT_CACHE_VERSION = 1;
+const NATIVE_ARTIFACT_CACHE_VERSION = 2;
 const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -448,6 +448,73 @@ function hashNativeArtifactInputs() {
   return hash.digest("hex");
 }
 
+function readNativeEnvImports() {
+  const source = fs.existsSync(APP_SOURCE_FILE)
+    ? fs.readFileSync(APP_SOURCE_FILE, "utf8")
+    : "";
+  const envNames = new Set<string>();
+  const importPattern = /import\s*\{([^}]+)\}\s*from\s*["']@env["']/g;
+
+  for (const match of source.matchAll(importPattern)) {
+    const names = match[1] ?? "";
+    for (const name of names.split(",")) {
+      const importedName = name
+        .trim()
+        .split(/\s+as\s+/)[0]
+        ?.trim();
+      if (importedName) {
+        envNames.add(importedName);
+      }
+    }
+  }
+
+  return [...envNames].sort();
+}
+
+function parseDotenvFile(filePath: string) {
+  const values = new Map<string, string>();
+  if (!fs.existsSync(filePath)) {
+    return values;
+  }
+
+  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue = ""] = match;
+    let value = rawValue.trim();
+    const quote = value[0];
+    if (
+      (quote === '"' || quote === "'") &&
+      value.endsWith(quote) &&
+      value.length >= 2
+    ) {
+      value = value.slice(1, -1);
+    }
+    values.set(key, value);
+  }
+
+  return values;
+}
+
+function nativeDotenvFingerprint() {
+  const importedEnvNames = readNativeEnvImports();
+  const dotenvValues = parseDotenvFile(
+    path.join(session.exampleDir, ".env.hotupdater"),
+  );
+
+  return hashText(
+    JSON.stringify(
+      importedEnvNames.map((name) => [
+        name,
+        dotenvValues.has(name) ? dotenvValues.get(name) : null,
+      ]),
+    ),
+  );
+}
+
 function signingKeyFingerprint() {
   const privateKeyPath = path.join(
     session.exampleDir,
@@ -485,8 +552,8 @@ function nativeArtifactCacheKey(architecture?: string | null) {
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
       initialMarker: session.initialMarker,
       inputHash: hashNativeArtifactInputs(),
+      nativeEnv: nativeDotenvFingerprint(),
       platform: session.platform,
-      profile: process.env.HOT_UPDATER_E2E_PROFILE ?? null,
       runtime: {
         arch: process.arch,
         platform: process.platform,
