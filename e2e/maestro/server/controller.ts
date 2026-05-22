@@ -511,9 +511,10 @@ async function copyNativeArtifact(sourcePath: string, targetPath: string) {
 
 async function restoreNativeArtifactFromCache(args: {
   architecture?: string | null;
+  key?: string;
   targetPath: string;
 }) {
-  const key = nativeArtifactCacheKey(args.architecture);
+  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
   const paths = nativeArtifactCachePaths(key);
   if (!paths) {
     return false;
@@ -542,13 +543,14 @@ async function restoreNativeArtifactFromCache(args: {
 
 async function saveNativeArtifactToCache(args: {
   architecture?: string | null;
+  key?: string;
   sourcePath: string;
 }) {
   if (!fs.existsSync(args.sourcePath)) {
     return;
   }
 
-  const key = nativeArtifactCacheKey(args.architecture);
+  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
   const paths = nativeArtifactCachePaths(key);
   if (!paths) {
     return;
@@ -1461,6 +1463,7 @@ async function prepareIosRelease() {
     session.iosDerivedDataPath,
     "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
   );
+  const nativeCacheKey = nativeArtifactCacheKey();
 
   if (session.reuseApp) {
     if (!fs.existsSync(builtAppPath)) {
@@ -1480,6 +1483,7 @@ async function prepareIosRelease() {
 
   if (
     await restoreNativeArtifactFromCache({
+      key: nativeCacheKey,
       targetPath: builtAppPath,
     })
   ) {
@@ -1564,7 +1568,10 @@ async function prepareIosRelease() {
   }
 
   session.builtArtifactPath = builtAppPath;
-  await saveNativeArtifactToCache({ sourcePath: builtAppPath });
+  await saveNativeArtifactToCache({
+    key: nativeCacheKey,
+    sourcePath: builtAppPath,
+  });
   await installIosArtifact(builtAppPath);
 }
 
@@ -1574,16 +1581,19 @@ async function prepareAndroidRelease() {
     DEFAULT_ANDROID_APK_RELATIVE_PATH,
   );
   const architecture = resolveAndroidE2eArchitecture();
+  const nativeCacheKey = nativeArtifactCacheKey(architecture);
 
   if (!session.reuseApp) {
     const restored = await restoreNativeArtifactFromCache({
       architecture,
+      key: nativeCacheKey,
       targetPath: session.androidApkPath,
     });
     if (!restored) {
       await buildDebuggableAndroidRelease("gradle-release.log", architecture);
       await saveNativeArtifactToCache({
         architecture,
+        key: nativeCacheKey,
         sourcePath: session.androidApkPath,
       });
     }
@@ -1618,6 +1628,7 @@ async function prepareAndroidRelease() {
     );
     await saveNativeArtifactToCache({
       architecture,
+      key: nativeCacheKey,
       sourcePath: defaultAndroidApkPath,
     });
     session.builtArtifactPath = defaultAndroidApkPath;
