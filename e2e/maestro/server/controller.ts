@@ -310,6 +310,7 @@ const session: SessionState = {
 };
 
 const jobs = new Map<string, JobState>();
+let bootstrapJobId: string | null = null;
 
 function runCapture(
   command: string,
@@ -3951,7 +3952,15 @@ function createJob(task: () => Promise<JobResult>) {
 }
 
 export function startBootstrapJob() {
-  return createJob(() => bootstrap());
+  if (bootstrapJobId) {
+    const job = jobs.get(bootstrapJobId);
+    if (job?.status === "running" || job?.status === "succeeded") {
+      return bootstrapJobId;
+    }
+  }
+
+  bootstrapJobId = createJob(() => bootstrap());
+  return bootstrapJobId;
 }
 
 export function startDeployBundleJob(request: DeployBundleRequest) {

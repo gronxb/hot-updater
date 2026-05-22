@@ -64,6 +64,11 @@ const DEFAULT_SERVER_PORT = Number(
 const DEFAULT_SERVER_HOST = "127.0.0.1";
 const HTTP_TIMEOUT_MS = 5000;
 const CONTROL_JOB_HTTP_TIMEOUT_MS = 120 * 1000;
+const CONTROL_JOB_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 45 * 60 * 1000,
+);
+const CONTROL_JOB_POLL_INTERVAL_MS = 1000;
+const CONTROL_JOB_RETRY_LOG_INTERVAL_MS = 30 * 1000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
@@ -382,32 +387,99 @@ async function readJsonResponse<T>(response: Response, label: string) {
   }
 }
 
-async function startControlJob(controlUrl: string, pathName: string) {
-  const response = await fetchWithTimeout(
-    `${controlUrl}${pathName}`,
-    {
-      method: "POST",
-    },
-    CONTROL_JOB_HTTP_TIMEOUT_MS,
-  );
-  const body = await readJsonResponse<{ jobId?: string }>(response, pathName);
-  if (!body.jobId) {
-    throw new Error(`${pathName} did not return a jobId`);
+function formatFetchFailure(error: unknown) {
+  if (!(error instanceof Error)) {
+    return String(error);
   }
-  return body.jobId;
+
+  const cause =
+    "cause" in error && error.cause instanceof Error
+      ? `: ${error.cause.message}`
+      : "";
+  return `${error.message}${cause}`;
+}
+
+async function startControlJob(controlUrl: string, pathName: string) {
+  const deadline = Date.now() + CONTROL_JOB_TIMEOUT_MS;
+  let lastLogAt = 0;
+
+  for (;;) {
+    try {
+      const response = await fetchWithTimeout(
+        `${controlUrl}${pathName}`,
+        {
+          method: "POST",
+        },
+        CONTROL_JOB_HTTP_TIMEOUT_MS,
+      );
+      const body = await readJsonResponse<{ jobId?: string }>(
+        response,
+        pathName,
+      );
+      if (!body.jobId) {
+        throw new Error(`${pathName} did not return a jobId`);
+      }
+      return body.jobId;
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `${pathName} did not start within ${formatDuration(
+            CONTROL_JOB_TIMEOUT_MS,
+          )}: ${formatFetchFailure(error)}`,
+        );
+      }
+
+      const now = Date.now();
+      if (now - lastLogAt >= CONTROL_JOB_RETRY_LOG_INTERVAL_MS) {
+        p.log.info(
+          `Retrying ${pathName} after transient control fetch failure: ${formatFetchFailure(
+            error,
+          )}`,
+        );
+        lastLogAt = now;
+      }
+      await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
+    }
+  }
 }
 
 async function waitForControlJob(controlUrl: string, jobId: string) {
+  const deadline = Date.now() + CONTROL_JOB_TIMEOUT_MS;
+  let lastLogAt = 0;
+
   for (;;) {
-    const response = await fetchWithTimeout(
-      `${controlUrl}/e2e/jobs/${jobId}`,
-      {},
-      CONTROL_JOB_HTTP_TIMEOUT_MS,
-    );
-    const body = await readJsonResponse<ControlJobState>(
-      response,
-      `/e2e/jobs/${jobId}`,
-    );
+    let body: ControlJobState;
+    try {
+      const response = await fetchWithTimeout(
+        `${controlUrl}/e2e/jobs/${jobId}`,
+        {},
+        CONTROL_JOB_HTTP_TIMEOUT_MS,
+      );
+      body = await readJsonResponse<ControlJobState>(
+        response,
+        `/e2e/jobs/${jobId}`,
+      );
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Control job ${jobId} did not finish within ${formatDuration(
+            CONTROL_JOB_TIMEOUT_MS,
+          )}: ${formatFetchFailure(error)}`,
+        );
+      }
+
+      const now = Date.now();
+      if (now - lastLogAt >= CONTROL_JOB_RETRY_LOG_INTERVAL_MS) {
+        p.log.info(
+          `Waiting for control job ${jobId} after transient fetch failure: ${formatFetchFailure(
+            error,
+          )}`,
+        );
+        lastLogAt = now;
+      }
+      await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
+      continue;
+    }
 
     if (body.status === "succeeded") {
       return body.result ?? {};
@@ -416,7 +488,14 @@ async function waitForControlJob(controlUrl: string, jobId: string) {
       throw new Error(body.error ?? `Control job ${jobId} failed`);
     }
 
-    await sleep(1000);
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Control job ${jobId} did not finish within ${formatDuration(
+          CONTROL_JOB_TIMEOUT_MS,
+        )}`,
+      );
+    }
+    await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
   }
 }
 
