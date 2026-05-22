@@ -70,10 +70,15 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
   /Command failed \(tcp:\d+\): closed/i,
+  /dadb\.forwarding\.TcpForwarder/i,
+  /Failed to launch app/i,
   /Maestro Android transport failure before E2E mutation/i,
   /Maestro command idle timeout/i,
   /ShouldNotReachHere: API object must not be garbage collected/i,
+  /Unable to launch app/i,
 ];
+const MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN =
+  /<--\s+POST\s+\/e2e\/(?:assert-|capture-|jobs\/(?:deploy-bundle|patch-bundle|wait-for-metadata)|reinstall-built-in-app|wait-for-crash-recovery|write-summary)\b/i;
 const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 30 * 60 * 1000,
 );
@@ -605,7 +610,9 @@ async function isRetryableAndroidMaestroTransportFailure({
     return false;
   }
 
-  return !/<--\s+POST\s+\/e2e\//.test(stripAnsi(serverLog));
+  return !MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN.test(
+    stripAnsi(serverLog),
+  );
 }
 
 function getPreMutationAndroidTransportAbortReason(
@@ -624,7 +631,7 @@ function getPreMutationAndroidTransportAbortReason(
   const serverLog = fs.existsSync(serverLogPath)
     ? stripAnsi(fs.readFileSync(serverLogPath, "utf8"))
     : "";
-  if (/<--\s+POST\s+\/e2e\//.test(serverLog)) {
+  if (MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN.test(serverLog)) {
     return null;
   }
 
