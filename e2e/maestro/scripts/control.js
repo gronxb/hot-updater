@@ -4,6 +4,7 @@
 // and app reinstall. Keep that window separate from normal OTA job polling.
 const DEFAULT_JOB_TIMEOUT_SECONDS = 720;
 const BOOTSTRAP_JOB_TIMEOUT_SECONDS = 3600;
+let atomicsPauseSupported = true;
 
 function request(method, pathname, body) {
   const url = `${CONTROL_URL}${pathname}`;
@@ -62,17 +63,22 @@ function expectOk(response, context) {
 
 function pause(milliseconds) {
   if (
+    atomicsPauseSupported &&
     typeof SharedArrayBuffer === "function" &&
     typeof Atomics === "object" &&
     typeof Atomics.wait === "function"
   ) {
-    Atomics.wait(
-      new Int32Array(new SharedArrayBuffer(4)),
-      0,
-      0,
-      Math.max(0, milliseconds),
-    );
-    return;
+    try {
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        Math.max(0, milliseconds),
+      );
+      return;
+    } catch {
+      atomicsPauseSupported = false;
+    }
   }
 
   const endTime = Date.now() + milliseconds;
