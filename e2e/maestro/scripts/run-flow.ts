@@ -65,6 +65,10 @@ const ANDROID_MAESTRO_DRIVER_PACKAGES = [
   "dev.mobile.maestro.test",
 ];
 const ANDROID_MAESTRO_DRIVER_PORT = 7001;
+const MAESTRO_DRIVER_HOST_PORT_BY_PLATFORM = {
+  android: 7101,
+  ios: 7001,
+} satisfies Record<Platform, number>;
 const ANDROID_MAESTRO_DRIVER_RUNNER =
   "dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner";
 const MAESTRO_CLIENT_JAR_PATH = path.join(
@@ -754,7 +758,10 @@ async function runMaestroWithTransportRetry({
   scenarioName: string;
 }) {
   const debugOutputPath = path.join(resultsDir, "debug");
+  const driverHostPort = MAESTRO_DRIVER_HOST_PORT_BY_PLATFORM[platform];
   const maestroArgs = [
+    "--port",
+    String(driverHostPort),
     "test",
     "--device",
     deviceId,
@@ -777,7 +784,7 @@ async function runMaestroWithTransportRetry({
   for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
     try {
       if (platform === "android") {
-        await ensureAndroidMaestroDriver(deviceId);
+        await ensureAndroidMaestroDriver(deviceId, driverHostPort);
       }
       await runLogged(maestroBin, maestroArgs, {
         abortOnOutput: (output) =>
@@ -1068,13 +1075,29 @@ function stopAndroidMaestroDriver(deviceId: string) {
   }
 }
 
-async function ensureAndroidMaestroDriver(deviceId: string) {
+async function ensureAndroidMaestroDriver(
+  deviceId: string,
+  driverHostPort: number,
+) {
   ensureAndroidMaestroDriverPackages(deviceId);
+  if (driverHostPort !== ANDROID_MAESTRO_DRIVER_PORT) {
+    runCapture(
+      "adb",
+      [
+        "-s",
+        deviceId,
+        "forward",
+        "--remove",
+        `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+      ],
+      { allowFailure: true },
+    );
+  }
   runCapture("adb", [
     "-s",
     deviceId,
     "forward",
-    `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+    `tcp:${driverHostPort}`,
     `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
   ]);
 
@@ -1088,7 +1111,7 @@ async function ensureAndroidMaestroDriver(deviceId: string) {
   }
 
   try {
-    await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT, 10);
+    await waitForTcpPort(driverHostPort, 10);
     return;
   } catch (error) {
     if (!driverPid) {
@@ -1098,7 +1121,7 @@ async function ensureAndroidMaestroDriver(deviceId: string) {
 
   stopAndroidMaestroDriver(deviceId);
   startAndroidMaestroInstrumentation(deviceId);
-  await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT);
+  await waitForTcpPort(driverHostPort);
 }
 
 function getScenarioName(flowPath: string) {
