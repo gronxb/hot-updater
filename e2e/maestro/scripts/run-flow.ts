@@ -28,8 +28,10 @@ type RunCaptureOptions = {
 };
 
 type RunLoggedOptions = RunCaptureOptions & {
+  idleTimeoutMs?: number;
   logPath: string;
   streamOutput?: boolean;
+  timeoutMs?: number;
 };
 
 type ParsedEnvFile = Record<string, string>;
@@ -61,13 +63,22 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
 );
-const MAESTRO_ANDROID_TRANSPORT_ATTEMPTS = 2;
+const MAESTRO_ANDROID_TRANSPORT_ATTEMPTS = 3;
 const MAESTRO_ANDROID_TRANSPORT_RETRY_DELAY_MS = 2000;
 const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
   /Command failed \(tcp:\d+\): closed/i,
+  /Maestro command idle timeout/i,
+  /ShouldNotReachHere: API object must not be garbage collected/i,
 ];
+const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
+  process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 10 * 60 * 1000,
+);
+const MAESTRO_FLOW_TIMEOUT_MS = Number(
+  process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
+);
+const COMMAND_TERMINATE_GRACE_MS = 5000;
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -416,6 +427,39 @@ async function formatCommandFailure(
   return sections.join("\n\n");
 }
 
+function formatDuration(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  if (seconds === 0) {
+    return `${minutes}m`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function terminateChildProcess(
+  child: ReturnType<typeof spawn>,
+  signal: NodeJS.Signals,
+) {
+  if (!child.pid) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {}
+  }
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -426,17 +470,70 @@ async function runLogged(
   const logStream = fs.createWriteStream(options.logPath, { flags: "w" });
   const child = spawn(command, args, {
     cwd: options.cwd,
+    detached: true,
     env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let timeoutReason: string | null = null;
+  let killTimer: NodeJS.Timeout | null = null;
+  let idleTimer: NodeJS.Timeout | null = null;
+  let hardTimer: NodeJS.Timeout | null = null;
+  const timeoutMessage = (reason: string) =>
+    `${reason}; terminating ${command} ${args.join(" ")}`;
+  const terminateForTimeout = (reason: string) => {
+    if (timeoutReason) {
+      return;
+    }
+
+    timeoutReason = reason;
+    const message = `\n${timeoutMessage(reason)}\n`;
+    logStream.write(message);
+    if (options.streamOutput) {
+      process.stderr.write(message);
+    }
+
+    terminateChildProcess(child, "SIGTERM");
+    killTimer = setTimeout(() => {
+      terminateChildProcess(child, "SIGKILL");
+    }, COMMAND_TERMINATE_GRACE_MS);
+    killTimer.unref();
+  };
+  const resetIdleTimer = () => {
+    if (!options.idleTimeoutMs) {
+      return;
+    }
+
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+
+    idleTimer = setTimeout(() => {
+      terminateForTimeout(
+        `Maestro command idle timeout after ${formatDuration(options.idleTimeoutMs ?? 0)}`,
+      );
+    }, options.idleTimeoutMs);
+    idleTimer.unref();
+  };
+
+  if (options.timeoutMs) {
+    hardTimer = setTimeout(() => {
+      terminateForTimeout(
+        `Command timeout after ${formatDuration(options.timeoutMs ?? 0)}`,
+      );
+    }, options.timeoutMs);
+    hardTimer.unref();
+  }
+  resetIdleTimer();
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
+    resetIdleTimer();
     logStream.write(chunk);
     if (options.streamOutput) {
       process.stdout.write(chunk);
     }
   });
   child.stderr?.on("data", (chunk: Buffer | string) => {
+    resetIdleTimer();
     logStream.write(chunk);
     if (options.streamOutput) {
       process.stderr.write(chunk);
@@ -447,11 +544,29 @@ async function runLogged(
     child.once("error", reject);
     child.once("close", resolve);
   });
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+  }
+  if (hardTimer) {
+    clearTimeout(hardTimer);
+  }
+  if (killTimer) {
+    clearTimeout(killTimer);
+  }
 
   await new Promise<void>((resolve, reject) => {
     logStream.once("error", reject);
     logStream.end(() => resolve());
   });
+
+  if (timeoutReason && !options.allowFailure) {
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} ${timeoutReason}.`,
+        `Full log: ${options.logPath}`,
+      ].join("\n\n"),
+    );
+  }
 
   if (exitCode !== 0 && !options.allowFailure) {
     throw new Error(
@@ -570,8 +685,10 @@ async function runMaestroWithAndroidTransportRetry({
     try {
       await runLogged(maestroBin, maestroArgs, {
         cwd: REPO_DIR,
+        idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
         logPath: path.join(resultsDir, "maestro.log"),
         streamOutput: true,
+        timeoutMs: MAESTRO_FLOW_TIMEOUT_MS,
       });
       return;
     } catch (error) {
