@@ -54,6 +54,7 @@ type SessionState = {
   appId: string;
   appSourceFile: string;
   builtArtifactPath: string | null;
+  bootstrapResult: JobResult | null;
   builtInBundleId: string | null;
   configBackupPath: string | null;
   configSourceFile: string;
@@ -285,6 +286,7 @@ const session: SessionState = {
   appId,
   appSourceFile: APP_SOURCE_FILE,
   builtArtifactPath: null,
+  bootstrapResult: null,
   builtInBundleId: null,
   configBackupPath: null,
   configSourceFile: HOT_UPDATER_CONFIG_FILE,
@@ -2918,6 +2920,13 @@ async function prepareAppLaunch() {
 }
 
 async function bootstrap() {
+  if (session.bootstrapResult) {
+    logE2e("bootstrap result reused", {
+      platform: session.platform,
+    });
+    return session.bootstrapResult;
+  }
+
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
@@ -2957,10 +2966,11 @@ async function bootstrap() {
     await prepareAndroidRelease();
   }
 
-  return {
+  session.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
     initialMarker: session.initialMarker,
   };
+  return session.bootstrapResult;
 }
 
 async function captureBuiltInBundleId() {

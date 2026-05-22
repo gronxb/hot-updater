@@ -41,6 +41,12 @@ type DeveloperE2ESetup = {
   appBaseUrl: URL;
 };
 
+type ControlJobState = {
+  error?: string;
+  result?: Record<string, unknown>;
+  status?: string;
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = path.resolve(__dirname, "../../..");
 const E2E_DIR = path.join(REPO_DIR, "e2e");
@@ -352,6 +358,64 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}) {
     ...options,
     signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
   });
+}
+
+async function readJsonResponse<T>(response: Response, label: string) {
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} failed with HTTP ${response.status}: ${body}`);
+  }
+
+  try {
+    return JSON.parse(body) as T;
+  } catch (error) {
+    throw new Error(
+      `${label} returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function startControlJob(controlUrl: string, pathName: string) {
+  const response = await fetchWithTimeout(`${controlUrl}${pathName}`, {
+    method: "POST",
+  });
+  const body = await readJsonResponse<{ jobId?: string }>(response, pathName);
+  if (!body.jobId) {
+    throw new Error(`${pathName} did not return a jobId`);
+  }
+  return body.jobId;
+}
+
+async function waitForControlJob(controlUrl: string, jobId: string) {
+  for (;;) {
+    const response = await fetchWithTimeout(`${controlUrl}/e2e/jobs/${jobId}`);
+    const body = await readJsonResponse<ControlJobState>(
+      response,
+      `/e2e/jobs/${jobId}`,
+    );
+
+    if (body.status === "succeeded") {
+      return body.result ?? {};
+    }
+    if (body.status === "failed") {
+      throw new Error(body.error ?? `Control job ${jobId} failed`);
+    }
+
+    await sleep(1000);
+  }
+}
+
+async function runBootstrapBeforeMaestro(controlUrl: string, flow: string) {
+  const flowSource = await fsPromises.readFile(flow, "utf8");
+  if (!/\bACTION:\s*bootstrap\b/.test(flowSource)) {
+    return;
+  }
+
+  p.log.info("Prepare native app before Maestro driver lock");
+  const jobId = await startControlJob(controlUrl, "/e2e/jobs/bootstrap");
+  await waitForControlJob(controlUrl, jobId);
 }
 
 function stripAnsi(value: string) {
@@ -1408,6 +1472,7 @@ async function main() {
 
   try {
     await waitForHttp(serverBaseUrl);
+    await runBootstrapBeforeMaestro(serverBaseUrl, options.flow);
 
     await runMaestroWithTransportRetry({
       appId,
