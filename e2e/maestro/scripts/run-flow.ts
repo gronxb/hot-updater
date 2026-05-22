@@ -29,6 +29,7 @@ type RunCaptureOptions = {
 
 type RunLoggedOptions = RunCaptureOptions & {
   abortOnOutput?: (output: string) => string | null;
+  activityPaths?: string[];
   idleTimeoutMs?: number;
   logPath: string;
   streamOutput?: boolean;
@@ -124,6 +125,7 @@ const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
 const MAESTRO_FLOW_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
 );
+const MAESTRO_LOG_ACTIVITY_POLL_MS = 5000;
 const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
 const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
 const MAESTRO_LOCK_POLL_MS = 1000;
@@ -710,6 +712,10 @@ async function runLogged(
   });
   ACTIVE_LOGGED_CHILDREN.add(child);
   let timeoutReason: string | null = null;
+  let lastActivityAt = Date.now();
+  let activityCheckPending = false;
+  const activityPathSnapshots = new Map<string, string>();
+  let activityTimer: NodeJS.Timeout | null = null;
   let killTimer: NodeJS.Timeout | null = null;
   let idleTimer: NodeJS.Timeout | null = null;
   let hardTimer: NodeJS.Timeout | null = null;
@@ -733,6 +739,9 @@ async function runLogged(
     }, COMMAND_TERMINATE_GRACE_MS);
     killTimer.unref();
   };
+  const markActivity = () => {
+    lastActivityAt = Date.now();
+  };
   const resetIdleTimer = () => {
     if (!options.idleTimeoutMs) {
       return;
@@ -743,13 +752,43 @@ async function runLogged(
     }
 
     idleTimer = setTimeout(() => {
+      const idleForMs = Date.now() - lastActivityAt;
+      if (idleForMs < (options.idleTimeoutMs ?? 0)) {
+        resetIdleTimer();
+        return;
+      }
       terminateForTimeout(
         `Maestro command idle timeout after ${formatDuration(options.idleTimeoutMs ?? 0)}`,
       );
     }, options.idleTimeoutMs);
     idleTimer.unref();
   };
+  const checkActivityPaths = async () => {
+    if (!options.activityPaths || activityCheckPending) {
+      return;
+    }
+
+    activityCheckPending = true;
+    try {
+      for (const activityPath of options.activityPaths) {
+        const stats = await fsPromises.stat(activityPath).catch(() => null);
+        const nextSnapshot = stats ? `${stats.mtimeMs}:${stats.size}` : "";
+        const previousSnapshot = activityPathSnapshots.get(activityPath);
+        activityPathSnapshots.set(activityPath, nextSnapshot);
+        if (
+          previousSnapshot !== undefined &&
+          nextSnapshot !== previousSnapshot
+        ) {
+          markActivity();
+          resetIdleTimer();
+        }
+      }
+    } finally {
+      activityCheckPending = false;
+    }
+  };
   const handleOutput = (chunk: Buffer | string, output: NodeJS.WriteStream) => {
+    markActivity();
     resetIdleTimer();
     logStream.write(chunk);
     if (options.streamOutput) {
@@ -771,6 +810,13 @@ async function runLogged(
     hardTimer.unref();
   }
   resetIdleTimer();
+  if (options.activityPaths && options.activityPaths.length > 0) {
+    void checkActivityPaths();
+    activityTimer = setInterval(() => {
+      void checkActivityPaths();
+    }, MAESTRO_LOG_ACTIVITY_POLL_MS);
+    activityTimer.unref();
+  }
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
     handleOutput(chunk, process.stdout);
@@ -786,6 +832,9 @@ async function runLogged(
   ACTIVE_LOGGED_CHILDREN.delete(child);
   if (idleTimer) {
     clearTimeout(idleTimer);
+  }
+  if (activityTimer) {
+    clearInterval(activityTimer);
   }
   if (hardTimer) {
     clearTimeout(hardTimer);
@@ -969,6 +1018,10 @@ async function runMaestroWithTransportRetry({
           [MAESTRO_LOCK_HELD_ENV]: "1",
           MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
         },
+        activityPaths: [
+          path.join(debugOutputPath, "maestro.log"),
+          serverLogPath,
+        ],
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
         logPath: path.join(resultsDir, "maestro.log"),
         streamOutput: true,

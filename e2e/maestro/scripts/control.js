@@ -61,6 +61,20 @@ function expectOk(response, context) {
 }
 
 function pause(milliseconds) {
+  if (
+    typeof SharedArrayBuffer === "function" &&
+    typeof Atomics === "object" &&
+    typeof Atomics.wait === "function"
+  ) {
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(4)),
+      0,
+      0,
+      Math.max(0, milliseconds),
+    );
+    return;
+  }
+
   const endTime = Date.now() + milliseconds;
   while (Date.now() < endTime) {}
 }
