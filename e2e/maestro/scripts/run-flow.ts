@@ -128,10 +128,11 @@ const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
 const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
 const MAESTRO_LOCK_POLL_MS = 1000;
 const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
-const IOS_MAESTRO_DRIVER_RESET_COMMAND = [
+const MAESTRO_DRIVER_HOST_RESET_COMMAND = [
   "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
   "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
-  'pids="$(lsof -ti tcp:7001 2>/dev/null || true)"',
+  'pids="$(lsof -nP -tiTCP:7001 -sTCP:LISTEN 2>/dev/null || true)"',
+  'if [[ -z "$pids" ]]; then pids="$(lsof -nP -ti tcp:7001 2>/dev/null || true)"; fi',
   'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
 ].join("\n");
 const COMMAND_TERMINATE_GRACE_MS = 5000;
@@ -953,10 +954,12 @@ async function runMaestroWithTransportRetry({
     const releaseMaestroLock = await acquireMaestroDriverLock();
     try {
       if (platform === "android") {
+        p.log.info("Reset Android Maestro driver host state");
+        await resetAndroidMaestroDriverHostState(deviceId);
         await ensureAndroidMaestroDriver(deviceId);
       } else {
         p.log.info("Reset iOS Maestro driver host state");
-        await resetIosMaestroDriverHostState();
+        await resetMaestroDriverHostState();
       }
       await runLogged(maestroBin, maestroArgs, {
         abortOnOutput: (output) =>
@@ -991,6 +994,7 @@ async function runMaestroWithTransportRetry({
       await preserveMaestroAttemptArtifacts(resultsDir, attempt);
       await sleep(MAESTRO_TRANSPORT_RETRY_DELAY_MS);
     } finally {
+      await resetMaestroDriverState(platform, deviceId);
       await releaseMaestroLock();
     }
   }
@@ -1229,11 +1233,36 @@ function ensureIosSimulatorBooted(simulatorUdid: string) {
   runCapture("xcrun", ["simctl", "bootstatus", simulatorUdid, "-b"]);
 }
 
-async function resetIosMaestroDriverHostState() {
-  runCapture("/bin/zsh", ["-lc", IOS_MAESTRO_DRIVER_RESET_COMMAND], {
+async function resetMaestroDriverHostState() {
+  runCapture("/bin/zsh", ["-lc", MAESTRO_DRIVER_HOST_RESET_COMMAND], {
     allowFailure: true,
   });
   await sleep(1000);
+}
+
+async function resetAndroidMaestroDriverHostState(deviceId: string) {
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId,
+      "forward",
+      "--remove",
+      `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+    ],
+    { allowFailure: true },
+  );
+  stopAndroidMaestroDriver(deviceId);
+  await resetMaestroDriverHostState();
+}
+
+async function resetMaestroDriverState(platform: Platform, deviceId: string) {
+  if (platform === "android") {
+    await resetAndroidMaestroDriverHostState(deviceId);
+    return;
+  }
+
+  await resetMaestroDriverHostState();
 }
 
 function resolveAndroidSerial() {
