@@ -77,6 +77,8 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
 );
 const MAESTRO_TRANSPORT_ATTEMPTS = 3;
 const MAESTRO_TRANSPORT_RETRY_DELAY_MS = 2000;
+const MAESTRO_DRIVER_STARTUP_TIMEOUT_MS =
+  process.env.MAESTRO_DRIVER_STARTUP_TIMEOUT || "240000";
 const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
@@ -92,6 +94,7 @@ const MAESTRO_IOS_TRANSPORT_PATTERNS = [
   /Failed to connect to \/127\.0\.0\.1:7001/i,
   /Failed to set permissions/i,
   /java\.io\.EOFException/i,
+  /iOS driver not ready in time/i,
   /Launch app "\$\{APP_ID\}" FAILED/i,
   /Maestro iOS transport failure before E2E mutation/i,
   /Unable to set permissions for app/i,
@@ -780,6 +783,9 @@ async function runMaestroWithTransportRetry({
         abortOnOutput: (output) =>
           getPreMutationTransportAbortReason(platform, output, serverLogPath),
         cwd: REPO_DIR,
+        env: {
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
+        },
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
         logPath: path.join(resultsDir, "maestro.log"),
         streamOutput: true,
