@@ -73,7 +73,7 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /ShouldNotReachHere: API object must not be garbage collected/i,
 ];
 const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
-  process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 10 * 60 * 1000,
+  process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 30 * 60 * 1000,
 );
 const MAESTRO_FLOW_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
