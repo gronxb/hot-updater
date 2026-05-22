@@ -64,8 +64,8 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
 );
-const MAESTRO_ANDROID_TRANSPORT_ATTEMPTS = 3;
-const MAESTRO_ANDROID_TRANSPORT_RETRY_DELAY_MS = 2000;
+const MAESTRO_TRANSPORT_ATTEMPTS = 3;
+const MAESTRO_TRANSPORT_RETRY_DELAY_MS = 2000;
 const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
@@ -77,7 +77,20 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /ShouldNotReachHere: API object must not be garbage collected/i,
   /Unable to launch app/i,
 ];
-const MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN =
+const MAESTRO_IOS_TRANSPORT_PATTERNS = [
+  /Failed to connect to \/127\.0\.0\.1:7001/i,
+  /Failed to set permissions/i,
+  /java\.io\.EOFException/i,
+  /Launch app "\$\{APP_ID\}" FAILED/i,
+  /Maestro iOS transport failure before E2E mutation/i,
+  /Unable to set permissions for app/i,
+  /unexpected end of stream on http:\/\/127\.0\.0\.1:7001/i,
+];
+const MAESTRO_TRANSPORT_PATTERNS_BY_PLATFORM = {
+  android: MAESTRO_ANDROID_TRANSPORT_PATTERNS,
+  ios: MAESTRO_IOS_TRANSPORT_PATTERNS,
+} satisfies Record<Platform, RegExp[]>;
+const MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN =
   /<--\s+POST\s+\/e2e\/(?:assert-|capture-|jobs\/(?:deploy-bundle|patch-bundle|wait-for-metadata)|reinstall-built-in-app|wait-for-crash-recovery|write-summary)\b/i;
 const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 30 * 60 * 1000,
@@ -586,11 +599,19 @@ async function runLogged(
   }
 }
 
-async function isRetryableAndroidMaestroTransportFailure({
+function hasRetryableMaestroTransportSignal(platform: Platform, log: string) {
+  return MAESTRO_TRANSPORT_PATTERNS_BY_PLATFORM[platform].some((pattern) =>
+    pattern.test(log),
+  );
+}
+
+async function isRetryableMaestroTransportFailure({
   debugOutputPath,
+  platform,
   serverLogPath,
 }: {
   debugOutputPath: string;
+  platform: Platform;
   serverLogPath: string;
 }) {
   const debugLog = await readTextIfExists(
@@ -602,40 +623,31 @@ async function isRetryableAndroidMaestroTransportFailure({
   const serverLog = await readTextIfExists(serverLogPath);
   const combinedLog = `${debugLog}\n${commandLog}`;
 
-  if (
-    !MAESTRO_ANDROID_TRANSPORT_PATTERNS.some((pattern) =>
-      pattern.test(combinedLog),
-    )
-  ) {
+  if (!hasRetryableMaestroTransportSignal(platform, combinedLog)) {
     return false;
   }
 
-  return !MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN.test(
-    stripAnsi(serverLog),
-  );
+  return !MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN.test(stripAnsi(serverLog));
 }
 
-function getPreMutationAndroidTransportAbortReason(
+function getPreMutationTransportAbortReason(
+  platform: Platform,
   output: string,
   serverLogPath: string,
 ) {
   const cleanOutput = stripAnsi(output);
-  if (
-    !MAESTRO_ANDROID_TRANSPORT_PATTERNS.some((pattern) =>
-      pattern.test(cleanOutput),
-    )
-  ) {
+  if (!hasRetryableMaestroTransportSignal(platform, cleanOutput)) {
     return null;
   }
 
   const serverLog = fs.existsSync(serverLogPath)
     ? stripAnsi(fs.readFileSync(serverLogPath, "utf8"))
     : "";
-  if (MAESTRO_ANDROID_UNSAFE_RETRY_ENDPOINT_PATTERN.test(serverLog)) {
+  if (MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN.test(serverLog)) {
     return null;
   }
 
-  return "Maestro Android transport failure before E2E mutation";
+  return `Maestro ${platform} transport failure before E2E mutation`;
 }
 
 async function moveIfExists(sourcePath: string, targetPath: string) {
@@ -671,7 +683,7 @@ async function preserveMaestroAttemptArtifacts(
   ]);
 }
 
-async function runMaestroWithAndroidTransportRetry({
+async function runMaestroWithTransportRetry({
   appId,
   controlUrl,
   deviceId,
@@ -713,18 +725,11 @@ async function runMaestroWithAndroidTransportRetry({
     flow,
   ];
 
-  for (
-    let attempt = 1;
-    attempt <= MAESTRO_ANDROID_TRANSPORT_ATTEMPTS;
-    attempt += 1
-  ) {
+  for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
     try {
       await runLogged(maestroBin, maestroArgs, {
-        abortOnOutput:
-          platform === "android"
-            ? (output) =>
-                getPreMutationAndroidTransportAbortReason(output, serverLogPath)
-            : undefined,
+        abortOnOutput: (output) =>
+          getPreMutationTransportAbortReason(platform, output, serverLogPath),
         cwd: REPO_DIR,
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
         logPath: path.join(resultsDir, "maestro.log"),
@@ -734,10 +739,10 @@ async function runMaestroWithAndroidTransportRetry({
       return;
     } catch (error) {
       const canRetry =
-        platform === "android" &&
-        attempt < MAESTRO_ANDROID_TRANSPORT_ATTEMPTS &&
-        (await isRetryableAndroidMaestroTransportFailure({
+        attempt < MAESTRO_TRANSPORT_ATTEMPTS &&
+        (await isRetryableMaestroTransportFailure({
           debugOutputPath,
+          platform,
           serverLogPath,
         }));
 
@@ -746,10 +751,10 @@ async function runMaestroWithAndroidTransportRetry({
       }
 
       p.log.warning(
-        `Retry ${platform}/${scenarioName} after transient Maestro Android transport failure`,
+        `Retry ${platform}/${scenarioName} after transient Maestro ${platform} transport failure`,
       );
       await preserveMaestroAttemptArtifacts(resultsDir, attempt);
-      await sleep(MAESTRO_ANDROID_TRANSPORT_RETRY_DELAY_MS);
+      await sleep(MAESTRO_TRANSPORT_RETRY_DELAY_MS);
     }
   }
 }
@@ -1069,7 +1074,7 @@ async function main() {
   try {
     await waitForHttp(serverBaseUrl);
 
-    await runMaestroWithAndroidTransportRetry({
+    await runMaestroWithTransportRetry({
       appId,
       controlUrl: serverBaseUrl,
       deviceId,
