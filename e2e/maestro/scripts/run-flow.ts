@@ -28,6 +28,7 @@ type RunCaptureOptions = {
 };
 
 type RunLoggedOptions = RunCaptureOptions & {
+  abortOnOutput?: (output: string) => string | null;
   idleTimeoutMs?: number;
   logPath: string;
   streamOutput?: boolean;
@@ -69,6 +70,7 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
   /Command failed \(tcp:\d+\): closed/i,
+  /Maestro Android transport failure before E2E mutation/i,
   /Maestro command idle timeout/i,
   /ShouldNotReachHere: API object must not be garbage collected/i,
 ];
@@ -514,6 +516,18 @@ async function runLogged(
     }, options.idleTimeoutMs);
     idleTimer.unref();
   };
+  const handleOutput = (chunk: Buffer | string, output: NodeJS.WriteStream) => {
+    resetIdleTimer();
+    logStream.write(chunk);
+    if (options.streamOutput) {
+      output.write(chunk);
+    }
+
+    const abortReason = options.abortOnOutput?.(String(chunk));
+    if (abortReason) {
+      terminateForTimeout(abortReason);
+    }
+  };
 
   if (options.timeoutMs) {
     hardTimer = setTimeout(() => {
@@ -526,18 +540,10 @@ async function runLogged(
   resetIdleTimer();
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
-    resetIdleTimer();
-    logStream.write(chunk);
-    if (options.streamOutput) {
-      process.stdout.write(chunk);
-    }
+    handleOutput(chunk, process.stdout);
   });
   child.stderr?.on("data", (chunk: Buffer | string) => {
-    resetIdleTimer();
-    logStream.write(chunk);
-    if (options.streamOutput) {
-      process.stderr.write(chunk);
-    }
+    handleOutput(chunk, process.stderr);
   });
 
   const exitCode = await new Promise<number | null>((resolve, reject) => {
@@ -600,6 +606,29 @@ async function isRetryableAndroidMaestroTransportFailure({
   }
 
   return !/<--\s+POST\s+\/e2e\//.test(stripAnsi(serverLog));
+}
+
+function getPreMutationAndroidTransportAbortReason(
+  output: string,
+  serverLogPath: string,
+) {
+  const cleanOutput = stripAnsi(output);
+  if (
+    !MAESTRO_ANDROID_TRANSPORT_PATTERNS.some((pattern) =>
+      pattern.test(cleanOutput),
+    )
+  ) {
+    return null;
+  }
+
+  const serverLog = fs.existsSync(serverLogPath)
+    ? stripAnsi(fs.readFileSync(serverLogPath, "utf8"))
+    : "";
+  if (/<--\s+POST\s+\/e2e\//.test(serverLog)) {
+    return null;
+  }
+
+  return "Maestro Android transport failure before E2E mutation";
 }
 
 async function moveIfExists(sourcePath: string, targetPath: string) {
@@ -684,6 +713,11 @@ async function runMaestroWithAndroidTransportRetry({
   ) {
     try {
       await runLogged(maestroBin, maestroArgs, {
+        abortOnOutput:
+          platform === "android"
+            ? (output) =>
+                getPreMutationAndroidTransportAbortReason(output, serverLogPath)
+            : undefined,
         cwd: REPO_DIR,
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
         logPath: path.join(resultsDir, "maestro.log"),
