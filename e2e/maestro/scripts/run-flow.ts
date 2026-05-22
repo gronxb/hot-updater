@@ -112,6 +112,12 @@ const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
 const MAESTRO_FLOW_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
 );
+const IOS_MAESTRO_DRIVER_RESET_COMMAND = [
+  "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
+  "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
+  'pids="$(lsof -ti tcp:7001 2>/dev/null || true)"',
+  'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
+].join("\n");
 const COMMAND_TERMINATE_GRACE_MS = 5000;
 const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
 let terminationSignal: NodeJS.Signals | null = null;
@@ -778,6 +784,9 @@ async function runMaestroWithTransportRetry({
     try {
       if (platform === "android") {
         await ensureAndroidMaestroDriver(deviceId);
+      } else if (!process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE) {
+        p.log.info("Reset iOS Maestro driver host state");
+        await resetIosMaestroDriverHostState();
       }
       await runLogged(maestroBin, maestroArgs, {
         abortOnOutput: (output) =>
@@ -940,6 +949,13 @@ function ensureIosSimulatorBooted(simulatorUdid: string) {
   }
 
   runCapture("xcrun", ["simctl", "bootstatus", simulatorUdid, "-b"]);
+}
+
+async function resetIosMaestroDriverHostState() {
+  runCapture("/bin/zsh", ["-lc", IOS_MAESTRO_DRIVER_RESET_COMMAND], {
+    allowFailure: true,
+  });
+  await sleep(1000);
 }
 
 function resolveAndroidSerial() {
