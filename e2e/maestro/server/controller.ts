@@ -219,6 +219,14 @@ const ANDROID_E2E_ARCHITECTURES = new Set([
   "x86",
   "x86_64",
 ]);
+const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_ATTEMPTS || 3,
+);
+const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
+);
+const DELETE_VERIFY_STILL_EXISTS_PATTERN =
+  /Verification failed: .+ still exists\./i;
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -1117,6 +1125,14 @@ async function fetchLatestBundle(args: { channel?: string }) {
   return latestBundle.id;
 }
 
+async function isBundleVisible(bundleId: string) {
+  const bundles = await fetchBundlesPage({
+    limit: 100,
+    offset: 0,
+  });
+  return bundles.data.some((bundle) => bundle.id === bundleId);
+}
+
 async function fetchBundleById(bundleId: string) {
   const bundle = parseHotUpdaterCliJson<Bundle>(
     "bundle show",
@@ -1304,10 +1320,56 @@ async function resolveAutoPatchBundleDiff(
 }
 
 async function deleteBundle(bundleId: string) {
-  await runHotUpdaterCliLogged(
-    ["bundle", "delete", bundleId, "-y"],
-    `bundle-delete-${bundleId}.log`,
-  );
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= REMOTE_BUNDLE_DELETE_ATTEMPTS;
+    attempt += 1
+  ) {
+    const logName =
+      attempt === 1
+        ? `bundle-delete-${bundleId}.log`
+        : `bundle-delete-${bundleId}.attempt-${attempt}.log`;
+
+    try {
+      await runHotUpdaterCliLogged(
+        ["bundle", "delete", bundleId, "-y"],
+        logName,
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      const logContents = await readTextIfExists(
+        path.join(session.resultsDir, logName),
+      );
+      if (!DELETE_VERIFY_STILL_EXISTS_PATTERN.test(logContents)) {
+        throw error;
+      }
+
+      const stillVisible = await isBundleVisible(bundleId);
+      if (!stillVisible) {
+        logE2e("bundle delete verified after CLI retryable failure", {
+          attempt,
+          bundleId,
+          platform: session.platform,
+        });
+        return;
+      }
+
+      if (attempt < REMOTE_BUNDLE_DELETE_ATTEMPTS) {
+        logE2e("bundle delete verification still pending", {
+          attempt,
+          bundleId,
+          platform: session.platform,
+          retryDelayMs: REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS,
+        });
+        await sleep(REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function clearRemoteBundles() {
