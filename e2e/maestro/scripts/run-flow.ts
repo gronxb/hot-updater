@@ -112,6 +112,10 @@ const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
 const MAESTRO_FLOW_TIMEOUT_MS = Number(
   process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
 );
+const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
+const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
+const MAESTRO_LOCK_POLL_MS = 1000;
+const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
 const IOS_MAESTRO_DRIVER_RESET_COMMAND = [
   "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
   "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
@@ -132,6 +136,15 @@ function getRequiredArgValue(argv: string[], index: number, flag: string) {
     throw new Error(`Missing value for ${flag}`);
   }
   return value;
+}
+
+function isNodeErrorCode(error: unknown, code: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 function parseArgs(argv: string[]): RunFlowOptions {
@@ -781,10 +794,11 @@ async function runMaestroWithTransportRetry({
   ];
 
   for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
+    const releaseMaestroLock = await acquireMaestroDriverLock();
     try {
       if (platform === "android") {
         await ensureAndroidMaestroDriver(deviceId);
-      } else if (!process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE) {
+      } else {
         p.log.info("Reset iOS Maestro driver host state");
         await resetIosMaestroDriverHostState();
       }
@@ -793,6 +807,7 @@ async function runMaestroWithTransportRetry({
           getPreMutationTransportAbortReason(platform, output, serverLogPath),
         cwd: REPO_DIR,
         env: {
+          [MAESTRO_LOCK_HELD_ENV]: "1",
           MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
         },
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
@@ -819,8 +834,115 @@ async function runMaestroWithTransportRetry({
       );
       await preserveMaestroAttemptArtifacts(resultsDir, attempt);
       await sleep(MAESTRO_TRANSPORT_RETRY_DELAY_MS);
+    } finally {
+      await releaseMaestroLock();
     }
   }
+}
+
+async function acquireAtomicDirectoryLock(lockDir: string) {
+  for (;;) {
+    try {
+      await fsPromises.mkdir(lockDir, { recursive: false });
+      return async () => {
+        await fsPromises.rm(lockDir, { force: true, recursive: true });
+      };
+    } catch (error) {
+      if (!isNodeErrorCode(error, "EEXIST")) {
+        throw error;
+      }
+
+      const stats = await fsPromises.stat(lockDir).catch(() => null);
+      if (stats && Date.now() - stats.mtimeMs > 10_000) {
+        await fsPromises.rm(lockDir, { force: true, recursive: true });
+        continue;
+      }
+      await sleep(50);
+    }
+  }
+}
+
+async function withMaestroLockState<T>(callback: () => Promise<T>) {
+  if (!MAESTRO_LOCK_FILE) {
+    return callback();
+  }
+
+  const release = await acquireAtomicDirectoryLock(
+    `${MAESTRO_LOCK_FILE}.state-lock`,
+  );
+  try {
+    return await callback();
+  } finally {
+    await release();
+  }
+}
+
+async function readCounter(filePath: string) {
+  const value = await fsPromises.readFile(filePath, "utf8").catch((error) => {
+    if (isNodeErrorCode(error, "ENOENT")) {
+      return "0";
+    }
+    throw error;
+  });
+  const parsed = Number.parseInt(value.trim() || "0", 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function writeCounter(filePath: string, value: number) {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  await fsPromises.writeFile(tempPath, `${value}\n`);
+  await fsPromises.rename(tempPath, filePath);
+}
+
+async function acquireMaestroDriverLock() {
+  if (!MAESTRO_LOCK_FILE) {
+    return async () => {};
+  }
+
+  await fsPromises.mkdir(path.dirname(MAESTRO_LOCK_FILE), { recursive: true });
+  const ticketFile = `${MAESTRO_LOCK_FILE}.ticket`;
+  const turnFile = `${MAESTRO_LOCK_FILE}.turn`;
+  const ticket = await withMaestroLockState(async () => {
+    const nextTicket = await readCounter(ticketFile);
+    await writeCounter(ticketFile, nextTicket + 1);
+    if (!fs.existsSync(turnFile)) {
+      await writeCounter(turnFile, 0);
+    }
+    return nextTicket;
+  });
+
+  const waitStartedAt = Date.now();
+  let lastWaitLogAt = 0;
+  for (;;) {
+    const turn = await withMaestroLockState(() => readCounter(turnFile));
+    if (turn === ticket) {
+      break;
+    }
+
+    const now = Date.now();
+    if (now - lastWaitLogAt >= MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS) {
+      const waitedSeconds = Math.floor((now - waitStartedAt) / 1000);
+      console.error(
+        `hot-updater-e2e: waiting for maestro driver lock (${waitedSeconds}s)`,
+      );
+      lastWaitLogAt = now;
+    }
+    await sleep(MAESTRO_LOCK_POLL_MS);
+  }
+
+  let released = false;
+  return async () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    await withMaestroLockState(async () => {
+      const turn = await readCounter(turnFile);
+      if (turn <= ticket) {
+        await writeCounter(turnFile, ticket + 1);
+      }
+    });
+  };
 }
 
 async function resolveServerPort(
