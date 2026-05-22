@@ -46,7 +46,7 @@ export default defineConfig({
     },
   },
 
-  build: bare({ enableHermes: true }),
+  build: bare({ enableHermes: true, resetCache: false }),
   storage: standaloneStorageBaseUrl
     ? standaloneStorage({
         baseUrl: standaloneStorageBaseUrl.replace(/\/+$/, ""),
