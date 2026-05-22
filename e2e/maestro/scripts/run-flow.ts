@@ -65,6 +65,12 @@ const ANDROID_MAESTRO_DRIVER_PACKAGES = [
   "dev.mobile.maestro.test",
 ];
 const ANDROID_MAESTRO_DRIVER_PORT = 7001;
+const ANDROID_MAESTRO_DRIVER_RUNNER =
+  "dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner";
+const MAESTRO_CLIENT_JAR_PATH = path.join(
+  os.homedir(),
+  ".maestro/lib/maestro-client.jar",
+);
 const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
@@ -768,7 +774,7 @@ async function runMaestroWithTransportRetry({
   for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
     try {
       if (platform === "android") {
-        resetAndroidMaestroDriver(deviceId);
+        await ensureAndroidMaestroDriver(deviceId);
       }
       await runLogged(maestroBin, maestroArgs, {
         abortOnOutput: (output) =>
@@ -949,7 +955,102 @@ function resolveAndroidSerial() {
   return match[0];
 }
 
-function resetAndroidMaestroDriver(deviceId: string) {
+function isAndroidPackageInstalled(deviceId: string, packageName: string) {
+  return runCapture(
+    "adb",
+    ["-s", deviceId, "shell", "pm", "list", "packages", packageName],
+    { allowFailure: true },
+  ).includes(`package:${packageName}`);
+}
+
+function ensureAndroidMaestroDriverPackages(deviceId: string) {
+  if (
+    ANDROID_MAESTRO_DRIVER_PACKAGES.every((packageName) =>
+      isAndroidPackageInstalled(deviceId, packageName),
+    )
+  ) {
+    return;
+  }
+
+  if (!fs.existsSync(MAESTRO_CLIENT_JAR_PATH)) {
+    throw new Error(`Maestro client jar not found: ${MAESTRO_CLIENT_JAR_PATH}`);
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-driver-"));
+  try {
+    runCapture("jar", ["xf", MAESTRO_CLIENT_JAR_PATH, "maestro-app.apk"], {
+      cwd: tempDir,
+    });
+    runCapture("jar", ["xf", MAESTRO_CLIENT_JAR_PATH, "maestro-server.apk"], {
+      cwd: tempDir,
+    });
+    runCapture("adb", [
+      "-s",
+      deviceId,
+      "install",
+      "-r",
+      path.join(tempDir, "maestro-app.apk"),
+    ]);
+    runCapture("adb", [
+      "-s",
+      deviceId,
+      "install",
+      "-r",
+      path.join(tempDir, "maestro-server.apk"),
+    ]);
+  } finally {
+    fs.rmSync(tempDir, { force: true, recursive: true });
+  }
+}
+
+async function waitForTcpPort(port: number, attempts = 30) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const connected = await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection(
+        { host: DEFAULT_SERVER_HOST, port },
+        () => {
+          socket.end();
+          resolve(true);
+        },
+      );
+      socket.once("error", () => resolve(false));
+      socket.setTimeout(1000, () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (connected) {
+      return;
+    }
+    await sleep(1000);
+  }
+
+  throw new Error(
+    `Timed out waiting for Android Maestro driver on tcp:${port}`,
+  );
+}
+
+function startAndroidMaestroInstrumentation(deviceId: string) {
+  const instrument = spawn(
+    "adb",
+    [
+      "-s",
+      deviceId,
+      "shell",
+      "am",
+      "instrument",
+      "-w",
+      ANDROID_MAESTRO_DRIVER_RUNNER,
+    ],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  );
+  instrument.unref();
+}
+
+function stopAndroidMaestroDriver(deviceId: string) {
   for (const packageName of ANDROID_MAESTRO_DRIVER_PACKAGES) {
     runCapture(
       "adb",
@@ -959,17 +1060,39 @@ function resetAndroidMaestroDriver(deviceId: string) {
       },
     );
   }
-  runCapture(
+}
+
+async function ensureAndroidMaestroDriver(deviceId: string) {
+  ensureAndroidMaestroDriverPackages(deviceId);
+  runCapture("adb", [
+    "-s",
+    deviceId,
+    "forward",
+    `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+    `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+  ]);
+
+  const driverPid = runCapture(
     "adb",
-    [
-      "-s",
-      deviceId,
-      "forward",
-      "--remove",
-      `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
-    ],
+    ["-s", deviceId, "shell", "pidof", "dev.mobile.maestro"],
     { allowFailure: true },
   );
+  if (!driverPid) {
+    startAndroidMaestroInstrumentation(deviceId);
+  }
+
+  try {
+    await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT, 10);
+    return;
+  } catch (error) {
+    if (!driverPid) {
+      throw error;
+    }
+  }
+
+  stopAndroidMaestroDriver(deviceId);
+  startAndroidMaestroInstrumentation(deviceId);
+  await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT);
 }
 
 function getScenarioName(flowPath: string) {
