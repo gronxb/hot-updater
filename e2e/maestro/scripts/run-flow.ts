@@ -63,6 +63,7 @@ const DEFAULT_SERVER_PORT = Number(
 );
 const DEFAULT_SERVER_HOST = "127.0.0.1";
 const HTTP_TIMEOUT_MS = 5000;
+const CONTROL_JOB_HTTP_TIMEOUT_MS = 120 * 1000;
 const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
@@ -353,10 +354,14 @@ function runCapture(
   return result.stdout.trim();
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}) {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = HTTP_TIMEOUT_MS,
+) {
   return fetch(url, {
     ...options,
-    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
@@ -378,9 +383,13 @@ async function readJsonResponse<T>(response: Response, label: string) {
 }
 
 async function startControlJob(controlUrl: string, pathName: string) {
-  const response = await fetchWithTimeout(`${controlUrl}${pathName}`, {
-    method: "POST",
-  });
+  const response = await fetchWithTimeout(
+    `${controlUrl}${pathName}`,
+    {
+      method: "POST",
+    },
+    CONTROL_JOB_HTTP_TIMEOUT_MS,
+  );
   const body = await readJsonResponse<{ jobId?: string }>(response, pathName);
   if (!body.jobId) {
     throw new Error(`${pathName} did not return a jobId`);
@@ -390,7 +399,11 @@ async function startControlJob(controlUrl: string, pathName: string) {
 
 async function waitForControlJob(controlUrl: string, jobId: string) {
   for (;;) {
-    const response = await fetchWithTimeout(`${controlUrl}/e2e/jobs/${jobId}`);
+    const response = await fetchWithTimeout(
+      `${controlUrl}/e2e/jobs/${jobId}`,
+      {},
+      CONTROL_JOB_HTTP_TIMEOUT_MS,
+    );
     const body = await readJsonResponse<ControlJobState>(
       response,
       `/e2e/jobs/${jobId}`,
