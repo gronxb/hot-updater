@@ -11,12 +11,12 @@ appId: ${APP_ID}
 - tapOn:
     id: ${FIELD_ID}
     retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 2000
+    waitToSettleTimeoutMs: 500
 - eraseText
 - inputText: ${FIELD_VALUE}
 - pressKey: Enter
 - waitForAnimationToEnd:
-    timeout: 1000
+    timeout: 500
 - retry:
     maxRetries: 3
     commands:

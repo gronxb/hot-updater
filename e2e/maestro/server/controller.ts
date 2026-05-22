@@ -227,6 +227,12 @@ const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
 );
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
   /Verification failed: .+ still exists\./i;
+const E2E_POLL_INTERVAL_MS = Number(
+  process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
+);
+const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
+);
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -923,12 +929,12 @@ async function applyDeployConfig({
   });
 }
 
-async function waitForFile(filePath: string, attempts = 90) {
+async function waitForFile(filePath: string, attempts = 360) {
   for (let index = 0; index < attempts; index += 1) {
     if (fs.existsSync(filePath)) {
       return;
     }
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw new Error(`Timed out waiting for ${filePath}`);
@@ -2491,7 +2497,7 @@ async function waitForUpdateCheckVisibility(args: {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
-  for (let index = 0; index < 90; index += 1) {
+  for (let index = 0; index < 360; index += 1) {
     try {
       const response = await fetch(url, {
         headers: {
@@ -2524,7 +2530,7 @@ async function waitForUpdateCheckVisibility(args: {
       lastError = error instanceof Error ? error.message : String(error);
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   logE2e("update check visibility timeout", {
@@ -2739,7 +2745,7 @@ function getAndroidHomePackage() {
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = 90,
+  attempts = 360,
 ) {
   for (let index = 0; index < attempts; index += 1) {
     const diagnostics = readIosWaitForMetadataDiagnostics();
@@ -2753,7 +2759,7 @@ async function waitForIosMetadataState(
         return;
       }
     }
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw createWaitForMetadataTimeoutError({
@@ -2767,7 +2773,7 @@ async function waitForIosMetadataState(
 async function waitForAndroidMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = 90,
+  attempts = 360,
 ) {
   const relaunchLimit = 2;
   let totalAttempts = 0;
@@ -2790,7 +2796,7 @@ async function waitForAndroidMetadataState(
           return;
         }
       }
-      await sleep(1000);
+      await sleep(E2E_POLL_INTERVAL_MS);
     }
 
     const diagnostics = readAndroidWaitForMetadataDiagnostics();
@@ -2811,7 +2817,7 @@ async function waitForAndroidMetadataState(
     });
     await prepareAppLaunch();
     launchAndroidApp();
-    await sleep(3000);
+    await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
   }
 
   throw createWaitForMetadataTimeoutError({
@@ -2825,7 +2831,7 @@ async function waitForAndroidMetadataState(
 async function waitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  attempts = 90,
+  attempts = 360,
 ) {
   let androidRelaunchAttempts = 0;
 
@@ -2855,11 +2861,11 @@ async function waitForCrashRecovery(
     ) {
       launchAndroidApp();
       androidRelaunchAttempts += 1;
-      await sleep(2000);
+      await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
       continue;
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const diagnostics =
@@ -2941,7 +2947,7 @@ async function ensureAppForeground() {
           ],
           { allowFailure: true },
         );
-        await sleep(500);
+        await sleep(E2E_POLL_INTERVAL_MS);
         launchAndroidApp();
       },
     },
@@ -2988,7 +2994,7 @@ async function prepareAppLaunch() {
     ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
     { allowFailure: true },
   );
-  await sleep(500);
+  await sleep(E2E_POLL_INTERVAL_MS);
 
   return {};
 }
@@ -3495,7 +3501,7 @@ async function assertBundleAssetsStored(args: {
   assetPaths: string[];
   bundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBundleAssetsStoredEvidence(args);
     if (evidence.ok) {
       logE2e("bundle assets stored", {
@@ -3507,7 +3513,7 @@ async function assertBundleAssetsStored(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw createEndpointError(
@@ -3521,7 +3527,7 @@ async function assertMultipleAssetsReplaced(args: {
   bundleId: string;
   previousBundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readMultipleAssetsReplacementEvidence(args);
     if (evidence.ok) {
       logE2e("multiple assets replaced", {
@@ -3534,7 +3540,7 @@ async function assertMultipleAssetsReplaced(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw createEndpointError(
@@ -3553,7 +3559,7 @@ async function assertBsdiffPatchApplied(args: {
     `baseBundleId=${args.baseBundleId}`,
   ];
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
     if (evidence.ok && "record" in evidence) {
       const logs = readBsdiffPatchLogs();
@@ -3569,7 +3575,7 @@ async function assertBsdiffPatchApplied(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const logs = readBsdiffPatchLogs();
@@ -3591,7 +3597,7 @@ async function assertManifestDiffApplied(args: {
   bundleId: string;
   previousBundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = await readManifestDiffState(args);
     if (state.ok) {
       logE2e("manifest diff applied without bsdiff patch", {
@@ -3603,7 +3609,7 @@ async function assertManifestDiffApplied(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const state = await readManifestDiffState(args);
@@ -3641,7 +3647,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     "Using archive",
   ];
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = readFirstOtaArchiveState(args.bundleId);
     if (
       state.metadataState.stagingBundleId === args.bundleId &&
@@ -3669,7 +3675,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const logs = readFirstOtaArchiveInstallLogs();
@@ -3879,7 +3885,7 @@ async function assertMetadataActive(bundleId: string) {
 }
 
 async function assertMetadataResetState() {
-  const attempts = 30;
+  const attempts = 120;
 
   for (let index = 0; index < attempts; index += 1) {
     const diagnostics =
@@ -3894,7 +3900,7 @@ async function assertMetadataResetState() {
       } catch {}
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const diagnostics =

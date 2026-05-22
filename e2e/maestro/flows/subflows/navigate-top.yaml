@@ -7,9 +7,9 @@ appId: ${APP_ID}
 - tapOn:
     id: e2e-nav-top
     retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 2000
+    waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
-    timeout: 2000
+    timeout: 500
 - extendedWaitUntil:
     visible:
       id: section-runtime-snapshot

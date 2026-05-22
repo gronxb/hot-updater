@@ -4,7 +4,9 @@
 // and app reinstall. Keep that window separate from normal OTA job polling.
 const DEFAULT_JOB_TIMEOUT_SECONDS = 720;
 const BOOTSTRAP_JOB_TIMEOUT_SECONDS = 3600;
+const JOB_POLL_INTERVAL_MS = 250;
 let atomicsPauseSupported = true;
+let javaPauseSupported = true;
 
 function request(method, pathname, body) {
   const url = `${CONTROL_URL}${pathname}`;
@@ -62,6 +64,15 @@ function expectOk(response, context) {
 }
 
 function pause(milliseconds) {
+  if (javaPauseSupported && typeof Java === "object") {
+    try {
+      Java.type("java.lang.Thread").sleep(Math.max(0, milliseconds));
+      return;
+    } catch {
+      javaPauseSupported = false;
+    }
+  }
+
   if (
     atomicsPauseSupported &&
     typeof SharedArrayBuffer === "function" &&
@@ -98,7 +109,8 @@ function startJob(pathname, body) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < timeoutSeconds; attempt += 1) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() < deadline) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -110,7 +122,7 @@ function startJob(pathname, body) {
       throw new Error(job.error || "unknown job failure");
     }
 
-    pause(1000);
+    pause(JOB_POLL_INTERVAL_MS);
   }
 
   throw new Error(

@@ -11,4 +11,4 @@ appId: ${APP_ID}
 - tapOn:
     id: ${BUTTON_ID}
     retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 2000
+    waitToSettleTimeoutMs: 500

@@ -7,7 +7,7 @@ appId: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - launchApp
 - waitForAnimationToEnd:
-    timeout: 3000
+    timeout: 1000
 - retry:
     maxRetries: 3
     commands:
@@ -20,7 +20,7 @@ appId: ${APP_ID}
           id: android:id/aerr_wait
           optional: true
       - waitForAnimationToEnd:
-          timeout: 2000
+          timeout: 500
       - extendedWaitUntil:
           visible:
             id: e2e-nav-top
