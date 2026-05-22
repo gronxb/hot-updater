@@ -137,6 +137,22 @@ const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
+const NATIVE_ARTIFACT_CACHE_VERSION = 1;
+const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/App.tsx",
+  "examples/v0.85.0/index.js",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/babel.config.js",
+  "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/android",
+  "examples/v0.85.0/ios",
+  "packages/core",
+  "packages/react-native",
+];
+const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
+const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -227,6 +243,10 @@ function formatLogValue(value: unknown) {
 function logE2e(event: string, details?: unknown) {
   const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
+}
+
+function hashText(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
@@ -363,6 +383,199 @@ async function runLogged(
   }
 
   return Buffer.concat(output).toString("utf8");
+}
+
+function nativeArtifactCacheRoot() {
+  const cacheDir = process.env.HOT_UPDATER_E2E_NATIVE_CACHE_DIR;
+  if (!cacheDir) {
+    return null;
+  }
+
+  return path.resolve(REPO_DIR, cacheDir);
+}
+
+function readOptionalFileHash(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    return "missing";
+  }
+
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function readGitTrackedNativeInputFiles() {
+  const output = runCapture(
+    "git",
+    ["ls-files", "-z", "--", ...NATIVE_ARTIFACT_CACHE_INPUT_PATHS],
+    { cwd: REPO_DIR, maxBuffer: 32 * 1024 * 1024 },
+  );
+
+  return output.split("\0").filter(Boolean).sort();
+}
+
+function hashNativeArtifactInputs() {
+  const hash = createHash("sha256");
+  for (const relativePath of readGitTrackedNativeInputFiles()) {
+    const absolutePath = path.join(REPO_DIR, relativePath);
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      continue;
+    }
+
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(fs.readFileSync(absolutePath));
+    hash.update("\0");
+  }
+
+  return hash.digest("hex");
+}
+
+function signingKeyFingerprint() {
+  const privateKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+  const publicKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PUBLIC_KEY_RELATIVE_PATH,
+  );
+
+  return hashText(
+    JSON.stringify({
+      privateKey: readOptionalFileHash(privateKeyPath),
+      publicKey: readOptionalFileHash(publicKeyPath),
+    }),
+  );
+}
+
+function readToolFingerprint() {
+  if (session.platform !== "ios") {
+    return null;
+  }
+
+  return runCapture("xcodebuild", ["-version"], {
+    allowFailure: true,
+  });
+}
+
+function nativeArtifactCacheKey(architecture?: string | null) {
+  return hashText(
+    JSON.stringify({
+      appBaseUrl: session.appBaseUrl,
+      appId: session.appId,
+      architecture: architecture ?? null,
+      cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
+      initialMarker: session.initialMarker,
+      inputHash: hashNativeArtifactInputs(),
+      platform: session.platform,
+      profile: process.env.HOT_UPDATER_E2E_PROFILE ?? null,
+      runtime: {
+        arch: process.arch,
+        platform: process.platform,
+      },
+      signingKey: signingKeyFingerprint(),
+      tool: readToolFingerprint(),
+    }),
+  );
+}
+
+function nativeArtifactCachePaths(key: string) {
+  const root = nativeArtifactCacheRoot();
+  if (!root) {
+    return null;
+  }
+
+  const entryDir = path.join(root, session.platform, key);
+  return {
+    artifactPath: path.join(
+      entryDir,
+      session.platform === "ios" ? "HotUpdaterExample.app" : "app-release.apk",
+    ),
+    entryDir,
+    manifestPath: path.join(entryDir, "manifest.json"),
+    root,
+  };
+}
+
+async function copyNativeArtifact(sourcePath: string, targetPath: string) {
+  await fsPromises.rm(targetPath, { recursive: true, force: true });
+  await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
+  await fsPromises.cp(sourcePath, targetPath, {
+    errorOnExist: false,
+    force: true,
+    recursive: true,
+  });
+}
+
+async function restoreNativeArtifactFromCache(args: {
+  architecture?: string | null;
+  targetPath: string;
+}) {
+  const key = nativeArtifactCacheKey(args.architecture);
+  const paths = nativeArtifactCachePaths(key);
+  if (!paths) {
+    return false;
+  }
+
+  if (
+    !fs.existsSync(paths.manifestPath) ||
+    !fs.existsSync(paths.artifactPath)
+  ) {
+    logE2e("native artifact cache miss", {
+      key: key.slice(0, 16),
+      platform: session.platform,
+      root: paths.root,
+    });
+    return false;
+  }
+
+  await copyNativeArtifact(paths.artifactPath, args.targetPath);
+  logE2e("native artifact cache hit", {
+    key: key.slice(0, 16),
+    platform: session.platform,
+    source: paths.artifactPath,
+  });
+  return true;
+}
+
+async function saveNativeArtifactToCache(args: {
+  architecture?: string | null;
+  sourcePath: string;
+}) {
+  if (!fs.existsSync(args.sourcePath)) {
+    return;
+  }
+
+  const key = nativeArtifactCacheKey(args.architecture);
+  const paths = nativeArtifactCachePaths(key);
+  if (!paths) {
+    return;
+  }
+
+  const tempArtifactPath = `${paths.artifactPath}.tmp-${process.pid}-${Date.now()}`;
+  await fsPromises.mkdir(paths.entryDir, { recursive: true });
+  await copyNativeArtifact(args.sourcePath, tempArtifactPath);
+  await fsPromises.rm(paths.artifactPath, { recursive: true, force: true });
+  await fsPromises.rename(tempArtifactPath, paths.artifactPath);
+  await fsPromises.writeFile(
+    paths.manifestPath,
+    `${JSON.stringify(
+      {
+        architecture: args.architecture ?? null,
+        createdAt: new Date().toISOString(),
+        key,
+        platform: session.platform,
+        sourcePath: args.sourcePath,
+        version: NATIVE_ARTIFACT_CACHE_VERSION,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  logE2e("native artifact cache saved", {
+    key: key.slice(0, 16),
+    platform: session.platform,
+    target: paths.artifactPath,
+  });
 }
 
 async function backupFile(filePath: string) {
@@ -1262,6 +1475,16 @@ async function prepareIosRelease() {
     recursive: true,
   });
 
+  if (
+    await restoreNativeArtifactFromCache({
+      targetPath: builtAppPath,
+    })
+  ) {
+    session.builtArtifactPath = builtAppPath;
+    await installIosArtifact(builtAppPath);
+    return;
+  }
+
   await runLogged("bundle", ["install"], {
     cwd: path.join(session.exampleDir, "ios"),
     logPath: path.join(session.resultsDir, "bundle-install.log"),
@@ -1338,6 +1561,7 @@ async function prepareIosRelease() {
   }
 
   session.builtArtifactPath = builtAppPath;
+  await saveNativeArtifactToCache({ sourcePath: builtAppPath });
   await installIosArtifact(builtAppPath);
 }
 
@@ -1346,9 +1570,20 @@ async function prepareAndroidRelease() {
     session.exampleDir,
     DEFAULT_ANDROID_APK_RELATIVE_PATH,
   );
+  const architecture = resolveAndroidE2eArchitecture();
 
   if (!session.reuseApp) {
-    await buildDebuggableAndroidRelease("gradle-release.log");
+    const restored = await restoreNativeArtifactFromCache({
+      architecture,
+      targetPath: session.androidApkPath,
+    });
+    if (!restored) {
+      await buildDebuggableAndroidRelease("gradle-release.log", architecture);
+      await saveNativeArtifactToCache({
+        architecture,
+        sourcePath: session.androidApkPath,
+      });
+    }
   } else if (!fs.existsSync(session.androidApkPath)) {
     throw new Error(
       `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
@@ -1374,7 +1609,14 @@ async function prepareAndroidRelease() {
     }
 
     logE2e("android reused apk is not debuggable; rebuilding release apk");
-    await buildDebuggableAndroidRelease("gradle-release-reuse.log");
+    await buildDebuggableAndroidRelease(
+      "gradle-release-reuse.log",
+      architecture,
+    );
+    await saveNativeArtifactToCache({
+      architecture,
+      sourcePath: defaultAndroidApkPath,
+    });
     session.builtArtifactPath = defaultAndroidApkPath;
     runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
       allowFailure: true,
@@ -1389,8 +1631,10 @@ async function prepareAndroidRelease() {
   }
 }
 
-async function buildDebuggableAndroidRelease(logFileName: string) {
-  const architecture = resolveAndroidE2eArchitecture();
+async function buildDebuggableAndroidRelease(
+  logFileName: string,
+  architecture: string | null = resolveAndroidE2eArchitecture(),
+) {
   const args = [
     ":app:assembleRelease",
     "--build-cache",
