@@ -64,7 +64,7 @@ onFlowComplete:
       OUTPUT_KEY: phase1A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -82,7 +82,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase1A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -229,7 +229,7 @@ onFlowComplete:
       OUTPUT_KEY: phase2A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -247,7 +247,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase2A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -642,7 +642,7 @@ onFlowComplete:
       OUTPUT_KEY: phase3A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -660,7 +660,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase3A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}

@@ -139,6 +139,21 @@ const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
+const BARE_BUILD_CACHE_VERSION = 1;
+const BARE_BUILD_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/App.tsx",
+  "examples/v0.85.0/index.js",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/babel.config.js",
+  "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/src/test",
+  "plugins/bare",
+  "packages/core",
+  "packages/hot-updater/src/utils/bundleManifest.ts",
+  "packages/react-native",
+];
 const NATIVE_ARTIFACT_CACHE_VERSION = 2;
 const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "package.json",
@@ -431,6 +446,15 @@ function nativeArtifactCacheRoot() {
   return path.resolve(REPO_DIR, cacheDir);
 }
 
+function bareBuildCacheRoot() {
+  const cacheDir = process.env.HOT_UPDATER_E2E_BARE_BUILD_CACHE_DIR;
+  if (!cacheDir) {
+    return null;
+  }
+
+  return path.resolve(REPO_DIR, cacheDir);
+}
+
 function readOptionalFileHash(filePath: string) {
   if (!fs.existsSync(filePath)) {
     return "missing";
@@ -439,19 +463,19 @@ function readOptionalFileHash(filePath: string) {
   return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-function readGitTrackedNativeInputFiles() {
+function readGitTrackedInputFiles(inputPaths: string[]) {
   const output = runCapture(
     "git",
-    ["ls-files", "-z", "--", ...NATIVE_ARTIFACT_CACHE_INPUT_PATHS],
+    ["ls-files", "-z", "--", ...inputPaths],
     { cwd: REPO_DIR, maxBuffer: 32 * 1024 * 1024 },
   );
 
   return output.split("\0").filter(Boolean).sort();
 }
 
-function hashNativeArtifactInputs() {
+function hashGitTrackedInputFiles(inputPaths: string[]) {
   const hash = createHash("sha256");
-  for (const relativePath of readGitTrackedNativeInputFiles()) {
+  for (const relativePath of readGitTrackedInputFiles(inputPaths)) {
     const absolutePath = path.join(REPO_DIR, relativePath);
     if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
       continue;
@@ -464,6 +488,23 @@ function hashNativeArtifactInputs() {
   }
 
   return hash.digest("hex");
+}
+
+function hashNativeArtifactInputs() {
+  return hashGitTrackedInputFiles(NATIVE_ARTIFACT_CACHE_INPUT_PATHS);
+}
+
+function hashBareBuildInputs() {
+  return hashGitTrackedInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
+}
+
+function bareBuildConfigFingerprint() {
+  const source = fs.existsSync(HOT_UPDATER_CONFIG_FILE)
+    ? fs.readFileSync(HOT_UPDATER_CONFIG_FILE, "utf8")
+    : "";
+  const match = source.match(BARE_BUILD_INLINE_PATTERN);
+
+  return hashText(match?.[0] ?? "missing");
 }
 
 function readNativeEnvImports() {
@@ -3410,6 +3451,37 @@ async function captureBuiltInBundleId() {
   return { builtInBundleId };
 }
 
+function bareBuildCacheEnv({
+  bundleProfile,
+  request,
+}: {
+  bundleProfile: BundleProfile;
+  request: DeployBundleRequest;
+}) {
+  const cacheRoot = bareBuildCacheRoot();
+  if (!cacheRoot) {
+    return undefined;
+  }
+
+  const cacheKey = hashText(
+    JSON.stringify({
+      bundleProfile,
+      cacheVersion: BARE_BUILD_CACHE_VERSION,
+      configHash: bareBuildConfigFingerprint(),
+      inputHash: hashBareBuildInputs(),
+      marker: request.marker,
+      mode: request.mode,
+      platform: session.platform,
+      safeBundleIds: request.safeBundleIds,
+    }),
+  );
+
+  return {
+    HOT_UPDATER_BARE_BUILD_CACHE_DIR: cacheRoot,
+    HOT_UPDATER_BARE_BUILD_CACHE_KEY: cacheKey,
+  };
+}
+
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
   const patchEnabled =
@@ -3473,6 +3545,7 @@ async function deployBundle(request: DeployBundleRequest) {
   );
   logE2e("deploy start", {
     bundleProfile,
+    bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
     command: `node ${args.join(" ")}`,
     logPath: path.relative(REPO_DIR, deployLogPath),
@@ -3483,6 +3556,7 @@ async function deployBundle(request: DeployBundleRequest) {
   });
   await runLogged("node", args, {
     cwd: session.exampleDir,
+    env: bareBuildCacheEnv({ bundleProfile, request }),
     logPath: deployLogPath,
   });
 
