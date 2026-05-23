@@ -3065,6 +3065,58 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+function getUrlPort(url: URL) {
+  if (url.port) {
+    return Number.parseInt(url.port, 10);
+  }
+
+  return url.protocol === "https:" ? 443 : 80;
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function getAndroidReversePorts() {
+  const appBaseUrl = new URL(session.appBaseUrl);
+  if (!isLoopbackHost(appBaseUrl.hostname)) {
+    return null;
+  }
+
+  const devicePort = getUrlPort(appBaseUrl);
+  const hostPort = Number.parseInt(
+    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(devicePort),
+    10,
+  );
+  if (!Number.isInteger(hostPort) || hostPort <= 0) {
+    throw new Error(
+      "HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT must be a positive integer.",
+    );
+  }
+
+  return { devicePort, hostPort };
+}
+
+function ensureAndroidReverse() {
+  if (session.platform !== "android") {
+    return;
+  }
+
+  const reversePorts = getAndroidReversePorts();
+  if (reversePorts === null) {
+    return;
+  }
+
+  runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "reverse",
+    `tcp:${reversePorts.devicePort}`,
+    `tcp:${reversePorts.hostPort}`,
+  ]);
+  logE2e("android reverse ready", reversePorts);
+}
+
 function getHotUpdaterControlEnv(
   env: NodeJS.ProcessEnv | undefined = undefined,
 ) {
@@ -3680,6 +3732,7 @@ async function prepareAppLaunch() {
     targetAppId: session.appId,
   });
 
+  ensureAndroidReverse();
   runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
