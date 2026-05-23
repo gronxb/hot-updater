@@ -1619,9 +1619,11 @@ async function clearRemoteBundles({
 
     if (mode === "disable") {
       await withDatabasePlugin(async (databasePlugin) => {
-        for (const bundle of nextBatch) {
-          await databasePlugin.updateBundle(bundle.id, { enabled: false });
-        }
+        await Promise.all(
+          nextBatch.map((bundle) =>
+            databasePlugin.updateBundle(bundle.id, { enabled: false }),
+          ),
+        );
         await databasePlugin.commitBundle();
 
         const refetched = await Promise.all(
