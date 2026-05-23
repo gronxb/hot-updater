@@ -246,6 +246,12 @@ const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
 const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
 );
+const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_ATTEMPTS || 3,
+);
+const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
+);
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
   /Verification failed: .+ still exists\./i;
 const E2E_POLL_INTERVAL_MS = Number(
@@ -288,6 +294,17 @@ function formatLogValue(value: unknown) {
 function logE2e(event: string, details?: unknown) {
   const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
+}
+
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTransientProviderError(error: unknown) {
+  const message = formatErrorMessage(error);
+  return /\b(fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|network timeout)\b/i.test(
+    message,
+  );
 }
 
 function hashText(value: string) {
@@ -1358,26 +1375,50 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig } =
-    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (
-        options: null,
-      ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
-    };
-  const originalCwd = process.cwd();
-  process.chdir(session.exampleDir);
-  const config = await loadConfig(null);
-  const databasePlugin = await config.database();
+  let lastError: unknown = null;
 
-  try {
-    return await callback(databasePlugin);
-  } finally {
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    const { loadConfig } =
+      (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+        loadConfig: (
+          options: null,
+        ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+      };
+    const originalCwd = process.cwd();
+    let databasePlugin: DatabasePlugin | null = null;
+
     try {
-      await databasePlugin.onUnmount?.();
+      process.chdir(session.exampleDir);
+      const config = await loadConfig(null);
+      databasePlugin = await config.database();
+      return await callback(databasePlugin);
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
+        !isTransientProviderError(error)
+      ) {
+        throw error;
+      }
+
+      logE2e("provider database operation retry", {
+        attempt,
+        error: formatErrorMessage(error),
+        platform: session.platform,
+        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
+      });
+      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
     } finally {
+      await databasePlugin?.onUnmount?.();
       process.chdir(originalCwd);
     }
   }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function fetchBundlesPage(args: {
@@ -4655,6 +4696,10 @@ function createJob(task: () => Promise<JobResult>) {
     .catch((error: unknown) => {
       const message =
         error instanceof Error ? error.message : "Unknown E2E job failure";
+      logE2e("control job failed", {
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       jobs.set(jobId, { error: message, status: "failed" });
     });
 
