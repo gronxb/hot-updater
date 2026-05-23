@@ -1570,14 +1570,19 @@ async function clearRemoteBundles({
     }
   }
 
-  const remainingBundles = await fetchBundlesPage({
-    limit: mode === "delete" ? 1 : 100,
-    offset: 0,
-  });
-
-  const remainingActiveBundle = remainingBundles.data.find(
-    (bundle) => mode === "delete" || bundle.enabled !== false,
-  );
+  const remainingActiveBundle =
+    mode === "delete"
+      ? (
+          await fetchBundlesPage({
+            limit: 1,
+            offset: 0,
+          })
+        ).data[0]
+      : (
+          await Promise.all(
+            clearedBundleIds.map((bundleId) => fetchBundleById(bundleId)),
+          )
+        ).find((bundle) => bundle.enabled !== false);
 
   if (remainingActiveBundle) {
     throw new Error(
