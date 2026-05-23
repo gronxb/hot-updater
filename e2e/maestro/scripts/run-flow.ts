@@ -157,6 +157,9 @@ const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
 const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
 const MAESTRO_LOCK_POLL_MS = 1000;
 const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
+const MAESTRO_DEBUG_OUTPUT_MODE = (
+  process.env.HOT_UPDATER_E2E_MAESTRO_DEBUG_OUTPUT || "ios"
+).toLowerCase();
 const COMMAND_TERMINATE_GRACE_MS = 5000;
 const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
 let terminationSignal: NodeJS.Signals | null = null;
@@ -722,6 +725,16 @@ function javaToolOptionsWithUserHome(homeDir: string) {
   return existing ? `${existing} ${userHomeOption}` : userHomeOption;
 }
 
+function shouldUseMaestroDebugOutput(platform: Platform) {
+  if (MAESTRO_DEBUG_OUTPUT_MODE === "all") {
+    return true;
+  }
+  if (MAESTRO_DEBUG_OUTPUT_MODE === "none") {
+    return false;
+  }
+  return MAESTRO_DEBUG_OUTPUT_MODE === platform;
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -1006,13 +1019,11 @@ async function runMaestroWithTransportRetry({
 }) {
   const debugOutputPath = path.join(resultsDir, "debug");
   const effectiveMaestroBin = prepareMaestroDriverPortLauncher(maestroBin);
+  const useDebugOutput = shouldUseMaestroDebugOutput(platform);
   const maestroArgs = [
     "test",
     "--device",
     deviceId,
-    "--debug-output",
-    debugOutputPath,
-    "--flatten-debug-output",
     "--format",
     "JUNIT",
     "--output",
@@ -1025,6 +1036,15 @@ async function runMaestroWithTransportRetry({
     `CONTROL_URL=${controlUrl}`,
     flow,
   ];
+  if (useDebugOutput) {
+    maestroArgs.splice(
+      3,
+      0,
+      "--debug-output",
+      debugOutputPath,
+      "--flatten-debug-output",
+    );
+  }
   const maestroHomeDir = path.join(
     E2E_RUNTIME_DIR,
     "maestro-home",
@@ -1054,7 +1074,9 @@ async function runMaestroWithTransportRetry({
           MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
         },
         activityPaths: [
-          path.join(debugOutputPath, "maestro.log"),
+          ...(useDebugOutput
+            ? [path.join(debugOutputPath, "maestro.log")]
+            : []),
           serverLogPath,
         ],
         idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
