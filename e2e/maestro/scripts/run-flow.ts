@@ -1495,8 +1495,24 @@ async function resetMaestroDriverState(platform: Platform, deviceId: string) {
 }
 
 function resolveAndroidSerial() {
-  if (process.env.ANDROID_SERIAL) {
-    return process.env.ANDROID_SERIAL;
+  const configuredSerial =
+    process.env.HOT_UPDATER_E2E_ANDROID_SERIAL || process.env.ANDROID_SERIAL;
+  if (configuredSerial) {
+    const devices = runCapture("adb", ["devices"]);
+    const hasConfiguredDevice = devices
+      .split("\n")
+      .slice(1)
+      .map((line: string) => line.trim().split(/\s+/))
+      .some(
+        (columns: string[]) =>
+          columns[0] === configuredSerial && columns[1] === "device",
+      );
+    if (!hasConfiguredDevice) {
+      throw new Error(
+        `Configured Android device is not connected: ${configuredSerial}`,
+      );
+    }
+    return configuredSerial;
   }
 
   const devices = runCapture("adb", ["devices"]);
@@ -1737,7 +1753,10 @@ async function main() {
   let appId = "";
 
   if (platform === "ios") {
-    const simulatorName = process.env.IOS_SIMULATOR_NAME || "iPhone 16";
+    const simulatorName =
+      process.env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME ||
+      process.env.IOS_SIMULATOR_NAME ||
+      "iPhone 16";
     deviceId = resolveIosSimulatorUdid(simulatorName);
     ensureIosSimulatorBooted(deviceId);
     await fsPromises.writeFile(
