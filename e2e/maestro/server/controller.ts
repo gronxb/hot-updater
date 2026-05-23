@@ -582,6 +582,24 @@ function nativeArtifactCachePaths(key: string) {
   };
 }
 
+function reuseAppInstallMarkerPath(cacheKey: string) {
+  return path.join(
+    EXAMPLE_DIR,
+    "e2e/.reuse-app-installs",
+    `${session.platform}-${hashText(deviceId as string).slice(0, 12)}-${cacheKey}`,
+  );
+}
+
+async function hasReuseAppInstallMarker(cacheKey: string) {
+  return fs.existsSync(reuseAppInstallMarkerPath(cacheKey));
+}
+
+async function writeReuseAppInstallMarker(cacheKey: string) {
+  const markerPath = reuseAppInstallMarkerPath(cacheKey);
+  await fsPromises.mkdir(path.dirname(markerPath), { recursive: true });
+  await fsPromises.writeFile(markerPath, `${new Date().toISOString()}\n`);
+}
+
 async function copyNativeArtifact(sourcePath: string, targetPath: string) {
   await fsPromises.rm(targetPath, { recursive: true, force: true });
   await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
@@ -1581,10 +1599,30 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+  await fsPromises.rm(path.join(documentsDir, "bundle-manifest-temp"), {
+    force: true,
+    recursive: true,
+  });
+  await fsPromises.rm(path.join(appDataDir, "Library/Preferences"), {
+    force: true,
+    recursive: true,
+  });
 
   logE2e("ios local bundle state reset", {
     documentsDir,
   });
+}
+
+function isIosAppInstalled() {
+  const result = spawnSync(
+    "xcrun",
+    ["simctl", "get_app_container", deviceId as string, session.appId, "data"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return result.status === 0;
 }
 
 async function installIosArtifact(appPath: string) {
@@ -1598,6 +1636,21 @@ async function installIosArtifact(appPath: string) {
     logPath: path.join(session.resultsDir, "simctl-install.log"),
   });
   await clearIosLocalBundleState();
+}
+
+async function prepareReusableIosArtifact(appPath: string, cacheKey: string) {
+  session.storePath = undefined;
+  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isIosAppInstalled()) {
+    await installIosArtifact(appPath);
+    await writeReuseAppInstallMarker(cacheKey);
+    return;
+  }
+
+  await clearIosLocalBundleState();
+  logE2e("ios reusable app reset without reinstall", {
+    appId: session.appId,
+    artifactPath: path.relative(REPO_DIR, appPath),
+  });
 }
 
 const IOS_RETRYABLE_BUILD_PATTERNS = [
@@ -1628,7 +1681,7 @@ async function prepareIosRelease() {
       );
     }
     session.builtArtifactPath = builtAppPath;
-    await installIosArtifact(builtAppPath);
+    await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
     return;
   }
 
@@ -1762,10 +1815,14 @@ async function prepareAndroidRelease() {
   session.builtArtifactPath = session.androidApkPath;
   session.storePath = undefined;
 
-  runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-    allowFailure: true,
-  });
-  await installAndroidArtifact("adb-install.log");
+  if (session.reuseApp) {
+    await prepareReusableAndroidArtifact("adb-install.log", nativeCacheKey);
+  } else {
+    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
+      allowFailure: true,
+    });
+    await installAndroidArtifact("adb-install.log");
+  }
 
   if (session.reuseApp && !canRunAsAndroidApp()) {
     if (
@@ -1853,6 +1910,31 @@ function resolveAndroidE2eArchitecture() {
 function ensureAndroidFilesDir() {
   return `/data/data/${session.appId}/files`;
 }
+
+function isAndroidAppInstalled() {
+  const result = spawnSync(
+    "adb",
+    ["-s", deviceId as string, "shell", "pm", "path", session.appId],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return result.status === 0 && result.stdout.includes("package:");
+}
+
+function clearAndroidLocalAppState() {
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
+    { allowFailure: true },
+  );
+  session.storePath = undefined;
+  logE2e("android local app state reset", {
+    appId: session.appId,
+  });
+}
+
 async function installAndroidArtifact(logFileName: string) {
   await runLogged(
     "adb",
@@ -1883,6 +1965,19 @@ async function installAndroidArtifact(logFileName: string) {
     ],
     { allowFailure: true },
   );
+}
+
+async function prepareReusableAndroidArtifact(
+  logFileName: string,
+  cacheKey: string,
+) {
+  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isAndroidAppInstalled()) {
+    await installAndroidArtifact(logFileName);
+    await writeReuseAppInstallMarker(cacheKey);
+    return;
+  }
+
+  clearAndroidLocalAppState();
 }
 
 function canRunAsAndroidApp() {
@@ -3859,12 +3954,30 @@ async function reinstallBuiltInApp() {
   session.storePath = null;
 
   if (session.platform === "ios") {
-    await installIosArtifact(session.builtArtifactPath);
+    if (session.reuseApp) {
+      await prepareReusableIosArtifact(
+        session.builtArtifactPath,
+        nativeArtifactCacheKey(),
+      );
+    } else {
+      await installIosArtifact(session.builtArtifactPath);
+    }
   } else {
-    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-      allowFailure: true,
-    });
-    await installAndroidArtifact("adb-install-reset.log");
+    if (session.reuseApp) {
+      await prepareReusableAndroidArtifact(
+        "adb-install-reset.log",
+        nativeArtifactCacheKey(resolveAndroidE2eArchitecture()),
+      );
+    } else {
+      runCapture(
+        "adb",
+        ["-s", deviceId as string, "uninstall", session.appId],
+        {
+          allowFailure: true,
+        },
+      );
+      await installAndroidArtifact("adb-install-reset.log");
+    }
   }
 
   logE2e("built-in app reinstalled", {

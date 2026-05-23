@@ -1419,6 +1419,10 @@ function maestroDriverPortResetCommand(port: number) {
 }
 
 function iosMaestroDriverHostResetCommand(port: number) {
+  if (port !== DEFAULT_MAESTRO_DRIVER_PORT) {
+    return maestroDriverPortResetCommand(port);
+  }
+
   return [
     "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
     "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
