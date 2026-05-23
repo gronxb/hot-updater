@@ -79,6 +79,7 @@ let nextCloudfrontInvalidationStatuses: string[] | null = null;
 let cloudfrontInvalidationStatuses = new Map<string, string[]>();
 let listedObjectPrefixes: string[] = [];
 let loadedObjectKeys: string[] = [];
+let archivedObjectKeys = new Map<string, string>();
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -174,6 +175,7 @@ beforeEach(() => {
   cloudfrontInvalidationStatuses = new Map();
   listedObjectPrefixes = [];
   loadedObjectKeys = [];
+  archivedObjectKeys = new Map();
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -192,6 +194,17 @@ beforeEach(() => {
         const key = command.input.Key;
         if (key) {
           loadedObjectKeys.push(key);
+        }
+        if (key && archivedObjectKeys.has(key)) {
+          const error = new Error(
+            "The operation is not valid for the object's storage class",
+          );
+          error.name = "InvalidObjectState";
+          Object.assign(error, {
+            Code: "InvalidObjectState",
+            StorageClass: archivedObjectKeys.get(key),
+          });
+          throw error;
         }
         if (key && fakeStore[key] !== undefined) {
           await delay(7);
@@ -1605,6 +1618,37 @@ describe("s3Database plugin", () => {
 
     // Descending order: "C" > "B" > "A"
     expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
+  });
+
+  it("reports archived S3 metadata objects with lifecycle guidance", async () => {
+    const updateKey = "production/ios/1.0.0/update.json";
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "archived-update-json",
+    );
+    fakeStore[updateKey] = JSON.stringify([bundle]);
+    archivedObjectKeys.set(updateKey, "GLACIER");
+
+    let error: unknown;
+    try {
+      await plugin.getBundles({ limit: 20 });
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("S3ArchivedObjectError");
+    expect((error as Error).message).toContain(
+      'S3 object "production/ios/1.0.0/update.json" in bucket "test-bucket" is archived (GLACIER) and cannot be read.',
+    );
+    expect((error as Error).message).toContain(
+      'exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json"',
+    );
+    expect((error as Error & { cause?: unknown }).cause).toMatchObject({
+      name: "InvalidObjectState",
+    });
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {

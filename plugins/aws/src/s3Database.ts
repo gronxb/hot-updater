@@ -47,6 +47,45 @@ const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const getS3ErrorProperty = (error: unknown, key: string) => {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+};
+
+const isArchivedS3ObjectError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === "InvalidObjectState" ||
+    getS3ErrorProperty(error, "Code") === "InvalidObjectState"
+  );
+};
+
+const createArchivedS3ObjectError = ({
+  bucket,
+  key,
+  error,
+}: {
+  bucket: string;
+  key: string;
+  error: unknown;
+}) => {
+  const storageClass =
+    getS3ErrorProperty(error, "StorageClass") ?? "archived storage";
+  const nextError = new Error(
+    `S3 object "${key}" in bucket "${bucket}" is archived (${storageClass}) and cannot be read. Restore the object in S3 or exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json".`,
+    { cause: error },
+  );
+  nextError.name = "S3ArchivedObjectError";
+  return nextError;
+};
+
 /**
  * Loads JSON data from S3.
  * Returns null if NoSuchKey error occurs.
@@ -65,6 +104,9 @@ async function loadJsonFromS3<T>(
     return JSON.parse(bodyContents) as T;
   } catch (e) {
     if (e instanceof NoSuchKey) return null;
+    if (isArchivedS3ObjectError(e)) {
+      throw createArchivedS3ObjectError({ bucket, key, error: e });
+    }
     throw e;
   }
 }
