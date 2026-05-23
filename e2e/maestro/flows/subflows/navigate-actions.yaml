@@ -10,7 +10,3 @@ appId: ${APP_ID}
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
     timeout: 500
-- extendedWaitUntil:
-    visible:
-      id: section-actions
-    timeout: 10000
