@@ -404,6 +404,23 @@ async function runLogged(
   return Buffer.concat(output).toString("utf8");
 }
 
+async function readTextIfExists(filePath: string) {
+  try {
+    return await fsPromises.readFile(filePath, "utf8");
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return "";
+    }
+
+    throw error;
+  }
+}
+
 function nativeArtifactCacheRoot() {
   const cacheDir = process.env.HOT_UPDATER_E2E_NATIVE_CACHE_DIR;
   if (!cacheDir) {
