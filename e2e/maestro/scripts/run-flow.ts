@@ -38,6 +38,19 @@ type RunLoggedOptions = RunCaptureOptions & {
 
 type ParsedEnvFile = Record<string, string>;
 
+function parsePortEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const port = Number.parseInt(raw, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return port;
+}
+
 type DeveloperE2ESetup = {
   appBaseUrl: URL;
 };
@@ -77,7 +90,12 @@ const ANDROID_MAESTRO_DRIVER_PACKAGES = [
   "dev.mobile.maestro",
   "dev.mobile.maestro.test",
 ];
-const ANDROID_MAESTRO_DRIVER_PORT = 7001;
+const DEFAULT_MAESTRO_DRIVER_PORT = 7001;
+const ANDROID_MAESTRO_DRIVER_DEVICE_PORT = 7001;
+const MAESTRO_DRIVER_HOST_PORT = parsePortEnv(
+  "HOT_UPDATER_E2E_MAESTRO_DRIVER_PORT",
+  DEFAULT_MAESTRO_DRIVER_PORT,
+);
 const ANDROID_MAESTRO_DRIVER_RUNNER =
   "dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner";
 const MAESTRO_CLIENT_JAR_PATH = path.join(
@@ -92,6 +110,9 @@ const MAESTRO_TRANSPORT_ATTEMPTS = 3;
 const MAESTRO_TRANSPORT_RETRY_DELAY_MS = 2000;
 const MAESTRO_DRIVER_STARTUP_TIMEOUT_MS =
   process.env.MAESTRO_DRIVER_STARTUP_TIMEOUT || "240000";
+const MAESTRO_DRIVER_HOST_PORT_PATTERN = String(
+  MAESTRO_DRIVER_HOST_PORT,
+).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
@@ -104,14 +125,20 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Unable to launch app/i,
 ];
 const MAESTRO_IOS_TRANSPORT_PATTERNS = [
-  /Failed to connect to \/127\.0\.0\.1:7001/i,
+  new RegExp(
+    `Failed to connect to /127\\.0\\.0\\.1:${MAESTRO_DRIVER_HOST_PORT_PATTERN}`,
+    "i",
+  ),
   /Failed to set permissions/i,
   /java\.io\.EOFException/i,
   /iOS driver not ready in time/i,
   /Launch app "\$\{APP_ID\}" FAILED/i,
   /Maestro iOS transport failure before E2E mutation/i,
   /Unable to set permissions for app/i,
-  /unexpected end of stream on http:\/\/127\.0\.0\.1:7001/i,
+  new RegExp(
+    `unexpected end of stream on http://127\\.0\\.0\\.1:${MAESTRO_DRIVER_HOST_PORT_PATTERN}`,
+    "i",
+  ),
 ];
 const MAESTRO_TRANSPORT_PATTERNS_BY_PLATFORM = {
   android: MAESTRO_ANDROID_TRANSPORT_PATTERNS,
@@ -130,13 +157,6 @@ const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
 const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
 const MAESTRO_LOCK_POLL_MS = 1000;
 const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
-const MAESTRO_DRIVER_HOST_RESET_COMMAND = [
-  "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
-  "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
-  'pids="$(lsof -nP -tiTCP:7001 -sTCP:LISTEN 2>/dev/null || true)"',
-  'if [[ -z "$pids" ]]; then pids="$(lsof -nP -ti tcp:7001 2>/dev/null || true)"; fi',
-  'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
-].join("\n");
 const COMMAND_TERMINATE_GRACE_MS = 5000;
 const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
 let terminationSignal: NodeJS.Signals | null = null;
@@ -979,6 +999,7 @@ async function runMaestroWithTransportRetry({
   scenarioName: string;
 }) {
   const debugOutputPath = path.join(resultsDir, "debug");
+  const effectiveMaestroBin = prepareMaestroDriverPortLauncher(maestroBin);
   const maestroArgs = [
     "test",
     "--device",
@@ -1010,7 +1031,7 @@ async function runMaestroWithTransportRetry({
         p.log.info("Reset iOS Maestro driver host state");
         await resetMaestroDriverHostState();
       }
-      await runLogged(maestroBin, maestroArgs, {
+      await runLogged(effectiveMaestroBin, maestroArgs, {
         abortOnOutput: (output) =>
           getPreMutationTransportAbortReason(platform, output, serverLogPath),
         cwd: REPO_DIR,
@@ -1051,6 +1072,94 @@ async function runMaestroWithTransportRetry({
       await releaseMaestroLock();
     }
   }
+}
+
+function resolveMaestroAppHome(maestroBin: string) {
+  const resolvedBin =
+    maestroBin.includes(path.sep) && fs.existsSync(maestroBin)
+      ? fs.realpathSync(maestroBin)
+      : runCapture("which", [maestroBin]).trim();
+  return path.dirname(path.dirname(resolvedBin));
+}
+
+function findMaestroCliJar(appHome: string) {
+  const libDir = path.join(appHome, "lib");
+  const jarName = fs
+    .readdirSync(libDir)
+    .find((fileName: string) => /^maestro-cli.*\.jar$/.test(fileName));
+  if (!jarName) {
+    throw new Error(`Maestro CLI jar not found under ${libDir}`);
+  }
+  return path.join(libDir, jarName);
+}
+
+function patchMaestroTestCommandClass(classPath: string, port: number) {
+  const original = fs.readFileSync(classPath);
+  const from = Buffer.from([0x11, 0x1b, 0x59]);
+  const to = Buffer.from([0x11, (port >> 8) & 0xff, port & 0xff]);
+  const patched = Buffer.from(original);
+  let replacements = 0;
+  let offset = 0;
+
+  while ((offset = patched.indexOf(from, offset)) !== -1) {
+    to.copy(patched, offset);
+    replacements += 1;
+    offset += to.length;
+  }
+
+  if (replacements === 0) {
+    throw new Error("Unable to patch Maestro TestCommand driver port");
+  }
+
+  fs.writeFileSync(classPath, patched);
+}
+
+function prepareMaestroDriverPortLauncher(maestroBin: string) {
+  if (MAESTRO_DRIVER_HOST_PORT === DEFAULT_MAESTRO_DRIVER_PORT) {
+    return maestroBin;
+  }
+
+  const appHome = resolveMaestroAppHome(maestroBin);
+  const cliJar = findMaestroCliJar(appHome);
+  const patchDir = path.join(
+    E2E_RUNTIME_DIR,
+    "maestro-driver-port",
+    String(MAESTRO_DRIVER_HOST_PORT),
+  );
+  const classPath = path.join(
+    patchDir,
+    "maestro/cli/command/TestCommand.class",
+  );
+  const launcherPath = path.join(patchDir, "maestro");
+
+  if (!fs.existsSync(launcherPath)) {
+    fs.rmSync(patchDir, { recursive: true, force: true });
+    fs.mkdirSync(patchDir, { recursive: true });
+    runCapture("jar", ["xf", cliJar, "maestro/cli/command/TestCommand.class"], {
+      cwd: patchDir,
+    });
+    patchMaestroTestCommandClass(classPath, MAESTRO_DRIVER_HOST_PORT);
+    fs.writeFileSync(
+      launcherPath,
+      [
+        "#!/bin/sh",
+        "set -eu",
+        `APP_HOME=${JSON.stringify(appHome)}`,
+        `PATCH_DIR=${JSON.stringify(patchDir)}`,
+        'if [ -n "${JAVA_HOME:-}" ]; then',
+        '  JAVA_CMD="$JAVA_HOME/bin/java"',
+        "else",
+        '  JAVA_CMD="java"',
+        "fi",
+        'exec "$JAVA_CMD" -classpath "$PATCH_DIR:$APP_HOME/lib/*" maestro.cli.AppKt "$@"',
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.chmodSync(launcherPath, 0o755);
+  }
+
+  return launcherPath;
 }
 
 async function acquireAtomicDirectoryLock(lockDir: string) {
@@ -1286,23 +1395,31 @@ function ensureIosSimulatorBooted(simulatorUdid: string) {
   runCapture("xcrun", ["simctl", "bootstatus", simulatorUdid, "-b"]);
 }
 
+function maestroDriverHostResetCommand(port: number) {
+  return [
+    "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
+    "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
+    `pids="$(lsof -nP -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"`,
+    `if [[ -z "$pids" ]]; then pids="$(lsof -nP -ti tcp:${port} 2>/dev/null || true)"; fi`,
+    'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
+  ].join("\n");
+}
+
 async function resetMaestroDriverHostState() {
-  runCapture("/bin/zsh", ["-lc", MAESTRO_DRIVER_HOST_RESET_COMMAND], {
-    allowFailure: true,
-  });
+  runCapture(
+    "/bin/zsh",
+    ["-lc", maestroDriverHostResetCommand(MAESTRO_DRIVER_HOST_PORT)],
+    {
+      allowFailure: true,
+    },
+  );
   await sleep(1000);
 }
 
 async function resetAndroidMaestroDriverHostState(deviceId: string) {
   runCapture(
     "adb",
-    [
-      "-s",
-      deviceId,
-      "forward",
-      "--remove",
-      `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
-    ],
+    ["-s", deviceId, "forward", "--remove", `tcp:${MAESTRO_DRIVER_HOST_PORT}`],
     { allowFailure: true },
   );
   stopAndroidMaestroDriver(deviceId);
@@ -1450,8 +1567,8 @@ async function ensureAndroidMaestroDriver(deviceId: string) {
     "-s",
     deviceId,
     "forward",
-    `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
-    `tcp:${ANDROID_MAESTRO_DRIVER_PORT}`,
+    `tcp:${MAESTRO_DRIVER_HOST_PORT}`,
+    `tcp:${ANDROID_MAESTRO_DRIVER_DEVICE_PORT}`,
   ]);
 
   const driverPid = runCapture(
@@ -1464,7 +1581,7 @@ async function ensureAndroidMaestroDriver(deviceId: string) {
   }
 
   try {
-    await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT, 10);
+    await waitForTcpPort(MAESTRO_DRIVER_HOST_PORT, 10);
     return;
   } catch (error) {
     if (!driverPid) {
@@ -1474,7 +1591,7 @@ async function ensureAndroidMaestroDriver(deviceId: string) {
 
   stopAndroidMaestroDriver(deviceId);
   startAndroidMaestroInstrumentation(deviceId);
-  await waitForTcpPort(ANDROID_MAESTRO_DRIVER_PORT);
+  await waitForTcpPort(MAESTRO_DRIVER_HOST_PORT);
 }
 
 function getScenarioName(flowPath: string) {
@@ -1548,6 +1665,7 @@ async function main() {
   p.log.info(`Flow: ${formatRepoRelative(options.flow)}`);
   p.log.info(`Results: ${formatRepoRelative(resultsDir)}`);
   p.log.info(`Control server: ${serverBaseUrl}`);
+  p.log.info(`Maestro driver port: ${MAESTRO_DRIVER_HOST_PORT}`);
 
   let deviceId = "";
   let appId = "";
