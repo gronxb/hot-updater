@@ -1627,10 +1627,11 @@ async function clearRemoteBundles({
           })
         ).data[0]
       : (
-          await Promise.all(
-            clearedBundleIds.map((bundleId) => fetchBundleById(bundleId)),
-          )
-        ).find((bundle) => bundle.enabled !== false);
+          await fetchBundlesPage({
+            limit: 100,
+            offset: 0,
+          })
+        ).data.find((bundle) => bundle.enabled !== false);
 
   if (remainingActiveBundle) {
     throw new Error(
@@ -4241,6 +4242,20 @@ async function resetRemoteBundles() {
   return {};
 }
 
+async function resetLocalAppState() {
+  if (session.platform === "ios") {
+    await clearIosLocalBundleState();
+  } else {
+    clearAndroidLocalAppState();
+  }
+
+  logE2e("local app state reset on demand", {
+    platform: session.platform,
+  });
+
+  return {};
+}
+
 async function assertBundlePatchBases(args: {
   absentBaseBundleIds?: string[];
   bundleId: string;
@@ -4540,6 +4555,10 @@ export async function handleReinstallBuiltInApp() {
 
 export async function handleResetRemoteBundles() {
   return resetRemoteBundles();
+}
+
+export async function handleResetLocalAppState() {
+  return resetLocalAppState();
 }
 
 export async function handleAssertBundlePatchBases(args: {

@@ -326,6 +326,12 @@ switch (ACTION) {
     break;
   }
 
+  case "resetLocalAppState": {
+    const response = request("POST", "/e2e/reset-local-app-state", {});
+    expectOk(response, "reset local app state");
+    break;
+  }
+
   case "assertMetadataActive": {
     const response = request("POST", "/e2e/assert-metadata-active", {
       bundleId: BUNDLE_ID,

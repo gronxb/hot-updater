@@ -49,6 +49,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 1: built-in -> A uses archive, then A -> C uses a bsdiff patch while C
 # still carries patches for both B and A.
@@ -214,6 +219,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 2: build A -> B -> C -> D and verify B -> C, then C -> D both use
 # bsdiff patches with maxBaseBundles=2.
@@ -627,6 +637,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 3: built-in -> A uses archive, C only gets a patch from B because of
 # maxBaseBundles=1, and an A client must fall back to pure manifest diff.

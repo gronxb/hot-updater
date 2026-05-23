@@ -19,6 +19,7 @@ import {
   handleCleanup,
   handleComputeRolloutSample,
   handleReinstallBuiltInApp,
+  handleResetLocalAppState,
   handleResetRemoteBundles,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
@@ -256,6 +257,10 @@ app.post("/e2e/reinstall-built-in-app", async (c) => {
 
 app.post("/e2e/reset-remote-bundles", async (c) => {
   return c.json(await handleResetRemoteBundles());
+});
+
+app.post("/e2e/reset-local-app-state", async (c) => {
+  return c.json(await handleResetLocalAppState());
 });
 
 app.post("/e2e/capture-state", async (c) => {
