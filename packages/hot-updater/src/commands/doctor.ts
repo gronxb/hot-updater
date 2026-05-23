@@ -91,6 +91,7 @@ interface BundleIndexDoctorStatus {
   adapterName?: string;
   status: "not-applicable" | "ok" | "missing" | "stale" | "repaired" | "error";
   health?: BundleIndexHealth;
+  postRepairHealth?: BundleIndexHealth;
   repair?: BundleIndexRepairResult;
   error?: string;
 }
@@ -814,8 +815,10 @@ async function checkInfrastructureStatus({
 }
 
 async function checkBundleIndexStatus({
+  cwd,
   fix,
 }: {
+  cwd: string;
   fix: boolean;
 }): Promise<BundleIndexDoctorStatus | undefined> {
   if (!fix) {
@@ -823,7 +826,7 @@ async function checkBundleIndexStatus({
   }
 
   try {
-    const { hotUpdater, adapterName } = await loadHotUpdater("");
+    const { hotUpdater, adapterName } = await loadHotUpdater("", { cwd });
     const checkBundleIndex = hotUpdater.checkBundleIndex;
     const repairBundleIndex = hotUpdater.repairBundleIndex;
 
@@ -852,10 +855,24 @@ async function checkBundleIndexStatus({
     }
 
     const repair = await repairBundleIndex();
+    const postRepairHealth = checkBundleIndex
+      ? await checkBundleIndex()
+      : undefined;
+    if (postRepairHealth && postRepairHealth.status !== "ok") {
+      return {
+        adapterName,
+        status: postRepairHealth.status,
+        health,
+        postRepairHealth,
+        repair,
+      };
+    }
+
     return {
       adapterName,
       status: "repaired",
       health,
+      postRepairHealth,
       repair,
     };
   } catch (error) {
@@ -962,7 +979,7 @@ export async function doctor(
       details.native = await checkNativeStatus({ cwd });
     }
 
-    details.bundleIndex = await checkBundleIndexStatus({ fix });
+    details.bundleIndex = await checkBundleIndexStatus({ cwd, fix });
 
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
@@ -1213,6 +1230,14 @@ export const handleDoctor = async ({
       );
     }
 
+    if (bundleIndex.postRepairHealth) {
+      lines.push(
+        ui.kv("Post-repair", bundleIndex.postRepairHealth.status),
+        ui.kv("Post missing", bundleIndex.postRepairHealth.missingBundles),
+        ui.kv("Post extra", bundleIndex.postRepairHealth.extraBundles),
+      );
+    }
+
     if (bundleIndex.repair) {
       lines.push(
         ui.kv("Written", bundleIndex.repair.indexedBundles),
@@ -1231,6 +1256,10 @@ export const handleDoctor = async ({
       p.log.success("Bundle index is healthy.");
     } else if (bundleIndex.status === "not-applicable") {
       p.log.info("Bundle index repair is not supported by this adapter.");
+    } else if (bundleIndex.repair) {
+      p.log.error(
+        "Bundle index repair completed, but the index is still out of sync.",
+      );
     } else {
       p.log.error("Bundle index is out of sync and repair is not available.");
     }

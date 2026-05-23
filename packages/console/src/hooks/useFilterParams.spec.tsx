@@ -100,7 +100,9 @@ describe("useFilterParams", () => {
         after: undefined,
         before: undefined,
         bundleId: "bundle-123",
+        expandedBundleId: undefined,
       },
+      resetScroll: false,
     });
   });
 

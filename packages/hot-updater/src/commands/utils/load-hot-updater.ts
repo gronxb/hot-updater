@@ -43,10 +43,14 @@ const DEFAULT_CONFIG_BASENAMES = [
   path.join("src", "db"),
 ] as const;
 
-const findDefaultConfigPath = () => {
+interface LoadHotUpdaterOptions {
+  cwd?: string;
+}
+
+const findDefaultConfigPath = (cwd: string) => {
   for (const basename of DEFAULT_CONFIG_BASENAMES) {
     for (const ext of SUPPORTED_CONFIG_EXTENSIONS) {
-      const candidate = path.resolve(process.cwd(), `${basename}.${ext}`);
+      const candidate = path.resolve(cwd, `${basename}.${ext}`);
       if (existsSync(candidate)) {
         return candidate;
       }
@@ -56,13 +60,13 @@ const findDefaultConfigPath = () => {
   return null;
 };
 
-const resolveConfigPath = (configPath: string) => {
+const resolveConfigPath = (configPath: string, cwd: string) => {
   const trimmedConfigPath = configPath.trim();
   if (trimmedConfigPath) {
-    return path.resolve(process.cwd(), trimmedConfigPath);
+    return path.resolve(cwd, trimmedConfigPath);
   }
 
-  const defaultConfigPath = findDefaultConfigPath();
+  const defaultConfigPath = findDefaultConfigPath(cwd);
   if (defaultConfigPath) {
     return defaultConfigPath;
   }
@@ -83,8 +87,12 @@ const resolveConfigPath = (configPath: string) => {
  */
 export async function loadHotUpdater(
   configPath: string,
+  options: LoadHotUpdaterOptions = {},
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = resolveConfigPath(configPath);
+  const absoluteConfigPath = resolveConfigPath(
+    configPath,
+    options.cwd ?? process.cwd(),
+  );
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {

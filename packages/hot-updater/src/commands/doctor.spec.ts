@@ -291,7 +291,7 @@ describe("doctor", () => {
   });
 
   it("repairs stale bundle indexes when fix is enabled", async () => {
-    const checkBundleIndex = vi.fn().mockResolvedValue({
+    const staleHealth = {
       status: "stale",
       canonicalBundles: 2,
       indexedBundles: 1,
@@ -299,7 +299,20 @@ describe("doctor", () => {
       extraBundles: 0,
       missingBundleIds: ["bundle-B"],
       extraBundleIds: [],
-    });
+    };
+    const repairedHealth = {
+      status: "ok",
+      canonicalBundles: 2,
+      indexedBundles: 2,
+      missingBundles: 0,
+      extraBundles: 0,
+      missingBundleIds: [],
+      extraBundleIds: [],
+    };
+    const checkBundleIndex = vi
+      .fn()
+      .mockResolvedValueOnce(staleHealth)
+      .mockResolvedValueOnce(repairedHealth);
     const repairBundleIndex = vi.fn().mockResolvedValue({
       scannedBundles: 2,
       indexedBundles: 2,
@@ -333,6 +346,7 @@ describe("doctor", () => {
             status: "stale",
             missingBundles: 1,
           }),
+          postRepairHealth: repairedHealth,
           repair: {
             scannedBundles: 2,
             indexedBundles: 2,
@@ -342,7 +356,63 @@ describe("doctor", () => {
         },
       }),
     });
-    expect(checkBundleIndex).toHaveBeenCalledTimes(1);
+    expect(mockLoadHotUpdater).toHaveBeenCalledWith("", { cwd: "/mock/cwd" });
+    expect(checkBundleIndex).toHaveBeenCalledTimes(2);
+    expect(repairBundleIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails doctor when bundle index repair does not restore index health", async () => {
+    const staleHealth = {
+      status: "stale",
+      canonicalBundles: 2,
+      indexedBundles: 1,
+      missingBundles: 1,
+      extraBundles: 0,
+      missingBundleIds: ["bundle-B"],
+      extraBundleIds: [],
+    };
+    const checkBundleIndex = vi.fn().mockResolvedValue(staleHealth);
+    const repairBundleIndex = vi.fn().mockResolvedValue({
+      scannedBundles: 2,
+      indexedBundles: 2,
+      pagesWritten: 1,
+      scopesWritten: 4,
+    });
+    mockLoadHotUpdater.mockResolvedValue({
+      adapterName: "s3",
+      hotUpdater: {
+        adapterName: "s3",
+        checkBundleIndex,
+        repairBundleIndex,
+      },
+    });
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "^0.18.2",
+        },
+      },
+      path: "/mock/cwd/package.json",
+    });
+
+    await expect(doctor({ fix: true })).resolves.toEqual({
+      success: false,
+      details: expect.objectContaining({
+        bundleIndex: {
+          adapterName: "s3",
+          status: "stale",
+          health: staleHealth,
+          postRepairHealth: staleHealth,
+          repair: {
+            scannedBundles: 2,
+            indexedBundles: 2,
+            pagesWritten: 1,
+            scopesWritten: 4,
+          },
+        },
+      }),
+    });
+    expect(checkBundleIndex).toHaveBeenCalledTimes(2);
     expect(repairBundleIndex).toHaveBeenCalledTimes(1);
   });
 
@@ -378,7 +448,7 @@ describe("doctor", () => {
 
     await handleDoctor({ json: true, fix: true });
 
-    expect(mockLoadHotUpdater).toHaveBeenCalledWith("");
+    expect(mockLoadHotUpdater).toHaveBeenCalledWith("", { cwd: "/mock/cwd" });
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify(
         {
