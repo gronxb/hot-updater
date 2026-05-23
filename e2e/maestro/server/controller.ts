@@ -1618,7 +1618,7 @@ async function clearRemoteBundles({
     }
   }
 
-  const remainingActiveBundle =
+  let remainingActiveBundle =
     mode === "delete"
       ? (
           await fetchBundlesPage({
@@ -1632,6 +1632,19 @@ async function clearRemoteBundles({
             offset: 0,
           })
         ).data.find((bundle) => bundle.enabled !== false);
+
+  if (mode === "disable" && remainingActiveBundle) {
+    const refetchedBundle = await fetchBundleById(remainingActiveBundle.id);
+    if (refetchedBundle.enabled === false) {
+      logE2e("bundle list still shows disabled bundle as enabled", {
+        bundleId: refetchedBundle.id,
+        platform: session.platform,
+      });
+      remainingActiveBundle = undefined;
+    } else {
+      remainingActiveBundle = refetchedBundle;
+    }
+  }
 
   if (remainingActiveBundle) {
     throw new Error(
