@@ -1776,21 +1776,18 @@ async function prepareIosRelease() {
   );
   const nativeCacheKey = nativeArtifactCacheKey();
 
-  if (session.reuseApp) {
-    if (!fs.existsSync(builtAppPath)) {
-      throw new Error(
-        `Cannot reuse iOS app because ${builtAppPath} does not exist`,
-      );
-    }
+  if (session.reuseApp && fs.existsSync(builtAppPath)) {
     session.builtArtifactPath = builtAppPath;
     await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
     return;
   }
 
-  await fsPromises.rm(session.iosDerivedDataPath, {
-    force: true,
-    recursive: true,
-  });
+  if (!session.reuseApp) {
+    await fsPromises.rm(session.iosDerivedDataPath, {
+      force: true,
+      recursive: true,
+    });
+  }
 
   if (
     await restoreNativeArtifactFromCache({
@@ -1799,9 +1796,18 @@ async function prepareIosRelease() {
     })
   ) {
     session.builtArtifactPath = builtAppPath;
-    await installIosArtifact(builtAppPath);
+    if (session.reuseApp) {
+      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+    } else {
+      await installIosArtifact(builtAppPath);
+    }
     return;
   }
+
+  await fsPromises.rm(session.iosDerivedDataPath, {
+    force: true,
+    recursive: true,
+  });
 
   await runLogged("bundle", ["install"], {
     cwd: path.join(session.exampleDir, "ios"),
@@ -1883,7 +1889,11 @@ async function prepareIosRelease() {
     key: nativeCacheKey,
     sourcePath: builtAppPath,
   });
-  await installIosArtifact(builtAppPath);
+  if (session.reuseApp) {
+    await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+  } else {
+    await installIosArtifact(builtAppPath);
+  }
 }
 
 async function prepareAndroidRelease() {
@@ -1894,7 +1904,7 @@ async function prepareAndroidRelease() {
   const architecture = resolveAndroidE2eArchitecture();
   const nativeCacheKey = nativeArtifactCacheKey(architecture);
 
-  if (!session.reuseApp) {
+  if (!session.reuseApp || !fs.existsSync(session.androidApkPath)) {
     const restored = await restoreNativeArtifactFromCache({
       architecture,
       key: nativeCacheKey,
@@ -1908,10 +1918,6 @@ async function prepareAndroidRelease() {
         sourcePath: session.androidApkPath,
       });
     }
-  } else if (!fs.existsSync(session.androidApkPath)) {
-    throw new Error(
-      `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
-    );
   }
 
   session.builtArtifactPath = session.androidApkPath;

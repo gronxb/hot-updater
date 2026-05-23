@@ -420,13 +420,8 @@ async function main() {
   }
 
   for (const platform of options.platforms) {
-    for (const [index, scenarioRun] of scenarioRuns.entries()) {
-      runScenario(
-        platform,
-        scenarioRun,
-        options.reuseApp && index > 0,
-        options.dryRun,
-      );
+    for (const scenarioRun of scenarioRuns) {
+      runScenario(platform, scenarioRun, options.reuseApp, options.dryRun);
     }
   }
 
