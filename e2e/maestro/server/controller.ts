@@ -190,6 +190,8 @@ const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
 const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
+const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
+  /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
 const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
@@ -1212,15 +1214,18 @@ async function applyDeployConfig({
       return `${prefix}${nextOptions}${suffix}`;
     },
   );
+  const deployBaseUrl = getControllerReachableAppBaseUrl();
+  const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
+    STANDALONE_REPOSITORY_BASE_URL_PATTERN,
+    (_match, prefix: string) => `${prefix}${JSON.stringify(deployBaseUrl)}`,
+  );
 
   await fsPromises.writeFile(
     session.configSourceFile,
-    sourceWithWarmMetroCache.replace(
-      AUTO_PATCH_CONFIG_PATTERN,
-      autoPatchSource,
-    ),
+    sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logE2e("deploy config applied", {
+    deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
     resetMetroCache: false,
@@ -3036,6 +3041,14 @@ function getLaunchReportState(report: Record<string, unknown> | null) {
 
 function getControllerReachableAppBaseUrl() {
   const url = new URL(session.appBaseUrl);
+  const androidReverseHostPort =
+    session.platform === "android"
+      ? process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT
+      : undefined;
+  if (androidReverseHostPort && /^\d+$/.test(androidReverseHostPort)) {
+    url.hostname = "127.0.0.1";
+    url.port = androidReverseHostPort;
+  }
   if (
     url.hostname === "localhost" ||
     url.hostname === "10.0.2.2" ||
