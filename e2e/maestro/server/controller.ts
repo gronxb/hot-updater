@@ -1659,6 +1659,18 @@ async function clearIosLocalBundleState() {
     ["simctl", "terminate", deviceId as string, session.appId],
     { allowFailure: true },
   );
+  runCapture(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "delete",
+      session.appId,
+    ],
+    { allowFailure: true },
+  );
 
   const appDataDir = runCapture("xcrun", [
     "simctl",
@@ -1685,6 +1697,18 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+
+  const stalePaths = [
+    path.join(documentsDir, "bundle-store", "metadata.json"),
+    path.join(documentsDir, "bundle-store"),
+    path.join(documentsDir, "bundle-temp"),
+    path.join(documentsDir, "bundle-manifest-temp"),
+  ];
+  for (const stalePath of stalePaths) {
+    if (fs.existsSync(stalePath)) {
+      throw new Error(`Failed to clear iOS local bundle state: ${stalePath}`);
+    }
+  }
 
   logE2e("ios local bundle state reset", {
     documentsDir,
@@ -2004,9 +2028,36 @@ function isAndroidAppInstalled() {
 function clearAndroidLocalAppState() {
   runCapture(
     "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    { allowFailure: true },
+  );
+  runCapture(
+    "adb",
     ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
     { allowFailure: true },
   );
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "sh",
+      "-c",
+      [
+        `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
+        `${ensureAndroidFilesDir()}/bundle-temp`,
+        `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+      ].join(" "),
+    ],
+    { allowFailure: true },
+  );
+  if (androidPathExists(`${ensureAndroidFilesDir()}/bundle-store`)) {
+    throw new Error("Failed to clear Android bundle-store state");
+  }
   session.storePath = undefined;
   logE2e("android local app state reset", {
     appId: session.appId,
@@ -2035,11 +2086,14 @@ async function installAndroidArtifact(logFileName: string) {
       "shell",
       "run-as",
       session.appId,
-      "rm",
-      "-rf",
-      `${ensureAndroidFilesDir()}/bundle-store`,
-      `${ensureAndroidFilesDir()}/bundle-temp`,
-      `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+      "sh",
+      "-c",
+      [
+        `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
+        `${ensureAndroidFilesDir()}/bundle-temp`,
+        `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+      ].join(" "),
     ],
     { allowFailure: true },
   );
@@ -2127,6 +2181,10 @@ function copyAndroidFile(remotePath: string, localPath: string) {
 }
 
 function androidFileExists(remotePath: string) {
+  return androidPathExists(remotePath, "-f");
+}
+
+function androidPathExists(remotePath: string, testFlag = "-e") {
   let exists = spawnSync(
     "adb",
     [
@@ -2136,7 +2194,7 @@ function androidFileExists(remotePath: string) {
       "run-as",
       session.appId,
       "test",
-      "-f",
+      testFlag,
       remotePath,
     ],
     { stdio: "ignore" },
@@ -2145,7 +2203,7 @@ function androidFileExists(remotePath: string) {
   if (exists.status !== 0) {
     exists = spawnSync(
       "adb",
-      ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
+      ["-s", deviceId as string, "shell", "[", testFlag, remotePath, "]"],
       { stdio: "ignore" },
     );
   }
