@@ -306,9 +306,24 @@ function ensureAndroidReverse(deviceId: string, appBaseUrl: URL) {
   }
 
   const port = getUrlPort(appBaseUrl);
-  runCapture("adb", ["-s", deviceId, "reverse", `tcp:${port}`, `tcp:${port}`]);
+  const hostPort = Number.parseInt(
+    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(port),
+    10,
+  );
+  if (!Number.isInteger(hostPort) || hostPort <= 0) {
+    throw new Error(
+      "HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT must be a positive integer.",
+    );
+  }
+  runCapture("adb", [
+    "-s",
+    deviceId,
+    "reverse",
+    `tcp:${port}`,
+    `tcp:${hostPort}`,
+  ]);
 
-  return port;
+  return { devicePort: port, hostPort };
 }
 
 async function validateDeveloperE2ESetup(
@@ -1772,10 +1787,10 @@ async function main() {
     );
     const androidDeviceLogLines = [`Using Android device ${deviceId}`];
     if (reversedPort !== null) {
-      const reverseMessage = `adb reverse tcp:${reversedPort} tcp:${reversedPort}`;
+      const reverseMessage = `adb reverse tcp:${reversedPort.devicePort} tcp:${reversedPort.hostPort}`;
       androidDeviceLogLines.push(reverseMessage);
       p.log.info(
-        `Android reverse: tcp:${reversedPort} -> host tcp:${reversedPort}`,
+        `Android reverse: tcp:${reversedPort.devicePort} -> host tcp:${reversedPort.hostPort}`,
       );
     }
     await fsPromises.writeFile(

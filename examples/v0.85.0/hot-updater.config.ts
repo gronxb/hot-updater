@@ -11,6 +11,7 @@ config({ path: ".env.hotupdater" });
 
 const standaloneStorageBaseUrl =
   process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;
+const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 const managementAuthToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
 const managementHeaders = managementAuthToken
   ? { Authorization: `Bearer ${managementAuthToken}` }
@@ -59,6 +60,7 @@ export default defineConfig({
           secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
         },
         bucketName: process.env.R2_BUCKET_NAME!,
+        basePath: providerNamespace,
       }),
   database: standaloneRepository({
     baseUrl: "http://localhost:3007/hot-updater",

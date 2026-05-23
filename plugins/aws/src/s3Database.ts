@@ -25,6 +25,10 @@ export interface S3DatabaseConfig
   extends S3ClientConfig, BlobDatabasePluginConfig {
   bucketName: string;
   /**
+   * Base path where database objects will be stored in the bucket.
+   */
+  basePath?: string;
+  /**
    * CloudFront distribution ID used for cache invalidation.
    *
    * If omitted or an empty string, CloudFront invalidation is skipped.
@@ -46,6 +50,25 @@ const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizeBasePath(basePath?: string) {
+  return basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+}
+
+function createDatabaseKeyBuilder(basePath?: string) {
+  const normalizedBasePath = normalizeBasePath(basePath);
+
+  const toStorageKey = (key: string) =>
+    [normalizedBasePath, key].filter(Boolean).join("/");
+
+  const fromStorageKey = (key: string) => {
+    if (!normalizedBasePath) return key;
+    const prefix = `${normalizedBasePath}/`;
+    return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+  };
+
+  return { fromStorageKey, toStorageKey };
+}
 
 /**
  * Loads JSON data from S3.
@@ -219,6 +242,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
   name: "s3Database",
   factory: (config) => {
     const {
+      basePath,
       bucketName,
       cloudfrontDistributionId,
       apiBasePath = "/api/check-update",
@@ -227,6 +251,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
     } = config;
 
     const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
+    const { fromStorageKey, toStorageKey } = createDatabaseKeyBuilder(basePath);
     const cloudfrontClient = cloudfrontDistributionId
       ? new CloudFrontClient({
           credentials: s3Config.credentials,
@@ -237,11 +262,15 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
     return {
       apiBasePath,
       listObjects: (prefix: string) =>
-        listObjectsInS3(client, bucketName, prefix),
-      loadObject: (key: string) => loadJsonFromS3(client, bucketName, key),
+        listObjectsInS3(client, bucketName, toStorageKey(prefix)).then((keys) =>
+          keys.map(fromStorageKey),
+        ),
+      loadObject: (key: string) =>
+        loadJsonFromS3(client, bucketName, toStorageKey(key)),
       uploadObject: (key: string, data) =>
-        uploadJsonToS3(client, bucketName, key, data),
-      deleteObject: (key: string) => deleteObjectInS3(client, bucketName, key),
+        uploadJsonToS3(client, bucketName, toStorageKey(key), data),
+      deleteObject: (key: string) =>
+        deleteObjectInS3(client, bucketName, toStorageKey(key)),
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

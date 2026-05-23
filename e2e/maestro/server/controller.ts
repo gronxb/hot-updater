@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
+import type { FileHandle } from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
@@ -188,6 +189,8 @@ const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
 const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
+const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
+const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -480,11 +483,10 @@ function readOptionalFileHash(filePath: string) {
 }
 
 function readGitTrackedInputFiles(inputPaths: string[]) {
-  const output = runCapture(
-    "git",
-    ["ls-files", "-z", "--", ...inputPaths],
-    { cwd: REPO_DIR, maxBuffer: 32 * 1024 * 1024 },
-  );
+  const output = runCapture("git", ["ls-files", "-z", "--", ...inputPaths], {
+    cwd: REPO_DIR,
+    maxBuffer: 32 * 1024 * 1024,
+  });
 
   return output.split("\0").filter(Boolean).sort();
 }
@@ -757,6 +759,91 @@ async function saveNativeArtifactToCache(args: {
     platform: session.platform,
     target: paths.artifactPath,
   });
+}
+
+async function buildNativeArtifactWithCacheLock(args: {
+  architecture?: string | null;
+  build: () => Promise<void>;
+  key: string;
+  logLabel: string;
+  targetPath: string;
+}) {
+  const paths = nativeArtifactCachePaths(args.key);
+  if (!paths) {
+    await args.build();
+    return;
+  }
+
+  await fsPromises.mkdir(paths.root, { recursive: true });
+  const lockPath = path.join(
+    paths.root,
+    `${session.platform}-${args.key}.lock`,
+  );
+  const deadline = Date.now() + NATIVE_ARTIFACT_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    let lockHandle: FileHandle | null = null;
+    try {
+      lockHandle = await fsPromises.open(lockPath, "wx");
+      await lockHandle.writeFile(
+        `${process.pid}\n${new Date().toISOString()}\n`,
+      );
+      logE2e("native artifact cache lock acquired", {
+        key: args.key.slice(0, 16),
+        label: args.logLabel,
+        platform: session.platform,
+      });
+
+      const restored = await restoreNativeArtifactFromCache({
+        architecture: args.architecture,
+        key: args.key,
+        targetPath: args.targetPath,
+      });
+      if (!restored) {
+        await args.build();
+        await saveNativeArtifactToCache({
+          architecture: args.architecture,
+          key: args.key,
+          sourcePath: args.targetPath,
+        });
+      }
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      const restored = await restoreNativeArtifactFromCache({
+        architecture: args.architecture,
+        key: args.key,
+        targetPath: args.targetPath,
+      });
+      if (restored) {
+        logE2e("native artifact cache filled by concurrent process", {
+          key: args.key.slice(0, 16),
+          label: args.logLabel,
+          platform: session.platform,
+        });
+        return;
+      }
+
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Timed out waiting for native artifact cache lock ${lockPath}`,
+        );
+      }
+      await sleep(NATIVE_ARTIFACT_LOCK_RETRY_MS);
+    } finally {
+      if (lockHandle) {
+        await lockHandle.close();
+        await fsPromises.rm(lockPath, { force: true });
+      }
+    }
+  }
 }
 
 async function backupFile(filePath: string) {
@@ -1262,13 +1349,12 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig } = (await import(
-    "../../../packages/cli-tools/dist/index.mjs"
-  )) as {
-    loadConfig: (
-      options: null,
-    ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
-  };
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (
+        options: null,
+      ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+    };
   const originalCwd = process.cwd();
   process.chdir(session.exampleDir);
   const config = await loadConfig(null);
@@ -1395,12 +1481,16 @@ async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
 
       const refetched = await databasePlugin.getBundleById(bundleId);
       if (!refetched) {
-        throw new Error(`Verification failed: ${bundleId} is missing after patch.`);
+        throw new Error(
+          `Verification failed: ${bundleId} is missing after patch.`,
+        );
       }
       for (const key of patchKeys) {
         const expected = definedPatch[key as keyof Bundle];
         const observed = refetched[key as keyof Bundle];
-        if (JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)) {
+        if (
+          JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)
+        ) {
           throw new Error(
             `Verification failed: ${bundleId} ${key} expected ${JSON.stringify(expected)} but observed ${JSON.stringify(observed)}.`,
           );
@@ -1630,7 +1720,9 @@ async function clearRemoteBundles({
         const refetched = await Promise.all(
           nextBatch.map((bundle) => databasePlugin.getBundleById(bundle.id)),
         );
-        const stillEnabled = refetched.find((bundle) => bundle?.enabled !== false);
+        const stillEnabled = refetched.find(
+          (bundle) => bundle?.enabled !== false,
+        );
         if (stillEnabled) {
           throw new Error(
             `Failed to disable bundle ${stillEnabled.id} during reset.`,
@@ -1987,11 +2079,13 @@ async function prepareAndroidRelease() {
       targetPath: session.androidApkPath,
     });
     if (!restored) {
-      await buildDebuggableAndroidRelease("gradle-release.log", architecture);
-      await saveNativeArtifactToCache({
+      await buildNativeArtifactWithCacheLock({
         architecture,
+        build: () =>
+          buildDebuggableAndroidRelease("gradle-release.log", architecture),
         key: nativeCacheKey,
-        sourcePath: session.androidApkPath,
+        logLabel: "android-release",
+        targetPath: session.androidApkPath,
       });
     }
   }
@@ -2019,14 +2113,13 @@ async function prepareAndroidRelease() {
     }
 
     logE2e("android reused apk is not debuggable; rebuilding release apk");
-    await buildDebuggableAndroidRelease(
-      "gradle-release-reuse.log",
+    await buildNativeArtifactWithCacheLock({
       architecture,
-    );
-    await saveNativeArtifactToCache({
-      architecture,
+      build: () =>
+        buildDebuggableAndroidRelease("gradle-release-reuse.log", architecture),
       key: nativeCacheKey,
-      sourcePath: defaultAndroidApkPath,
+      logLabel: "android-release-reuse",
+      targetPath: defaultAndroidApkPath,
     });
     session.builtArtifactPath = defaultAndroidApkPath;
     runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
