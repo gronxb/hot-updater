@@ -420,6 +420,22 @@ async function runLogged(
   return Buffer.concat(output).toString("utf8");
 }
 
+function stripAnsi(value: string) {
+  return value.replace(
+    new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g"),
+    "",
+  );
+}
+
+function extractDeployBundleId(output: string) {
+  const plainOutput = stripAnsi(output);
+  const match = plainOutput.match(
+    /Deployment Successful \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/i,
+  );
+
+  return match?.[1] ?? null;
+}
+
 async function readTextIfExists(filePath: string) {
   try {
     return await fsPromises.readFile(filePath, "utf8");
@@ -1305,21 +1321,6 @@ async function fetchBundlesPage(args: {
   });
 
   return bundles;
-}
-
-async function fetchLatestBundle(args: { channel?: string }) {
-  const bundles = await fetchBundlesPage({
-    channel: args.channel,
-    limit: 1,
-    offset: 0,
-  });
-  const latestBundle = bundles.data[0];
-
-  if (!latestBundle?.id) {
-    throw new Error(`No bundles found for platform ${session.platform}`);
-  }
-
-  return latestBundle.id;
 }
 
 async function isBundleVisible(bundleId: string) {
@@ -3581,11 +3582,20 @@ async function deployBundle(request: DeployBundleRequest) {
     platform: session.platform,
     targetAppVersion: request.targetAppVersion,
   });
-  await runLogged("node", args, {
+  const deployOutput = await runLogged("node", args, {
     cwd: session.exampleDir,
     env: bareBuildCacheEnv({ bundleProfile, request }),
     logPath: deployLogPath,
   });
+  const bundleId = extractDeployBundleId(deployOutput);
+  if (!bundleId) {
+    throw new Error(
+      [
+        "Failed to resolve deployed bundle id from hot-updater deploy output.",
+        `See ${deployLogPath}`,
+      ].join("\n"),
+    );
+  }
 
   const archiveDetails = await (async () => {
     try {
@@ -3623,10 +3633,6 @@ async function deployBundle(request: DeployBundleRequest) {
       await fsPromises.rm(deployOutputPath, { force: true, recursive: true });
     }
   })();
-
-  const bundleId = await fetchLatestBundle({
-    channel: request.channel,
-  });
 
   if (request.targetCohorts && request.targetCohorts.length > 0) {
     await patchBundle(bundleId, {
