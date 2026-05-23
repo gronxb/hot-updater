@@ -528,7 +528,7 @@ async function runBootstrapBeforeMaestro(controlUrl: string, flow: string) {
     return;
   }
 
-  p.log.info("Prepare native app before Maestro driver lock");
+  p.log.info("Prepare native app before Maestro driver");
   const jobId = await startControlJob(controlUrl, "/e2e/jobs/bootstrap");
   await waitForControlJob(controlUrl, jobId);
 }
@@ -1130,7 +1130,7 @@ function prepareMaestroDriverPortLauncher(maestroBin: string) {
     patchDir,
     "maestro/cli/command/TestCommand.class",
   );
-  const launcherPath = path.join(patchDir, "maestro");
+  const launcherPath = path.join(patchDir, "bin/maestro");
 
   if (!fs.existsSync(launcherPath)) {
     fs.rmSync(patchDir, { recursive: true, force: true });
@@ -1139,6 +1139,7 @@ function prepareMaestroDriverPortLauncher(maestroBin: string) {
       cwd: patchDir,
     });
     patchMaestroTestCommandClass(classPath, MAESTRO_DRIVER_HOST_PORT);
+    fs.mkdirSync(path.dirname(launcherPath), { recursive: true });
     fs.writeFileSync(
       launcherPath,
       [
