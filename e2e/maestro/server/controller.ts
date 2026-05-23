@@ -1350,6 +1350,33 @@ async function fetchBundleById(bundleId: string) {
   return bundle;
 }
 
+async function fetchEnabledBundlesFromDatabase(limit: number) {
+  const bundles = await withDatabasePlugin(async (databasePlugin) => {
+    const { data } = await databasePlugin.getBundles({
+      limit,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        enabled: true,
+        platform: session.platform,
+      },
+    });
+
+    return data;
+  });
+
+  const normalized = normalizeBundleListEntries(bundles);
+  logE2e("database enabled bundle list", {
+    count: normalized.length,
+    limit,
+    platform: session.platform,
+  });
+
+  return normalized;
+}
+
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
   const definedPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined),
@@ -1574,15 +1601,17 @@ async function clearRemoteBundles({
   const clearedIds = new Set<string>();
 
   while (true) {
-    const bundles = await fetchBundlesPage({
-      limit: 100,
-      offset: 0,
-    });
-    const nextBatch = bundles.data.filter(
-      (bundle) =>
-        !clearedIds.has(bundle.id) &&
-        (mode === "delete" || bundle.enabled !== false),
-    );
+    const nextBatch =
+      mode === "disable"
+        ? (await fetchEnabledBundlesFromDatabase(100)).filter(
+            (bundle) => !clearedIds.has(bundle.id),
+          )
+        : (
+            await fetchBundlesPage({
+              limit: 100,
+              offset: 0,
+            })
+          ).data.filter((bundle) => !clearedIds.has(bundle.id));
 
     if (nextBatch.length === 0) {
       break;
@@ -1626,25 +1655,7 @@ async function clearRemoteBundles({
             offset: 0,
           })
         ).data[0]
-      : (
-          await fetchBundlesPage({
-            limit: 100,
-            offset: 0,
-          })
-        ).data.find((bundle) => bundle.enabled !== false);
-
-  if (mode === "disable" && remainingActiveBundle) {
-    const refetchedBundle = await fetchBundleById(remainingActiveBundle.id);
-    if (refetchedBundle.enabled === false) {
-      logE2e("bundle list still shows disabled bundle as enabled", {
-        bundleId: refetchedBundle.id,
-        platform: session.platform,
-      });
-      remainingActiveBundle = undefined;
-    } else {
-      remainingActiveBundle = refetchedBundle;
-    }
-  }
+      : (await fetchEnabledBundlesFromDatabase(1))[0];
 
   if (remainingActiveBundle) {
     throw new Error(
