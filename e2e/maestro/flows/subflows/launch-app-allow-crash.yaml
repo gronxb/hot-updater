@@ -1,0 +1,18 @@
+appId: ${APP_ID}
+---
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: prepareAppLaunch
+      CONTROL_URL: ${CONTROL_URL}
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 1000
+- tapOn:
+    id: android:id/aerr_close
+    optional: true
+- tapOn:
+    text: Close app
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 500
