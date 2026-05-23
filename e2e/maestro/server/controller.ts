@@ -3309,6 +3309,16 @@ async function ensureAppForeground() {
 }
 
 async function prepareAppLaunch() {
+  if (session.platform === "ios") {
+    runCapture(
+      "xcrun",
+      ["simctl", "terminate", deviceId as string, session.appId],
+      { allowFailure: true },
+    );
+    await sleep(E2E_POLL_INTERVAL_MS);
+    return {};
+  }
+
   if (session.platform !== "android") {
     return {};
   }
