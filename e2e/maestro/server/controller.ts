@@ -254,6 +254,15 @@ const E2E_POLL_INTERVAL_MS = Number(
 const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
 );
+const E2E_IOS_LAUNCH_SETTLE_MS = Number(
+  process.env.HOT_UPDATER_E2E_IOS_LAUNCH_SETTLE_MS || 1000,
+);
+const E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
+  process.env.HOT_UPDATER_E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH || 120,
+);
+const E2E_METADATA_WAIT_RELAUNCH_LIMIT = Number(
+  process.env.HOT_UPDATER_E2E_METADATA_WAIT_RELAUNCH_LIMIT || 2,
+);
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -3178,6 +3187,16 @@ function launchAndroidApp() {
   );
 }
 
+function launchIosApp() {
+  logE2e("ios metadata wait relaunch", {
+    appId: session.appId,
+    deviceId,
+  });
+  runCapture("xcrun", ["simctl", "launch", deviceId as string, session.appId], {
+    allowFailure: true,
+  });
+}
+
 function parseAndroidFocusedPackage(output: string) {
   const patterns = [
     /mCurrentFocus=.*?\s([A-Za-z0-9._]+)\/[A-Za-z0-9._$]+/,
@@ -3244,25 +3263,55 @@ function getAndroidHomePackage() {
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = 360,
+  attempts = E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
 ) {
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics = readIosWaitForMetadataDiagnostics();
-    if (diagnostics.metadata.value) {
-      const metadataState = getMetadataState(diagnostics.metadata.value);
+  let totalAttempts = 0;
 
-      if (
-        metadataState.stagingBundleId === bundleId &&
-        metadataState.verificationPending === verificationPending
-      ) {
-        return;
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= E2E_METADATA_WAIT_RELAUNCH_LIMIT;
+    relaunchIndex += 1
+  ) {
+    for (let index = 0; index < attempts; index += 1) {
+      totalAttempts += 1;
+
+      const diagnostics = readIosWaitForMetadataDiagnostics();
+      if (diagnostics.metadata.value) {
+        const metadataState = getMetadataState(diagnostics.metadata.value);
+
+        if (
+          metadataState.stagingBundleId === bundleId &&
+          metadataState.verificationPending === verificationPending
+        ) {
+          return;
+        }
       }
+      await sleep(E2E_POLL_INTERVAL_MS);
     }
-    await sleep(E2E_POLL_INTERVAL_MS);
+
+    const diagnostics = readIosWaitForMetadataDiagnostics();
+    const metadataState = getMetadataState(diagnostics.metadata.value);
+    if (
+      relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
+      metadataState.verificationPending === true
+    ) {
+      break;
+    }
+
+    logE2e("ios metadata wait retry", {
+      expectedBundleId: bundleId,
+      expectedVerificationPending: verificationPending,
+      observed: metadataState,
+      relaunchAttempt: relaunchIndex + 1,
+      relaunchLimit: E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+    });
+    await prepareAppLaunch();
+    launchIosApp();
+    await sleep(E2E_IOS_LAUNCH_SETTLE_MS);
   }
 
   throw createWaitForMetadataTimeoutError({
-    attempts,
+    attempts: totalAttempts,
     bundleId,
     ...readIosWaitForMetadataDiagnostics(),
     verificationPending,
@@ -3272,14 +3321,13 @@ async function waitForIosMetadataState(
 async function waitForAndroidMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = 360,
+  attempts = E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
 ) {
-  const relaunchLimit = 2;
   let totalAttempts = 0;
 
   for (
     let relaunchIndex = 0;
-    relaunchIndex <= relaunchLimit;
+    relaunchIndex <= E2E_METADATA_WAIT_RELAUNCH_LIMIT;
     relaunchIndex += 1
   ) {
     for (let index = 0; index < attempts; index += 1) {
@@ -3301,7 +3349,7 @@ async function waitForAndroidMetadataState(
     const diagnostics = readAndroidWaitForMetadataDiagnostics();
     const metadataState = getMetadataState(diagnostics.metadata.value);
     if (
-      relaunchIndex === relaunchLimit ||
+      relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
       metadataState.verificationPending === true
     ) {
       break;
@@ -3312,7 +3360,7 @@ async function waitForAndroidMetadataState(
       expectedVerificationPending: verificationPending,
       observed: metadataState,
       relaunchAttempt: relaunchIndex + 1,
-      relaunchLimit,
+      relaunchLimit: E2E_METADATA_WAIT_RELAUNCH_LIMIT,
     });
     await prepareAppLaunch();
     launchAndroidApp();
