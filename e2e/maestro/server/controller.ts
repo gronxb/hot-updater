@@ -2032,16 +2032,7 @@ function isAndroidAppInstalled() {
 }
 
 function clearAndroidLocalAppState() {
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
-    { allowFailure: true },
-  );
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
-    { allowFailure: true },
-  );
+  resetAndroidPackageData();
   runCapture(
     "adb",
     [
@@ -2070,7 +2061,21 @@ function clearAndroidLocalAppState() {
   });
 }
 
+function resetAndroidPackageData() {
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    { allowFailure: true },
+  );
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
+    { allowFailure: true },
+  );
+}
+
 async function installAndroidArtifact(logFileName: string) {
+  resetAndroidPackageData();
   await runLogged(
     "adb",
     [
