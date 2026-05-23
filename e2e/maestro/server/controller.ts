@@ -155,7 +155,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const NATIVE_ARTIFACT_CACHE_VERSION = 2;
+const NATIVE_ARTIFACT_CACHE_VERSION = 3;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "package.json",
@@ -449,6 +449,10 @@ async function runLogged(
 
   return Buffer.concat(output).toString("utf8");
 }
+
+const RELEASE_BUNDLE_ENV = {
+  NODE_ENV: "production",
+} satisfies NodeJS.ProcessEnv;
 
 function stripAnsi(value: string) {
   return value.replace(
@@ -2111,6 +2115,7 @@ async function prepareIosRelease() {
 
   try {
     await runLogged("xcodebuild", getXcodebuildArgs(false), {
+      env: RELEASE_BUNDLE_ENV,
       logPath: xcodebuildLogPath,
     });
   } catch (error) {
@@ -2135,6 +2140,7 @@ async function prepareIosRelease() {
     });
 
     await runLogged("xcodebuild", getXcodebuildArgs(true), {
+      env: RELEASE_BUNDLE_ENV,
       logPath: xcodebuildLogPath,
     });
   }
@@ -2240,6 +2246,7 @@ async function buildDebuggableAndroidRelease(
 
   await runLogged("./gradlew", args, {
     cwd: path.join(session.exampleDir, "android"),
+    env: RELEASE_BUNDLE_ENV,
     logPath: path.join(session.resultsDir, logFileName),
   });
 }
