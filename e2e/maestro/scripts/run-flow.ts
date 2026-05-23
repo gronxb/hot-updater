@@ -1029,7 +1029,7 @@ async function runMaestroWithTransportRetry({
         await ensureAndroidMaestroDriver(deviceId);
       } else {
         p.log.info("Reset iOS Maestro driver host state");
-        await resetMaestroDriverHostState();
+        await resetIosMaestroDriverHostState();
       }
       await runLogged(effectiveMaestroBin, maestroArgs, {
         abortOnOutput: (output) =>
@@ -1396,20 +1396,37 @@ function ensureIosSimulatorBooted(simulatorUdid: string) {
   runCapture("xcrun", ["simctl", "bootstatus", simulatorUdid, "-b"]);
 }
 
-function maestroDriverHostResetCommand(port: number) {
+function maestroDriverPortResetCommand(port: number) {
   return [
-    "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
-    "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
     `pids="$(lsof -nP -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"`,
     `if [[ -z "$pids" ]]; then pids="$(lsof -nP -ti tcp:${port} 2>/dev/null || true)"; fi`,
     'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
   ].join("\n");
 }
 
-async function resetMaestroDriverHostState() {
+function iosMaestroDriverHostResetCommand(port: number) {
+  return [
+    "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
+    "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
+    maestroDriverPortResetCommand(port),
+  ].join("\n");
+}
+
+async function resetMaestroDriverPortState() {
   runCapture(
     "/bin/zsh",
-    ["-lc", maestroDriverHostResetCommand(MAESTRO_DRIVER_HOST_PORT)],
+    ["-lc", maestroDriverPortResetCommand(MAESTRO_DRIVER_HOST_PORT)],
+    {
+      allowFailure: true,
+    },
+  );
+  await sleep(1000);
+}
+
+async function resetIosMaestroDriverHostState() {
+  runCapture(
+    "/bin/zsh",
+    ["-lc", iosMaestroDriverHostResetCommand(MAESTRO_DRIVER_HOST_PORT)],
     {
       allowFailure: true,
     },
@@ -1424,7 +1441,7 @@ async function resetAndroidMaestroDriverHostState(deviceId: string) {
     { allowFailure: true },
   );
   stopAndroidMaestroDriver(deviceId);
-  await resetMaestroDriverHostState();
+  await resetMaestroDriverPortState();
 }
 
 async function resetMaestroDriverState(platform: Platform, deviceId: string) {
@@ -1433,7 +1450,7 @@ async function resetMaestroDriverState(platform: Platform, deviceId: string) {
     return;
   }
 
-  await resetMaestroDriverHostState();
+  await resetIosMaestroDriverHostState();
 }
 
 function resolveAndroidSerial() {
