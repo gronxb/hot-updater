@@ -1205,7 +1205,9 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
-  const { loadConfig } = (await import("@hot-updater/cli-tools")) as {
+  const { loadConfig } = (await import(
+    "../../../packages/cli-tools/dist/index.mjs"
+  )) as {
     loadConfig: (
       options: null,
     ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
