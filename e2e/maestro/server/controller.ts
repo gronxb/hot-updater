@@ -2659,6 +2659,25 @@ function getMetadataState(metadata: Record<string, unknown> | null) {
   };
 }
 
+function isExpectedMetadataStateReached(
+  metadataState: {
+    stagingBundleId: string | null;
+    verificationPending: boolean | null;
+  },
+  bundleId: string,
+  verificationPending: boolean,
+) {
+  if (metadataState.stagingBundleId !== bundleId) {
+    return false;
+  }
+
+  if (metadataState.verificationPending === verificationPending) {
+    return true;
+  }
+
+  return verificationPending && metadataState.verificationPending === false;
+}
+
 function formatObservedMetadataState(details: {
   stagingBundleId: string | null;
   verificationPending: boolean | null;
@@ -3466,8 +3485,11 @@ async function waitForIosMetadataState(
         const metadataState = getMetadataState(diagnostics.metadata.value);
 
         if (
-          metadataState.stagingBundleId === bundleId &&
-          metadataState.verificationPending === verificationPending
+          isExpectedMetadataStateReached(
+            metadataState,
+            bundleId,
+            verificationPending,
+          )
         ) {
           return;
         }
@@ -3523,8 +3545,11 @@ async function waitForAndroidMetadataState(
       if (diagnostics.metadata.value) {
         const metadataState = getMetadataState(diagnostics.metadata.value);
         if (
-          metadataState.stagingBundleId === bundleId &&
-          metadataState.verificationPending === verificationPending
+          isExpectedMetadataStateReached(
+            metadataState,
+            bundleId,
+            verificationPending,
+          )
         ) {
           return;
         }
