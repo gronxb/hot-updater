@@ -156,6 +156,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/react-native",
 ];
 const NATIVE_ARTIFACT_CACHE_VERSION = 2;
+const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -1973,6 +1974,28 @@ async function prepareReusableIosArtifact(appPath: string, cacheKey: string) {
   });
 }
 
+function iosDerivedDataCacheKeyPath() {
+  return path.join(session.iosDerivedDataPath, IOS_DERIVED_DATA_CACHE_KEY_FILE);
+}
+
+async function readIosDerivedDataCacheKey() {
+  try {
+    return (
+      await fsPromises.readFile(iosDerivedDataCacheKeyPath(), "utf8")
+    ).trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return null;
+  }
+}
+
+async function writeIosDerivedDataCacheKey(cacheKey: string) {
+  await fsPromises.mkdir(session.iosDerivedDataPath, { recursive: true });
+  await fsPromises.writeFile(iosDerivedDataCacheKeyPath(), `${cacheKey}\n`);
+}
+
 const IOS_RETRYABLE_BUILD_PATTERNS = [
   /fatal error: 'glog\/logging\.h' file not found/,
   /fatal error: 'react\/renderer\/components\/view\/HostPlatformTouch\.h' file not found/,
@@ -1995,9 +2018,22 @@ async function prepareIosRelease() {
   const nativeCacheKey = nativeArtifactCacheKey();
 
   if (session.reuseApp && fs.existsSync(builtAppPath)) {
-    session.builtArtifactPath = builtAppPath;
-    await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
-    return;
+    const existingCacheKey = await readIosDerivedDataCacheKey();
+    if (existingCacheKey === nativeCacheKey) {
+      session.builtArtifactPath = builtAppPath;
+      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+      return;
+    }
+
+    logE2e("ios derived data cache key mismatch", {
+      expected: nativeCacheKey.slice(0, 16),
+      observed: existingCacheKey?.slice(0, 16) ?? null,
+      path: session.iosDerivedDataPath,
+    });
+    await fsPromises.rm(session.iosDerivedDataPath, {
+      force: true,
+      recursive: true,
+    });
   }
 
   if (!session.reuseApp) {
@@ -2014,6 +2050,7 @@ async function prepareIosRelease() {
     })
   ) {
     session.builtArtifactPath = builtAppPath;
+    await writeIosDerivedDataCacheKey(nativeCacheKey);
     if (session.reuseApp) {
       await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
     } else {
@@ -2107,6 +2144,7 @@ async function prepareIosRelease() {
     key: nativeCacheKey,
     sourcePath: builtAppPath,
   });
+  await writeIosDerivedDataCacheKey(nativeCacheKey);
   if (session.reuseApp) {
     await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
   } else {

@@ -51,6 +51,10 @@ function parsePortEnv(name: string, fallback: number) {
   return port;
 }
 
+function safeFileToken(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
+}
+
 type DeveloperE2ESetup = {
   appBaseUrl: URL;
 };
@@ -1800,6 +1804,13 @@ async function main() {
     appId = ANDROID_APP_ID;
   }
 
+  const iosDerivedDataPath =
+    process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
+    path.join(
+      os.tmpdir(),
+      `hotupdater-v085-ios-maestro-${safeFileToken(`${deviceId}-${serverPort}`)}`,
+    );
+
   await fsPromises.rm(E2E_RUNTIME_DIR, {
     recursive: true,
     force: true,
@@ -1824,8 +1835,7 @@ async function main() {
         HOT_UPDATER_E2E_APP_BASE_URL: developerSetup.appBaseUrl.toString(),
         HOT_UPDATER_E2E_APP_ID: appId,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
-        HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
-          "/tmp/hotupdater-v085-ios-maestro",
+        HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: iosDerivedDataPath,
         HOT_UPDATER_E2E_PLATFORM: platform,
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
