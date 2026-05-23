@@ -83,7 +83,6 @@ const CONTROL_JOB_TIMEOUT_MS = Number(
 );
 const CONTROL_JOB_POLL_INTERVAL_MS = 1000;
 const CONTROL_JOB_RETRY_LOG_INTERVAL_MS = 30 * 1000;
-const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
 const ANDROID_MAESTRO_DRIVER_PACKAGES = [
@@ -1660,6 +1659,13 @@ function formatRepoRelative(targetPath: string) {
   return path.relative(REPO_DIR, targetPath) || targetPath;
 }
 
+function getPortStatePath(platform: Platform) {
+  return path.join(
+    E2E_RUNTIME_DIR,
+    `server-port-${platform}-${MAESTRO_DRIVER_HOST_PORT}.txt`,
+  );
+}
+
 function shouldReuseStoredPort(storedPort: number) {
   if (!Number.isInteger(storedPort) || storedPort <= 0) {
     return false;
@@ -1702,20 +1708,20 @@ async function main() {
   const scenarioName = getScenarioName(options.flow);
   const maestroBin = resolveMaestroBin();
   const resultsDir = path.join(RESULTS_ROOT, platform, scenarioName);
+  const portStatePath = getPortStatePath(platform);
 
   await fsPromises.rm(resultsDir, { recursive: true, force: true });
   await fsPromises.mkdir(resultsDir, { recursive: true });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
 
   const storedPort =
-    options.reuseApp && fs.existsSync(PORT_STATE_PATH)
-      ? Number((await fsPromises.readFile(PORT_STATE_PATH, "utf8")).trim())
+    options.reuseApp && fs.existsSync(portStatePath)
+      ? Number((await fsPromises.readFile(portStatePath, "utf8")).trim())
       : Number.NaN;
-  const preferredPort = shouldReuseStoredPort(storedPort)
-    ? storedPort
-    : DEFAULT_SERVER_PORT;
-  const serverPort = await resolveServerPort(preferredPort, !options.reuseApp);
-  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+  const useStoredPort = shouldReuseStoredPort(storedPort);
+  const preferredPort = useStoredPort ? storedPort : DEFAULT_SERVER_PORT;
+  const serverPort = await resolveServerPort(preferredPort, !useStoredPort);
+  await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
 
@@ -1763,7 +1769,7 @@ async function main() {
     force: true,
   });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
-  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+  await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
