@@ -1599,6 +1599,12 @@ function ensureStorePath() {
 }
 
 async function clearIosLocalBundleState() {
+  runCapture(
+    "xcrun",
+    ["simctl", "terminate", deviceId as string, session.appId],
+    { allowFailure: true },
+  );
+
   const appDataDir = runCapture("xcrun", [
     "simctl",
     "get_app_container",
