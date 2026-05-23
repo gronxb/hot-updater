@@ -1350,10 +1350,12 @@ function parseHotUpdaterCliJson<T>(label: string, output: string): T {
 function runHotUpdaterCliCapture(args: string[]) {
   logE2e("hot-updater cli request", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    controlBaseUrl: getControllerReachableAppBaseUrl(),
   });
 
   const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: getHotUpdaterControlEnv(),
     maxBuffer: 16 * 1024 * 1024,
   });
 
@@ -1369,11 +1371,13 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   const logPath = path.join(session.resultsDir, logName);
   logE2e("hot-updater cli start", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    controlBaseUrl: getControllerReachableAppBaseUrl(),
     logPath: path.relative(REPO_DIR, logPath),
   });
 
   await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: getHotUpdaterControlEnv(),
     logPath,
   });
 
@@ -1403,9 +1407,11 @@ async function withDatabasePlugin<T>(
 
     try {
       process.chdir(session.exampleDir);
-      const config = await loadConfig(null);
-      databasePlugin = await config.database();
-      return await callback(databasePlugin);
+      return await withHotUpdaterControlEnv(async () => {
+        const config = await loadConfig(null);
+        databasePlugin = await config.database();
+        return await callback(databasePlugin);
+      });
     } catch (error) {
       lastError = error;
       if (
@@ -3059,6 +3065,35 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+function getHotUpdaterControlEnv(
+  env: NodeJS.ProcessEnv | undefined = undefined,
+) {
+  return {
+    ...env,
+    HOT_UPDATER_APP_BASE_URL: getControllerReachableAppBaseUrl(),
+  } satisfies NodeJS.ProcessEnv;
+}
+
+async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
+  const hadAppBaseUrl = Object.prototype.hasOwnProperty.call(
+    process.env,
+    "HOT_UPDATER_APP_BASE_URL",
+  );
+  const previousAppBaseUrl = process.env.HOT_UPDATER_APP_BASE_URL;
+
+  process.env.HOT_UPDATER_APP_BASE_URL = getControllerReachableAppBaseUrl();
+
+  try {
+    return await callback();
+  } finally {
+    if (hadAppBaseUrl) {
+      process.env.HOT_UPDATER_APP_BASE_URL = previousAppBaseUrl;
+    } else {
+      delete process.env.HOT_UPDATER_APP_BASE_URL;
+    }
+  }
+}
+
 function buildAppVersionUpdateCheckUrl(args: {
   bundleId: string;
   channel: string;
@@ -3824,7 +3859,7 @@ async function deployBundle(request: DeployBundleRequest) {
   });
   const deployOutput = await runLogged("node", args, {
     cwd: session.exampleDir,
-    env: bareBuildCacheEnv({ bundleProfile, request }),
+    env: getHotUpdaterControlEnv(bareBuildCacheEnv({ bundleProfile, request })),
     logPath: deployLogPath,
   });
   const bundleId = extractDeployBundleId(deployOutput);
