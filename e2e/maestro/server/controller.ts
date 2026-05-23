@@ -227,6 +227,9 @@ const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
 const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
 );
+const REMOTE_BUNDLE_DISABLE_CONCURRENCY = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DISABLE_CONCURRENCY || 4,
+);
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
   /Verification failed: .+ still exists\./i;
 const E2E_POLL_INTERVAL_MS = Number(
@@ -1501,9 +1504,37 @@ async function deleteBundle(bundleId: string) {
   throw lastError;
 }
 
-async function clearRemoteBundles() {
-  const deletedBundleIds: string[] = [];
-  const deletedIds = new Set<string>();
+async function disableBundleForReset(bundleId: string) {
+  await runHotUpdaterCliLogged(
+    ["bundle", "disable", bundleId, "-y"],
+    `bundle-disable-${bundleId}.log`,
+  );
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+) {
+  const limit = Math.max(1, concurrency);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex];
+        nextIndex += 1;
+        await worker(item);
+      }
+    }),
+  );
+}
+
+async function clearRemoteBundles({
+  mode = "delete",
+}: { mode?: "delete" | "disable" } = {}) {
+  const clearedBundleIds: string[] = [];
+  const clearedIds = new Set<string>();
 
   while (true) {
     const bundles = await fetchBundlesPage({
@@ -1511,34 +1542,53 @@ async function clearRemoteBundles() {
       offset: 0,
     });
     const nextBatch = bundles.data.filter(
-      (bundle) => !deletedIds.has(bundle.id),
+      (bundle) =>
+        !clearedIds.has(bundle.id) &&
+        (mode === "delete" || bundle.enabled !== false),
     );
 
     if (nextBatch.length === 0) {
       break;
     }
 
-    for (const bundle of nextBatch) {
-      await deleteBundle(bundle.id);
-      deletedIds.add(bundle.id);
-      deletedBundleIds.push(bundle.id);
+    if (mode === "disable") {
+      await runWithConcurrency(
+        nextBatch,
+        REMOTE_BUNDLE_DISABLE_CONCURRENCY,
+        async (bundle) => {
+          await disableBundleForReset(bundle.id);
+          clearedIds.add(bundle.id);
+          clearedBundleIds.push(bundle.id);
+        },
+      );
+    } else {
+      for (const bundle of nextBatch) {
+        await deleteBundle(bundle.id);
+        clearedIds.add(bundle.id);
+        clearedBundleIds.push(bundle.id);
+      }
     }
   }
 
   const remainingBundles = await fetchBundlesPage({
-    limit: 1,
+    limit: mode === "delete" ? 1 : 100,
     offset: 0,
   });
 
-  if (remainingBundles.data.length > 0) {
+  const remainingActiveBundle = remainingBundles.data.find(
+    (bundle) => mode === "delete" || bundle.enabled !== false,
+  );
+
+  if (remainingActiveBundle) {
     throw new Error(
-      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingBundles.data[0].id} is still visible after reset`,
+      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingActiveBundle.id} is still ${mode === "delete" ? "visible" : "enabled"} after reset`,
     );
   }
 
   logE2e("remote-bundles reset", {
-    deletedBundleIds,
-    deletedCount: deletedBundleIds.length,
+    clearedBundleIds,
+    clearedCount: clearedBundleIds.length,
+    mode,
     platform: session.platform,
   });
 }
@@ -3232,7 +3282,9 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
-  await clearRemoteBundles();
+  await clearRemoteBundles({
+    mode: session.reuseApp ? "disable" : "delete",
+  });
   await restoreFile(
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
@@ -4013,7 +4065,9 @@ async function reinstallBuiltInApp() {
 }
 
 async function resetRemoteBundles() {
-  await clearRemoteBundles();
+  await clearRemoteBundles({
+    mode: session.reuseApp ? "disable" : "delete",
+  });
 
   logE2e("remote bundles reset on demand", {
     platform: session.platform,
