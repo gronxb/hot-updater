@@ -36,6 +36,10 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runFlow:
+    file: subflows/clear-crash-history.yaml
+    env:
+      APP_ID: ${APP_ID}
 # Deploy a stable OTA and confirm it becomes the active bundle.
 - runScript:
     file: ../scripts/control.js

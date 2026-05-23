@@ -1070,6 +1070,8 @@ async function runMaestroWithTransportRetry({
           [MAESTRO_LOCK_HELD_ENV]: "1",
           HOME: maestroHomeDir,
           JAVA_TOOL_OPTIONS: javaToolOptionsWithUserHome(maestroHomeDir),
+          MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true",
+          MAESTRO_CLI_NO_ANALYTICS: "true",
           MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
         },
         activityPaths: [
