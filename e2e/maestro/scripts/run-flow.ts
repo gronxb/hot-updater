@@ -716,6 +716,12 @@ function installTerminationHandlers() {
   process.once("SIGTERM", handleSignal);
 }
 
+function javaToolOptionsWithUserHome(homeDir: string) {
+  const userHomeOption = `-Duser.home=${homeDir}`;
+  const existing = process.env.JAVA_TOOL_OPTIONS?.trim();
+  return existing ? `${existing} ${userHomeOption}` : userHomeOption;
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -1019,6 +1025,12 @@ async function runMaestroWithTransportRetry({
     `CONTROL_URL=${controlUrl}`,
     flow,
   ];
+  const maestroHomeDir = path.join(
+    E2E_RUNTIME_DIR,
+    "maestro-home",
+    `${platform}-${MAESTRO_DRIVER_HOST_PORT}`,
+  );
+  await fsPromises.mkdir(maestroHomeDir, { recursive: true });
 
   for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
     const releaseMaestroLock = await acquireMaestroDriverLock();
@@ -1037,6 +1049,8 @@ async function runMaestroWithTransportRetry({
         cwd: REPO_DIR,
         env: {
           [MAESTRO_LOCK_HELD_ENV]: "1",
+          HOME: maestroHomeDir,
+          JAVA_TOOL_OPTIONS: javaToolOptionsWithUserHome(maestroHomeDir),
           MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
         },
         activityPaths: [
