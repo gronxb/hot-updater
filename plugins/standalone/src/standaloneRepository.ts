@@ -309,10 +309,12 @@ export const standaloneRepository =
             return;
           }
 
-          // Process each operation sequentially
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              // Handle delete operation
+          const deletes = changedSets.filter((op) => op.operation === "delete");
+          const inserts = changedSets.filter((op) => op.operation === "insert");
+          const updates = changedSets.filter((op) => op.operation === "update");
+
+          await Promise.all(
+            deletes.map(async (op) => {
               const { path, headers: routeHeaders } = routes.delete(op.data.id);
               const response = await fetch(buildUrl(path), {
                 method: "DELETE",
@@ -338,23 +340,29 @@ export const standaloneRepository =
                   }
                 }
               }
-            } else if (op.operation === "insert") {
-              const { path, headers: routeHeaders } = routes.create();
-              const response = await fetch(buildUrl(path), {
-                method: "POST",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify([op.data]),
-              });
+            }),
+          );
 
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
+          if (inserts.length > 0) {
+            const { path, headers: routeHeaders } = routes.create();
+            const response = await fetch(buildUrl(path), {
+              method: "POST",
+              headers: getHeaders(routeHeaders),
+              body: JSON.stringify(inserts.map((op) => op.data)),
+            });
 
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
-            } else if (op.operation === "update") {
+            if (!response.ok) {
+              throw new Error(`API Error: ${response.statusText}`);
+            }
+
+            const result = (await response.json()) as { success: boolean };
+            if (!result.success) {
+              throw new Error("Failed to commit bundle");
+            }
+          }
+
+          await Promise.all(
+            updates.map(async (op) => {
               const { path, headers: routeHeaders } = routes.update(op.data.id);
               const response = await fetch(buildUrl(path), {
                 method: "PATCH",
@@ -370,8 +378,8 @@ export const standaloneRepository =
               if (!result.success) {
                 throw new Error("Failed to commit bundle");
               }
-            }
-          }
+            }),
+          );
         },
       };
     },
