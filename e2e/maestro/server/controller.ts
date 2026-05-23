@@ -17,6 +17,7 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -226,9 +227,6 @@ const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
 );
 const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
-);
-const REMOTE_BUNDLE_DISABLE_CONCURRENCY = Number(
-  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DISABLE_CONCURRENCY || 4,
 );
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
   /Verification failed: .+ still exists\./i;
@@ -1204,6 +1202,30 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   });
 }
 
+async function withDatabasePlugin<T>(
+  callback: (databasePlugin: DatabasePlugin) => Promise<T>,
+): Promise<T> {
+  const { loadConfig } = (await import("@hot-updater/cli-tools")) as {
+    loadConfig: (
+      options: null,
+    ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+  };
+  const originalCwd = process.cwd();
+  process.chdir(session.exampleDir);
+  const config = await loadConfig(null);
+  const databasePlugin = await config.database();
+
+  try {
+    return await callback(databasePlugin);
+  } finally {
+    try {
+      await databasePlugin.onUnmount?.();
+    } finally {
+      process.chdir(originalCwd);
+    }
+  }
+}
+
 async function fetchBundlesPage(args: {
   channel?: string;
   limit: number;
@@ -1286,41 +1308,39 @@ async function fetchBundleById(bundleId: string) {
 }
 
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
-  if (patch.enabled !== undefined) {
-    await runHotUpdaterCliLogged(
-      ["bundle", patch.enabled ? "enable" : "disable", bundleId, "-y"],
-      `bundle-${patch.enabled ? "enable" : "disable"}-${bundleId}.log`,
-    );
+  const definedPatch = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<Bundle>;
+  const patchKeys = Object.keys(definedPatch);
+  if (patchKeys.length > 0) {
+    await withDatabasePlugin(async (databasePlugin) => {
+      const bundle = await databasePlugin.getBundleById(bundleId);
+      if (!bundle) {
+        throw new Error(`No bundle with id ${bundleId}.`);
+      }
+
+      await databasePlugin.updateBundle(bundleId, definedPatch);
+      await databasePlugin.commitBundle();
+
+      const refetched = await databasePlugin.getBundleById(bundleId);
+      if (!refetched) {
+        throw new Error(`Verification failed: ${bundleId} is missing after patch.`);
+      }
+      for (const key of patchKeys) {
+        const expected = definedPatch[key as keyof Bundle];
+        const observed = refetched[key as keyof Bundle];
+        if (JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)) {
+          throw new Error(
+            `Verification failed: ${bundleId} ${key} expected ${JSON.stringify(expected)} but observed ${JSON.stringify(observed)}.`,
+          );
+        }
+      }
+    });
   }
 
-  const updateArgs = ["bundle", "update", bundleId, "-y", "--json"];
-  if (patch.rolloutCohortCount !== undefined) {
-    if (patch.rolloutCohortCount === null) {
-      throw new Error("Cannot clear rolloutCohortCount through E2E CLI patch");
-    }
-    updateArgs.push("--rollout-cohort-count", String(patch.rolloutCohortCount));
-  }
-  if (patch.shouldForceUpdate !== undefined) {
-    updateArgs.push("--force-update", String(patch.shouldForceUpdate));
-  }
-  if (patch.targetCohorts !== undefined) {
-    if (patch.targetCohorts === null) {
-      updateArgs.push("--clear-target-cohorts");
-    } else {
-      updateArgs.push("--target-cohorts", patch.targetCohorts.join(","));
-    }
-  }
-
-  if (updateArgs.length > 5) {
-    parseHotUpdaterCliJson<Bundle>(
-      "bundle update",
-      runHotUpdaterCliCapture(updateArgs),
-    );
-  }
-
-  logE2e("hot-updater cli bundle patch", {
+  logE2e("hot-updater direct bundle patch", {
     bundleId,
-    patch,
+    patch: definedPatch,
   });
 }
 
@@ -1504,32 +1524,6 @@ async function deleteBundle(bundleId: string) {
   throw lastError;
 }
 
-async function disableBundleForReset(bundleId: string) {
-  await runHotUpdaterCliLogged(
-    ["bundle", "disable", bundleId, "-y"],
-    `bundle-disable-${bundleId}.log`,
-  );
-}
-
-async function runWithConcurrency<T>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T) => Promise<void>,
-) {
-  const limit = Math.max(1, concurrency);
-  let nextIndex = 0;
-
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (nextIndex < items.length) {
-        const item = items[nextIndex];
-        nextIndex += 1;
-        await worker(item);
-      }
-    }),
-  );
-}
-
 async function clearRemoteBundles({
   mode = "delete",
 }: { mode?: "delete" | "disable" } = {}) {
@@ -1552,15 +1546,26 @@ async function clearRemoteBundles({
     }
 
     if (mode === "disable") {
-      await runWithConcurrency(
-        nextBatch,
-        REMOTE_BUNDLE_DISABLE_CONCURRENCY,
-        async (bundle) => {
-          await disableBundleForReset(bundle.id);
-          clearedIds.add(bundle.id);
-          clearedBundleIds.push(bundle.id);
-        },
-      );
+      await withDatabasePlugin(async (databasePlugin) => {
+        for (const bundle of nextBatch) {
+          await databasePlugin.updateBundle(bundle.id, { enabled: false });
+        }
+        await databasePlugin.commitBundle();
+
+        const refetched = await Promise.all(
+          nextBatch.map((bundle) => databasePlugin.getBundleById(bundle.id)),
+        );
+        const stillEnabled = refetched.find((bundle) => bundle?.enabled !== false);
+        if (stillEnabled) {
+          throw new Error(
+            `Failed to disable bundle ${stillEnabled.id} during reset.`,
+          );
+        }
+      });
+      for (const bundle of nextBatch) {
+        clearedIds.add(bundle.id);
+        clearedBundleIds.push(bundle.id);
+      }
     } else {
       for (const bundle of nextBatch) {
         await deleteBundle(bundle.id);

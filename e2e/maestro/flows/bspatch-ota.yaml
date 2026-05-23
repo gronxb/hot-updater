@@ -28,6 +28,11 @@ onFlowComplete:
         CONTROL_URL: ${CONTROL_URL}
 ---
 # Capture the built-in baseline before the OTA chain starts.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: reinstallBuiltInApp
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:
