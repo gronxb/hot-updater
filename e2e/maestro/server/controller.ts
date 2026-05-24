@@ -269,6 +269,9 @@ const E2E_IOS_LAUNCH_SETTLE_MS = Number(
 const E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
   process.env.HOT_UPDATER_E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH || 120,
 );
+const E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH || 40,
+);
 const E2E_METADATA_WAIT_RELAUNCH_LIMIT = Number(
   process.env.HOT_UPDATER_E2E_METADATA_WAIT_RELAUNCH_LIMIT || 2,
 );
@@ -2764,6 +2767,10 @@ function readIosWaitForMetadataDiagnostics() {
   };
 }
 
+function readIosMetadataSnapshot() {
+  return readOptionalJsonSnapshot(path.join(ensureStorePath(), "metadata.json"));
+}
+
 function readAndroidStoreSnapshot(
   remoteFileName: string,
   localFileName: string,
@@ -2788,6 +2795,10 @@ function readAndroidStoreSnapshot(
   };
 }
 
+function readAndroidMetadataSnapshot(localFileName: string) {
+  return readAndroidStoreSnapshot("metadata.json", localFileName);
+}
+
 function readAndroidWaitForMetadataDiagnostics() {
   return {
     crashHistory: readAndroidStoreSnapshot(
@@ -2798,10 +2809,7 @@ function readAndroidWaitForMetadataDiagnostics() {
       "launch-report.json",
       "wait-for-metadata-launch-report.json",
     ),
-    metadata: readAndroidStoreSnapshot(
-      "metadata.json",
-      "wait-for-metadata-metadata.json",
-    ),
+    metadata: readAndroidMetadataSnapshot("wait-for-metadata-metadata.json"),
   };
 }
 
@@ -3480,9 +3488,9 @@ async function waitForIosMetadataState(
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
-      const diagnostics = readIosWaitForMetadataDiagnostics();
-      if (diagnostics.metadata.value) {
-        const metadataState = getMetadataState(diagnostics.metadata.value);
+      const metadata = readIosMetadataSnapshot();
+      if (metadata.value) {
+        const metadataState = getMetadataState(metadata.value);
 
         if (
           isExpectedMetadataStateReached(
@@ -3497,8 +3505,8 @@ async function waitForIosMetadataState(
       await sleep(E2E_POLL_INTERVAL_MS);
     }
 
-    const diagnostics = readIosWaitForMetadataDiagnostics();
-    const metadataState = getMetadataState(diagnostics.metadata.value);
+    const metadata = readIosMetadataSnapshot();
+    const metadataState = getMetadataState(metadata.value);
     if (
       relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
       metadataState.verificationPending === true
@@ -3529,7 +3537,7 @@ async function waitForIosMetadataState(
 async function waitForAndroidMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  attempts = E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
 ) {
   let totalAttempts = 0;
 
@@ -3541,9 +3549,11 @@ async function waitForAndroidMetadataState(
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
-      const diagnostics = readAndroidWaitForMetadataDiagnostics();
-      if (diagnostics.metadata.value) {
-        const metadataState = getMetadataState(diagnostics.metadata.value);
+      const metadata = readAndroidMetadataSnapshot(
+        "wait-for-metadata-metadata.json",
+      );
+      if (metadata.value) {
+        const metadataState = getMetadataState(metadata.value);
         if (
           isExpectedMetadataStateReached(
             metadataState,
@@ -3557,8 +3567,10 @@ async function waitForAndroidMetadataState(
       await sleep(E2E_POLL_INTERVAL_MS);
     }
 
-    const diagnostics = readAndroidWaitForMetadataDiagnostics();
-    const metadataState = getMetadataState(diagnostics.metadata.value);
+    const metadata = readAndroidMetadataSnapshot(
+      "wait-for-metadata-metadata.json",
+    );
+    const metadataState = getMetadataState(metadata.value);
     if (
       relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
       metadataState.verificationPending === true
