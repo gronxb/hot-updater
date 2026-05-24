@@ -3388,9 +3388,18 @@ function launchAndroidApp() {
 
   logE2e("android recovery relaunch", {
     appId: session.appId,
+    coldStart: true,
     component,
     deviceId,
   });
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    {
+      allowFailure: true,
+      cwd: REPO_DIR,
+    },
+  );
   runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "am", "start", "-W", "-n", component],
