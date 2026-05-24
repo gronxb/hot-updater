@@ -427,9 +427,27 @@ async function runLogged(
   const logStream = fs.createWriteStream(options.logPath, { flags: "w" });
   const child = spawn(command, args, {
     cwd: options.cwd,
+    detached: true,
     env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let childExited = false;
+  const killChildGroup = () => {
+    if (childExited || child.pid === undefined) {
+      return;
+    }
+
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        return;
+      }
+    }
+  };
+  process.once("exit", killChildGroup);
 
   child.stdout.on("data", (chunk: Buffer) => {
     output.push(chunk);
@@ -445,7 +463,11 @@ async function runLogged(
     signal: NodeJS.Signals | null;
   }>((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", (code, signal) => resolve({ code, signal }));
+    child.once("exit", (code, signal) => {
+      childExited = true;
+      process.removeListener("exit", killChildGroup);
+      resolve({ code, signal });
+    });
   });
 
   await new Promise((resolve) =>
@@ -2305,6 +2327,7 @@ async function buildDebuggableAndroidRelease(
   const args = [
     ":app:assembleRelease",
     "--build-cache",
+    "--no-daemon",
     "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
     ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
   ];
