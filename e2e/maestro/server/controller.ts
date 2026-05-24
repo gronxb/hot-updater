@@ -3366,30 +3366,9 @@ function readAndroidRecoveryDiagnostics() {
 }
 
 function launchAndroidApp() {
-  const component = runCapture("adb", [
-    "-s",
-    deviceId as string,
-    "shell",
-    "cmd",
-    "package",
-    "resolve-activity",
-    "--brief",
-    "--components",
-    session.appId,
-  ])
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .at(-1);
-
-  if (!component) {
-    throw new Error(`Failed to resolve launch activity for ${session.appId}`);
-  }
-
   logE2e("android recovery relaunch", {
     appId: session.appId,
     coldStart: true,
-    component,
     deviceId,
   });
   runCapture(
@@ -3400,27 +3379,37 @@ function launchAndroidApp() {
       cwd: REPO_DIR,
     },
   );
-  runCapture(
+  const launchOutput = runCapture(
     "adb",
     [
       "-s",
       deviceId as string,
       "shell",
-      "am",
-      "start",
-      "-S",
-      "-W",
-      "-a",
-      "android.intent.action.MAIN",
+      "monkey",
+      "-p",
+      session.appId,
       "-c",
       "android.intent.category.LAUNCHER",
-      "-n",
-      component,
+      "1",
     ],
     {
       cwd: REPO_DIR,
     },
   );
+  const pid = runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "pidof", session.appId],
+    {
+      allowFailure: true,
+      cwd: REPO_DIR,
+    },
+  );
+  logE2e("android recovery relaunch started", {
+    appId: session.appId,
+    deviceId,
+    launchOutput,
+    pid: pid || null,
+  });
 }
 
 function launchIosApp() {
