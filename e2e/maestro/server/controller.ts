@@ -806,6 +806,48 @@ async function saveNativeArtifactToCache(args: {
   });
 }
 
+async function readNativeArtifactLock(lockPath: string) {
+  try {
+    const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split(
+      "\n",
+    );
+    return {
+      pid: Number.parseInt(pidLine ?? "", 10),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isProcessRunning(pid: number) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeStaleNativeArtifactLock(lockPath: string) {
+  const lock = await readNativeArtifactLock(lockPath);
+  const isStale = lock === null || !isProcessRunning(lock.pid);
+
+  if (!isStale) {
+    return false;
+  }
+
+  await fsPromises.rm(lockPath, { force: true });
+  logE2e("native artifact cache stale lock removed", {
+    lockPath,
+    pid: lock?.pid ?? null,
+  });
+  return true;
+}
+
 async function buildNativeArtifactWithCacheLock(args: {
   architecture?: string | null;
   build: () => Promise<void>;
@@ -860,6 +902,10 @@ async function buildNativeArtifactWithCacheLock(args: {
         error.code !== "EEXIST"
       ) {
         throw error;
+      }
+
+      if (await removeStaleNativeArtifactLock(lockPath)) {
+        continue;
       }
 
       const restored = await restoreNativeArtifactFromCache({
