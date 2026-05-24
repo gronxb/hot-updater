@@ -3149,26 +3149,26 @@ function getHotUpdaterControlEnv(
 ) {
   return {
     ...env,
-    HOT_UPDATER_APP_BASE_URL: getControllerReachableAppBaseUrl(),
+    HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
 }
 
 async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
-  const hadAppBaseUrl = Object.prototype.hasOwnProperty.call(
+  const hadControlBaseUrl = Object.prototype.hasOwnProperty.call(
     process.env,
-    "HOT_UPDATER_APP_BASE_URL",
+    "HOT_UPDATER_CONTROL_BASE_URL",
   );
-  const previousAppBaseUrl = process.env.HOT_UPDATER_APP_BASE_URL;
+  const previousControlBaseUrl = process.env.HOT_UPDATER_CONTROL_BASE_URL;
 
-  process.env.HOT_UPDATER_APP_BASE_URL = getControllerReachableAppBaseUrl();
+  process.env.HOT_UPDATER_CONTROL_BASE_URL = getControllerReachableAppBaseUrl();
 
   try {
     return await callback();
   } finally {
-    if (hadAppBaseUrl) {
-      process.env.HOT_UPDATER_APP_BASE_URL = previousAppBaseUrl;
+    if (hadControlBaseUrl) {
+      process.env.HOT_UPDATER_CONTROL_BASE_URL = previousControlBaseUrl;
     } else {
-      delete process.env.HOT_UPDATER_APP_BASE_URL;
+      delete process.env.HOT_UPDATER_CONTROL_BASE_URL;
     }
   }
 }
