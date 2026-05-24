@@ -85,6 +85,10 @@ const CONTROL_JOB_HTTP_TIMEOUT_MS = 120 * 1000;
 const CONTROL_JOB_TIMEOUT_MS = Number(
   process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 45 * 60 * 1000,
 );
+const BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS ||
+    120 * 60 * 1000,
+);
 const CONTROL_JOB_POLL_INTERVAL_MS = 1000;
 const CONTROL_JOB_RETRY_LOG_INTERVAL_MS = 30 * 1000;
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
@@ -443,8 +447,12 @@ function formatFetchFailure(error: unknown) {
   return `${error.message}${cause}`;
 }
 
-async function startControlJob(controlUrl: string, pathName: string) {
-  const deadline = Date.now() + CONTROL_JOB_TIMEOUT_MS;
+async function startControlJob(
+  controlUrl: string,
+  pathName: string,
+  timeoutMs = CONTROL_JOB_TIMEOUT_MS,
+) {
+  const deadline = Date.now() + timeoutMs;
   let lastLogAt = 0;
 
   for (;;) {
@@ -468,7 +476,7 @@ async function startControlJob(controlUrl: string, pathName: string) {
       if (Date.now() >= deadline) {
         throw new Error(
           `${pathName} did not start within ${formatDuration(
-            CONTROL_JOB_TIMEOUT_MS,
+            timeoutMs,
           )}: ${formatFetchFailure(error)}`,
         );
       }
@@ -487,8 +495,12 @@ async function startControlJob(controlUrl: string, pathName: string) {
   }
 }
 
-async function waitForControlJob(controlUrl: string, jobId: string) {
-  const deadline = Date.now() + CONTROL_JOB_TIMEOUT_MS;
+async function waitForControlJob(
+  controlUrl: string,
+  jobId: string,
+  timeoutMs = CONTROL_JOB_TIMEOUT_MS,
+) {
+  const deadline = Date.now() + timeoutMs;
   let lastLogAt = 0;
 
   for (;;) {
@@ -507,7 +519,7 @@ async function waitForControlJob(controlUrl: string, jobId: string) {
       if (Date.now() >= deadline) {
         throw new Error(
           `Control job ${jobId} did not finish within ${formatDuration(
-            CONTROL_JOB_TIMEOUT_MS,
+            timeoutMs,
           )}: ${formatFetchFailure(error)}`,
         );
       }
@@ -535,7 +547,7 @@ async function waitForControlJob(controlUrl: string, jobId: string) {
     if (Date.now() >= deadline) {
       throw new Error(
         `Control job ${jobId} did not finish within ${formatDuration(
-          CONTROL_JOB_TIMEOUT_MS,
+          timeoutMs,
         )}`,
       );
     }
@@ -550,8 +562,12 @@ async function runBootstrapBeforeMaestro(controlUrl: string, flow: string) {
   }
 
   p.log.info("Prepare native app before Maestro driver");
-  const jobId = await startControlJob(controlUrl, "/e2e/jobs/bootstrap");
-  await waitForControlJob(controlUrl, jobId);
+  const jobId = await startControlJob(
+    controlUrl,
+    "/e2e/jobs/bootstrap",
+    BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS,
+  );
+  await waitForControlJob(controlUrl, jobId, BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS);
 }
 
 function stripAnsi(value: string) {
