@@ -135,6 +135,7 @@ const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
 );
+const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
@@ -439,16 +440,24 @@ async function runLogged(
     logStream.write(chunk);
   });
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
+  const exitResult = await new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolve, reject) => {
     child.once("error", reject);
-    child.once("close", resolve);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
   });
 
+  await new Promise((resolve) =>
+    setTimeout(resolve, COMMAND_STDIO_DRAIN_GRACE_MS),
+  );
   logStream.end();
 
-  if (exitCode !== 0 && !options.allowFailure) {
+  if ((exitResult.code !== 0 || exitResult.signal) && !options.allowFailure) {
     throw new Error(
-      `${command} ${args.join(" ")} failed with code ${exitCode}. See ${options.logPath}`,
+      `${command} ${args.join(" ")} failed with ${
+        exitResult.signal ?? `code ${exitResult.code}`
+      }. See ${options.logPath}`,
     );
   }
 
