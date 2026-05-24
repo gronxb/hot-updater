@@ -157,6 +157,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/react-native",
 ];
 const NATIVE_ARTIFACT_CACHE_VERSION = 3;
+const IOS_PODS_CACHE_VERSION = 1;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const IOS_RELEASE_BUILD_SETTINGS = [
   "ONLY_ACTIVE_ARCH=YES",
@@ -180,6 +181,17 @@ const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
 const NATIVE_ARTIFACT_CACHE_EXCLUDED_INPUT_PATHS = new Set([
   "examples/v0.85.0/android/settings.gradle",
 ]);
+const IOS_PODS_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/Gemfile",
+  "examples/v0.85.0/Gemfile.lock",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/ios/Podfile",
+  "examples/v0.85.0/ios/Podfile.lock",
+  "packages/react-native/HotUpdater.podspec",
+  "packages/react-native/ios",
+];
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -598,6 +610,10 @@ function hashNativeArtifactInputs() {
   );
 }
 
+function hashIosPodsInputs() {
+  return hashGitTrackedInputFiles(IOS_PODS_CACHE_INPUT_PATHS);
+}
+
 function hashBareBuildInputs() {
   return hashGitTrackedInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
 }
@@ -745,6 +761,36 @@ function nativeArtifactCachePaths(key: string) {
   };
 }
 
+function iosPodsCacheKey() {
+  return hashText(
+    JSON.stringify({
+      cacheVersion: IOS_PODS_CACHE_VERSION,
+      inputHash: hashIosPodsInputs(),
+      platform: "ios",
+      runtime: {
+        arch: process.arch,
+        platform: process.platform,
+      },
+      tool: readToolFingerprint(),
+    }),
+  );
+}
+
+function iosPodsCachePaths(key: string) {
+  const root = nativeArtifactCacheRoot();
+  if (!root) {
+    return null;
+  }
+
+  const entryDir = path.join(root, "ios-pods", key);
+  return {
+    entryDir,
+    manifestPath: path.join(entryDir, "manifest.json"),
+    podsPath: path.join(entryDir, "Pods"),
+    root,
+  };
+}
+
 function reuseAppInstallMarkerPath(cacheKey: string) {
   return path.join(
     EXAMPLE_DIR,
@@ -844,6 +890,61 @@ async function saveNativeArtifactToCache(args: {
     key: key.slice(0, 16),
     platform: session.platform,
     target: paths.artifactPath,
+  });
+}
+
+async function restoreIosPodsFromCache(key: string) {
+  const paths = iosPodsCachePaths(key);
+  if (!paths) {
+    return false;
+  }
+
+  const targetPath = path.join(session.exampleDir, "ios/Pods");
+  if (!fs.existsSync(paths.manifestPath) || !fs.existsSync(paths.podsPath)) {
+    logE2e("ios pods cache miss", {
+      key: key.slice(0, 16),
+      root: paths.root,
+    });
+    return false;
+  }
+
+  await copyNativeArtifact(paths.podsPath, targetPath);
+  logE2e("ios pods cache hit", {
+    key: key.slice(0, 16),
+    source: paths.podsPath,
+  });
+  return true;
+}
+
+async function saveIosPodsToCache(key: string) {
+  const paths = iosPodsCachePaths(key);
+  const sourcePath = path.join(session.exampleDir, "ios/Pods");
+  if (!paths || !fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  const tempPodsPath = `${paths.podsPath}.tmp-${process.pid}-${Date.now()}`;
+  await fsPromises.mkdir(paths.entryDir, { recursive: true });
+  await copyNativeArtifact(sourcePath, tempPodsPath);
+  await fsPromises.rm(paths.podsPath, { recursive: true, force: true });
+  await fsPromises.rename(tempPodsPath, paths.podsPath);
+  await fsPromises.writeFile(
+    paths.manifestPath,
+    `${JSON.stringify(
+      {
+        createdAt: new Date().toISOString(),
+        key,
+        platform: "ios",
+        sourcePath,
+        version: IOS_PODS_CACHE_VERSION,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  logE2e("ios pods cache saved", {
+    key: key.slice(0, 16),
+    target: paths.podsPath,
   });
 }
 
@@ -2183,19 +2284,14 @@ async function prepareIosRelease() {
     logPath: path.join(session.resultsDir, "bundle-install.log"),
   });
 
-  await fsPromises.rm(
-    path.join(session.exampleDir, "ios/Pods/ReactNativeDependencies-artifacts"),
-    { force: true, recursive: true },
-  );
-  await fsPromises.rm(
-    path.join(session.exampleDir, "ios/Pods/React-Core-prebuilt"),
-    { force: true, recursive: true },
-  );
-
-  await runLogged("bundle", ["exec", "pod", "install", "--clean-install"], {
-    cwd: path.join(session.exampleDir, "ios"),
-    logPath: path.join(session.resultsDir, "pod-install.log"),
-  });
+  const podsCacheKey = iosPodsCacheKey();
+  if (!(await restoreIosPodsFromCache(podsCacheKey))) {
+    await runLogged("bundle", ["exec", "pod", "install"], {
+      cwd: path.join(session.exampleDir, "ios"),
+      logPath: path.join(session.resultsDir, "pod-install.log"),
+    });
+    await saveIosPodsToCache(podsCacheKey);
+  }
 
   const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
   const getXcodebuildArgs = (serialized: boolean) => {
@@ -2346,7 +2442,6 @@ async function buildDebuggableAndroidRelease(
   const args = [
     ":app:assembleRelease",
     "--build-cache",
-    "--no-daemon",
     "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
     ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
   ];
