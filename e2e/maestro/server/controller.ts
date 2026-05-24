@@ -158,6 +158,11 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
 ];
 const NATIVE_ARTIFACT_CACHE_VERSION = 3;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
+const IOS_RELEASE_BUILD_SETTINGS = [
+  "ONLY_ACTIVE_ARCH=YES",
+  "COMPILER_INDEX_STORE_ENABLE=NO",
+  "SWIFT_COMPILATION_MODE=singlefile",
+];
 const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -693,6 +698,8 @@ function nativeArtifactCacheKey(architecture?: string | null) {
       appBaseUrl: session.appBaseUrl,
       appId: session.appId,
       architecture: architecture ?? null,
+      buildSettings:
+        session.platform === "ios" ? IOS_RELEASE_BUILD_SETTINGS : null,
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
       initialMarker: session.initialMarker,
       inputHash: hashNativeArtifactInputs(),
@@ -2193,7 +2200,7 @@ async function prepareIosRelease() {
       `id=${deviceId}`,
       "-derivedDataPath",
       session.iosDerivedDataPath,
-      "ONLY_ACTIVE_ARCH=YES",
+      ...IOS_RELEASE_BUILD_SETTINGS,
     ];
 
     if (serialized) {
