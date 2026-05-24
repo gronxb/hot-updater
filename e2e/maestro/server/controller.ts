@@ -176,6 +176,9 @@ const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "packages/core",
   "packages/react-native",
 ];
+const NATIVE_ARTIFACT_CACHE_EXCLUDED_INPUT_PATHS = new Set([
+  "examples/v0.85.0/android/settings.gradle",
+]);
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
 const EMPTY_CRASH_HISTORY = {
@@ -563,9 +566,16 @@ function readGitTrackedInputFiles(inputPaths: string[]) {
   return output.split("\0").filter(Boolean).sort();
 }
 
-function hashGitTrackedInputFiles(inputPaths: string[]) {
+function hashGitTrackedInputFiles(
+  inputPaths: string[],
+  excludedInputPaths = new Set<string>(),
+) {
   const hash = createHash("sha256");
   for (const relativePath of readGitTrackedInputFiles(inputPaths)) {
+    if (excludedInputPaths.has(relativePath)) {
+      continue;
+    }
+
     const absolutePath = path.join(REPO_DIR, relativePath);
     if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
       continue;
@@ -581,7 +591,10 @@ function hashGitTrackedInputFiles(inputPaths: string[]) {
 }
 
 function hashNativeArtifactInputs() {
-  return hashGitTrackedInputFiles(NATIVE_ARTIFACT_CACHE_INPUT_PATHS);
+  return hashGitTrackedInputFiles(
+    NATIVE_ARTIFACT_CACHE_INPUT_PATHS,
+    NATIVE_ARTIFACT_CACHE_EXCLUDED_INPUT_PATHS,
+  );
 }
 
 function hashBareBuildInputs() {
@@ -698,8 +711,6 @@ function nativeArtifactCacheKey(architecture?: string | null) {
       appBaseUrl: session.appBaseUrl,
       appId: session.appId,
       architecture: architecture ?? null,
-      buildSettings:
-        session.platform === "ios" ? IOS_RELEASE_BUILD_SETTINGS : null,
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
       initialMarker: session.initialMarker,
       inputHash: hashNativeArtifactInputs(),
