@@ -813,6 +813,20 @@ async function writeReuseAppInstallMarker(cacheKey: string) {
 async function copyNativeArtifact(sourcePath: string, targetPath: string) {
   await fsPromises.rm(targetPath, { recursive: true, force: true });
   await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
+  if (process.platform === "darwin") {
+    const result = spawnSync("cp", ["-cR", sourcePath, targetPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status === 0) {
+      return;
+    }
+    logE2e("clone copy failed; falling back to fs copy", {
+      error: result.stderr.trim(),
+      sourcePath,
+      targetPath,
+    });
+  }
   await fsPromises.cp(sourcePath, targetPath, {
     errorOnExist: false,
     force: true,
