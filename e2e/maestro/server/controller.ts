@@ -3402,7 +3402,21 @@ function launchAndroidApp() {
   );
   runCapture(
     "adb",
-    ["-s", deviceId as string, "shell", "am", "start", "-W", "-n", component],
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "start",
+      "-S",
+      "-W",
+      "-a",
+      "android.intent.action.MAIN",
+      "-c",
+      "android.intent.category.LAUNCHER",
+      "-n",
+      component,
+    ],
     {
       cwd: REPO_DIR,
     },
