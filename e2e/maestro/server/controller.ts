@@ -2273,88 +2273,90 @@ async function prepareIosRelease() {
     return;
   }
 
-  await fsPromises.rm(session.iosDerivedDataPath, {
-    force: true,
-    recursive: true,
-  });
+  await buildNativeArtifactWithCacheLock({
+    build: async () => {
+      await fsPromises.rm(session.iosDerivedDataPath, {
+        force: true,
+        recursive: true,
+      });
 
-  await runLogged("bundle", ["install"], {
-    cwd: path.join(session.exampleDir, "ios"),
-    logPath: path.join(session.resultsDir, "bundle-install.log"),
-  });
+      await runLogged("bundle", ["install"], {
+        cwd: path.join(session.exampleDir, "ios"),
+        logPath: path.join(session.resultsDir, "bundle-install.log"),
+      });
 
-  const podsCacheKey = iosPodsCacheKey();
-  if (!(await restoreIosPodsFromCache(podsCacheKey))) {
-    await runLogged("bundle", ["exec", "pod", "install"], {
-      cwd: path.join(session.exampleDir, "ios"),
-      logPath: path.join(session.resultsDir, "pod-install.log"),
-    });
-    await saveIosPodsToCache(podsCacheKey);
-  }
+      const podsCacheKey = iosPodsCacheKey();
+      if (!(await restoreIosPodsFromCache(podsCacheKey))) {
+        await runLogged("bundle", ["exec", "pod", "install"], {
+          cwd: path.join(session.exampleDir, "ios"),
+          logPath: path.join(session.resultsDir, "pod-install.log"),
+        });
+        await saveIosPodsToCache(podsCacheKey);
+      }
 
-  const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
-  const getXcodebuildArgs = (serialized: boolean) => {
-    const args = [
-      "-workspace",
-      path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
-      "-scheme",
-      "HotUpdaterExample",
-      "-configuration",
-      "Release",
-      "-sdk",
-      "iphonesimulator",
-      "-destination",
-      `id=${deviceId}`,
-      "-derivedDataPath",
-      session.iosDerivedDataPath,
-      ...IOS_RELEASE_BUILD_SETTINGS,
-    ];
+      const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
+      const getXcodebuildArgs = (serialized: boolean) => {
+        const args = [
+          "-workspace",
+          path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
+          "-scheme",
+          "HotUpdaterExample",
+          "-configuration",
+          "Release",
+          "-sdk",
+          "iphonesimulator",
+          "-destination",
+          `id=${deviceId}`,
+          "-derivedDataPath",
+          session.iosDerivedDataPath,
+          ...IOS_RELEASE_BUILD_SETTINGS,
+        ];
 
-    if (serialized) {
-      args.push("-jobs", "1");
-    }
+        if (serialized) {
+          args.push("-jobs", "1");
+        }
 
-    args.push("build");
-    return args;
-  };
+        args.push("build");
+        return args;
+      };
 
-  try {
-    await runLogged("xcodebuild", getXcodebuildArgs(false), {
-      env: RELEASE_BUNDLE_ENV,
-      logPath: xcodebuildLogPath,
-    });
-  } catch (error) {
-    const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
-    if (!shouldRetry) {
-      throw error;
-    }
+      try {
+        await runLogged("xcodebuild", getXcodebuildArgs(false), {
+          env: RELEASE_BUNDLE_ENV,
+          logPath: xcodebuildLogPath,
+        });
+      } catch (error) {
+        const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
+        if (!shouldRetry) {
+          throw error;
+        }
 
-    console.warn(
-      "[maestro-e2e] retrying iOS release build after transient header resolution failure",
-    );
+        console.warn(
+          "[maestro-e2e] retrying iOS release build after transient header resolution failure",
+        );
 
-    await fsPromises
-      .rename(
-        xcodebuildLogPath,
-        path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
-      )
-      .catch(() => {});
-    await fsPromises.rm(session.iosDerivedDataPath, {
-      force: true,
-      recursive: true,
-    });
+        await fsPromises
+          .rename(
+            xcodebuildLogPath,
+            path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
+          )
+          .catch(() => {});
+        await fsPromises.rm(session.iosDerivedDataPath, {
+          force: true,
+          recursive: true,
+        });
 
-    await runLogged("xcodebuild", getXcodebuildArgs(true), {
-      env: RELEASE_BUNDLE_ENV,
-      logPath: xcodebuildLogPath,
-    });
-  }
-
-  session.builtArtifactPath = builtAppPath;
-  await saveNativeArtifactToCache({
+        await runLogged("xcodebuild", getXcodebuildArgs(true), {
+          env: RELEASE_BUNDLE_ENV,
+          logPath: xcodebuildLogPath,
+        });
+      }
+    },
     key: nativeCacheKey,
-    sourcePath: builtAppPath,
+    logLabel: "ios-release",
+    targetPath: builtAppPath,
   });
+  session.builtArtifactPath = builtAppPath;
   await writeIosDerivedDataCacheKey(nativeCacheKey);
   if (session.reuseApp) {
     await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
