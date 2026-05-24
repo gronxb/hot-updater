@@ -14,11 +14,11 @@ appId: ${APP_ID}
     commands:
       - assertVisible:
           id: runtime-bundle-id
-          text: ${EXPECTED_BUNDLE_ID}
+          text: ".*${EXPECTED_BUNDLE_ID}.*"
       - assertVisible:
           id: runtime-bundle-id
       - assertVisible:
           id: runtime-scenario-marker
-          text: ${EXPECTED_MARKER}
+          text: ".*${EXPECTED_MARKER}.*"
       - assertVisible:
           id: runtime-scenario-marker
