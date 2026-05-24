@@ -723,15 +723,16 @@ function readToolFingerprint() {
 }
 
 function nativeArtifactCacheKey(architecture?: string | null) {
+  const hasRuntimeConfiguredBaseUrl = session.platform === "ios";
   return hashText(
     JSON.stringify({
-      appBaseUrl: session.appBaseUrl,
+      appBaseUrl: hasRuntimeConfiguredBaseUrl ? null : session.appBaseUrl,
       appId: session.appId,
       architecture: architecture ?? null,
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
       initialMarker: session.initialMarker,
       inputHash: hashNativeArtifactInputs(),
-      nativeEnv: nativeDotenvFingerprint(),
+      nativeEnv: hasRuntimeConfiguredBaseUrl ? null : nativeDotenvFingerprint(),
       platform: session.platform,
       runtime: {
         arch: process.arch,
@@ -950,9 +951,7 @@ async function saveIosPodsToCache(key: string) {
 
 async function readNativeArtifactLock(lockPath: string) {
   try {
-    const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split(
-      "\n",
-    );
+    const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split("\n");
     return {
       pid: Number.parseInt(pidLine ?? "", 10),
     };
@@ -2960,7 +2959,9 @@ function readIosWaitForMetadataDiagnostics() {
 }
 
 function readIosMetadataSnapshot() {
-  return readOptionalJsonSnapshot(path.join(ensureStorePath(), "metadata.json"));
+  return readOptionalJsonSnapshot(
+    path.join(ensureStorePath(), "metadata.json"),
+  );
 }
 
 function readAndroidStoreSnapshot(
@@ -3957,6 +3958,20 @@ async function prepareAppLaunch() {
     runCapture(
       "xcrun",
       ["simctl", "terminate", deviceId as string, session.appId],
+      { allowFailure: true },
+    );
+    runCapture(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "defaults",
+        "write",
+        session.appId,
+        "HOT_UPDATER_E2E_APP_BASE_URL",
+        session.appBaseUrl,
+      ],
       { allowFailure: true },
     );
     await sleep(E2E_POLL_INTERVAL_MS);
