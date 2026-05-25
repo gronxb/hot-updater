@@ -157,7 +157,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/react-native",
 ];
 const NATIVE_ARTIFACT_CACHE_VERSION = 3;
-const IOS_PODS_CACHE_VERSION = 1;
+const IOS_PODS_CACHE_VERSION = 2;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const IOS_RELEASE_BUILD_SETTINGS = [
   "ONLY_ACTIVE_ARCH=YES",
@@ -190,6 +190,7 @@ const IOS_PODS_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/ios/Podfile",
   "examples/v0.85.0/ios/Podfile.lock",
   "packages/react-native/HotUpdater.podspec",
+  "packages/react-native/package.json",
   "packages/react-native/ios",
 ];
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
@@ -979,6 +980,8 @@ async function restoreIosPodsFromCache(key: string) {
   }
 
   const targetPath = path.join(session.exampleDir, "ios/Pods");
+  const manifestPath = path.join(targetPath, "Manifest.lock");
+  const podfileLockPath = path.join(session.exampleDir, "ios/Podfile.lock");
   if (!fs.existsSync(paths.manifestPath) || !fs.existsSync(paths.podsPath)) {
     logE2e("ios pods cache miss", {
       key: key.slice(0, 16),
@@ -989,6 +992,20 @@ async function restoreIosPodsFromCache(key: string) {
 
   await copyNativeArtifact(paths.podsPath, targetPath);
   await relocateIosPodsAbsolutePaths(targetPath);
+  if (
+    !fs.existsSync(manifestPath) ||
+    !fs.existsSync(podfileLockPath) ||
+    (await fsPromises.readFile(manifestPath, "utf8")) !==
+      (await fsPromises.readFile(podfileLockPath, "utf8"))
+  ) {
+    await fsPromises.rm(targetPath, { recursive: true, force: true });
+    logE2e("ios pods cache manifest mismatch", {
+      key: key.slice(0, 16),
+      manifestPath,
+      podfileLockPath,
+    });
+    return false;
+  }
   logE2e("ios pods cache hit", {
     key: key.slice(0, 16),
     source: paths.podsPath,
