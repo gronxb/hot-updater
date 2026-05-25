@@ -713,6 +713,35 @@ function signingKeyFingerprint() {
   );
 }
 
+async function exportNativePublicKeyFromSigningKey() {
+  const privateKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+
+  if (!fs.existsSync(privateKeyPath)) {
+    logE2e("native public key export skipped", {
+      privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
+      reason: "private key file missing",
+    });
+    return;
+  }
+
+  await runLogged(
+    "node",
+    [HOT_UPDATER_CLI_PATH, "keys", "export-public", "--yes"],
+    {
+      cwd: session.exampleDir,
+      env: RELEASE_BUNDLE_ENV,
+      logPath: path.join(session.resultsDir, "keys-export-public.log"),
+    },
+  );
+
+  logE2e("native public key exported", {
+    privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
+  });
+}
+
 function readToolFingerprint() {
   if (session.platform !== "ios") {
     return null;
@@ -2993,10 +3022,16 @@ function createWaitForMetadataTimeoutError(args: {
   verificationPending: boolean;
 }) {
   const observedState = getMetadataState(args.metadata.value);
+  const nativeLogs = readHotUpdaterNativeLogs();
+  const nativeLogTail = nativeLogs.split("\n").filter(Boolean).slice(-30);
+  const signatureFailure = nativeLogTail.find((line) =>
+    /signature verification failed|SIGNATURE_VERIFICATION_FAILED/i.test(line),
+  );
   const message = [
     "Timed out waiting for metadata state.",
     `Expected stagingBundleId=${args.bundleId} and verificationPending=${String(args.verificationPending)}.`,
     `${formatObservedMetadataState(observedState)}.`,
+    ...(signatureFailure ? [`Native failure: ${signatureFailure}`] : []),
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
 
@@ -3011,6 +3046,7 @@ function createWaitForMetadataTimeoutError(args: {
       launchReport: args.launchReport,
       metadata: args.metadata,
       metadataState: observedState,
+      nativeLogTail,
     },
     platform: session.platform,
   });
@@ -4137,6 +4173,7 @@ async function bootstrap() {
   );
   await restoreMultiAssetFixtures();
   await restoreFile(session.configBackupPath, session.configSourceFile);
+  await exportNativePublicKeyFromSigningKey();
   await applyAppScenario({
     bundleProfile: "default",
     marker: session.initialMarker,
@@ -4525,6 +4562,52 @@ function readFirstOtaArchiveInstallLogs() {
     .split("\n")
     .filter((line) => line.includes("Skipping manifest-driven install"))
     .join("\n");
+}
+
+function readHotUpdaterNativeLogs() {
+  if (session.platform === "ios") {
+    return runCapture(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        "10m",
+        "--predicate",
+        [
+          'eventMessage CONTAINS "BundleStorage"',
+          'eventMessage CONTAINS "SignatureVerifier"',
+          'eventMessage CONTAINS "HotUpdater"',
+          'eventMessage CONTAINS "DecompressService"',
+        ].join(" OR "),
+      ],
+      { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+    );
+  }
+
+  return runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "time",
+      "BundleStorage:D",
+      "SignatureVerifier:D",
+      "HotUpdaterRecovery:D",
+      "DecompressService:D",
+      "ReactNativeJS:E",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+  );
 }
 
 function includesAllFragments(logs: string, fragments: string[]) {
