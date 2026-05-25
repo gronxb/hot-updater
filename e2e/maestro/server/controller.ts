@@ -2292,6 +2292,7 @@ async function writeIosDerivedDataCacheKey(cacheKey: string) {
 const IOS_RETRYABLE_BUILD_PATTERNS = [
   /fatal error: 'glog\/logging\.h' file not found/,
   /fatal error: 'react\/renderer\/components\/view\/HostPlatformTouch\.h' file not found/,
+  /Build input file cannot be found: '.+\/ios\/build\/generated\/ios\/ReactCodegen\/.+'/,
 ];
 
 async function shouldRetryIosReleaseBuild(logPath: string) {
