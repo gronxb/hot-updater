@@ -834,6 +834,70 @@ async function copyNativeArtifact(sourcePath: string, targetPath: string) {
   });
 }
 
+async function* walkFiles(dir: string): AsyncGenerator<string> {
+  const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkFiles(entryPath);
+    } else if (entry.isFile()) {
+      yield entryPath;
+    }
+  }
+}
+
+function shouldRelocateIosPodsFile(filePath: string) {
+  return [".json", ".pbxproj", ".xcconfig", ".yaml", ".yml"].includes(
+    path.extname(filePath),
+  );
+}
+
+async function relocateIosPodsAbsolutePaths(podsPath: string) {
+  if (!fs.existsSync(podsPath)) {
+    return;
+  }
+
+  const reactCorePrebuiltPath = path.join(podsPath, "React-Core-prebuilt");
+  const reactVfsPath = path.join(reactCorePrebuiltPath, "React-VFS.yaml");
+  let replacements = 0;
+  let files = 0;
+
+  for await (const filePath of walkFiles(podsPath)) {
+    if (!shouldRelocateIosPodsFile(filePath)) {
+      continue;
+    }
+
+    const text = await fsPromises.readFile(filePath, "utf8");
+    const relocated = text
+      .replaceAll(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\/React-VFS\.yaml/g,
+        reactVfsPath,
+      )
+      .replaceAll(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\//g,
+        `${reactCorePrebuiltPath}/`,
+      );
+    if (relocated === text) {
+      continue;
+    }
+
+    files += 1;
+    replacements +=
+      text.split(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt/g,
+      ).length - 1;
+    await fsPromises.writeFile(filePath, relocated);
+  }
+
+  if (replacements > 0) {
+    logE2e("ios pods absolute paths relocated", {
+      files,
+      podsPath,
+      replacements,
+    });
+  }
+}
+
 async function restoreNativeArtifactFromCache(args: {
   architecture?: string | null;
   key?: string;
@@ -924,6 +988,7 @@ async function restoreIosPodsFromCache(key: string) {
   }
 
   await copyNativeArtifact(paths.podsPath, targetPath);
+  await relocateIosPodsAbsolutePaths(targetPath);
   logE2e("ios pods cache hit", {
     key: key.slice(0, 16),
     source: paths.podsPath,
@@ -2457,7 +2522,10 @@ async function buildDebuggableAndroidRelease(
   const args = [
     ":app:assembleRelease",
     "--build-cache",
+    "--no-daemon",
+    "--max-workers=2",
     "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    "-Pkotlin.compiler.execution.strategy=in-process",
     ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
   ];
 
