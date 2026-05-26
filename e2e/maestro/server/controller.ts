@@ -4635,6 +4635,33 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
   await fsPromises.mkdir(lockRoot, { recursive: true });
   let loggedWait = false;
 
+  const readOwner = async () => {
+    try {
+      return JSON.parse(
+        await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
+      ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
+    } catch {
+      return null;
+    }
+  };
+
+  const isOwnerAlive = (owner: Awaited<ReturnType<typeof readOwner>>) => {
+    if (
+      !owner ||
+      typeof owner.pid !== "number" ||
+      !Number.isInteger(owner.pid)
+    ) {
+      return true;
+    }
+
+    try {
+      process.kill(owner.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   while (true) {
     try {
       await fsPromises.mkdir(lockPath);
@@ -4664,6 +4691,17 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
 
       const stats = await fsPromises.stat(lockPath).catch(() => null);
       const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
+      const owner = await readOwner();
+      if (!isOwnerAlive(owner)) {
+        logE2e("bare build cache lock owner exited; removing", {
+          cacheKey,
+          owner,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        loggedWait = false;
+        continue;
+      }
+
       if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
         logE2e("bare build cache lock stale; removing", {
           ageMs,
