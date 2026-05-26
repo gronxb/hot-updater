@@ -1,9 +1,10 @@
 appId: ${APP_ID}
 ---
-- runFlow:
-    file: navigate-top.yaml
-    env:
-      APP_ID: ${APP_ID}
+- scrollUntilVisible:
+    element:
+      id: runtime-bundle-id
+    direction: UP
+    timeout: 10000
 - runFlow:
     file: assert-text-by-id.yaml
     env:
