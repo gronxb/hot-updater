@@ -156,7 +156,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase1CPrimaryBundleAssetPath}.br
+      EXPECTED_DOWNLOAD_PATH: ${output.phase1CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -348,7 +348,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2CPrimaryBundleAssetPath}.br
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -425,7 +425,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2DPrimaryBundleAssetPath}.br
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2DPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -743,7 +743,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}.br
+      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
