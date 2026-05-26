@@ -3537,7 +3537,8 @@ function writeAndroidE2ERuntimeConfig() {
     `hot-updater-e2e-runtime-config-${process.pid}-${randomUUID()}.xml`,
   );
   const remotePath = `/data/local/tmp/${path.basename(localPath)}`;
-  const sharedPrefsFile = `shared_prefs/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
+  const sharedPrefsDir = `/data/data/${session.appId}/shared_prefs`;
+  const sharedPrefsFile = `${sharedPrefsDir}/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
   const xml = [
     "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
     "<map>",
@@ -3557,15 +3558,40 @@ function writeAndroidE2ERuntimeConfig() {
       localPath,
       remotePath,
     ]);
+    runCapture(
+      "adb",
+      [
+        "-s",
+        deviceId as string,
+        "shell",
+        "run-as",
+        session.appId,
+        "mkdir",
+        sharedPrefsDir,
+      ],
+      {
+        allowFailure: true,
+      },
+    );
     runCapture("adb", [
       "-s",
       deviceId as string,
       "shell",
       "run-as",
       session.appId,
-      "sh",
-      "-c",
-      `mkdir -p shared_prefs && cp ${remotePath} ${sharedPrefsFile} && chmod 600 ${sharedPrefsFile}`,
+      "cp",
+      remotePath,
+      sharedPrefsFile,
+    ]);
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "chmod",
+      "600",
+      sharedPrefsFile,
     ]);
     logE2e("android runtime config ready", {
       appBaseUrl: session.appBaseUrl,
