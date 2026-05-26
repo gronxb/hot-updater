@@ -5,11 +5,6 @@ appId: ${APP_ID}
     env:
       ACTION: ensureAppForeground
       CONTROL_URL: ${CONTROL_URL}
-- scrollUntilVisible:
-    element:
-      id: runtime-bundle-id
-    direction: UP
-    timeout: 10000
 - retry:
     maxRetries: 3
     commands:
