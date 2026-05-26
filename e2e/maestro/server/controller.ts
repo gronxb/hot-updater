@@ -288,6 +288,12 @@ const E2E_POLL_INTERVAL_MS = Number(
 const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
 );
+const E2E_ANDROID_FOREGROUND_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_TIMEOUT_MS || 30000,
+);
+const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
+);
 const E2E_IOS_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_IOS_LAUNCH_SETTLE_MS || 1000,
 );
@@ -3698,37 +3704,57 @@ function readAndroidRecoveryDiagnostics() {
   };
 }
 
-function launchAndroidApp() {
+function launchAndroidApp({
+  explicitActivity = false,
+  forceStop = true,
+}: {
+  explicitActivity?: boolean;
+  forceStop?: boolean;
+} = {}) {
   logE2e("android recovery relaunch", {
     appId: session.appId,
     coldStart: true,
     deviceId,
+    explicitActivity,
+    forceStop,
   });
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
-    {
-      allowFailure: true,
-      cwd: REPO_DIR,
-    },
-  );
-  const launchOutput = runCapture(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "monkey",
-      "-p",
-      session.appId,
-      "-c",
-      "android.intent.category.LAUNCHER",
-      "1",
-    ],
-    {
-      cwd: REPO_DIR,
-    },
-  );
+  if (forceStop) {
+    runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+      {
+        allowFailure: true,
+        cwd: REPO_DIR,
+      },
+    );
+  }
+
+  const launchArgs = explicitActivity
+    ? [
+        "-s",
+        deviceId as string,
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        `${session.appId}/.MainActivity`,
+      ]
+    : [
+        "-s",
+        deviceId as string,
+        "shell",
+        "monkey",
+        "-p",
+        session.appId,
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "1",
+      ];
+  const launchOutput = runCapture("adb", launchArgs, {
+    allowFailure: explicitActivity,
+    cwd: REPO_DIR,
+  });
   const pid = runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "pidof", session.appId],
@@ -3740,9 +3766,26 @@ function launchAndroidApp() {
   logE2e("android recovery relaunch started", {
     appId: session.appId,
     deviceId,
+    explicitActivity,
     launchOutput,
     pid: pid || null,
   });
+}
+
+async function waitForAndroidForeground(timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  let focusedPackage: string | null = null;
+
+  while (Date.now() < deadline) {
+    focusedPackage = getAndroidFocusedPackage();
+    if (focusedPackage === session.appId) {
+      return focusedPackage;
+    }
+
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
+  return focusedPackage;
 }
 
 function launchIosApp() {
@@ -4012,14 +4055,13 @@ async function ensureAppForeground() {
   });
 
   const recoverySteps: Array<{
-    delayMs: number;
     label: string;
     run: () => Promise<void>;
+    timeoutMs: number;
   }> = [];
 
   if (focusedPackage && focusedPackage !== homePackage) {
     recoverySteps.push({
-      delayMs: 750,
       label: "dismiss-dialog",
       run: async () => {
         runCapture(
@@ -4035,19 +4077,19 @@ async function ensureAppForeground() {
           { allowFailure: true },
         );
       },
+      timeoutMs: 1500,
     });
   }
 
   recoverySteps.push(
     {
-      delayMs: 1500,
       label: "relaunch-app",
       run: async () => {
-        launchAndroidApp();
+        launchAndroidApp({ forceStop: false });
       },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
     {
-      delayMs: 2000,
       label: "home-and-relaunch",
       run: async () => {
         runCapture(
@@ -4063,15 +4105,22 @@ async function ensureAppForeground() {
           { allowFailure: true },
         );
         await sleep(E2E_POLL_INTERVAL_MS);
-        launchAndroidApp();
+        launchAndroidApp({ forceStop: false });
       },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
+    },
+    {
+      label: "explicit-activity",
+      run: async () => {
+        launchAndroidApp({ explicitActivity: true, forceStop: false });
+      },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
   );
 
   for (const step of recoverySteps) {
     await step.run();
-    await sleep(step.delayMs);
-    focusedPackage = getAndroidFocusedPackage();
+    focusedPackage = await waitForAndroidForeground(step.timeoutMs);
 
     if (focusedPackage === session.appId) {
       logE2e("android ensure foreground recovered", {
