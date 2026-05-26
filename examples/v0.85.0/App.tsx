@@ -17,6 +17,7 @@ import {
   findNodeHandle,
   Image,
   Keyboard,
+  NativeModules,
   type LayoutChangeEvent,
   Modal,
   Platform,
@@ -69,7 +70,9 @@ const getGlobalBaseUrl = (): string | null => {
 };
 const getConfiguredBaseUrl = () => {
   const runtimeBaseUrl =
-    Platform.OS === "ios" ? Settings.get(E2E_APP_BASE_URL_SETTING) : null;
+    Platform.OS === "ios"
+      ? Settings.get(E2E_APP_BASE_URL_SETTING)
+      : NativeModules.E2ERuntimeConfig?.getAppBaseUrl?.();
   return typeof runtimeBaseUrl === "string" && runtimeBaseUrl.trim()
     ? runtimeBaseUrl
     : HOT_UPDATER_BASE_URL;

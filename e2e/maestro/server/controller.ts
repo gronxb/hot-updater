@@ -221,6 +221,9 @@ const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
 const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
+const E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES = "HotUpdaterE2E";
+const E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY =
+  "HOT_UPDATER_E2E_APP_BASE_URL";
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
@@ -3519,6 +3522,67 @@ function ensureAndroidReverse() {
   logE2e("android reverse ready", reversePorts);
 }
 
+function escapeAndroidSharedPreferenceXmlValue(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function writeAndroidE2ERuntimeConfig() {
+  const localPath = path.join(
+    os.tmpdir(),
+    `hot-updater-e2e-runtime-config-${process.pid}-${randomUUID()}.xml`,
+  );
+  const remotePath = `/data/local/tmp/${path.basename(localPath)}`;
+  const sharedPrefsFile = `shared_prefs/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
+  const xml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    `  <string name="${E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY}">${escapeAndroidSharedPreferenceXmlValue(
+      session.appBaseUrl,
+    )}</string>`,
+    "</map>",
+    "",
+  ].join("\n");
+
+  try {
+    fs.writeFileSync(localPath, xml);
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "push",
+      localPath,
+      remotePath,
+    ]);
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "sh",
+      "-c",
+      `mkdir -p shared_prefs && cp ${remotePath} ${sharedPrefsFile} && chmod 600 ${sharedPrefsFile}`,
+    ]);
+    logE2e("android runtime config ready", {
+      appBaseUrl: session.appBaseUrl,
+      preferences: E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES,
+    });
+  } finally {
+    fs.rmSync(localPath, { force: true });
+    runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "rm", "-f", remotePath],
+      {
+        allowFailure: true,
+      },
+    );
+  }
+}
+
 function getHotUpdaterControlEnv(
   env: NodeJS.ProcessEnv | undefined = undefined,
 ) {
@@ -4298,6 +4362,7 @@ async function prepareAppLaunch() {
   });
 
   ensureAndroidReverse();
+  writeAndroidE2ERuntimeConfig();
   runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
