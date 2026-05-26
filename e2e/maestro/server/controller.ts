@@ -142,6 +142,8 @@ const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
 const BARE_BUILD_CACHE_VERSION = 1;
+const BARE_BUILD_CACHE_LOCK_STALE_MS = 45 * 60 * 1000;
+const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
 const BARE_BUILD_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -4233,6 +4235,65 @@ function bareBuildCacheEnv({
   };
 }
 
+async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
+  const cacheDir = env?.HOT_UPDATER_BARE_BUILD_CACHE_DIR;
+  const cacheKey = env?.HOT_UPDATER_BARE_BUILD_CACHE_KEY;
+  if (!cacheDir || !cacheKey) {
+    return null;
+  }
+
+  const lockRoot = path.join(cacheDir, ".locks");
+  const lockPath = path.join(lockRoot, `${cacheKey}.lock`);
+  await fsPromises.mkdir(lockRoot, { recursive: true });
+  let loggedWait = false;
+
+  while (true) {
+    try {
+      await fsPromises.mkdir(lockPath);
+      await fsPromises.writeFile(
+        path.join(lockPath, "owner.json"),
+        JSON.stringify(
+          {
+            pid: process.pid,
+            platform: session.platform,
+            startedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+      logE2e("bare build cache lock acquired", { cacheKey });
+      return lockPath;
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      const stats = await fsPromises.stat(lockPath).catch(() => null);
+      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
+      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
+        logE2e("bare build cache lock stale; removing", {
+          ageMs,
+          cacheKey,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        continue;
+      }
+
+      if (!loggedWait) {
+        logE2e("bare build cache lock waiting", { cacheKey });
+        loggedWait = true;
+      }
+      await sleep(BARE_BUILD_CACHE_LOCK_WAIT_MS);
+    }
+  }
+}
+
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
   const patchEnabled =
@@ -4305,11 +4366,21 @@ async function deployBundle(request: DeployBundleRequest) {
     platform: session.platform,
     targetAppVersion: request.targetAppVersion,
   });
-  const deployOutput = await runLogged("node", args, {
-    cwd: session.exampleDir,
-    env: getHotUpdaterControlEnv(bareBuildCacheEnv({ bundleProfile, request })),
-    logPath: deployLogPath,
-  });
+  const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
+  const lockPath = await acquireBareBuildCacheLock(cacheEnv);
+  const deployOutput = await (async () => {
+    try {
+      return await runLogged("node", args, {
+        cwd: session.exampleDir,
+        env: getHotUpdaterControlEnv(cacheEnv),
+        logPath: deployLogPath,
+      });
+    } finally {
+      if (lockPath) {
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+      }
+    }
+  })();
   const bundleId = extractDeployBundleId(deployOutput);
   if (!bundleId) {
     throw new Error(

@@ -11,7 +11,10 @@ const FLOWS_DIR = path.join(__dirname, "flows");
 const DEFAULT_SUITE_SCENARIOS = [
   "release-ota-recovery",
   "multi-asset-replacement",
-  "bspatch-ota",
+  "bspatch-archive-to-diff-ota",
+  "bspatch-consecutive-diff-ota",
+  "bspatch-disabled-chain-rollback",
+  "bspatch-manifest-diff-fallback",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-with-rollout",
