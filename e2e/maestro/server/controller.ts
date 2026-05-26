@@ -280,6 +280,12 @@ const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
 const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
 );
+const REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS || 20,
+);
+const REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS || 500,
+);
 const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_ATTEMPTS || 3,
 );
@@ -287,7 +293,7 @@ const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
 );
 const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
-  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 60,
+  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
 );
 const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_DELAY_MS || 500,
@@ -2152,6 +2158,27 @@ async function deleteBundle(bundleId: string) {
   throw lastError;
 }
 
+async function fetchRemainingRemoteBundle(
+  mode: "delete" | "disable",
+  resetChannels: readonly string[] | null,
+) {
+  if (mode === "delete") {
+    return (
+      await Promise.all(
+        (resetChannels ?? [undefined]).map((channel) =>
+          fetchBundlesPage({
+            channel,
+            limit: 1,
+            offset: 0,
+          }),
+        ),
+      )
+    ).flatMap((page) => page.data)[0];
+  }
+
+  return (await fetchEnabledBundlesFromDatabase(1, resetChannels))[0];
+}
+
 async function clearRemoteBundles({
   mode = "delete",
 }: { mode?: "delete" | "disable" } = {}) {
@@ -2217,20 +2244,40 @@ async function clearRemoteBundles({
     }
   }
 
-  let remainingActiveBundle =
-    mode === "delete"
-      ? (
-          await Promise.all(
-            (resetChannels ?? [undefined]).map((channel) =>
-              fetchBundlesPage({
-                channel,
-                limit: 1,
-                offset: 0,
-              }),
-            ),
-          )
-        ).flatMap((page) => page.data)[0]
-      : (await fetchEnabledBundlesFromDatabase(1, resetChannels))[0];
+  let remainingActiveBundle: BundleListEntry | undefined;
+  for (
+    let attempt = 1;
+    attempt <= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS;
+    attempt += 1
+  ) {
+    remainingActiveBundle = await fetchRemainingRemoteBundle(
+      mode,
+      resetChannels,
+    );
+    if (!remainingActiveBundle) {
+      break;
+    }
+
+    if (attempt >= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS) {
+      break;
+    }
+
+    logE2e("remote-bundles reset verification pending", {
+      attempt,
+      bundleId: remainingActiveBundle.id,
+      channels: resetChannels,
+      mode,
+      platform: session.platform,
+      retryDelayMs: REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS,
+    });
+
+    if (mode === "disable") {
+      await patchBundle(remainingActiveBundle.id, { enabled: false });
+    } else {
+      await deleteBundle(remainingActiveBundle.id);
+    }
+    await sleep(REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS);
+  }
 
   if (remainingActiveBundle) {
     throw new Error(
@@ -4863,13 +4910,7 @@ async function deployBundle(request: DeployBundleRequest) {
     });
   }
 
-  const diff =
-    request.diffBaseBundleId !== undefined
-      ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
-      : null;
-  const bundle = await fetchBundleById(bundleId);
-  const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
-
+  let bundle = await fetchBundleById(bundleId);
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForUpdateCheckVisibility({
       bundleId,
@@ -4877,6 +4918,13 @@ async function deployBundle(request: DeployBundleRequest) {
       requestBundleId: updateCheckRequestBundleId,
     });
   }
+
+  const diff =
+    request.diffBaseBundleId !== undefined
+      ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
+      : null;
+  bundle = await fetchBundleById(bundleId);
+  const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
