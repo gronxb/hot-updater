@@ -51,13 +51,8 @@ onFlowComplete:
       MODE: reset
       OUTPUT_KEY: runtimeBundleId
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
-- runFlow:
-    file: subflows/set-text-input.yaml
-    env:
-      APP_ID: ${APP_ID}
-      FIELD_ID: runtime-channel-input
-      FIELD_LABEL: Runtime Channel Input
-      FIELD_VALUE: ${RUNTIME_CHANNEL}
+# The runtime channel input defaults to beta. Avoid Android keyboard text
+# deletion here; this scenario validates runtime channel OTA behavior.
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:
