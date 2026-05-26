@@ -167,6 +167,9 @@ const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
 const MAESTRO_DEBUG_OUTPUT_MODE = (
   process.env.HOT_UPDATER_E2E_MAESTRO_DEBUG_OUTPUT || "none"
 ).toLowerCase();
+const MAESTRO_TEST_OUTPUT_MODE = (
+  process.env.HOT_UPDATER_E2E_MAESTRO_TEST_OUTPUT || "none"
+).toLowerCase();
 const COMMAND_TERMINATE_GRACE_MS = 5000;
 const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
 let terminationSignal: NodeJS.Signals | null = null;
@@ -769,6 +772,16 @@ function shouldUseMaestroDebugOutput(platform: Platform) {
   return MAESTRO_DEBUG_OUTPUT_MODE === platform;
 }
 
+function shouldUseMaestroTestOutput(platform: Platform) {
+  if (MAESTRO_TEST_OUTPUT_MODE === "all") {
+    return true;
+  }
+  if (MAESTRO_TEST_OUTPUT_MODE === "none") {
+    return false;
+  }
+  return MAESTRO_TEST_OUTPUT_MODE === platform;
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -1052,8 +1065,10 @@ async function runMaestroWithTransportRetry({
   scenarioName: string;
 }) {
   const debugOutputPath = path.join(resultsDir, "debug");
+  const testOutputPath = path.join(resultsDir, "artifacts");
   const effectiveMaestroBin = prepareMaestroDriverPortLauncher(maestroBin);
   const useDebugOutput = shouldUseMaestroDebugOutput(platform);
+  const useTestOutput = shouldUseMaestroTestOutput(platform);
   const maestroArgs = [
     "test",
     "--device",
@@ -1062,14 +1077,15 @@ async function runMaestroWithTransportRetry({
     "JUNIT",
     "--output",
     path.join(resultsDir, "junit.xml"),
-    "--test-output-dir",
-    path.join(resultsDir, "artifacts"),
     "-e",
     `APP_ID=${appId}`,
     "-e",
     `CONTROL_URL=${controlUrl}`,
     flow,
   ];
+  if (useTestOutput) {
+    maestroArgs.splice(7, 0, "--test-output-dir", testOutputPath);
+  }
   if (useDebugOutput) {
     maestroArgs.splice(
       3,
