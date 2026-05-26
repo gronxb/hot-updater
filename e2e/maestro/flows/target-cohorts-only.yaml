@@ -19,6 +19,11 @@ onFlowComplete:
         CONTROL_URL: ${CONTROL_URL}
 ---
 # Verify target cohorts receive a bundle even when numeric rollout is disabled.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:

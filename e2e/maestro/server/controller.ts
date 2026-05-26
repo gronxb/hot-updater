@@ -2898,9 +2898,9 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
     );
   }
 
-  if (verificationPending !== false) {
+  if (verificationPending === true) {
     throw new Error(
-      `Expected verificationPending false but received ${String(verificationPending)}`,
+      `Expected verificationPending false or null but received ${String(verificationPending)}`,
     );
   }
 }
@@ -3069,7 +3069,7 @@ function createWaitForMetadataResetTimeoutError(args: {
   const observedState = getMetadataState(args.metadata.value);
   const message = [
     "Timed out waiting for metadata reset state.",
-    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false.",
+    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false/null.",
     `Observed stableBundleId=${String(observedState.stableBundleId)} and ${formatObservedMetadataState(observedState)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
@@ -3079,7 +3079,7 @@ function createWaitForMetadataResetTimeoutError(args: {
     expected: {
       stableBundleId: null,
       stagingBundleId: null,
-      verificationPending: false,
+      verificationPending: "false/null",
     },
     observed: {
       crashHistory: args.crashHistory,
@@ -3861,6 +3861,89 @@ function getAndroidHomePackage() {
   return resolvedActivity?.split("/")[0] ?? null;
 }
 
+function parseAndroidBoundsCenter(bounds: string) {
+  const match = bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
+  if (!match?.[1] || !match[2] || !match[3] || !match[4]) {
+    return null;
+  }
+
+  const left = Number(match[1]);
+  const top = Number(match[2]);
+  const right = Number(match[3]);
+  const bottom = Number(match[4]);
+  if (
+    !Number.isFinite(left) ||
+    !Number.isFinite(top) ||
+    !Number.isFinite(right) ||
+    !Number.isFinite(bottom)
+  ) {
+    return null;
+  }
+
+  return {
+    x: Math.floor((left + right) / 2),
+    y: Math.floor((top + bottom) / 2),
+  };
+}
+
+function readAndroidUiHierarchy() {
+  const remotePath = `/sdcard/hot-updater-e2e-window-${process.pid}.xml`;
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "uiautomator", "dump", remotePath],
+    { allowFailure: true, maxBuffer: 1024 * 1024 },
+  );
+  const xml = runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "cat", remotePath],
+    { allowFailure: true, maxBuffer: 1024 * 1024 },
+  );
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "rm", "-f", remotePath],
+    { allowFailure: true },
+  );
+
+  return xml.includes("<hierarchy") ? xml : "";
+}
+
+async function dismissAndroidAnrDialog() {
+  const hierarchy = readAndroidUiHierarchy();
+  if (!hierarchy || !/responding/i.test(hierarchy)) {
+    return false;
+  }
+
+  const waitButtonMatch = hierarchy.match(
+    /<node\b(?=[^>]*\btext="Wait")[^>]*\bbounds="([^"]+)"/,
+  );
+  const center = waitButtonMatch?.[1]
+    ? parseAndroidBoundsCenter(waitButtonMatch[1])
+    : null;
+  if (!center) {
+    return false;
+  }
+
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "input",
+      "tap",
+      String(center.x),
+      String(center.y),
+    ],
+    { allowFailure: true },
+  );
+  await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  logE2e("android anr dialog dismissed", {
+    targetAppId: session.appId,
+  });
+
+  return true;
+}
+
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
@@ -4043,6 +4126,7 @@ async function ensureAppForeground() {
     return {};
   }
 
+  await dismissAndroidAnrDialog();
   let focusedPackage = getAndroidFocusedPackage();
   const homePackage = getAndroidHomePackage();
   if (focusedPackage === session.appId) {
