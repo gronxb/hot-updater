@@ -5388,6 +5388,10 @@ async function assertMetadataResetState() {
         ? readIosWaitForMetadataDiagnostics()
         : readAndroidWaitForMetadataDiagnostics();
 
+    if (!diagnostics.metadata.exists) {
+      return {};
+    }
+
     if (diagnostics.metadata.value) {
       try {
         assertMetadataReset(diagnostics.metadata.value);
