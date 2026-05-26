@@ -3920,6 +3920,95 @@ async function waitForUpdateCheckVisibility(args: {
   );
 }
 
+async function waitForUpdateCheckExcludesBundle(args: {
+  bundleId: string;
+  channel: string;
+}) {
+  const minBundleId = NIL_UUID;
+  const url = buildAppVersionUpdateCheckUrl({
+    bundleId: args.bundleId,
+    channel: args.channel,
+    minBundleId,
+  });
+  let lastObserved: unknown = null;
+  let lastError: string | null = null;
+
+  for (let index = 0; index < 240; index += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Hot-Updater-SDK-Version": "e2e",
+        },
+      });
+      const body = await response.text();
+      lastObserved = body;
+
+      if (response.ok) {
+        const payload = JSON.parse(body) as {
+          id?: unknown;
+          status?: unknown;
+        } | null;
+        lastObserved = payload
+          ? {
+              id: payload.id,
+              status: payload.status,
+            }
+          : null;
+
+        if (!payload || payload.id !== args.bundleId) {
+          logE2e("update check exclusion ready", {
+            bundleId: args.bundleId,
+            channel: args.channel,
+            observed: lastObserved,
+            url,
+          });
+          return;
+        }
+      } else {
+        lastError = `HTTP ${response.status}: ${truncateForLog(body)}`;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(E2E_POLL_INTERVAL_MS);
+  }
+
+  logE2e("update check exclusion timeout", {
+    excludedBundleId: args.bundleId,
+    lastError,
+    lastObserved,
+    platform: session.platform,
+    request: {
+      bundleId: args.bundleId,
+      channel: args.channel,
+      minBundleId,
+    },
+    url,
+  });
+
+  throw createEndpointError(
+    [
+      "Timed out waiting for update check exclusion.",
+      `Expected update check not to return bundleId=${args.bundleId}.`,
+      `URL: ${url}`,
+    ].join("\n"),
+    {
+      expected: {
+        excludedBundleId: args.bundleId,
+      },
+      lastError,
+      lastObserved,
+      platform: session.platform,
+      request: {
+        bundleId: args.bundleId,
+        channel: args.channel,
+        minBundleId,
+      },
+    },
+  );
+}
+
 function createWaitForRecoveryTimeoutError(args: {
   attempts: number;
   crashedBundleId: string;
@@ -4997,6 +5086,13 @@ async function updateBundle(request: PatchBundleRequest) {
   });
 
   const bundle = await fetchBundleById(request.bundleId);
+  if (request.enabled === false && bundle.enabled === false) {
+    await waitForUpdateCheckExcludesBundle({
+      bundleId: bundle.id,
+      channel: bundle.channel,
+    });
+  }
+
   updateTrackedBundleRecord(request.bundleId, {
     enabled: bundle.enabled,
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
