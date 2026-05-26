@@ -171,7 +171,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2CDiffPatchAssetPath}.bsdiff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2CPrimaryBundleAssetPath}.br
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -248,7 +248,7 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2DDiffPatchAssetPath}.bsdiff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2DPrimaryBundleAssetPath}.br
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
