@@ -224,6 +224,9 @@ const E2E_APP_VERSION = "1.0";
 const E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES = "HotUpdaterE2E";
 const E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY =
   "HOT_UPDATER_E2E_APP_BASE_URL";
+const E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY =
+  "HOT_UPDATER_E2E_CHANNEL_NAMESPACE";
+const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
@@ -409,6 +412,21 @@ const session: SessionState = {
   reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
   storePath: null,
 };
+
+const channelNamespace =
+  process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
+
+function getRemoteChannel(channel: string) {
+  return channelNamespace ? `${channelNamespace}-${channel}` : channel;
+}
+
+function getRemoteResetChannels() {
+  return channelNamespace
+    ? E2E_REMOTE_RESET_LOGICAL_CHANNELS.map((channel) =>
+        getRemoteChannel(channel),
+      )
+    : null;
+}
 
 const jobs = new Map<string, JobState>();
 let bootstrapJobId: string | null = null;
@@ -1838,25 +1856,50 @@ async function fetchBundleById(bundleId: string) {
   return bundle;
 }
 
-async function fetchEnabledBundlesFromDatabase(limit: number) {
+async function fetchEnabledBundlesFromDatabase(
+  limit: number,
+  channels: readonly string[] | null = null,
+) {
   const bundles = await withDatabasePlugin(async (databasePlugin) => {
-    const { data } = await databasePlugin.getBundles({
-      limit,
-      orderBy: {
-        direction: "desc",
-        field: "id",
-      },
-      where: {
-        enabled: true,
-        platform: session.platform,
-      },
-    });
+    if (!channels) {
+      const { data } = await databasePlugin.getBundles({
+        limit,
+        orderBy: {
+          direction: "desc",
+          field: "id",
+        },
+        where: {
+          enabled: true,
+          platform: session.platform,
+        },
+      });
 
-    return data;
+      return data;
+    }
+
+    const pages = await Promise.all(
+      channels.map((channel) =>
+        databasePlugin.getBundles({
+          limit,
+          orderBy: {
+            direction: "desc",
+            field: "id",
+          },
+          where: {
+            channel,
+            enabled: true,
+            platform: session.platform,
+          },
+        }),
+      ),
+    );
+
+    return pages.flatMap((page) => page.data);
   });
 
   const normalized = normalizeBundleListEntries(bundles);
   logE2e("database enabled bundle list", {
+    channels,
     count: normalized.length,
     limit,
     platform: session.platform,
@@ -2091,19 +2134,27 @@ async function clearRemoteBundles({
 }: { mode?: "delete" | "disable" } = {}) {
   const clearedBundleIds: string[] = [];
   const clearedIds = new Set<string>();
+  const resetChannels = getRemoteResetChannels();
 
   while (true) {
     const nextBatch =
       mode === "disable"
-        ? (await fetchEnabledBundlesFromDatabase(100)).filter(
+        ? (await fetchEnabledBundlesFromDatabase(100, resetChannels)).filter(
             (bundle) => !clearedIds.has(bundle.id),
           )
         : (
-            await fetchBundlesPage({
-              limit: 100,
-              offset: 0,
-            })
-          ).data.filter((bundle) => !clearedIds.has(bundle.id));
+            await Promise.all(
+              (resetChannels ?? [undefined]).map((channel) =>
+                fetchBundlesPage({
+                  channel,
+                  limit: 100,
+                  offset: 0,
+                }),
+              ),
+            )
+          )
+            .flatMap((page) => page.data)
+            .filter((bundle) => !clearedIds.has(bundle.id));
 
     if (nextBatch.length === 0) {
       break;
@@ -2146,12 +2197,17 @@ async function clearRemoteBundles({
   let remainingActiveBundle =
     mode === "delete"
       ? (
-          await fetchBundlesPage({
-            limit: 1,
-            offset: 0,
-          })
-        ).data[0]
-      : (await fetchEnabledBundlesFromDatabase(1))[0];
+          await Promise.all(
+            (resetChannels ?? [undefined]).map((channel) =>
+              fetchBundlesPage({
+                channel,
+                limit: 1,
+                offset: 0,
+              }),
+            ),
+          )
+        ).flatMap((page) => page.data)[0]
+      : (await fetchEnabledBundlesFromDatabase(1, resetChannels))[0];
 
   if (remainingActiveBundle) {
     throw new Error(
@@ -2160,6 +2216,7 @@ async function clearRemoteBundles({
   }
 
   logE2e("remote-bundles reset", {
+    channels: resetChannels,
     clearedBundleIds,
     clearedCount: clearedBundleIds.length,
     mode,
@@ -3539,12 +3596,29 @@ function writeAndroidE2ERuntimeConfig() {
   const remotePath = `/data/local/tmp/${path.basename(localPath)}`;
   const sharedPrefsDir = `/data/data/${session.appId}/shared_prefs`;
   const sharedPrefsFile = `${sharedPrefsDir}/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
+  const configValues = [
+    {
+      key: E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY,
+      value: session.appBaseUrl,
+    },
+    ...(channelNamespace
+      ? [
+          {
+            key: E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY,
+            value: channelNamespace,
+          },
+        ]
+      : []),
+  ];
   const xml = [
     "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
     "<map>",
-    `  <string name="${E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY}">${escapeAndroidSharedPreferenceXmlValue(
-      session.appBaseUrl,
-    )}</string>`,
+    ...configValues.map(
+      ({ key, value }) =>
+        `  <string name="${key}">${escapeAndroidSharedPreferenceXmlValue(
+          value,
+        )}</string>`,
+    ),
     "</map>",
     "",
   ].join("\n");
@@ -3595,6 +3669,7 @@ function writeAndroidE2ERuntimeConfig() {
     ]);
     logE2e("android runtime config ready", {
       appBaseUrl: session.appBaseUrl,
+      channelNamespace,
       preferences: E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES,
     });
   } finally {
@@ -4373,6 +4448,36 @@ async function prepareAppLaunch() {
       ],
       { allowFailure: true },
     );
+    if (channelNamespace) {
+      runCapture(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "defaults",
+          "write",
+          session.appId,
+          "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+          channelNamespace,
+        ],
+        { allowFailure: true },
+      );
+    } else {
+      runCapture(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "defaults",
+          "delete",
+          session.appId,
+          "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+        ],
+        { allowFailure: true },
+      );
+    }
     await sleep(E2E_POLL_INTERVAL_MS);
     return {};
   }
@@ -4556,6 +4661,7 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
 
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
+  const remoteChannel = getRemoteChannel(request.channel);
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
@@ -4590,7 +4696,7 @@ async function deployBundle(request: DeployBundleRequest) {
     "-t",
     request.targetAppVersion,
     "-c",
-    request.channel,
+    remoteChannel,
     "-o",
     deployOutputPath,
   ];
@@ -4613,17 +4719,19 @@ async function deployBundle(request: DeployBundleRequest) {
 
   const deployLogPath = path.join(
     session.resultsDir,
-    `deploy-${request.channel}-${request.marker}.log`,
+    `deploy-${remoteChannel}-${request.marker}.log`,
   );
   logE2e("deploy start", {
     bundleProfile,
     bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
+    channelNamespace,
     command: `node ${args.join(" ")}`,
     logPath: path.relative(REPO_DIR, deployLogPath),
     marker: request.marker,
     mode: request.mode,
     platform: session.platform,
+    remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });

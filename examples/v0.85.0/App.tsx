@@ -7,7 +7,9 @@
 
 import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import {
+  createDefaultResolver,
   HotUpdater,
+  type HotUpdaterResolver,
   type HotUpdaterFallbackComponentProps,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
@@ -42,6 +44,7 @@ const notify = proxy<{
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
 const E2E_APP_BASE_URL_SETTING = "HOT_UPDATER_E2E_APP_BASE_URL";
+const E2E_CHANNEL_NAMESPACE_SETTING = "HOT_UPDATER_E2E_CHANNEL_NAMESPACE";
 const E2E_SCENARIO_MARKER = "targeted-qa-maestro";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
@@ -76,6 +79,30 @@ const getConfiguredBaseUrl = () => {
   return typeof runtimeBaseUrl === "string" && runtimeBaseUrl.trim()
     ? runtimeBaseUrl
     : HOT_UPDATER_BASE_URL;
+};
+const getE2EChannelNamespace = () => {
+  const namespace =
+    Platform.OS === "ios"
+      ? Settings.get(E2E_CHANNEL_NAMESPACE_SETTING)
+      : NativeModules.E2ERuntimeConfig?.getChannelNamespace?.();
+  return typeof namespace === "string" && namespace.trim()
+    ? namespace.trim()
+    : null;
+};
+const getRemoteChannel = (channel: string) => {
+  const namespace = getE2EChannelNamespace();
+  return namespace ? `${namespace}-${channel}` : channel;
+};
+const createE2EResolver = (): HotUpdaterResolver => {
+  const resolver = createDefaultResolver(getConfiguredBaseUrl);
+
+  return {
+    checkUpdate: (params) =>
+      resolver.checkUpdate?.({
+        ...params,
+        channel: getRemoteChannel(params.channel),
+      }) ?? Promise.resolve(null),
+  };
 };
 type RuntimeSnapshot = {
   appVersion: string | null;
@@ -1236,7 +1263,7 @@ const styles = StyleSheet.create({
 });
 
 export default HotUpdater.wrap({
-  baseURL: getConfiguredBaseUrl,
+  resolver: createE2EResolver(),
   updateStrategy: "appVersion",
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
