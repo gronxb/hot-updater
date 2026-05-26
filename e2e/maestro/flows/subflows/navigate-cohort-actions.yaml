@@ -1,5 +1,10 @@
 appId: ${APP_ID}
 ---
+- scrollUntilVisible:
+    element:
+      id: e2e-nav-cohort-actions
+    direction: UP
+    timeout: 10000
 - extendedWaitUntil:
     visible:
       id: e2e-nav-cohort-actions
