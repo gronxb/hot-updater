@@ -17,6 +17,11 @@ appId: ${APP_ID}
           text: ".*${EXPECTED_BUNDLE_ID}.*"
       - assertVisible:
           id: runtime-bundle-id
+      - scrollUntilVisible:
+          element:
+            id: runtime-scenario-marker
+          direction: DOWN
+          timeout: 10000
       - assertVisible:
           id: runtime-scenario-marker
           text: ".*${EXPECTED_MARKER}.*"
