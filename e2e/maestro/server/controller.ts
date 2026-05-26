@@ -3449,7 +3449,11 @@ function getControllerReachableAppBaseUrl() {
     session.platform === "android"
       ? process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT
       : undefined;
-  if (androidReverseHostPort && /^\d+$/.test(androidReverseHostPort)) {
+  if (
+    androidReverseHostPort &&
+    /^\d+$/.test(androidReverseHostPort) &&
+    isLoopbackHost(url.hostname)
+  ) {
     url.hostname = "127.0.0.1";
     url.port = androidReverseHostPort;
   }
