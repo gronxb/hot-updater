@@ -2850,14 +2850,9 @@ function assertMetadataState(
   metadata: Record<string, unknown>,
   bundleId: string,
 ) {
-  const stagingBundleId =
-    (metadata.stagingBundleId as string | undefined) ??
-    (metadata.staging_bundle_id as string | undefined) ??
-    null;
-  const verificationPending =
-    (metadata.verificationPending as boolean | undefined) ??
-    (metadata.verification_pending as boolean | undefined) ??
-    null;
+  const metadataState = getMetadataState(metadata);
+  const stagingBundleId = metadataState.stagingBundleId;
+  const verificationPending = metadataState.verificationPending;
 
   if (stagingBundleId !== bundleId) {
     throw new Error(
@@ -2873,18 +2868,10 @@ function assertMetadataState(
 }
 
 function assertMetadataReset(metadata: Record<string, unknown>) {
-  const stableBundleId =
-    (metadata.stableBundleId as string | undefined) ??
-    (metadata.stable_bundle_id as string | undefined) ??
-    null;
-  const stagingBundleId =
-    (metadata.stagingBundleId as string | undefined) ??
-    (metadata.staging_bundle_id as string | undefined) ??
-    null;
-  const verificationPending =
-    (metadata.verificationPending as boolean | undefined) ??
-    (metadata.verification_pending as boolean | undefined) ??
-    null;
+  const metadataState = getMetadataState(metadata);
+  const stableBundleId = metadataState.stableBundleId;
+  const stagingBundleId = metadataState.stagingBundleId;
+  const verificationPending = metadataState.verificationPending;
 
   if (stableBundleId !== null) {
     throw new Error(
@@ -2975,20 +2962,65 @@ function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
   }
 }
 
+function firstMetadataValue(...values: unknown[]) {
+  return values.find((value) => value !== undefined) ?? null;
+}
+
+function normalizeMetadataString(value: unknown) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "null"
+  ) {
+    return null;
+  }
+
+  return typeof value === "string" ? value : String(value);
+}
+
+function normalizeMetadataBoolean(value: unknown) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "null"
+  ) {
+    return null;
+  }
+
+  if (value === true || value === false) {
+    return value;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return null;
+}
+
 function getMetadataState(metadata: Record<string, unknown> | null) {
   return {
-    stableBundleId:
-      (metadata?.stableBundleId as string | undefined) ??
-      (metadata?.stable_bundle_id as string | undefined) ??
-      null,
-    stagingBundleId:
-      (metadata?.stagingBundleId as string | undefined) ??
-      (metadata?.staging_bundle_id as string | undefined) ??
-      null,
-    verificationPending:
-      (metadata?.verificationPending as boolean | undefined) ??
-      (metadata?.verification_pending as boolean | undefined) ??
-      null,
+    stableBundleId: normalizeMetadataString(
+      firstMetadataValue(metadata?.stableBundleId, metadata?.stable_bundle_id),
+    ),
+    stagingBundleId: normalizeMetadataString(
+      firstMetadataValue(
+        metadata?.stagingBundleId,
+        metadata?.staging_bundle_id,
+      ),
+    ),
+    verificationPending: normalizeMetadataBoolean(
+      firstMetadataValue(
+        metadata?.verificationPending,
+        metadata?.verification_pending,
+      ),
+    ),
   };
 }
 
