@@ -2,10 +2,10 @@ appId: ${APP_ID}
 ---
 - extendedWaitUntil:
     visible:
-      text: Jump to Crash History
+      id: e2e-nav-crash-history
     timeout: 10000
 - tapOn:
-    text: Jump to Crash History
+    id: e2e-nav-crash-history
     retryTapIfNoChange: true
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:

@@ -2,10 +2,10 @@ appId: ${APP_ID}
 ---
 - extendedWaitUntil:
     visible:
-      text: Jump to Cohorts
+      id: e2e-nav-cohort-actions
     timeout: 10000
 - tapOn:
-    text: Jump to Cohorts
+    id: e2e-nav-cohort-actions
     retryTapIfNoChange: true
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:

@@ -2,10 +2,10 @@ appId: ${APP_ID}
 ---
 - extendedWaitUntil:
     visible:
-      text: Jump to Top
+      id: e2e-nav-top
     timeout: 10000
 - tapOn:
-    text: Jump to Top
+    id: e2e-nav-top
     retryTapIfNoChange: true
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
