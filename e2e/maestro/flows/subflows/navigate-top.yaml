@@ -1,16 +1,11 @@
 appId: ${APP_ID}
 ---
-- scrollUntilVisible:
-    element:
-      id: e2e-nav-top
-    direction: UP
-    timeout: 10000
 - extendedWaitUntil:
     visible:
-      id: e2e-nav-top
+      text: Jump to Top
     timeout: 10000
 - tapOn:
-    id: e2e-nav-top
+    text: Jump to Top
     retryTapIfNoChange: true
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
