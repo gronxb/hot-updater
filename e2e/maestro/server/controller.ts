@@ -286,6 +286,12 @@ const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
 const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
 );
+const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 60,
+);
+const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_DELAY_MS || 500,
+);
 const DELETE_VERIFY_STILL_EXISTS_PATTERN =
   /Verification failed: .+ still exists\./i;
 const E2E_POLL_INTERVAL_MS = Number(
@@ -2024,56 +2030,73 @@ async function resolveAutoPatchBundleDiff(
   baseBundleId: string,
   bundleId: string,
 ) {
-  const bundle = await fetchBundleById(bundleId);
-  const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
-  const matchingPatch = getBundlePatch(bundle, baseBundleId);
-  const patchBaseBundleId =
-    matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
-  const patchBaseFileHash =
-    matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
-  const patchFileHash =
-    matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
-  const patchStorageUri =
-    matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+  let observed: Record<string, string | null> | null = null;
 
-  if (
-    bundle.id !== bundleId ||
-    patchBaseBundleId !== baseBundleId ||
-    !patchAssetPath ||
-    !patchBaseFileHash ||
-    !patchFileHash ||
-    !patchStorageUri
+  for (
+    let attempt = 1;
+    attempt <= AUTO_PATCH_METADATA_WAIT_ATTEMPTS;
+    attempt += 1
   ) {
-    throw createEndpointError(
-      `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
-      {
-        autoPatch: true,
+    const bundle = await fetchBundleById(bundleId);
+    const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
+    const matchingPatch = getBundlePatch(bundle, baseBundleId);
+    const patchBaseBundleId =
+      matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
+    const patchBaseFileHash =
+      matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
+    const patchFileHash =
+      matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
+    const patchStorageUri =
+      matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+
+    observed = {
+      bundleId: bundle.id,
+      patchAssetPath,
+      patchBaseBundleId,
+      patchBaseFileHash,
+      patchFileHash,
+      patchStorageUri,
+    };
+
+    if (
+      bundle.id === bundleId &&
+      patchBaseBundleId === baseBundleId &&
+      patchAssetPath &&
+      patchBaseFileHash &&
+      patchFileHash &&
+      patchStorageUri
+    ) {
+      logE2e("auto patch metadata resolved", {
+        attempt,
         baseBundleId,
         bundleId,
-        observed: {
-          bundleId: bundle.id,
-          patchAssetPath,
-          patchBaseBundleId,
-          patchBaseFileHash,
-          patchFileHash,
-          patchStorageUri,
-        },
-      },
-    );
+        patchAssetPath,
+        patchStorageUri,
+        platform: session.platform,
+      });
+
+      return {
+        baseBundleId,
+        patchAssetPath,
+      };
+    }
+
+    if (attempt < AUTO_PATCH_METADATA_WAIT_ATTEMPTS) {
+      await sleep(AUTO_PATCH_METADATA_WAIT_DELAY_MS);
+    }
   }
 
-  logE2e("auto patch metadata resolved", {
-    baseBundleId,
-    bundleId,
-    patchAssetPath,
-    patchStorageUri,
-    platform: session.platform,
-  });
-
-  return {
-    baseBundleId,
-    patchAssetPath,
-  };
+  throw createEndpointError(
+    `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
+    {
+      attempts: AUTO_PATCH_METADATA_WAIT_ATTEMPTS,
+      autoPatch: true,
+      baseBundleId,
+      bundleId,
+      observed,
+      retryDelayMs: AUTO_PATCH_METADATA_WAIT_DELAY_MS,
+    },
+  );
 }
 
 async function deleteBundle(bundleId: string) {
