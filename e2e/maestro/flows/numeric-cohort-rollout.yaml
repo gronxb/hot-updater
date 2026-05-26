@@ -19,6 +19,11 @@ onFlowComplete:
         CONTROL_URL: ${CONTROL_URL}
 ---
 # Verify the built-in bundle before cohort rollout deployment.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:
