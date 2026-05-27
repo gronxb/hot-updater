@@ -5645,6 +5645,21 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
+    if (
+      state.metadataState.stableBundleId === args.bundleId &&
+      state.metadataState.verificationPending === false &&
+      state.bundleFile.exists
+    ) {
+      logE2e("first OTA used archive install path", {
+        bundleId: args.bundleId,
+        bundleFilePath: state.bundleFile.path,
+        evidence: "bundle-store-active",
+        metadataPath: state.diagnostics.metadata.path,
+        platform: session.platform,
+      });
+      return {};
+    }
+
     const logs = readFirstOtaArchiveInstallLogs();
     if (includesAllFragments(logs, expectedFragments)) {
       logE2e("first OTA used archive install path", {

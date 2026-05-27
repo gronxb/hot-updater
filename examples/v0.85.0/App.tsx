@@ -666,35 +666,37 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {sectionsReady ? (
-        <View style={styles.e2eNavBar}>
-          <E2ENavButton
-            onPress={scrollToTop}
-            testID="e2e-nav-top"
-            title="Jump to Top"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("crashHistory")}
-            testID="e2e-nav-crash-history"
-            title="Jump to Crash History"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("actions")}
-            testID="e2e-nav-actions"
-            title="Jump to Actions"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("cohortActions")}
-            testID="e2e-nav-cohort-actions"
-            title="Jump to Cohorts"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("actionResults")}
-            testID="e2e-nav-action-results"
-            title="Jump to Results"
-          />
-        </View>
-      ) : null}
+      <View style={styles.e2eNavBar}>
+        <E2ENavButton
+          onPress={scrollToTop}
+          testID="e2e-nav-top"
+          title="Jump to Top"
+        />
+        {sectionsReady ? (
+          <>
+            <E2ENavButton
+              onPress={() => scrollToSection("crashHistory")}
+              testID="e2e-nav-crash-history"
+              title="Jump to Crash History"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("actions")}
+              testID="e2e-nav-actions"
+              title="Jump to Actions"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("cohortActions")}
+              testID="e2e-nav-cohort-actions"
+              title="Jump to Cohorts"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("actionResults")}
+              testID="e2e-nav-action-results"
+              title="Jump to Results"
+            />
+          </>
+        ) : null}
+      </View>
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
