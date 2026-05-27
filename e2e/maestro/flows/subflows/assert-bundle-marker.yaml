@@ -8,6 +8,10 @@ appId: ${APP_ID}
 - retry:
     maxRetries: 5
     commands:
+      - runFlow:
+          file: navigate-top.yaml
+          env:
+            APP_ID: ${APP_ID}
       - assertVisible:
           id: runtime-bundle-id
           text: ".*${EXPECTED_BUNDLE_ID}.*"
