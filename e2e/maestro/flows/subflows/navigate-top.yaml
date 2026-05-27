@@ -1,15 +1,10 @@
 appId: ${APP_ID}
 ---
-- extendedWaitUntil:
-    visible:
-      id: e2e-nav-top
+- scrollUntilVisible:
+    element:
+      id: runtime-bundle-id
+    direction: UP
     timeout: 10000
-- tapOn:
-    id: e2e-nav-top
-    retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 500
-- waitForAnimationToEnd:
-    timeout: 500
 - extendedWaitUntil:
     visible:
       id: runtime-bundle-id
