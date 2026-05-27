@@ -4,11 +4,17 @@ appId: ${APP_ID}
     file: navigate-actions.yaml
     env:
       APP_ID: ${APP_ID}
-- extendedWaitUntil:
-    visible:
-      id: ${BUTTON_ID}
-    timeout: 10000
-- tapOn:
-    id: ${BUTTON_ID}
-    retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 500
+- retry:
+    maxRetries: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: ${BUTTON_ID}
+          direction: DOWN
+          timeout: 10000
+      - assertVisible:
+          id: ${BUTTON_ID}
+      - tapOn:
+          id: ${BUTTON_ID}
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 500
