@@ -4360,18 +4360,34 @@ async function dismissAndroidAnrDialog() {
   return true;
 }
 
+type WaitForMetadataOptions = {
+  attempts?: number;
+  relaunchLimit?: number;
+};
+
+function resolveMetadataWaitOption(
+  value: number | undefined,
+  fallback: number,
+) {
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  options: WaitForMetadataOptions = {},
 ) {
   let totalAttempts = 0;
+  const attempts = resolveMetadataWaitOption(
+    options.attempts,
+    E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  );
+  const relaunchLimit = resolveMetadataWaitOption(
+    options.relaunchLimit,
+    E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+  );
 
-  for (
-    let relaunchIndex = 0;
-    relaunchIndex <= E2E_METADATA_WAIT_RELAUNCH_LIMIT;
-    relaunchIndex += 1
-  ) {
+  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -4395,7 +4411,7 @@ async function waitForIosMetadataState(
     const metadata = readIosMetadataSnapshot();
     const metadataState = getMetadataState(metadata.value);
     if (
-      relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
+      relaunchIndex === relaunchLimit ||
       metadataState.verificationPending === true
     ) {
       break;
@@ -4406,7 +4422,7 @@ async function waitForIosMetadataState(
       expectedVerificationPending: verificationPending,
       observed: metadataState,
       relaunchAttempt: relaunchIndex + 1,
-      relaunchLimit: E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+      relaunchLimit,
     });
     await prepareAppLaunch();
     launchIosApp();
@@ -4424,15 +4440,19 @@ async function waitForIosMetadataState(
 async function waitForAndroidMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  options: WaitForMetadataOptions = {},
 ) {
   let totalAttempts = 0;
+  const attempts = resolveMetadataWaitOption(
+    options.attempts,
+    E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  );
+  const relaunchLimit = resolveMetadataWaitOption(
+    options.relaunchLimit,
+    E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+  );
 
-  for (
-    let relaunchIndex = 0;
-    relaunchIndex <= E2E_METADATA_WAIT_RELAUNCH_LIMIT;
-    relaunchIndex += 1
-  ) {
+  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -4459,7 +4479,7 @@ async function waitForAndroidMetadataState(
     );
     const metadataState = getMetadataState(metadata.value);
     if (
-      relaunchIndex === E2E_METADATA_WAIT_RELAUNCH_LIMIT ||
+      relaunchIndex === relaunchLimit ||
       metadataState.verificationPending === true
     ) {
       break;
@@ -4470,7 +4490,7 @@ async function waitForAndroidMetadataState(
       expectedVerificationPending: verificationPending,
       observed: metadataState,
       relaunchAttempt: relaunchIndex + 1,
-      relaunchLimit: E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+      relaunchLimit,
     });
     await prepareAppLaunch();
     launchAndroidApp();
@@ -5205,11 +5225,15 @@ async function computeRolloutSample(bundleId: string) {
   };
 }
 
-async function waitForMetadata(bundleId: string, verificationPending: boolean) {
+async function waitForMetadata(
+  bundleId: string,
+  verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
+) {
   if (session.platform === "ios") {
-    await waitForIosMetadataState(bundleId, verificationPending);
+    await waitForIosMetadataState(bundleId, verificationPending, options);
   } else {
-    await waitForAndroidMetadataState(bundleId, verificationPending);
+    await waitForAndroidMetadataState(bundleId, verificationPending, options);
   }
 
   return {};
@@ -6051,8 +6075,9 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
 export function startWaitForMetadataJob(
   bundleId: string,
   verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
 ) {
-  return createJob(() => waitForMetadata(bundleId, verificationPending));
+  return createJob(() => waitForMetadata(bundleId, verificationPending, options));
 }
 
 export function getJob(jobId: string) {
@@ -6070,8 +6095,9 @@ export async function handleComputeRolloutSample(bundleId: string) {
 export async function handleWaitForMetadata(
   bundleId: string,
   verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
 ) {
-  return waitForMetadata(bundleId, verificationPending);
+  return waitForMetadata(bundleId, verificationPending, options);
 }
 
 export async function handleAssertBsdiffPatchApplied(args: {

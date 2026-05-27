@@ -126,8 +126,10 @@ onFlowComplete:
     file: ../scripts/control.js
     env:
       ACTION: waitForMetadata
+      ATTEMPTS: "360"
       BUNDLE_ID: ${output.crashBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-action-result.yaml

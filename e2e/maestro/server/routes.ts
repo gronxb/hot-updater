@@ -167,7 +167,9 @@ app.post("/e2e/jobs/patch-bundle", async (c) => {
 
 app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
+    attempts?: number;
     bundleId?: string;
+    relaunchLimit?: number;
     verificationPending?: boolean;
   };
   if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
@@ -181,6 +183,10 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
     jobId: startWaitForMetadataJob(
       payload.bundleId,
       payload.verificationPending,
+      {
+        attempts: payload.attempts,
+        relaunchLimit: payload.relaunchLimit,
+      },
     ),
   });
 });

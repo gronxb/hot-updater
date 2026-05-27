@@ -283,7 +283,9 @@ switch (ACTION) {
 
   case "waitForMetadata": {
     startJob("/e2e/jobs/wait-for-metadata", {
+      attempts: maybeNumber(ATTEMPTS),
       bundleId: BUNDLE_ID,
+      relaunchLimit: maybeNumber(RELAUNCH_LIMIT),
       verificationPending: VERIFICATION_PENDING === "true",
     });
     break;
