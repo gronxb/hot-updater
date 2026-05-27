@@ -4,14 +4,20 @@ appId: ${APP_ID}
     file: navigate-actions.yaml
     env:
       APP_ID: ${APP_ID}
-- extendedWaitUntil:
-    visible:
-      id: ${FIELD_ID}
-    timeout: 10000
-- tapOn:
-    id: ${FIELD_ID}
-    retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 500
+- retry:
+    maxRetries: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: ${FIELD_ID}
+          direction: DOWN
+          timeout: 10000
+      - assertVisible:
+          id: ${FIELD_ID}
+      - tapOn:
+          id: ${FIELD_ID}
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 500
 - eraseText
 - inputText: ${FIELD_VALUE}
 - pressKey: Enter
