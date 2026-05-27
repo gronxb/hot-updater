@@ -5011,13 +5011,17 @@ async function deployBundle(request: DeployBundleRequest) {
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   const lockPath = await acquireBareBuildCacheLock(cacheEnv);
+  let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
-      return await runLogged("node", args, {
+      const deployStartedAt = Date.now();
+      const output = await runLogged("node", args, {
         cwd: session.exampleDir,
         env: getHotUpdaterControlEnv(cacheEnv),
         logPath: deployLogPath,
       });
+      deployDurationMs = Date.now() - deployStartedAt;
+      return output;
     } finally {
       if (lockPath) {
         await fsPromises.rm(lockPath, { force: true, recursive: true });
@@ -5056,6 +5060,7 @@ async function deployBundle(request: DeployBundleRequest) {
         archiveSizeBytes: archiveStats.size,
         bundleProfile,
         channel: request.channel,
+        durationMs: deployDurationMs,
         logPath: path.relative(REPO_DIR, deployLogPath),
         marker: request.marker,
         mode: request.mode,
