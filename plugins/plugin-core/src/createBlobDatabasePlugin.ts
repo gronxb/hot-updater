@@ -624,6 +624,14 @@ export const createBlobDatabasePlugin = <TConfig>({
       return loadAllBundlesForManagementFallback();
     };
 
+    const loadStoredBundlesForIndexRebuild = async (): Promise<Bundle[]> => {
+      return sortManagedBundles(
+        (await reloadBundles()).map((bundle) =>
+          removeBundleInternalKeys(bundle),
+        ),
+      );
+    };
+
     const findPageIndexContainingId = (
       pages: ManagementIndexPageDescriptor[],
       id: string,
@@ -964,7 +972,11 @@ export const createBlobDatabasePlugin = <TConfig>({
         bundlesMap.set(id, bundle);
       }
 
-      const sortedBundles = orderBy(allBundles, [(v) => v.id], ["desc"]);
+      const sortedBundles = orderBy(
+        Array.from(bundlesMap.values()),
+        [(v) => v.id],
+        ["desc"],
+      );
       return sortedBundles;
     }
 
@@ -1442,9 +1454,11 @@ export const createBlobDatabasePlugin = <TConfig>({
             );
           }
 
-          const currentIndexBundles = await loadCurrentBundlesForIndexRebuild();
+          const previousIndexBundles =
+            await loadCurrentBundlesForIndexRebuild();
+          const storedIndexBundles = await loadStoredBundlesForIndexRebuild();
           const nextIndexMap = new Map(
-            currentIndexBundles.map((bundle) => [bundle.id, bundle]),
+            storedIndexBundles.map((bundle) => [bundle.id, bundle]),
           );
           for (const { operation, data } of changedSets) {
             if (operation === "delete") {
@@ -1459,7 +1473,7 @@ export const createBlobDatabasePlugin = <TConfig>({
             Array.from(nextIndexMap.values()),
           );
           const previousArtifacts = buildManagementIndexArtifacts(
-            currentIndexBundles,
+            previousIndexBundles,
             managementIndexPageSize,
           );
           const nextArtifacts = buildManagementIndexArtifacts(
