@@ -158,7 +158,7 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const NATIVE_ARTIFACT_CACHE_VERSION = 3;
+const NATIVE_ARTIFACT_CACHE_VERSION = 4;
 const IOS_PODS_CACHE_VERSION = 2;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const IOS_RELEASE_BUILD_SETTINGS = [
@@ -167,7 +167,7 @@ const IOS_RELEASE_BUILD_SETTINGS = [
   "GCC_GENERATE_DEBUGGING_SYMBOLS=NO",
   "SWIFT_COMPILATION_MODE=singlefile",
 ];
-const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
+const BUILT_IN_BUNDLE_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
   "examples/v0.85.0/App.tsx",
@@ -175,14 +175,10 @@ const NATIVE_ARTIFACT_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/package.json",
   "examples/v0.85.0/babel.config.js",
   "examples/v0.85.0/metro.config.js",
-  "examples/v0.85.0/android",
-  "examples/v0.85.0/ios",
   "packages/core",
-  "packages/react-native",
+  "packages/react-native/package.json",
+  "packages/react-native/src",
 ];
-const NATIVE_ARTIFACT_CACHE_EXCLUDED_INPUT_PATHS = new Set([
-  "examples/v0.85.0/android/settings.gradle",
-]);
 const IOS_PODS_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
@@ -197,6 +193,15 @@ const IOS_PODS_CACHE_INPUT_PATHS = [
 ];
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
+const FINGERPRINT_FILE = path.join(EXAMPLE_DIR, "fingerprint.json");
+const IOS_INFO_PLIST_FILE = path.join(
+  EXAMPLE_DIR,
+  "ios/HotUpdaterExample/Info.plist",
+);
+const ANDROID_STRINGS_FILE = path.join(
+  EXAMPLE_DIR,
+  "android/app/src/main/res/values/strings.xml",
+);
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -621,16 +626,9 @@ function readGitTrackedInputFiles(inputPaths: string[]) {
   return output.split("\0").filter(Boolean).sort();
 }
 
-function hashGitTrackedInputFiles(
-  inputPaths: string[],
-  excludedInputPaths = new Set<string>(),
-) {
+function hashGitTrackedInputFiles(inputPaths: string[]) {
   const hash = createHash("sha256");
   for (const relativePath of readGitTrackedInputFiles(inputPaths)) {
-    if (excludedInputPaths.has(relativePath)) {
-      continue;
-    }
-
     const absolutePath = path.join(REPO_DIR, relativePath);
     if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
       continue;
@@ -645,11 +643,8 @@ function hashGitTrackedInputFiles(
   return hash.digest("hex");
 }
 
-function hashNativeArtifactInputs() {
-  return hashGitTrackedInputFiles(
-    NATIVE_ARTIFACT_CACHE_INPUT_PATHS,
-    NATIVE_ARTIFACT_CACHE_EXCLUDED_INPUT_PATHS,
-  );
+function hashBuiltInBundleInputs() {
+  return hashGitTrackedInputFiles(BUILT_IN_BUNDLE_CACHE_INPUT_PATHS);
 }
 
 function hashIosPodsInputs() {
@@ -667,73 +662,6 @@ function bareBuildConfigFingerprint() {
   const match = source.match(BARE_BUILD_INLINE_PATTERN);
 
   return hashText(match?.[0] ?? "missing");
-}
-
-function readNativeEnvImports() {
-  const source = fs.existsSync(APP_SOURCE_FILE)
-    ? fs.readFileSync(APP_SOURCE_FILE, "utf8")
-    : "";
-  const envNames = new Set<string>();
-  const importPattern = /import\s*\{([^}]+)\}\s*from\s*["']@env["']/g;
-
-  for (const match of source.matchAll(importPattern)) {
-    const names = match[1] ?? "";
-    for (const name of names.split(",")) {
-      const importedName = name
-        .trim()
-        .split(/\s+as\s+/)[0]
-        ?.trim();
-      if (importedName) {
-        envNames.add(importedName);
-      }
-    }
-  }
-
-  return [...envNames].sort();
-}
-
-function parseDotenvFile(filePath: string) {
-  const values = new Map<string, string>();
-  if (!fs.existsSync(filePath)) {
-    return values;
-  }
-
-  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-    if (!match) {
-      continue;
-    }
-
-    const [, key, rawValue = ""] = match;
-    let value = rawValue.trim();
-    const quote = value[0];
-    if (
-      (quote === '"' || quote === "'") &&
-      value.endsWith(quote) &&
-      value.length >= 2
-    ) {
-      value = value.slice(1, -1);
-    }
-    values.set(key, value);
-  }
-
-  return values;
-}
-
-function nativeDotenvFingerprint() {
-  const importedEnvNames = readNativeEnvImports();
-  const dotenvValues = parseDotenvFile(
-    path.join(session.exampleDir, ".env.hotupdater"),
-  );
-
-  return hashText(
-    JSON.stringify(
-      importedEnvNames.map((name) => [
-        name,
-        dotenvValues.has(name) ? dotenvValues.get(name) : null,
-      ]),
-    ),
-  );
 }
 
 function signingKeyFingerprint() {
@@ -793,17 +721,83 @@ function readToolFingerprint() {
   });
 }
 
+function readFingerprintJsonHash() {
+  if (!fs.existsSync(FINGERPRINT_FILE)) {
+    throw new Error(
+      `Hot Updater fingerprint file is missing: ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
+    );
+  }
+
+  const fingerprint = JSON.parse(fs.readFileSync(FINGERPRINT_FILE, "utf8")) as {
+    android?: { hash?: unknown };
+    ios?: { hash?: unknown };
+  };
+  const platformFingerprint = fingerprint[session.platform]?.hash;
+  if (typeof platformFingerprint !== "string" || !platformFingerprint.trim()) {
+    throw new Error(
+      `Hot Updater ${session.platform} fingerprint hash is missing from ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
+    );
+  }
+  return platformFingerprint.trim();
+}
+
+function readIosEmbeddedFingerprintHash() {
+  if (!fs.existsSync(IOS_INFO_PLIST_FILE)) {
+    return null;
+  }
+
+  const source = fs.readFileSync(IOS_INFO_PLIST_FILE, "utf8");
+  const match = source.match(
+    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>([^<]+)<\/string>/,
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function readAndroidEmbeddedFingerprintHash() {
+  if (!fs.existsSync(ANDROID_STRINGS_FILE)) {
+    return null;
+  }
+
+  const source = fs.readFileSync(ANDROID_STRINGS_FILE, "utf8");
+  const match = source.match(
+    /<string\s+name="hot_updater_fingerprint_hash"[^>]*>([^<]+)<\/string>/,
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function readEmbeddedFingerprintHash() {
+  return session.platform === "ios"
+    ? readIosEmbeddedFingerprintHash()
+    : readAndroidEmbeddedFingerprintHash();
+}
+
+function hotUpdaterNativeFingerprintHash() {
+  const fingerprintHash = readFingerprintJsonHash();
+  const embeddedHash = readEmbeddedFingerprintHash();
+
+  if (embeddedHash !== fingerprintHash) {
+    throw new Error(
+      [
+        `Hot Updater ${session.platform} fingerprint mismatch.`,
+        `fingerprint.json=${fingerprintHash}`,
+        `embedded=${embeddedHash ?? "missing"}`,
+        "Run `pnpm hot-updater fingerprint create` in examples/v0.85.0 before reusing native artifacts.",
+      ].join(" "),
+    );
+  }
+
+  return fingerprintHash;
+}
+
 function nativeArtifactCacheKey(architecture?: string | null) {
-  const hasRuntimeConfiguredBaseUrl = session.platform === "ios";
   return hashText(
     JSON.stringify({
-      appBaseUrl: hasRuntimeConfiguredBaseUrl ? null : session.appBaseUrl,
       appId: session.appId,
       architecture: architecture ?? null,
+      builtInBundle: hashBuiltInBundleInputs(),
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
+      hotUpdaterFingerprint: hotUpdaterNativeFingerprintHash(),
       initialMarker: session.initialMarker,
-      inputHash: hashNativeArtifactInputs(),
-      nativeEnv: hasRuntimeConfiguredBaseUrl ? null : nativeDotenvFingerprint(),
       platform: session.platform,
       runtime: {
         arch: process.arch,
@@ -3630,6 +3624,19 @@ function isLoopbackHost(hostname: string) {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
+function assertConfiguredBaseUrl() {
+  try {
+    const url = new URL(session.appBaseUrl);
+    if (!url.protocol || !url.hostname) {
+      throw new Error("missing protocol or host");
+    }
+  } catch (error) {
+    throw new Error(
+      `HOT_UPDATER_E2E_APP_BASE_URL must be a valid absolute URL. Received ${JSON.stringify(session.appBaseUrl)} (${formatErrorMessage(error)})`,
+    );
+  }
+}
+
 function getAndroidReversePorts() {
   const appBaseUrl = new URL(session.appBaseUrl);
   if (!isLoopbackHost(appBaseUrl.hostname)) {
@@ -3679,6 +3686,29 @@ function escapeAndroidSharedPreferenceXmlValue(value: string) {
     .replaceAll("'", "&apos;");
 }
 
+function assertAndroidRuntimeConfig(
+  sharedPrefsFile: string,
+  expectedXmlValues: string[],
+) {
+  const observedXml = runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "run-as",
+    session.appId,
+    "cat",
+    sharedPrefsFile,
+  ]);
+
+  for (const expectedValue of expectedXmlValues) {
+    if (!observedXml.includes(expectedValue)) {
+      throw new Error(
+        `Android E2E runtime config was not written correctly: expected ${expectedValue} in ${sharedPrefsFile}`,
+      );
+    }
+  }
+}
+
 function writeAndroidE2ERuntimeConfig() {
   const localPath = path.join(
     os.tmpdir(),
@@ -3713,6 +3743,10 @@ function writeAndroidE2ERuntimeConfig() {
     "</map>",
     "",
   ].join("\n");
+  const expectedXmlValues = configValues.map(
+    ({ key, value }) =>
+      `<string name="${key}">${escapeAndroidSharedPreferenceXmlValue(value)}</string>`,
+  );
 
   try {
     fs.writeFileSync(localPath, xml);
@@ -3758,6 +3792,7 @@ function writeAndroidE2ERuntimeConfig() {
       "600",
       sharedPrefsFile,
     ]);
+    assertAndroidRuntimeConfig(sharedPrefsFile, expectedXmlValues);
     logE2e("android runtime config ready", {
       appBaseUrl: session.appBaseUrl,
       channelNamespace,
@@ -4608,41 +4643,63 @@ async function ensureAppForeground() {
 }
 
 async function prepareAppLaunch() {
+  assertConfiguredBaseUrl();
+
   if (session.platform === "ios") {
     runCapture(
       "xcrun",
       ["simctl", "terminate", deviceId as string, session.appId],
       { allowFailure: true },
     );
-    runCapture(
-      "xcrun",
-      [
+    runCapture("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "write",
+      session.appId,
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      session.appBaseUrl,
+    ]);
+    const observedBaseUrl = runCapture("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "read",
+      session.appId,
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+    ]);
+    if (observedBaseUrl !== session.appBaseUrl) {
+      throw new Error(
+        `iOS E2E runtime baseUrl was not written correctly: expected ${session.appBaseUrl}, observed ${observedBaseUrl}`,
+      );
+    }
+    if (channelNamespace) {
+      runCapture("xcrun", [
         "simctl",
         "spawn",
         deviceId as string,
         "defaults",
         "write",
         session.appId,
-        "HOT_UPDATER_E2E_APP_BASE_URL",
-        session.appBaseUrl,
-      ],
-      { allowFailure: true },
-    );
-    if (channelNamespace) {
-      runCapture(
-        "xcrun",
-        [
-          "simctl",
-          "spawn",
-          deviceId as string,
-          "defaults",
-          "write",
-          session.appId,
-          "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
-          channelNamespace,
-        ],
-        { allowFailure: true },
-      );
+        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+        channelNamespace,
+      ]);
+      const observedChannelNamespace = runCapture("xcrun", [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "defaults",
+        "read",
+        session.appId,
+        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+      ]);
+      if (observedChannelNamespace !== channelNamespace) {
+        throw new Error(
+          `iOS E2E runtime channel namespace was not written correctly: expected ${channelNamespace}, observed ${observedChannelNamespace}`,
+        );
+      }
     } else {
       runCapture(
         "xcrun",
