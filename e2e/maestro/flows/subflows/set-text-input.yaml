@@ -33,3 +33,8 @@ appId: ${APP_ID}
       - assertTrue:
           condition: ${maestro.copiedText == FIELD_VALUE}
           label: ${FIELD_LABEL} matches expected value
+- runFlow:
+    file: tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-apply-cohort-input
