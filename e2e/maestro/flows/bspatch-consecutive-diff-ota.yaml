@@ -170,6 +170,7 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase2C}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase2CPrimaryBundleAssetPath}
 - runFlow:
@@ -247,6 +248,7 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase2D}
       EXPECTED_ARTIFACT_TYPE: diff
       EXPECTED_DOWNLOAD_PATH: ${output.phase2DPrimaryBundleAssetPath}
 - runFlow:
