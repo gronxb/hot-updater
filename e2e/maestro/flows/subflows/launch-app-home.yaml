@@ -32,6 +32,16 @@ appId: ${APP_ID}
           optional: true
       - extendedWaitUntil:
           visible:
+            id: e2e-nav-top
+          timeout: 30000
+      - tapOn:
+          id: e2e-nav-top
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 500
+      - waitForAnimationToEnd:
+          timeout: 500
+      - extendedWaitUntil:
+          visible:
             id: runtime-bundle-id
           timeout: 30000
       - assertVisible:
