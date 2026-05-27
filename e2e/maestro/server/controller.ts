@@ -5055,16 +5055,20 @@ async function deployBundle(request: DeployBundleRequest) {
         );
       }
 
-      logE2e("deploy done", {
-        archivePath: path.relative(REPO_DIR, archivePath),
-        archiveSizeBytes: archiveStats.size,
+      const deployTiming = {
         bundleProfile,
         channel: request.channel,
         durationMs: deployDurationMs,
-        logPath: path.relative(REPO_DIR, deployLogPath),
         marker: request.marker,
         mode: request.mode,
         platform: session.platform,
+      };
+      logE2e("deploy timing", deployTiming);
+      logE2e("deploy done", {
+        archivePath: path.relative(REPO_DIR, archivePath),
+        archiveSizeBytes: archiveStats.size,
+        ...deployTiming,
+        logPath: path.relative(REPO_DIR, deployLogPath),
       });
 
       return {
