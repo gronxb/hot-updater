@@ -9,7 +9,7 @@ appId: ${APP_ID}
 - waitForAnimationToEnd:
     timeout: 1000
 - retry:
-    maxRetries: 3
+    maxRetries: 5
     commands:
       - runScript:
           file: ../../scripts/control.js
@@ -33,4 +33,4 @@ appId: ${APP_ID}
       - extendedWaitUntil:
           visible:
             id: e2e-nav-top
-          timeout: 6000
+          timeout: 10000

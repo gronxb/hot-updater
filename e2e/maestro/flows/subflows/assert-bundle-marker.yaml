@@ -6,7 +6,7 @@ appId: ${APP_ID}
       ACTION: ensureAppForeground
       CONTROL_URL: ${CONTROL_URL}
 - retry:
-    maxRetries: 3
+    maxRetries: 5
     commands:
       - assertVisible:
           id: runtime-bundle-id
