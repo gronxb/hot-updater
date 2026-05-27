@@ -5562,7 +5562,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     }
 
     if (
-      state.metadataState.stableBundleId === args.bundleId &&
+      state.metadataState.stagingBundleId === args.bundleId &&
       state.metadataState.verificationPending === false &&
       state.bundleFile.exists
     ) {
@@ -5598,9 +5598,17 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       expectedFragments,
       expectedState: {
         bundleFileExists: true,
-        stableBundleId: null,
-        stagingBundleId: args.bundleId,
-        verificationPending: true,
+        states: [
+          {
+            stableBundleId: null,
+            stagingBundleId: args.bundleId,
+            verificationPending: true,
+          },
+          {
+            stagingBundleId: args.bundleId,
+            verificationPending: false,
+          },
+        ],
       },
       logsTail: logs.split("\n").slice(-20),
       observedState: {
