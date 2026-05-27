@@ -33,7 +33,10 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
-      - extendedWaitUntil:
-          visible:
+      - scrollUntilVisible:
+          element:
             id: e2e-nav-top
+          direction: UP
           timeout: 10000
+      - assertVisible:
+          id: e2e-nav-top
