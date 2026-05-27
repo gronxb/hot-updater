@@ -227,6 +227,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -261,6 +268,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -294,6 +308,11 @@ onFlowComplete:
     file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
