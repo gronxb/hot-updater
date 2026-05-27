@@ -1,16 +1,16 @@
 appId: ${APP_ID}
 ---
-- runScript:
-    file: ../../scripts/control.js
-    env:
-      ACTION: prepareAppLaunch
-      CONTROL_URL: ${CONTROL_URL}
-- launchApp
-- waitForAnimationToEnd:
-    timeout: 1000
 - retry:
     maxRetries: 5
     commands:
+      - runScript:
+          file: ../../scripts/control.js
+          env:
+            ACTION: prepareAppLaunch
+            CONTROL_URL: ${CONTROL_URL}
+      - launchApp
+      - waitForAnimationToEnd:
+          timeout: 1000
       - runScript:
           file: ../../scripts/control.js
           env:
