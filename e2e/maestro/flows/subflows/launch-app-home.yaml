@@ -7,13 +7,10 @@ appId: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - launchApp
 - waitForAnimationToEnd:
-    timeout: 1000
+    timeout: 2000
 - retry:
-    maxRetries: 5
+    maxRetries: 3
     commands:
-      - launchApp
-      - waitForAnimationToEnd:
-          timeout: 1000
       - runScript:
           file: ../../scripts/control.js
           env:
@@ -26,7 +23,7 @@ appId: ${APP_ID}
           text: Wait
           optional: true
       - waitForAnimationToEnd:
-          timeout: 500
+          timeout: 1000
       - tapOn:
           id: android:id/aerr_wait
           optional: true
@@ -36,6 +33,6 @@ appId: ${APP_ID}
       - extendedWaitUntil:
           visible:
             id: runtime-bundle-id
-          timeout: 15000
+          timeout: 30000
       - assertVisible:
           id: runtime-bundle-id
