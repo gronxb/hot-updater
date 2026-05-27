@@ -33,10 +33,9 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
-      - scrollUntilVisible:
-          element:
-            id: e2e-nav-top
-          direction: UP
-          timeout: 10000
+      - extendedWaitUntil:
+          visible:
+            id: runtime-bundle-id
+          timeout: 15000
       - assertVisible:
-          id: e2e-nav-top
+          id: runtime-bundle-id
