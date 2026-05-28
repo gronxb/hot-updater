@@ -1864,10 +1864,44 @@ async function fetchBundlesPage(args: {
     cliArgs.push("-c", args.channel);
   }
 
-  const response = parseHotUpdaterCliJson<BundleListPage>(
-    "bundle list",
-    runHotUpdaterCliCapture(cliArgs),
-  );
+  let response: BundleListPage | null = null;
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      response = parseHotUpdaterCliJson<BundleListPage>(
+        "bundle list",
+        runHotUpdaterCliCapture(cliArgs),
+      );
+      break;
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
+        !isTransientProviderError(error)
+      ) {
+        throw error;
+      }
+
+      logE2e("hot-updater cli bundle list retry", {
+        attempt,
+        channel: args.channel ?? null,
+        error: formatErrorMessage(error),
+        platform: session.platform,
+        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
+      });
+      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
+    }
+  }
+
+  if (!response) {
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
   const bundles = normalizeBundleListResponse(response);
   logE2e("hot-updater cli bundle list", {
     channel: args.channel ?? null,
