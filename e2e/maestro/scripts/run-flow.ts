@@ -51,6 +51,19 @@ function parsePortEnv(name: string, fallback: number) {
   return port;
 }
 
+function parsePositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return value;
+}
+
 function safeFileToken(value: string) {
   return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
 }
@@ -115,6 +128,14 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
 );
 const MAESTRO_TRANSPORT_ATTEMPTS = 3;
 const MAESTRO_TRANSPORT_RETRY_DELAY_MS = 2000;
+const ANDROID_DEVICE_READY_ATTEMPTS = parsePositiveIntEnv(
+  "HOT_UPDATER_E2E_ANDROID_DEVICE_READY_ATTEMPTS",
+  90,
+);
+const ANDROID_DEVICE_READY_DELAY_MS = parsePositiveIntEnv(
+  "HOT_UPDATER_E2E_ANDROID_DEVICE_READY_DELAY_MS",
+  1000,
+);
 const MAESTRO_DRIVER_STARTUP_TIMEOUT_MS =
   process.env.MAESTRO_DRIVER_STARTUP_TIMEOUT || "240000";
 const MAESTRO_DRIVER_HOST_PORT_PATTERN = String(
@@ -124,7 +145,9 @@ const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
   /Not able to reach the gRPC server while processing deviceInfo command/i,
   /StatusRuntimeException:\s*UNAVAILABLE/i,
   /Command failed \(tcp:\d+\): closed/i,
+  /Command failed \(host:transport:[^)]+\): device ['"][^'"]+['"] not found/i,
   /dadb\.forwarding\.TcpForwarder/i,
+  /device ['"][^'"]+['"] not found/i,
   /Failed to launch app/i,
   /Maestro Android transport failure before E2E mutation/i,
   /Maestro command idle timeout/i,
@@ -426,6 +449,75 @@ function runCapture(
   }
 
   return result.stdout.trim();
+}
+
+function readAndroidDeviceRows() {
+  return runCapture("adb", ["devices"], { allowFailure: true })
+    .split("\n")
+    .slice(1)
+    .map((line: string) => line.trim().split(/\s+/))
+    .filter((columns: string[]) => columns[0]);
+}
+
+function isAndroidDeviceOnline(deviceId: string) {
+  return readAndroidDeviceRows().some(
+    (columns: string[]) => columns[0] === deviceId && columns[1] === "device",
+  );
+}
+
+function formatAndroidDeviceRows() {
+  const rows = readAndroidDeviceRows();
+  if (rows.length === 0) {
+    return "no devices";
+  }
+  return rows
+    .map((columns: string[]) => columns.slice(0, 2).join(":"))
+    .join(", ");
+}
+
+function isAndroidDeviceBootCompleted(deviceId: string) {
+  return (
+    runCapture(
+      "adb",
+      ["-s", deviceId, "shell", "getprop", "sys.boot_completed"],
+      { allowFailure: true },
+    ).trim() === "1"
+  );
+}
+
+async function waitForAndroidDeviceReady(deviceId: string, reason: string) {
+  let lastState = "unknown";
+
+  for (
+    let attempt = 1;
+    attempt <= ANDROID_DEVICE_READY_ATTEMPTS;
+    attempt += 1
+  ) {
+    runCapture("adb", ["start-server"], { allowFailure: true });
+
+    if (isAndroidDeviceOnline(deviceId)) {
+      if (isAndroidDeviceBootCompleted(deviceId)) {
+        return;
+      }
+      lastState = "listed as device, boot not completed";
+    } else {
+      lastState = formatAndroidDeviceRows();
+    }
+
+    if (attempt === 1 || attempt % 15 === 0) {
+      p.log.info(
+        `Waiting for Android device ${deviceId} before ${reason}: ${lastState}`,
+      );
+    }
+
+    await sleep(ANDROID_DEVICE_READY_DELAY_MS);
+  }
+
+  throw new Error(
+    `Android device ${deviceId} was not ready before ${reason} after ${formatDuration(
+      ANDROID_DEVICE_READY_ATTEMPTS * ANDROID_DEVICE_READY_DELAY_MS,
+    )}: ${lastState}`,
+  );
 }
 
 async function fetchWithTimeout(
@@ -1124,8 +1216,10 @@ async function runMaestroWithTransportRetry({
     const releaseMaestroLock = await acquireMaestroDriverLock();
     try {
       if (platform === "android") {
+        await waitForAndroidDeviceReady(deviceId, "resetting Maestro driver");
         p.log.info("Reset Android Maestro driver host state");
         await resetAndroidMaestroDriverHostState(deviceId);
+        await waitForAndroidDeviceReady(deviceId, "starting Maestro driver");
         await ensureAndroidMaestroDriver(deviceId);
       } else {
         p.log.info("Reset iOS Maestro driver host state");
@@ -1835,6 +1929,7 @@ async function main() {
     appId = IOS_APP_ID;
   } else {
     deviceId = resolveAndroidSerial();
+    await waitForAndroidDeviceReady(deviceId, "preparing Android E2E flow");
     const reversedPort = ensureAndroidReverse(
       deviceId,
       developerSetup.appBaseUrl,
