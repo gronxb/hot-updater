@@ -335,6 +335,15 @@ const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
 const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
 );
+const PROVIDER_READY_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_ATTEMPTS || 120,
+);
+const PROVIDER_READY_WAIT_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_DELAY_MS || 1000,
+);
+const PROVIDER_READY_HTTP_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_HTTP_TIMEOUT_MS || 2000,
+);
 const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
 );
@@ -3695,6 +3704,60 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+function getControllerReachableProviderHealthUrl() {
+  const url = new URL(getControllerReachableAppBaseUrl());
+  if (!isLoopbackHost(url.hostname)) {
+    return null;
+  }
+
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function waitForLocalProviderReady() {
+  const url = getControllerReachableProviderHealthUrl();
+  if (!url) {
+    return;
+  }
+
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= PROVIDER_READY_WAIT_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        logE2e("local provider ready", {
+          attempt,
+          platform: session.platform,
+          url,
+        });
+        return;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = formatErrorMessage(error);
+    }
+
+    if (attempt === 1 || attempt % 10 === 0) {
+      logE2e("local provider readiness pending", {
+        attempt,
+        lastError,
+        platform: session.platform,
+        retryDelayMs: PROVIDER_READY_WAIT_DELAY_MS,
+        url,
+      });
+    }
+    await sleep(PROVIDER_READY_WAIT_DELAY_MS);
+  }
+
+  throw new Error(
+    `Timed out waiting for local provider ${url}: ${lastError ?? "unknown error"}`,
+  );
+}
+
 function getUrlPort(url: URL) {
   if (url.port) {
     return Number.parseInt(url.port, 10);
@@ -4832,6 +4895,7 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
+  await waitForLocalProviderReady();
   await clearRemoteBundles({
     mode: session.reuseApp ? "disable" : "delete",
   });
