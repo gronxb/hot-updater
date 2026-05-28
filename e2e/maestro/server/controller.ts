@@ -4282,11 +4282,7 @@ function parseAndroidFocusedPackage(output: string) {
 }
 
 function getAndroidFocusedPackage() {
-  const windowOutput = runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
-    { allowFailure: true },
-  );
+  const windowOutput = getAndroidWindowOutput();
   const focusedWindowPackage = parseAndroidFocusedPackage(windowOutput);
   if (focusedWindowPackage) {
     return focusedWindowPackage;
@@ -4298,6 +4294,39 @@ function getAndroidFocusedPackage() {
     { allowFailure: true },
   );
   return parseAndroidFocusedPackage(activityOutput);
+}
+
+function getAndroidWindowOutput() {
+  return runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
+    { allowFailure: true },
+  );
+}
+
+function getAndroidAnrPackage(windowOutput: string) {
+  const match = windowOutput.match(
+    /Window\{[^\n]*Application Not Responding:\s*([A-Za-z0-9._]+)/i,
+  );
+  return match?.[1] ?? null;
+}
+
+function dismissAndroidAnrWindow(reason: string) {
+  const anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
+  if (!anrPackage) {
+    return false;
+  }
+
+  logE2e("android dismiss anr window", {
+    anrPackage,
+    reason,
+  });
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", anrPackage],
+    { allowFailure: true },
+  );
+  return true;
 }
 
 function getAndroidHomePackage() {
@@ -4536,6 +4565,10 @@ async function ensureAppForeground() {
     return {};
   }
 
+  if (dismissAndroidAnrWindow("ensure-app-foreground")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
   let focusedPackage = getAndroidFocusedPackage();
   const homePackage = getAndroidHomePackage();
   if (focusedPackage === session.appId) {
@@ -4721,6 +4754,10 @@ async function prepareAppLaunch() {
     focusedPackage,
     targetAppId: session.appId,
   });
+
+  if (dismissAndroidAnrWindow("prepare-app-launch")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
 
   ensureAndroidReverse();
   writeAndroidE2ERuntimeConfig();
