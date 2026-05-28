@@ -10,6 +10,13 @@ appId: ${APP_ID}
     waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
     timeout: 500
+- runFlow:
+    file: navigate-top.yaml
+- scrollUntilVisible:
+    element:
+      id: section-crash-history
+    direction: DOWN
+    timeout: 10000
 - extendedWaitUntil:
     visible:
       id: section-crash-history
