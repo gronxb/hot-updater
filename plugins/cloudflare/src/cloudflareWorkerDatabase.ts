@@ -105,12 +105,17 @@ interface D1WorkerBundlePatchRow {
 }
 
 // Escape `value` as a SQL string literal, or return null if it contains
-// a character we refuse to inline (newline / NUL / backslash). Doubled
-// single-quote per the SQL standard. Only used for IN-list inlining;
-// every other parameter still goes through .bind().
+// a character we refuse to inline: NUL (SQLite treats as end-of-string),
+// newlines (corrupt multi-line SQL when logged), backslash (escaping
+// ambiguity). Single quotes are doubled per the SQL standard. Only used
+// for IN-list inlining; every other parameter still goes through .bind().
 function toSqlLiteral(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  if (/[\n\r\0\\]/.test(value)) return null;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    // 0 = NUL, 10 = \n, 13 = \r, 92 = backslash
+    if (code === 0 || code === 10 || code === 13 || code === 92) return null;
+  }
   return `'${value.replace(/'/g, "''")}'`;
 }
 
