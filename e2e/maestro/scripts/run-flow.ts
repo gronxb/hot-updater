@@ -307,6 +307,15 @@ function getUrlPort(url: URL) {
   return url.protocol === "https:" ? 443 : 80;
 }
 
+function parsePositivePort(value: string | undefined) {
+  if (!value || !/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const port = Number.parseInt(value, 10);
+  return Number.isInteger(port) && port > 0 ? port : null;
+}
+
 function isLoopbackHost(hostname: string) {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
@@ -354,6 +363,15 @@ async function validateDeveloperE2ESetup(
     relativeEnvPath,
     DEFAULT_UPDATE_SERVER_BASE_URL,
   );
+  const scopedServicePort = parsePositivePort(process.env.PORT);
+  if (
+    platform === "ios" &&
+    scopedServicePort !== null &&
+    isLoopbackHost(appBaseUrl.hostname)
+  ) {
+    appBaseUrl.port = String(scopedServicePort);
+  }
+
   const controlPort = DEFAULT_SERVER_PORT;
   const appBaseUrlPort = getUrlPort(appBaseUrl);
 
