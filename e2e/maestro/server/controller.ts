@@ -224,6 +224,7 @@ const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
 const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
+const NATIVE_ARTIFACT_LOCK_STALE_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES = "HotUpdaterE2E";
@@ -1134,8 +1135,15 @@ function isProcessRunning(pid: number) {
 }
 
 async function removeStaleNativeArtifactLock(lockPath: string) {
-  const lock = await readNativeArtifactLock(lockPath);
-  const isStale = lock === null || !isProcessRunning(lock.pid);
+  const [lock, stats] = await Promise.all([
+    readNativeArtifactLock(lockPath),
+    fsPromises.stat(lockPath).catch(() => null),
+  ]);
+  const ageMs = stats ? Date.now() - stats.mtimeMs : Number.POSITIVE_INFINITY;
+  const isStale =
+    lock === null
+      ? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS
+      : !isProcessRunning(lock.pid);
 
   if (!isStale) {
     return false;
@@ -1143,6 +1151,7 @@ async function removeStaleNativeArtifactLock(lockPath: string) {
 
   await fsPromises.rm(lockPath, { force: true });
   logE2e("native artifact cache stale lock removed", {
+    ageMs,
     lockPath,
     pid: lock?.pid ?? null,
   });
