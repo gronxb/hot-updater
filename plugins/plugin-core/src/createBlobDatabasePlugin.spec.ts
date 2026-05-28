@@ -87,12 +87,18 @@ let fakeStore: Record<string, string> = {};
 let cloudfrontInvalidations: { paths: string[] }[] = [];
 let listObjectCalls: string[] = [];
 let loadObjectCalls: string[] = [];
+let uploadObjectDelayMs = 0;
+let activeUploadObjectCount = 0;
+let maxActiveUploadObjectCount = 0;
 
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
   listObjectCalls = [];
   loadObjectCalls = [];
+  uploadObjectDelayMs = 0;
+  activeUploadObjectCount = 0;
+  maxActiveUploadObjectCount = 0;
 });
 
 afterEach(() => {
@@ -129,7 +135,22 @@ describe("blobDatabase plugin", () => {
   }
 
   async function uploadObject<T>(path: string, data: T): Promise<void> {
-    fakeStore[path] = JSON.stringify(data);
+    activeUploadObjectCount += 1;
+    maxActiveUploadObjectCount = Math.max(
+      maxActiveUploadObjectCount,
+      activeUploadObjectCount,
+    );
+
+    try {
+      if (uploadObjectDelayMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, uploadObjectDelayMs),
+        );
+      }
+      fakeStore[path] = JSON.stringify(data);
+    } finally {
+      activeUploadObjectCount -= 1;
+    }
   }
 
   async function deleteObject(path: string): Promise<void> {
@@ -2949,6 +2970,26 @@ describe("blobDatabase plugin", () => {
         ),
       ).toBe(false);
       expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+    });
+
+    it("limits concurrent storage writes while committing many index artifacts", async () => {
+      plugin = createPlugin({ managementIndexPageSize: 1 });
+      uploadObjectDelayMs = 5;
+
+      for (let index = 0; index < 20; index++) {
+        await plugin.appendBundle(
+          createBundleJson(
+            "production",
+            "ios",
+            `1.0.${index}`,
+            `concurrency-test-${String(index).padStart(2, "0")}`,
+          ),
+        );
+      }
+
+      await plugin.commitBundle();
+
+      expect(maxActiveUploadObjectCount).toBeLessThanOrEqual(8);
     });
   });
 

@@ -116,6 +116,43 @@ type BundleListPage = {
   };
 };
 
+const REMOTE_RESET_DATABASE_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        if (index >= items.length) {
+          break;
+        }
+
+        results[index] = await mapper(items[index]!, index);
+      }
+    }),
+  );
+
+  return results;
+}
+
+async function forEachWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  await mapWithConcurrency(items, concurrency, mapper);
+}
+
 type LaunchReportAssertion = {
   crashedBundleId?: string;
   optional: boolean;
@@ -2236,15 +2273,18 @@ async function clearRemoteBundles({
 
     if (mode === "disable") {
       await withDatabasePlugin(async (databasePlugin) => {
-        await Promise.all(
-          nextBatch.map((bundle) =>
+        await forEachWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) =>
             databasePlugin.updateBundle(bundle.id, { enabled: false }),
-          ),
         );
         await databasePlugin.commitBundle();
 
-        const refetched = await Promise.all(
-          nextBatch.map((bundle) => databasePlugin.getBundleById(bundle.id)),
+        const refetched = await mapWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) => databasePlugin.getBundleById(bundle.id),
         );
         const stillEnabled = refetched.find(
           (bundle) => bundle?.enabled !== false,
@@ -4313,7 +4353,11 @@ async function waitForIosMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
 
-  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -4378,7 +4422,11 @@ async function waitForAndroidMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
 
-  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -6025,7 +6073,9 @@ export function startWaitForMetadataJob(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
-  return createJob(() => waitForMetadata(bundleId, verificationPending, options));
+  return createJob(() =>
+    waitForMetadata(bundleId, verificationPending, options),
+  );
 }
 
 export function getJob(jobId: string) {
