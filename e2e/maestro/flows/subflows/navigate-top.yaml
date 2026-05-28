@@ -8,7 +8,7 @@ appId: ${APP_ID}
 - scrollUntilVisible:
     element:
       id: runtime-bundle-id
-    direction: UP
+    direction: DOWN
     timeout: 10000
 - extendedWaitUntil:
     visible:
