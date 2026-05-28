@@ -58,13 +58,24 @@ const getFilteredRows = (sql: string, params: any[]) => {
   let filteredRows = Array.from(rows.values());
   let index = 0;
 
+  // IN-list values may be expressed as bound parameters (`?, ?, ?`) or
+  // inlined SQL string literals (`'a', 'b', 'c'`). buildWhereClause and
+  // getPatchMap inline string literals to stay under D1's 100-bind cap.
   const consumeInValues = (pattern: RegExp) => {
     const match = sql.match(pattern);
     if (!match) {
       return null;
     }
 
-    const count = (match[1]?.match(/\?/g) ?? []).length;
+    const body = match[1] ?? "";
+    const literalValues = Array.from(body.matchAll(/'((?:[^']|'')*)'/g)).map(
+      (m) => m[1].replace(/''/g, "'"),
+    );
+    if (literalValues.length > 0) {
+      return literalValues;
+    }
+
+    const count = (body.match(/\?/g) ?? []).length;
     const values = params.slice(index, index + count);
     index += count;
     return values;
@@ -189,8 +200,16 @@ vi.mock("cloudflare", () => ({
               "select * from bundle_patches where bundle_id in",
             )
           ) {
-            const selectedBundleIds = new Set(
-              params.map((value) => String(value)),
+            // getPatchMap inlines bundle_ids as SQL string literals. Fall
+            // back to `params` for older code paths that still bind.
+            const inMatch = sql.match(/bundle_id IN \(([^)]+)\)/);
+            const literalIds = Array.from(
+              (inMatch?.[1] ?? "").matchAll(/'((?:[^']|'')*)'/g),
+            ).map((m) => m[1].replace(/''/g, "'"));
+            const selectedBundleIds = new Set<string>(
+              literalIds.length > 0
+                ? literalIds
+                : params.map((value) => String(value)),
             );
             const result = Array.from(patchRows.values())
               .filter((row) => selectedBundleIds.has(row.bundle_id))
@@ -409,5 +428,75 @@ describe("d1Database plugin", () => {
         metadata: JSON.stringify({ source: "fresh" }),
       }),
     );
+  });
+
+  it("queries getUpdateInfo with 200+ distinct target_app_versions without busting D1's 100-bind cap", async () => {
+    // Regression for: D1_ERROR "too many SQL variables ... SQLITE_ERROR".
+    // buildWhereClause used to expand target_app_version IN (...) as one
+    // `?` per element. D1 caps prepared statements at 100 binds, so the
+    // query died once enough compatible target_app_version values were
+    // present. Fix inlines them as escaped SQL literals.
+    const COUNT = 200;
+    for (let i = 0; i < COUNT; i++) {
+      const id = `bundle-${String(i).padStart(4, "0")}`;
+      rows.set(id, {
+        id,
+        channel: "production",
+        enabled: 1,
+        should_force_update: 0,
+        file_hash: `hash-${i}`,
+        git_commit_hash: null,
+        message: null,
+        platform: "ios",
+        // Each row gets a distinct target range that satisfies "1.0.0".
+        target_app_version: `>=0.${i}.0`,
+        storage_uri: `s3://bucket/${id}.zip`,
+        fingerprint_hash: null,
+        metadata: "{}",
+        rollout_cohort_count: 1000,
+        target_cohorts: null,
+      });
+    }
+
+    const result = await plugin.getUpdateInfo?.({
+      appVersion: "1.0.0",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+      channel: "production",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
+      _updateStrategy: "appVersion",
+    });
+
+    expect(result).not.toBeNull();
+  });
+
+  it("queries getPatchMap with 200+ bundle ids without busting D1's 100-bind cap", async () => {
+    // Regression for same root cause in getPatchMap. getBundles can
+    // return more than 100 rows; mapping their ids into bundle_id IN
+    // (...) used to overrun D1's bind cap.
+    const COUNT = 200;
+    for (let i = 0; i < COUNT; i++) {
+      const id = `bundle-${String(i).padStart(4, "0")}`;
+      rows.set(id, {
+        id,
+        channel: "production",
+        enabled: 1,
+        should_force_update: 0,
+        file_hash: `hash-${i}`,
+        git_commit_hash: null,
+        message: null,
+        platform: "ios",
+        target_app_version: "1.0.0",
+        storage_uri: `s3://bucket/${id}.zip`,
+        fingerprint_hash: null,
+        metadata: "{}",
+        rollout_cohort_count: 1000,
+        target_cohorts: null,
+      });
+    }
+
+    const { data, pagination } = await plugin.getBundles({ limit: COUNT });
+    expect(data).toHaveLength(COUNT);
+    expect(pagination.total).toBe(COUNT);
   });
 });

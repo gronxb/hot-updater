@@ -1,3 +1,25 @@
+// plugins/cloudflare/src/cloudflareWorkerDatabase.ts
+//
+// Drop-in replacement for the official Hot Updater Cloudflare worker
+// database plugin (https://github.com/gronxb/hot-updater).
+//
+// Fix: D1_ERROR "too many SQL variables ... SQLITE_ERROR"
+//
+// The upstream `buildWhereClause` and `getPatchMap` expand IN-lists as
+// `?, ?, ?, ...`. D1 caps prepared statements at 100 bound parameters,
+// so as soon as `targetAppVersionIn` / `id.in` / `bundleIds` cross ~95,
+// every request 5xxs. Values for these IN-lists come from our own DB
+// (bundle ids, target_app_version strings), so we inline them as
+// escaped SQL literals instead of binds. Empty lists short-circuit
+// (`IN ()` is a SQLite syntax error).
+//
+// Also: `getTargetAppVersionsForUpdateInfo` now sorts by `MAX(id) DESC`
+// so the returned target_app_version list is deterministic — newest
+// activity first — without needing an extra JS sort.
+//
+// No semantics change beyond those three points. Everything else is
+// byte-identical to upstream.
+
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
@@ -82,6 +104,16 @@ interface D1WorkerBundlePatchRow {
   order_index: number | null;
 }
 
+// Escape `value` as a SQL string literal, or return null if it contains
+// a character we refuse to inline (newline / NUL / backslash). Doubled
+// single-quote per the SQL standard. Only used for IN-list inlining;
+// every other parameter still goes through .bind().
+function toSqlLiteral(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (/[\n\r\0\\]/.test(value)) return null;
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function buildWhereClause(
   conditions: QueryConditions | undefined,
 ): BuildQueryResult {
@@ -111,8 +143,14 @@ function buildWhereClause(
     if (conditions.id.in.length === 0) {
       clauses.push("1 = 0");
     } else {
-      clauses.push(`id IN (${conditions.id.in.map(() => "?").join(", ")})`);
-      params.push(...conditions.id.in);
+      const literals = conditions.id.in
+        .map(toSqlLiteral)
+        .filter((v): v is string => v !== null);
+      if (literals.length === 0) {
+        clauses.push("1 = 0");
+      } else {
+        clauses.push(`id IN (${literals.join(", ")})`);
+      }
     }
   }
 
@@ -158,12 +196,14 @@ function buildWhereClause(
     if (conditions.targetAppVersionIn.length === 0) {
       clauses.push("1 = 0");
     } else {
-      clauses.push(
-        `target_app_version IN (${conditions.targetAppVersionIn
-          .map(() => "?")
-          .join(", ")})`,
-      );
-      params.push(...conditions.targetAppVersionIn);
+      const literals = conditions.targetAppVersionIn
+        .map(toSqlLiteral)
+        .filter((v): v is string => v !== null);
+      if (literals.length === 0) {
+        clauses.push("1 = 0");
+      } else {
+        clauses.push(`target_app_version IN (${literals.join(", ")})`);
+      }
     }
   }
 
@@ -335,15 +375,24 @@ export const d1WorkerDatabase = <
           return patchMap;
         }
 
-        const placeholders = bundleIds.map(() => "?").join(", ");
+        // Inline as literals for the same reason as buildWhereClause:
+        // bundle listings can return >100 rows and would overrun D1's
+        // 100-bind cap if we used `?, ?, ?, ...`.
+        const literals = bundleIds
+          .map(toSqlLiteral)
+          .filter((v): v is string => v !== null);
+        if (literals.length === 0) {
+          return patchMap;
+        }
+
         const rows = await queryAll<D1WorkerBundlePatchRow>(
           `
             SELECT *
             FROM bundle_patches
-            WHERE bundle_id IN (${placeholders})
+            WHERE bundle_id IN (${literals.join(", ")})
             ORDER BY order_index ASC, base_bundle_id ASC
           `,
-          bundleIds,
+          [],
           context,
         );
 
@@ -391,6 +440,9 @@ export const d1WorkerDatabase = <
         },
         context?: HotUpdaterContext<TContext>,
       ): Promise<string[]> => {
+        // ORDER BY MAX(id) DESC: deterministic newest-first ordering so
+        // the downstream JS semver filter sees the freshest target
+        // groups first. No correctness impact; just predictability.
         const rows = await queryAll<{ target_app_version: string }>(
           `
             SELECT target_app_version
@@ -401,6 +453,7 @@ export const d1WorkerDatabase = <
               AND id >= ?
               AND target_app_version IS NOT NULL
             GROUP BY target_app_version
+            ORDER BY MAX(id) DESC
           `,
           [channel, platform, minBundleId],
           context,
