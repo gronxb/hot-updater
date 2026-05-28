@@ -365,6 +365,47 @@ describe("blobDatabase plugin", () => {
     ]);
   });
 
+  it("rebuilds the management index from manifests during commit", async () => {
+    const baseBundle: Bundle = {
+      ...DEFAULT_BUNDLE,
+      channel: "production",
+      id: "00000000-0000-0000-0000-000000000010",
+      platform: "android",
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-1",
+    };
+    const nextBundle: Bundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000020",
+      fileHash: "next-hash",
+      storageUri:
+        "storage://my-app/00000000-0000-0000-0000-000000000020/bundle.zip",
+    };
+
+    seedUpdateManifests([baseBundle]);
+    seedPagedBundlesIndex([]);
+
+    await plugin.appendBundle(nextBundle);
+    await plugin.commitBundle();
+
+    const patchBaseCandidates = await plugin.getBundles({
+      limit: 10,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: "fingerprint-1",
+        id: { lt: nextBundle.id },
+        platform: "android",
+      },
+    });
+
+    expect(patchBaseCandidates.data).toEqual([baseBundle]);
+  });
+
   it("respects cohort eligibility when selecting app-version updates", async () => {
     const gatedBundle: Bundle = {
       ...createBundleJson(

@@ -7,7 +7,9 @@
 
 import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import {
+  createDefaultResolver,
   HotUpdater,
+  type HotUpdaterResolver,
   type HotUpdaterFallbackComponentProps,
   useHotUpdaterStore,
 } from "@hot-updater/react-native";
@@ -17,12 +19,14 @@ import {
   findNodeHandle,
   Image,
   Keyboard,
+  NativeModules,
   type LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
+  Settings,
   StyleSheet,
   Text,
   TextInput,
@@ -39,6 +43,8 @@ const notify = proxy<{
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const HOT_UPDATER_BASE_URL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
+const E2E_APP_BASE_URL_SETTING = "HOT_UPDATER_E2E_APP_BASE_URL";
+const E2E_CHANNEL_NAMESPACE_SETTING = "HOT_UPDATER_E2E_CHANNEL_NAMESPACE";
 const E2E_SCENARIO_MARKER = "targeted-qa-maestro";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
@@ -64,6 +70,39 @@ const getGlobalBaseUrl = (): string | null => {
   }
   const value = maybeFn();
   return typeof value === "string" ? value : null;
+};
+const getConfiguredBaseUrl = () => {
+  const runtimeBaseUrl =
+    Platform.OS === "ios"
+      ? Settings.get(E2E_APP_BASE_URL_SETTING)
+      : NativeModules.E2ERuntimeConfig?.getAppBaseUrl?.();
+  return typeof runtimeBaseUrl === "string" && runtimeBaseUrl.trim()
+    ? runtimeBaseUrl
+    : HOT_UPDATER_BASE_URL;
+};
+const getE2EChannelNamespace = () => {
+  const namespace =
+    Platform.OS === "ios"
+      ? Settings.get(E2E_CHANNEL_NAMESPACE_SETTING)
+      : NativeModules.E2ERuntimeConfig?.getChannelNamespace?.();
+  return typeof namespace === "string" && namespace.trim()
+    ? namespace.trim()
+    : null;
+};
+const getRemoteChannel = (channel: string) => {
+  const namespace = getE2EChannelNamespace();
+  return namespace ? `${namespace}-${channel}` : channel;
+};
+const createE2EResolver = (): HotUpdaterResolver => {
+  const resolver = createDefaultResolver(getConfiguredBaseUrl);
+
+  return {
+    checkUpdate: (params) =>
+      resolver.checkUpdate?.({
+        ...params,
+        channel: getRemoteChannel(params.channel),
+      }) ?? Promise.resolve(null),
+  };
 };
 type RuntimeSnapshot = {
   appVersion: string | null;
@@ -94,7 +133,7 @@ const SCROLL_TARGETS: ScrollTarget[] = [
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
-  baseURL: getGlobalBaseUrl(),
+  baseURL: getGlobalBaseUrl() ?? getConfiguredBaseUrl(),
   bundleId: HotUpdater.getBundleId(),
   channel: HotUpdater.getChannel(),
   cohort: HotUpdater.getCohort(),
@@ -627,35 +666,37 @@ function App(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {sectionsReady ? (
-        <View style={styles.e2eNavBar}>
-          <E2ENavButton
-            onPress={scrollToTop}
-            testID="e2e-nav-top"
-            title="Jump to Top"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("crashHistory")}
-            testID="e2e-nav-crash-history"
-            title="Jump to Crash History"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("actions")}
-            testID="e2e-nav-actions"
-            title="Jump to Actions"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("cohortActions")}
-            testID="e2e-nav-cohort-actions"
-            title="Jump to Cohorts"
-          />
-          <E2ENavButton
-            onPress={() => scrollToSection("actionResults")}
-            testID="e2e-nav-action-results"
-            title="Jump to Results"
-          />
-        </View>
-      ) : null}
+      <View style={styles.e2eNavBar}>
+        <E2ENavButton
+          onPress={scrollToTop}
+          testID="e2e-nav-top"
+          title="Jump to Top"
+        />
+        {sectionsReady ? (
+          <>
+            <E2ENavButton
+              onPress={() => scrollToSection("crashHistory")}
+              testID="e2e-nav-crash-history"
+              title="Jump to Crash History"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("actions")}
+              testID="e2e-nav-actions"
+              title="Jump to Actions"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("cohortActions")}
+              testID="e2e-nav-cohort-actions"
+              title="Jump to Cohorts"
+            />
+            <E2ENavButton
+              onPress={() => scrollToSection("actionResults")}
+              testID="e2e-nav-action-results"
+              title="Jump to Results"
+            />
+          </>
+        ) : null}
+      </View>
       <ScrollView
         ref={scrollViewRef}
         contentContainerStyle={styles.contentContainer}
@@ -800,7 +841,7 @@ function App(): React.JSX.Element {
             title="Runtime Details"
             titleTestID="section-runtime-details"
           >
-            <InfoRow label="Base URL" value={HOT_UPDATER_BASE_URL} />
+            <InfoRow label="Base URL" value={getConfiguredBaseUrl()} />
             <InfoRow label="Channel" value={runtimeSnapshot.channel} />
             <InfoRow label="Cohort" value={runtimeSnapshot.cohort} />
             <InfoRow label="Channel Summary" value={channelSummary} />
@@ -1224,7 +1265,7 @@ const styles = StyleSheet.create({
 });
 
 export default HotUpdater.wrap({
-  baseURL: HOT_UPDATER_BASE_URL,
+  resolver: createE2EResolver(),
   updateStrategy: "appVersion",
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {

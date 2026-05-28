@@ -28,14 +28,41 @@ type RunCaptureOptions = {
 };
 
 type RunLoggedOptions = RunCaptureOptions & {
+  abortOnOutput?: (output: string) => string | null;
+  activityPaths?: string[];
+  idleTimeoutMs?: number;
   logPath: string;
   streamOutput?: boolean;
+  timeoutMs?: number;
 };
 
 type ParsedEnvFile = Record<string, string>;
 
+function parsePortEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const port = Number.parseInt(raw, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid ${name}: ${raw}`);
+  }
+  return port;
+}
+
+function safeFileToken(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
+}
+
 type DeveloperE2ESetup = {
   appBaseUrl: URL;
+};
+
+type ControlJobState = {
+  error?: string;
+  result?: Record<string, unknown>;
+  status?: string;
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -54,13 +81,98 @@ const DEFAULT_SERVER_PORT = Number(
 );
 const DEFAULT_SERVER_HOST = "127.0.0.1";
 const HTTP_TIMEOUT_MS = 5000;
-const PORT_STATE_PATH = path.join(E2E_RUNTIME_DIR, "server-port.txt");
+const CONTROL_JOB_HTTP_TIMEOUT_MS = 120 * 1000;
+const CONTROL_JOB_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 45 * 60 * 1000,
+);
+const BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS ||
+    120 * 60 * 1000,
+);
+const CONTROL_JOB_POLL_INTERVAL_MS = 1000;
+const CONTROL_JOB_RETRY_LOG_INTERVAL_MS = 30 * 1000;
 const IOS_APP_ID = "org.reactjs.native.example.HotUpdaterExample";
 const ANDROID_APP_ID = "com.hotupdaterexample";
+const ANDROID_MAESTRO_DRIVER_PACKAGES = [
+  "dev.mobile.maestro",
+  "dev.mobile.maestro.test",
+];
+const DEFAULT_MAESTRO_DRIVER_PORT = 7001;
+const ANDROID_MAESTRO_DRIVER_DEVICE_PORT = 7001;
+const MAESTRO_DRIVER_HOST_PORT = parsePortEnv(
+  "HOT_UPDATER_E2E_MAESTRO_DRIVER_PORT",
+  DEFAULT_MAESTRO_DRIVER_PORT,
+);
+const ANDROID_MAESTRO_DRIVER_RUNNER =
+  "dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner";
+const MAESTRO_CLIENT_JAR_PATH = path.join(
+  os.homedir(),
+  ".maestro/lib/maestro-client.jar",
+);
 const ANSI_ESCAPE_PATTERN = new RegExp(
   `${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
   "g",
 );
+const MAESTRO_TRANSPORT_ATTEMPTS = 3;
+const MAESTRO_TRANSPORT_RETRY_DELAY_MS = 2000;
+const MAESTRO_DRIVER_STARTUP_TIMEOUT_MS =
+  process.env.MAESTRO_DRIVER_STARTUP_TIMEOUT || "240000";
+const MAESTRO_DRIVER_HOST_PORT_PATTERN = String(
+  MAESTRO_DRIVER_HOST_PORT,
+).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const MAESTRO_ANDROID_TRANSPORT_PATTERNS = [
+  /Not able to reach the gRPC server while processing deviceInfo command/i,
+  /StatusRuntimeException:\s*UNAVAILABLE/i,
+  /Command failed \(tcp:\d+\): closed/i,
+  /dadb\.forwarding\.TcpForwarder/i,
+  /Failed to launch app/i,
+  /Maestro Android transport failure before E2E mutation/i,
+  /Maestro command idle timeout/i,
+  /ShouldNotReachHere: API object must not be garbage collected/i,
+  /Unable to launch app/i,
+];
+const MAESTRO_IOS_TRANSPORT_PATTERNS = [
+  new RegExp(
+    `Failed to connect to /127\\.0\\.0\\.1:${MAESTRO_DRIVER_HOST_PORT_PATTERN}`,
+    "i",
+  ),
+  /Failed to set permissions/i,
+  /java\.io\.EOFException/i,
+  /iOS driver not ready in time/i,
+  /Launch app "\$\{APP_ID\}" FAILED/i,
+  /Maestro iOS transport failure before E2E mutation/i,
+  /Unable to set permissions for app/i,
+  new RegExp(
+    `unexpected end of stream on http://127\\.0\\.0\\.1:${MAESTRO_DRIVER_HOST_PORT_PATTERN}`,
+    "i",
+  ),
+];
+const MAESTRO_TRANSPORT_PATTERNS_BY_PLATFORM = {
+  android: MAESTRO_ANDROID_TRANSPORT_PATTERNS,
+  ios: MAESTRO_IOS_TRANSPORT_PATTERNS,
+} satisfies Record<Platform, RegExp[]>;
+const MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN =
+  /<--\s+POST\s+\/e2e\/(?:assert-|capture-|jobs\/(?:deploy-bundle|patch-bundle|wait-for-metadata)|reinstall-built-in-app|wait-for-crash-recovery|write-summary)\b/i;
+const MAESTRO_FLOW_IDLE_TIMEOUT_MS = Number(
+  process.env.MAESTRO_FLOW_IDLE_TIMEOUT_MS || 30 * 60 * 1000,
+);
+const MAESTRO_FLOW_TIMEOUT_MS = Number(
+  process.env.MAESTRO_FLOW_TIMEOUT_MS || 45 * 60 * 1000,
+);
+const MAESTRO_LOG_ACTIVITY_POLL_MS = 5000;
+const MAESTRO_LOCK_FILE = process.env.HOT_UPDATER_E2E_MAESTRO_LOCK_FILE;
+const MAESTRO_LOCK_HELD_ENV = "HOT_UPDATER_E2E_MAESTRO_LOCK_HELD";
+const MAESTRO_LOCK_POLL_MS = 1000;
+const MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS = 20 * 1000;
+const MAESTRO_DEBUG_OUTPUT_MODE = (
+  process.env.HOT_UPDATER_E2E_MAESTRO_DEBUG_OUTPUT || "none"
+).toLowerCase();
+const MAESTRO_TEST_OUTPUT_MODE = (
+  process.env.HOT_UPDATER_E2E_MAESTRO_TEST_OUTPUT || "none"
+).toLowerCase();
+const COMMAND_TERMINATE_GRACE_MS = 5000;
+const ACTIVE_LOGGED_CHILDREN = new Set<ReturnType<typeof spawn>>();
+let terminationSignal: NodeJS.Signals | null = null;
 const DEFAULT_FLOW_PATH = path.join(
   E2E_MAESTRO_DIR,
   "flows/release-ota-recovery.yaml",
@@ -72,6 +184,15 @@ function getRequiredArgValue(argv: string[], index: number, flag: string) {
     throw new Error(`Missing value for ${flag}`);
   }
   return value;
+}
+
+function isNodeErrorCode(error: unknown, code: string) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 function parseArgs(argv: string[]): RunFlowOptions {
@@ -196,9 +317,24 @@ function ensureAndroidReverse(deviceId: string, appBaseUrl: URL) {
   }
 
   const port = getUrlPort(appBaseUrl);
-  runCapture("adb", ["-s", deviceId, "reverse", `tcp:${port}`, `tcp:${port}`]);
+  const hostPort = Number.parseInt(
+    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(port),
+    10,
+  );
+  if (!Number.isInteger(hostPort) || hostPort <= 0) {
+    throw new Error(
+      "HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT must be a positive integer.",
+    );
+  }
+  runCapture("adb", [
+    "-s",
+    deviceId,
+    "reverse",
+    `tcp:${port}`,
+    `tcp:${hostPort}`,
+  ]);
 
-  return port;
+  return { devicePort: port, hostPort };
 }
 
 async function validateDeveloperE2ESetup(
@@ -274,11 +410,167 @@ function runCapture(
   return result.stdout.trim();
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit = {}) {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = HTTP_TIMEOUT_MS,
+) {
   return fetch(url, {
     ...options,
-    signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
+}
+
+async function readJsonResponse<T>(response: Response, label: string) {
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${label} failed with HTTP ${response.status}: ${body}`);
+  }
+
+  try {
+    return JSON.parse(body) as T;
+  } catch (error) {
+    throw new Error(
+      `${label} returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function formatFetchFailure(error: unknown) {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const cause =
+    "cause" in error && error.cause instanceof Error
+      ? `: ${error.cause.message}`
+      : "";
+  return `${error.message}${cause}`;
+}
+
+async function startControlJob(
+  controlUrl: string,
+  pathName: string,
+  timeoutMs = CONTROL_JOB_TIMEOUT_MS,
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastLogAt = 0;
+
+  for (;;) {
+    try {
+      const response = await fetchWithTimeout(
+        `${controlUrl}${pathName}`,
+        {
+          method: "POST",
+        },
+        CONTROL_JOB_HTTP_TIMEOUT_MS,
+      );
+      const body = await readJsonResponse<{ jobId?: string }>(
+        response,
+        pathName,
+      );
+      if (!body.jobId) {
+        throw new Error(`${pathName} did not return a jobId`);
+      }
+      return body.jobId;
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `${pathName} did not start within ${formatDuration(
+            timeoutMs,
+          )}: ${formatFetchFailure(error)}`,
+        );
+      }
+
+      const now = Date.now();
+      if (now - lastLogAt >= CONTROL_JOB_RETRY_LOG_INTERVAL_MS) {
+        p.log.info(
+          `Retrying ${pathName} after transient control fetch failure: ${formatFetchFailure(
+            error,
+          )}`,
+        );
+        lastLogAt = now;
+      }
+      await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
+    }
+  }
+}
+
+async function waitForControlJob(
+  controlUrl: string,
+  jobId: string,
+  timeoutMs = CONTROL_JOB_TIMEOUT_MS,
+) {
+  const deadline = Date.now() + timeoutMs;
+  let lastLogAt = 0;
+
+  for (;;) {
+    let body: ControlJobState;
+    try {
+      const response = await fetchWithTimeout(
+        `${controlUrl}/e2e/jobs/${jobId}`,
+        {},
+        CONTROL_JOB_HTTP_TIMEOUT_MS,
+      );
+      body = await readJsonResponse<ControlJobState>(
+        response,
+        `/e2e/jobs/${jobId}`,
+      );
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `Control job ${jobId} did not finish within ${formatDuration(
+            timeoutMs,
+          )}: ${formatFetchFailure(error)}`,
+        );
+      }
+
+      const now = Date.now();
+      if (now - lastLogAt >= CONTROL_JOB_RETRY_LOG_INTERVAL_MS) {
+        p.log.info(
+          `Waiting for control job ${jobId} after transient fetch failure: ${formatFetchFailure(
+            error,
+          )}`,
+        );
+        lastLogAt = now;
+      }
+      await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (body.status === "succeeded") {
+      return body.result ?? {};
+    }
+    if (body.status === "failed") {
+      throw new Error(body.error ?? `Control job ${jobId} failed`);
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Control job ${jobId} did not finish within ${formatDuration(
+          timeoutMs,
+        )}`,
+      );
+    }
+    await sleep(CONTROL_JOB_POLL_INTERVAL_MS);
+  }
+}
+
+async function runBootstrapBeforeMaestro(controlUrl: string, flow: string) {
+  const flowSource = await fsPromises.readFile(flow, "utf8");
+  if (!/\bACTION:\s*bootstrap\b/.test(flowSource)) {
+    return;
+  }
+
+  p.log.info("Prepare native app before Maestro driver");
+  const jobId = await startControlJob(
+    controlUrl,
+    "/e2e/jobs/bootstrap",
+    BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS,
+  );
+  await waitForControlJob(controlUrl, jobId, BOOTSTRAP_CONTROL_JOB_TIMEOUT_MS);
 }
 
 function stripAnsi(value: string) {
@@ -316,6 +608,14 @@ async function readLogSummary(logPath: string, header: string) {
   }
 
   return [header, ...lines.map((line) => `  ${line}`)].join("\n");
+}
+
+async function readTextIfExists(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    return "";
+  }
+
+  return fsPromises.readFile(filePath, "utf8");
 }
 
 async function readMaestroFailureSummary(args: string[]) {
@@ -401,6 +701,87 @@ async function formatCommandFailure(
   return sections.join("\n\n");
 }
 
+function formatDuration(ms: number) {
+  const totalSeconds = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  if (seconds === 0) {
+    return `${minutes}m`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function terminateChildProcess(
+  child: ReturnType<typeof spawn>,
+  signal: NodeJS.Signals,
+) {
+  if (!child.pid) {
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {}
+  }
+}
+
+function installTerminationHandlers() {
+  const handleSignal = (signal: NodeJS.Signals) => {
+    terminationSignal = signal;
+    for (const child of ACTIVE_LOGGED_CHILDREN) {
+      terminateChildProcess(child, "SIGTERM");
+    }
+    if (ACTIVE_LOGGED_CHILDREN.size === 0) {
+      process.exit(signal === "SIGINT" ? 130 : 143);
+    }
+
+    const killTimer = setTimeout(() => {
+      for (const child of ACTIVE_LOGGED_CHILDREN) {
+        terminateChildProcess(child, "SIGKILL");
+      }
+    }, COMMAND_TERMINATE_GRACE_MS);
+    killTimer.unref();
+  };
+
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
+}
+
+function javaToolOptionsWithUserHome(homeDir: string) {
+  const userHomeOption = `-Duser.home=${homeDir}`;
+  const existing = process.env.JAVA_TOOL_OPTIONS?.trim();
+  return existing ? `${existing} ${userHomeOption}` : userHomeOption;
+}
+
+function shouldUseMaestroDebugOutput(platform: Platform) {
+  if (MAESTRO_DEBUG_OUTPUT_MODE === "all") {
+    return true;
+  }
+  if (MAESTRO_DEBUG_OUTPUT_MODE === "none") {
+    return false;
+  }
+  return MAESTRO_DEBUG_OUTPUT_MODE === platform;
+}
+
+function shouldUseMaestroTestOutput(platform: Platform) {
+  if (MAESTRO_TEST_OUTPUT_MODE === "all") {
+    return true;
+  }
+  if (MAESTRO_TEST_OUTPUT_MODE === "none") {
+    return false;
+  }
+  return MAESTRO_TEST_OUTPUT_MODE === platform;
+}
+
 async function runLogged(
   command: string,
   args: string[],
@@ -411,38 +792,568 @@ async function runLogged(
   const logStream = fs.createWriteStream(options.logPath, { flags: "w" });
   const child = spawn(command, args, {
     cwd: options.cwd,
+    detached: true,
     env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  ACTIVE_LOGGED_CHILDREN.add(child);
+  let timeoutReason: string | null = null;
+  let lastActivityAt = Date.now();
+  let activityCheckPending = false;
+  const activityPathSnapshots = new Map<string, string>();
+  let activityTimer: NodeJS.Timeout | null = null;
+  let killTimer: NodeJS.Timeout | null = null;
+  let idleTimer: NodeJS.Timeout | null = null;
+  let hardTimer: NodeJS.Timeout | null = null;
+  const timeoutMessage = (reason: string) =>
+    `${reason}; terminating ${command} ${args.join(" ")}`;
+  const terminateForTimeout = (reason: string) => {
+    if (timeoutReason) {
+      return;
+    }
+
+    timeoutReason = reason;
+    const message = `\n${timeoutMessage(reason)}\n`;
+    logStream.write(message);
+    if (options.streamOutput) {
+      process.stderr.write(message);
+    }
+
+    terminateChildProcess(child, "SIGTERM");
+    killTimer = setTimeout(() => {
+      terminateChildProcess(child, "SIGKILL");
+    }, COMMAND_TERMINATE_GRACE_MS);
+    killTimer.unref();
+  };
+  const markActivity = () => {
+    lastActivityAt = Date.now();
+  };
+  const resetIdleTimer = () => {
+    if (!options.idleTimeoutMs) {
+      return;
+    }
+
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+    }
+
+    idleTimer = setTimeout(() => {
+      const idleForMs = Date.now() - lastActivityAt;
+      if (idleForMs < (options.idleTimeoutMs ?? 0)) {
+        resetIdleTimer();
+        return;
+      }
+      terminateForTimeout(
+        `Maestro command idle timeout after ${formatDuration(options.idleTimeoutMs ?? 0)}`,
+      );
+    }, options.idleTimeoutMs);
+    idleTimer.unref();
+  };
+  const checkActivityPaths = async () => {
+    if (!options.activityPaths || activityCheckPending) {
+      return;
+    }
+
+    activityCheckPending = true;
+    try {
+      for (const activityPath of options.activityPaths) {
+        const stats = await fsPromises.stat(activityPath).catch(() => null);
+        const nextSnapshot = stats ? `${stats.mtimeMs}:${stats.size}` : "";
+        const previousSnapshot = activityPathSnapshots.get(activityPath);
+        activityPathSnapshots.set(activityPath, nextSnapshot);
+        if (
+          previousSnapshot !== undefined &&
+          nextSnapshot !== previousSnapshot
+        ) {
+          markActivity();
+          resetIdleTimer();
+        }
+      }
+    } finally {
+      activityCheckPending = false;
+    }
+  };
+  const handleOutput = (chunk: Buffer | string, output: NodeJS.WriteStream) => {
+    markActivity();
+    resetIdleTimer();
+    logStream.write(chunk);
+    if (options.streamOutput) {
+      output.write(chunk);
+    }
+
+    const abortReason = options.abortOnOutput?.(String(chunk));
+    if (abortReason) {
+      terminateForTimeout(abortReason);
+    }
+  };
+
+  if (options.timeoutMs) {
+    hardTimer = setTimeout(() => {
+      terminateForTimeout(
+        `Command timeout after ${formatDuration(options.timeoutMs ?? 0)}`,
+      );
+    }, options.timeoutMs);
+    hardTimer.unref();
+  }
+  resetIdleTimer();
+  if (options.activityPaths && options.activityPaths.length > 0) {
+    void checkActivityPaths();
+    activityTimer = setInterval(() => {
+      void checkActivityPaths();
+    }, MAESTRO_LOG_ACTIVITY_POLL_MS);
+    activityTimer.unref();
+  }
 
   child.stdout?.on("data", (chunk: Buffer | string) => {
-    logStream.write(chunk);
-    if (options.streamOutput) {
-      process.stdout.write(chunk);
-    }
+    handleOutput(chunk, process.stdout);
   });
   child.stderr?.on("data", (chunk: Buffer | string) => {
-    logStream.write(chunk);
-    if (options.streamOutput) {
-      process.stderr.write(chunk);
-    }
+    handleOutput(chunk, process.stderr);
   });
 
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
     child.once("close", resolve);
   });
+  ACTIVE_LOGGED_CHILDREN.delete(child);
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+  }
+  if (activityTimer) {
+    clearInterval(activityTimer);
+  }
+  if (hardTimer) {
+    clearTimeout(hardTimer);
+  }
+  if (killTimer) {
+    clearTimeout(killTimer);
+  }
 
   await new Promise<void>((resolve, reject) => {
     logStream.once("error", reject);
     logStream.end(() => resolve());
   });
 
+  if (terminationSignal && !options.allowFailure) {
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} terminated after ${terminationSignal}.`,
+        `Full log: ${options.logPath}`,
+      ].join("\n\n"),
+    );
+  }
+
+  if (timeoutReason && !options.allowFailure) {
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} ${timeoutReason}.`,
+        `Full log: ${options.logPath}`,
+      ].join("\n\n"),
+    );
+  }
+
   if (exitCode !== 0 && !options.allowFailure) {
     throw new Error(
       await formatCommandFailure(command, args, options.logPath, exitCode),
     );
   }
+}
+
+function hasRetryableMaestroTransportSignal(platform: Platform, log: string) {
+  return MAESTRO_TRANSPORT_PATTERNS_BY_PLATFORM[platform].some((pattern) =>
+    pattern.test(log),
+  );
+}
+
+async function isRetryableMaestroTransportFailure({
+  debugOutputPath,
+  platform,
+  serverLogPath,
+}: {
+  debugOutputPath: string;
+  platform: Platform;
+  serverLogPath: string;
+}) {
+  const debugLog = await readTextIfExists(
+    path.join(debugOutputPath, "maestro.log"),
+  );
+  const commandLog = await readTextIfExists(
+    path.join(path.dirname(debugOutputPath), "maestro.log"),
+  );
+  const serverLog = await readTextIfExists(serverLogPath);
+  const combinedLog = `${debugLog}\n${commandLog}`;
+
+  if (!hasRetryableMaestroTransportSignal(platform, combinedLog)) {
+    return false;
+  }
+
+  return !MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN.test(stripAnsi(serverLog));
+}
+
+function getPreMutationTransportAbortReason(
+  platform: Platform,
+  output: string,
+  serverLogPath: string,
+) {
+  const cleanOutput = stripAnsi(output);
+  if (!hasRetryableMaestroTransportSignal(platform, cleanOutput)) {
+    return null;
+  }
+
+  const serverLog = fs.existsSync(serverLogPath)
+    ? stripAnsi(fs.readFileSync(serverLogPath, "utf8"))
+    : "";
+  if (MAESTRO_UNSAFE_RETRY_ENDPOINT_PATTERN.test(serverLog)) {
+    return null;
+  }
+
+  return `Maestro ${platform} transport failure before E2E mutation`;
+}
+
+async function moveIfExists(sourcePath: string, targetPath: string) {
+  if (!fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  await fsPromises.rm(targetPath, { force: true, recursive: true });
+  await fsPromises.rename(sourcePath, targetPath);
+}
+
+async function preserveMaestroAttemptArtifacts(
+  resultsDir: string,
+  attempt: number,
+) {
+  await Promise.all([
+    moveIfExists(
+      path.join(resultsDir, "maestro.log"),
+      path.join(resultsDir, `maestro.attempt-${attempt}.log`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "junit.xml"),
+      path.join(resultsDir, `junit.attempt-${attempt}.xml`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "debug"),
+      path.join(resultsDir, `debug.attempt-${attempt}`),
+    ),
+    moveIfExists(
+      path.join(resultsDir, "artifacts"),
+      path.join(resultsDir, `artifacts.attempt-${attempt}`),
+    ),
+  ]);
+}
+
+async function runMaestroWithTransportRetry({
+  appId,
+  controlUrl,
+  deviceId,
+  flow,
+  maestroBin,
+  platform,
+  resultsDir,
+  serverLogPath,
+  scenarioName,
+}: {
+  appId: string;
+  controlUrl: string;
+  deviceId: string;
+  flow: string;
+  maestroBin: string;
+  platform: Platform;
+  resultsDir: string;
+  serverLogPath: string;
+  scenarioName: string;
+}) {
+  const debugOutputPath = path.join(resultsDir, "debug");
+  const testOutputPath = path.join(resultsDir, "artifacts");
+  const effectiveMaestroBin = prepareMaestroDriverPortLauncher(maestroBin);
+  const useDebugOutput = shouldUseMaestroDebugOutput(platform);
+  const useTestOutput = shouldUseMaestroTestOutput(platform);
+  const maestroArgs = [
+    "test",
+    "--device",
+    deviceId,
+    "--format",
+    "JUNIT",
+    "--output",
+    path.join(resultsDir, "junit.xml"),
+    "-e",
+    `APP_ID=${appId}`,
+    "-e",
+    `CONTROL_URL=${controlUrl}`,
+    flow,
+  ];
+  if (useTestOutput) {
+    maestroArgs.splice(7, 0, "--test-output-dir", testOutputPath);
+  }
+  if (useDebugOutput) {
+    maestroArgs.splice(
+      3,
+      0,
+      "--debug-output",
+      debugOutputPath,
+      "--flatten-debug-output",
+    );
+  }
+  const maestroHomeDir = path.join(
+    E2E_RUNTIME_DIR,
+    "maestro-home",
+    `${platform}-${MAESTRO_DRIVER_HOST_PORT}`,
+  );
+  await fsPromises.mkdir(maestroHomeDir, { recursive: true });
+
+  for (let attempt = 1; attempt <= MAESTRO_TRANSPORT_ATTEMPTS; attempt += 1) {
+    const releaseMaestroLock = await acquireMaestroDriverLock();
+    try {
+      if (platform === "android") {
+        p.log.info("Reset Android Maestro driver host state");
+        await resetAndroidMaestroDriverHostState(deviceId);
+        await ensureAndroidMaestroDriver(deviceId);
+      } else {
+        p.log.info("Reset iOS Maestro driver host state");
+        await resetIosMaestroDriverHostState();
+      }
+      await runLogged(effectiveMaestroBin, maestroArgs, {
+        abortOnOutput: (output) =>
+          getPreMutationTransportAbortReason(platform, output, serverLogPath),
+        cwd: REPO_DIR,
+        env: {
+          [MAESTRO_LOCK_HELD_ENV]: "1",
+          HOME: maestroHomeDir,
+          JAVA_TOOL_OPTIONS: javaToolOptionsWithUserHome(maestroHomeDir),
+          MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true",
+          MAESTRO_CLI_NO_ANALYTICS: "true",
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: MAESTRO_DRIVER_STARTUP_TIMEOUT_MS,
+        },
+        activityPaths: [
+          ...(useDebugOutput
+            ? [path.join(debugOutputPath, "maestro.log")]
+            : []),
+          serverLogPath,
+        ],
+        idleTimeoutMs: MAESTRO_FLOW_IDLE_TIMEOUT_MS,
+        logPath: path.join(resultsDir, "maestro.log"),
+        streamOutput: true,
+        timeoutMs: MAESTRO_FLOW_TIMEOUT_MS,
+      });
+      return;
+    } catch (error) {
+      const canRetry =
+        attempt < MAESTRO_TRANSPORT_ATTEMPTS &&
+        (await isRetryableMaestroTransportFailure({
+          debugOutputPath,
+          platform,
+          serverLogPath,
+        }));
+
+      if (!canRetry) {
+        throw error;
+      }
+
+      p.log.warning(
+        `Retry ${platform}/${scenarioName} after transient Maestro ${platform} transport failure`,
+      );
+      await preserveMaestroAttemptArtifacts(resultsDir, attempt);
+      await sleep(MAESTRO_TRANSPORT_RETRY_DELAY_MS);
+    } finally {
+      await resetMaestroDriverState(platform, deviceId);
+      await releaseMaestroLock();
+    }
+  }
+}
+
+function resolveMaestroAppHome(maestroBin: string) {
+  const resolvedBin =
+    maestroBin.includes(path.sep) && fs.existsSync(maestroBin)
+      ? fs.realpathSync(maestroBin)
+      : runCapture("which", [maestroBin]).trim();
+  return path.dirname(path.dirname(resolvedBin));
+}
+
+function findMaestroCliJar(appHome: string) {
+  const libDir = path.join(appHome, "lib");
+  const jarName = fs
+    .readdirSync(libDir)
+    .find((fileName: string) => /^maestro-cli.*\.jar$/.test(fileName));
+  if (!jarName) {
+    throw new Error(`Maestro CLI jar not found under ${libDir}`);
+  }
+  return path.join(libDir, jarName);
+}
+
+function patchMaestroTestCommandClass(classPath: string, port: number) {
+  const original = fs.readFileSync(classPath);
+  const from = Buffer.from([0x11, 0x1b, 0x59]);
+  const to = Buffer.from([0x11, (port >> 8) & 0xff, port & 0xff]);
+  const patched = Buffer.from(original);
+  let replacements = 0;
+  let offset = 0;
+
+  while ((offset = patched.indexOf(from, offset)) !== -1) {
+    to.copy(patched, offset);
+    replacements += 1;
+    offset += to.length;
+  }
+
+  if (replacements === 0) {
+    throw new Error("Unable to patch Maestro TestCommand driver port");
+  }
+
+  fs.writeFileSync(classPath, patched);
+}
+
+function prepareMaestroDriverPortLauncher(maestroBin: string) {
+  if (MAESTRO_DRIVER_HOST_PORT === DEFAULT_MAESTRO_DRIVER_PORT) {
+    return maestroBin;
+  }
+
+  const appHome = resolveMaestroAppHome(maestroBin);
+  const cliJar = findMaestroCliJar(appHome);
+  const patchDir = path.join(
+    E2E_RUNTIME_DIR,
+    "maestro-driver-port",
+    String(MAESTRO_DRIVER_HOST_PORT),
+  );
+  const classPath = path.join(
+    patchDir,
+    "maestro/cli/command/TestCommand.class",
+  );
+  const launcherPath = path.join(patchDir, "bin/maestro");
+
+  if (!fs.existsSync(launcherPath)) {
+    fs.rmSync(patchDir, { recursive: true, force: true });
+    fs.mkdirSync(patchDir, { recursive: true });
+    runCapture("jar", ["xf", cliJar, "maestro/cli/command/TestCommand.class"], {
+      cwd: patchDir,
+    });
+    patchMaestroTestCommandClass(classPath, MAESTRO_DRIVER_HOST_PORT);
+    fs.mkdirSync(path.dirname(launcherPath), { recursive: true });
+    fs.writeFileSync(
+      launcherPath,
+      [
+        "#!/bin/sh",
+        "set -eu",
+        `APP_HOME=${JSON.stringify(appHome)}`,
+        `PATCH_DIR=${JSON.stringify(patchDir)}`,
+        'if [ -n "${JAVA_HOME:-}" ]; then',
+        '  JAVA_CMD="$JAVA_HOME/bin/java"',
+        "else",
+        '  JAVA_CMD="java"',
+        "fi",
+        'exec "$JAVA_CMD" -classpath "$PATCH_DIR:$APP_HOME/lib/*" maestro.cli.AppKt "$@"',
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    fs.chmodSync(launcherPath, 0o755);
+  }
+
+  return launcherPath;
+}
+
+async function acquireAtomicDirectoryLock(lockDir: string) {
+  for (;;) {
+    try {
+      await fsPromises.mkdir(lockDir, { recursive: false });
+      return async () => {
+        await fsPromises.rm(lockDir, { force: true, recursive: true });
+      };
+    } catch (error) {
+      if (!isNodeErrorCode(error, "EEXIST")) {
+        throw error;
+      }
+
+      const stats = await fsPromises.stat(lockDir).catch(() => null);
+      if (stats && Date.now() - stats.mtimeMs > 10_000) {
+        await fsPromises.rm(lockDir, { force: true, recursive: true });
+        continue;
+      }
+      await sleep(50);
+    }
+  }
+}
+
+async function withMaestroLockState<T>(callback: () => Promise<T>) {
+  if (!MAESTRO_LOCK_FILE) {
+    return callback();
+  }
+
+  const release = await acquireAtomicDirectoryLock(
+    `${MAESTRO_LOCK_FILE}.state-lock`,
+  );
+  try {
+    return await callback();
+  } finally {
+    await release();
+  }
+}
+
+async function readCounter(filePath: string) {
+  const value = await fsPromises.readFile(filePath, "utf8").catch((error) => {
+    if (isNodeErrorCode(error, "ENOENT")) {
+      return "0";
+    }
+    throw error;
+  });
+  const parsed = Number.parseInt(value.trim() || "0", 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function writeCounter(filePath: string, value: number) {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  await fsPromises.writeFile(tempPath, `${value}\n`);
+  await fsPromises.rename(tempPath, filePath);
+}
+
+async function acquireMaestroDriverLock() {
+  if (!MAESTRO_LOCK_FILE) {
+    return async () => {};
+  }
+
+  await fsPromises.mkdir(path.dirname(MAESTRO_LOCK_FILE), { recursive: true });
+  const ticketFile = `${MAESTRO_LOCK_FILE}.ticket`;
+  const turnFile = `${MAESTRO_LOCK_FILE}.turn`;
+  const ticket = await withMaestroLockState(async () => {
+    const nextTicket = await readCounter(ticketFile);
+    await writeCounter(ticketFile, nextTicket + 1);
+    if (!fs.existsSync(turnFile)) {
+      await writeCounter(turnFile, 0);
+    }
+    return nextTicket;
+  });
+
+  const waitStartedAt = Date.now();
+  let lastWaitLogAt = 0;
+  for (;;) {
+    const turn = await withMaestroLockState(() => readCounter(turnFile));
+    if (turn === ticket) {
+      break;
+    }
+
+    const now = Date.now();
+    if (now - lastWaitLogAt >= MAESTRO_LOCK_WAIT_LOG_INTERVAL_MS) {
+      const waitedSeconds = Math.floor((now - waitStartedAt) / 1000);
+      console.error(
+        `hot-updater-e2e: waiting for maestro driver lock (${waitedSeconds}s)`,
+      );
+      lastWaitLogAt = now;
+    }
+    await sleep(MAESTRO_LOCK_POLL_MS);
+  }
+
+  let released = false;
+  return async () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    await withMaestroLockState(async () => {
+      const turn = await readCounter(turnFile);
+      if (turn <= ticket) {
+        await writeCounter(turnFile, ticket + 1);
+      }
+    });
+  };
 }
 
 async function resolveServerPort(
@@ -483,87 +1394,6 @@ async function resolveServerPort(
   }
 
   return attempt(0);
-}
-
-function findListeningPids(port: number) {
-  const result = spawnSync(
-    "lsof",
-    ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-
-  if (result.error) {
-    throw result.error;
-  }
-
-  if (result.status !== 0) {
-    return [];
-  }
-
-  return result.stdout
-    .split("\n")
-    .map((entry) => Number.parseInt(entry.trim(), 10))
-    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
-}
-
-async function terminateListenersOnPort(port: number) {
-  const initialPids = findListeningPids(port);
-
-  if (initialPids.length === 0) {
-    return;
-  }
-
-  p.log.warning(
-    `Port ${port} is in use. Terminating existing listener(s): ${initialPids.join(", ")}`,
-  );
-
-  for (const pid of initialPids) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch (error) {
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (code !== "ESRCH") {
-        throw error;
-      }
-    }
-  }
-
-  for (let index = 0; index < 20; index += 1) {
-    if (findListeningPids(port).length === 0) {
-      return;
-    }
-    await sleep(250);
-  }
-
-  const remainingPids = findListeningPids(port);
-  for (const pid of remainingPids) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch (error) {
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (code !== "ESRCH") {
-        throw error;
-      }
-    }
-  }
-
-  for (let index = 0; index < 20; index += 1) {
-    if (findListeningPids(port).length === 0) {
-      return;
-    }
-    await sleep(250);
-  }
-
-  throw new Error(`Failed to release port ${port}`);
 }
 
 async function waitForHttp(url: string, attempts = 90) {
@@ -654,9 +1484,86 @@ function ensureIosSimulatorBooted(simulatorUdid: string) {
   runCapture("xcrun", ["simctl", "bootstatus", simulatorUdid, "-b"]);
 }
 
+function maestroDriverPortResetCommand(port: number) {
+  return [
+    `pids="$(lsof -nP -tiTCP:${port} -sTCP:LISTEN 2>/dev/null || true)"`,
+    `if [[ -z "$pids" ]]; then pids="$(lsof -nP -ti tcp:${port} 2>/dev/null || true)"; fi`,
+    'if [[ -n "$pids" ]]; then kill -9 $pids 2>/dev/null || true; fi',
+  ].join("\n");
+}
+
+function iosMaestroDriverHostResetCommand(port: number) {
+  if (port !== DEFAULT_MAESTRO_DRIVER_PORT) {
+    return maestroDriverPortResetCommand(port);
+  }
+
+  return [
+    "pkill -f '[m]aestro-driver-ios-config\\\\.xctestrun' 2>/dev/null || true",
+    "pkill -f '[m]aestro_xctestrunner' 2>/dev/null || true",
+    maestroDriverPortResetCommand(port),
+  ].join("\n");
+}
+
+async function resetMaestroDriverPortState() {
+  runCapture(
+    "/bin/zsh",
+    ["-lc", maestroDriverPortResetCommand(MAESTRO_DRIVER_HOST_PORT)],
+    {
+      allowFailure: true,
+    },
+  );
+  await sleep(1000);
+}
+
+async function resetIosMaestroDriverHostState() {
+  runCapture(
+    "/bin/zsh",
+    ["-lc", iosMaestroDriverHostResetCommand(MAESTRO_DRIVER_HOST_PORT)],
+    {
+      allowFailure: true,
+    },
+  );
+  await sleep(1000);
+}
+
+async function resetAndroidMaestroDriverHostState(deviceId: string) {
+  runCapture(
+    "adb",
+    ["-s", deviceId, "forward", "--remove", `tcp:${MAESTRO_DRIVER_HOST_PORT}`],
+    { allowFailure: true },
+  );
+  stopAndroidMaestroDriver(deviceId);
+  await resetMaestroDriverPortState();
+}
+
+async function resetMaestroDriverState(platform: Platform, deviceId: string) {
+  if (platform === "android") {
+    await resetAndroidMaestroDriverHostState(deviceId);
+    return;
+  }
+
+  await resetIosMaestroDriverHostState();
+}
+
 function resolveAndroidSerial() {
-  if (process.env.ANDROID_SERIAL) {
-    return process.env.ANDROID_SERIAL;
+  const configuredSerial =
+    process.env.HOT_UPDATER_E2E_ANDROID_SERIAL || process.env.ANDROID_SERIAL;
+  if (configuredSerial) {
+    const devices = runCapture("adb", ["devices"]);
+    const hasConfiguredDevice = devices
+      .split("\n")
+      .slice(1)
+      .map((line: string) => line.trim().split(/\s+/))
+      .some(
+        (columns: string[]) =>
+          columns[0] === configuredSerial && columns[1] === "device",
+      );
+    if (!hasConfiguredDevice) {
+      throw new Error(
+        `Configured Android device is not connected: ${configuredSerial}`,
+      );
+    }
+    return configuredSerial;
   }
 
   const devices = runCapture("adb", ["devices"]);
@@ -673,12 +1580,159 @@ function resolveAndroidSerial() {
   return match[0];
 }
 
+function isAndroidPackageInstalled(deviceId: string, packageName: string) {
+  return runCapture(
+    "adb",
+    ["-s", deviceId, "shell", "pm", "list", "packages", packageName],
+    { allowFailure: true },
+  ).includes(`package:${packageName}`);
+}
+
+function ensureAndroidMaestroDriverPackages(deviceId: string) {
+  if (
+    ANDROID_MAESTRO_DRIVER_PACKAGES.every((packageName) =>
+      isAndroidPackageInstalled(deviceId, packageName),
+    )
+  ) {
+    return;
+  }
+
+  if (!fs.existsSync(MAESTRO_CLIENT_JAR_PATH)) {
+    throw new Error(`Maestro client jar not found: ${MAESTRO_CLIENT_JAR_PATH}`);
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "maestro-driver-"));
+  try {
+    runCapture("jar", ["xf", MAESTRO_CLIENT_JAR_PATH, "maestro-app.apk"], {
+      cwd: tempDir,
+    });
+    runCapture("jar", ["xf", MAESTRO_CLIENT_JAR_PATH, "maestro-server.apk"], {
+      cwd: tempDir,
+    });
+    runCapture("adb", [
+      "-s",
+      deviceId,
+      "install",
+      "-r",
+      path.join(tempDir, "maestro-app.apk"),
+    ]);
+    runCapture("adb", [
+      "-s",
+      deviceId,
+      "install",
+      "-r",
+      path.join(tempDir, "maestro-server.apk"),
+    ]);
+  } finally {
+    fs.rmSync(tempDir, { force: true, recursive: true });
+  }
+}
+
+async function waitForTcpPort(port: number, attempts = 30) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const connected = await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection(
+        { host: DEFAULT_SERVER_HOST, port },
+        () => {
+          socket.end();
+          resolve(true);
+        },
+      );
+      socket.once("error", () => resolve(false));
+      socket.setTimeout(1000, () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (connected) {
+      return;
+    }
+    await sleep(1000);
+  }
+
+  throw new Error(
+    `Timed out waiting for Android Maestro driver on tcp:${port}`,
+  );
+}
+
+function startAndroidMaestroInstrumentation(deviceId: string) {
+  const instrument = spawn(
+    "adb",
+    [
+      "-s",
+      deviceId,
+      "shell",
+      "am",
+      "instrument",
+      "-w",
+      ANDROID_MAESTRO_DRIVER_RUNNER,
+    ],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  );
+  instrument.unref();
+}
+
+function stopAndroidMaestroDriver(deviceId: string) {
+  for (const packageName of ANDROID_MAESTRO_DRIVER_PACKAGES) {
+    runCapture(
+      "adb",
+      ["-s", deviceId, "shell", "am", "force-stop", packageName],
+      {
+        allowFailure: true,
+      },
+    );
+  }
+}
+
+async function ensureAndroidMaestroDriver(deviceId: string) {
+  ensureAndroidMaestroDriverPackages(deviceId);
+  runCapture("adb", [
+    "-s",
+    deviceId,
+    "forward",
+    `tcp:${MAESTRO_DRIVER_HOST_PORT}`,
+    `tcp:${ANDROID_MAESTRO_DRIVER_DEVICE_PORT}`,
+  ]);
+
+  const driverPid = runCapture(
+    "adb",
+    ["-s", deviceId, "shell", "pidof", "dev.mobile.maestro"],
+    { allowFailure: true },
+  );
+  if (!driverPid) {
+    startAndroidMaestroInstrumentation(deviceId);
+  }
+
+  try {
+    await waitForTcpPort(MAESTRO_DRIVER_HOST_PORT, 10);
+    return;
+  } catch (error) {
+    if (!driverPid) {
+      throw error;
+    }
+  }
+
+  stopAndroidMaestroDriver(deviceId);
+  startAndroidMaestroInstrumentation(deviceId);
+  await waitForTcpPort(MAESTRO_DRIVER_HOST_PORT);
+}
+
 function getScenarioName(flowPath: string) {
   return path.basename(flowPath, path.extname(flowPath));
 }
 
 function formatRepoRelative(targetPath: string) {
   return path.relative(REPO_DIR, targetPath) || targetPath;
+}
+
+function getPortStatePath(platform: Platform) {
+  return path.join(
+    E2E_RUNTIME_DIR,
+    `server-port-${platform}-${MAESTRO_DRIVER_HOST_PORT}.txt`,
+  );
 }
 
 function shouldReuseStoredPort(storedPort: number) {
@@ -723,20 +1777,20 @@ async function main() {
   const scenarioName = getScenarioName(options.flow);
   const maestroBin = resolveMaestroBin();
   const resultsDir = path.join(RESULTS_ROOT, platform, scenarioName);
+  const portStatePath = getPortStatePath(platform);
 
   await fsPromises.rm(resultsDir, { recursive: true, force: true });
   await fsPromises.mkdir(resultsDir, { recursive: true });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
 
   const storedPort =
-    options.reuseApp && fs.existsSync(PORT_STATE_PATH)
-      ? Number((await fsPromises.readFile(PORT_STATE_PATH, "utf8")).trim())
+    options.reuseApp && fs.existsSync(portStatePath)
+      ? Number((await fsPromises.readFile(portStatePath, "utf8")).trim())
       : Number.NaN;
-  const preferredPort = shouldReuseStoredPort(storedPort)
-    ? storedPort
-    : DEFAULT_SERVER_PORT;
-  const serverPort = await resolveServerPort(preferredPort, !options.reuseApp);
-  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+  const useStoredPort = shouldReuseStoredPort(storedPort);
+  const preferredPort = useStoredPort ? storedPort : DEFAULT_SERVER_PORT;
+  const serverPort = await resolveServerPort(preferredPort, !useStoredPort);
+  await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
 
@@ -744,12 +1798,16 @@ async function main() {
   p.log.info(`Flow: ${formatRepoRelative(options.flow)}`);
   p.log.info(`Results: ${formatRepoRelative(resultsDir)}`);
   p.log.info(`Control server: ${serverBaseUrl}`);
+  p.log.info(`Maestro driver port: ${MAESTRO_DRIVER_HOST_PORT}`);
 
   let deviceId = "";
   let appId = "";
 
   if (platform === "ios") {
-    const simulatorName = process.env.IOS_SIMULATOR_NAME || "iPhone 16";
+    const simulatorName =
+      process.env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME ||
+      process.env.IOS_SIMULATOR_NAME ||
+      "iPhone 16";
     deviceId = resolveIosSimulatorUdid(simulatorName);
     ensureIosSimulatorBooted(deviceId);
     await fsPromises.writeFile(
@@ -765,10 +1823,10 @@ async function main() {
     );
     const androidDeviceLogLines = [`Using Android device ${deviceId}`];
     if (reversedPort !== null) {
-      const reverseMessage = `adb reverse tcp:${reversedPort} tcp:${reversedPort}`;
+      const reverseMessage = `adb reverse tcp:${reversedPort.devicePort} tcp:${reversedPort.hostPort}`;
       androidDeviceLogLines.push(reverseMessage);
       p.log.info(
-        `Android reverse: tcp:${reversedPort} -> host tcp:${reversedPort}`,
+        `Android reverse: tcp:${reversedPort.devicePort} -> host tcp:${reversedPort.hostPort}`,
       );
     }
     await fsPromises.writeFile(
@@ -778,12 +1836,19 @@ async function main() {
     appId = ANDROID_APP_ID;
   }
 
+  const iosDerivedDataPath =
+    process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
+    path.join(
+      os.tmpdir(),
+      `hotupdater-v085-ios-maestro-${safeFileToken(`${deviceId}-${serverPort}`)}`,
+    );
+
   await fsPromises.rm(E2E_RUNTIME_DIR, {
     recursive: true,
     force: true,
   });
   await fsPromises.mkdir(E2E_RUNTIME_DIR, { recursive: true });
-  await fsPromises.writeFile(PORT_STATE_PATH, `${serverPort}\n`);
+  await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverLogPath = path.join(resultsDir, "server.log");
   const serverLogStream = fs.createWriteStream(serverLogPath, { flags: "w" });
@@ -802,8 +1867,7 @@ async function main() {
         HOT_UPDATER_E2E_APP_BASE_URL: developerSetup.appBaseUrl.toString(),
         HOT_UPDATER_E2E_APP_ID: appId,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
-        HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH:
-          "/tmp/hotupdater-v085-ios-maestro",
+        HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: iosDerivedDataPath,
         HOT_UPDATER_E2E_PLATFORM: platform,
         HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
         HOT_UPDATER_E2E_REUSE_APP: String(options.reuseApp),
@@ -813,6 +1877,7 @@ async function main() {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
+  ACTIVE_LOGGED_CHILDREN.add(serverProcess);
 
   serverProcess.stdout?.on("data", (chunk: Buffer | string) =>
     serverLogStream.write(chunk),
@@ -835,39 +1900,25 @@ async function main() {
       serverProcess.once("close", () => resolve());
       setTimeout(() => resolve(), 3000);
     });
+    ACTIVE_LOGGED_CHILDREN.delete(serverProcess);
     serverLogStream.end();
   };
 
   try {
     await waitForHttp(serverBaseUrl);
+    await runBootstrapBeforeMaestro(serverBaseUrl, options.flow);
 
-    await runLogged(
+    await runMaestroWithTransportRetry({
+      appId,
+      controlUrl: serverBaseUrl,
+      deviceId,
+      flow: options.flow,
       maestroBin,
-      [
-        "test",
-        "--device",
-        deviceId,
-        "--debug-output",
-        path.join(resultsDir, "debug"),
-        "--flatten-debug-output",
-        "--format",
-        "JUNIT",
-        "--output",
-        path.join(resultsDir, "junit.xml"),
-        "--test-output-dir",
-        path.join(resultsDir, "artifacts"),
-        "-e",
-        `APP_ID=${appId}`,
-        "-e",
-        `CONTROL_URL=${serverBaseUrl}`,
-        options.flow,
-      ],
-      {
-        cwd: REPO_DIR,
-        logPath: path.join(resultsDir, "maestro.log"),
-        streamOutput: true,
-      },
-    );
+      platform,
+      resultsDir,
+      scenarioName,
+      serverLogPath,
+    });
     p.log.success(`Pass ${platform}/${scenarioName}`);
   } catch (error) {
     p.log.error(`Fail ${platform}/${scenarioName}`);
@@ -876,6 +1927,8 @@ async function main() {
     await stopServer();
   }
 }
+
+installTerminationHandlers();
 
 try {
   await main();

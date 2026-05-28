@@ -104,6 +104,11 @@ android {
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             debuggable hotUpdaterE2eDebuggable
+            if (hotUpdaterE2eDebuggable) {
+                ndk {
+                    debugSymbolLevel 'none'
+                }
+            }
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

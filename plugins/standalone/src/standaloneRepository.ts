@@ -309,10 +309,8 @@ export const standaloneRepository =
             return;
           }
 
-          // Process each operation sequentially
           for (const op of changedSets) {
             if (op.operation === "delete") {
-              // Handle delete operation
               const { path, headers: routeHeaders } = routes.delete(op.data.id);
               const response = await fetch(buildUrl(path), {
                 method: "DELETE",

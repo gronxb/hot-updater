@@ -407,4 +407,29 @@ describe("handleBundleDelete", () => {
       "Deleted bundle record.",
     );
   });
+
+  it("waits for delete verification to become visible", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const bundle = buildBundle({ id: "B1" });
+    mockDatabasePlugin.getBundleById
+      .mockResolvedValueOnce(bundle)
+      .mockResolvedValueOnce(bundle)
+      .mockResolvedValueOnce(null);
+
+    try {
+      const { handleBundleDelete } = await import("./bundle");
+      const deletePromise = handleBundleDelete("B1", { yes: true });
+      await vi.advanceTimersByTimeAsync(1000);
+      await deletePromise;
+
+      expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
+      expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+      expect(mockCli.p.log.success).toHaveBeenCalledWith(
+        "Deleted bundle record.",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

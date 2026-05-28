@@ -14,6 +14,7 @@ import {
   resetChannel,
   updateBundle,
 } from "./native";
+import { hotUpdaterStore } from "./store";
 import type { HotUpdaterResolver } from "./types";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -168,6 +169,15 @@ export async function checkForUpdate(
 
       const runtimeChannel =
         updateInfo.fileUrl !== null ? targetChannel : undefined;
+
+      hotUpdaterStore.setState({
+        artifactType: null,
+        details: null,
+        downloadedBytes: undefined,
+        isUpdateDownloaded: false,
+        progress: 0,
+        totalBytes: undefined,
+      });
 
       return updateBundle({
         bundleId: updateInfo.id,

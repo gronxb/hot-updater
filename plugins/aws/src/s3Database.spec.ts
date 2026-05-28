@@ -967,6 +967,38 @@ describe("s3Database plugin", () => {
     expect(fetchedBundle).toStrictEqual(newBundle);
   });
 
+  it("stores database objects under basePath while exposing logical keys", async () => {
+    plugin = createPlugin({ basePath: "/e2e/job-1/ios-s1/" });
+    const bundleKey = "production/ios/1.0.0/update.json";
+    const namespacedBundleKey = `e2e/job-1/ios-s1/${bundleKey}`;
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "00000000-0000-0000-0000-000000000001",
+    );
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    expect(fakeStore[bundleKey]).toBeUndefined();
+    expect(JSON.parse(fakeStore[namespacedBundleKey])).toStrictEqual([
+      newBundle,
+    ]);
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+    plugin = createPlugin({ basePath: "/e2e/job-1/ios-s1/" });
+
+    const fetchedBundles = await plugin.getBundles({ limit: 20 });
+
+    expect(fetchedBundles.data).toContainEqual(newBundle);
+    expect(loadedObjectKeys.length).toBeGreaterThan(0);
+    expect(
+      loadedObjectKeys.every((key) => key.startsWith("e2e/job-1/ios-s1/")),
+    ).toBe(true);
+  });
+
   it("should update an existing bundle and reflect changes in S3", async () => {
     const bundleKey = "production/android/2.0.0/update.json";
     const targetVersionsKey = "production/android/target-app-versions.json";
