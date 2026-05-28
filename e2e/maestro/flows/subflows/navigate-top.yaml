@@ -7,12 +7,8 @@ appId: ${APP_ID}
     timeout: 1000
 - scrollUntilVisible:
     element:
-      id: section-runtime-snapshot
+      id: runtime-bundle-id
     direction: UP
-    timeout: 10000
-- extendedWaitUntil:
-    visible:
-      id: section-runtime-snapshot
     timeout: 10000
 - extendedWaitUntil:
     visible:
