@@ -96,6 +96,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase1A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -173,6 +180,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase1C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runScript:
     file: ../scripts/control.js
     env:
@@ -277,6 +291,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -321,6 +342,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -381,6 +409,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runScript:
     file: ../scripts/control.js
     env:
@@ -467,6 +502,13 @@ onFlowComplete:
 - runScript:
     file: ../scripts/control.js
     env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2D}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
+- runScript:
+    file: ../scripts/control.js
+    env:
       ACTION: assertBsdiffPatchApplied
       ASSET_PATH: ${output.phase2DDiffPatchAssetPath}
       BASE_BUNDLE_ID: ${output.phase2C}
@@ -526,6 +568,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -572,6 +621,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2B}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -618,6 +674,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase2A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -763,6 +826,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase3A}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -834,6 +904,13 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.phase3C}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "false"
 - runScript:
     file: ../scripts/control.js
     env:
