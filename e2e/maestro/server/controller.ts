@@ -676,9 +676,21 @@ function readGitTrackedInputFiles(inputPaths: string[]) {
   return output.split("\0").filter(Boolean).sort();
 }
 
-function hashGitTrackedInputFiles(inputPaths: string[]) {
+function readCacheInputFiles(inputPaths: string[]) {
+  const files = new Set(readGitTrackedInputFiles(inputPaths));
+  for (const relativePath of inputPaths) {
+    const absolutePath = path.join(REPO_DIR, relativePath);
+    if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
+      files.add(relativePath);
+    }
+  }
+
+  return [...files].sort();
+}
+
+function hashCacheInputFiles(inputPaths: string[]) {
   const hash = createHash("sha256");
-  for (const relativePath of readGitTrackedInputFiles(inputPaths)) {
+  for (const relativePath of readCacheInputFiles(inputPaths)) {
     const absolutePath = path.join(REPO_DIR, relativePath);
     if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
       continue;
@@ -694,15 +706,15 @@ function hashGitTrackedInputFiles(inputPaths: string[]) {
 }
 
 function hashBuiltInBundleInputs() {
-  return hashGitTrackedInputFiles(BUILT_IN_BUNDLE_CACHE_INPUT_PATHS);
+  return hashCacheInputFiles(BUILT_IN_BUNDLE_CACHE_INPUT_PATHS);
 }
 
 function hashIosPodsInputs() {
-  return hashGitTrackedInputFiles(IOS_PODS_CACHE_INPUT_PATHS);
+  return hashCacheInputFiles(IOS_PODS_CACHE_INPUT_PATHS);
 }
 
 function hashBareBuildInputs() {
-  return hashGitTrackedInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
+  return hashCacheInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
 }
 
 function bareBuildConfigFingerprint() {
