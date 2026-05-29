@@ -8,7 +8,6 @@ import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
-  DatabaseDiagnostics,
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
@@ -40,7 +39,6 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
     },
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  diagnostics?: DatabaseDiagnostics<TContext>;
 }
 
 /**
@@ -534,52 +532,6 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             value: wrappedGetUpdateInfo,
           });
           return wrappedGetUpdateInfo;
-        },
-      });
-
-      Object.defineProperty(plugin, "diagnostics", {
-        configurable: true,
-        enumerable: true,
-        get() {
-          const directDiagnostics = getMethods().diagnostics;
-          if (!directDiagnostics) {
-            Object.defineProperty(plugin, "diagnostics", {
-              configurable: true,
-              enumerable: true,
-              value: undefined,
-            });
-            return undefined;
-          }
-
-          const wrappedDiagnostics: DatabaseDiagnostics<TContext> = {};
-          if (directDiagnostics.bundleIndex) {
-            const directBundleIndex = directDiagnostics.bundleIndex;
-            wrappedDiagnostics.bundleIndex = {
-              check: async (context) => {
-                if (context === undefined) {
-                  return directBundleIndex.check();
-                }
-                return directBundleIndex.check(context);
-              },
-              ...(directBundleIndex.repair
-                ? {
-                    repair: async (context) => {
-                      if (context === undefined) {
-                        return directBundleIndex.repair!();
-                      }
-                      return directBundleIndex.repair!(context);
-                    },
-                  }
-                : {}),
-            };
-          }
-
-          Object.defineProperty(plugin, "diagnostics", {
-            configurable: true,
-            enumerable: true,
-            value: wrappedDiagnostics,
-          });
-          return wrappedDiagnostics;
         },
       });
 

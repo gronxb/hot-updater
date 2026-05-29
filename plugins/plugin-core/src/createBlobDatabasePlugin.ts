@@ -1235,7 +1235,63 @@ export const createBlobDatabasePlugin = <TConfig>({
       }
     };
 
-    return createDatabasePlugin({
+    const bundleIndexDiagnostics = {
+      async check() {
+        const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
+        const allRoot = await loadStoredManagementRoot({});
+        const indexedBundles = allRoot
+          ? await loadAllBundlesFromRoot(allRoot)
+          : null;
+
+        return compareBundleIndex({
+          canonicalBundles,
+          indexedBundles,
+          rootMissing: !allRoot,
+        });
+      },
+
+      async repair() {
+        const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
+        const previousRoot = await loadStoredManagementRoot({});
+        const previousBundles = previousRoot
+          ? await loadAllBundlesFromRoot(previousRoot)
+          : null;
+        const previousArtifacts =
+          previousRoot && previousBundles
+            ? buildManagementIndexArtifacts(
+                previousBundles,
+                previousRoot.pageSize,
+              )
+            : undefined;
+        const nextArtifacts = buildManagementIndexArtifacts(
+          canonicalBundles,
+          managementIndexPageSize,
+        );
+        const indexedObjectKeys = await listObjects(
+          `${MANAGEMENT_INDEX_PREFIX}/`,
+        );
+        const nextObjectKeys = new Set([
+          ...nextArtifacts.pages.keys(),
+          ...nextArtifacts.scopes.map((scope) => scope.rootKey),
+        ]);
+
+        await persistManagementIndexArtifacts(nextArtifacts, previousArtifacts);
+        await Promise.all(
+          indexedObjectKeys
+            .filter((key) => !nextObjectKeys.has(key))
+            .map((key) => deleteObject(key).catch(() => {})),
+        );
+        replaceManagementRootCache(nextArtifacts);
+
+        return {
+          scannedBundles: canonicalBundles.length,
+          indexedBundles: canonicalBundles.length,
+          ...summarizeManagementIndexArtifacts(nextArtifacts),
+        };
+      },
+    };
+
+    const createPlugin = createDatabasePlugin({
       name,
       factory: () => ({
         supportsCursorPagination: true,
@@ -1330,69 +1386,6 @@ export const createBlobDatabasePlugin = <TConfig>({
         async getChannels() {
           const allRoot = await loadManagementScopeRoot({});
           return allRoot?.channels ?? [];
-        },
-
-        diagnostics: {
-          bundleIndex: {
-            async check() {
-              const canonicalBundles =
-                await loadCanonicalBundlesForIndexRepair();
-              const allRoot = await loadStoredManagementRoot({});
-              const indexedBundles = allRoot
-                ? await loadAllBundlesFromRoot(allRoot)
-                : null;
-
-              return compareBundleIndex({
-                canonicalBundles,
-                indexedBundles,
-                rootMissing: !allRoot,
-              });
-            },
-
-            async repair() {
-              const canonicalBundles =
-                await loadCanonicalBundlesForIndexRepair();
-              const previousRoot = await loadStoredManagementRoot({});
-              const previousBundles = previousRoot
-                ? await loadAllBundlesFromRoot(previousRoot)
-                : null;
-              const previousArtifacts =
-                previousRoot && previousBundles
-                  ? buildManagementIndexArtifacts(
-                      previousBundles,
-                      previousRoot.pageSize,
-                    )
-                  : undefined;
-              const nextArtifacts = buildManagementIndexArtifacts(
-                canonicalBundles,
-                managementIndexPageSize,
-              );
-              const indexedObjectKeys = await listObjects(
-                `${MANAGEMENT_INDEX_PREFIX}/`,
-              );
-              const nextObjectKeys = new Set([
-                ...nextArtifacts.pages.keys(),
-                ...nextArtifacts.scopes.map((scope) => scope.rootKey),
-              ]);
-
-              await persistManagementIndexArtifacts(
-                nextArtifacts,
-                previousArtifacts,
-              );
-              await Promise.all(
-                indexedObjectKeys
-                  .filter((key) => !nextObjectKeys.has(key))
-                  .map((key) => deleteObject(key).catch(() => {})),
-              );
-              replaceManagementRootCache(nextArtifacts);
-
-              return {
-                scannedBundles: canonicalBundles.length,
-                indexedBundles: canonicalBundles.length,
-                ...summarizeManagementIndexArtifacts(nextArtifacts),
-              };
-            },
-          },
         },
 
         async commitBundle({ changedSets }) {
@@ -1624,5 +1617,19 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
       }),
     })({}, hooks);
+
+    return () => {
+      const plugin = createPlugin();
+
+      Object.defineProperty(plugin, "diagnostics", {
+        configurable: true,
+        enumerable: true,
+        value: {
+          bundleIndex: bundleIndexDiagnostics,
+        },
+      });
+
+      return plugin;
+    };
   };
 };

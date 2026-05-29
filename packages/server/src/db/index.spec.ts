@@ -897,9 +897,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(factory).not.toHaveBeenCalled();
       expect(hotUpdater.diagnostics).toBeUndefined();
-      expect(factory).toHaveBeenCalledTimes(1);
+      expect(factory).not.toHaveBeenCalled();
       expect(hotUpdater.diagnostics).toBeUndefined();
-      expect(factory).toHaveBeenCalledTimes(1);
+      expect(factory).not.toHaveBeenCalled();
     });
 
     it("isolates pending mutation state between overlapping writes", async () => {

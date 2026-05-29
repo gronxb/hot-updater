@@ -740,9 +740,9 @@ describe("runtime createHotUpdater", () => {
 
     expect(factory).not.toHaveBeenCalled();
     expect(hotUpdater.diagnostics).toBeUndefined();
-    expect(factory).toHaveBeenCalledTimes(1);
+    expect(factory).not.toHaveBeenCalled();
     expect(hotUpdater.diagnostics).toBeUndefined();
-    expect(factory).toHaveBeenCalledTimes(1);
+    expect(factory).not.toHaveBeenCalled();
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {
