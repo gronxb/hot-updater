@@ -65,7 +65,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}

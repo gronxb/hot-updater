@@ -66,6 +66,11 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
 - runFlow:
+    file: subflows/restart-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
