@@ -9,18 +9,13 @@ import {
   HOT_UPDATER_APP_BASE_URL,
   HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
 } from "@env";
-import {
-  HotUpdater,
-  type HotUpdaterFallbackComponentProps,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
   Keyboard,
   type LayoutChangeEvent,
-  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -77,6 +72,15 @@ type RuntimeSnapshot = {
   minBundleId: string;
 };
 
+type UpdateProgressDetails = {
+  files: {
+    downloadPath?: string;
+    path: string;
+    progress: number;
+    status: string;
+  }[];
+};
+
 type ScrollTarget = "actions" | "cohortActions" | "crashHistory" | "results";
 
 const fallbackBaseURL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
@@ -102,6 +106,18 @@ const resolveBaseURL = async () => {
     return fallbackBaseURL;
   }
 };
+
+HotUpdater.init({
+  baseURL: resolveBaseURL,
+  requestTimeout: 15000,
+  onNotifyAppReady: (result) => {
+    notify.status = result.status;
+    notify.crashedBundleId = result.crashedBundleId;
+  },
+  onError: (error) => {
+    console.error(error);
+  },
+});
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
@@ -149,7 +165,7 @@ const formatFallbackPercent = (value: number | null | undefined) => {
 };
 
 const formatUpdateStoreDownloadPaths = (
-  details: HotUpdaterFallbackComponentProps["details"],
+  details: UpdateProgressDetails | null,
 ) => {
   if (!details || details.files.length === 0) {
     return "none";
@@ -221,43 +237,6 @@ const Button = ({
   >
     <Text style={styles.buttonText}>{title}</Text>
   </Pressable>
-);
-
-const UpdateFallbackModal = ({
-  artifactType,
-  details,
-  message,
-  progress,
-  status,
-}: HotUpdaterFallbackComponentProps) => (
-  <Modal transparent visible={true}>
-    <View style={styles.fallbackOverlay}>
-      <View style={styles.fallbackCard}>
-        <Text style={styles.fallbackTitle} testID="fallback-status-title">
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        <Text
-          style={styles.fallbackProgressValue}
-          testID="fallback-total-progress"
-        >
-          {formatFallbackPercent(progress)}
-        </Text>
-        <Text style={styles.fallbackMetaText} testID="fallback-artifact-type">
-          {artifactType ?? "none"}
-        </Text>
-        {details ? (
-          <Text style={styles.fallbackMetaText} testID="fallback-file-summary">
-            files: {details.completedFilesCount}/{details.totalFilesCount}
-          </Text>
-        ) : null}
-        {message ? (
-          <Text style={styles.fallbackMetaText} testID="fallback-message">
-            {message}
-          </Text>
-        ) : null}
-      </View>
-    </View>
-  </Modal>
 );
 
 function App(): React.JSX.Element {
@@ -756,37 +735,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginTop: 6,
   },
-  fallbackCard: {
-    backgroundColor: "rgba(15, 23, 42, 0.92)",
-    borderRadius: 8,
-    gap: 8,
-    maxWidth: 360,
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    width: "100%",
-  },
-  fallbackMetaText: {
-    color: "#e2e8f0",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  fallbackOverlay: {
-    alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    flex: 1,
-    justifyContent: "center",
-    padding: 20,
-  },
-  fallbackProgressValue: {
-    color: "#ffffff",
-    fontSize: 26,
-    fontWeight: "800",
-  },
-  fallbackTitle: {
-    color: "#ffffff",
-    fontSize: 20,
-    fontWeight: "700",
-  },
   imageFrame: {
     alignItems: "center",
     backgroundColor: "#ecfeff",
@@ -867,16 +815,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HotUpdater.wrap({
-  baseURL: resolveBaseURL,
-  updateStrategy: "appVersion",
-  requestTimeout: 15000,
-  onNotifyAppReady: (result) => {
-    notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
-  },
-  fallbackComponent: UpdateFallbackModal,
-  onError: (error) => {
-    console.error(error);
-  },
-})(App);
+export default App;
