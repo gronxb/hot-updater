@@ -24,6 +24,63 @@ interface BundleWithUpdateJsonKey extends Bundle {
   _oldUpdateJsonKey?: string;
 }
 
+const STORAGE_OPERATION_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        if (index >= items.length) {
+          break;
+        }
+
+        results[index] = await mapper(items[index]!, index);
+      }
+    }),
+  );
+
+  return results;
+}
+
+async function forEachWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  await mapWithConcurrency(items, concurrency, mapper);
+}
+
+async function allSettledWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+): Promise<PromiseSettledResult<TResult>[]> {
+  return mapWithConcurrency(items, concurrency, async (item, index) => {
+    try {
+      return {
+        status: "fulfilled",
+        value: await mapper(item, index),
+      } satisfies PromiseFulfilledResult<TResult>;
+    } catch (reason) {
+      return {
+        reason,
+        status: "rejected",
+      } satisfies PromiseRejectedResult;
+    }
+  });
+}
+
 // Helper function to remove internal management keys
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
@@ -534,16 +591,16 @@ export const createBlobDatabasePlugin = <TConfig>({
       nextArtifacts: ManagementIndexArtifacts,
       previousArtifacts?: ManagementIndexArtifacts,
     ): Promise<void> => {
-      await Promise.all(
-        Array.from(nextArtifacts.pages.entries()).map(([key, page]) =>
-          uploadObject(key, page),
-        ),
+      await forEachWithConcurrency(
+        Array.from(nextArtifacts.pages.entries()),
+        STORAGE_OPERATION_CONCURRENCY,
+        ([key, page]) => uploadObject(key, page),
       );
 
-      await Promise.all(
-        nextArtifacts.scopes.map((scope) =>
-          uploadObject(scope.rootKey, scope.root),
-        ),
+      await forEachWithConcurrency(
+        nextArtifacts.scopes,
+        STORAGE_OPERATION_CONCURRENCY,
+        (scope) => uploadObject(scope.rootKey, scope.root),
       );
 
       if (!previousArtifacts) {
@@ -555,16 +612,20 @@ export const createBlobDatabasePlugin = <TConfig>({
         nextArtifacts.scopes.map((scope) => scope.rootKey),
       );
 
-      await Promise.all(
-        Array.from(previousArtifacts.pages.keys())
-          .filter((key) => !nextPageKeys.has(key))
-          .map((key) => deleteObject(key).catch(() => {})),
+      await forEachWithConcurrency(
+        Array.from(previousArtifacts.pages.keys()).filter(
+          (key) => !nextPageKeys.has(key),
+        ),
+        STORAGE_OPERATION_CONCURRENCY,
+        (key) => deleteObject(key).catch(() => {}),
       );
 
-      await Promise.all(
-        previousArtifacts.scopes
-          .filter((scope) => !nextRootKeys.has(scope.rootKey))
-          .map((scope) => deleteObject(scope.rootKey).catch(() => {})),
+      await forEachWithConcurrency(
+        previousArtifacts.scopes.filter(
+          (scope) => !nextRootKeys.has(scope.rootKey),
+        ),
+        STORAGE_OPERATION_CONCURRENCY,
+        (scope) => deleteObject(scope.rootKey).catch(() => {}),
       );
     };
 
@@ -1009,22 +1070,27 @@ export const createBlobDatabasePlugin = <TConfig>({
       const updateJsonKeys = (await listObjects("")).filter((key) =>
         /^[^/]+\/(?:ios|android)\/[^/]+\/update\.json$/.test(key),
       );
-      const filePromises = updateJsonKeys.map(async (key) => {
-        let bundlesData: Bundle[] = [];
-        try {
-          bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
-        } catch (error) {
-          if (shouldSkipLoadObjectError?.(error, key)) {
-            return [];
-          }
-          throw error;
-        }
-        return bundlesData.map((bundle) => ({
-          ...bundle,
-          _updateJsonKey: key,
-        }));
-      });
-      const allBundles = (await Promise.all(filePromises)).flat();
+      const allBundles = (
+        await mapWithConcurrency(
+          updateJsonKeys,
+          STORAGE_OPERATION_CONCURRENCY,
+          async (key) => {
+            let bundlesData: Bundle[] = [];
+            try {
+              bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+            } catch (error) {
+              if (shouldSkipLoadObjectError?.(error, key)) {
+                return [];
+              }
+              throw error;
+            }
+            return bundlesData.map((bundle) => ({
+              ...bundle,
+              _updateJsonKey: key,
+            }));
+          },
+        )
+      ).flat();
 
       for (const bundle of allBundles) {
         bundlesMap.set(bundle.id, bundle as BundleWithUpdateJsonKey);
@@ -1125,8 +1191,10 @@ export const createBlobDatabasePlugin = <TConfig>({
         appVersion,
       );
 
-      const result = await Promise.allSettled(
-        matchingVersions.map(async (targetAppVersion) => {
+      const result = await allSettledWithConcurrency(
+        matchingVersions,
+        STORAGE_OPERATION_CONCURRENCY,
+        async (targetAppVersion) => {
           const normalizedVersion =
             normalizeTargetAppVersion(targetAppVersion) ?? targetAppVersion;
 
@@ -1135,7 +1203,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               `${channel}/${platform}/${normalizedVersion}/update.json`,
             )) ?? []
           );
-        }),
+        },
       );
 
       const bundles = result
@@ -1528,8 +1596,10 @@ export const createBlobDatabasePlugin = <TConfig>({
           }
 
           // Remove bundles from their old keys.
-          await Promise.all(
-            Object.keys(removalsByKey).map(async (oldKey) => {
+          await forEachWithConcurrency(
+            Object.keys(removalsByKey),
+            STORAGE_OPERATION_CONCURRENCY,
+            async (oldKey) => {
               const currentBundles = (await loadObject<Bundle[]>(oldKey)) ?? [];
               const updatedBundles = currentBundles.filter(
                 (b) => !removalsByKey[oldKey].includes(b.id),
@@ -1540,12 +1610,14 @@ export const createBlobDatabasePlugin = <TConfig>({
               } else {
                 await uploadObject(oldKey, updatedBundles);
               }
-            }),
+            },
           );
 
           // Add or update bundles in their new keys.
-          await Promise.all(
-            Object.keys(changedBundlesByKey).map(async (key) => {
+          await forEachWithConcurrency(
+            Object.keys(changedBundlesByKey),
+            STORAGE_OPERATION_CONCURRENCY,
+            async (key) => {
               const currentBundles = (await loadObject<Bundle[]>(key)) ?? [];
               const pureBundles = changedBundlesByKey[key].map(
                 (bundle) => bundle,
@@ -1562,7 +1634,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               }
               currentBundles.sort((a, b) => b.id.localeCompare(a.id));
               await uploadObject(key, currentBundles);
-            }),
+            },
           );
 
           if (targetVersionPlatforms.size > 0) {

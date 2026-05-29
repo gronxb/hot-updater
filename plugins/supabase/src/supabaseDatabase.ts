@@ -6,11 +6,15 @@ import {
   getManifestStorageUri,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type { Bundle, Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  GetBundlesArgs,
+  Platform,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
-  createDatabasePluginGetUpdateInfo,
+  filterCompatibleAppVersions,
 } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
@@ -45,6 +49,19 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
 
 const BUNDLE_SELECT_COLUMNS =
   "id, channel, enabled, platform, should_force_update, file_hash, git_commit_hash, message, fingerprint_hash, target_app_version, storage_uri, metadata, manifest_storage_uri, manifest_file_hash, asset_base_storage_uri, rollout_cohort_count, target_cohorts";
+
+type SupabaseUpdateInfoRow = {
+  id: string;
+  should_force_update: boolean;
+  message: string | null;
+  status: "UPDATE" | "ROLLBACK";
+  storage_uri: string | null;
+  file_hash: string | null;
+};
+
+type SupabaseTargetAppVersionRow = {
+  target_app_version: string | null;
+};
 
 const createSupabaseError = (error: unknown) => {
   if (error instanceof Error) {
@@ -158,6 +175,15 @@ const bundleToPatchRows = (bundle: Bundle): SupabaseBundlePatchRow[] =>
     order_index: index,
   }));
 
+const mapUpdateInfoRow = (row: SupabaseUpdateInfoRow) => ({
+  id: row.id,
+  shouldForceUpdate: row.should_force_update,
+  message: row.message,
+  status: row.status,
+  storageUri: row.storage_uri,
+  fileHash: row.file_hash,
+});
+
 export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
   name: "supabaseDatabase",
   factory: (config) => {
@@ -190,76 +216,71 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
       return patchMap;
     };
-    const mapRowsToBundles = async (rows: SupabaseBundleRow[]) => {
-      const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-      return rows.map((row) => mapRowToBundle(row, patchMap.get(row.id)));
-    };
-
     return {
-      getUpdateInfo: createDatabasePluginGetUpdateInfo({
-        async listTargetAppVersions({ platform, channel, minBundleId }) {
-          const { data, error } = await supabase
-            .from("bundles")
-            .select("target_app_version")
-            .eq("platform", platform)
-            .eq("channel", channel)
-            .eq("enabled", true)
-            .gte("id", minBundleId)
-            .not("target_app_version", "is", null);
+      async getUpdateInfo(args: GetBundlesArgs) {
+        const channel = args.channel ?? "production";
+        const minBundleId =
+          args.minBundleId ?? "00000000-0000-0000-0000-000000000000";
 
-          if (error) {
-            throw createSupabaseError(error);
+        if (args._updateStrategy === "appVersion") {
+          const { data: targetAppVersionRows, error: targetAppVersionError } =
+            await supabase.rpc("get_target_app_version_list", {
+              app_platform: args.platform,
+              min_bundle_id: minBundleId,
+            });
+
+          if (targetAppVersionError) {
+            throw createSupabaseError(targetAppVersionError);
           }
 
-          return Array.from(
-            new Set(
-              (data ?? [])
-                .map((row) => row.target_app_version)
-                .filter((version): version is string => Boolean(version)),
-            ),
+          const targetAppVersionList = filterCompatibleAppVersions(
+            ((targetAppVersionRows ?? []) as SupabaseTargetAppVersionRow[])
+              .map((row) => row.target_app_version)
+              .filter((version): version is string => Boolean(version)),
+            args.appVersion,
           );
-        },
-        async getBundlesByTargetAppVersions(
-          { platform, channel, minBundleId },
-          targetAppVersions,
-        ) {
-          const { data, error } = await supabase
-            .from("bundles")
-            .select(BUNDLE_SELECT_COLUMNS)
-            .eq("platform", platform)
-            .eq("channel", channel)
-            .eq("enabled", true)
-            .gte("id", minBundleId)
-            .in("target_app_version", targetAppVersions);
+
+          const { data, error } = await supabase.rpc(
+            "get_update_info_by_app_version",
+            {
+              app_platform: args.platform,
+              app_version: args.appVersion,
+              bundle_id: args.bundleId,
+              min_bundle_id: minBundleId,
+              target_channel: channel,
+              target_app_version_list: targetAppVersionList,
+              cohort: args.cohort ?? null,
+            },
+          );
 
           if (error) {
             throw createSupabaseError(error);
           }
 
-          return mapRowsToBundles(data ?? []);
-        },
-        async getBundlesByFingerprint({
-          platform,
-          channel,
-          minBundleId,
-          fingerprintHash,
-        }) {
-          const { data, error } = await supabase
-            .from("bundles")
-            .select(BUNDLE_SELECT_COLUMNS)
-            .eq("platform", platform)
-            .eq("channel", channel)
-            .eq("enabled", true)
-            .gte("id", minBundleId)
-            .eq("fingerprint_hash", fingerprintHash);
+          const updateInfo = (data?.[0] ??
+            null) as SupabaseUpdateInfoRow | null;
+          return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
+        }
 
-          if (error) {
-            throw createSupabaseError(error);
-          }
+        const { data, error } = await supabase.rpc(
+          "get_update_info_by_fingerprint_hash",
+          {
+            app_platform: args.platform,
+            bundle_id: args.bundleId,
+            min_bundle_id: minBundleId,
+            target_channel: channel,
+            target_fingerprint_hash: args.fingerprintHash,
+            cohort: args.cohort ?? null,
+          },
+        );
 
-          return mapRowsToBundles(data ?? []);
-        },
-      }),
+        if (error) {
+          throw createSupabaseError(error);
+        }
+
+        const updateInfo = (data?.[0] ?? null) as SupabaseUpdateInfoRow | null;
+        return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
+      },
 
       async getBundleById(bundleId) {
         const [{ data, error }, patchMap] = await Promise.all([

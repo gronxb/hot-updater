@@ -19,7 +19,6 @@ import {
   findNodeHandle,
   Image,
   Keyboard,
-  NativeModules,
   type LayoutChangeEvent,
   Modal,
   Platform,
@@ -35,6 +34,8 @@ import {
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import { proxy, useSnapshot } from "valtio";
+
+import E2ERuntimeConfig from "./src/specs/NativeE2ERuntimeConfig";
 
 const notify = proxy<{
   status?: string;
@@ -75,7 +76,7 @@ const getConfiguredBaseUrl = () => {
   const runtimeBaseUrl =
     Platform.OS === "ios"
       ? Settings.get(E2E_APP_BASE_URL_SETTING)
-      : NativeModules.E2ERuntimeConfig?.getAppBaseUrl?.();
+      : E2ERuntimeConfig?.getAppBaseUrl();
   return typeof runtimeBaseUrl === "string" && runtimeBaseUrl.trim()
     ? runtimeBaseUrl
     : HOT_UPDATER_BASE_URL;
@@ -84,7 +85,7 @@ const getE2EChannelNamespace = () => {
   const namespace =
     Platform.OS === "ios"
       ? Settings.get(E2E_CHANNEL_NAMESPACE_SETTING)
-      : NativeModules.E2ERuntimeConfig?.getChannelNamespace?.();
+      : E2ERuntimeConfig?.getChannelNamespace();
   return typeof namespace === "string" && namespace.trim()
     ? namespace.trim()
     : null;

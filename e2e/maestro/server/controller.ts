@@ -116,6 +116,43 @@ type BundleListPage = {
   };
 };
 
+const REMOTE_RESET_DATABASE_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        if (index >= items.length) {
+          break;
+        }
+
+        results[index] = await mapper(items[index]!, index);
+      }
+    }),
+  );
+
+  return results;
+}
+
+async function forEachWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  await mapWithConcurrency(items, concurrency, mapper);
+}
+
 type LaunchReportAssertion = {
   crashedBundleId?: string;
   optional: boolean;
@@ -297,6 +334,15 @@ const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
 );
 const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
+);
+const PROVIDER_READY_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_ATTEMPTS || 120,
+);
+const PROVIDER_READY_WAIT_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_DELAY_MS || 1000,
+);
+const PROVIDER_READY_HTTP_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_HTTP_TIMEOUT_MS || 2000,
 );
 const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
@@ -1827,10 +1873,44 @@ async function fetchBundlesPage(args: {
     cliArgs.push("-c", args.channel);
   }
 
-  const response = parseHotUpdaterCliJson<BundleListPage>(
-    "bundle list",
-    runHotUpdaterCliCapture(cliArgs),
-  );
+  let response: BundleListPage | null = null;
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      response = parseHotUpdaterCliJson<BundleListPage>(
+        "bundle list",
+        runHotUpdaterCliCapture(cliArgs),
+      );
+      break;
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
+        !isTransientProviderError(error)
+      ) {
+        throw error;
+      }
+
+      logE2e("hot-updater cli bundle list retry", {
+        attempt,
+        channel: args.channel ?? null,
+        error: formatErrorMessage(error),
+        platform: session.platform,
+        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
+      });
+      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
+    }
+  }
+
+  if (!response) {
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
   const bundles = normalizeBundleListResponse(response);
   logE2e("hot-updater cli bundle list", {
     channel: args.channel ?? null,
@@ -2236,15 +2316,18 @@ async function clearRemoteBundles({
 
     if (mode === "disable") {
       await withDatabasePlugin(async (databasePlugin) => {
-        await Promise.all(
-          nextBatch.map((bundle) =>
+        await forEachWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) =>
             databasePlugin.updateBundle(bundle.id, { enabled: false }),
-          ),
         );
         await databasePlugin.commitBundle();
 
-        const refetched = await Promise.all(
-          nextBatch.map((bundle) => databasePlugin.getBundleById(bundle.id)),
+        const refetched = await mapWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) => databasePlugin.getBundleById(bundle.id),
         );
         const stillEnabled = refetched.find(
           (bundle) => bundle?.enabled !== false,
@@ -3621,6 +3704,60 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
+function getControllerReachableProviderHealthUrl() {
+  const url = new URL(getControllerReachableAppBaseUrl());
+  if (!isLoopbackHost(url.hostname)) {
+    return null;
+  }
+
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function waitForLocalProviderReady() {
+  const url = getControllerReachableProviderHealthUrl();
+  if (!url) {
+    return;
+  }
+
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= PROVIDER_READY_WAIT_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        logE2e("local provider ready", {
+          attempt,
+          platform: session.platform,
+          url,
+        });
+        return;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = formatErrorMessage(error);
+    }
+
+    if (attempt === 1 || attempt % 10 === 0) {
+      logE2e("local provider readiness pending", {
+        attempt,
+        lastError,
+        platform: session.platform,
+        retryDelayMs: PROVIDER_READY_WAIT_DELAY_MS,
+        url,
+      });
+    }
+    await sleep(PROVIDER_READY_WAIT_DELAY_MS);
+  }
+
+  throw new Error(
+    `Timed out waiting for local provider ${url}: ${lastError ?? "unknown error"}`,
+  );
+}
+
 function getUrlPort(url: URL) {
   if (url.port) {
     return Number.parseInt(url.port, 10);
@@ -4242,11 +4379,7 @@ function parseAndroidFocusedPackage(output: string) {
 }
 
 function getAndroidFocusedPackage() {
-  const windowOutput = runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
-    { allowFailure: true },
-  );
+  const windowOutput = getAndroidWindowOutput();
   const focusedWindowPackage = parseAndroidFocusedPackage(windowOutput);
   if (focusedWindowPackage) {
     return focusedWindowPackage;
@@ -4258,6 +4391,39 @@ function getAndroidFocusedPackage() {
     { allowFailure: true },
   );
   return parseAndroidFocusedPackage(activityOutput);
+}
+
+function getAndroidWindowOutput() {
+  return runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
+    { allowFailure: true },
+  );
+}
+
+function getAndroidAnrPackage(windowOutput: string) {
+  const match = windowOutput.match(
+    /Window\{[^\n]*Application Not Responding:\s*([A-Za-z0-9._]+)/i,
+  );
+  return match?.[1] ?? null;
+}
+
+function dismissAndroidAnrWindow(reason: string) {
+  const anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
+  if (!anrPackage) {
+    return false;
+  }
+
+  logE2e("android dismiss anr window", {
+    anrPackage,
+    reason,
+  });
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", anrPackage],
+    { allowFailure: true },
+  );
+  return true;
 }
 
 function getAndroidHomePackage() {
@@ -4313,7 +4479,11 @@ async function waitForIosMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
 
-  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -4378,7 +4548,11 @@ async function waitForAndroidMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
 
-  for (let relaunchIndex = 0; relaunchIndex <= relaunchLimit; relaunchIndex += 1) {
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
@@ -4486,6 +4660,10 @@ async function waitForCrashRecovery(
 async function ensureAppForeground() {
   if (session.platform !== "android") {
     return {};
+  }
+
+  if (dismissAndroidAnrWindow("ensure-app-foreground")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
   }
 
   let focusedPackage = getAndroidFocusedPackage();
@@ -4674,6 +4852,10 @@ async function prepareAppLaunch() {
     targetAppId: session.appId,
   });
 
+  if (dismissAndroidAnrWindow("prepare-app-launch")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
   ensureAndroidReverse();
   writeAndroidE2ERuntimeConfig();
   runCapture(
@@ -4713,6 +4895,7 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
+  await waitForLocalProviderReady();
   await clearRemoteBundles({
     mode: session.reuseApp ? "disable" : "delete",
   });
@@ -6025,7 +6208,9 @@ export function startWaitForMetadataJob(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
-  return createJob(() => waitForMetadata(bundleId, verificationPending, options));
+  return createJob(() =>
+    waitForMetadata(bundleId, verificationPending, options),
+  );
 }
 
 export function getJob(jobId: string) {
