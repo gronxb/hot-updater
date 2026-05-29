@@ -1,25 +1,9 @@
 appId: ${APP_ID}
 ---
-- retry:
-    maxRetries: 120
-    commands:
-      - tapOn:
-          id: android:id/aerr_wait
-          optional: true
-      - tapOn:
-          text: Wait
-          optional: true
-      - waitForAnimationToEnd:
-          timeout: 1000
-      - scrollUntilVisible:
-          element:
-            id: update-action-result
-          direction: DOWN
-          timeout: 10000
-      - assertVisible:
-          id: update-action-result
-      - copyTextFrom:
-          id: update-action-result
-      - assertTrue:
-          condition: ${maestro.copiedText.includes(EXPECTED_UPDATE_ACTION_RESULT)}
-          label: Update action result matches expected value
+- runFlow:
+    file: assert-text-by-id.yaml
+    env:
+      APP_ID: ${APP_ID}
+      ASSERTION_LABEL: Update action result matches expected value
+      EXPECTED_TEXT: ${EXPECTED_UPDATE_ACTION_RESULT}
+      TARGET_ID: update-action-result

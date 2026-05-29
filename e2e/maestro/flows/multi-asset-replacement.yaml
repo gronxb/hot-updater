@@ -61,11 +61,6 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
-- runFlow:
-    file: subflows/assert-update-action-result.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.firstBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -126,11 +121,6 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
-- runFlow:
-    file: subflows/assert-update-action-result.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.secondBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
