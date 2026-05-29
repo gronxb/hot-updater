@@ -9,6 +9,9 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
+      - tapOn:
+          id: e2e-nav-actions
+          optional: true
       - extendedWaitUntil:
           visible:
             id: ${BUTTON_ID}
