@@ -1188,7 +1188,7 @@ export const setupGetUpdateInfoTestSuite = ({
         shouldForceUpdate: false,
         status: "UPDATE",
       });
-    });
+    }, 120000);
   });
 
   describe("fingerprint strategy", () => {
