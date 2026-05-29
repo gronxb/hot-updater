@@ -64,7 +64,13 @@ const getFilteredRows = (sql: string, params: any[]) => {
       return null;
     }
 
-    const count = (match[1]?.match(/\?/g) ?? []).length;
+    const body = match[1] ?? "";
+    if (body.includes("json_each(")) {
+      const values = JSON.parse(String(params[index++])) as unknown;
+      return Array.isArray(values) ? values : [];
+    }
+
+    const count = (body.match(/\?/g) ?? []).length;
     const values = params.slice(index, index + count);
     index += count;
     return values;
@@ -169,6 +175,12 @@ vi.mock("cloudflare", () => ({
             params?: any[];
           },
         ) => {
+          if (params.length > 100) {
+            throw new Error(
+              "D1_ERROR: too many SQL variables at offset 386: SQLITE_ERROR",
+            );
+          }
+
           const normalizedSql = sql.replace(/\s+/g, " ").trim().toLowerCase();
 
           if (
@@ -190,7 +202,9 @@ vi.mock("cloudflare", () => ({
             )
           ) {
             const selectedBundleIds = new Set(
-              params.map((value) => String(value)),
+              normalizedSql.includes("json_each")
+                ? (JSON.parse(String(params[0])) as unknown[]).map(String)
+                : params.map((value) => String(value)),
             );
             const result = Array.from(patchRows.values())
               .filter((row) => selectedBundleIds.has(row.bundle_id))
