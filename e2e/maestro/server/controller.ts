@@ -3754,9 +3754,36 @@ function getControllerReachableProviderHealthUrl() {
   return url.toString();
 }
 
+function getAndroidControlDevicePort() {
+  const port = Number.parseInt(
+    process.env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107",
+    10,
+  );
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(
+      "HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT must be a positive integer.",
+    );
+  }
+  return port;
+}
+
+function getControlServerHostPort() {
+  const port = Number.parseInt(
+    process.env.PORT || process.env.HOT_UPDATER_E2E_CONTROL_PORT || "3107",
+    10,
+  );
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error("PORT must be a positive integer.");
+  }
+  return port;
+}
+
 function getAppReachableControlBaseUrl() {
-  const port = process.env.PORT || process.env.HOT_UPDATER_E2E_CONTROL_PORT;
-  return `http://localhost:${port || 3107}`;
+  const port =
+    session.platform === "android"
+      ? getAndroidControlDevicePort()
+      : getControlServerHostPort();
+  return `http://localhost:${port}`;
 }
 
 function getRuntimeConfigUrl() {
@@ -3891,16 +3918,16 @@ function ensureAndroidControlReverse() {
     return;
   }
 
-  const controlBaseUrl = new URL(getAppReachableControlBaseUrl());
-  const port = getUrlPort(controlBaseUrl);
+  const devicePort = getAndroidControlDevicePort();
+  const hostPort = getControlServerHostPort();
   runCapture("adb", [
     "-s",
     deviceId as string,
     "reverse",
-    `tcp:${port}`,
-    `tcp:${port}`,
+    `tcp:${devicePort}`,
+    `tcp:${hostPort}`,
   ]);
-  logE2e("android control reverse ready", { port });
+  logE2e("android control reverse ready", { devicePort, hostPort });
 }
 
 function getHotUpdaterControlEnv(

@@ -112,12 +112,17 @@ const ANDROID_MAESTRO_DRIVER_PACKAGES = [
 ];
 const DEFAULT_MAESTRO_DRIVER_PORT = 7001;
 const ANDROID_MAESTRO_DRIVER_DEVICE_PORT = 7001;
+const ANDROID_CONTROL_DEVICE_PORT = parsePortEnv(
+  "HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT",
+  3107,
+);
 const MAESTRO_DRIVER_HOST_PORT = parsePortEnv(
   "HOT_UPDATER_E2E_MAESTRO_DRIVER_PORT",
   DEFAULT_MAESTRO_DRIVER_PORT,
 );
 const ANDROID_MAESTRO_DRIVER_RUNNER =
   "dev.mobile.maestro.test/androidx.test.runner.AndroidJUnitRunner";
+const ANDROID_RUNTIME_CONFIG_URL = `http://localhost:${ANDROID_CONTROL_DEVICE_PORT}/e2e/runtime-config`;
 const MAESTRO_CLIENT_JAR_PATH = path.join(
   os.homedir(),
   ".maestro/lib/maestro-client.jar",
@@ -347,12 +352,13 @@ function ensureAndroidReverse(
   deviceId: string,
   appBaseUrl: URL,
   hostPortOverride?: number,
+  devicePortOverride?: number,
 ) {
   if (!isLoopbackHost(appBaseUrl.hostname)) {
     return null;
   }
 
-  const port = getUrlPort(appBaseUrl);
+  const port = devicePortOverride ?? getUrlPort(appBaseUrl);
   const hostPort =
     hostPortOverride ??
     Number.parseInt(
@@ -1911,7 +1917,10 @@ async function main() {
   await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
-  const appRuntimeConfigUrl = `http://localhost:${serverPort}/e2e/runtime-config`;
+  const appRuntimeConfigUrl =
+    platform === "android"
+      ? ANDROID_RUNTIME_CONFIG_URL
+      : `http://localhost:${serverPort}/e2e/runtime-config`;
 
   p.log.step(`Start ${platform}/${scenarioName}`);
   p.log.info(`Flow: ${formatRepoRelative(options.flow)}`);
@@ -1945,6 +1954,7 @@ async function main() {
       deviceId,
       new URL(serverBaseUrl),
       serverPort,
+      ANDROID_CONTROL_DEVICE_PORT,
     );
     const androidDeviceLogLines = [`Using Android device ${deviceId}`];
     if (reversedPort !== null) {
