@@ -152,6 +152,34 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func cleanupTemporaryFilesRemovesPathsBeforeReturning() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let tempDirectory = workingDirectory.appendingPathComponent("bundle-temp")
+        try FileManager.default.createDirectory(
+            at: tempDirectory,
+            withIntermediateDirectories: true
+        )
+        try Data("temporary download\n".utf8)
+            .write(to: tempDirectory.appendingPathComponent("bundle.zip"))
+
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            fileSystem: DelayedRemoveFileSystemService(
+                documentsDirectory: workingDirectory,
+                delayedPath: tempDirectory.path
+            )
+        )
+
+        service.cleanupTemporaryFiles([tempDirectory.path])
+
+        #expect(FileManager.default.fileExists(atPath: tempDirectory.path) == false)
+    }
+
+    @Test
     func appliesBsdiffPatchThroughSwiftPackageBridge() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -227,10 +255,11 @@ private func cleanupWorkingDirectory(_ workingDirectory: URL) {
 
 private func makeStorageService(
     documentsDirectory: URL,
+    fileSystem: FileSystemService? = nil,
     preferences: PreferencesService = InMemoryPreferencesService()
 ) -> BundleFileStorageService {
     BundleFileStorageService(
-        fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
+        fileSystem: fileSystem ?? TestFileSystemService(documentsDirectory: documentsDirectory),
         downloadService: UnusedDownloadService(),
         decompressService: DecompressService(),
         preferences: preferences,
@@ -288,7 +317,7 @@ private func writeMetadata(
     #expect(metadata.save(to: metadataURL))
 }
 
-private final class TestFileSystemService: FileSystemService {
+private class TestFileSystemService: FileSystemService {
     private let documentsDirectory: URL
 
     init(documentsDirectory: URL) {
@@ -333,6 +362,22 @@ private final class TestFileSystemService: FileSystemService {
 
     func documentsPath() -> String {
         documentsDirectory.path
+    }
+}
+
+private final class DelayedRemoveFileSystemService: TestFileSystemService {
+    private let delayedPath: String
+
+    init(documentsDirectory: URL, delayedPath: String) {
+        self.delayedPath = delayedPath
+        super.init(documentsDirectory: documentsDirectory)
+    }
+
+    override func removeItem(atPath path: String) throws {
+        if path == delayedPath {
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        try super.removeItem(atPath: path)
     }
 }
 

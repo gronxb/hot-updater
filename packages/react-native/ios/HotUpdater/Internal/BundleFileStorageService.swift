@@ -1232,20 +1232,17 @@ class BundleFileStorageService: BundleStorageService {
      * Cleans up temporary files safely. Executes synchronously on the calling thread.
      * @param paths Array of file/directory paths to clean up
      */
-    private func cleanupTemporaryFiles(_ paths: [String]) {
-        let workItem = DispatchWorkItem {
-            for path in paths {
-                do {
-                    if self.fileSystem.fileExists(atPath: path) {
-                        try self.fileSystem.removeItem(atPath: path)
-                        NSLog("[BundleStorage] Cleaned up temporary file: \(path)")
-                    }
-                } catch {
-                    NSLog("[BundleStorage] Failed to clean up temporary file \(path): \(error.localizedDescription)")
+    func cleanupTemporaryFiles(_ paths: [String]) {
+        for path in paths {
+            do {
+                if self.fileSystem.fileExists(atPath: path) {
+                    try self.fileSystem.removeItem(atPath: path)
+                    NSLog("[BundleStorage] Cleaned up temporary file: \(path)")
                 }
+            } catch {
+                NSLog("[BundleStorage] Failed to clean up temporary file \(path): \(error.localizedDescription)")
             }
         }
-        DispatchQueue.global(qos: .background).async(execute: workItem)
     }
 
     private func downloadFileSynchronously(
