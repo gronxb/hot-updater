@@ -8,7 +8,11 @@ import com.facebook.react.uimanager.ViewManager
 class ReloadCrashProbePackage : ReactPackage {
     override fun createNativeModules(
         reactContext: ReactApplicationContext,
-    ): List<NativeModule> = listOf(ReloadCrashProbeModule(reactContext))
+    ): List<NativeModule> =
+        listOf(
+            ReloadCrashProbeModule(reactContext),
+            E2ERuntimeConfigModule(reactContext),
+        )
 
     override fun createViewManagers(
         reactContext: ReactApplicationContext,

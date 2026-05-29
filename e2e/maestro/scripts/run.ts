@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+
 import { p } from "../../../packages/cli-tools/src/prompts.ts";
 import {
   getScenarioNameFromFlowPath,
@@ -58,12 +59,16 @@ function resolvePlatforms(value: string) {
 }
 
 function parseArgs(argv: string[]): RunOptions {
+  const envScenarioInputs = (process.env.HOT_UPDATER_E2E_SCENARIOS ?? "")
+    .split(",")
+    .map((scenario) => scenario.trim())
+    .filter(Boolean);
   const options: RunOptions = {
     dryRun: false,
     interactive: false,
     platforms: ["ios", "android"],
     reuseApp: true,
-    scenarioInputs: [],
+    scenarioInputs: envScenarioInputs,
     suiteName: "default",
     suiteNameExplicitlySet: false,
   };
@@ -415,13 +420,8 @@ async function main() {
   }
 
   for (const platform of options.platforms) {
-    for (const [index, scenarioRun] of scenarioRuns.entries()) {
-      runScenario(
-        platform,
-        scenarioRun,
-        options.reuseApp && index > 0,
-        options.dryRun,
-      );
+    for (const scenarioRun of scenarioRuns) {
+      runScenario(platform, scenarioRun, options.reuseApp, options.dryRun);
     }
   }
 

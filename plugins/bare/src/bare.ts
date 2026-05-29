@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
@@ -22,6 +23,144 @@ interface RunBundleArgs {
   resetCache: boolean;
 }
 
+const BARE_BUILD_CACHE_VERSION = 1;
+
+function hashText(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function pathExists(filePath: string) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCacheRoot(cwd: string) {
+  const cacheDir = process.env.HOT_UPDATER_BARE_BUILD_CACHE_DIR?.trim();
+  if (!cacheDir) {
+    return null;
+  }
+
+  return path.resolve(cwd, cacheDir);
+}
+
+function resolveCacheKey({
+  enableHermes,
+  entryFile,
+  platform,
+  resetCache,
+  sourcemap,
+}: Omit<RunBundleArgs, "buildPath" | "cwd">) {
+  const inputKey = process.env.HOT_UPDATER_BARE_BUILD_CACHE_KEY?.trim();
+  if (!inputKey) {
+    return null;
+  }
+
+  return hashText(
+    JSON.stringify({
+      cacheVersion: BARE_BUILD_CACHE_VERSION,
+      enableHermes,
+      entryFile,
+      inputKey,
+      platform,
+      resetCache,
+      sourcemap,
+    }),
+  );
+}
+
+function resolveCachePaths({
+  cwd,
+  enableHermes,
+  entryFile,
+  platform,
+  resetCache,
+  sourcemap,
+}: Omit<RunBundleArgs, "buildPath">) {
+  const root = resolveCacheRoot(cwd);
+  const key = resolveCacheKey({
+    enableHermes,
+    entryFile,
+    platform,
+    resetCache,
+    sourcemap,
+  });
+  if (!root || !key) {
+    return null;
+  }
+
+  const entryDir = path.join(root, key);
+  return {
+    entryDir,
+    filesDir: path.join(entryDir, "files"),
+    key,
+    manifestPath: path.join(entryDir, "manifest.json"),
+    root,
+  };
+}
+
+async function restoreBundleBuildFromCache({
+  buildPath,
+  cachePaths,
+}: {
+  buildPath: string;
+  cachePaths: NonNullable<ReturnType<typeof resolveCachePaths>>;
+}) {
+  if (!(await pathExists(cachePaths.manifestPath))) {
+    return null;
+  }
+
+  try {
+    const metadata = JSON.parse(
+      await fs.readFile(cachePaths.manifestPath, "utf8"),
+    ) as { stdout?: unknown };
+    await fs.cp(cachePaths.filesDir, buildPath, { recursive: true });
+    log.normal(`[bare] reused build cache ${cachePaths.key.slice(0, 12)}\n`);
+    return {
+      stdout: typeof metadata.stdout === "string" ? metadata.stdout : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function saveBundleBuildToCache({
+  buildPath,
+  cachePaths,
+  stdout,
+}: {
+  buildPath: string;
+  cachePaths: NonNullable<ReturnType<typeof resolveCachePaths>>;
+  stdout: string | null;
+}) {
+  if (await pathExists(cachePaths.manifestPath)) {
+    return;
+  }
+
+  const tempDir = path.join(
+    cachePaths.root,
+    `${cachePaths.key}.${process.pid}.${Date.now()}.tmp`,
+  );
+
+  await fs.rm(tempDir, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(tempDir), { recursive: true });
+  await fs.cp(buildPath, path.join(tempDir, "files"), { recursive: true });
+  await fs.writeFile(
+    path.join(tempDir, "manifest.json"),
+    `${JSON.stringify({ cacheVersion: BARE_BUILD_CACHE_VERSION, stdout })}\n`,
+  );
+
+  try {
+    await fs.rename(tempDir, cachePaths.entryDir);
+    log.normal(`[bare] saved build cache ${cachePaths.key.slice(0, 12)}\n`);
+  } catch {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 const runBundle = async ({
   entryFile,
   cwd,
@@ -39,6 +178,23 @@ const runBundle = async ({
   const filename = `index.${platform}`;
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
   const bundleId = uuidv7();
+  const cachePaths = resolveCachePaths({
+    cwd,
+    enableHermes,
+    entryFile,
+    platform,
+    resetCache,
+    sourcemap,
+  });
+  const cached = cachePaths
+    ? await restoreBundleBuildFromCache({ buildPath, cachePaths })
+    : null;
+  if (cached) {
+    return {
+      bundleId,
+      stdout: cached.stdout,
+    };
+  }
 
   const args = [
     "bundle",
@@ -78,11 +234,22 @@ const runBundle = async ({
       inputJsFile: bundleOutput,
       sourcemap,
     });
+    if (cachePaths) {
+      await saveBundleBuildToCache({
+        buildPath,
+        cachePaths,
+        stdout: hermesVersion,
+      });
+    }
 
     return {
       bundleId,
       stdout: hermesVersion,
     };
+  }
+
+  if (cachePaths) {
+    await saveBundleBuildToCache({ buildPath, cachePaths, stdout: null });
   }
 
   return {

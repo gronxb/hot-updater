@@ -1,8 +1,12 @@
 // Maestro runScript loads JavaScript files directly, so this helper stays JS.
 
-// The first iOS bootstrap can include a full release build, pod install, and app reinstall.
-// Keep the polling window long enough for that path instead of failing at 12 minutes.
-const JOB_TIMEOUT_SECONDS = 1800;
+// The first bootstrap can include full native release builds, pod install,
+// and app reinstall. Keep that window separate from normal OTA job polling.
+const DEFAULT_JOB_TIMEOUT_SECONDS = 720;
+const BOOTSTRAP_JOB_TIMEOUT_SECONDS = 3600;
+const JOB_POLL_INTERVAL_MS = 250;
+let atomicsPauseSupported = true;
+let javaPauseSupported = true;
 
 function request(method, pathname, body) {
   const url = `${CONTROL_URL}${pathname}`;
@@ -60,6 +64,34 @@ function expectOk(response, context) {
 }
 
 function pause(milliseconds) {
+  if (javaPauseSupported && typeof Java === "object") {
+    try {
+      Java.type("java.lang.Thread").sleep(Math.max(0, milliseconds));
+      return;
+    } catch {
+      javaPauseSupported = false;
+    }
+  }
+
+  if (
+    atomicsPauseSupported &&
+    typeof SharedArrayBuffer === "function" &&
+    typeof Atomics === "object" &&
+    typeof Atomics.wait === "function"
+  ) {
+    try {
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        Math.max(0, milliseconds),
+      );
+      return;
+    } catch {
+      atomicsPauseSupported = false;
+    }
+  }
+
   const endTime = Date.now() + milliseconds;
   while (Date.now() < endTime) {}
 }
@@ -68,27 +100,17 @@ function startJob(pathname, body) {
   const response = request("POST", pathname, body);
   const payload = expectOk(response, "job start");
   const jobId = payload.jobId;
-  const timeoutSeconds = (() => {
-    if (JOB_TIMEOUT_SECONDS) {
-      const parsed = Number(JOB_TIMEOUT_SECONDS);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-
-    // Bootstrap can include a full clean release build on iOS.
-    if (pathname === "/e2e/jobs/bootstrap") {
-      return 1800;
-    }
-
-    return 720;
-  })();
+  const timeoutSeconds =
+    pathname === "/e2e/jobs/bootstrap"
+      ? BOOTSTRAP_JOB_TIMEOUT_SECONDS
+      : DEFAULT_JOB_TIMEOUT_SECONDS;
 
   if (!jobId) {
     throw new Error("job start response missing jobId");
   }
 
-  for (let attempt = 0; attempt < timeoutSeconds; attempt += 1) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() < deadline) {
     const pollResponse = request("GET", `/e2e/jobs/${jobId}`);
     const job = expectOk(pollResponse, "job poll");
 
@@ -100,7 +122,7 @@ function startJob(pathname, body) {
       throw new Error(job.error || "unknown job failure");
     }
 
-    pause(1000);
+    pause(JOB_POLL_INTERVAL_MS);
   }
 
   throw new Error(
@@ -261,7 +283,9 @@ switch (ACTION) {
 
   case "waitForMetadata": {
     startJob("/e2e/jobs/wait-for-metadata", {
+      attempts: maybeNumber(ATTEMPTS),
       bundleId: BUNDLE_ID,
+      relaunchLimit: maybeNumber(RELAUNCH_LIMIT),
       verificationPending: VERIFICATION_PENDING === "true",
     });
     break;
@@ -301,6 +325,12 @@ switch (ACTION) {
   case "resetRemoteBundles": {
     const response = request("POST", "/e2e/reset-remote-bundles", {});
     expectOk(response, "reset remote bundles");
+    break;
+  }
+
+  case "resetLocalAppState": {
+    const response = request("POST", "/e2e/reset-local-app-state", {});
+    expectOk(response, "reset local app state");
     break;
   }
 

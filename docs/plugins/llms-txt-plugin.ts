@@ -1,344 +1,294 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 import type { Plugin, ResolvedConfig } from "vite";
 
-interface LLMPluginOptions {
+interface LLMsTxtPluginOptions {
   baseUrl: string;
-  githubRepo?: string;
   contentDir?: string;
   outputDir?: string;
 }
 
-interface PackageJson {
-  name?: string;
-  description?: string;
-  repository?: string | { url?: string };
-}
-
-function getPackageInfo(): {
-  name: string;
+interface DocPage {
+  title: string;
   description: string;
-  repo?: string;
-} {
-  try {
-    const pkgPath = join(process.cwd(), "package.json");
-    if (existsSync(pkgPath)) {
-      const pkg: PackageJson = JSON.parse(readFileSync(pkgPath, "utf-8"));
-
-      let repo: string | undefined;
-      if (typeof pkg.repository === "string") {
-        repo = pkg.repository;
-      } else if (pkg.repository?.url) {
-        repo = pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
-      }
-
-      return {
-        name: pkg.name || "Documentation",
-        description: pkg.description || "",
-        repo,
-      };
-    }
-  } catch (error) {
-    console.warn("Failed to read package.json:", error);
-  }
-
-  return { name: "Documentation", description: "" };
+  pageUrl: string;
+  markdownUrl: string;
+  apiMarkdownUrl: string;
+  category: string;
+  body: string;
 }
 
-function humanizeDirectoryName(dirName: string): string {
-  return dirName
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+interface Category {
+  title: string;
+  pages: string[];
 }
 
-function getCategoryMetadata(contentDir: string): Record<string, string> {
-  const categoryMap: Record<string, string> = {};
-
-  try {
-    const entries = readdirSync(contentDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const dirName = entry.name;
-        const metaPath = join(contentDir, dirName, "meta.json");
-
-        // Try to read meta.json for the category title
-        if (existsSync(metaPath)) {
-          try {
-            const metaContent = readFileSync(metaPath, "utf-8");
-            const meta = JSON.parse(metaContent);
-
-            // Check for title in various possible locations
-            const title =
-              meta.title || meta.root?.title || humanizeDirectoryName(dirName);
-            categoryMap[dirName] = title;
-          } catch {
-            // If parsing fails, use humanized name
-            categoryMap[dirName] = humanizeDirectoryName(dirName);
-          }
-        } else {
-          // No meta.json, use humanized directory name
-          categoryMap[dirName] = humanizeDirectoryName(dirName);
-        }
-      }
-    }
-  } catch (error) {
-    console.warn("Failed to generate category metadata:", error);
-  }
-
-  return categoryMap;
-}
-
-export function llmsTxtPlugin(options: LLMPluginOptions): Plugin {
+export function llmsTxtPlugin(options: LLMsTxtPluginOptions): Plugin {
   const {
     baseUrl,
-    githubRepo: userGithubRepo,
-    contentDir: userContentDir = "content/docs",
-    outputDir = ".output/public",
+    contentDir = "content/docs",
+    outputDir = "dist/public",
   } = options;
 
-  const pkgInfo = getPackageInfo();
-  const githubRepo = userGithubRepo || pkgInfo.repo;
-
   let config: ResolvedConfig;
-  let categoryMap: Record<string, string> = {};
-  let categoryOrder: string[] = [];
-
-  function getCategoryFromPath(url: string): string {
-    const match = url.match(/\/docs\/([^/]+)/);
-    if (!match || !match[1]) return "Documentation";
-    const key = match[1];
-    return categoryMap[key] || humanizeDirectoryName(key);
-  }
 
   async function generateFiles() {
-    try {
-      const contentDir = join(process.cwd(), userContentDir);
+    const contentRoot = join(process.cwd(), contentDir);
+    const outputRoot = join(process.cwd(), outputDir);
+    const categories = collectCategories(contentRoot);
+    const pages = collectDocPages(contentRoot, categories);
 
-      // Generate category map from directory structure
-      categoryMap = getCategoryMetadata(contentDir);
-      categoryOrder = Object.keys(categoryMap).sort();
-
-      const pages = await collectMDXFiles(contentDir);
-
-      // Generate llms.txt (summary)
-      const llmsSummary = generateLLMsSummary(
-        pages,
-        baseUrl,
-        pkgInfo,
-        categoryMap,
-        categoryOrder,
-        getCategoryFromPath,
-      );
-
-      // Generate llms-full.txt (full content)
-      const llmsFull = generateLLMsFull(
-        pages,
-        baseUrl,
-        pkgInfo,
-        githubRepo,
-        getCategoryFromPath,
-      );
-
-      // Write to build output directory only
-      const outputPath = join(process.cwd(), outputDir);
-      await mkdir(outputPath, { recursive: true });
-      await writeFile(join(outputPath, "llms.txt"), llmsSummary, "utf-8");
-      await writeFile(join(outputPath, "llms-full.txt"), llmsFull, "utf-8");
-
-      console.log(
-        "✓ Generated llms.txt and llms-full.txt for production build",
-      );
-      console.log(
-        `  Found ${Object.keys(categoryMap).length} categories:`,
-        Object.keys(categoryMap).join(", "),
-      );
-    } catch (error) {
-      console.error("Failed to generate LLM text files:", error);
-      console.error(error);
-    }
+    await mkdir(outputRoot, { recursive: true });
+    await Promise.all([
+      writeFile(
+        join(outputRoot, "llms.txt"),
+        generateLLMsIndex(pages, categories, baseUrl),
+        "utf-8",
+      ),
+      writeFile(
+        join(outputRoot, "llms-full.txt"),
+        generateLLMsFull(pages, baseUrl),
+        "utf-8",
+      ),
+      ...pages.flatMap((page) => [
+        writeMarkdownPage(outputRoot, page.markdownUrl, page, baseUrl),
+        writeMarkdownPage(outputRoot, page.apiMarkdownUrl, page, baseUrl),
+      ]),
+    ]);
   }
 
   return {
     name: "llms-txt-plugin",
-
-    configResolved(resolvedConfig: ResolvedConfig) {
+    configResolved(resolvedConfig) {
       config = resolvedConfig;
     },
-
     async closeBundle() {
-      // Only generate files during production build
-      if (config?.command === "build") {
+      if (config.command === "build") {
         await generateFiles();
       }
     },
   };
 }
 
-interface MDXPage {
-  title: string;
-  description?: string;
-  url: string;
-  path: string;
-  body: string;
+function collectCategories(contentRoot: string) {
+  const rootMeta = readJson(join(contentRoot, "meta.json"));
+  const orderedPages = Array.isArray(rootMeta?.pages) ? rootMeta.pages : [];
+  const categories = new Map<string, Category>();
+
+  for (const page of orderedPages) {
+    if (typeof page !== "string") continue;
+
+    const meta = readJson(join(contentRoot, page, "meta.json"));
+    categories.set(page, {
+      title: typeof meta?.title === "string" ? meta.title : humanize(page),
+      pages: Array.isArray(meta?.pages)
+        ? meta.pages.filter((item): item is string => typeof item === "string")
+        : [],
+    });
+  }
+
+  return categories;
 }
 
-async function collectMDXFiles(dir: string, baseDir = dir): Promise<MDXPage[]> {
-  const pages: MDXPage[] = [];
-  const entries = readdirSync(dir, { withFileTypes: true });
+function collectDocPages(
+  contentRoot: string,
+  categories: Map<string, Category>,
+) {
+  const pages: DocPage[] = [];
 
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
+  for (const [categorySlug, category] of categories) {
+    const categoryRoot = join(contentRoot, categorySlug);
+    const categoryPages = collectMdxFiles(categoryRoot, contentRoot);
+    const ordered = orderPages(categoryPages, category.pages);
 
-    if (entry.isDirectory()) {
-      const subPages = await collectMDXFiles(fullPath, baseDir);
-      pages.push(...subPages);
-    } else if (entry.name.endsWith(".mdx") || entry.name.endsWith(".md")) {
-      try {
-        const content = readFileSync(fullPath, "utf-8");
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-
-        let title = entry.name.replace(/\.mdx?$/, "");
-        let description = "";
-
-        if (frontmatterMatch?.[1]) {
-          const frontmatter = frontmatterMatch[1];
-          const titleMatch = frontmatter.match(/title:\s*(.+)/);
-          const descMatch = frontmatter.match(/description:\s*(.+)/);
-
-          if (titleMatch?.[1]) title = titleMatch[1].trim();
-          if (descMatch?.[1]) description = descMatch[1].trim();
-        }
-
-        const body = content.replace(/^---\n[\s\S]*?\n---\n/, "");
-        const relativePath = fullPath
-          .replace(baseDir, "")
-          .replace(/\.mdx?$/, "")
-          .replace(/\\/g, "/");
-
-        const url = `/docs${relativePath === "/index" ? "" : relativePath}`;
-
-        pages.push({
-          title,
-          description,
-          url,
-          path: relativePath,
-          body,
-        });
-      } catch (error) {
-        console.warn(`Failed to parse ${fullPath}:`, error);
-      }
-    }
+    pages.push(
+      ...ordered.map((page) => ({
+        ...page,
+        category: categorySlug,
+      })),
+    );
   }
 
   return pages;
 }
 
-function generateLLMsSummary(
-  pages: MDXPage[],
-  baseUrl: string,
-  pkgInfo: { name: string; description: string },
-  categoryMap: Record<string, string>,
-  categoryOrder: string[],
-  _getCategoryFromPath: (url: string) => string,
-): string {
-  // Group pages by category
-  const categories = new Map<string, MDXPage[]>();
+function collectMdxFiles(dir: string, contentRoot: string) {
+  if (!existsSync(dir)) return [];
 
-  for (const page of pages) {
-    const match = page.url.match(/\/docs\/([^/]+)/);
-    const category = match?.[1] ? match[1] : "other";
+  const pages: Omit<DocPage, "category">[] = [];
 
-    if (!categories.has(category)) {
-      categories.set(category, []);
-    }
-    categories.get(category)?.push(page);
-  }
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = join(dir, entry.name);
 
-  let summary = `# ${pkgInfo.name} Documentation\n`;
-
-  if (pkgInfo.description) {
-    summary += `\n${pkgInfo.description}\n`;
-  }
-
-  summary += `\n## Documentation Structure\n\n`;
-
-  // Use dynamically generated category order
-  for (const categoryKey of categoryOrder) {
-    const categoryPages = categories.get(categoryKey);
-    if (!categoryPages || categoryPages.length === 0) continue;
-
-    const categoryName =
-      categoryMap[categoryKey] || humanizeDirectoryName(categoryKey);
-
-    summary += `### ${categoryName}\n\n`;
-
-    for (const page of categoryPages.slice(0, 5)) {
-      // Limit to top 5 per category
-      summary += `- [${page.title}](${baseUrl}${page.url})`;
-      if (page.description) {
-        summary += ` - ${page.description}`;
-      }
-      summary += "\n";
+    if (entry.isDirectory()) {
+      pages.push(...collectMdxFiles(fullPath, contentRoot));
+      continue;
     }
 
-    summary += "\n";
+    if (!entry.name.endsWith(".mdx") && !entry.name.endsWith(".md")) {
+      continue;
+    }
+
+    const raw = readFileSync(fullPath, "utf-8");
+    const { frontmatter, body } = splitFrontmatter(raw);
+    const sourcePath = relative(contentRoot, fullPath)
+      .replace(/\\/g, "/")
+      .replace(/\.mdx?$/, "");
+    const markdownSegments = sourcePath.split("/");
+    const markdownLast = markdownSegments.at(-1)!;
+    const markdownPath = [
+      ...markdownSegments.slice(0, -1),
+      `${markdownLast}.md`,
+    ].join("/");
+    const title =
+      frontmatter.title || humanize(entry.name.replace(/\.mdx?$/, ""));
+
+    pages.push({
+      title,
+      description: frontmatter.description || "",
+      pageUrl: `/docs/${sourcePath}`,
+      markdownUrl: `/docs/${sourcePath}.md`,
+      apiMarkdownUrl: `/api/markdown/${markdownPath}`,
+      body,
+    });
   }
 
-  summary += `\nFor full documentation, see: ${baseUrl}/docs\n`;
-
-  return summary;
+  return pages;
 }
 
-function generateLLMsFull(
-  pages: MDXPage[],
+function orderPages<T extends { pageUrl: string }>(
+  pages: T[],
+  order: string[],
+) {
+  const rank = new Map(order.map((slug, index) => [slug, index]));
+
+  return pages.sort((a, b) => {
+    const aSlug = a.pageUrl.split("/").at(-1) ?? "";
+    const bSlug = b.pageUrl.split("/").at(-1) ?? "";
+    const aRank = rank.get(aSlug) ?? Number.MAX_SAFE_INTEGER;
+    const bRank = rank.get(bSlug) ?? Number.MAX_SAFE_INTEGER;
+
+    return aRank - bRank || a.pageUrl.localeCompare(b.pageUrl);
+  });
+}
+
+function generateLLMsIndex(
+  pages: DocPage[],
+  categories: Map<string, Category>,
   baseUrl: string,
-  pkgInfo: { name: string; description: string },
-  githubRepo: string | undefined,
-  getCategoryFromPath: (url: string) => string,
-): string {
-  let fullContent = `# ${pkgInfo.name} - Complete Documentation\n\n`;
+) {
+  const lines = [
+    "# Hot Updater Documentation",
+    "",
+    "> React Native OTA updates powered by your own infrastructure.",
+    "",
+  ];
 
-  if (pkgInfo.description) {
-    fullContent += `${pkgInfo.description}\n\n`;
-  }
+  for (const [slug, category] of categories) {
+    const categoryPages = pages.filter((page) => page.category === slug);
+    if (categoryPages.length === 0) continue;
 
-  fullContent += `---\n\n`;
+    lines.push(`## ${category.title}`, "");
 
-  for (const page of pages) {
-    const category = getCategoryFromPath(page.url);
-    const title = page.title || "Untitled";
-    const description = page.description || "";
-    const url = `${baseUrl}${page.url}`;
-
-    fullContent += `# ${category}: ${title}\n`;
-    fullContent += `URL: ${url}\n`;
-
-    if (githubRepo) {
-      const sourcePath = page.path.replace(/^\//, "");
-      const sourceUrl = `${githubRepo}/blob/main/content/docs/${sourcePath}.mdx`;
-      fullContent += `Source: ${sourceUrl}\n`;
+    for (const page of categoryPages) {
+      const description = page.description ? `: ${page.description}` : "";
+      lines.push(
+        `- [${page.title}](${baseUrl}${page.markdownUrl})${description}`,
+      );
     }
 
-    fullContent += `\n`;
-
-    if (description) {
-      fullContent += `${description}\n\n`;
-    }
-
-    // Remove JSX/MDX syntax and add raw text
-    const cleanBody = page.body
-      .replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, "")
-      .replace(/<[^>]+>/g, "")
-      .replace(/```[\s\S]*?```/g, (match) => match)
-      .trim();
-
-    fullContent += `${cleanBody}\n`;
-    fullContent += `\n---\n\n`;
+    lines.push("");
   }
 
-  return fullContent;
+  return `${lines.join("\n").trim()}\n`;
+}
+
+function generateLLMsFull(pages: DocPage[], baseUrl: string) {
+  return `${pages
+    .map((page) => generatePageMarkdown(page, baseUrl).trimEnd())
+    .join("\n\n")}\n`;
+}
+
+async function writeMarkdownPage(
+  outputRoot: string,
+  urlPath: string,
+  page: DocPage,
+  baseUrl: string,
+) {
+  const outputPath = join(outputRoot, urlPath.slice(1));
+
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, generatePageMarkdown(page, baseUrl), "utf-8");
+}
+
+function generatePageMarkdown(page: DocPage, baseUrl: string) {
+  const summary = page.description ? `\n\n> ${page.description}` : "";
+
+  return `# ${page.title} (${baseUrl}${page.pageUrl})${summary}\n\n${cleanMdx(page.body)}\n`;
+}
+
+function splitFrontmatter(raw: string) {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) return { frontmatter: {}, body: raw };
+
+  const frontmatter = match[1] ?? "";
+
+  return {
+    frontmatter: Object.fromEntries(
+      frontmatter
+        .split("\n")
+        .map((line) => line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/))
+        .filter((item): item is RegExpMatchArray => item !== null)
+        .map((item) => [
+          item[1] ?? "",
+          (item[2] ?? "").replace(/^["']|["']$/g, ""),
+        ]),
+    ) as Record<string, string>,
+    body: raw.slice(match[0].length),
+  };
+}
+
+function cleanMdx(body: string) {
+  const componentTag =
+    /<\/?(Tabs|Tab|Accordions|Accordion|Callout)(\s[^>]*)?>/g;
+  let inCodeBlock = false;
+
+  return body
+    .split("\n")
+    .flatMap((line) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        inCodeBlock = !inCodeBlock;
+        return line;
+      }
+
+      if (inCodeBlock) {
+        return line;
+      }
+
+      if (/^\s*import\s+.*?;?\s*$/.test(line)) {
+        return [];
+      }
+
+      const cleaned = line.replace(componentTag, "").trimEnd();
+      return cleaned.trim().length > 0 ? cleaned : [];
+    })
+    .join("\n")
+    .trim();
+}
+
+function readJson(path: string) {
+  if (!existsSync(path)) return undefined;
+
+  return JSON.parse(readFileSync(path, "utf-8")) as
+    | Record<string, unknown>
+    | undefined;
+}
+
+function humanize(value: string) {
+  return value
+    .split("-")
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(" ");
 }

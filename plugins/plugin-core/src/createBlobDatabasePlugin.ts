@@ -427,8 +427,6 @@ export const createBlobDatabasePlugin = <TConfig>({
     const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
     const managementRootCache = new Map<string, ManagementIndexRoot | null>();
 
-    const PLATFORMS = ["ios", "android"] as const;
-
     const getAllManagementArtifact = (
       artifacts: ManagementIndexArtifacts,
     ): ManagementIndexScopeArtifact => {
@@ -525,13 +523,17 @@ export const createBlobDatabasePlugin = <TConfig>({
       nextArtifacts: ManagementIndexArtifacts,
       previousArtifacts?: ManagementIndexArtifacts,
     ): Promise<void> => {
-      for (const [key, page] of nextArtifacts.pages.entries()) {
-        await uploadObject(key, page);
-      }
+      await Promise.all(
+        Array.from(nextArtifacts.pages.entries()).map(([key, page]) =>
+          uploadObject(key, page),
+        ),
+      );
 
-      for (const scope of nextArtifacts.scopes) {
-        await uploadObject(scope.rootKey, scope.root);
-      }
+      await Promise.all(
+        nextArtifacts.scopes.map((scope) =>
+          uploadObject(scope.rootKey, scope.root),
+        ),
+      );
 
       if (!previousArtifacts) {
         return;
@@ -542,17 +544,17 @@ export const createBlobDatabasePlugin = <TConfig>({
         nextArtifacts.scopes.map((scope) => scope.rootKey),
       );
 
-      for (const [key] of previousArtifacts.pages.entries()) {
-        if (!nextPageKeys.has(key)) {
-          await deleteObject(key).catch(() => {});
-        }
-      }
+      await Promise.all(
+        Array.from(previousArtifacts.pages.keys())
+          .filter((key) => !nextPageKeys.has(key))
+          .map((key) => deleteObject(key).catch(() => {})),
+      );
 
-      for (const scope of previousArtifacts.scopes) {
-        if (!nextRootKeys.has(scope.rootKey)) {
-          await deleteObject(scope.rootKey).catch(() => {});
-        }
-      }
+      await Promise.all(
+        previousArtifacts.scopes
+          .filter((scope) => !nextRootKeys.has(scope.rootKey))
+          .map((scope) => deleteObject(scope.rootKey).catch(() => {})),
+      );
     };
 
     const ensureAllManagementRoot = async (): Promise<ManagementIndexRoot> => {
@@ -620,6 +622,14 @@ export const createBlobDatabasePlugin = <TConfig>({
 
     const loadCurrentBundlesForIndexRebuild = async (): Promise<Bundle[]> => {
       return loadAllBundlesForManagementFallback();
+    };
+
+    const loadStoredBundlesForIndexRebuild = async (): Promise<Bundle[]> => {
+      return sortManagedBundles(
+        (await reloadBundles()).map((bundle) =>
+          removeBundleInternalKeys(bundle),
+        ),
+      );
     };
 
     const findPageIndexContainingId = (
@@ -962,7 +972,11 @@ export const createBlobDatabasePlugin = <TConfig>({
         bundlesMap.set(id, bundle);
       }
 
-      const sortedBundles = orderBy(allBundles, [(v) => v.id], ["desc"]);
+      const sortedBundles = orderBy(
+        Array.from(bundlesMap.values()),
+        [(v) => v.id],
+        ["desc"],
+      );
       return sortedBundles;
     }
 
@@ -1261,18 +1275,9 @@ export const createBlobDatabasePlugin = <TConfig>({
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};
           const pathsToInvalidate: Set<string> = new Set();
-
-          let isTargetAppVersionChanged = false;
-          let isChannelChanged = false;
+          const targetVersionPlatforms = new Set<string>();
 
           for (const { operation, data } of changedSets) {
-            if (data.targetAppVersion !== undefined) {
-              isTargetAppVersionChanged = true;
-            }
-            if (operation === "update" && data.channel !== undefined) {
-              isChannelChanged = true;
-            }
-
             // Insert operation.
             if (operation === "insert") {
               const target = resolveStorageTarget(data);
@@ -1290,6 +1295,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                 removeBundleInternalKeys(bundleWithKey),
               );
 
+              if (data.targetAppVersion !== undefined) {
+                targetVersionPlatforms.add(data.platform);
+              }
               addLookupInvalidationPaths(pathsToInvalidate, data);
               continue;
             }
@@ -1313,6 +1321,9 @@ export const createBlobDatabasePlugin = <TConfig>({
               removalsByKey[key] = removalsByKey[key] || [];
               removalsByKey[key].push(bundle.id);
 
+              if (bundle.targetAppVersion !== undefined) {
+                targetVersionPlatforms.add(bundle.platform);
+              }
               addLookupInvalidationPaths(pathsToInvalidate, bundle);
               continue;
             }
@@ -1360,6 +1371,13 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
 
+                if (
+                  bundle.targetAppVersion !== undefined ||
+                  updatedBundle.targetAppVersion !== undefined
+                ) {
+                  targetVersionPlatforms.add(bundle.platform);
+                  targetVersionPlatforms.add(updatedBundle.platform);
+                }
                 addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
                 if (
                   bundle.targetAppVersion &&
@@ -1391,8 +1409,8 @@ export const createBlobDatabasePlugin = <TConfig>({
           }
 
           // Remove bundles from their old keys.
-          for (const oldKey of Object.keys(removalsByKey)) {
-            await (async () => {
+          await Promise.all(
+            Object.keys(removalsByKey).map(async (oldKey) => {
               const currentBundles = (await loadObject<Bundle[]>(oldKey)) ?? [];
               const updatedBundles = currentBundles.filter(
                 (b) => !removalsByKey[oldKey].includes(b.id),
@@ -1403,12 +1421,12 @@ export const createBlobDatabasePlugin = <TConfig>({
               } else {
                 await uploadObject(oldKey, updatedBundles);
               }
-            })();
-          }
+            }),
+          );
 
           // Add or update bundles in their new keys.
-          for (const key of Object.keys(changedBundlesByKey)) {
-            await (async () => {
+          await Promise.all(
+            Object.keys(changedBundlesByKey).map(async (key) => {
               const currentBundles = (await loadObject<Bundle[]>(key)) ?? [];
               const pureBundles = changedBundlesByKey[key].map(
                 (bundle) => bundle,
@@ -1425,18 +1443,22 @@ export const createBlobDatabasePlugin = <TConfig>({
               }
               currentBundles.sort((a, b) => b.id.localeCompare(a.id));
               await uploadObject(key, currentBundles);
-            })();
+            }),
+          );
+
+          if (targetVersionPlatforms.size > 0) {
+            await Promise.all(
+              Array.from(targetVersionPlatforms).map((platform) =>
+                updateTargetVersionsForPlatform(platform),
+              ),
+            );
           }
 
-          if (isTargetAppVersionChanged || isChannelChanged) {
-            for (const platform of PLATFORMS) {
-              await updateTargetVersionsForPlatform(platform);
-            }
-          }
-
-          const currentIndexBundles = await loadCurrentBundlesForIndexRebuild();
+          const previousIndexBundles =
+            await loadCurrentBundlesForIndexRebuild();
+          const storedIndexBundles = await loadStoredBundlesForIndexRebuild();
           const nextIndexMap = new Map(
-            currentIndexBundles.map((bundle) => [bundle.id, bundle]),
+            storedIndexBundles.map((bundle) => [bundle.id, bundle]),
           );
           for (const { operation, data } of changedSets) {
             if (operation === "delete") {
@@ -1451,7 +1473,7 @@ export const createBlobDatabasePlugin = <TConfig>({
             Array.from(nextIndexMap.values()),
           );
           const previousArtifacts = buildManagementIndexArtifacts(
-            currentIndexBundles,
+            previousIndexBundles,
             managementIndexPageSize,
           );
           const nextArtifacts = buildManagementIndexArtifacts(

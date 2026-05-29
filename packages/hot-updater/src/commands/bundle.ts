@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from "timers/promises";
+
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
@@ -67,6 +69,8 @@ export interface BundleUpdateOptions extends BundleMutationOptions {
 }
 
 const DEFAULT_LIMIT = 20;
+const DELETE_VERIFY_ATTEMPTS = 12;
+const DELETE_VERIFY_DELAY_MS = 1000;
 
 const formatRow = (bundle: Bundle): Record<ListField, string> => {
   const out = {} as Record<ListField, string>;
@@ -368,8 +372,8 @@ export const handleBundleDelete = async (
     await databasePlugin.deleteBundle(bundle);
     await databasePlugin.commitBundle();
 
-    const refetched = await databasePlugin.getBundleById(bundleId);
-    if (refetched) {
+    const deleted = await waitForDeletedBundle(databasePlugin, bundleId);
+    if (!deleted) {
       p.log.error(`Verification failed: ${bundleId} still exists.`);
       process.exit(1);
     }
@@ -380,3 +384,21 @@ export const handleBundleDelete = async (
     await safeOnUnmount(databasePlugin);
   }
 };
+
+async function waitForDeletedBundle(
+  databasePlugin: DatabasePlugin,
+  bundleId: string,
+) {
+  for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
+    const refetched = await databasePlugin.getBundleById(bundleId);
+    if (!refetched) {
+      return true;
+    }
+
+    if (attempt < DELETE_VERIFY_ATTEMPTS - 1) {
+      await sleep(DELETE_VERIFY_DELAY_MS);
+    }
+  }
+
+  return false;
+}
