@@ -706,6 +706,45 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
+  it("keeps optional maintenance capabilities lazy", () => {
+    const factory = vi.fn(() => ({
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 0,
+          },
+        };
+      },
+      async getChannels() {
+        return [];
+      },
+      async commitBundle() {},
+    }));
+    const database = createDatabasePlugin({
+      name: "lazyRuntimePlugin",
+      factory,
+    })({});
+
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/api/check-update",
+    });
+
+    expect(factory).not.toHaveBeenCalled();
+    expect(hotUpdater.diagnostics).toBeUndefined();
+    expect(factory).not.toHaveBeenCalled();
+    expect(hotUpdater.diagnostics).toBeUndefined();
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it("clears pending plugin changes after a failed mutation commit", async () => {
     const committedBundles = new Map<string, Bundle>();
     let commitAttempt = 0;

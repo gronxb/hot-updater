@@ -19,6 +19,7 @@ import {
   handleCleanup,
   handleComputeRolloutSample,
   handleReinstallBuiltInApp,
+  handleResetLocalAppState,
   handleResetRemoteBundles,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
@@ -166,7 +167,9 @@ app.post("/e2e/jobs/patch-bundle", async (c) => {
 
 app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
+    attempts?: number;
     bundleId?: string;
+    relaunchLimit?: number;
     verificationPending?: boolean;
   };
   if (!payload.bundleId || typeof payload.verificationPending !== "boolean") {
@@ -180,6 +183,10 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
     jobId: startWaitForMetadataJob(
       payload.bundleId,
       payload.verificationPending,
+      {
+        attempts: payload.attempts,
+        relaunchLimit: payload.relaunchLimit,
+      },
     ),
   });
 });
@@ -256,6 +263,10 @@ app.post("/e2e/reinstall-built-in-app", async (c) => {
 
 app.post("/e2e/reset-remote-bundles", async (c) => {
   return c.json(await handleResetRemoteBundles());
+});
+
+app.post("/e2e/reset-local-app-state", async (c) => {
+  return c.json(await handleResetLocalAppState());
 });
 
 app.post("/e2e/capture-state", async (c) => {

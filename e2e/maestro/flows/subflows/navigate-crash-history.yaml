@@ -7,9 +7,16 @@ appId: ${APP_ID}
 - tapOn:
     id: e2e-nav-crash-history
     retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 2000
+    waitToSettleTimeoutMs: 500
 - waitForAnimationToEnd:
-    timeout: 2000
+    timeout: 500
+- runFlow:
+    file: navigate-top.yaml
+- scrollUntilVisible:
+    element:
+      id: section-crash-history
+    direction: DOWN
+    timeout: 10000
 - extendedWaitUntil:
     visible:
       id: section-crash-history

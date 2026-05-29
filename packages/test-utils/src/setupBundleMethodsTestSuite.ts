@@ -524,6 +524,40 @@ export const setupBundleMethodsTestSuite = ({
       expect(secondPage.pagination.hasPreviousPage).toBe(true);
     });
 
+    it("should list more than 100 bundles in one page", async () => {
+      const bundles: Bundle[] = Array.from({ length: 200 }, (_, index) => {
+        const bundleNumber = index + 1;
+        return {
+          id: `00000000-0000-0000-0000-${String(bundleNumber).padStart(
+            12,
+            "0",
+          )}`,
+          platform: "ios",
+          shouldForceUpdate: false,
+          enabled: true,
+          fileHash: `hash-many-${bundleNumber}`,
+          gitCommitHash: null,
+          message: `Many bundle ${bundleNumber}`,
+          channel: "production",
+          storageUri: `mock://test/many-${bundleNumber}.zip`,
+          targetAppVersion: "1.0.0",
+          fingerprintHash: null,
+        };
+      });
+
+      for (const bundle of bundles) {
+        await insertBundle(bundle);
+      }
+
+      const result = await getBundles({
+        orderBy: { field: "id", direction: "desc" },
+        limit: 200,
+      });
+
+      expect(result.data).toHaveLength(200);
+      expect(result.pagination.total).toBe(200);
+    });
+
     it("should support null and not-null bundle filters", async () => {
       const bundles: Bundle[] = [
         {

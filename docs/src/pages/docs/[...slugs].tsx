@@ -20,7 +20,7 @@ const getMarkdownUrl = (slugs: string[]) => {
   const segments = slugs.length > 0 ? slugs : ["index"];
   const last = segments.at(-1)!;
 
-  return `/api/markdown/${[...segments.slice(0, -1), `${last}.mdx`].join("/")}`;
+  return `/api/markdown/${[...segments.slice(0, -1), `${last}.md`].join("/")}`;
 };
 
 export default function DocPage({ slugs }: PageProps<"/docs/[...slugs]">) {

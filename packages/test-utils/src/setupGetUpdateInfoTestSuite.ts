@@ -1159,6 +1159,36 @@ export const setupGetUpdateInfoTestSuite = ({
 
       expect(update).toBeNull();
     });
+
+    it("applies update when many distinct target app versions are compatible", async () => {
+      const bundles: Bundle[] = Array.from({ length: 200 }, (_, index) => {
+        const bundleNumber = index + 1;
+        return {
+          ...DEFAULT_BUNDLE_APP_VERSION_STRATEGY,
+          targetAppVersion: `>=0.${index}.0`,
+          enabled: true,
+          id: `00000000-0000-0000-0000-${String(bundleNumber).padStart(
+            12,
+            "0",
+          )}`,
+          shouldForceUpdate: false,
+        };
+      });
+
+      const update = await getUpdateInfo(bundles, {
+        appVersion: "1.0.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      });
+
+      expect(update).toMatchObject({
+        id: "00000000-0000-0000-0000-000000000200",
+        message: "hello",
+        shouldForceUpdate: false,
+        status: "UPDATE",
+      });
+    }, 120000);
   });
 
   describe("fingerprint strategy", () => {

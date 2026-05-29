@@ -52,6 +52,19 @@ interface BuildQueryResult {
   params: unknown[];
 }
 
+const buildJsonEachInClause = (
+  columnName: string,
+  values: string[],
+  params: unknown[],
+) => {
+  if (values.length === 0) {
+    return "1 = 0";
+  }
+
+  params.push(JSON.stringify(values));
+  return `${columnName} IN (SELECT value FROM json_each(?))`;
+};
+
 interface D1WorkerBundleRow {
   id: string;
   channel: string;
@@ -108,12 +121,7 @@ function buildWhereClause(
   }
 
   if (conditions.id?.in) {
-    if (conditions.id.in.length === 0) {
-      clauses.push("1 = 0");
-    } else {
-      clauses.push(`id IN (${conditions.id.in.map(() => "?").join(", ")})`);
-      params.push(...conditions.id.in);
-    }
+    clauses.push(buildJsonEachInClause("id", conditions.id.in, params));
   }
 
   if (conditions.id?.eq) {
@@ -155,16 +163,13 @@ function buildWhereClause(
   }
 
   if (conditions.targetAppVersionIn) {
-    if (conditions.targetAppVersionIn.length === 0) {
-      clauses.push("1 = 0");
-    } else {
-      clauses.push(
-        `target_app_version IN (${conditions.targetAppVersionIn
-          .map(() => "?")
-          .join(", ")})`,
-      );
-      params.push(...conditions.targetAppVersionIn);
-    }
+    clauses.push(
+      buildJsonEachInClause(
+        "target_app_version",
+        conditions.targetAppVersionIn,
+        params,
+      ),
+    );
   }
 
   if (conditions.fingerprintHash !== undefined) {
@@ -335,15 +340,14 @@ export const d1WorkerDatabase = <
           return patchMap;
         }
 
-        const placeholders = bundleIds.map(() => "?").join(", ");
         const rows = await queryAll<D1WorkerBundlePatchRow>(
           `
             SELECT *
             FROM bundle_patches
-            WHERE bundle_id IN (${placeholders})
+            WHERE bundle_id IN (SELECT value FROM json_each(?))
             ORDER BY order_index ASC, base_bundle_id ASC
           `,
-          bundleIds,
+          [JSON.stringify(bundleIds)],
           context,
         );
 

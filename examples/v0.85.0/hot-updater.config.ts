@@ -11,6 +11,10 @@ config({ path: ".env.hotupdater" });
 
 const standaloneStorageBaseUrl =
   process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;
+const standaloneRepositoryBaseUrl =
+  process.env.HOT_UPDATER_CONTROL_BASE_URL ??
+  process.env.HOT_UPDATER_APP_BASE_URL;
+const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 const managementAuthToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
 const managementHeaders = managementAuthToken
   ? { Authorization: `Bearer ${managementAuthToken}` }
@@ -46,7 +50,7 @@ export default defineConfig({
     },
   },
 
-  build: bare({ enableHermes: true }),
+  build: bare({ enableHermes: true, resetCache: false }),
   storage: standaloneStorageBaseUrl
     ? standaloneStorage({
         baseUrl: standaloneStorageBaseUrl.replace(/\/+$/, ""),
@@ -59,9 +63,10 @@ export default defineConfig({
           secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
         },
         bucketName: process.env.R2_BUCKET_NAME!,
+        basePath: providerNamespace,
       }),
   database: standaloneRepository({
-    baseUrl: "http://localhost:3007/hot-updater",
+    baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
     ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
   }),
   fingerprint: {

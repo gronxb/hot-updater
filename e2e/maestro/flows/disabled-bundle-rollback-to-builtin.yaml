@@ -94,6 +94,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:

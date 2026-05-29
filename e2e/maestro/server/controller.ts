@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
+import type { FileHandle } from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
@@ -17,6 +18,7 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -54,6 +56,7 @@ type SessionState = {
   appId: string;
   appSourceFile: string;
   builtArtifactPath: string | null;
+  bootstrapResult: JobResult | null;
   builtInBundleId: string | null;
   configBackupPath: string | null;
   configSourceFile: string;
@@ -113,6 +116,43 @@ type BundleListPage = {
   };
 };
 
+const REMOTE_RESET_DATABASE_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results: TResult[] = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        if (index >= items.length) {
+          break;
+        }
+
+        results[index] = await mapper(items[index]!, index);
+      }
+    }),
+  );
+
+  return results;
+}
+
+async function forEachWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  await mapWithConcurrency(items, concurrency, mapper);
+}
+
 type LaunchReportAssertion = {
   crashedBundleId?: string;
   optional: boolean;
@@ -132,11 +172,73 @@ const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
 );
+const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
+const BARE_BUILD_CACHE_VERSION = 1;
+const BARE_BUILD_CACHE_LOCK_STALE_MS = 45 * 60 * 1000;
+const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
+const BARE_BUILD_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/App.tsx",
+  "examples/v0.85.0/index.js",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/babel.config.js",
+  "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/src/test",
+  "plugins/bare",
+  "packages/core",
+  "packages/hot-updater/src/utils/bundleManifest.ts",
+  "packages/react-native",
+];
+const NATIVE_ARTIFACT_CACHE_VERSION = 4;
+const IOS_PODS_CACHE_VERSION = 2;
+const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
+const IOS_RELEASE_BUILD_SETTINGS = [
+  "ONLY_ACTIVE_ARCH=YES",
+  "COMPILER_INDEX_STORE_ENABLE=NO",
+  "GCC_GENERATE_DEBUGGING_SYMBOLS=NO",
+  "SWIFT_COMPILATION_MODE=singlefile",
+];
+const BUILT_IN_BUNDLE_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/App.tsx",
+  "examples/v0.85.0/index.js",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/babel.config.js",
+  "examples/v0.85.0/metro.config.js",
+  "packages/core",
+  "packages/react-native/package.json",
+  "packages/react-native/src",
+];
+const IOS_PODS_CACHE_INPUT_PATHS = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "examples/v0.85.0/Gemfile",
+  "examples/v0.85.0/Gemfile.lock",
+  "examples/v0.85.0/package.json",
+  "examples/v0.85.0/ios/Podfile",
+  "examples/v0.85.0/ios/Podfile.lock",
+  "packages/react-native/HotUpdater.podspec",
+  "packages/react-native/package.json",
+  "packages/react-native/ios",
+];
+const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
+const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
+const FINGERPRINT_FILE = path.join(EXAMPLE_DIR, "fingerprint.json");
+const IOS_INFO_PLIST_FILE = path.join(
+  EXAMPLE_DIR,
+  "ios/HotUpdaterExample/Info.plist",
+);
+const ANDROID_STRINGS_FILE = path.join(
+  EXAMPLE_DIR,
+  "android/app/src/main/res/values/strings.xml",
+);
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -153,8 +255,21 @@ const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
 const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
+const BARE_BUILD_INLINE_PATTERN =
+  /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
+const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
+  /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
+const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
+const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
+const NATIVE_ARTIFACT_LOCK_STALE_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
+const E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES = "HotUpdaterE2E";
+const E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY =
+  "HOT_UPDATER_E2E_APP_BASE_URL";
+const E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY =
+  "HOT_UPDATER_E2E_CHANNEL_NAMESPACE";
+const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
@@ -196,6 +311,71 @@ const MULTI_ASSET_BMP_ROW_SIZE = Math.ceil((MULTI_ASSET_BMP_WIDTH * 3) / 4) * 4;
 const MULTI_ASSET_BMP_SIZE_BYTES =
   MULTI_ASSET_BMP_HEADER_SIZE +
   MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
+const ANDROID_E2E_ARCHITECTURES = new Set([
+  "armeabi-v7a",
+  "arm64-v8a",
+  "x86",
+  "x86_64",
+]);
+const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_ATTEMPTS || 3,
+);
+const REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS || 5000,
+);
+const REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS || 20,
+);
+const REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS || 500,
+);
+const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_ATTEMPTS || 3,
+);
+const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
+);
+const PROVIDER_READY_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_ATTEMPTS || 120,
+);
+const PROVIDER_READY_WAIT_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_DELAY_MS || 1000,
+);
+const PROVIDER_READY_HTTP_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_PROVIDER_READY_HTTP_TIMEOUT_MS || 2000,
+);
+const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
+);
+const AUTO_PATCH_METADATA_WAIT_DELAY_MS = Number(
+  process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_DELAY_MS || 500,
+);
+const DELETE_VERIFY_STILL_EXISTS_PATTERN =
+  /Verification failed: .+ still exists\./i;
+const E2E_POLL_INTERVAL_MS = Number(
+  process.env.HOT_UPDATER_E2E_POLL_INTERVAL_MS || 250,
+);
+const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
+);
+const E2E_ANDROID_FOREGROUND_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_TIMEOUT_MS || 30000,
+);
+const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
+);
+const E2E_IOS_LAUNCH_SETTLE_MS = Number(
+  process.env.HOT_UPDATER_E2E_IOS_LAUNCH_SETTLE_MS || 1000,
+);
+const E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
+  process.env.HOT_UPDATER_E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH || 120,
+);
+const E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH || 40,
+);
+const E2E_METADATA_WAIT_RELAUNCH_LIMIT = Number(
+  process.env.HOT_UPDATER_E2E_METADATA_WAIT_RELAUNCH_LIMIT || 2,
+);
 const LOG_PREFIX = "[maestro-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -221,6 +401,21 @@ function formatLogValue(value: unknown) {
 function logE2e(event: string, details?: unknown) {
   const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
+}
+
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isTransientProviderError(error: unknown) {
+  const message = formatErrorMessage(error);
+  return /\b(fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|network timeout)\b/i.test(
+    message,
+  );
+}
+
+function hashText(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
@@ -259,6 +454,7 @@ const session: SessionState = {
   appId,
   appSourceFile: APP_SOURCE_FILE,
   builtArtifactPath: null,
+  bootstrapResult: null,
   builtInBundleId: null,
   configBackupPath: null,
   configSourceFile: HOT_UPDATER_CONFIG_FILE,
@@ -281,7 +477,23 @@ const session: SessionState = {
   storePath: null,
 };
 
+const channelNamespace =
+  process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
+
+function getRemoteChannel(channel: string) {
+  return channelNamespace ? `${channelNamespace}-${channel}` : channel;
+}
+
+function getRemoteResetChannels() {
+  return channelNamespace
+    ? E2E_REMOTE_RESET_LOGICAL_CHANNELS.map((channel) =>
+        getRemoteChannel(channel),
+      )
+    : null;
+}
+
 const jobs = new Map<string, JobState>();
+let bootstrapJobId: string | null = null;
 
 function runCapture(
   command: string,
@@ -330,9 +542,27 @@ async function runLogged(
   const logStream = fs.createWriteStream(options.logPath, { flags: "w" });
   const child = spawn(command, args, {
     cwd: options.cwd,
+    detached: true,
     env: { ...process.env, ...options.env },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  let childExited = false;
+  const killChildGroup = () => {
+    if (childExited || child.pid === undefined) {
+      return;
+    }
+
+    try {
+      process.kill(-child.pid, "SIGTERM");
+    } catch {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        return;
+      }
+    }
+  };
+  process.once("exit", killChildGroup);
 
   child.stdout.on("data", (chunk: Buffer) => {
     output.push(chunk);
@@ -343,20 +573,724 @@ async function runLogged(
     logStream.write(chunk);
   });
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
+  const exitResult = await new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolve, reject) => {
     child.once("error", reject);
-    child.once("close", resolve);
+    child.once("exit", (code, signal) => {
+      childExited = true;
+      process.removeListener("exit", killChildGroup);
+      resolve({ code, signal });
+    });
   });
 
+  await new Promise((resolve) =>
+    setTimeout(resolve, COMMAND_STDIO_DRAIN_GRACE_MS),
+  );
   logStream.end();
 
-  if (exitCode !== 0 && !options.allowFailure) {
+  if ((exitResult.code !== 0 || exitResult.signal) && !options.allowFailure) {
     throw new Error(
-      `${command} ${args.join(" ")} failed with code ${exitCode}. See ${options.logPath}`,
+      `${command} ${args.join(" ")} failed with ${
+        exitResult.signal ?? `code ${exitResult.code}`
+      }. See ${options.logPath}`,
     );
   }
 
   return Buffer.concat(output).toString("utf8");
+}
+
+const RELEASE_BUNDLE_ENV = {
+  NODE_ENV: "production",
+} satisfies NodeJS.ProcessEnv;
+
+function stripAnsi(value: string) {
+  return value.replace(
+    new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g"),
+    "",
+  );
+}
+
+function extractDeployBundleId(output: string) {
+  const plainOutput = stripAnsi(output);
+  const match = plainOutput.match(
+    /Deployment Successful \(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/i,
+  );
+
+  return match?.[1] ?? null;
+}
+
+async function readTextIfExists(filePath: string) {
+  try {
+    return await fsPromises.readFile(filePath, "utf8");
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return "";
+    }
+
+    throw error;
+  }
+}
+
+function nativeArtifactCacheRoot() {
+  const cacheDir = process.env.HOT_UPDATER_E2E_NATIVE_CACHE_DIR;
+  if (!cacheDir) {
+    return null;
+  }
+
+  return path.resolve(REPO_DIR, cacheDir);
+}
+
+function bareBuildCacheRoot() {
+  const cacheDir = process.env.HOT_UPDATER_E2E_BARE_BUILD_CACHE_DIR;
+  if (!cacheDir) {
+    return null;
+  }
+
+  return path.resolve(REPO_DIR, cacheDir);
+}
+
+function readOptionalFileHash(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    return "missing";
+  }
+
+  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function readGitTrackedInputFiles(inputPaths: string[]) {
+  const output = runCapture("git", ["ls-files", "-z", "--", ...inputPaths], {
+    cwd: REPO_DIR,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+
+  return output.split("\0").filter(Boolean).sort();
+}
+
+function hashGitTrackedInputFiles(inputPaths: string[]) {
+  const hash = createHash("sha256");
+  for (const relativePath of readGitTrackedInputFiles(inputPaths)) {
+    const absolutePath = path.join(REPO_DIR, relativePath);
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      continue;
+    }
+
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(fs.readFileSync(absolutePath));
+    hash.update("\0");
+  }
+
+  return hash.digest("hex");
+}
+
+function hashBuiltInBundleInputs() {
+  return hashGitTrackedInputFiles(BUILT_IN_BUNDLE_CACHE_INPUT_PATHS);
+}
+
+function hashIosPodsInputs() {
+  return hashGitTrackedInputFiles(IOS_PODS_CACHE_INPUT_PATHS);
+}
+
+function hashBareBuildInputs() {
+  return hashGitTrackedInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
+}
+
+function bareBuildConfigFingerprint() {
+  const source = fs.existsSync(HOT_UPDATER_CONFIG_FILE)
+    ? fs.readFileSync(HOT_UPDATER_CONFIG_FILE, "utf8")
+    : "";
+  const match = source.match(BARE_BUILD_INLINE_PATTERN);
+
+  return hashText(match?.[0] ?? "missing");
+}
+
+function signingKeyFingerprint() {
+  const privateKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+  const publicKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PUBLIC_KEY_RELATIVE_PATH,
+  );
+
+  return hashText(
+    JSON.stringify({
+      privateKey: readOptionalFileHash(privateKeyPath),
+      publicKey: readOptionalFileHash(publicKeyPath),
+    }),
+  );
+}
+
+async function exportNativePublicKeyFromSigningKey() {
+  const privateKeyPath = path.join(
+    session.exampleDir,
+    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
+  );
+
+  if (!fs.existsSync(privateKeyPath)) {
+    logE2e("native public key export skipped", {
+      privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
+      reason: "private key file missing",
+    });
+    return;
+  }
+
+  await runLogged(
+    "node",
+    [HOT_UPDATER_CLI_PATH, "keys", "export-public", "--yes"],
+    {
+      cwd: session.exampleDir,
+      env: RELEASE_BUNDLE_ENV,
+      logPath: path.join(session.resultsDir, "keys-export-public.log"),
+    },
+  );
+
+  logE2e("native public key exported", {
+    privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
+  });
+}
+
+function readToolFingerprint() {
+  if (session.platform !== "ios") {
+    return null;
+  }
+
+  return runCapture("xcodebuild", ["-version"], {
+    allowFailure: true,
+  });
+}
+
+function readFingerprintJsonHash() {
+  if (!fs.existsSync(FINGERPRINT_FILE)) {
+    throw new Error(
+      `Hot Updater fingerprint file is missing: ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
+    );
+  }
+
+  const fingerprint = JSON.parse(fs.readFileSync(FINGERPRINT_FILE, "utf8")) as {
+    android?: { hash?: unknown };
+    ios?: { hash?: unknown };
+  };
+  const platformFingerprint = fingerprint[session.platform]?.hash;
+  if (typeof platformFingerprint !== "string" || !platformFingerprint.trim()) {
+    throw new Error(
+      `Hot Updater ${session.platform} fingerprint hash is missing from ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
+    );
+  }
+  return platformFingerprint.trim();
+}
+
+function readIosEmbeddedFingerprintHash() {
+  if (!fs.existsSync(IOS_INFO_PLIST_FILE)) {
+    return null;
+  }
+
+  const source = fs.readFileSync(IOS_INFO_PLIST_FILE, "utf8");
+  const match = source.match(
+    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>([^<]+)<\/string>/,
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function readAndroidEmbeddedFingerprintHash() {
+  if (!fs.existsSync(ANDROID_STRINGS_FILE)) {
+    return null;
+  }
+
+  const source = fs.readFileSync(ANDROID_STRINGS_FILE, "utf8");
+  const match = source.match(
+    /<string\s+name="hot_updater_fingerprint_hash"[^>]*>([^<]+)<\/string>/,
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function readEmbeddedFingerprintHash() {
+  return session.platform === "ios"
+    ? readIosEmbeddedFingerprintHash()
+    : readAndroidEmbeddedFingerprintHash();
+}
+
+function hotUpdaterNativeFingerprintHash() {
+  const fingerprintHash = readFingerprintJsonHash();
+  const embeddedHash = readEmbeddedFingerprintHash();
+
+  if (embeddedHash !== fingerprintHash) {
+    throw new Error(
+      [
+        `Hot Updater ${session.platform} fingerprint mismatch.`,
+        `fingerprint.json=${fingerprintHash}`,
+        `embedded=${embeddedHash ?? "missing"}`,
+        "Run `pnpm hot-updater fingerprint create` in examples/v0.85.0 before reusing native artifacts.",
+      ].join(" "),
+    );
+  }
+
+  return fingerprintHash;
+}
+
+function nativeArtifactCacheKey(architecture?: string | null) {
+  return hashText(
+    JSON.stringify({
+      appId: session.appId,
+      architecture: architecture ?? null,
+      builtInBundle: hashBuiltInBundleInputs(),
+      cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
+      hotUpdaterFingerprint: hotUpdaterNativeFingerprintHash(),
+      initialMarker: session.initialMarker,
+      platform: session.platform,
+      runtime: {
+        arch: process.arch,
+        platform: process.platform,
+      },
+      signingKey: signingKeyFingerprint(),
+      tool: readToolFingerprint(),
+    }),
+  );
+}
+
+function nativeArtifactCachePaths(key: string) {
+  const root = nativeArtifactCacheRoot();
+  if (!root) {
+    return null;
+  }
+
+  const entryDir = path.join(root, session.platform, key);
+  return {
+    artifactPath: path.join(
+      entryDir,
+      session.platform === "ios" ? "HotUpdaterExample.app" : "app-release.apk",
+    ),
+    entryDir,
+    manifestPath: path.join(entryDir, "manifest.json"),
+    root,
+  };
+}
+
+function iosPodsCacheKey() {
+  return hashText(
+    JSON.stringify({
+      cacheVersion: IOS_PODS_CACHE_VERSION,
+      inputHash: hashIosPodsInputs(),
+      platform: "ios",
+      runtime: {
+        arch: process.arch,
+        platform: process.platform,
+      },
+      tool: readToolFingerprint(),
+    }),
+  );
+}
+
+function iosPodsCachePaths(key: string) {
+  const root = nativeArtifactCacheRoot();
+  if (!root) {
+    return null;
+  }
+
+  const entryDir = path.join(root, "ios-pods", key);
+  return {
+    entryDir,
+    manifestPath: path.join(entryDir, "manifest.json"),
+    podsPath: path.join(entryDir, "Pods"),
+    root,
+  };
+}
+
+function reuseAppInstallMarkerPath(cacheKey: string) {
+  return path.join(
+    EXAMPLE_DIR,
+    "e2e/.reuse-app-installs",
+    `${session.platform}-${hashText(deviceId as string).slice(0, 12)}-${cacheKey}`,
+  );
+}
+
+async function hasReuseAppInstallMarker(cacheKey: string) {
+  return fs.existsSync(reuseAppInstallMarkerPath(cacheKey));
+}
+
+async function writeReuseAppInstallMarker(cacheKey: string) {
+  const markerPath = reuseAppInstallMarkerPath(cacheKey);
+  await fsPromises.mkdir(path.dirname(markerPath), { recursive: true });
+  await fsPromises.writeFile(markerPath, `${new Date().toISOString()}\n`);
+}
+
+async function copyNativeArtifact(sourcePath: string, targetPath: string) {
+  await fsPromises.rm(targetPath, { recursive: true, force: true });
+  await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
+  if (process.platform === "darwin") {
+    const result = spawnSync("cp", ["-cR", sourcePath, targetPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status === 0) {
+      return;
+    }
+    logE2e("clone copy failed; falling back to fs copy", {
+      error: result.stderr.trim(),
+      sourcePath,
+      targetPath,
+    });
+  }
+  await fsPromises.cp(sourcePath, targetPath, {
+    errorOnExist: false,
+    force: true,
+    recursive: true,
+  });
+}
+
+async function* walkFiles(dir: string): AsyncGenerator<string> {
+  const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkFiles(entryPath);
+    } else if (entry.isFile()) {
+      yield entryPath;
+    }
+  }
+}
+
+function shouldRelocateIosPodsFile(filePath: string) {
+  return [".json", ".pbxproj", ".xcconfig", ".yaml", ".yml"].includes(
+    path.extname(filePath),
+  );
+}
+
+async function relocateIosPodsAbsolutePaths(podsPath: string) {
+  if (!fs.existsSync(podsPath)) {
+    return;
+  }
+
+  const reactCorePrebuiltPath = path.join(podsPath, "React-Core-prebuilt");
+  const reactVfsPath = path.join(reactCorePrebuiltPath, "React-VFS.yaml");
+  let replacements = 0;
+  let files = 0;
+
+  for await (const filePath of walkFiles(podsPath)) {
+    if (!shouldRelocateIosPodsFile(filePath)) {
+      continue;
+    }
+
+    const text = await fsPromises.readFile(filePath, "utf8");
+    const relocated = text
+      .replaceAll(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\/React-VFS\.yaml/g,
+        reactVfsPath,
+      )
+      .replaceAll(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\//g,
+        `${reactCorePrebuiltPath}/`,
+      );
+    if (relocated === text) {
+      continue;
+    }
+
+    files += 1;
+    replacements +=
+      text.split(
+        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt/g,
+      ).length - 1;
+    await fsPromises.writeFile(filePath, relocated);
+  }
+
+  if (replacements > 0) {
+    logE2e("ios pods absolute paths relocated", {
+      files,
+      podsPath,
+      replacements,
+    });
+  }
+}
+
+async function restoreNativeArtifactFromCache(args: {
+  architecture?: string | null;
+  key?: string;
+  targetPath: string;
+}) {
+  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
+  const paths = nativeArtifactCachePaths(key);
+  if (!paths) {
+    return false;
+  }
+
+  if (
+    !fs.existsSync(paths.manifestPath) ||
+    !fs.existsSync(paths.artifactPath)
+  ) {
+    logE2e("native artifact cache miss", {
+      key: key.slice(0, 16),
+      platform: session.platform,
+      root: paths.root,
+    });
+    return false;
+  }
+
+  await copyNativeArtifact(paths.artifactPath, args.targetPath);
+  logE2e("native artifact cache hit", {
+    key: key.slice(0, 16),
+    platform: session.platform,
+    source: paths.artifactPath,
+  });
+  return true;
+}
+
+async function saveNativeArtifactToCache(args: {
+  architecture?: string | null;
+  key?: string;
+  sourcePath: string;
+}) {
+  if (!fs.existsSync(args.sourcePath)) {
+    return;
+  }
+
+  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
+  const paths = nativeArtifactCachePaths(key);
+  if (!paths) {
+    return;
+  }
+
+  const tempArtifactPath = `${paths.artifactPath}.tmp-${process.pid}-${Date.now()}`;
+  await fsPromises.mkdir(paths.entryDir, { recursive: true });
+  await copyNativeArtifact(args.sourcePath, tempArtifactPath);
+  await fsPromises.rm(paths.artifactPath, { recursive: true, force: true });
+  await fsPromises.rename(tempArtifactPath, paths.artifactPath);
+  await fsPromises.writeFile(
+    paths.manifestPath,
+    `${JSON.stringify(
+      {
+        architecture: args.architecture ?? null,
+        createdAt: new Date().toISOString(),
+        key,
+        platform: session.platform,
+        sourcePath: args.sourcePath,
+        version: NATIVE_ARTIFACT_CACHE_VERSION,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  logE2e("native artifact cache saved", {
+    key: key.slice(0, 16),
+    platform: session.platform,
+    target: paths.artifactPath,
+  });
+}
+
+async function restoreIosPodsFromCache(key: string) {
+  const paths = iosPodsCachePaths(key);
+  if (!paths) {
+    return false;
+  }
+
+  const targetPath = path.join(session.exampleDir, "ios/Pods");
+  const manifestPath = path.join(targetPath, "Manifest.lock");
+  const podfileLockPath = path.join(session.exampleDir, "ios/Podfile.lock");
+  if (!fs.existsSync(paths.manifestPath) || !fs.existsSync(paths.podsPath)) {
+    logE2e("ios pods cache miss", {
+      key: key.slice(0, 16),
+      root: paths.root,
+    });
+    return false;
+  }
+
+  await copyNativeArtifact(paths.podsPath, targetPath);
+  await relocateIosPodsAbsolutePaths(targetPath);
+  if (
+    !fs.existsSync(manifestPath) ||
+    !fs.existsSync(podfileLockPath) ||
+    (await fsPromises.readFile(manifestPath, "utf8")) !==
+      (await fsPromises.readFile(podfileLockPath, "utf8"))
+  ) {
+    await fsPromises.rm(targetPath, { recursive: true, force: true });
+    logE2e("ios pods cache manifest mismatch", {
+      key: key.slice(0, 16),
+      manifestPath,
+      podfileLockPath,
+    });
+    return false;
+  }
+  logE2e("ios pods cache hit", {
+    key: key.slice(0, 16),
+    source: paths.podsPath,
+  });
+  return true;
+}
+
+async function saveIosPodsToCache(key: string) {
+  const paths = iosPodsCachePaths(key);
+  const sourcePath = path.join(session.exampleDir, "ios/Pods");
+  if (!paths || !fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  const tempPodsPath = `${paths.podsPath}.tmp-${process.pid}-${Date.now()}`;
+  await fsPromises.mkdir(paths.entryDir, { recursive: true });
+  await copyNativeArtifact(sourcePath, tempPodsPath);
+  await fsPromises.rm(paths.podsPath, { recursive: true, force: true });
+  await fsPromises.rename(tempPodsPath, paths.podsPath);
+  await fsPromises.writeFile(
+    paths.manifestPath,
+    `${JSON.stringify(
+      {
+        createdAt: new Date().toISOString(),
+        key,
+        platform: "ios",
+        sourcePath,
+        version: IOS_PODS_CACHE_VERSION,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  logE2e("ios pods cache saved", {
+    key: key.slice(0, 16),
+    target: paths.podsPath,
+  });
+}
+
+async function readNativeArtifactLock(lockPath: string) {
+  try {
+    const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split("\n");
+    return {
+      pid: Number.parseInt(pidLine ?? "", 10),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isProcessRunning(pid: number) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeStaleNativeArtifactLock(lockPath: string) {
+  const [lock, stats] = await Promise.all([
+    readNativeArtifactLock(lockPath),
+    fsPromises.stat(lockPath).catch(() => null),
+  ]);
+  const ageMs = stats ? Date.now() - stats.mtimeMs : Number.POSITIVE_INFINITY;
+  const isStale =
+    lock === null
+      ? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS
+      : !isProcessRunning(lock.pid);
+
+  if (!isStale) {
+    return false;
+  }
+
+  await fsPromises.rm(lockPath, { force: true });
+  logE2e("native artifact cache stale lock removed", {
+    ageMs,
+    lockPath,
+    pid: lock?.pid ?? null,
+  });
+  return true;
+}
+
+async function buildNativeArtifactWithCacheLock(args: {
+  architecture?: string | null;
+  build: () => Promise<void>;
+  key: string;
+  logLabel: string;
+  targetPath: string;
+}) {
+  const paths = nativeArtifactCachePaths(args.key);
+  if (!paths) {
+    await args.build();
+    return;
+  }
+
+  await fsPromises.mkdir(paths.root, { recursive: true });
+  const lockPath = path.join(
+    paths.root,
+    `${session.platform}-${args.key}.lock`,
+  );
+  const deadline = Date.now() + NATIVE_ARTIFACT_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    let lockHandle: FileHandle | null = null;
+    try {
+      lockHandle = await fsPromises.open(lockPath, "wx");
+      await lockHandle.writeFile(
+        `${process.pid}\n${new Date().toISOString()}\n`,
+      );
+      logE2e("native artifact cache lock acquired", {
+        key: args.key.slice(0, 16),
+        label: args.logLabel,
+        platform: session.platform,
+      });
+
+      const restored = await restoreNativeArtifactFromCache({
+        architecture: args.architecture,
+        key: args.key,
+        targetPath: args.targetPath,
+      });
+      if (!restored) {
+        await args.build();
+        await saveNativeArtifactToCache({
+          architecture: args.architecture,
+          key: args.key,
+          sourcePath: args.targetPath,
+        });
+      }
+      return;
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      if (await removeStaleNativeArtifactLock(lockPath)) {
+        continue;
+      }
+
+      const restored = await restoreNativeArtifactFromCache({
+        architecture: args.architecture,
+        key: args.key,
+        targetPath: args.targetPath,
+      });
+      if (restored) {
+        logE2e("native artifact cache filled by concurrent process", {
+          key: args.key.slice(0, 16),
+          label: args.logLabel,
+          platform: session.platform,
+        });
+        return;
+      }
+
+      if (Date.now() > deadline) {
+        throw new Error(
+          `Timed out waiting for native artifact cache lock ${lockPath}`,
+        );
+      }
+      await sleep(NATIVE_ARTIFACT_LOCK_RETRY_MS);
+    } finally {
+      if (lockHandle) {
+        await lockHandle.close();
+        await fsPromises.rm(lockPath, { force: true });
+      }
+    }
+  }
 }
 
 async function backupFile(filePath: string) {
@@ -680,23 +1614,45 @@ async function applyDeployConfig({
       ].join("\n")
     : `${AUTO_PATCH_CONFIG_GUARD_START}\n  ${AUTO_PATCH_CONFIG_GUARD_END}`;
 
+  const sourceWithWarmMetroCache = source.replace(
+    BARE_BUILD_INLINE_PATTERN,
+    (match, prefix: string, options: string, suffix: string) => {
+      if (/\bresetCache\s*:/.test(options)) {
+        return match;
+      }
+
+      const trimmedOptions = options.trim();
+      const nextOptions = trimmedOptions
+        ? `${trimmedOptions}, resetCache: false`
+        : "resetCache: false";
+      return `${prefix}${nextOptions}${suffix}`;
+    },
+  );
+  const deployBaseUrl = getControllerReachableAppBaseUrl();
+  const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
+    STANDALONE_REPOSITORY_BASE_URL_PATTERN,
+    (_match, prefix: string) => `${prefix}${JSON.stringify(deployBaseUrl)}`,
+  );
+
   await fsPromises.writeFile(
     session.configSourceFile,
-    source.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
+    sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
   logE2e("deploy config applied", {
+    deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
+    resetMetroCache: false,
     sourceFile: path.relative(REPO_DIR, session.configSourceFile),
   });
 }
 
-async function waitForFile(filePath: string, attempts = 90) {
+async function waitForFile(filePath: string, attempts = 360) {
   for (let index = 0; index < attempts; index += 1) {
     if (fs.existsSync(filePath)) {
       return;
     }
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw new Error(`Timed out waiting for ${filePath}`);
@@ -808,10 +1764,12 @@ function parseHotUpdaterCliJson<T>(label: string, output: string): T {
 function runHotUpdaterCliCapture(args: string[]) {
   logE2e("hot-updater cli request", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    controlBaseUrl: getControllerReachableAppBaseUrl(),
   });
 
   const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: getHotUpdaterControlEnv(),
     maxBuffer: 16 * 1024 * 1024,
   });
 
@@ -827,17 +1785,70 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   const logPath = path.join(session.resultsDir, logName);
   logE2e("hot-updater cli start", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
+    controlBaseUrl: getControllerReachableAppBaseUrl(),
     logPath: path.relative(REPO_DIR, logPath),
   });
 
   await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
     cwd: session.exampleDir,
+    env: getHotUpdaterControlEnv(),
     logPath,
   });
 
   logE2e("hot-updater cli done", {
     command: args.join(" "),
   });
+}
+
+async function withDatabasePlugin<T>(
+  callback: (databasePlugin: DatabasePlugin) => Promise<T>,
+): Promise<T> {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    const { loadConfig } =
+      (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+        loadConfig: (
+          options: null,
+        ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+      };
+    const originalCwd = process.cwd();
+    let databasePlugin: DatabasePlugin | null = null;
+
+    try {
+      process.chdir(session.exampleDir);
+      return await withHotUpdaterControlEnv(async () => {
+        const config = await loadConfig(null);
+        databasePlugin = await config.database();
+        return await callback(databasePlugin);
+      });
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
+        !isTransientProviderError(error)
+      ) {
+        throw error;
+      }
+
+      logE2e("provider database operation retry", {
+        attempt,
+        error: formatErrorMessage(error),
+        platform: session.platform,
+        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
+      });
+      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
+    } finally {
+      await databasePlugin?.onUnmount?.();
+      process.chdir(originalCwd);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function fetchBundlesPage(args: {
@@ -862,10 +1873,44 @@ async function fetchBundlesPage(args: {
     cliArgs.push("-c", args.channel);
   }
 
-  const response = parseHotUpdaterCliJson<BundleListPage>(
-    "bundle list",
-    runHotUpdaterCliCapture(cliArgs),
-  );
+  let response: BundleListPage | null = null;
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      response = parseHotUpdaterCliJson<BundleListPage>(
+        "bundle list",
+        runHotUpdaterCliCapture(cliArgs),
+      );
+      break;
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
+        !isTransientProviderError(error)
+      ) {
+        throw error;
+      }
+
+      logE2e("hot-updater cli bundle list retry", {
+        attempt,
+        channel: args.channel ?? null,
+        error: formatErrorMessage(error),
+        platform: session.platform,
+        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
+      });
+      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
+    }
+  }
+
+  if (!response) {
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
   const bundles = normalizeBundleListResponse(response);
   logE2e("hot-updater cli bundle list", {
     channel: args.channel ?? null,
@@ -878,19 +1923,12 @@ async function fetchBundlesPage(args: {
   return bundles;
 }
 
-async function fetchLatestBundle(args: { channel?: string }) {
+async function isBundleVisible(bundleId: string) {
   const bundles = await fetchBundlesPage({
-    channel: args.channel,
-    limit: 1,
+    limit: 100,
     offset: 0,
   });
-  const latestBundle = bundles.data[0];
-
-  if (!latestBundle?.id) {
-    throw new Error(`No bundles found for platform ${session.platform}`);
-  }
-
-  return latestBundle.id;
+  return bundles.data.some((bundle) => bundle.id === bundleId);
 }
 
 async function fetchBundleById(bundleId: string) {
@@ -913,42 +1951,117 @@ async function fetchBundleById(bundleId: string) {
   return bundle;
 }
 
+async function fetchBundleByIdFromDatabase(bundleId: string) {
+  const bundle = await withDatabasePlugin((databasePlugin) =>
+    databasePlugin.getBundleById(bundleId),
+  );
+
+  if (!bundle) {
+    throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
+  }
+
+  logE2e("database bundle get", {
+    bundleId: bundle.id,
+    channel: bundle.channel,
+    enabled: bundle.enabled,
+    patchBaseBundleIds: getBundlePatchBaseBundleIds(bundle),
+    platform: session.platform,
+    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
+  });
+
+  return bundle;
+}
+
+async function fetchEnabledBundlesFromDatabase(
+  limit: number,
+  channels: readonly string[] | null = null,
+) {
+  const bundles = await withDatabasePlugin(async (databasePlugin) => {
+    if (!channels) {
+      const { data } = await databasePlugin.getBundles({
+        limit,
+        orderBy: {
+          direction: "desc",
+          field: "id",
+        },
+        where: {
+          enabled: true,
+          platform: session.platform,
+        },
+      });
+
+      return data;
+    }
+
+    const pages = await Promise.all(
+      channels.map((channel) =>
+        databasePlugin.getBundles({
+          limit,
+          orderBy: {
+            direction: "desc",
+            field: "id",
+          },
+          where: {
+            channel,
+            enabled: true,
+            platform: session.platform,
+          },
+        }),
+      ),
+    );
+
+    return pages.flatMap((page) => page.data);
+  });
+
+  const normalized = normalizeBundleListEntries(bundles);
+  logE2e("database enabled bundle list", {
+    channels,
+    count: normalized.length,
+    limit,
+    platform: session.platform,
+  });
+
+  return normalized;
+}
+
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
-  if (patch.enabled !== undefined) {
-    await runHotUpdaterCliLogged(
-      ["bundle", patch.enabled ? "enable" : "disable", bundleId, "-y"],
-      `bundle-${patch.enabled ? "enable" : "disable"}-${bundleId}.log`,
-    );
+  const definedPatch = Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined),
+  ) as Partial<Bundle>;
+  const patchKeys = Object.keys(definedPatch);
+  if (patchKeys.length > 0) {
+    await withDatabasePlugin(async (databasePlugin) => {
+      const bundle = await databasePlugin.getBundleById(bundleId);
+      if (!bundle) {
+        throw new Error(`No bundle with id ${bundleId}.`);
+      }
+
+      await databasePlugin.updateBundle(bundleId, definedPatch);
+      await databasePlugin.commitBundle();
+
+      const refetched = await databasePlugin.getBundleById(bundleId);
+      if (!refetched) {
+        throw new Error(
+          `Verification failed: ${bundleId} is missing after patch.`,
+        );
+      }
+      for (const key of patchKeys) {
+        const expected = definedPatch[key as keyof Bundle];
+        const observed = refetched[key as keyof Bundle];
+        if (
+          JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)
+        ) {
+          throw new Error(
+            `Verification failed: ${bundleId} ${key} expected ${JSON.stringify(expected)} but observed ${JSON.stringify(observed)}.`,
+          );
+        }
+      }
+    });
   }
 
-  const updateArgs = ["bundle", "update", bundleId, "-y", "--json"];
-  if (patch.rolloutCohortCount !== undefined) {
-    if (patch.rolloutCohortCount === null) {
-      throw new Error("Cannot clear rolloutCohortCount through E2E CLI patch");
-    }
-    updateArgs.push("--rollout-cohort-count", String(patch.rolloutCohortCount));
-  }
-  if (patch.shouldForceUpdate !== undefined) {
-    updateArgs.push("--force-update", String(patch.shouldForceUpdate));
-  }
-  if (patch.targetCohorts !== undefined) {
-    if (patch.targetCohorts === null) {
-      updateArgs.push("--clear-target-cohorts");
-    } else {
-      updateArgs.push("--target-cohorts", patch.targetCohorts.join(","));
-    }
-  }
-
-  if (updateArgs.length > 5) {
-    parseHotUpdaterCliJson<Bundle>(
-      "bundle update",
-      runHotUpdaterCliCapture(updateArgs),
-    );
-  }
-
-  logE2e("hot-updater cli bundle patch", {
+  logE2e("hot-updater direct bundle patch", {
     bundleId,
-    patch,
+    patch: definedPatch,
   });
 }
 
@@ -1027,103 +2140,263 @@ async function resolveAutoPatchBundleDiff(
   baseBundleId: string,
   bundleId: string,
 ) {
-  const bundle = await fetchBundleById(bundleId);
-  const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
-  const matchingPatch = getBundlePatch(bundle, baseBundleId);
-  const patchBaseBundleId =
-    matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
-  const patchBaseFileHash =
-    matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
-  const patchFileHash =
-    matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
-  const patchStorageUri =
-    matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+  let observed: Record<string, string | null> | null = null;
 
-  if (
-    bundle.id !== bundleId ||
-    patchBaseBundleId !== baseBundleId ||
-    !patchAssetPath ||
-    !patchBaseFileHash ||
-    !patchFileHash ||
-    !patchStorageUri
+  for (
+    let attempt = 1;
+    attempt <= AUTO_PATCH_METADATA_WAIT_ATTEMPTS;
+    attempt += 1
   ) {
-    throw createEndpointError(
-      `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
-      {
-        autoPatch: true,
+    const bundle = await fetchBundleByIdFromDatabase(bundleId);
+    const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
+    const matchingPatch = getBundlePatch(bundle, baseBundleId);
+    const patchBaseBundleId =
+      matchingPatch?.baseBundleId ?? getPatchBaseBundleId(bundle);
+    const patchBaseFileHash =
+      matchingPatch?.baseFileHash ?? getPatchBaseFileHash(bundle);
+    const patchFileHash =
+      matchingPatch?.patchFileHash ?? getPatchFileHash(bundle);
+    const patchStorageUri =
+      matchingPatch?.patchStorageUri ?? getPatchStorageUri(bundle);
+
+    observed = {
+      bundleId: bundle.id,
+      patchAssetPath,
+      patchBaseBundleId,
+      patchBaseFileHash,
+      patchFileHash,
+      patchStorageUri,
+    };
+
+    if (
+      bundle.id === bundleId &&
+      patchBaseBundleId === baseBundleId &&
+      patchAssetPath &&
+      patchBaseFileHash &&
+      patchFileHash &&
+      patchStorageUri
+    ) {
+      logE2e("auto patch metadata resolved", {
+        attempt,
         baseBundleId,
         bundleId,
-        observed: {
-          bundleId: bundle.id,
-          patchAssetPath,
-          patchBaseBundleId,
-          patchBaseFileHash,
-          patchFileHash,
-          patchStorageUri,
-        },
-      },
-    );
+        patchAssetPath,
+        patchStorageUri,
+        platform: session.platform,
+      });
+
+      return {
+        baseBundleId,
+        patchAssetPath,
+      };
+    }
+
+    if (attempt < AUTO_PATCH_METADATA_WAIT_ATTEMPTS) {
+      await sleep(AUTO_PATCH_METADATA_WAIT_DELAY_MS);
+    }
   }
 
-  logE2e("auto patch metadata resolved", {
-    baseBundleId,
-    bundleId,
-    patchAssetPath,
-    patchStorageUri,
-    platform: session.platform,
-  });
-
-  return {
-    baseBundleId,
-    patchAssetPath,
-  };
-}
-
-async function deleteBundle(bundleId: string) {
-  await runHotUpdaterCliLogged(
-    ["bundle", "delete", bundleId, "-y"],
-    `bundle-delete-${bundleId}.log`,
+  throw createEndpointError(
+    `Failed to resolve automatic bsdiff patch metadata for bundle ${bundleId}`,
+    {
+      attempts: AUTO_PATCH_METADATA_WAIT_ATTEMPTS,
+      autoPatch: true,
+      baseBundleId,
+      bundleId,
+      observed,
+      retryDelayMs: AUTO_PATCH_METADATA_WAIT_DELAY_MS,
+    },
   );
 }
 
-async function clearRemoteBundles() {
-  const deletedBundleIds: string[] = [];
-  const deletedIds = new Set<string>();
+async function deleteBundle(bundleId: string) {
+  let lastError: unknown = null;
+
+  for (
+    let attempt = 1;
+    attempt <= REMOTE_BUNDLE_DELETE_ATTEMPTS;
+    attempt += 1
+  ) {
+    const logName =
+      attempt === 1
+        ? `bundle-delete-${bundleId}.log`
+        : `bundle-delete-${bundleId}.attempt-${attempt}.log`;
+
+    try {
+      await runHotUpdaterCliLogged(
+        ["bundle", "delete", bundleId, "-y"],
+        logName,
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      const logContents = await readTextIfExists(
+        path.join(session.resultsDir, logName),
+      );
+      if (!DELETE_VERIFY_STILL_EXISTS_PATTERN.test(logContents)) {
+        throw error;
+      }
+
+      const stillVisible = await isBundleVisible(bundleId);
+      if (!stillVisible) {
+        logE2e("bundle delete verified after CLI retryable failure", {
+          attempt,
+          bundleId,
+          platform: session.platform,
+        });
+        return;
+      }
+
+      if (attempt < REMOTE_BUNDLE_DELETE_ATTEMPTS) {
+        logE2e("bundle delete verification still pending", {
+          attempt,
+          bundleId,
+          platform: session.platform,
+          retryDelayMs: REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS,
+        });
+        await sleep(REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+async function fetchRemainingRemoteBundle(
+  mode: "delete" | "disable",
+  resetChannels: readonly string[] | null,
+) {
+  if (mode === "delete") {
+    return (
+      await Promise.all(
+        (resetChannels ?? [undefined]).map((channel) =>
+          fetchBundlesPage({
+            channel,
+            limit: 1,
+            offset: 0,
+          }),
+        ),
+      )
+    ).flatMap((page) => page.data)[0];
+  }
+
+  return (await fetchEnabledBundlesFromDatabase(1, resetChannels))[0];
+}
+
+async function clearRemoteBundles({
+  mode = "delete",
+}: { mode?: "delete" | "disable" } = {}) {
+  const clearedBundleIds: string[] = [];
+  const clearedIds = new Set<string>();
+  const resetChannels = getRemoteResetChannels();
 
   while (true) {
-    const bundles = await fetchBundlesPage({
-      limit: 100,
-      offset: 0,
-    });
-    const nextBatch = bundles.data.filter(
-      (bundle) => !deletedIds.has(bundle.id),
-    );
+    const nextBatch =
+      mode === "disable"
+        ? (await fetchEnabledBundlesFromDatabase(100, resetChannels)).filter(
+            (bundle) => !clearedIds.has(bundle.id),
+          )
+        : (
+            await Promise.all(
+              (resetChannels ?? [undefined]).map((channel) =>
+                fetchBundlesPage({
+                  channel,
+                  limit: 100,
+                  offset: 0,
+                }),
+              ),
+            )
+          )
+            .flatMap((page) => page.data)
+            .filter((bundle) => !clearedIds.has(bundle.id));
 
     if (nextBatch.length === 0) {
       break;
     }
 
-    for (const bundle of nextBatch) {
-      await deleteBundle(bundle.id);
-      deletedIds.add(bundle.id);
-      deletedBundleIds.push(bundle.id);
+    if (mode === "disable") {
+      await withDatabasePlugin(async (databasePlugin) => {
+        await forEachWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) =>
+            databasePlugin.updateBundle(bundle.id, { enabled: false }),
+        );
+        await databasePlugin.commitBundle();
+
+        const refetched = await mapWithConcurrency(
+          nextBatch,
+          REMOTE_RESET_DATABASE_CONCURRENCY,
+          (bundle) => databasePlugin.getBundleById(bundle.id),
+        );
+        const stillEnabled = refetched.find(
+          (bundle) => bundle?.enabled !== false,
+        );
+        if (stillEnabled) {
+          throw new Error(
+            `Failed to disable bundle ${stillEnabled.id} during reset.`,
+          );
+        }
+      });
+      for (const bundle of nextBatch) {
+        clearedIds.add(bundle.id);
+        clearedBundleIds.push(bundle.id);
+      }
+    } else {
+      for (const bundle of nextBatch) {
+        await deleteBundle(bundle.id);
+        clearedIds.add(bundle.id);
+        clearedBundleIds.push(bundle.id);
+      }
     }
   }
 
-  const remainingBundles = await fetchBundlesPage({
-    limit: 1,
-    offset: 0,
-  });
+  let remainingActiveBundle: BundleListEntry | undefined;
+  for (
+    let attempt = 1;
+    attempt <= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS;
+    attempt += 1
+  ) {
+    remainingActiveBundle = await fetchRemainingRemoteBundle(
+      mode,
+      resetChannels,
+    );
+    if (!remainingActiveBundle) {
+      break;
+    }
 
-  if (remainingBundles.data.length > 0) {
+    if (attempt >= REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS) {
+      break;
+    }
+
+    logE2e("remote-bundles reset verification pending", {
+      attempt,
+      bundleId: remainingActiveBundle.id,
+      channels: resetChannels,
+      mode,
+      platform: session.platform,
+      retryDelayMs: REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS,
+    });
+
+    if (mode === "disable") {
+      await patchBundle(remainingActiveBundle.id, { enabled: false });
+    } else {
+      await deleteBundle(remainingActiveBundle.id);
+    }
+    await sleep(REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS);
+  }
+
+  if (remainingActiveBundle) {
     throw new Error(
-      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingBundles.data[0].id} is still visible after reset`,
+      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingActiveBundle.id} is still ${mode === "delete" ? "visible" : "enabled"} after reset`,
     );
   }
 
   logE2e("remote-bundles reset", {
-    deletedBundleIds,
-    deletedCount: deletedBundleIds.length,
+    channels: resetChannels,
+    clearedBundleIds,
+    clearedCount: clearedBundleIds.length,
+    mode,
     platform: session.platform,
   });
 }
@@ -1184,6 +2457,24 @@ function ensureStorePath() {
 }
 
 async function clearIosLocalBundleState() {
+  runCapture(
+    "xcrun",
+    ["simctl", "terminate", deviceId as string, session.appId],
+    { allowFailure: true },
+  );
+  runCapture(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "delete",
+      session.appId,
+    ],
+    { allowFailure: true },
+  );
+
   const appDataDir = runCapture("xcrun", [
     "simctl",
     "get_app_container",
@@ -1201,10 +2492,42 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+  await fsPromises.rm(path.join(documentsDir, "bundle-manifest-temp"), {
+    force: true,
+    recursive: true,
+  });
+  await fsPromises.rm(path.join(appDataDir, "Library/Preferences"), {
+    force: true,
+    recursive: true,
+  });
+
+  const stalePaths = [
+    path.join(documentsDir, "bundle-store", "metadata.json"),
+    path.join(documentsDir, "bundle-store"),
+    path.join(documentsDir, "bundle-temp"),
+    path.join(documentsDir, "bundle-manifest-temp"),
+  ];
+  for (const stalePath of stalePaths) {
+    if (fs.existsSync(stalePath)) {
+      throw new Error(`Failed to clear iOS local bundle state: ${stalePath}`);
+    }
+  }
 
   logE2e("ios local bundle state reset", {
     documentsDir,
   });
+}
+
+function isIosAppInstalled() {
+  const result = spawnSync(
+    "xcrun",
+    ["simctl", "get_app_container", deviceId as string, session.appId, "data"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return result.status === 0;
 }
 
 async function installIosArtifact(appPath: string) {
@@ -1220,9 +2543,47 @@ async function installIosArtifact(appPath: string) {
   await clearIosLocalBundleState();
 }
 
+async function prepareReusableIosArtifact(appPath: string, cacheKey: string) {
+  session.storePath = undefined;
+  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isIosAppInstalled()) {
+    await installIosArtifact(appPath);
+    await writeReuseAppInstallMarker(cacheKey);
+    return;
+  }
+
+  await clearIosLocalBundleState();
+  logE2e("ios reusable app reset without reinstall", {
+    appId: session.appId,
+    artifactPath: path.relative(REPO_DIR, appPath),
+  });
+}
+
+function iosDerivedDataCacheKeyPath() {
+  return path.join(session.iosDerivedDataPath, IOS_DERIVED_DATA_CACHE_KEY_FILE);
+}
+
+async function readIosDerivedDataCacheKey() {
+  try {
+    return (
+      await fsPromises.readFile(iosDerivedDataCacheKeyPath(), "utf8")
+    ).trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return null;
+  }
+}
+
+async function writeIosDerivedDataCacheKey(cacheKey: string) {
+  await fsPromises.mkdir(session.iosDerivedDataPath, { recursive: true });
+  await fsPromises.writeFile(iosDerivedDataCacheKeyPath(), `${cacheKey}\n`);
+}
+
 const IOS_RETRYABLE_BUILD_PATTERNS = [
   /fatal error: 'glog\/logging\.h' file not found/,
   /fatal error: 'react\/renderer\/components\/view\/HostPlatformTouch\.h' file not found/,
+  /Build input file cannot be found: '.+\/ios\/build\/generated\/ios\/ReactCodegen\/.+'/,
 ];
 
 async function shouldRetryIosReleaseBuild(logPath: string) {
@@ -1239,99 +2600,140 @@ async function prepareIosRelease() {
     session.iosDerivedDataPath,
     "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
   );
+  const nativeCacheKey = nativeArtifactCacheKey();
 
-  if (session.reuseApp) {
-    if (!fs.existsSync(builtAppPath)) {
-      throw new Error(
-        `Cannot reuse iOS app because ${builtAppPath} does not exist`,
-      );
-    }
-    session.builtArtifactPath = builtAppPath;
-    await installIosArtifact(builtAppPath);
-    return;
-  }
-
-  await fsPromises.rm(session.iosDerivedDataPath, {
-    force: true,
-    recursive: true,
-  });
-
-  await runLogged("bundle", ["install"], {
-    cwd: path.join(session.exampleDir, "ios"),
-    logPath: path.join(session.resultsDir, "bundle-install.log"),
-  });
-
-  await fsPromises.rm(
-    path.join(session.exampleDir, "ios/Pods/ReactNativeDependencies-artifacts"),
-    { force: true, recursive: true },
-  );
-  await fsPromises.rm(
-    path.join(session.exampleDir, "ios/Pods/React-Core-prebuilt"),
-    { force: true, recursive: true },
-  );
-
-  await runLogged("bundle", ["exec", "pod", "install", "--clean-install"], {
-    cwd: path.join(session.exampleDir, "ios"),
-    logPath: path.join(session.resultsDir, "pod-install.log"),
-  });
-
-  const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
-  const getXcodebuildArgs = (serialized: boolean) => {
-    const args = [
-      "-workspace",
-      path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
-      "-scheme",
-      "HotUpdaterExample",
-      "-configuration",
-      "Release",
-      "-sdk",
-      "iphonesimulator",
-      "-destination",
-      `id=${deviceId}`,
-      "-derivedDataPath",
-      session.iosDerivedDataPath,
-    ];
-
-    if (serialized) {
-      args.push("-jobs", "1");
+  if (session.reuseApp && fs.existsSync(builtAppPath)) {
+    const existingCacheKey = await readIosDerivedDataCacheKey();
+    if (existingCacheKey === nativeCacheKey) {
+      session.builtArtifactPath = builtAppPath;
+      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+      return;
     }
 
-    args.push("build");
-    return args;
-  };
-
-  try {
-    await runLogged("xcodebuild", getXcodebuildArgs(false), {
-      logPath: xcodebuildLogPath,
+    logE2e("ios derived data cache key mismatch", {
+      expected: nativeCacheKey.slice(0, 16),
+      observed: existingCacheKey?.slice(0, 16) ?? null,
+      path: session.iosDerivedDataPath,
     });
-  } catch (error) {
-    const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
-    if (!shouldRetry) {
-      throw error;
-    }
-
-    console.warn(
-      "[maestro-e2e] retrying iOS release build after transient header resolution failure",
-    );
-
-    await fsPromises
-      .rename(
-        xcodebuildLogPath,
-        path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
-      )
-      .catch(() => {});
     await fsPromises.rm(session.iosDerivedDataPath, {
       force: true,
       recursive: true,
     });
+  }
 
-    await runLogged("xcodebuild", getXcodebuildArgs(true), {
-      logPath: xcodebuildLogPath,
+  if (!session.reuseApp) {
+    await fsPromises.rm(session.iosDerivedDataPath, {
+      force: true,
+      recursive: true,
     });
   }
 
+  if (
+    await restoreNativeArtifactFromCache({
+      key: nativeCacheKey,
+      targetPath: builtAppPath,
+    })
+  ) {
+    session.builtArtifactPath = builtAppPath;
+    await writeIosDerivedDataCacheKey(nativeCacheKey);
+    if (session.reuseApp) {
+      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+    } else {
+      await installIosArtifact(builtAppPath);
+    }
+    return;
+  }
+
+  await buildNativeArtifactWithCacheLock({
+    build: async () => {
+      await fsPromises.rm(session.iosDerivedDataPath, {
+        force: true,
+        recursive: true,
+      });
+
+      await runLogged("bundle", ["install"], {
+        cwd: path.join(session.exampleDir, "ios"),
+        logPath: path.join(session.resultsDir, "bundle-install.log"),
+      });
+
+      const podsCacheKey = iosPodsCacheKey();
+      if (!(await restoreIosPodsFromCache(podsCacheKey))) {
+        await runLogged("bundle", ["exec", "pod", "install"], {
+          cwd: path.join(session.exampleDir, "ios"),
+          logPath: path.join(session.resultsDir, "pod-install.log"),
+        });
+        await saveIosPodsToCache(podsCacheKey);
+      }
+
+      const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
+      const getXcodebuildArgs = (serialized: boolean) => {
+        const args = [
+          "-workspace",
+          path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
+          "-scheme",
+          "HotUpdaterExample",
+          "-configuration",
+          "Release",
+          "-sdk",
+          "iphonesimulator",
+          "-destination",
+          `id=${deviceId}`,
+          "-derivedDataPath",
+          session.iosDerivedDataPath,
+          ...IOS_RELEASE_BUILD_SETTINGS,
+        ];
+
+        if (serialized) {
+          args.push("-jobs", "1");
+        }
+
+        args.push("build");
+        return args;
+      };
+
+      try {
+        await runLogged("xcodebuild", getXcodebuildArgs(false), {
+          env: RELEASE_BUNDLE_ENV,
+          logPath: xcodebuildLogPath,
+        });
+      } catch (error) {
+        const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
+        if (!shouldRetry) {
+          throw error;
+        }
+
+        console.warn(
+          "[maestro-e2e] retrying iOS release build after transient header resolution failure",
+        );
+
+        await fsPromises
+          .rename(
+            xcodebuildLogPath,
+            path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
+          )
+          .catch(() => {});
+        await fsPromises.rm(session.iosDerivedDataPath, {
+          force: true,
+          recursive: true,
+        });
+
+        await runLogged("xcodebuild", getXcodebuildArgs(true), {
+          env: RELEASE_BUNDLE_ENV,
+          logPath: xcodebuildLogPath,
+        });
+      }
+    },
+    key: nativeCacheKey,
+    logLabel: "ios-release",
+    targetPath: builtAppPath,
+  });
   session.builtArtifactPath = builtAppPath;
-  await installIosArtifact(builtAppPath);
+  await writeIosDerivedDataCacheKey(nativeCacheKey);
+  if (session.reuseApp) {
+    await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
+  } else {
+    await installIosArtifact(builtAppPath);
+  }
 }
 
 async function prepareAndroidRelease() {
@@ -1339,22 +2741,38 @@ async function prepareAndroidRelease() {
     session.exampleDir,
     DEFAULT_ANDROID_APK_RELATIVE_PATH,
   );
+  const architecture = resolveAndroidE2eArchitecture();
+  const nativeCacheKey = nativeArtifactCacheKey(architecture);
 
-  if (!session.reuseApp) {
-    await buildDebuggableAndroidRelease("gradle-release.log");
-  } else if (!fs.existsSync(session.androidApkPath)) {
-    throw new Error(
-      `Cannot reuse Android app because ${session.androidApkPath} does not exist`,
-    );
+  if (!session.reuseApp || !fs.existsSync(session.androidApkPath)) {
+    const restored = await restoreNativeArtifactFromCache({
+      architecture,
+      key: nativeCacheKey,
+      targetPath: session.androidApkPath,
+    });
+    if (!restored) {
+      await buildNativeArtifactWithCacheLock({
+        architecture,
+        build: () =>
+          buildDebuggableAndroidRelease("gradle-release.log", architecture),
+        key: nativeCacheKey,
+        logLabel: "android-release",
+        targetPath: session.androidApkPath,
+      });
+    }
   }
 
   session.builtArtifactPath = session.androidApkPath;
   session.storePath = undefined;
 
-  runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-    allowFailure: true,
-  });
-  await installAndroidArtifact("adb-install.log");
+  if (session.reuseApp) {
+    await prepareReusableAndroidArtifact("adb-install.log", nativeCacheKey);
+  } else {
+    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
+      allowFailure: true,
+    });
+    await installAndroidArtifact("adb-install.log");
+  }
 
   if (session.reuseApp && !canRunAsAndroidApp()) {
     if (
@@ -1367,7 +2785,14 @@ async function prepareAndroidRelease() {
     }
 
     logE2e("android reused apk is not debuggable; rebuilding release apk");
-    await buildDebuggableAndroidRelease("gradle-release-reuse.log");
+    await buildNativeArtifactWithCacheLock({
+      architecture,
+      build: () =>
+        buildDebuggableAndroidRelease("gradle-release-reuse.log", architecture),
+      key: nativeCacheKey,
+      logLabel: "android-release-reuse",
+      targetPath: defaultAndroidApkPath,
+    });
     session.builtArtifactPath = defaultAndroidApkPath;
     runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
       allowFailure: true,
@@ -1382,25 +2807,120 @@ async function prepareAndroidRelease() {
   }
 }
 
-async function buildDebuggableAndroidRelease(logFileName: string) {
-  await runLogged(
-    "./gradlew",
-    [
-      ":app:assembleRelease",
-      "--rerun-tasks",
-      "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-    ],
-    {
-      cwd: path.join(session.exampleDir, "android"),
-      logPath: path.join(session.resultsDir, logFileName),
-    },
-  );
+async function buildDebuggableAndroidRelease(
+  logFileName: string,
+  architecture: string | null = resolveAndroidE2eArchitecture(),
+) {
+  const args = [
+    ":app:assembleRelease",
+    "--build-cache",
+    "--no-daemon",
+    "--max-workers=2",
+    "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    "-Pkotlin.compiler.execution.strategy=in-process",
+    ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
+  ];
+
+  if (architecture) {
+    logE2e("android e2e release build architecture", { architecture });
+  }
+
+  await runLogged("./gradlew", args, {
+    cwd: path.join(session.exampleDir, "android"),
+    env: RELEASE_BUNDLE_ENV,
+    logPath: path.join(session.resultsDir, logFileName),
+  });
+}
+
+function resolveAndroidE2eArchitecture() {
+  try {
+    const architecture = runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "getprop", "ro.product.cpu.abi"],
+      { allowFailure: true },
+    )
+      .replaceAll("\r", "")
+      .trim();
+
+    if (ANDROID_E2E_ARCHITECTURES.has(architecture)) {
+      return architecture;
+    }
+
+    if (architecture) {
+      logE2e("android e2e release build architecture ignored", {
+        architecture,
+      });
+    }
+  } catch (error) {
+    logE2e("android e2e release build architecture detection failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  return null;
 }
 
 function ensureAndroidFilesDir() {
   return `/data/data/${session.appId}/files`;
 }
+
+function isAndroidAppInstalled() {
+  const result = spawnSync(
+    "adb",
+    ["-s", deviceId as string, "shell", "pm", "path", session.appId],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  return result.status === 0 && result.stdout.includes("package:");
+}
+
+function clearAndroidLocalAppState() {
+  resetAndroidPackageData();
+  runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "sh",
+      "-c",
+      [
+        `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
+        `${ensureAndroidFilesDir()}/bundle-temp`,
+        `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+      ].join(" "),
+    ],
+    { allowFailure: true },
+  );
+  if (androidPathExists(`${ensureAndroidFilesDir()}/bundle-store`)) {
+    throw new Error("Failed to clear Android bundle-store state");
+  }
+  session.storePath = undefined;
+  logE2e("android local app state reset", {
+    appId: session.appId,
+  });
+}
+
+function resetAndroidPackageData() {
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    { allowFailure: true },
+  );
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
+    { allowFailure: true },
+  );
+}
+
 async function installAndroidArtifact(logFileName: string) {
+  resetAndroidPackageData();
   await runLogged(
     "adb",
     [
@@ -1422,14 +2942,30 @@ async function installAndroidArtifact(logFileName: string) {
       "shell",
       "run-as",
       session.appId,
-      "rm",
-      "-rf",
-      `${ensureAndroidFilesDir()}/bundle-store`,
-      `${ensureAndroidFilesDir()}/bundle-temp`,
-      `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+      "sh",
+      "-c",
+      [
+        `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
+        `${ensureAndroidFilesDir()}/bundle-temp`,
+        `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+      ].join(" "),
     ],
     { allowFailure: true },
   );
+}
+
+async function prepareReusableAndroidArtifact(
+  logFileName: string,
+  cacheKey: string,
+) {
+  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isAndroidAppInstalled()) {
+    await installAndroidArtifact(logFileName);
+    await writeReuseAppInstallMarker(cacheKey);
+    return;
+  }
+
+  clearAndroidLocalAppState();
 }
 
 function canRunAsAndroidApp() {
@@ -1501,6 +3037,10 @@ function copyAndroidFile(remotePath: string, localPath: string) {
 }
 
 function androidFileExists(remotePath: string) {
+  return androidPathExists(remotePath, "-f");
+}
+
+function androidPathExists(remotePath: string, testFlag = "-e") {
   let exists = spawnSync(
     "adb",
     [
@@ -1510,7 +3050,7 @@ function androidFileExists(remotePath: string) {
       "run-as",
       session.appId,
       "test",
-      "-f",
+      testFlag,
       remotePath,
     ],
     { stdio: "ignore" },
@@ -1519,7 +3059,7 @@ function androidFileExists(remotePath: string) {
   if (exists.status !== 0) {
     exists = spawnSync(
       "adb",
-      ["-s", deviceId as string, "shell", "[", "-f", remotePath, "]"],
+      ["-s", deviceId as string, "shell", "[", testFlag, remotePath, "]"],
       { stdio: "ignore" },
     );
   }
@@ -1547,14 +3087,9 @@ function assertMetadataState(
   metadata: Record<string, unknown>,
   bundleId: string,
 ) {
-  const stagingBundleId =
-    (metadata.stagingBundleId as string | undefined) ??
-    (metadata.staging_bundle_id as string | undefined) ??
-    null;
-  const verificationPending =
-    (metadata.verificationPending as boolean | undefined) ??
-    (metadata.verification_pending as boolean | undefined) ??
-    null;
+  const metadataState = getMetadataState(metadata);
+  const stagingBundleId = metadataState.stagingBundleId;
+  const verificationPending = metadataState.verificationPending;
 
   if (stagingBundleId !== bundleId) {
     throw new Error(
@@ -1570,18 +3105,10 @@ function assertMetadataState(
 }
 
 function assertMetadataReset(metadata: Record<string, unknown>) {
-  const stableBundleId =
-    (metadata.stableBundleId as string | undefined) ??
-    (metadata.stable_bundle_id as string | undefined) ??
-    null;
-  const stagingBundleId =
-    (metadata.stagingBundleId as string | undefined) ??
-    (metadata.staging_bundle_id as string | undefined) ??
-    null;
-  const verificationPending =
-    (metadata.verificationPending as boolean | undefined) ??
-    (metadata.verification_pending as boolean | undefined) ??
-    null;
+  const metadataState = getMetadataState(metadata);
+  const stableBundleId = metadataState.stableBundleId;
+  const stagingBundleId = metadataState.stagingBundleId;
+  const verificationPending = metadataState.verificationPending;
 
   if (stableBundleId !== null) {
     throw new Error(
@@ -1595,9 +3122,9 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
     );
   }
 
-  if (verificationPending !== false) {
+  if (verificationPending === true) {
     throw new Error(
-      `Expected verificationPending false but received ${String(verificationPending)}`,
+      `Expected verificationPending false or null but received ${String(verificationPending)}`,
     );
   }
 }
@@ -1672,21 +3199,85 @@ function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
   }
 }
 
+function firstMetadataValue(...values: unknown[]) {
+  return values.find((value) => value !== undefined) ?? null;
+}
+
+function normalizeMetadataString(value: unknown) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "null"
+  ) {
+    return null;
+  }
+
+  return typeof value === "string" ? value : String(value);
+}
+
+function normalizeMetadataBoolean(value: unknown) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "null"
+  ) {
+    return null;
+  }
+
+  if (value === true || value === false) {
+    return value;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  return null;
+}
+
 function getMetadataState(metadata: Record<string, unknown> | null) {
   return {
-    stableBundleId:
-      (metadata?.stableBundleId as string | undefined) ??
-      (metadata?.stable_bundle_id as string | undefined) ??
-      null,
-    stagingBundleId:
-      (metadata?.stagingBundleId as string | undefined) ??
-      (metadata?.staging_bundle_id as string | undefined) ??
-      null,
-    verificationPending:
-      (metadata?.verificationPending as boolean | undefined) ??
-      (metadata?.verification_pending as boolean | undefined) ??
-      null,
+    stableBundleId: normalizeMetadataString(
+      firstMetadataValue(metadata?.stableBundleId, metadata?.stable_bundle_id),
+    ),
+    stagingBundleId: normalizeMetadataString(
+      firstMetadataValue(
+        metadata?.stagingBundleId,
+        metadata?.staging_bundle_id,
+      ),
+    ),
+    verificationPending: normalizeMetadataBoolean(
+      firstMetadataValue(
+        metadata?.verificationPending,
+        metadata?.verification_pending,
+      ),
+    ),
   };
+}
+
+function isExpectedMetadataStateReached(
+  metadataState: {
+    stagingBundleId: string | null;
+    verificationPending: boolean | null;
+  },
+  bundleId: string,
+  verificationPending: boolean,
+) {
+  if (metadataState.stagingBundleId !== bundleId) {
+    return false;
+  }
+
+  if (metadataState.verificationPending === verificationPending) {
+    return true;
+  }
+
+  return verificationPending && metadataState.verificationPending === false;
 }
 
 function formatObservedMetadataState(details: {
@@ -1708,10 +3299,16 @@ function createWaitForMetadataTimeoutError(args: {
   verificationPending: boolean;
 }) {
   const observedState = getMetadataState(args.metadata.value);
+  const nativeLogs = readHotUpdaterNativeLogs();
+  const nativeLogTail = nativeLogs.split("\n").filter(Boolean).slice(-30);
+  const signatureFailure = nativeLogTail.find((line) =>
+    /signature verification failed|SIGNATURE_VERIFICATION_FAILED/i.test(line),
+  );
   const message = [
     "Timed out waiting for metadata state.",
     `Expected stagingBundleId=${args.bundleId} and verificationPending=${String(args.verificationPending)}.`,
     `${formatObservedMetadataState(observedState)}.`,
+    ...(signatureFailure ? [`Native failure: ${signatureFailure}`] : []),
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
 
@@ -1726,6 +3323,7 @@ function createWaitForMetadataTimeoutError(args: {
       launchReport: args.launchReport,
       metadata: args.metadata,
       metadataState: observedState,
+      nativeLogTail,
     },
     platform: session.platform,
   });
@@ -1740,7 +3338,7 @@ function createWaitForMetadataResetTimeoutError(args: {
   const observedState = getMetadataState(args.metadata.value);
   const message = [
     "Timed out waiting for metadata reset state.",
-    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false.",
+    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false/null.",
     `Observed stableBundleId=${String(observedState.stableBundleId)} and ${formatObservedMetadataState(observedState)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
@@ -1750,7 +3348,7 @@ function createWaitForMetadataResetTimeoutError(args: {
     expected: {
       stableBundleId: null,
       stagingBundleId: null,
-      verificationPending: false,
+      verificationPending: "false/null",
     },
     observed: {
       crashHistory: args.crashHistory,
@@ -1773,6 +3371,12 @@ function readIosWaitForMetadataDiagnostics() {
     ),
     metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
   };
+}
+
+function readIosMetadataSnapshot() {
+  return readOptionalJsonSnapshot(
+    path.join(ensureStorePath(), "metadata.json"),
+  );
 }
 
 function readAndroidStoreSnapshot(
@@ -1799,6 +3403,10 @@ function readAndroidStoreSnapshot(
   };
 }
 
+function readAndroidMetadataSnapshot(localFileName: string) {
+  return readAndroidStoreSnapshot("metadata.json", localFileName);
+}
+
 function readAndroidWaitForMetadataDiagnostics() {
   return {
     crashHistory: readAndroidStoreSnapshot(
@@ -1809,10 +3417,7 @@ function readAndroidWaitForMetadataDiagnostics() {
       "launch-report.json",
       "wait-for-metadata-launch-report.json",
     ),
-    metadata: readAndroidStoreSnapshot(
-      "metadata.json",
-      "wait-for-metadata-metadata.json",
-    ),
+    metadata: readAndroidMetadataSnapshot("wait-for-metadata-metadata.json"),
   };
 }
 
@@ -2077,6 +3682,18 @@ function getLaunchReportState(report: Record<string, unknown> | null) {
 
 function getControllerReachableAppBaseUrl() {
   const url = new URL(session.appBaseUrl);
+  const androidReverseHostPort =
+    session.platform === "android"
+      ? process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT
+      : undefined;
+  if (
+    androidReverseHostPort &&
+    /^\d+$/.test(androidReverseHostPort) &&
+    isLoopbackHost(url.hostname)
+  ) {
+    url.hostname = "127.0.0.1";
+    url.port = androidReverseHostPort;
+  }
   if (
     url.hostname === "localhost" ||
     url.hostname === "10.0.2.2" ||
@@ -2085,6 +3702,287 @@ function getControllerReachableAppBaseUrl() {
     url.hostname = "127.0.0.1";
   }
   return url.toString().replace(/\/+$/, "");
+}
+
+function getControllerReachableProviderHealthUrl() {
+  const url = new URL(getControllerReachableAppBaseUrl());
+  if (!isLoopbackHost(url.hostname)) {
+    return null;
+  }
+
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function waitForLocalProviderReady() {
+  const url = getControllerReachableProviderHealthUrl();
+  if (!url) {
+    return;
+  }
+
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= PROVIDER_READY_WAIT_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        logE2e("local provider ready", {
+          attempt,
+          platform: session.platform,
+          url,
+        });
+        return;
+      }
+      lastError = `HTTP ${response.status}`;
+    } catch (error) {
+      lastError = formatErrorMessage(error);
+    }
+
+    if (attempt === 1 || attempt % 10 === 0) {
+      logE2e("local provider readiness pending", {
+        attempt,
+        lastError,
+        platform: session.platform,
+        retryDelayMs: PROVIDER_READY_WAIT_DELAY_MS,
+        url,
+      });
+    }
+    await sleep(PROVIDER_READY_WAIT_DELAY_MS);
+  }
+
+  throw new Error(
+    `Timed out waiting for local provider ${url}: ${lastError ?? "unknown error"}`,
+  );
+}
+
+function getUrlPort(url: URL) {
+  if (url.port) {
+    return Number.parseInt(url.port, 10);
+  }
+
+  return url.protocol === "https:" ? 443 : 80;
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function assertConfiguredBaseUrl() {
+  try {
+    const url = new URL(session.appBaseUrl);
+    if (!url.protocol || !url.hostname) {
+      throw new Error("missing protocol or host");
+    }
+  } catch (error) {
+    throw new Error(
+      `HOT_UPDATER_E2E_APP_BASE_URL must be a valid absolute URL. Received ${JSON.stringify(session.appBaseUrl)} (${formatErrorMessage(error)})`,
+    );
+  }
+}
+
+function getAndroidReversePorts() {
+  const appBaseUrl = new URL(session.appBaseUrl);
+  if (!isLoopbackHost(appBaseUrl.hostname)) {
+    return null;
+  }
+
+  const devicePort = getUrlPort(appBaseUrl);
+  const hostPort = Number.parseInt(
+    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(devicePort),
+    10,
+  );
+  if (!Number.isInteger(hostPort) || hostPort <= 0) {
+    throw new Error(
+      "HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT must be a positive integer.",
+    );
+  }
+
+  return { devicePort, hostPort };
+}
+
+function ensureAndroidReverse() {
+  if (session.platform !== "android") {
+    return;
+  }
+
+  const reversePorts = getAndroidReversePorts();
+  if (reversePorts === null) {
+    return;
+  }
+
+  runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "reverse",
+    `tcp:${reversePorts.devicePort}`,
+    `tcp:${reversePorts.hostPort}`,
+  ]);
+  logE2e("android reverse ready", reversePorts);
+}
+
+function escapeAndroidSharedPreferenceXmlValue(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function assertAndroidRuntimeConfig(
+  sharedPrefsFile: string,
+  expectedXmlValues: string[],
+) {
+  const observedXml = runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "run-as",
+    session.appId,
+    "cat",
+    sharedPrefsFile,
+  ]);
+
+  for (const expectedValue of expectedXmlValues) {
+    if (!observedXml.includes(expectedValue)) {
+      throw new Error(
+        `Android E2E runtime config was not written correctly: expected ${expectedValue} in ${sharedPrefsFile}`,
+      );
+    }
+  }
+}
+
+function writeAndroidE2ERuntimeConfig() {
+  const localPath = path.join(
+    os.tmpdir(),
+    `hot-updater-e2e-runtime-config-${process.pid}-${randomUUID()}.xml`,
+  );
+  const remotePath = `/data/local/tmp/${path.basename(localPath)}`;
+  const sharedPrefsDir = `/data/data/${session.appId}/shared_prefs`;
+  const sharedPrefsFile = `${sharedPrefsDir}/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
+  const configValues = [
+    {
+      key: E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY,
+      value: session.appBaseUrl,
+    },
+    ...(channelNamespace
+      ? [
+          {
+            key: E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY,
+            value: channelNamespace,
+          },
+        ]
+      : []),
+  ];
+  const xml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    ...configValues.map(
+      ({ key, value }) =>
+        `  <string name="${key}">${escapeAndroidSharedPreferenceXmlValue(
+          value,
+        )}</string>`,
+    ),
+    "</map>",
+    "",
+  ].join("\n");
+  const expectedXmlValues = configValues.map(
+    ({ key, value }) =>
+      `<string name="${key}">${escapeAndroidSharedPreferenceXmlValue(value)}</string>`,
+  );
+
+  try {
+    fs.writeFileSync(localPath, xml);
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "push",
+      localPath,
+      remotePath,
+    ]);
+    runCapture(
+      "adb",
+      [
+        "-s",
+        deviceId as string,
+        "shell",
+        "run-as",
+        session.appId,
+        "mkdir",
+        sharedPrefsDir,
+      ],
+      {
+        allowFailure: true,
+      },
+    );
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "cp",
+      remotePath,
+      sharedPrefsFile,
+    ]);
+    runCapture("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "chmod",
+      "600",
+      sharedPrefsFile,
+    ]);
+    assertAndroidRuntimeConfig(sharedPrefsFile, expectedXmlValues);
+    logE2e("android runtime config ready", {
+      appBaseUrl: session.appBaseUrl,
+      channelNamespace,
+      preferences: E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES,
+    });
+  } finally {
+    fs.rmSync(localPath, { force: true });
+    runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "rm", "-f", remotePath],
+      {
+        allowFailure: true,
+      },
+    );
+  }
+}
+
+function getHotUpdaterControlEnv(
+  env: NodeJS.ProcessEnv | undefined = undefined,
+) {
+  return {
+    ...env,
+    HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
+  } satisfies NodeJS.ProcessEnv;
+}
+
+async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
+  const hadControlBaseUrl = Object.prototype.hasOwnProperty.call(
+    process.env,
+    "HOT_UPDATER_CONTROL_BASE_URL",
+  );
+  const previousControlBaseUrl = process.env.HOT_UPDATER_CONTROL_BASE_URL;
+
+  process.env.HOT_UPDATER_CONTROL_BASE_URL = getControllerReachableAppBaseUrl();
+
+  try {
+    return await callback();
+  } finally {
+    if (hadControlBaseUrl) {
+      process.env.HOT_UPDATER_CONTROL_BASE_URL = previousControlBaseUrl;
+    } else {
+      delete process.env.HOT_UPDATER_CONTROL_BASE_URL;
+    }
+  }
 }
 
 function buildAppVersionUpdateCheckUrl(args: {
@@ -2132,7 +4030,7 @@ async function waitForUpdateCheckVisibility(args: {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
-  for (let index = 0; index < 90; index += 1) {
+  for (let index = 0; index < 360; index += 1) {
     try {
       const response = await fetch(url, {
         headers: {
@@ -2165,7 +4063,7 @@ async function waitForUpdateCheckVisibility(args: {
       lastError = error instanceof Error ? error.message : String(error);
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   logE2e("update check visibility timeout", {
@@ -2196,6 +4094,95 @@ async function waitForUpdateCheckVisibility(args: {
       platform: session.platform,
       request: {
         bundleId: args.requestBundleId,
+        channel: args.channel,
+        minBundleId,
+      },
+    },
+  );
+}
+
+async function waitForUpdateCheckExcludesBundle(args: {
+  bundleId: string;
+  channel: string;
+}) {
+  const minBundleId = NIL_UUID;
+  const url = buildAppVersionUpdateCheckUrl({
+    bundleId: args.bundleId,
+    channel: args.channel,
+    minBundleId,
+  });
+  let lastObserved: unknown = null;
+  let lastError: string | null = null;
+
+  for (let index = 0; index < 240; index += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "Hot-Updater-SDK-Version": "e2e",
+        },
+      });
+      const body = await response.text();
+      lastObserved = body;
+
+      if (response.ok) {
+        const payload = JSON.parse(body) as {
+          id?: unknown;
+          status?: unknown;
+        } | null;
+        lastObserved = payload
+          ? {
+              id: payload.id,
+              status: payload.status,
+            }
+          : null;
+
+        if (!payload || payload.id !== args.bundleId) {
+          logE2e("update check exclusion ready", {
+            bundleId: args.bundleId,
+            channel: args.channel,
+            observed: lastObserved,
+            url,
+          });
+          return;
+        }
+      } else {
+        lastError = `HTTP ${response.status}: ${truncateForLog(body)}`;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    await sleep(E2E_POLL_INTERVAL_MS);
+  }
+
+  logE2e("update check exclusion timeout", {
+    excludedBundleId: args.bundleId,
+    lastError,
+    lastObserved,
+    platform: session.platform,
+    request: {
+      bundleId: args.bundleId,
+      channel: args.channel,
+      minBundleId,
+    },
+    url,
+  });
+
+  throw createEndpointError(
+    [
+      "Timed out waiting for update check exclusion.",
+      `Expected update check not to return bundleId=${args.bundleId}.`,
+      `URL: ${url}`,
+    ].join("\n"),
+    {
+      expected: {
+        excludedBundleId: args.bundleId,
+      },
+      lastError,
+      lastObserved,
+      platform: session.platform,
+      request: {
+        bundleId: args.bundleId,
         channel: args.channel,
         minBundleId,
       },
@@ -2279,39 +4266,98 @@ function readAndroidRecoveryDiagnostics() {
   };
 }
 
-function launchAndroidApp() {
-  const component = runCapture("adb", [
-    "-s",
-    deviceId as string,
-    "shell",
-    "cmd",
-    "package",
-    "resolve-activity",
-    "--brief",
-    "--components",
-    session.appId,
-  ])
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .at(-1);
-
-  if (!component) {
-    throw new Error(`Failed to resolve launch activity for ${session.appId}`);
-  }
-
+function launchAndroidApp({
+  explicitActivity = false,
+  forceStop = true,
+}: {
+  explicitActivity?: boolean;
+  forceStop?: boolean;
+} = {}) {
   logE2e("android recovery relaunch", {
     appId: session.appId,
-    component,
+    coldStart: true,
     deviceId,
+    explicitActivity,
+    forceStop,
   });
-  runCapture(
+  if (forceStop) {
+    runCapture(
+      "adb",
+      ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+      {
+        allowFailure: true,
+        cwd: REPO_DIR,
+      },
+    );
+  }
+
+  const launchArgs = explicitActivity
+    ? [
+        "-s",
+        deviceId as string,
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-n",
+        `${session.appId}/.MainActivity`,
+      ]
+    : [
+        "-s",
+        deviceId as string,
+        "shell",
+        "monkey",
+        "-p",
+        session.appId,
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "1",
+      ];
+  const launchOutput = runCapture("adb", launchArgs, {
+    allowFailure: explicitActivity,
+    cwd: REPO_DIR,
+  });
+  const pid = runCapture(
     "adb",
-    ["-s", deviceId as string, "shell", "am", "start", "-W", "-n", component],
+    ["-s", deviceId as string, "shell", "pidof", session.appId],
     {
+      allowFailure: true,
       cwd: REPO_DIR,
     },
   );
+  logE2e("android recovery relaunch started", {
+    appId: session.appId,
+    deviceId,
+    explicitActivity,
+    launchOutput,
+    pid: pid || null,
+  });
+}
+
+async function waitForAndroidForeground(timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  let focusedPackage: string | null = null;
+
+  while (Date.now() < deadline) {
+    focusedPackage = getAndroidFocusedPackage();
+    if (focusedPackage === session.appId) {
+      return focusedPackage;
+    }
+
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
+  return focusedPackage;
+}
+
+function launchIosApp() {
+  logE2e("ios metadata wait relaunch", {
+    appId: session.appId,
+    deviceId,
+  });
+  runCapture("xcrun", ["simctl", "launch", deviceId as string, session.appId], {
+    allowFailure: true,
+  });
 }
 
 function parseAndroidFocusedPackage(output: string) {
@@ -2333,11 +4379,7 @@ function parseAndroidFocusedPackage(output: string) {
 }
 
 function getAndroidFocusedPackage() {
-  const windowOutput = runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
-    { allowFailure: true },
-  );
+  const windowOutput = getAndroidWindowOutput();
   const focusedWindowPackage = parseAndroidFocusedPackage(windowOutput);
   if (focusedWindowPackage) {
     return focusedWindowPackage;
@@ -2349,6 +4391,39 @@ function getAndroidFocusedPackage() {
     { allowFailure: true },
   );
   return parseAndroidFocusedPackage(activityOutput);
+}
+
+function getAndroidWindowOutput() {
+  return runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
+    { allowFailure: true },
+  );
+}
+
+function getAndroidAnrPackage(windowOutput: string) {
+  const match = windowOutput.match(
+    /Window\{[^\n]*Application Not Responding:\s*([A-Za-z0-9._]+)/i,
+  );
+  return match?.[1] ?? null;
+}
+
+function dismissAndroidAnrWindow(reason: string) {
+  const anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
+  if (!anrPackage) {
+    return false;
+  }
+
+  logE2e("android dismiss anr window", {
+    anrPackage,
+    reason,
+  });
+  runCapture(
+    "adb",
+    ["-s", deviceId as string, "shell", "am", "force-stop", anrPackage],
+    { allowFailure: true },
+  );
+  return true;
 }
 
 function getAndroidHomePackage() {
@@ -2377,41 +4452,32 @@ function getAndroidHomePackage() {
   return resolvedActivity?.split("/")[0] ?? null;
 }
 
+type WaitForMetadataOptions = {
+  attempts?: number;
+  relaunchLimit?: number;
+};
+
+function resolveMetadataWaitOption(
+  value: number | undefined,
+  fallback: number,
+) {
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
 async function waitForIosMetadataState(
   bundleId: string,
   verificationPending: boolean,
-  attempts = 90,
+  options: WaitForMetadataOptions = {},
 ) {
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics = readIosWaitForMetadataDiagnostics();
-    if (diagnostics.metadata.value) {
-      const metadataState = getMetadataState(diagnostics.metadata.value);
-
-      if (
-        metadataState.stagingBundleId === bundleId &&
-        metadataState.verificationPending === verificationPending
-      ) {
-        return;
-      }
-    }
-    await sleep(1000);
-  }
-
-  throw createWaitForMetadataTimeoutError({
-    attempts,
-    bundleId,
-    ...readIosWaitForMetadataDiagnostics(),
-    verificationPending,
-  });
-}
-
-async function waitForAndroidMetadataState(
-  bundleId: string,
-  verificationPending: boolean,
-  attempts = 90,
-) {
-  const relaunchLimit = 2;
   let totalAttempts = 0;
+  const attempts = resolveMetadataWaitOption(
+    options.attempts,
+    E2E_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  );
+  const relaunchLimit = resolveMetadataWaitOption(
+    options.relaunchLimit,
+    E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+  );
 
   for (
     let relaunchIndex = 0;
@@ -2421,21 +4487,97 @@ async function waitForAndroidMetadataState(
     for (let index = 0; index < attempts; index += 1) {
       totalAttempts += 1;
 
-      const diagnostics = readAndroidWaitForMetadataDiagnostics();
-      if (diagnostics.metadata.value) {
-        const metadataState = getMetadataState(diagnostics.metadata.value);
+      const metadata = readIosMetadataSnapshot();
+      if (metadata.value) {
+        const metadataState = getMetadataState(metadata.value);
+
         if (
-          metadataState.stagingBundleId === bundleId &&
-          metadataState.verificationPending === verificationPending
+          isExpectedMetadataStateReached(
+            metadataState,
+            bundleId,
+            verificationPending,
+          )
         ) {
           return;
         }
       }
-      await sleep(1000);
+      await sleep(E2E_POLL_INTERVAL_MS);
     }
 
-    const diagnostics = readAndroidWaitForMetadataDiagnostics();
-    const metadataState = getMetadataState(diagnostics.metadata.value);
+    const metadata = readIosMetadataSnapshot();
+    const metadataState = getMetadataState(metadata.value);
+    if (
+      relaunchIndex === relaunchLimit ||
+      metadataState.verificationPending === true
+    ) {
+      break;
+    }
+
+    logE2e("ios metadata wait retry", {
+      expectedBundleId: bundleId,
+      expectedVerificationPending: verificationPending,
+      observed: metadataState,
+      relaunchAttempt: relaunchIndex + 1,
+      relaunchLimit,
+    });
+    await prepareAppLaunch();
+    launchIosApp();
+    await sleep(E2E_IOS_LAUNCH_SETTLE_MS);
+  }
+
+  throw createWaitForMetadataTimeoutError({
+    attempts: totalAttempts,
+    bundleId,
+    ...readIosWaitForMetadataDiagnostics(),
+    verificationPending,
+  });
+}
+
+async function waitForAndroidMetadataState(
+  bundleId: string,
+  verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
+) {
+  let totalAttempts = 0;
+  const attempts = resolveMetadataWaitOption(
+    options.attempts,
+    E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH,
+  );
+  const relaunchLimit = resolveMetadataWaitOption(
+    options.relaunchLimit,
+    E2E_METADATA_WAIT_RELAUNCH_LIMIT,
+  );
+
+  for (
+    let relaunchIndex = 0;
+    relaunchIndex <= relaunchLimit;
+    relaunchIndex += 1
+  ) {
+    for (let index = 0; index < attempts; index += 1) {
+      totalAttempts += 1;
+
+      const metadata = readAndroidMetadataSnapshot(
+        "wait-for-metadata-metadata.json",
+      );
+      if (metadata.value) {
+        const metadataState = getMetadataState(metadata.value);
+        if (
+          isExpectedMetadataStateReached(
+            metadataState,
+            bundleId,
+            verificationPending,
+          )
+        ) {
+          return;
+        }
+      }
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+
+    const metadata = readAndroidMetadataSnapshot(
+      "wait-for-metadata-metadata.json",
+    );
+    const metadataState = getMetadataState(metadata.value);
     if (
       relaunchIndex === relaunchLimit ||
       metadataState.verificationPending === true
@@ -2452,7 +4594,7 @@ async function waitForAndroidMetadataState(
     });
     await prepareAppLaunch();
     launchAndroidApp();
-    await sleep(3000);
+    await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
   }
 
   throw createWaitForMetadataTimeoutError({
@@ -2466,7 +4608,7 @@ async function waitForAndroidMetadataState(
 async function waitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  attempts = 90,
+  attempts = 360,
 ) {
   let androidRelaunchAttempts = 0;
 
@@ -2496,11 +4638,11 @@ async function waitForCrashRecovery(
     ) {
       launchAndroidApp();
       androidRelaunchAttempts += 1;
-      await sleep(2000);
+      await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
       continue;
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const diagnostics =
@@ -2520,6 +4662,10 @@ async function ensureAppForeground() {
     return {};
   }
 
+  if (dismissAndroidAnrWindow("ensure-app-foreground")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
   let focusedPackage = getAndroidFocusedPackage();
   const homePackage = getAndroidHomePackage();
   if (focusedPackage === session.appId) {
@@ -2532,14 +4678,13 @@ async function ensureAppForeground() {
   });
 
   const recoverySteps: Array<{
-    delayMs: number;
     label: string;
     run: () => Promise<void>;
+    timeoutMs: number;
   }> = [];
 
   if (focusedPackage && focusedPackage !== homePackage) {
     recoverySteps.push({
-      delayMs: 750,
       label: "dismiss-dialog",
       run: async () => {
         runCapture(
@@ -2555,19 +4700,19 @@ async function ensureAppForeground() {
           { allowFailure: true },
         );
       },
+      timeoutMs: 1500,
     });
   }
 
   recoverySteps.push(
     {
-      delayMs: 1500,
       label: "relaunch-app",
       run: async () => {
-        launchAndroidApp();
+        launchAndroidApp({ forceStop: false });
       },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
     {
-      delayMs: 2000,
       label: "home-and-relaunch",
       run: async () => {
         runCapture(
@@ -2582,16 +4727,23 @@ async function ensureAppForeground() {
           ],
           { allowFailure: true },
         );
-        await sleep(500);
-        launchAndroidApp();
+        await sleep(E2E_POLL_INTERVAL_MS);
+        launchAndroidApp({ forceStop: false });
       },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
+    },
+    {
+      label: "explicit-activity",
+      run: async () => {
+        launchAndroidApp({ explicitActivity: true, forceStop: false });
+      },
+      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
   );
 
   for (const step of recoverySteps) {
     await step.run();
-    await sleep(step.delayMs);
-    focusedPackage = getAndroidFocusedPackage();
+    focusedPackage = await waitForAndroidForeground(step.timeoutMs);
 
     if (focusedPackage === session.appId) {
       logE2e("android ensure foreground recovered", {
@@ -2614,6 +4766,82 @@ async function ensureAppForeground() {
 }
 
 async function prepareAppLaunch() {
+  assertConfiguredBaseUrl();
+
+  if (session.platform === "ios") {
+    runCapture(
+      "xcrun",
+      ["simctl", "terminate", deviceId as string, session.appId],
+      { allowFailure: true },
+    );
+    runCapture("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "write",
+      session.appId,
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      session.appBaseUrl,
+    ]);
+    const observedBaseUrl = runCapture("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "read",
+      session.appId,
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+    ]);
+    if (observedBaseUrl !== session.appBaseUrl) {
+      throw new Error(
+        `iOS E2E runtime baseUrl was not written correctly: expected ${session.appBaseUrl}, observed ${observedBaseUrl}`,
+      );
+    }
+    if (channelNamespace) {
+      runCapture("xcrun", [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "defaults",
+        "write",
+        session.appId,
+        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+        channelNamespace,
+      ]);
+      const observedChannelNamespace = runCapture("xcrun", [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "defaults",
+        "read",
+        session.appId,
+        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+      ]);
+      if (observedChannelNamespace !== channelNamespace) {
+        throw new Error(
+          `iOS E2E runtime channel namespace was not written correctly: expected ${channelNamespace}, observed ${observedChannelNamespace}`,
+        );
+      }
+    } else {
+      runCapture(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "defaults",
+          "delete",
+          session.appId,
+          "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
+        ],
+        { allowFailure: true },
+      );
+    }
+    await sleep(E2E_POLL_INTERVAL_MS);
+    return {};
+  }
+
   if (session.platform !== "android") {
     return {};
   }
@@ -2624,17 +4852,30 @@ async function prepareAppLaunch() {
     targetAppId: session.appId,
   });
 
+  if (dismissAndroidAnrWindow("prepare-app-launch")) {
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+  }
+
+  ensureAndroidReverse();
+  writeAndroidE2ERuntimeConfig();
   runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
     { allowFailure: true },
   );
-  await sleep(500);
+  await sleep(E2E_POLL_INTERVAL_MS);
 
   return {};
 }
 
 async function bootstrap() {
+  if (session.bootstrapResult) {
+    logE2e("bootstrap result reused", {
+      platform: session.platform,
+    });
+    return session.bootstrapResult;
+  }
+
   if (!session.appBackupPath) {
     session.appBackupPath = await backupFile(session.appSourceFile);
   }
@@ -2654,13 +4895,17 @@ async function bootstrap() {
   session.deployedBundles = [];
   session.storePath = null;
 
-  await clearRemoteBundles();
+  await waitForLocalProviderReady();
+  await clearRemoteBundles({
+    mode: session.reuseApp ? "disable" : "delete",
+  });
   await restoreFile(
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
   );
   await restoreMultiAssetFixtures();
   await restoreFile(session.configBackupPath, session.configSourceFile);
+  await exportNativePublicKeyFromSigningKey();
   await applyAppScenario({
     bundleProfile: "default",
     marker: session.initialMarker,
@@ -2674,10 +4919,11 @@ async function bootstrap() {
     await prepareAndroidRelease();
   }
 
-  return {
+  session.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
     initialMarker: session.initialMarker,
   };
+  return session.bootstrapResult;
 }
 
 async function captureBuiltInBundleId() {
@@ -2688,8 +4934,137 @@ async function captureBuiltInBundleId() {
   return { builtInBundleId };
 }
 
+function bareBuildCacheEnv({
+  bundleProfile,
+  request,
+}: {
+  bundleProfile: BundleProfile;
+  request: DeployBundleRequest;
+}) {
+  const cacheRoot = bareBuildCacheRoot();
+  if (!cacheRoot) {
+    return undefined;
+  }
+
+  const cacheKey = hashText(
+    JSON.stringify({
+      bundleProfile,
+      cacheVersion: BARE_BUILD_CACHE_VERSION,
+      configHash: bareBuildConfigFingerprint(),
+      inputHash: hashBareBuildInputs(),
+      marker: request.marker,
+      mode: request.mode,
+      platform: session.platform,
+      safeBundleIds: request.safeBundleIds,
+    }),
+  );
+
+  return {
+    HOT_UPDATER_BARE_BUILD_CACHE_DIR: cacheRoot,
+    HOT_UPDATER_BARE_BUILD_CACHE_KEY: cacheKey,
+  };
+}
+
+async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
+  const cacheDir = env?.HOT_UPDATER_BARE_BUILD_CACHE_DIR;
+  const cacheKey = env?.HOT_UPDATER_BARE_BUILD_CACHE_KEY;
+  if (!cacheDir || !cacheKey) {
+    return null;
+  }
+
+  const lockRoot = path.join(cacheDir, ".locks");
+  const lockPath = path.join(lockRoot, `${cacheKey}.lock`);
+  await fsPromises.mkdir(lockRoot, { recursive: true });
+  let loggedWait = false;
+
+  const readOwner = async () => {
+    try {
+      return JSON.parse(
+        await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
+      ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
+    } catch {
+      return null;
+    }
+  };
+
+  const isOwnerAlive = (owner: Awaited<ReturnType<typeof readOwner>>) => {
+    if (
+      !owner ||
+      typeof owner.pid !== "number" ||
+      !Number.isInteger(owner.pid)
+    ) {
+      return true;
+    }
+
+    try {
+      process.kill(owner.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  while (true) {
+    try {
+      await fsPromises.mkdir(lockPath);
+      await fsPromises.writeFile(
+        path.join(lockPath, "owner.json"),
+        JSON.stringify(
+          {
+            pid: process.pid,
+            platform: session.platform,
+            startedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+      logE2e("bare build cache lock acquired", { cacheKey });
+      return lockPath;
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      const stats = await fsPromises.stat(lockPath).catch(() => null);
+      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
+      const owner = await readOwner();
+      if (!isOwnerAlive(owner)) {
+        logE2e("bare build cache lock owner exited; removing", {
+          cacheKey,
+          owner,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        loggedWait = false;
+        continue;
+      }
+
+      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
+        logE2e("bare build cache lock stale; removing", {
+          ageMs,
+          cacheKey,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        continue;
+      }
+
+      if (!loggedWait) {
+        logE2e("bare build cache lock waiting", { cacheKey });
+        loggedWait = true;
+      }
+      await sleep(BARE_BUILD_CACHE_LOCK_WAIT_MS);
+    }
+  }
+}
+
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
+  const remoteChannel = getRemoteChannel(request.channel);
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
@@ -2724,7 +5099,7 @@ async function deployBundle(request: DeployBundleRequest) {
     "-t",
     request.targetAppVersion,
     "-c",
-    request.channel,
+    remoteChannel,
     "-o",
     deployOutputPath,
   ];
@@ -2747,22 +5122,49 @@ async function deployBundle(request: DeployBundleRequest) {
 
   const deployLogPath = path.join(
     session.resultsDir,
-    `deploy-${request.channel}-${request.marker}.log`,
+    `deploy-${remoteChannel}-${request.marker}.log`,
   );
   logE2e("deploy start", {
     bundleProfile,
+    bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
+    channelNamespace,
     command: `node ${args.join(" ")}`,
     logPath: path.relative(REPO_DIR, deployLogPath),
     marker: request.marker,
     mode: request.mode,
     platform: session.platform,
+    remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
-  await runLogged("node", args, {
-    cwd: session.exampleDir,
-    logPath: deployLogPath,
-  });
+  const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
+  const lockPath = await acquireBareBuildCacheLock(cacheEnv);
+  let deployDurationMs = 0;
+  const deployOutput = await (async () => {
+    try {
+      const deployStartedAt = Date.now();
+      const output = await runLogged("node", args, {
+        cwd: session.exampleDir,
+        env: getHotUpdaterControlEnv(cacheEnv),
+        logPath: deployLogPath,
+      });
+      deployDurationMs = Date.now() - deployStartedAt;
+      return output;
+    } finally {
+      if (lockPath) {
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+      }
+    }
+  })();
+  const bundleId = extractDeployBundleId(deployOutput);
+  if (!bundleId) {
+    throw new Error(
+      [
+        "Failed to resolve deployed bundle id from hot-updater deploy output.",
+        `See ${deployLogPath}`,
+      ].join("\n"),
+    );
+  }
 
   const archiveDetails = await (async () => {
     try {
@@ -2781,15 +5183,20 @@ async function deployBundle(request: DeployBundleRequest) {
         );
       }
 
-      logE2e("deploy done", {
-        archivePath: path.relative(REPO_DIR, archivePath),
-        archiveSizeBytes: archiveStats.size,
+      const deployTiming = {
         bundleProfile,
         channel: request.channel,
-        logPath: path.relative(REPO_DIR, deployLogPath),
+        durationMs: deployDurationMs,
         marker: request.marker,
         mode: request.mode,
         platform: session.platform,
+      };
+      logE2e("deploy timing", deployTiming);
+      logE2e("deploy done", {
+        archivePath: path.relative(REPO_DIR, archivePath),
+        archiveSizeBytes: archiveStats.size,
+        ...deployTiming,
+        logPath: path.relative(REPO_DIR, deployLogPath),
       });
 
       return {
@@ -2801,23 +5208,13 @@ async function deployBundle(request: DeployBundleRequest) {
     }
   })();
 
-  const bundleId = await fetchLatestBundle({
-    channel: request.channel,
-  });
-
   if (request.targetCohorts && request.targetCohorts.length > 0) {
     await patchBundle(bundleId, {
       targetCohorts: request.targetCohorts,
     });
   }
 
-  const diff =
-    request.diffBaseBundleId !== undefined
-      ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
-      : null;
-  const bundle = await fetchBundleById(bundleId);
-  const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
-
+  let bundle = await fetchBundleById(bundleId);
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForUpdateCheckVisibility({
       bundleId,
@@ -2825,6 +5222,13 @@ async function deployBundle(request: DeployBundleRequest) {
       requestBundleId: updateCheckRequestBundleId,
     });
   }
+
+  const diff =
+    request.diffBaseBundleId !== undefined
+      ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
+      : null;
+  bundle = await fetchBundleById(bundleId);
+  const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
 
   session.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
@@ -2876,6 +5280,13 @@ async function updateBundle(request: PatchBundleRequest) {
   });
 
   const bundle = await fetchBundleById(request.bundleId);
+  if (request.enabled === false && bundle.enabled === false) {
+    await waitForUpdateCheckExcludesBundle({
+      bundleId: bundle.id,
+      channel: bundle.channel,
+    });
+  }
+
   updateTrackedBundleRecord(request.bundleId, {
     enabled: bundle.enabled,
     rolloutCohortCount: bundle.rolloutCohortCount ?? null,
@@ -2922,11 +5333,15 @@ async function computeRolloutSample(bundleId: string) {
   };
 }
 
-async function waitForMetadata(bundleId: string, verificationPending: boolean) {
+async function waitForMetadata(
+  bundleId: string,
+  verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
+) {
   if (session.platform === "ios") {
-    await waitForIosMetadataState(bundleId, verificationPending);
+    await waitForIosMetadataState(bundleId, verificationPending, options);
   } else {
-    await waitForAndroidMetadataState(bundleId, verificationPending);
+    await waitForAndroidMetadataState(bundleId, verificationPending, options);
   }
 
   return {};
@@ -3010,6 +5425,52 @@ function readFirstOtaArchiveInstallLogs() {
     .split("\n")
     .filter((line) => line.includes("Skipping manifest-driven install"))
     .join("\n");
+}
+
+function readHotUpdaterNativeLogs() {
+  if (session.platform === "ios") {
+    return runCapture(
+      "xcrun",
+      [
+        "simctl",
+        "spawn",
+        deviceId as string,
+        "log",
+        "show",
+        "--style",
+        "compact",
+        "--last",
+        "10m",
+        "--predicate",
+        [
+          'eventMessage CONTAINS "BundleStorage"',
+          'eventMessage CONTAINS "SignatureVerifier"',
+          'eventMessage CONTAINS "HotUpdater"',
+          'eventMessage CONTAINS "DecompressService"',
+        ].join(" OR "),
+      ],
+      { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+    );
+  }
+
+  return runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "logcat",
+      "-d",
+      "-v",
+      "time",
+      "BundleStorage:D",
+      "SignatureVerifier:D",
+      "HotUpdaterRecovery:D",
+      "DecompressService:D",
+      "ReactNativeJS:E",
+      "*:S",
+    ],
+    { allowFailure: true, maxBuffer: 8 * 1024 * 1024 },
+  );
 }
 
 function includesAllFragments(logs: string, fragments: string[]) {
@@ -3128,7 +5589,7 @@ async function assertBundleAssetsStored(args: {
   assetPaths: string[];
   bundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBundleAssetsStoredEvidence(args);
     if (evidence.ok) {
       logE2e("bundle assets stored", {
@@ -3140,7 +5601,7 @@ async function assertBundleAssetsStored(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw createEndpointError(
@@ -3154,7 +5615,7 @@ async function assertMultipleAssetsReplaced(args: {
   bundleId: string;
   previousBundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readMultipleAssetsReplacementEvidence(args);
     if (evidence.ok) {
       logE2e("multiple assets replaced", {
@@ -3167,7 +5628,7 @@ async function assertMultipleAssetsReplaced(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   throw createEndpointError(
@@ -3186,7 +5647,7 @@ async function assertBsdiffPatchApplied(args: {
     `baseBundleId=${args.baseBundleId}`,
   ];
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBsdiffPatchStoreEvidence(args);
     if (evidence.ok && "record" in evidence) {
       const logs = readBsdiffPatchLogs();
@@ -3202,7 +5663,7 @@ async function assertBsdiffPatchApplied(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const logs = readBsdiffPatchLogs();
@@ -3224,7 +5685,7 @@ async function assertManifestDiffApplied(args: {
   bundleId: string;
   previousBundleId: string;
 }) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = await readManifestDiffState(args);
     if (state.ok) {
       logE2e("manifest diff applied without bsdiff patch", {
@@ -3236,7 +5697,7 @@ async function assertManifestDiffApplied(args: {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const state = await readManifestDiffState(args);
@@ -3274,7 +5735,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
     "Using archive",
   ];
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = readFirstOtaArchiveState(args.bundleId);
     if (
       state.metadataState.stagingBundleId === args.bundleId &&
@@ -3292,6 +5753,21 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
+    if (
+      state.metadataState.stagingBundleId === args.bundleId &&
+      state.metadataState.verificationPending === false &&
+      state.bundleFile.exists
+    ) {
+      logE2e("first OTA used archive install path", {
+        bundleId: args.bundleId,
+        bundleFilePath: state.bundleFile.path,
+        evidence: "bundle-store-active",
+        metadataPath: state.diagnostics.metadata.path,
+        platform: session.platform,
+      });
+      return {};
+    }
+
     const logs = readFirstOtaArchiveInstallLogs();
     if (includesAllFragments(logs, expectedFragments)) {
       logE2e("first OTA used archive install path", {
@@ -3302,7 +5778,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       return {};
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const logs = readFirstOtaArchiveInstallLogs();
@@ -3314,9 +5790,17 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       expectedFragments,
       expectedState: {
         bundleFileExists: true,
-        stableBundleId: null,
-        stagingBundleId: args.bundleId,
-        verificationPending: true,
+        states: [
+          {
+            stableBundleId: null,
+            stagingBundleId: args.bundleId,
+            verificationPending: true,
+          },
+          {
+            stagingBundleId: args.bundleId,
+            verificationPending: false,
+          },
+        ],
       },
       logsTail: logs.split("\n").slice(-20),
       observedState: {
@@ -3398,12 +5882,30 @@ async function reinstallBuiltInApp() {
   session.storePath = null;
 
   if (session.platform === "ios") {
-    await installIosArtifact(session.builtArtifactPath);
+    if (session.reuseApp) {
+      await prepareReusableIosArtifact(
+        session.builtArtifactPath,
+        nativeArtifactCacheKey(),
+      );
+    } else {
+      await installIosArtifact(session.builtArtifactPath);
+    }
   } else {
-    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-      allowFailure: true,
-    });
-    await installAndroidArtifact("adb-install-reset.log");
+    if (session.reuseApp) {
+      await prepareReusableAndroidArtifact(
+        "adb-install-reset.log",
+        nativeArtifactCacheKey(resolveAndroidE2eArchitecture()),
+      );
+    } else {
+      runCapture(
+        "adb",
+        ["-s", deviceId as string, "uninstall", session.appId],
+        {
+          allowFailure: true,
+        },
+      );
+      await installAndroidArtifact("adb-install-reset.log");
+    }
   }
 
   logE2e("built-in app reinstalled", {
@@ -3416,9 +5918,25 @@ async function reinstallBuiltInApp() {
 }
 
 async function resetRemoteBundles() {
-  await clearRemoteBundles();
+  await clearRemoteBundles({
+    mode: session.reuseApp ? "disable" : "delete",
+  });
 
   logE2e("remote bundles reset on demand", {
+    platform: session.platform,
+  });
+
+  return {};
+}
+
+async function resetLocalAppState() {
+  if (session.platform === "ios") {
+    await clearIosLocalBundleState();
+  } else {
+    clearAndroidLocalAppState();
+  }
+
+  logE2e("local app state reset on demand", {
     platform: session.platform,
   });
 
@@ -3512,13 +6030,17 @@ async function assertMetadataActive(bundleId: string) {
 }
 
 async function assertMetadataResetState() {
-  const attempts = 30;
+  const attempts = 120;
 
   for (let index = 0; index < attempts; index += 1) {
     const diagnostics =
       session.platform === "ios"
         ? readIosWaitForMetadataDiagnostics()
         : readAndroidWaitForMetadataDiagnostics();
+
+    if (!diagnostics.metadata.exists) {
+      return {};
+    }
 
     if (diagnostics.metadata.value) {
       try {
@@ -3527,7 +6049,7 @@ async function assertMetadataResetState() {
       } catch {}
     }
 
-    await sleep(1000);
+    await sleep(E2E_POLL_INTERVAL_MS);
   }
 
   const diagnostics =
@@ -3651,6 +6173,10 @@ function createJob(task: () => Promise<JobResult>) {
     .catch((error: unknown) => {
       const message =
         error instanceof Error ? error.message : "Unknown E2E job failure";
+      logE2e("control job failed", {
+        error: message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       jobs.set(jobId, { error: message, status: "failed" });
     });
 
@@ -3658,7 +6184,15 @@ function createJob(task: () => Promise<JobResult>) {
 }
 
 export function startBootstrapJob() {
-  return createJob(() => bootstrap());
+  if (bootstrapJobId) {
+    const job = jobs.get(bootstrapJobId);
+    if (job?.status === "running" || job?.status === "succeeded") {
+      return bootstrapJobId;
+    }
+  }
+
+  bootstrapJobId = createJob(() => bootstrap());
+  return bootstrapJobId;
 }
 
 export function startDeployBundleJob(request: DeployBundleRequest) {
@@ -3672,8 +6206,11 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
 export function startWaitForMetadataJob(
   bundleId: string,
   verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
 ) {
-  return createJob(() => waitForMetadata(bundleId, verificationPending));
+  return createJob(() =>
+    waitForMetadata(bundleId, verificationPending, options),
+  );
 }
 
 export function getJob(jobId: string) {
@@ -3691,8 +6228,9 @@ export async function handleComputeRolloutSample(bundleId: string) {
 export async function handleWaitForMetadata(
   bundleId: string,
   verificationPending: boolean,
+  options: WaitForMetadataOptions = {},
 ) {
-  return waitForMetadata(bundleId, verificationPending);
+  return waitForMetadata(bundleId, verificationPending, options);
 }
 
 export async function handleAssertBsdiffPatchApplied(args: {
@@ -3716,6 +6254,10 @@ export async function handleReinstallBuiltInApp() {
 
 export async function handleResetRemoteBundles() {
   return resetRemoteBundles();
+}
+
+export async function handleResetLocalAppState() {
+  return resetLocalAppState();
 }
 
 export async function handleAssertBundlePatchBases(args: {

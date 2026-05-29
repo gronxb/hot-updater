@@ -50,6 +50,7 @@ export type {
   ReloadBehaviorSetting,
 } from "./native";
 export * from "./store";
+export { createDefaultResolver } from "./DefaultResolver";
 export {
   extractSignatureFailure,
   type HotUpdaterBaseURL,

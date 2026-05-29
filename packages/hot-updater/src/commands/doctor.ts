@@ -8,6 +8,10 @@ import {
   p,
   readPackageUp,
 } from "@hot-updater/cli-tools";
+import type {
+  BundleIndexHealth,
+  BundleIndexRepairResult,
+} from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import * as semver from "semver";
@@ -82,6 +86,16 @@ interface NativeStatus {
   issues: NativeCheckIssue[];
 }
 
+interface BundleIndexDoctorStatus {
+  adapterName?: string;
+  status: "not-applicable" | "ok" | "missing" | "stale" | "repaired" | "error";
+  repairAvailable?: boolean;
+  health?: BundleIndexHealth;
+  postRepairHealth?: BundleIndexHealth;
+  repair?: BundleIndexRepairResult;
+  error?: string;
+}
+
 interface LocalFingerprint {
   ios?: { hash?: string } | null;
   android?: { hash?: string } | null;
@@ -93,6 +107,7 @@ interface DoctorDetails {
   versionMismatches?: VersionMismatch[];
   infrastructure?: InfrastructureStatus;
   native?: NativeStatus;
+  bundleIndex?: BundleIndexDoctorStatus;
 
   // Package info
   packageJsonPath?: string;
@@ -113,11 +128,13 @@ interface DoctorOptions {
   cwd?: string;
   serverBaseUrl?: string;
   fetch?: typeof fetch;
+  fix?: boolean;
 }
 
 interface HandleDoctorOptions {
   serverBaseUrl?: string;
   json?: boolean;
+  fix?: boolean;
 }
 
 interface ServerVersionResponse {
@@ -797,6 +814,79 @@ async function checkInfrastructureStatus({
   }
 }
 
+async function checkBundleIndexStatus({
+  fix,
+}: {
+  fix: boolean;
+}): Promise<BundleIndexDoctorStatus | undefined> {
+  try {
+    const config = await loadConfig(null);
+    const database = await config.database();
+    try {
+      const bundleIndexDiagnostics = database.diagnostics?.bundleIndex;
+
+      if (!bundleIndexDiagnostics) {
+        if (!fix) {
+          return undefined;
+        }
+
+        return {
+          adapterName: database.name,
+          status: "not-applicable",
+        };
+      }
+
+      const health = await bundleIndexDiagnostics.check();
+      if (health?.status === "ok") {
+        return {
+          adapterName: database.name,
+          status: "ok",
+          repairAvailable: bundleIndexDiagnostics.repair !== undefined,
+          health,
+        };
+      }
+
+      if (!fix || !bundleIndexDiagnostics.repair) {
+        return {
+          adapterName: database.name,
+          status: health.status,
+          repairAvailable: bundleIndexDiagnostics.repair !== undefined,
+          health,
+        };
+      }
+
+      const repair = await bundleIndexDiagnostics.repair();
+      const postRepairHealth = await bundleIndexDiagnostics.check();
+      if (postRepairHealth.status !== "ok") {
+        return {
+          adapterName: database.name,
+          status: postRepairHealth.status,
+          repairAvailable: true,
+          health,
+          postRepairHealth,
+          repair,
+        };
+      }
+
+      return {
+        adapterName: database.name,
+        status: "repaired",
+        repairAvailable: true,
+        health,
+        postRepairHealth,
+        repair,
+      };
+    } finally {
+      await database.onUnmount?.();
+    }
+  } catch (error) {
+    return {
+      status: "error",
+      error: (error as Error).message,
+    };
+  }
+}
+
 /**
  * Performs health check on Hot Updater installation
  * @param options - Doctor check options
@@ -806,7 +896,12 @@ export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
   try {
-    const { cwd = getCwd(), serverBaseUrl, fetch: fetchImpl } = options;
+    const {
+      cwd = getCwd(),
+      serverBaseUrl,
+      fetch: fetchImpl,
+      fix = false,
+    } = options;
 
     // Read package.json
     const packageResult = await readPackageUp<PackageJson>(cwd);
@@ -888,6 +983,8 @@ export async function doctor(
       details.native = await checkNativeStatus({ cwd });
     }
 
+    details.bundleIndex = await checkBundleIndexStatus({ fix });
+
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
       details.versionMismatches = versionMismatches;
@@ -899,8 +996,15 @@ export async function doctor(
       details.infrastructure?.needsUpdate === true;
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
+    const hasBundleIndexIssue =
+      details.bundleIndex?.status === "error" ||
+      details.bundleIndex?.status === "missing" ||
+      details.bundleIndex?.status === "stale";
     const hasIssues =
-      versionMismatches.length > 0 || hasInfrastructureIssue || hasNativeIssue;
+      versionMismatches.length > 0 ||
+      hasInfrastructureIssue ||
+      hasNativeIssue ||
+      hasBundleIndexIssue;
     // Future: || configurationIssues.length > 0 || etc.
 
     if (hasIssues) {
@@ -918,6 +1022,13 @@ export async function doctor(
     }
 
     if (details.native) {
+      return {
+        success: true,
+        details,
+      };
+    }
+
+    if (details.bundleIndex) {
       return {
         success: true,
         details,
@@ -976,9 +1087,10 @@ const promptServerBaseUrl = async () => {
 export const handleDoctor = async ({
   serverBaseUrl,
   json = false,
+  fix = false,
 }: HandleDoctorOptions = {}) => {
   if (json) {
-    const result = normalizeDoctorResult(await doctor({ serverBaseUrl }));
+    const result = normalizeDoctorResult(await doctor({ serverBaseUrl, fix }));
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {
       process.exit(1);
@@ -989,7 +1101,7 @@ export const handleDoctor = async ({
   p.intro("Hot Updater doctor");
 
   const resolvedServerBaseUrl = serverBaseUrl ?? (await promptServerBaseUrl());
-  const result = await doctor({ serverBaseUrl: resolvedServerBaseUrl });
+  const result = await doctor({ serverBaseUrl: resolvedServerBaseUrl, fix });
 
   if (result === true) {
     p.log.success("All checks passed.");
@@ -1101,6 +1213,62 @@ export const handleDoctor = async ({
         p.log.warn(message);
       }
       p.log.info(issue.resolution);
+    }
+  }
+
+  if (details?.bundleIndex) {
+    const bundleIndex = details.bundleIndex;
+    const lines = [
+      ui.kv("Status", bundleIndex.status),
+      ...(bundleIndex.adapterName
+        ? [ui.kv("Adapter", bundleIndex.adapterName)]
+        : []),
+    ];
+
+    if (bundleIndex.health) {
+      lines.push(
+        ui.kv("Canonical", bundleIndex.health.canonicalBundles),
+        ui.kv("Indexed", bundleIndex.health.indexedBundles),
+        ui.kv("Missing", bundleIndex.health.missingBundles),
+        ui.kv("Extra", bundleIndex.health.extraBundles),
+      );
+    }
+
+    if (bundleIndex.postRepairHealth) {
+      lines.push(
+        ui.kv("Post-repair", bundleIndex.postRepairHealth.status),
+        ui.kv("Post missing", bundleIndex.postRepairHealth.missingBundles),
+        ui.kv("Post extra", bundleIndex.postRepairHealth.extraBundles),
+      );
+    }
+
+    if (bundleIndex.repair) {
+      lines.push(
+        ui.kv("Written", bundleIndex.repair.indexedBundles),
+        ui.kv("Pages", bundleIndex.repair.pagesWritten),
+        ui.kv("Scopes", bundleIndex.repair.scopesWritten),
+      );
+    }
+
+    p.log.message(ui.block("Bundle index", lines));
+
+    if (bundleIndex.status === "error") {
+      p.log.error(`Bundle index check failed: ${bundleIndex.error}`);
+    } else if (bundleIndex.status === "repaired") {
+      p.log.success("Bundle index repaired.");
+    } else if (bundleIndex.status === "ok") {
+      p.log.success("Bundle index is healthy.");
+    } else if (bundleIndex.status === "not-applicable") {
+      p.log.info("Bundle index repair is not supported by this adapter.");
+    } else if (bundleIndex.repair) {
+      p.log.error(
+        "Bundle index repair completed, but the index is still out of sync.",
+      );
+    } else if (bundleIndex.repairAvailable) {
+      p.log.warn("Bundle index is out of sync.");
+      p.log.info(`Run ${ui.command("hot-updater doctor --fix")} to repair it.`);
+    } else {
+      p.log.error("Bundle index is out of sync and repair is not available.");
     }
   }
 

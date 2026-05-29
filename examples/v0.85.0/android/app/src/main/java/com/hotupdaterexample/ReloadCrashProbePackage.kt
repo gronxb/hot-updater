@@ -1,14 +1,47 @@
 package com.hotupdaterexample
 
-import com.facebook.react.ReactPackage
+import com.facebook.react.BaseReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.module.model.ReactModuleInfo
+import com.facebook.react.module.model.ReactModuleInfoProvider
 import com.facebook.react.uimanager.ViewManager
+import java.util.HashMap
 
-class ReloadCrashProbePackage : ReactPackage {
-    override fun createNativeModules(
+class ReloadCrashProbePackage : BaseReactPackage() {
+    override fun getModule(
+        name: String,
         reactContext: ReactApplicationContext,
-    ): List<NativeModule> = listOf(ReloadCrashProbeModule(reactContext))
+    ): NativeModule? =
+        when (name) {
+            ReloadCrashProbeModule.NAME -> ReloadCrashProbeModule(reactContext)
+            E2ERuntimeConfigModule.NAME -> E2ERuntimeConfigModule(reactContext)
+            else -> null
+        }
+
+    override fun getReactModuleInfoProvider(): ReactModuleInfoProvider =
+        ReactModuleInfoProvider {
+            val moduleInfos: MutableMap<String, ReactModuleInfo> = HashMap()
+            moduleInfos[ReloadCrashProbeModule.NAME] =
+                ReactModuleInfo(
+                    ReloadCrashProbeModule.NAME,
+                    ReloadCrashProbeModule.NAME,
+                    false, // canOverrideExistingModule
+                    false, // needsEagerInit
+                    false, // isCxxModule
+                    false, // isTurboModule
+                )
+            moduleInfos[E2ERuntimeConfigModule.NAME] =
+                ReactModuleInfo(
+                    E2ERuntimeConfigModule.NAME,
+                    E2ERuntimeConfigModule.NAME,
+                    false, // canOverrideExistingModule
+                    false, // needsEagerInit
+                    false, // isCxxModule
+                    true, // isTurboModule
+                )
+            moduleInfos
+        }
 
     override fun createViewManagers(
         reactContext: ReactApplicationContext,

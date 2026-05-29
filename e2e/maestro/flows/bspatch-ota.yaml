@@ -28,6 +28,11 @@ onFlowComplete:
         CONTROL_URL: ${CONTROL_URL}
 ---
 # Capture the built-in baseline before the OTA chain starts.
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: reinstallBuiltInApp
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/launch-app-home.yaml
     env:
@@ -44,6 +49,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 1: built-in -> A uses archive, then A -> C uses a bsdiff patch while C
 # still carries patches for both B and A.
@@ -59,7 +69,7 @@ onFlowComplete:
       OUTPUT_KEY: phase1A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -77,7 +87,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase1A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -130,7 +140,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       EXPECTED_BASE_BUNDLE_IDS: ${output.phase1B},${output.phase1A}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -145,8 +155,9 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase1C}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase1CDiffPatchAssetPath}.bsdiff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase1CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -209,6 +220,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 2: build A -> B -> C -> D and verify B -> C, then C -> D both use
 # bsdiff patches with maxBaseBundles=2.
@@ -224,7 +240,7 @@ onFlowComplete:
       OUTPUT_KEY: phase2A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -242,7 +258,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase2A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -269,7 +285,7 @@ onFlowComplete:
       OUTPUT_KEY: phase2B
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -317,7 +333,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       EXPECTED_BASE_BUNDLE_IDS: ${output.phase2B},${output.phase2A}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -332,8 +348,9 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase2C}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2CDiffPatchAssetPath}.bsdiff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -394,7 +411,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       EXPECTED_BASE_BUNDLE_IDS: ${output.phase2C},${output.phase2B}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -409,8 +426,9 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase2D}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase2DDiffPatchAssetPath}.bsdiff
+      EXPECTED_DOWNLOAD_PATH: ${output.phase2DPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:
@@ -568,6 +586,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: assertMetadataReset
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -622,6 +645,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: resetLocalAppState
+      CONTROL_URL: ${CONTROL_URL}
 
 # Phase 3: built-in -> A uses archive, C only gets a patch from B because of
 # maxBaseBundles=1, and an A client must fall back to pure manifest diff.
@@ -637,7 +665,7 @@ onFlowComplete:
       OUTPUT_KEY: phase3A
       TARGET_APP_VERSION: ${TARGET_APP_VERSION}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -655,7 +683,7 @@ onFlowComplete:
       BUNDLE_ID: ${output.phase3A}
       CONTROL_URL: ${CONTROL_URL}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -702,7 +730,7 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       EXPECTED_BASE_BUNDLE_IDS: ${output.phase3B}
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
@@ -717,8 +745,9 @@ onFlowComplete:
     file: subflows/assert-update-store-download.yaml
     env:
       APP_ID: ${APP_ID}
+      BUNDLE_ID: ${output.phase3C}
       EXPECTED_ARTIFACT_TYPE: diff
-      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}.br
+      EXPECTED_DOWNLOAD_PATH: ${output.phase3CPrimaryBundleAssetPath}
 - runFlow:
     file: subflows/restart-app-home.yaml
     env:

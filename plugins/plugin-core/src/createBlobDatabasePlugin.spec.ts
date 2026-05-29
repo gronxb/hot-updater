@@ -87,12 +87,18 @@ let fakeStore: Record<string, string> = {};
 let cloudfrontInvalidations: { paths: string[] }[] = [];
 let listObjectCalls: string[] = [];
 let loadObjectCalls: string[] = [];
+let uploadObjectDelayMs = 0;
+let activeUploadObjectCount = 0;
+let maxActiveUploadObjectCount = 0;
 
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
   listObjectCalls = [];
   loadObjectCalls = [];
+  uploadObjectDelayMs = 0;
+  activeUploadObjectCount = 0;
+  maxActiveUploadObjectCount = 0;
 });
 
 afterEach(() => {
@@ -129,7 +135,22 @@ describe("blobDatabase plugin", () => {
   }
 
   async function uploadObject<T>(path: string, data: T): Promise<void> {
-    fakeStore[path] = JSON.stringify(data);
+    activeUploadObjectCount += 1;
+    maxActiveUploadObjectCount = Math.max(
+      maxActiveUploadObjectCount,
+      activeUploadObjectCount,
+    );
+
+    try {
+      if (uploadObjectDelayMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, uploadObjectDelayMs),
+        );
+      }
+      fakeStore[path] = JSON.stringify(data);
+    } finally {
+      activeUploadObjectCount -= 1;
+    }
   }
 
   async function deleteObject(path: string): Promise<void> {
@@ -363,6 +384,47 @@ describe("blobDatabase plugin", () => {
     expect(loadObjectCalls).toEqual([
       "production/ios/fingerprint-1/update.json",
     ]);
+  });
+
+  it("rebuilds the management index from manifests during commit", async () => {
+    const baseBundle: Bundle = {
+      ...DEFAULT_BUNDLE,
+      channel: "production",
+      id: "00000000-0000-0000-0000-000000000010",
+      platform: "android",
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-1",
+    };
+    const nextBundle: Bundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000020",
+      fileHash: "next-hash",
+      storageUri:
+        "storage://my-app/00000000-0000-0000-0000-000000000020/bundle.zip",
+    };
+
+    seedUpdateManifests([baseBundle]);
+    seedPagedBundlesIndex([]);
+
+    await plugin.appendBundle(nextBundle);
+    await plugin.commitBundle();
+
+    const patchBaseCandidates = await plugin.getBundles({
+      limit: 10,
+      orderBy: {
+        direction: "desc",
+        field: "id",
+      },
+      where: {
+        channel: "production",
+        enabled: true,
+        fingerprintHash: "fingerprint-1",
+        id: { lt: nextBundle.id },
+        platform: "android",
+      },
+    });
+
+    expect(patchBaseCandidates.data).toEqual([baseBundle]);
   });
 
   it("respects cohort eligibility when selecting app-version updates", async () => {
@@ -1049,6 +1111,72 @@ describe("blobDatabase plugin", () => {
       pageSize: 3,
     });
     expect(fakeStore[getManagementPageKey({}, 2)]).toBeUndefined();
+  });
+
+  it("detects a stale management index missing canonical bundles", async () => {
+    const indexedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-health-A",
+    );
+    const missingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-health-B",
+    );
+    seedUpdateManifests([indexedBundle, missingBundle]);
+    seedPagedBundlesIndex([indexedBundle]);
+
+    await expect(plugin.diagnostics?.bundleIndex?.check()).resolves.toEqual({
+      status: "stale",
+      canonicalBundles: 2,
+      indexedBundles: 1,
+      missingBundles: 1,
+      extraBundles: 0,
+      missingBundleIds: [missingBundle.id],
+      extraBundleIds: [],
+    });
+  });
+
+  it("repairs a stale management index from canonical update manifests", async () => {
+    const indexedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-repair-A",
+    );
+    const missingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-repair-B",
+    );
+    seedUpdateManifests([indexedBundle, missingBundle]);
+    seedPagedBundlesIndex([indexedBundle]);
+
+    await expect(
+      plugin.diagnostics?.bundleIndex?.repair?.(),
+    ).resolves.toMatchObject({
+      scannedBundles: 2,
+      indexedBundles: 2,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const result = await plugin.getBundles({ limit: 20 });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual([
+      missingBundle.id,
+      indexedBundle.id,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
   });
 
   it("reads the first all-bundles page from one root and one leaf page", async () => {
@@ -2908,6 +3036,26 @@ describe("blobDatabase plugin", () => {
         ),
       ).toBe(false);
       expect(invalidatedPaths).toContain("/api/check-update/app-version/ios/*");
+    });
+
+    it("limits concurrent storage writes while committing many index artifacts", async () => {
+      plugin = createPlugin({ managementIndexPageSize: 1 });
+      uploadObjectDelayMs = 5;
+
+      for (let index = 0; index < 20; index++) {
+        await plugin.appendBundle(
+          createBundleJson(
+            "production",
+            "ios",
+            `1.0.${index}`,
+            `concurrency-test-${String(index).padStart(2, "0")}`,
+          ),
+        );
+      }
+
+      await plugin.commitBundle();
+
+      expect(maxActiveUploadObjectCount).toBeLessThanOrEqual(8);
     });
   });
 

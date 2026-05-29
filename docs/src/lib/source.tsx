@@ -1,10 +1,15 @@
-import { loader, type PageData } from "fumadocs-core/source";
-import type { DocMap } from "fumadocs-mdx/runtime/vite.browser";
+import {
+  loader,
+  type MetaData,
+  type PageData,
+  type StaticSource,
+} from "fumadocs-core/source";
+import type { DocData, DocMethods } from "fumadocs-mdx/runtime/types";
 import { icons } from "lucide-react";
 import type { ReactElement } from "react";
 import { createElement } from "react";
 
-import { create, docs } from "@/.source";
+import { docs } from "../../.source/server";
 
 // Custom brand icons as JSX components
 const brandIcons: Record<string, () => ReactElement> = {
@@ -258,11 +263,17 @@ const brandIcons: Record<string, () => ReactElement> = {
   ),
 };
 
+type DocsPageData = PageData & DocData & DocMethods & { version?: string };
+
 export const source = loader({
-  source: await create.sourceAsync(
-    docs.doc as DocMap<PageData & { version?: string }>,
-    docs.meta,
-  ),
+  source: (
+    docs as {
+      toFumadocsSource: () => StaticSource<{
+        pageData: DocsPageData;
+        metaData: MetaData;
+      }>;
+    }
+  ).toFumadocsSource(),
   baseUrl: "/docs",
   icon(icon) {
     if (!icon) {

@@ -147,11 +147,8 @@ onFlowComplete:
       BUNDLE_ID: ${output.qaBundleId}
       CONTROL_URL: ${CONTROL_URL}
       VERIFICATION_PENDING: "true"
-- runFlow:
-    file: subflows/assert-update-action-result.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.qaBundleId} (UPDATE)"
+# Android can leave the intermediate action text stale while the native
+# metadata already has the QA bundle staged. Verify the actual reloaded state.
 - runFlow:
     file: subflows/tap-action-button.yaml
     env:

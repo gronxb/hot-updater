@@ -11,6 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Load optional .env.hotupdater file for local development
 config({ path: path.join(__dirname, ".env.hotupdater") });
 
+const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
+
 const options =
   process.env.NODE_ENV === "test"
     ? {
@@ -22,6 +24,7 @@ const options =
         },
         bucketName:
           process.env.AWS_S3_METADATA_BUCKET || "hot-updater-metadata",
+        basePath: providerNamespace,
         // localstack s3
         forcePathStyle: true,
       }
@@ -33,6 +36,7 @@ const options =
           secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
         },
         bucketName: process.env.R2_BUCKET_NAME!,
+        basePath: providerNamespace,
       };
 
 export const hotUpdater = createHotUpdater({

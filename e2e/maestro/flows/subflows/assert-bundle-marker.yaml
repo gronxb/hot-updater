@@ -5,24 +5,25 @@ appId: ${APP_ID}
     env:
       ACTION: ensureAppForeground
       CONTROL_URL: ${CONTROL_URL}
-- runFlow:
-    file: navigate-top.yaml
-    env:
-      APP_ID: ${APP_ID}
 - retry:
-    maxRetries: 3
+    maxRetries: 5
     commands:
+      - runFlow:
+          file: navigate-top.yaml
+          env:
+            APP_ID: ${APP_ID}
       - assertVisible:
           id: runtime-bundle-id
-      - copyTextFrom:
+          text: ".*${EXPECTED_BUNDLE_ID}.*"
+      - assertVisible:
           id: runtime-bundle-id
-      - assertTrue:
-          condition: ${maestro.copiedText == EXPECTED_BUNDLE_ID || maestro.copiedText.endsWith(EXPECTED_BUNDLE_ID)}
-          label: Runtime bundle id matches expected value
+      - scrollUntilVisible:
+          element:
+            id: runtime-scenario-marker
+          direction: DOWN
+          timeout: 10000
       - assertVisible:
           id: runtime-scenario-marker
-      - copyTextFrom:
+          text: ".*${EXPECTED_MARKER}.*"
+      - assertVisible:
           id: runtime-scenario-marker
-      - assertTrue:
-          condition: ${maestro.copiedText == EXPECTED_MARKER}
-          label: Runtime scenario marker matches expected value

@@ -25,6 +25,10 @@ export interface S3DatabaseConfig
   extends S3ClientConfig, BlobDatabasePluginConfig {
   bucketName: string;
   /**
+   * Base path where database objects will be stored in the bucket.
+   */
+  basePath?: string;
+  /**
    * CloudFront distribution ID used for cache invalidation.
    *
    * If omitted or an empty string, CloudFront invalidation is skipped.
@@ -47,6 +51,64 @@ const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const getS3ErrorProperty = (error: unknown, key: string) => {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+
+  const value = (error as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : undefined;
+};
+
+const isArchivedS3ObjectError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.name === "InvalidObjectState" ||
+    getS3ErrorProperty(error, "Code") === "InvalidObjectState"
+  );
+};
+
+const createArchivedS3ObjectError = ({
+  bucket,
+  key,
+  error,
+}: {
+  bucket: string;
+  key: string;
+  error: unknown;
+}) => {
+  const storageClass =
+    getS3ErrorProperty(error, "StorageClass") ?? "archived storage";
+  const nextError = new Error(
+    `S3 object "${key}" in bucket "${bucket}" is archived (${storageClass}) and cannot be read. Restore the object in S3 or exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json".`,
+    { cause: error },
+  );
+  nextError.name = "S3ArchivedObjectError";
+  return nextError;
+};
+
+function normalizeBasePath(basePath?: string) {
+  return basePath?.replace(/^\/+|\/+$/g, "") ?? "";
+}
+
+function createDatabaseKeyBuilder(basePath?: string) {
+  const normalizedBasePath = normalizeBasePath(basePath);
+
+  const toStorageKey = (key: string) =>
+    [normalizedBasePath, key].filter(Boolean).join("/");
+
+  const fromStorageKey = (key: string) => {
+    if (!normalizedBasePath) return key;
+    const prefix = `${normalizedBasePath}/`;
+    return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+  };
+
+  return { fromStorageKey, toStorageKey };
+}
+
 /**
  * Loads JSON data from S3.
  * Returns null if NoSuchKey error occurs.
@@ -65,6 +127,9 @@ async function loadJsonFromS3<T>(
     return JSON.parse(bodyContents) as T;
   } catch (e) {
     if (e instanceof NoSuchKey) return null;
+    if (isArchivedS3ObjectError(e)) {
+      throw createArchivedS3ObjectError({ bucket, key, error: e });
+    }
     throw e;
   }
 }
@@ -219,6 +284,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
   name: "s3Database",
   factory: (config) => {
     const {
+      basePath,
       bucketName,
       cloudfrontDistributionId,
       apiBasePath = "/api/check-update",
@@ -227,6 +293,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
     } = config;
 
     const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
+    const { fromStorageKey, toStorageKey } = createDatabaseKeyBuilder(basePath);
     const cloudfrontClient = cloudfrontDistributionId
       ? new CloudFrontClient({
           credentials: s3Config.credentials,
@@ -237,11 +304,17 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
     return {
       apiBasePath,
       listObjects: (prefix: string) =>
-        listObjectsInS3(client, bucketName, prefix),
-      loadObject: (key: string) => loadJsonFromS3(client, bucketName, key),
+        listObjectsInS3(client, bucketName, toStorageKey(prefix)).then((keys) =>
+          keys.map(fromStorageKey),
+        ),
+      loadObject: (key: string) =>
+        loadJsonFromS3(client, bucketName, toStorageKey(key)),
       uploadObject: (key: string, data) =>
-        uploadJsonToS3(client, bucketName, key, data),
-      deleteObject: (key: string) => deleteObjectInS3(client, bucketName, key),
+        uploadJsonToS3(client, bucketName, toStorageKey(key), data),
+      deleteObject: (key: string) =>
+        deleteObjectInS3(client, bucketName, toStorageKey(key)),
+      shouldSkipLoadObjectError: (error) =>
+        error instanceof Error && error.name === "S3ArchivedObjectError",
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

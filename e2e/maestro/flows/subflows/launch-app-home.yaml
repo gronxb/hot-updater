@@ -7,7 +7,7 @@ appId: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
 - launchApp
 - waitForAnimationToEnd:
-    timeout: 3000
+    timeout: 2000
 - retry:
     maxRetries: 3
     commands:
@@ -19,9 +19,36 @@ appId: ${APP_ID}
       - tapOn:
           id: android:id/aerr_wait
           optional: true
+      - tapOn:
+          text: Wait
+          optional: true
       - waitForAnimationToEnd:
-          timeout: 2000
+          timeout: 1000
+      - tapOn:
+          id: android:id/aerr_wait
+          optional: true
+      - tapOn:
+          text: Wait
+          optional: true
+      - tapOn:
+          id: e2e-nav-top
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - tapOn:
+          id: android:id/aerr_wait
+          optional: true
+      - tapOn:
+          text: Wait
+          optional: true
+      - scrollUntilVisible:
+          element:
+            id: runtime-bundle-id
+          direction: DOWN
+          timeout: 10000
       - extendedWaitUntil:
           visible:
-            id: e2e-nav-top
-          timeout: 6000
+            id: runtime-bundle-id
+          timeout: 30000
+      - assertVisible:
+          id: runtime-bundle-id
