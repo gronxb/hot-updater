@@ -12,6 +12,11 @@ appId: ${APP_ID}
       - tapOn:
           id: e2e-nav-actions
           optional: true
+      - scrollUntilVisible:
+          element:
+            id: ${BUTTON_ID}
+          direction: DOWN
+          timeout: 10000
       - extendedWaitUntil:
           visible:
             id: ${BUTTON_ID}
