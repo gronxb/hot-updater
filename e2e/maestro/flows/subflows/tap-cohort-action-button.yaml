@@ -1,5 +1,9 @@
 appId: ${APP_ID}
 ---
+- runFlow:
+    file: navigate-cohort-actions.yaml
+    env:
+      APP_ID: ${APP_ID}
 - retry:
     maxRetries: 3
     commands:
