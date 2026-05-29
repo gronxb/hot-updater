@@ -1,9 +1,20 @@
 appId: ${APP_ID}
 ---
-- runFlow:
-    file: assert-text-by-id.yaml
-    env:
-      APP_ID: ${APP_ID}
-      ASSERTION_LABEL: Launch status summary matches expected value
-      EXPECTED_TEXT: ${EXPECTED_LAUNCH_STATUS}
-      TARGET_ID: launch-status-result
+- retry:
+    maxRetries: 5
+    commands:
+      - tapOn:
+          id: android:id/aerr_wait
+          optional: true
+      - tapOn:
+          text: Wait
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: launch-status-result
+          timeout: 10000
+      - copyTextFrom:
+          id: launch-status-result
+      - assertTrue:
+          condition: ${maestro.copiedText.includes(EXPECTED_LAUNCH_STATUS)}
+          label: Launch status summary matches expected value

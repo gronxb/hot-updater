@@ -123,14 +123,8 @@ type ScrollTarget =
   | "actionResults"
   | "actions"
   | "cohortActions"
-  | "crashHistory";
-
-const SCROLL_TARGETS: ScrollTarget[] = [
-  "actionResults",
-  "actions",
-  "cohortActions",
-  "crashHistory",
-];
+  | "crashHistory"
+  | "launchStatus";
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
@@ -253,6 +247,29 @@ const E2ENavButton = ({
     testID={testID}
   >
     <Text style={styles.e2eNavButtonText}>{title}</Text>
+  </Pressable>
+);
+
+const E2EControlButton = ({
+  onPress,
+  testID,
+  title,
+}: {
+  onPress: () => void | Promise<void>;
+  testID: string;
+  title: string;
+}) => (
+  <Pressable
+    accessibilityLabel={title}
+    accessibilityRole="button"
+    onPress={() => void onPress()}
+    style={({ pressed }) => [
+      styles.e2eControlButton,
+      pressed ? styles.e2eControlButtonPressed : null,
+    ]}
+    testID={testID}
+  >
+    <Text style={styles.e2eControlButtonText}>{title}</Text>
   </Pressable>
 );
 
@@ -428,14 +445,15 @@ function App(): React.JSX.Element {
     actions: null,
     cohortActions: null,
     crashHistory: null,
+    launchStatus: null,
   });
   const sectionOffsets = useRef<Record<ScrollTarget, number | null>>({
     actionResults: null,
     actions: null,
     cohortActions: null,
     crashHistory: null,
+    launchStatus: null,
   });
-  const [sectionsReady, setSectionsReady] = useState(false);
   const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
   const [cohortInput, setCohortInput] = useState(() => initialCohort);
@@ -486,11 +504,6 @@ function App(): React.JSX.Element {
   const recordSectionOffset =
     (target: ScrollTarget) => (event: LayoutChangeEvent) => {
       sectionOffsets.current[target] = event.nativeEvent.layout.y;
-      setSectionsReady(
-        SCROLL_TARGETS.every(
-          (scrollTarget) => sectionOffsets.current[scrollTarget] !== null,
-        ),
-      );
     };
 
   const recordSectionRef = (target: ScrollTarget) => (node: View | null) => {
@@ -673,30 +686,202 @@ function App(): React.JSX.Element {
           testID="e2e-nav-top"
           title="Jump to Top"
         />
-        {sectionsReady ? (
-          <>
-            <E2ENavButton
-              onPress={() => scrollToSection("crashHistory")}
-              testID="e2e-nav-crash-history"
-              title="Jump to Crash History"
-            />
-            <E2ENavButton
-              onPress={() => scrollToSection("actions")}
-              testID="e2e-nav-actions"
-              title="Jump to Actions"
-            />
-            <E2ENavButton
-              onPress={() => scrollToSection("cohortActions")}
-              testID="e2e-nav-cohort-actions"
-              title="Jump to Cohorts"
-            />
-            <E2ENavButton
-              onPress={() => scrollToSection("actionResults")}
-              testID="e2e-nav-action-results"
-              title="Jump to Results"
-            />
-          </>
-        ) : null}
+        <E2ENavButton
+          onPress={() => scrollToSection("launchStatus")}
+          testID="e2e-nav-launch-status"
+          title="Jump to Launch Status"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("crashHistory")}
+          testID="e2e-nav-crash-history"
+          title="Jump to Crash History"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("actions")}
+          testID="e2e-nav-actions"
+          title="Jump to Actions"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("cohortActions")}
+          testID="e2e-nav-cohort-actions"
+          title="Jump to Cohorts"
+        />
+        <E2ENavButton
+          onPress={() => scrollToSection("actionResults")}
+          testID="e2e-nav-action-results"
+          title="Jump to Results"
+        />
+      </View>
+      <View style={styles.e2eStatusBar}>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="launch-status-result"
+        >
+          {launchStatusText}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="launch-crashed-bundle-result"
+        >
+          {crashedBundleText}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="crash-history-summary"
+        >
+          {runtimeSnapshot.crashHistory.length === 0
+            ? "No crashed bundles recorded."
+            : `Crash History Count: ${runtimeSnapshot.crashHistory.length}`}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="runtime-bundle-id"
+        >
+          Bundle ID: {runtimeSnapshot.bundleId}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="runtime-scenario-marker"
+        >
+          E2E Scenario Marker: {E2E_SCENARIO_MARKER}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="runtime-large-e2e-asset"
+        >
+          Large E2E Asset: {hasLargeE2EAsset ? "present" : "missing"}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="current-channel-summary"
+        >
+          Current Channel Summary: {channelSummary}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="current-cohort-summary"
+        >
+          Current Cohort Summary: {cohortSummary}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="channel-action-result"
+        >
+          Channel Action Result: {channelActionResult}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="update-action-result"
+        >
+          Update Action Result: {updateActionResult}
+        </Text>
+        <Text
+          numberOfLines={1}
+          selectable
+          style={styles.e2eStatusText}
+          testID="cohort-action-result"
+        >
+          Cohort Action Result: {cohortActionResult}
+        </Text>
+      </View>
+      <View style={styles.e2eControlsBar}>
+        <TextInput
+          accessibilityLabel="Runtime Channel Input"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setRuntimeChannelInput}
+          onEndEditing={(event) =>
+            setRuntimeChannelInput(event.nativeEvent.text)
+          }
+          onSubmitEditing={(event) =>
+            setRuntimeChannelInput(event.nativeEvent.text)
+          }
+          placeholder="beta"
+          placeholderTextColor="#64748b"
+          style={styles.e2eControlInput}
+          testID="runtime-channel-input"
+          value={runtimeChannelInput}
+        />
+        <TextInput
+          accessibilityLabel="Cohort Override Input"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="default"
+          onChangeText={updateCohortInput}
+          onEndEditing={(event) => updateCohortInput(event.nativeEvent.text)}
+          onSubmitEditing={(event) => submitCohortInput(event.nativeEvent.text)}
+          placeholder={initialCohort}
+          placeholderTextColor="#64748b"
+          selectTextOnFocus={true}
+          style={styles.e2eControlInput}
+          testID="cohort-input"
+          value={cohortInput}
+        />
+        <E2EControlButton
+          onPress={refreshRuntimeSnapshot}
+          testID="action-refresh-runtime-snapshot"
+          title="Refresh"
+        />
+        <E2EControlButton
+          onPress={reloadApp}
+          testID="action-reload-app"
+          title="Reload"
+        />
+        <E2EControlButton
+          onPress={clearCrashHistory}
+          testID="action-clear-crash-history"
+          title="Clear Crashes"
+        />
+        <E2EControlButton
+          onPress={installCurrentChannelUpdate}
+          testID="action-install-current-channel-update"
+          title="Install Current"
+        />
+        <E2EControlButton
+          onPress={installRuntimeChannelUpdate}
+          testID="action-install-runtime-channel-update"
+          title="Install Runtime"
+        />
+        <E2EControlButton
+          onPress={resetRuntimeChannel}
+          testID="action-reset-runtime-channel"
+          title="Reset Channel"
+        />
+        <E2EControlButton
+          onPress={applyCohortInput}
+          testID="action-apply-cohort-input"
+          title="Apply Cohort"
+        />
+        <E2EControlButton
+          onPress={setQaCohort}
+          testID="action-set-cohort-qa"
+          title="Set qa"
+        />
+        <E2EControlButton
+          onPress={restoreInitialCohort}
+          testID="action-restore-initial-cohort"
+          title="Restore Cohort"
+        />
       </View>
       <ScrollView
         ref={scrollViewRef}
@@ -709,11 +894,7 @@ function App(): React.JSX.Element {
             title="Runtime Snapshot"
             titleTestID="section-runtime-snapshot"
           >
-            <InfoRow
-              label="Bundle ID"
-              value={runtimeSnapshot.bundleId}
-              valueTestID="runtime-bundle-id"
-            />
+            <InfoRow label="Bundle ID" value={runtimeSnapshot.bundleId} />
             <InfoRow
               label="Manifest Bundle ID"
               value={runtimeSnapshot.manifest.bundleId}
@@ -729,32 +910,24 @@ function App(): React.JSX.Element {
             <InfoRow
               label="Large E2E Asset"
               value={hasLargeE2EAsset ? "present" : "missing"}
-              valueTestID="runtime-large-e2e-asset"
             />
-            <InfoRow
-              label="E2E Scenario Marker"
-              value={E2E_SCENARIO_MARKER}
-              valueTestID="runtime-scenario-marker"
-            />
+            <InfoRow label="E2E Scenario Marker" value={E2E_SCENARIO_MARKER} />
           </Section>
 
-          <Section title="Launch Status" titleTestID="section-launch-status">
+          <Section
+            onLayout={recordSectionOffset("launchStatus")}
+            ref={recordSectionRef("launchStatus")}
+            title="Launch Status"
+            titleTestID="section-launch-status"
+          >
             <InfoRow
               label="Download Progress"
               value={`${Math.round(progress * 100)}%`}
             />
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="launch-status-result"
-            >
+            <Text selectable style={styles.actionResult}>
               {launchStatusText}
             </Text>
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="launch-crashed-bundle-result"
-            >
+            <Text selectable style={styles.actionResult}>
               {crashedBundleText}
             </Text>
             <InfoRow
@@ -875,18 +1048,10 @@ function App(): React.JSX.Element {
             title="Actions"
             titleTestID="section-actions"
           >
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="current-channel-summary"
-            >
+            <Text selectable style={styles.actionResult}>
               Current Channel Summary: {channelSummary}
             </Text>
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="current-cohort-summary"
-            >
+            <Text selectable style={styles.actionResult}>
               Current Cohort Summary: {cohortSummary}
             </Text>
             <View style={styles.inputGroup}>
@@ -905,7 +1070,6 @@ function App(): React.JSX.Element {
                 placeholder="beta"
                 placeholderTextColor="#94a3b8"
                 style={styles.inputField}
-                testID="runtime-channel-input"
                 value={runtimeChannelInput}
               />
             </View>
@@ -925,8 +1089,8 @@ function App(): React.JSX.Element {
                 }
                 placeholder={initialCohort}
                 placeholderTextColor="#94a3b8"
+                selectTextOnFocus={true}
                 style={styles.inputField}
-                testID="cohort-input"
                 value={cohortInput}
               />
             </View>
@@ -934,49 +1098,39 @@ function App(): React.JSX.Element {
               <ActionButton
                 title="Refresh Runtime Snapshot"
                 onPress={refreshRuntimeSnapshot}
-                testID="action-refresh-runtime-snapshot"
               />
             </View>
             <View style={styles.buttonBlock}>
-              <ActionButton
-                title="Reload App"
-                onPress={reloadApp}
-                testID="action-reload-app"
-              />
+              <ActionButton title="Reload App" onPress={reloadApp} />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Clear Crash History"
                 onPress={clearCrashHistory}
-                testID="action-clear-crash-history"
               />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Install Current Channel Update"
                 onPress={installCurrentChannelUpdate}
-                testID="action-install-current-channel-update"
               />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Install Runtime Channel Update"
                 onPress={installRuntimeChannelUpdate}
-                testID="action-install-runtime-channel-update"
               />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Reset Runtime Channel"
                 onPress={resetRuntimeChannel}
-                testID="action-reset-runtime-channel"
               />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Apply Cohort Input"
                 onPress={applyCohortInput}
-                testID="action-apply-cohort-input"
               />
             </View>
           </Section>
@@ -988,17 +1142,12 @@ function App(): React.JSX.Element {
             titleTestID="section-cohort-actions"
           >
             <View style={styles.buttonBlock}>
-              <ActionButton
-                title="Set Cohort qa"
-                onPress={setQaCohort}
-                testID="action-set-cohort-qa"
-              />
+              <ActionButton title="Set Cohort qa" onPress={setQaCohort} />
             </View>
             <View style={styles.buttonBlock}>
               <ActionButton
                 title="Restore Initial Cohort"
                 onPress={restoreInitialCohort}
-                testID="action-restore-initial-cohort"
               />
             </View>
           </Section>
@@ -1009,25 +1158,13 @@ function App(): React.JSX.Element {
             title="Action Results"
             titleTestID="section-action-results"
           >
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="channel-action-result"
-            >
+            <Text selectable style={styles.actionResult}>
               Channel Action Result: {channelActionResult}
             </Text>
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="update-action-result"
-            >
+            <Text selectable style={styles.actionResult}>
               Update Action Result: {updateActionResult}
             </Text>
-            <Text
-              selectable
-              style={styles.actionResult}
-              testID="cohort-action-result"
-            >
+            <Text selectable style={styles.actionResult}>
               Cohort Action Result: {cohortActionResult}
             </Text>
           </Section>
@@ -1150,6 +1287,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
+  },
+  e2eControlButton: {
+    alignItems: "center",
+    backgroundColor: "#dcfce7",
+    borderColor: "#86efac",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 30,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  e2eControlButtonPressed: {
+    backgroundColor: "#bbf7d0",
+  },
+  e2eControlButtonText: {
+    color: "#14532d",
+    fontSize: 10,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  e2eControlInput: {
+    backgroundColor: "#f8fafc",
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#0f172a",
+    fontSize: 11,
+    minHeight: 30,
+    minWidth: 96,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  e2eControlsBar: {
+    backgroundColor: "#f1f5f9",
+    borderBottomColor: "#cbd5e1",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  e2eStatusBar: {
+    backgroundColor: "#f8fafc",
+    borderBottomColor: "#e2e8f0",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  e2eStatusText: {
+    color: "#334155",
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 14,
   },
   emptyState: {
     color: "#6b7280",

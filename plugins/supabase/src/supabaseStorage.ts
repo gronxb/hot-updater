@@ -148,7 +148,10 @@ export const supabaseStorage =
               key: Key,
             });
 
-            const fullPath = upload.data.fullPath;
+            const fullPath = upload.data?.fullPath;
+            if (!fullPath) {
+              throw new Error("Supabase storage upload did not return a path");
+            }
 
             return {
               storageUri: `supabase-storage://${fullPath}`,

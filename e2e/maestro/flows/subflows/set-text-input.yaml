@@ -18,7 +18,7 @@ appId: ${APP_ID}
           id: ${FIELD_ID}
           retryTapIfNoChange: true
           waitToSettleTimeoutMs: 500
-- eraseText
+- eraseText: 64
 - inputText: ${FIELD_VALUE}
 - pressKey: Enter
 - waitForAnimationToEnd:

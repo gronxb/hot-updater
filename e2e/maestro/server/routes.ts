@@ -169,6 +169,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     attempts?: number;
     bundleId?: string;
+    recoveredStableBundleId?: string;
     relaunchLimit?: number;
     verificationPending?: boolean;
   };
@@ -185,6 +186,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
       payload.verificationPending,
       {
         attempts: payload.attempts,
+        recoveredStableBundleId: payload.recoveredStableBundleId,
         relaunchLimit: payload.relaunchLimit,
       },
     ),

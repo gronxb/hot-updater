@@ -3199,6 +3199,20 @@ function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
   }
 }
 
+function withFallbackJsonSnapshot(
+  primary: JsonSnapshot,
+  fallbackLocalFileName: string,
+) {
+  if (primary.exists || primary.readError) {
+    return primary;
+  }
+
+  const fallback = readOptionalJsonSnapshot(
+    path.join(session.resultsDir, fallbackLocalFileName),
+  );
+  return fallback.exists ? fallback : primary;
+}
+
 function firstMetadataValue(...values: unknown[]) {
   return values.find((value) => value !== undefined) ?? null;
 }
@@ -3278,6 +3292,27 @@ function isExpectedMetadataStateReached(
   }
 
   return verificationPending && metadataState.verificationPending === false;
+}
+
+function isExpectedCrashRecoveryReached(
+  metadataState: {
+    stagingBundleId: string | null;
+    verificationPending: boolean | null;
+  },
+  launchReportState: {
+    crashedBundleId: string | null;
+    status: string | null;
+  },
+  crashedBundleId: string,
+  stableBundleId: string | undefined,
+) {
+  return (
+    stableBundleId !== undefined &&
+    metadataState.stagingBundleId === stableBundleId &&
+    metadataState.verificationPending === false &&
+    launchReportState.status === "RECOVERED" &&
+    launchReportState.crashedBundleId === crashedBundleId
+  );
 }
 
 function formatObservedMetadataState(details: {
@@ -4238,14 +4273,20 @@ function readIosRecoveryDiagnostics() {
     crashMarker: readOptionalJsonSnapshot(
       path.join(storePath, "recovery-crash-marker.json"),
     ),
-    launchReport: readOptionalJsonSnapshot(
-      path.join(storePath, "launch-report.json"),
+    launchReport: withFallbackJsonSnapshot(
+      readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
+      "wait-for-metadata-launch-report.json",
     ),
     metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
   };
 }
 
 function readAndroidRecoveryDiagnostics() {
+  const launchReport = readAndroidStoreSnapshot(
+    "launch-report.json",
+    "recovery-launch-report.json",
+  );
+
   return {
     crashHistory: readAndroidStoreSnapshot(
       "crashed-history.json",
@@ -4255,9 +4296,9 @@ function readAndroidRecoveryDiagnostics() {
       "recovery-crash-marker.json",
       "recovery-crash-marker.json",
     ),
-    launchReport: readAndroidStoreSnapshot(
-      "launch-report.json",
-      "recovery-launch-report.json",
+    launchReport: withFallbackJsonSnapshot(
+      launchReport,
+      "wait-for-metadata-launch-report.json",
     ),
     metadata: readAndroidStoreSnapshot(
       "metadata.json",
@@ -4454,6 +4495,7 @@ function getAndroidHomePackage() {
 
 type WaitForMetadataOptions = {
   attempts?: number;
+  recoveredStableBundleId?: string;
   relaunchLimit?: number;
 };
 
@@ -4478,6 +4520,7 @@ async function waitForIosMetadataState(
     options.relaunchLimit,
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
+  const recoveredStableBundleId = options.recoveredStableBundleId;
 
   for (
     let relaunchIndex = 0;
@@ -4499,6 +4542,22 @@ async function waitForIosMetadataState(
           )
         ) {
           return;
+        }
+
+        if (verificationPending && recoveredStableBundleId) {
+          const launchReport = readOptionalJsonSnapshot(
+            path.join(ensureStorePath(), "launch-report.json"),
+          );
+          if (
+            isExpectedCrashRecoveryReached(
+              metadataState,
+              getLaunchReportState(launchReport.value),
+              bundleId,
+              recoveredStableBundleId,
+            )
+          ) {
+            return;
+          }
         }
       }
       await sleep(E2E_POLL_INTERVAL_MS);
@@ -4547,6 +4606,7 @@ async function waitForAndroidMetadataState(
     options.relaunchLimit,
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
+  const recoveredStableBundleId = options.recoveredStableBundleId;
 
   for (
     let relaunchIndex = 0;
@@ -4569,6 +4629,23 @@ async function waitForAndroidMetadataState(
           )
         ) {
           return;
+        }
+
+        if (verificationPending && recoveredStableBundleId) {
+          const launchReport = readAndroidStoreSnapshot(
+            "launch-report.json",
+            "wait-for-metadata-launch-report.json",
+          );
+          if (
+            isExpectedCrashRecoveryReached(
+              metadataState,
+              getLaunchReportState(launchReport.value),
+              bundleId,
+              recoveredStableBundleId,
+            )
+          ) {
+            return;
+          }
         }
       }
       await sleep(E2E_POLL_INTERVAL_MS);
@@ -4669,7 +4746,16 @@ async function ensureAppForeground() {
   let focusedPackage = getAndroidFocusedPackage();
   const homePackage = getAndroidHomePackage();
   if (focusedPackage === session.appId) {
-    return {};
+    await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
+    focusedPackage = getAndroidFocusedPackage();
+    if (focusedPackage === session.appId) {
+      return {};
+    }
+
+    logE2e("android ensure foreground lost after settle", {
+      focusedPackage,
+      targetAppId: session.appId,
+    });
   }
 
   logE2e("android ensure foreground", {
@@ -4708,7 +4794,7 @@ async function ensureAppForeground() {
     {
       label: "relaunch-app",
       run: async () => {
-        launchAndroidApp({ forceStop: false });
+        launchAndroidApp();
       },
       timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
@@ -4728,14 +4814,14 @@ async function ensureAppForeground() {
           { allowFailure: true },
         );
         await sleep(E2E_POLL_INTERVAL_MS);
-        launchAndroidApp({ forceStop: false });
+        launchAndroidApp();
       },
       timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
     {
       label: "explicit-activity",
       run: async () => {
-        launchAndroidApp({ explicitActivity: true, forceStop: false });
+        launchAndroidApp({ explicitActivity: true });
       },
       timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
     },
@@ -4750,7 +4836,17 @@ async function ensureAppForeground() {
         recoveryStep: step.label,
         targetAppId: session.appId,
       });
-      return {};
+      await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
+      focusedPackage = getAndroidFocusedPackage();
+      if (focusedPackage === session.appId) {
+        return {};
+      }
+
+      logE2e("android ensure foreground lost after settle", {
+        focusedPackage,
+        recoveryStep: step.label,
+        targetAppId: session.appId,
+      });
     }
 
     logE2e("android ensure foreground retry", {

@@ -1,12 +1,12 @@
 appId: ${APP_ID}
 ---
+- tapOn:
+    id: android:id/aerr_wait
+    optional: true
+- tapOn:
+    text: Wait
+    optional: true
 - extendedWaitUntil:
     visible:
-      id: e2e-nav-actions
+      id: current-channel-summary
     timeout: 10000
-- tapOn:
-    id: e2e-nav-actions
-    retryTapIfNoChange: true
-    waitToSettleTimeoutMs: 500
-- waitForAnimationToEnd:
-    timeout: 500

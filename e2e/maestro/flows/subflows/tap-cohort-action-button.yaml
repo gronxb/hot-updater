@@ -1,19 +1,18 @@
 appId: ${APP_ID}
 ---
-- runFlow:
-    file: navigate-cohort-actions.yaml
-    env:
-      APP_ID: ${APP_ID}
 - retry:
     maxRetries: 3
     commands:
-      - scrollUntilVisible:
-          element:
+      - tapOn:
+          id: android:id/aerr_wait
+          optional: true
+      - tapOn:
+          text: Wait
+          optional: true
+      - extendedWaitUntil:
+          visible:
             id: ${BUTTON_ID}
-          direction: DOWN
           timeout: 10000
-      - assertVisible:
-          id: ${BUTTON_ID}
       - tapOn:
           id: ${BUTTON_ID}
           retryTapIfNoChange: true

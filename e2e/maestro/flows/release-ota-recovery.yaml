@@ -129,13 +129,9 @@ onFlowComplete:
       ATTEMPTS: "360"
       BUNDLE_ID: ${output.crashBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RECOVERED_STABLE_BUNDLE_ID: ${output.stableBundleId}
       RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
-- runFlow:
-    file: subflows/assert-update-action-result.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_UPDATE_ACTION_RESULT: "Update Action Result: current-channel -> installed ${output.crashBundleId} (UPDATE)"
 - runFlow:
     file: subflows/launch-app-allow-crash.yaml
     env:

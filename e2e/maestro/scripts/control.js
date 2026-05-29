@@ -285,6 +285,7 @@ switch (ACTION) {
     startJob("/e2e/jobs/wait-for-metadata", {
       attempts: maybeNumber(ATTEMPTS),
       bundleId: BUNDLE_ID,
+      recoveredStableBundleId: RECOVERED_STABLE_BUNDLE_ID || undefined,
       relaunchLimit: maybeNumber(RELAUNCH_LIMIT),
       verificationPending: VERIFICATION_PENDING === "true",
     });

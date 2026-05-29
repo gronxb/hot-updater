@@ -211,6 +211,34 @@ describe("supabaseStorage", () => {
     await fs.rm(tmpDir, { force: true, recursive: true });
   });
 
+  it("surfaces Supabase storage upload errors without retrying", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hu-supabase-"));
+    const uploadPath = path.join(tmpDir, "bundle.zip");
+    await fs.writeFile(uploadPath, "bundle");
+    const error = new SyntaxError(
+      "Unexpected token '<', \"<html>\" is not valid JSON",
+    );
+    bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error,
+    });
+
+    const storage = supabaseStorage({
+      bucketName: "updates",
+      supabaseAnonKey: "anon-key",
+      supabaseUrl: "https://example.supabase.co",
+    })();
+
+    await expect(
+      storage.profiles.node.upload("bundles", uploadPath),
+    ).rejects.toBe(error);
+
+    expect(bucket.upload).toHaveBeenCalledTimes(1);
+    expect(bucket.createSignedUrl).not.toHaveBeenCalled();
+
+    await fs.rm(tmpDir, { force: true, recursive: true });
+  });
+
   it("surfaces thrown signed URL generation errors", async () => {
     bucket.createSignedUrl.mockRejectedValueOnce(
       new Error("Failed to generate download URL: Object not found"),
