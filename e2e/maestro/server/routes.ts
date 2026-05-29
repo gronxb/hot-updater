@@ -14,6 +14,7 @@ import {
   handleAssertMultipleAssetsReplaced,
   handleEnsureAppForeground,
   handlePrepareAppLaunch,
+  handleProxyRemoteAssetRequest,
   handleProxyUpdateRequest,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
@@ -63,6 +64,10 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.all("/hot-updater/*", async (c) => {
   return handleProxyUpdateRequest(c.req.raw);
+});
+
+app.all("/e2e/proxy-url", async (c) => {
+  return handleProxyRemoteAssetRequest(c.req.raw);
 });
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {

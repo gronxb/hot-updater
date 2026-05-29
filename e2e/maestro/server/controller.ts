@@ -3968,6 +3968,65 @@ export function handleRuntimeConfig() {
   };
 }
 
+function toAppReachableProxyUrl(url: string) {
+  const encodedUrl = encodeURIComponent(url);
+  return `${getAppReachableControlBaseUrl()}/e2e/proxy-url?url=${encodedUrl}`;
+}
+
+function rewriteRemoteAssetUrl(value: unknown): unknown {
+  if (typeof value !== "string" || !/^https?:\/\//.test(value)) {
+    return value;
+  }
+
+  return toAppReachableProxyUrl(value);
+}
+
+function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  const updateInfo = payload as {
+    changedAssets?: Record<string, unknown>;
+    fileUrl?: unknown;
+    manifestUrl?: unknown;
+  };
+
+  const rewritten: typeof updateInfo = {
+    ...updateInfo,
+    fileUrl: rewriteRemoteAssetUrl(updateInfo.fileUrl),
+    manifestUrl: rewriteRemoteAssetUrl(updateInfo.manifestUrl),
+  };
+
+  if (
+    updateInfo.changedAssets &&
+    typeof updateInfo.changedAssets === "object"
+  ) {
+    rewritten.changedAssets = Object.fromEntries(
+      Object.entries(updateInfo.changedAssets).map(([assetPath, asset]) => {
+        if (!asset || typeof asset !== "object") {
+          return [assetPath, asset];
+        }
+
+        const assetInfo = asset as {
+          file?: { url?: unknown };
+        };
+        const file =
+          assetInfo.file && typeof assetInfo.file === "object"
+            ? {
+                ...assetInfo.file,
+                url: rewriteRemoteAssetUrl(assetInfo.file.url),
+              }
+            : assetInfo.file;
+
+        return [assetPath, { ...assetInfo, file }];
+      }),
+    );
+  }
+
+  return rewritten;
+}
+
 export async function handleProxyUpdateRequest(request: Request) {
   const requestUrl = new URL(request.url);
   const targetUrl = new URL(getControllerReachableAppBaseUrl());
@@ -3988,6 +4047,67 @@ export async function handleProxyUpdateRequest(request: Request) {
   });
 
   logE2e("proxied update request", {
+    method: request.method,
+    source: requestUrl.pathname,
+    target: targetUrl.toString(),
+  });
+
+  const headersToApp = new Headers(response.headers);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const body = await response.text();
+    try {
+      const payload = JSON.parse(body);
+      const rewrittenPayload = rewriteUpdateInfoAssetUrls(payload);
+      headersToApp.delete("content-encoding");
+      headersToApp.delete("content-length");
+      return new Response(JSON.stringify(rewrittenPayload), {
+        headers: headersToApp,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    } catch {
+      return new Response(body, {
+        headers: headersToApp,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+  }
+
+  return new Response(response.body, {
+    headers: headersToApp,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+export async function handleProxyRemoteAssetRequest(request: Request) {
+  const requestUrl = new URL(request.url);
+  const target = requestUrl.searchParams.get("url");
+
+  if (!target) {
+    return new Response("Missing url", { status: 400 });
+  }
+
+  const targetUrl = new URL(target);
+  if (targetUrl.protocol !== "https:" && targetUrl.protocol !== "http:") {
+    return new Response("Unsupported url protocol", { status: 400 });
+  }
+
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+
+  const response = await fetch(targetUrl, {
+    body:
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer(),
+    headers,
+    method: request.method,
+  });
+
+  logE2e("proxied remote asset request", {
     method: request.method,
     source: requestUrl.pathname,
     target: targetUrl.toString(),
