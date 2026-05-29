@@ -14,6 +14,7 @@ import {
   handleAssertMultipleAssetsReplaced,
   handleEnsureAppForeground,
   handlePrepareAppLaunch,
+  handleProxyUpdateRequest,
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
@@ -21,6 +22,7 @@ import {
   handleReinstallBuiltInApp,
   handleResetLocalAppState,
   handleResetRemoteBundles,
+  handleRuntimeConfig,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
   handleWriteSummary,
@@ -53,6 +55,14 @@ app.onError((error, c) => {
 
 app.post("/e2e/jobs/bootstrap", async (c) => {
   return c.json({ jobId: startBootstrapJob() });
+});
+
+app.get("/e2e/runtime-config", (c) => {
+  return c.json(handleRuntimeConfig());
+});
+
+app.all("/hot-updater/*", async (c) => {
+  return handleProxyUpdateRequest(c.req.raw);
 });
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {

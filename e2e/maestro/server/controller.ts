@@ -61,6 +61,8 @@ type SessionState = {
   configBackupPath: string | null;
   configSourceFile: string;
   deployedBundles: DeployedBundleRecord[];
+  envBackupPath: string | null;
+  envSourceFile: string;
   exampleDir: string;
   initialMarker: string;
   iosDerivedDataPath: string;
@@ -175,6 +177,7 @@ const HOT_UPDATER_CLI_PATH = path.join(
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
+const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const DEFAULT_ANDROID_APK_RELATIVE_PATH =
   "android/app/build/outputs/apk/release/app-release.apk";
@@ -184,6 +187,7 @@ const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
 const BARE_BUILD_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
+  "examples/v0.85.0/.env.hotupdater",
   "examples/v0.85.0/App.tsx",
   "examples/v0.85.0/index.js",
   "examples/v0.85.0/package.json",
@@ -207,6 +211,7 @@ const IOS_RELEASE_BUILD_SETTINGS = [
 const BUILT_IN_BUNDLE_CACHE_INPUT_PATHS = [
   "package.json",
   "pnpm-lock.yaml",
+  "examples/v0.85.0/.env.hotupdater",
   "examples/v0.85.0/App.tsx",
   "examples/v0.85.0/index.js",
   "examples/v0.85.0/package.json",
@@ -264,11 +269,7 @@ const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
 const NATIVE_ARTIFACT_LOCK_STALE_MS = 45 * 60 * 1_000;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
-const E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES = "HotUpdaterE2E";
-const E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY =
-  "HOT_UPDATER_E2E_APP_BASE_URL";
-const E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY =
-  "HOT_UPDATER_E2E_CHANNEL_NAMESPACE";
+const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
@@ -459,6 +460,8 @@ const session: SessionState = {
   configBackupPath: null,
   configSourceFile: HOT_UPDATER_CONFIG_FILE,
   deployedBundles: [],
+  envBackupPath: null,
+  envSourceFile: HOT_UPDATER_ENV_FILE,
   exampleDir: EXAMPLE_DIR,
   initialMarker:
     platform === "ios" ? "builtin-ios-maestro" : "builtin-android-maestro",
@@ -3751,6 +3754,31 @@ function getControllerReachableProviderHealthUrl() {
   return url.toString();
 }
 
+function getAppReachableControlBaseUrl() {
+  const port = process.env.PORT || process.env.HOT_UPDATER_E2E_CONTROL_PORT;
+  return `http://localhost:${port || 3107}`;
+}
+
+function getRuntimeConfigUrl() {
+  return `${getAppReachableControlBaseUrl()}/e2e/runtime-config`;
+}
+
+async function patchEnvRuntimeConfigUrl() {
+  const source = fs.existsSync(session.envSourceFile)
+    ? await fsPromises.readFile(session.envSourceFile, "utf8")
+    : "";
+  const lines = source.split(/\r?\n/).filter((line) => {
+    const trimmed = line.trim();
+    return trimmed && !trimmed.startsWith(`${E2E_RUNTIME_CONFIG_URL_ENV_KEY}=`);
+  });
+  lines.push(`${E2E_RUNTIME_CONFIG_URL_ENV_KEY}=${getRuntimeConfigUrl()}`);
+  await fsPromises.writeFile(session.envSourceFile, `${lines.join("\n")}\n`);
+  logE2e("runtime config url injected", {
+    key: E2E_RUNTIME_CONFIG_URL_ENV_KEY,
+    value: getRuntimeConfigUrl(),
+  });
+}
+
 async function waitForLocalProviderReady() {
   const url = getControllerReachableProviderHealthUrl();
   if (!url) {
@@ -3858,137 +3886,21 @@ function ensureAndroidReverse() {
   logE2e("android reverse ready", reversePorts);
 }
 
-function escapeAndroidSharedPreferenceXmlValue(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
+function ensureAndroidControlReverse() {
+  if (session.platform !== "android") {
+    return;
+  }
 
-function assertAndroidRuntimeConfig(
-  sharedPrefsFile: string,
-  expectedXmlValues: string[],
-) {
-  const observedXml = runCapture("adb", [
+  const controlBaseUrl = new URL(getAppReachableControlBaseUrl());
+  const port = getUrlPort(controlBaseUrl);
+  runCapture("adb", [
     "-s",
     deviceId as string,
-    "shell",
-    "run-as",
-    session.appId,
-    "cat",
-    sharedPrefsFile,
+    "reverse",
+    `tcp:${port}`,
+    `tcp:${port}`,
   ]);
-
-  for (const expectedValue of expectedXmlValues) {
-    if (!observedXml.includes(expectedValue)) {
-      throw new Error(
-        `Android E2E runtime config was not written correctly: expected ${expectedValue} in ${sharedPrefsFile}`,
-      );
-    }
-  }
-}
-
-function writeAndroidE2ERuntimeConfig() {
-  const localPath = path.join(
-    os.tmpdir(),
-    `hot-updater-e2e-runtime-config-${process.pid}-${randomUUID()}.xml`,
-  );
-  const remotePath = `/data/local/tmp/${path.basename(localPath)}`;
-  const sharedPrefsDir = `/data/data/${session.appId}/shared_prefs`;
-  const sharedPrefsFile = `${sharedPrefsDir}/${E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES}.xml`;
-  const configValues = [
-    {
-      key: E2E_ANDROID_RUNTIME_CONFIG_APP_BASE_URL_KEY,
-      value: session.appBaseUrl,
-    },
-    ...(channelNamespace
-      ? [
-          {
-            key: E2E_ANDROID_RUNTIME_CONFIG_CHANNEL_NAMESPACE_KEY,
-            value: channelNamespace,
-          },
-        ]
-      : []),
-  ];
-  const xml = [
-    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
-    "<map>",
-    ...configValues.map(
-      ({ key, value }) =>
-        `  <string name="${key}">${escapeAndroidSharedPreferenceXmlValue(
-          value,
-        )}</string>`,
-    ),
-    "</map>",
-    "",
-  ].join("\n");
-  const expectedXmlValues = configValues.map(
-    ({ key, value }) =>
-      `<string name="${key}">${escapeAndroidSharedPreferenceXmlValue(value)}</string>`,
-  );
-
-  try {
-    fs.writeFileSync(localPath, xml);
-    runCapture("adb", [
-      "-s",
-      deviceId as string,
-      "push",
-      localPath,
-      remotePath,
-    ]);
-    runCapture(
-      "adb",
-      [
-        "-s",
-        deviceId as string,
-        "shell",
-        "run-as",
-        session.appId,
-        "mkdir",
-        sharedPrefsDir,
-      ],
-      {
-        allowFailure: true,
-      },
-    );
-    runCapture("adb", [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      session.appId,
-      "cp",
-      remotePath,
-      sharedPrefsFile,
-    ]);
-    runCapture("adb", [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      session.appId,
-      "chmod",
-      "600",
-      sharedPrefsFile,
-    ]);
-    assertAndroidRuntimeConfig(sharedPrefsFile, expectedXmlValues);
-    logE2e("android runtime config ready", {
-      appBaseUrl: session.appBaseUrl,
-      channelNamespace,
-      preferences: E2E_ANDROID_RUNTIME_CONFIG_PREFERENCES,
-    });
-  } finally {
-    fs.rmSync(localPath, { force: true });
-    runCapture(
-      "adb",
-      ["-s", deviceId as string, "shell", "rm", "-f", remotePath],
-      {
-        allowFailure: true,
-      },
-    );
-  }
+  logE2e("android control reverse ready", { port });
 }
 
 function getHotUpdaterControlEnv(
@@ -4018,6 +3930,74 @@ async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
       delete process.env.HOT_UPDATER_CONTROL_BASE_URL;
     }
   }
+}
+
+function getRemoteChannelPathSegment(channelSegment: string) {
+  const channel = decodeURIComponent(channelSegment);
+  if (!channelNamespace || channel.startsWith(`${channelNamespace}-`)) {
+    return channelSegment;
+  }
+
+  return encodeURIComponent(getRemoteChannel(channel));
+}
+
+function rewriteProxiedUpdatePath(pathname: string) {
+  const proxyPrefix = "/hot-updater";
+  const targetBase = new URL(getControllerReachableAppBaseUrl());
+  const targetBasePath = targetBase.pathname.replace(/\/+$/, "");
+  const suffix = pathname.startsWith(`${proxyPrefix}/`)
+    ? pathname.slice(proxyPrefix.length + 1)
+    : "";
+  const segments = suffix.split("/").filter(Boolean);
+
+  if (
+    (segments[0] === "app-version" || segments[0] === "fingerprint") &&
+    segments[3]
+  ) {
+    segments[3] = getRemoteChannelPathSegment(segments[3]);
+  }
+
+  return `${targetBasePath}/${segments.join("/")}`;
+}
+
+export function handleRuntimeConfig() {
+  return {
+    baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
+    channelNamespace,
+    updateServerBaseURL: session.appBaseUrl,
+  };
+}
+
+export async function handleProxyUpdateRequest(request: Request) {
+  const requestUrl = new URL(request.url);
+  const targetUrl = new URL(getControllerReachableAppBaseUrl());
+  targetUrl.pathname = rewriteProxiedUpdatePath(requestUrl.pathname);
+  targetUrl.search = requestUrl.search;
+  targetUrl.hash = "";
+
+  const headers = new Headers(request.headers);
+  headers.delete("host");
+
+  const response = await fetch(targetUrl, {
+    body:
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer(),
+    headers,
+    method: request.method,
+  });
+
+  logE2e("proxied update request", {
+    method: request.method,
+    source: requestUrl.pathname,
+    target: targetUrl.toString(),
+  });
+
+  return new Response(response.body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
 }
 
 function buildAppVersionUpdateCheckUrl(args: {
@@ -4870,70 +4850,6 @@ async function prepareAppLaunch() {
       ["simctl", "terminate", deviceId as string, session.appId],
       { allowFailure: true },
     );
-    runCapture("xcrun", [
-      "simctl",
-      "spawn",
-      deviceId as string,
-      "defaults",
-      "write",
-      session.appId,
-      "HOT_UPDATER_E2E_APP_BASE_URL",
-      session.appBaseUrl,
-    ]);
-    const observedBaseUrl = runCapture("xcrun", [
-      "simctl",
-      "spawn",
-      deviceId as string,
-      "defaults",
-      "read",
-      session.appId,
-      "HOT_UPDATER_E2E_APP_BASE_URL",
-    ]);
-    if (observedBaseUrl !== session.appBaseUrl) {
-      throw new Error(
-        `iOS E2E runtime baseUrl was not written correctly: expected ${session.appBaseUrl}, observed ${observedBaseUrl}`,
-      );
-    }
-    if (channelNamespace) {
-      runCapture("xcrun", [
-        "simctl",
-        "spawn",
-        deviceId as string,
-        "defaults",
-        "write",
-        session.appId,
-        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
-        channelNamespace,
-      ]);
-      const observedChannelNamespace = runCapture("xcrun", [
-        "simctl",
-        "spawn",
-        deviceId as string,
-        "defaults",
-        "read",
-        session.appId,
-        "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
-      ]);
-      if (observedChannelNamespace !== channelNamespace) {
-        throw new Error(
-          `iOS E2E runtime channel namespace was not written correctly: expected ${channelNamespace}, observed ${observedChannelNamespace}`,
-        );
-      }
-    } else {
-      runCapture(
-        "xcrun",
-        [
-          "simctl",
-          "spawn",
-          deviceId as string,
-          "defaults",
-          "delete",
-          session.appId,
-          "HOT_UPDATER_E2E_CHANNEL_NAMESPACE",
-        ],
-        { allowFailure: true },
-      );
-    }
     await sleep(E2E_POLL_INTERVAL_MS);
     return {};
   }
@@ -4953,7 +4869,7 @@ async function prepareAppLaunch() {
   }
 
   ensureAndroidReverse();
-  writeAndroidE2ERuntimeConfig();
+  ensureAndroidControlReverse();
   runCapture(
     "adb",
     ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
@@ -4978,6 +4894,9 @@ async function bootstrap() {
   if (!session.configBackupPath) {
     session.configBackupPath = await backupFile(session.configSourceFile);
   }
+  if (!session.envBackupPath) {
+    session.envBackupPath = await backupFile(session.envSourceFile);
+  }
   if (
     !session.largeArchiveAssetBackupPath &&
     fs.existsSync(session.largeArchiveAssetPath)
@@ -5001,6 +4920,7 @@ async function bootstrap() {
   );
   await restoreMultiAssetFixtures();
   await restoreFile(session.configBackupPath, session.configSourceFile);
+  await patchEnvRuntimeConfigUrl();
   await exportNativePublicKeyFromSigningKey();
   await applyAppScenario({
     bundleProfile: "default",
@@ -6245,6 +6165,9 @@ async function cleanup() {
   if (session.configBackupPath) {
     await restoreFile(session.configBackupPath, session.configSourceFile);
   }
+  if (session.envBackupPath) {
+    await restoreFile(session.envBackupPath, session.envSourceFile);
+  }
   await restoreFile(
     session.largeArchiveAssetBackupPath,
     session.largeArchiveAssetPath,
@@ -6253,6 +6176,7 @@ async function cleanup() {
 
   session.appBackupPath = null;
   session.configBackupPath = null;
+  session.envBackupPath = null;
   session.largeArchiveAssetBackupPath = null;
   session.multiAssetBackupPaths = {};
   return {};

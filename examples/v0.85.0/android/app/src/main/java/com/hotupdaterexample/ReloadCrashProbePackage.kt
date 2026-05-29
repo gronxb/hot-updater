@@ -15,7 +15,6 @@ class ReloadCrashProbePackage : BaseReactPackage() {
     ): NativeModule? =
         when (name) {
             ReloadCrashProbeModule.NAME -> ReloadCrashProbeModule(reactContext)
-            E2ERuntimeConfigModule.NAME -> E2ERuntimeConfigModule(reactContext)
             else -> null
         }
 
@@ -30,15 +29,6 @@ class ReloadCrashProbePackage : BaseReactPackage() {
                     false, // needsEagerInit
                     false, // isCxxModule
                     false, // isTurboModule
-                )
-            moduleInfos[E2ERuntimeConfigModule.NAME] =
-                ReactModuleInfo(
-                    E2ERuntimeConfigModule.NAME,
-                    E2ERuntimeConfigModule.NAME,
-                    false, // canOverrideExistingModule
-                    false, // needsEagerInit
-                    false, // isCxxModule
-                    true, // isTurboModule
                 )
             moduleInfos
         }

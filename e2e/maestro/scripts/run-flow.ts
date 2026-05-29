@@ -343,16 +343,22 @@ function isLoopbackHost(hostname: string) {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
-function ensureAndroidReverse(deviceId: string, appBaseUrl: URL) {
+function ensureAndroidReverse(
+  deviceId: string,
+  appBaseUrl: URL,
+  hostPortOverride?: number,
+) {
   if (!isLoopbackHost(appBaseUrl.hostname)) {
     return null;
   }
 
   const port = getUrlPort(appBaseUrl);
-  const hostPort = Number.parseInt(
-    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(port),
-    10,
-  );
+  const hostPort =
+    hostPortOverride ??
+    Number.parseInt(
+      process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? String(port),
+      10,
+    );
   if (!Number.isInteger(hostPort) || hostPort <= 0) {
     throw new Error(
       "HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT must be a positive integer.",
@@ -1905,6 +1911,7 @@ async function main() {
   await fsPromises.writeFile(portStatePath, `${serverPort}\n`);
 
   const serverBaseUrl = `http://${DEFAULT_SERVER_HOST}:${serverPort}`;
+  const appRuntimeConfigUrl = `http://localhost:${serverPort}/e2e/runtime-config`;
 
   p.log.step(`Start ${platform}/${scenarioName}`);
   p.log.info(`Flow: ${formatRepoRelative(options.flow)}`);
@@ -1934,12 +1941,24 @@ async function main() {
       deviceId,
       developerSetup.appBaseUrl,
     );
+    const reversedControlPort = ensureAndroidReverse(
+      deviceId,
+      new URL(serverBaseUrl),
+      serverPort,
+    );
     const androidDeviceLogLines = [`Using Android device ${deviceId}`];
     if (reversedPort !== null) {
       const reverseMessage = `adb reverse tcp:${reversedPort.devicePort} tcp:${reversedPort.hostPort}`;
       androidDeviceLogLines.push(reverseMessage);
       p.log.info(
         `Android reverse: tcp:${reversedPort.devicePort} -> host tcp:${reversedPort.hostPort}`,
+      );
+    }
+    if (reversedControlPort !== null) {
+      const reverseMessage = `adb reverse tcp:${reversedControlPort.devicePort} tcp:${reversedControlPort.hostPort}`;
+      androidDeviceLogLines.push(reverseMessage);
+      p.log.info(
+        `Android control reverse: tcp:${reversedControlPort.devicePort} -> host tcp:${reversedControlPort.hostPort}`,
       );
     }
     await fsPromises.writeFile(
@@ -1978,6 +1997,7 @@ async function main() {
         HOT_UPDATER_E2E_ANDROID_APK_PATH:
           "android/app/build/outputs/apk/release/app-release.apk",
         HOT_UPDATER_E2E_APP_BASE_URL: developerSetup.appBaseUrl.toString(),
+        HOT_UPDATER_E2E_RUNTIME_CONFIG_URL: appRuntimeConfigUrl,
         HOT_UPDATER_E2E_APP_ID: appId,
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
         HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: iosDerivedDataPath,
