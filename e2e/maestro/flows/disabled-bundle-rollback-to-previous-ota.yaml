@@ -58,6 +58,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.previousBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -116,6 +121,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.currentBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -153,7 +163,24 @@ onFlowComplete:
       CONTROL_URL: ${CONTROL_URL}
       ENABLED: "false"
 - runFlow:
-    file: subflows/launch-app-home.yaml
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.previousBundleId}
+- runScript:
+    file: ../scripts/control.js
+    env:
+      ACTION: waitForMetadata
+      BUNDLE_ID: ${output.previousBundleId}
+      CONTROL_URL: ${CONTROL_URL}
+      VERIFICATION_PENDING: "true"
+- runFlow:
+    file: subflows/restart-app-home.yaml
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}

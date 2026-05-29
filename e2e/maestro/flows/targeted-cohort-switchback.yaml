@@ -91,6 +91,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.numericBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -140,6 +145,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.qaBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
@@ -188,6 +198,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-install-current-channel-update
+- runFlow:
+    file: subflows/assert-update-action-result.yaml
+    env:
+      APP_ID: ${APP_ID}
+      EXPECTED_UPDATE_ACTION_RESULT: installed ${output.numericBundleId}
 - runScript:
     file: ../scripts/control.js
     env:
