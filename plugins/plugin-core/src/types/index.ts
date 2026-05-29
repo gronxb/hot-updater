@@ -94,6 +94,23 @@ export interface DatabaseBundleQueryOptions {
   orderBy?: DatabaseBundleQueryOrder;
 }
 
+export interface BundleIndexHealth {
+  status: "ok" | "missing" | "stale";
+  canonicalBundles: number;
+  indexedBundles: number;
+  missingBundles: number;
+  extraBundles: number;
+  missingBundleIds: string[];
+  extraBundleIds: string[];
+}
+
+export interface BundleIndexRepairResult {
+  scannedBundles: number;
+  indexedBundles: number;
+  pagesWritten: number;
+  scopesWritten: number;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -122,6 +139,12 @@ export interface DatabasePlugin<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
+  checkBundleIndex?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<BundleIndexHealth>;
+  repairBundleIndex?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<BundleIndexRepairResult>;
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (

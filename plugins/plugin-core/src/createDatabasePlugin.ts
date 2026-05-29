@@ -39,6 +39,12 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
     },
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
+  checkBundleIndex?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<NonNullable<DatabasePlugin<TContext>["checkBundleIndex"]>>;
+  repairBundleIndex?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<NonNullable<DatabasePlugin<TContext>["repairBundleIndex"]>>;
 }
 
 /**
@@ -532,6 +538,72 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             value: wrappedGetUpdateInfo,
           });
           return wrappedGetUpdateInfo;
+        },
+      });
+
+      Object.defineProperty(plugin, "checkBundleIndex", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          const directCheckBundleIndex = getMethods().checkBundleIndex;
+          if (!directCheckBundleIndex) {
+            Object.defineProperty(plugin, "checkBundleIndex", {
+              configurable: true,
+              enumerable: true,
+              value: undefined,
+            });
+            return undefined;
+          }
+
+          const wrappedCheckBundleIndex: NonNullable<
+            DatabasePlugin<TContext>["checkBundleIndex"]
+          > = async (context) => {
+            if (context === undefined) {
+              return directCheckBundleIndex();
+            }
+
+            return directCheckBundleIndex(context);
+          };
+
+          Object.defineProperty(plugin, "checkBundleIndex", {
+            configurable: true,
+            enumerable: true,
+            value: wrappedCheckBundleIndex,
+          });
+          return wrappedCheckBundleIndex;
+        },
+      });
+
+      Object.defineProperty(plugin, "repairBundleIndex", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          const directRepairBundleIndex = getMethods().repairBundleIndex;
+          if (!directRepairBundleIndex) {
+            Object.defineProperty(plugin, "repairBundleIndex", {
+              configurable: true,
+              enumerable: true,
+              value: undefined,
+            });
+            return undefined;
+          }
+
+          const wrappedRepairBundleIndex: NonNullable<
+            DatabasePlugin<TContext>["repairBundleIndex"]
+          > = async (context) => {
+            if (context === undefined) {
+              return directRepairBundleIndex();
+            }
+
+            return directRepairBundleIndex(context);
+          };
+
+          Object.defineProperty(plugin, "repairBundleIndex", {
+            configurable: true,
+            enumerable: true,
+            value: wrappedRepairBundleIndex,
+          });
+          return wrappedRepairBundleIndex;
         },
       });
 

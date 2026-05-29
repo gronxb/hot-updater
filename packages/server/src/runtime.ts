@@ -73,14 +73,10 @@ export function createHotUpdater<TContext = unknown>(
       : { readStorageText },
   );
 
-  const api = {
-    ...core.api,
-    handler: createHandler(core.api, {
-      basePath,
-      routes: options.routes,
-    }),
-    adapterName: core.adapterName,
-  };
+  const internalHandler = createHandler(core.api, {
+    basePath,
+    routes: options.routes,
+  });
 
   // Some framework adapters strip the mounted base path or pass extra
   // bindings/execution context arguments. Ignore those extras here so the
@@ -91,17 +87,19 @@ export function createHotUpdater<TContext = unknown>(
     ...extraArgs: unknown[]
   ) => {
     if (extraArgs.length > 0) {
-      return api.handler(request);
+      return internalHandler(request);
     }
 
-    return api.handler(request, context);
+    return internalHandler(request, context);
   };
 
-  return {
-    ...api,
+  const api = {
     basePath,
+    adapterName: core.adapterName,
     handler,
   };
+  Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
+  return api as HotUpdaterAPI<TContext>;
 }
 
 export { createHandler };
