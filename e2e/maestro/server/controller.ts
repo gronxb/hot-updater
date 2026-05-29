@@ -1219,6 +1219,62 @@ async function removeStaleNativeArtifactLock(lockPath: string) {
   return true;
 }
 
+async function withE2ECacheLock<T>({
+  callback,
+  key,
+  label,
+  lockName,
+  root,
+}: {
+  callback: () => Promise<T>;
+  key: string;
+  label: string;
+  lockName: string;
+  root: string;
+}) {
+  await fsPromises.mkdir(root, { recursive: true });
+  const lockPath = path.join(root, lockName);
+  const deadline = Date.now() + NATIVE_ARTIFACT_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    let lockHandle: FileHandle | null = null;
+    try {
+      lockHandle = await fsPromises.open(lockPath, "wx");
+      await lockHandle.writeFile(
+        `${process.pid}\n${new Date().toISOString()}\n`,
+      );
+      logE2e("e2e cache lock acquired", {
+        key: key.slice(0, 16),
+        label,
+        platform: session.platform,
+      });
+      return await callback();
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      if (await removeStaleNativeArtifactLock(lockPath)) {
+        continue;
+      }
+
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for E2E cache lock ${lockPath}`);
+      }
+      await sleep(NATIVE_ARTIFACT_LOCK_RETRY_MS);
+    } finally {
+      if (lockHandle) {
+        await lockHandle.close();
+        await fsPromises.rm(lockPath, { force: true });
+      }
+    }
+  }
+}
+
 async function buildNativeArtifactWithCacheLock(args: {
   architecture?: string | null;
   build: () => Promise<void>;
@@ -1258,7 +1314,17 @@ async function buildNativeArtifactWithCacheLock(args: {
         targetPath: args.targetPath,
       });
       if (!restored) {
-        await args.build();
+        if (session.platform === "android") {
+          await withE2ECacheLock({
+            callback: args.build,
+            key: args.key,
+            label: `${args.logLabel}-host-build`,
+            lockName: "android-host-build.lock",
+            root: paths.root,
+          });
+        } else {
+          await args.build();
+        }
         await saveNativeArtifactToCache({
           architecture: args.architecture,
           key: args.key,
@@ -2672,12 +2738,27 @@ async function prepareIosRelease() {
       });
 
       const podsCacheKey = iosPodsCacheKey();
-      if (!(await restoreIosPodsFromCache(podsCacheKey))) {
+      const installPods = async () => {
+        if (await restoreIosPodsFromCache(podsCacheKey)) {
+          return;
+        }
         await runLogged("bundle", ["exec", "pod", "install"], {
           cwd: path.join(session.exampleDir, "ios"),
           logPath: path.join(session.resultsDir, "pod-install.log"),
         });
         await saveIosPodsToCache(podsCacheKey);
+      };
+      const podsCachePaths = iosPodsCachePaths(podsCacheKey);
+      if (podsCachePaths) {
+        await withE2ECacheLock({
+          callback: installPods,
+          key: podsCacheKey,
+          label: "ios-pods",
+          lockName: `ios-pods-${podsCacheKey}.lock`,
+          root: podsCachePaths.root,
+        });
+      } else {
+        await installPods();
       }
 
       const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
