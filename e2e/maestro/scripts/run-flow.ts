@@ -1800,6 +1800,8 @@ function startAndroidMaestroInstrumentation(deviceId: string) {
 }
 
 function stopAndroidMaestroDriver(deviceId: string) {
+  stopAndroidMaestroInstrumentationHost(deviceId);
+
   for (const packageName of ANDROID_MAESTRO_DRIVER_PACKAGES) {
     runCapture(
       "adb",
@@ -1808,6 +1810,40 @@ function stopAndroidMaestroDriver(deviceId: string) {
         allowFailure: true,
       },
     );
+  }
+}
+
+function stopAndroidMaestroInstrumentationHost(deviceId: string) {
+  const processes = runCapture("ps", ["-axo", "pid=,command="], {
+    allowFailure: true,
+  });
+  const instrumentCommand = [
+    "-s",
+    deviceId,
+    "shell",
+    "am",
+    "instrument",
+    "-w",
+    ANDROID_MAESTRO_DRIVER_RUNNER,
+  ].join(" ");
+
+  for (const line of processes.split("\n")) {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(\d+)\s+(.+)$/);
+    if (!match) {
+      continue;
+    }
+
+    const [, pidText, command] = match;
+    if (!command.includes(instrumentCommand)) {
+      continue;
+    }
+
+    try {
+      process.kill(Number(pidText), "SIGTERM");
+    } catch {
+      // The stale adb process can exit between ps and kill.
+    }
   }
 }
 
