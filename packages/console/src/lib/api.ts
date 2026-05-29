@@ -1,5 +1,11 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  type QueryKey,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   createBundle as createBundleApi,
@@ -62,6 +68,16 @@ function replaceBundleInQueryData(
     ),
   };
 }
+
+const hasOwn = (value: object, key: PropertyKey) =>
+  Object.prototype.hasOwnProperty.call(value, key);
+
+const invalidateInBackground = (
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+) => {
+  void queryClient.invalidateQueries({ queryKey }).catch(() => undefined);
+};
 
 // Query Hooks
 export function useConfigQuery() {
@@ -143,7 +159,7 @@ export function useUpdateBundleMutation() {
   return useMutation({
     mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
       updateBundleApi({ data: params }),
-    onSuccess: async ({ bundle: updatedBundle }, vars) => {
+    onSuccess: ({ bundle: updatedBundle }, vars) => {
       queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
       queryClient.setQueriesData(
         { queryKey: queryKeys.bundles.all },
@@ -151,16 +167,19 @@ export function useUpdateBundleMutation() {
           replaceBundleInQueryData(data, updatedBundle),
       );
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundleChildren.all,
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundle(vars.bundleId),
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
-      ]);
+      invalidateInBackground(queryClient, queryKeys.bundles.all);
+
+      if (
+        hasOwn(vars.bundle, "patches") ||
+        hasOwn(vars.bundle, "channel") ||
+        hasOwn(vars.bundle, "platform")
+      ) {
+        invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
+      }
+
+      if (hasOwn(vars.bundle, "channel")) {
+        invalidateInBackground(queryClient, queryKeys.channels);
+      }
     },
   });
 }

@@ -866,6 +866,42 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   describe("database plugin factories", () => {
+    it("keeps optional maintenance capabilities lazy", () => {
+      const factory = vi.fn(() => ({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+      }));
+      const hotUpdater = createHotUpdater({
+        database: createDatabasePlugin({
+          name: "lazyPlugin",
+          factory,
+        })({}),
+      });
+
+      expect(factory).not.toHaveBeenCalled();
+      expect(hotUpdater.diagnostics).toBeUndefined();
+      expect(factory).not.toHaveBeenCalled();
+      expect(hotUpdater.diagnostics).toBeUndefined();
+      expect(factory).not.toHaveBeenCalled();
+    });
+
     it("isolates pending mutation state between overlapping writes", async () => {
       const committedBundleIds: string[][] = [];
       const onUnmount = vi.fn(async () => undefined);

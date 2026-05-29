@@ -1113,6 +1113,72 @@ describe("blobDatabase plugin", () => {
     expect(fakeStore[getManagementPageKey({}, 2)]).toBeUndefined();
   });
 
+  it("detects a stale management index missing canonical bundles", async () => {
+    const indexedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-health-A",
+    );
+    const missingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-health-B",
+    );
+    seedUpdateManifests([indexedBundle, missingBundle]);
+    seedPagedBundlesIndex([indexedBundle]);
+
+    await expect(plugin.diagnostics?.bundleIndex?.check()).resolves.toEqual({
+      status: "stale",
+      canonicalBundles: 2,
+      indexedBundles: 1,
+      missingBundles: 1,
+      extraBundles: 0,
+      missingBundleIds: [missingBundle.id],
+      extraBundleIds: [],
+    });
+  });
+
+  it("repairs a stale management index from canonical update manifests", async () => {
+    const indexedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-repair-A",
+    );
+    const missingBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "index-repair-B",
+    );
+    seedUpdateManifests([indexedBundle, missingBundle]);
+    seedPagedBundlesIndex([indexedBundle]);
+
+    await expect(
+      plugin.diagnostics?.bundleIndex?.repair?.(),
+    ).resolves.toMatchObject({
+      scannedBundles: 2,
+      indexedBundles: 2,
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    const result = await plugin.getBundles({ limit: 20 });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual([
+      missingBundle.id,
+      indexedBundle.id,
+    ]);
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
   it("reads the first all-bundles page from one root and one leaf page", async () => {
     const bundles = createScopedBundles({ count: 70 });
     seedPagedBundlesIndex(bundles);

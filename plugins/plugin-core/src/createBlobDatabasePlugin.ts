@@ -61,26 +61,6 @@ async function forEachWithConcurrency<T>(
   await mapWithConcurrency(items, concurrency, mapper);
 }
 
-async function allSettledWithConcurrency<T, TResult>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T, index: number) => Promise<TResult>,
-): Promise<PromiseSettledResult<TResult>[]> {
-  return mapWithConcurrency(items, concurrency, async (item, index) => {
-    try {
-      return {
-        status: "fulfilled",
-        value: await mapper(item, index),
-      } satisfies PromiseFulfilledResult<TResult>;
-    } catch (reason) {
-      return {
-        reason,
-        status: "rejected",
-      } satisfies PromiseRejectedResult;
-    }
-  });
-}
-
 // Helper function to remove internal management keys
 function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
   const { _updateJsonKey, _oldUpdateJsonKey, ...pureBundle } = bundle;
@@ -218,6 +198,15 @@ interface ManagementIndexScopeArtifact {
 interface ManagementIndexArtifacts {
   pages: Map<string, Bundle[]>;
   scopes: ManagementIndexScopeArtifact[];
+}
+
+function summarizeManagementIndexArtifacts(
+  artifacts: ManagementIndexArtifacts,
+) {
+  return {
+    pagesWritten: artifacts.pages.size,
+    scopesWritten: artifacts.scopes.length,
+  };
 }
 
 function resolveManagementIndexPageSize(
@@ -448,6 +437,7 @@ export interface BlobOperations {
   loadObject: <T>(key: string) => Promise<T | null>;
   uploadObject: <T>(key: string, data: T) => Promise<void>;
   deleteObject: (key: string) => Promise<void>;
+  shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
   invalidatePaths: (paths: string[]) => Promise<void>;
   apiBasePath: string;
 }
@@ -475,6 +465,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       loadObject,
       uploadObject,
       deleteObject,
+      shouldSkipLoadObjectError,
       invalidatePaths,
       apiBasePath,
     } = factory(config);
@@ -483,6 +474,17 @@ export const createBlobDatabasePlugin = <TConfig>({
     // Temporary store for newly added or modified bundles.
     const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
     const managementRootCache = new Map<string, ManagementIndexRoot | null>();
+
+    const loadOptionalObject = async <T>(key: string): Promise<T | null> => {
+      try {
+        return await loadObject<T>(key);
+      } catch (error) {
+        if (shouldSkipLoadObjectError?.(error, key)) {
+          return null;
+        }
+        throw error;
+      }
+    };
 
     const getAllManagementArtifact = (
       artifacts: ManagementIndexArtifacts,
@@ -516,7 +518,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       scope: ManagementIndexScope,
     ): Promise<ManagementIndexRoot | null> => {
       const cacheKey = getManagementScopeCacheKey(scope);
-      const storedRoot = await loadObject<ManagementIndexRoot>(
+      const storedRoot = await loadOptionalObject<ManagementIndexRoot>(
         getManagementRootKey(scope),
       );
       if (storedRoot) {
@@ -536,7 +538,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         return pageCache.get(descriptor.key) ?? null;
       }
 
-      const page = await loadObject<Bundle[]>(descriptor.key);
+      const page = await loadOptionalObject<Bundle[]>(descriptor.key);
       pageCache?.set(descriptor.key, page);
       return page;
     };
@@ -685,12 +687,56 @@ export const createBlobDatabasePlugin = <TConfig>({
       return loadAllBundlesForManagementFallback();
     };
 
-    const loadStoredBundlesForIndexRebuild = async (): Promise<Bundle[]> => {
+    const loadBundlesFromCanonicalManifests = async (): Promise<Bundle[]> => {
       return sortManagedBundles(
         (await reloadBundles()).map((bundle) =>
           removeBundleInternalKeys(bundle),
         ),
       );
+    };
+
+    const loadStoredBundlesForIndexRebuild = loadBundlesFromCanonicalManifests;
+
+    const loadCanonicalBundlesForIndexRepair =
+      loadBundlesFromCanonicalManifests;
+
+    const compareBundleIndex = ({
+      canonicalBundles,
+      indexedBundles,
+      rootMissing,
+    }: {
+      canonicalBundles: Bundle[];
+      indexedBundles: Bundle[] | null;
+      rootMissing: boolean;
+    }) => {
+      const canonicalIds = new Set(canonicalBundles.map((bundle) => bundle.id));
+      const indexedIds = new Set(
+        indexedBundles?.map((bundle) => bundle.id) ?? [],
+      );
+      const missingBundleIds = Array.from(canonicalIds)
+        .filter((id) => !indexedIds.has(id))
+        .sort((left, right) => right.localeCompare(left));
+      const extraBundleIds = Array.from(indexedIds)
+        .filter((id) => !canonicalIds.has(id))
+        .sort((left, right) => right.localeCompare(left));
+      const status =
+        missingBundleIds.length === 0 &&
+        extraBundleIds.length === 0 &&
+        !rootMissing
+          ? "ok"
+          : rootMissing
+            ? "missing"
+            : "stale";
+
+      return {
+        status,
+        canonicalBundles: canonicalBundles.length,
+        indexedBundles: indexedBundles?.length ?? 0,
+        missingBundles: missingBundleIds.length,
+        extraBundles: extraBundleIds.length,
+        missingBundleIds: missingBundleIds.slice(0, 20),
+        extraBundleIds: extraBundleIds.slice(0, 20),
+      } as const;
     };
 
     const findPageIndexContainingId = (
@@ -1020,7 +1066,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           updateJsonKeys,
           STORAGE_OPERATION_CONCURRENCY,
           async (key) => {
-            const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+            const bundlesData = (await loadOptionalObject<Bundle[]>(key)) ?? [];
             return bundlesData.map((bundle) => ({
               ...bundle,
               _updateJsonKey: key,
@@ -1095,7 +1141,8 @@ export const createBlobDatabasePlugin = <TConfig>({
         const targetKey = `${channel}/${platform}/target-app-versions.json`;
         // Extract targetAppVersion from each update.json file key.
         const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-        const oldTargetVersions = (await loadObject<string[]>(targetKey)) ?? [];
+        const oldTargetVersions =
+          (await loadOptionalObject<string[]>(targetKey)) ?? [];
         const newTargetVersions = oldTargetVersions.filter((v) =>
           currentVersions.includes(v),
         );
@@ -1122,33 +1169,28 @@ export const createBlobDatabasePlugin = <TConfig>({
     }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
       const targetVersionsKey = `${channel}/${platform}/target-app-versions.json`;
       const targetAppVersions =
-        (await loadObject<string[]>(targetVersionsKey)) ?? [];
+        (await loadOptionalObject<string[]>(targetVersionsKey)) ?? [];
       const matchingVersions = filterCompatibleAppVersions(
         targetAppVersions,
         appVersion,
       );
 
-      const result = await allSettledWithConcurrency(
-        matchingVersions,
-        STORAGE_OPERATION_CONCURRENCY,
-        async (targetAppVersion) => {
-          const normalizedVersion =
-            normalizeTargetAppVersion(targetAppVersion) ?? targetAppVersion;
+      const bundles = (
+        await mapWithConcurrency(
+          matchingVersions,
+          STORAGE_OPERATION_CONCURRENCY,
+          async (targetAppVersion) => {
+            const normalizedVersion =
+              normalizeTargetAppVersion(targetAppVersion) ?? targetAppVersion;
 
-          return (
-            (await loadObject<Bundle[]>(
-              `${channel}/${platform}/${normalizedVersion}/update.json`,
-            )) ?? []
-          );
-        },
-      );
-
-      const bundles = result
-        .filter(
-          (entry): entry is PromiseFulfilledResult<Bundle[]> =>
-            entry.status === "fulfilled",
+            return (
+              (await loadOptionalObject<Bundle[]>(
+                `${channel}/${platform}/${normalizedVersion}/update.json`,
+              )) ?? []
+            );
+          },
         )
-        .flatMap((entry) => entry.value);
+      ).flat();
 
       return getManifestUpdateInfo(bundles, {
         _updateStrategy: "appVersion",
@@ -1170,7 +1212,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       platform,
     }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
       const bundles =
-        (await loadObject<Bundle[]>(
+        (await loadOptionalObject<Bundle[]>(
           `${channel}/${platform}/${fingerprintHash}/update.json`,
         )) ?? [];
 
@@ -1240,7 +1282,63 @@ export const createBlobDatabasePlugin = <TConfig>({
       }
     };
 
-    return createDatabasePlugin({
+    const bundleIndexDiagnostics = {
+      async check() {
+        const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
+        const allRoot = await loadStoredManagementRoot({});
+        const indexedBundles = allRoot
+          ? await loadAllBundlesFromRoot(allRoot)
+          : null;
+
+        return compareBundleIndex({
+          canonicalBundles,
+          indexedBundles,
+          rootMissing: !allRoot,
+        });
+      },
+
+      async repair() {
+        const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
+        const previousRoot = await loadStoredManagementRoot({});
+        const previousBundles = previousRoot
+          ? await loadAllBundlesFromRoot(previousRoot)
+          : null;
+        const previousArtifacts =
+          previousRoot && previousBundles
+            ? buildManagementIndexArtifacts(
+                previousBundles,
+                previousRoot.pageSize,
+              )
+            : undefined;
+        const nextArtifacts = buildManagementIndexArtifacts(
+          canonicalBundles,
+          managementIndexPageSize,
+        );
+        const indexedObjectKeys = await listObjects(
+          `${MANAGEMENT_INDEX_PREFIX}/`,
+        );
+        const nextObjectKeys = new Set([
+          ...nextArtifacts.pages.keys(),
+          ...nextArtifacts.scopes.map((scope) => scope.rootKey),
+        ]);
+
+        await persistManagementIndexArtifacts(nextArtifacts, previousArtifacts);
+        await forEachWithConcurrency(
+          indexedObjectKeys.filter((key) => !nextObjectKeys.has(key)),
+          STORAGE_OPERATION_CONCURRENCY,
+          (key) => deleteObject(key).catch(() => {}),
+        );
+        replaceManagementRootCache(nextArtifacts);
+
+        return {
+          scannedBundles: canonicalBundles.length,
+          indexedBundles: canonicalBundles.length,
+          ...summarizeManagementIndexArtifacts(nextArtifacts),
+        };
+      },
+    };
+
+    const createPlugin = createDatabasePlugin({
       name,
       factory: () => ({
         supportsCursorPagination: true,
@@ -1481,7 +1579,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             Object.keys(removalsByKey),
             STORAGE_OPERATION_CONCURRENCY,
             async (oldKey) => {
-              const currentBundles = (await loadObject<Bundle[]>(oldKey)) ?? [];
+              const currentBundles =
+                (await loadOptionalObject<Bundle[]>(oldKey)) ?? [];
               const updatedBundles = currentBundles.filter(
                 (b) => !removalsByKey[oldKey].includes(b.id),
               );
@@ -1499,7 +1598,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             Object.keys(changedBundlesByKey),
             STORAGE_OPERATION_CONCURRENCY,
             async (key) => {
-              const currentBundles = (await loadObject<Bundle[]>(key)) ?? [];
+              const currentBundles =
+                (await loadOptionalObject<Bundle[]>(key)) ?? [];
               const pureBundles = changedBundlesByKey[key].map(
                 (bundle) => bundle,
               );
@@ -1570,5 +1670,19 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
       }),
     })({}, hooks);
+
+    return () => {
+      const plugin = createPlugin();
+
+      Object.defineProperty(plugin, "diagnostics", {
+        configurable: true,
+        enumerable: true,
+        value: {
+          bundleIndex: bundleIndexDiagnostics,
+        },
+      });
+
+      return plugin;
+    };
   };
 };

@@ -94,6 +94,34 @@ export interface DatabaseBundleQueryOptions {
   orderBy?: DatabaseBundleQueryOrder;
 }
 
+export interface BundleIndexHealth {
+  status: "ok" | "missing" | "stale";
+  canonicalBundles: number;
+  indexedBundles: number;
+  missingBundles: number;
+  extraBundles: number;
+  missingBundleIds: string[];
+  extraBundleIds: string[];
+}
+
+export interface BundleIndexRepairResult {
+  scannedBundles: number;
+  indexedBundles: number;
+  pagesWritten: number;
+  scopesWritten: number;
+}
+
+export interface BundleIndexDiagnostics<TContext = unknown> {
+  check: (context?: HotUpdaterContext<TContext>) => Promise<BundleIndexHealth>;
+  repair?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<BundleIndexRepairResult>;
+}
+
+export interface DatabaseDiagnostics<TContext = unknown> {
+  bundleIndex?: BundleIndexDiagnostics<TContext>;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -122,6 +150,7 @@ export interface DatabasePlugin<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
+  diagnostics?: DatabaseDiagnostics<TContext>;
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (

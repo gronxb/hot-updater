@@ -5,6 +5,7 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
+  DatabaseDiagnostics,
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   HotUpdaterContext,
@@ -108,6 +109,7 @@ export interface DatabaseAPI<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
+  diagnostics?: DatabaseDiagnostics<TContext>;
 }
 
 export type StoragePluginFactory<TContext = unknown> =

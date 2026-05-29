@@ -79,6 +79,7 @@ let nextCloudfrontInvalidationStatuses: string[] | null = null;
 let cloudfrontInvalidationStatuses = new Map<string, string[]>();
 let listedObjectPrefixes: string[] = [];
 let loadedObjectKeys: string[] = [];
+let archivedObjectKeys = new Map<string, string>();
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -174,6 +175,7 @@ beforeEach(() => {
   cloudfrontInvalidationStatuses = new Map();
   listedObjectPrefixes = [];
   loadedObjectKeys = [];
+  archivedObjectKeys = new Map();
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -192,6 +194,17 @@ beforeEach(() => {
         const key = command.input.Key;
         if (key) {
           loadedObjectKeys.push(key);
+        }
+        if (key && archivedObjectKeys.has(key)) {
+          const error = new Error(
+            "The operation is not valid for the object's storage class",
+          );
+          error.name = "InvalidObjectState";
+          Object.assign(error, {
+            Code: "InvalidObjectState",
+            StorageClass: archivedObjectKeys.get(key),
+          });
+          throw error;
         }
         if (key && fakeStore[key] !== undefined) {
           await delay(7);
@@ -1637,6 +1650,103 @@ describe("s3Database plugin", () => {
 
     // Descending order: "C" > "B" > "A"
     expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
+  });
+
+  it("skips archived stale update manifests while rebuilding from SSOT", async () => {
+    const archivedUpdateKey = "production/ios/0.9.0/update.json";
+    const activeUpdateKey = "production/ios/1.0.0/update.json";
+    const archivedBundle = createBundleJson(
+      "production",
+      "ios",
+      "0.9.0",
+      "archived-update-json",
+    );
+    const activeBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "active-update-json",
+    );
+    fakeStore[archivedUpdateKey] = JSON.stringify([archivedBundle]);
+    fakeStore[activeUpdateKey] = JSON.stringify([activeBundle]);
+    archivedObjectKeys.set(archivedUpdateKey, "GLACIER");
+    loadedObjectKeys = [];
+
+    const bundles = await plugin.getBundles({ limit: 20 });
+
+    expect(bundles.data).toEqual([activeBundle]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      archivedUpdateKey,
+      activeUpdateKey,
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it("skips archived app-version manifests during update checks", async () => {
+    const archivedUpdateKey = "production/ios/*/update.json";
+    const activeUpdateKey = "production/ios/1.0.0/update.json";
+    const archivedBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+    const activeBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "00000000-0000-0000-0000-000000000001",
+    );
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "*",
+      "1.0.0",
+    ]);
+    fakeStore[archivedUpdateKey] = JSON.stringify([archivedBundle]);
+    fakeStore[activeUpdateKey] = JSON.stringify([activeBundle]);
+    archivedObjectKeys.set(archivedUpdateKey, "GLACIER");
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: activeBundle.fileHash,
+      id: activeBundle.id,
+      message: activeBundle.message,
+      shouldForceUpdate: activeBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: activeBundle.storageUri,
+    });
+    expect(loadedObjectKeys[0]).toBe("production/ios/target-app-versions.json");
+    expect(new Set(loadedObjectKeys.slice(1))).toEqual(
+      new Set([archivedUpdateKey, activeUpdateKey]),
+    );
+  });
+
+  it("treats archived direct S3 metadata reads as missing", async () => {
+    const updateKey = "production/ios/fingerprint-1/update.json";
+    const bundle = createBundleJsonFingerprint(
+      "production",
+      "ios",
+      "fingerprint-1",
+      "archived-update-json",
+    );
+    fakeStore[updateKey] = JSON.stringify([bundle]);
+    archivedObjectKeys.set(updateKey, "GLACIER");
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      }),
+    ).resolves.toBeNull();
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {
