@@ -53,6 +53,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
@@ -106,6 +111,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       CONTROL_URL: ${CONTROL_URL}
+- runFlow:
+    file: subflows/tap-action-button.yaml
+    env:
+      APP_ID: ${APP_ID}
+      BUTTON_ID: action-install-current-channel-update
 - runScript:
     file: ../scripts/control.js
     env:
