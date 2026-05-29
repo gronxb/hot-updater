@@ -89,6 +89,7 @@ interface NativeStatus {
 interface BundleIndexDoctorStatus {
   adapterName?: string;
   status: "not-applicable" | "ok" | "missing" | "stale" | "repaired" | "error";
+  repairAvailable?: boolean;
   health?: BundleIndexHealth;
   postRepairHealth?: BundleIndexHealth;
   repair?: BundleIndexRepairResult;
@@ -818,10 +819,6 @@ async function checkBundleIndexStatus({
 }: {
   fix: boolean;
 }): Promise<BundleIndexDoctorStatus | undefined> {
-  if (!fix) {
-    return undefined;
-  }
-
   try {
     const config = await loadConfig(null);
     const database = await config.database();
@@ -829,6 +826,10 @@ async function checkBundleIndexStatus({
       const bundleIndexDiagnostics = database.diagnostics?.bundleIndex;
 
       if (!bundleIndexDiagnostics) {
+        if (!fix) {
+          return undefined;
+        }
+
         return {
           adapterName: database.name,
           status: "not-applicable",
@@ -840,14 +841,16 @@ async function checkBundleIndexStatus({
         return {
           adapterName: database.name,
           status: "ok",
+          repairAvailable: bundleIndexDiagnostics.repair !== undefined,
           health,
         };
       }
 
-      if (!bundleIndexDiagnostics.repair) {
+      if (!fix || !bundleIndexDiagnostics.repair) {
         return {
           adapterName: database.name,
           status: health.status,
+          repairAvailable: bundleIndexDiagnostics.repair !== undefined,
           health,
         };
       }
@@ -858,6 +861,7 @@ async function checkBundleIndexStatus({
         return {
           adapterName: database.name,
           status: postRepairHealth.status,
+          repairAvailable: true,
           health,
           postRepairHealth,
           repair,
@@ -867,6 +871,7 @@ async function checkBundleIndexStatus({
       return {
         adapterName: database.name,
         status: "repaired",
+        repairAvailable: true,
         health,
         postRepairHealth,
         repair,
@@ -1259,6 +1264,9 @@ export const handleDoctor = async ({
       p.log.error(
         "Bundle index repair completed, but the index is still out of sync.",
       );
+    } else if (bundleIndex.repairAvailable) {
+      p.log.warn("Bundle index is out of sync.");
+      p.log.info(`Run ${ui.command("hot-updater doctor --fix")} to repair it.`);
     } else {
       p.log.error("Bundle index is out of sync and repair is not available.");
     }

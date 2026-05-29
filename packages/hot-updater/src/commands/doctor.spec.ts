@@ -245,7 +245,31 @@ describe("doctor", () => {
     expect(result).toBe(true);
   });
 
-  it("does not load the hot-updater config unless fix or native checks require it", async () => {
+  it("checks bundle index diagnostics without repairing when fix is disabled", async () => {
+    const staleHealth = {
+      status: "stale",
+      canonicalBundles: 2,
+      indexedBundles: 1,
+      missingBundles: 1,
+      extraBundles: 0,
+      missingBundleIds: ["bundle-B"],
+      extraBundleIds: [],
+    };
+    const checkBundleIndex = vi.fn().mockResolvedValue(staleHealth);
+    const repairBundleIndex = vi.fn();
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        database: vi.fn().mockResolvedValue({
+          name: "s3",
+          diagnostics: {
+            bundleIndex: {
+              check: checkBundleIndex,
+              repair: repairBundleIndex,
+            },
+          },
+        }),
+      }),
+    );
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
@@ -255,9 +279,20 @@ describe("doctor", () => {
       path: "/mock/cwd/package.json",
     });
 
-    await expect(doctor()).resolves.toBe(true);
+    await expect(doctor()).resolves.toEqual({
+      success: false,
+      details: expect.objectContaining({
+        bundleIndex: {
+          adapterName: "s3",
+          status: "stale",
+          repairAvailable: true,
+          health: staleHealth,
+        },
+      }),
+    });
 
-    expect(mockLoadConfig).not.toHaveBeenCalled();
+    expect(checkBundleIndex).toHaveBeenCalledTimes(1);
+    expect(repairBundleIndex).not.toHaveBeenCalled();
   });
 
   it("reports bundle index repair as not applicable for adapters without diagnostics hooks", async () => {
@@ -338,6 +373,7 @@ describe("doctor", () => {
         bundleIndex: {
           adapterName: "s3",
           status: "repaired",
+          repairAvailable: true,
           health: expect.objectContaining({
             status: "stale",
             missingBundles: 1,
@@ -402,6 +438,7 @@ describe("doctor", () => {
         bundleIndex: {
           adapterName: "s3",
           status: "stale",
+          repairAvailable: true,
           health: staleHealth,
           postRepairHealth: staleHealth,
           repair: {
