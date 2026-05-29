@@ -26,6 +26,10 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
+      - runFlow:
+          file: navigate-actions.yaml
+          env:
+            APP_ID: ${APP_ID}
       - extendedWaitUntil:
           visible:
             id: current-channel-summary
