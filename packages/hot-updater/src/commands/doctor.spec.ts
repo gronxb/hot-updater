@@ -13,7 +13,6 @@ import {
   isInfrastructureUpdateRequired,
   resolveVersionEndpoint,
 } from "./doctor";
-import { loadHotUpdater } from "./utils/load-hot-updater";
 
 vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: vi.fn(() => "/mock/cwd"),
@@ -22,14 +21,9 @@ vi.mock("@hot-updater/cli-tools", () => ({
   readPackageUp: vi.fn(),
 }));
 
-vi.mock("./utils/load-hot-updater", () => ({
-  loadHotUpdater: vi.fn(),
-}));
-
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
-const mockLoadHotUpdater = loadHotUpdater as ReturnType<typeof vi.fn>;
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   updateStrategy: "appVersion",
@@ -44,6 +38,9 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
   signing: {
     enabled: false,
   },
+  database: vi.fn().mockResolvedValue({
+    name: "memory",
+  }),
   ...overrides,
 });
 
@@ -218,12 +215,6 @@ describe("doctor", () => {
     vi.clearAllMocks();
     mockGetCwd.mockReturnValue("/mock/cwd");
     mockLoadConfig.mockResolvedValue(createConfig());
-    mockLoadHotUpdater.mockResolvedValue({
-      adapterName: "memory",
-      hotUpdater: {
-        adapterName: "memory",
-      },
-    });
   });
 
   afterEach(async () => {
@@ -254,7 +245,7 @@ describe("doctor", () => {
     expect(result).toBe(true);
   });
 
-  it("does not load the hot-updater config unless fix is enabled", async () => {
+  it("does not load the hot-updater config unless fix or native checks require it", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
@@ -266,7 +257,7 @@ describe("doctor", () => {
 
     await expect(doctor()).resolves.toBe(true);
 
-    expect(mockLoadHotUpdater).not.toHaveBeenCalled();
+    expect(mockLoadConfig).not.toHaveBeenCalled();
   });
 
   it("reports bundle index repair as not applicable for adapters without diagnostics hooks", async () => {
@@ -319,18 +310,19 @@ describe("doctor", () => {
       pagesWritten: 1,
       scopesWritten: 4,
     });
-    mockLoadHotUpdater.mockResolvedValue({
-      adapterName: "s3",
-      hotUpdater: {
-        adapterName: "s3",
-        diagnostics: {
-          bundleIndex: {
-            check: checkBundleIndex,
-            repair: repairBundleIndex,
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        database: vi.fn().mockResolvedValue({
+          name: "s3",
+          diagnostics: {
+            bundleIndex: {
+              check: checkBundleIndex,
+              repair: repairBundleIndex,
+            },
           },
-        },
-      },
-    });
+        }),
+      }),
+    );
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
@@ -360,7 +352,7 @@ describe("doctor", () => {
         },
       }),
     });
-    expect(mockLoadHotUpdater).toHaveBeenCalledWith("", { cwd: "/mock/cwd" });
+    expect(mockLoadConfig).toHaveBeenCalledWith(null);
     expect(checkBundleIndex).toHaveBeenCalledTimes(2);
     expect(repairBundleIndex).toHaveBeenCalledTimes(1);
   });
@@ -382,18 +374,19 @@ describe("doctor", () => {
       pagesWritten: 1,
       scopesWritten: 4,
     });
-    mockLoadHotUpdater.mockResolvedValue({
-      adapterName: "s3",
-      hotUpdater: {
-        adapterName: "s3",
-        diagnostics: {
-          bundleIndex: {
-            check: checkBundleIndex,
-            repair: repairBundleIndex,
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        database: vi.fn().mockResolvedValue({
+          name: "s3",
+          diagnostics: {
+            bundleIndex: {
+              check: checkBundleIndex,
+              repair: repairBundleIndex,
+            },
           },
-        },
-      },
-    });
+        }),
+      }),
+    );
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
@@ -456,7 +449,7 @@ describe("doctor", () => {
 
     await handleDoctor({ json: true, fix: true });
 
-    expect(mockLoadHotUpdater).toHaveBeenCalledWith("", { cwd: "/mock/cwd" });
+    expect(mockLoadConfig).toHaveBeenCalledWith(null);
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify(
         {

@@ -23,7 +23,6 @@ import {
   type SigningConfigIssue,
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
-import { loadHotUpdater } from "./utils/load-hot-updater";
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -815,10 +814,8 @@ async function checkInfrastructureStatus({
 }
 
 async function checkBundleIndexStatus({
-  cwd,
   fix,
 }: {
-  cwd: string;
   fix: boolean;
 }): Promise<BundleIndexDoctorStatus | undefined> {
   if (!fix) {
@@ -826,52 +823,57 @@ async function checkBundleIndexStatus({
   }
 
   try {
-    const { hotUpdater, adapterName } = await loadHotUpdater("", { cwd });
-    const bundleIndexDiagnostics = hotUpdater.diagnostics?.bundleIndex;
+    const config = await loadConfig(null);
+    const database = await config.database();
+    try {
+      const bundleIndexDiagnostics = database.diagnostics?.bundleIndex;
 
-    if (!bundleIndexDiagnostics) {
-      return {
-        adapterName,
-        status: "not-applicable",
-      };
-    }
+      if (!bundleIndexDiagnostics) {
+        return {
+          adapterName: database.name,
+          status: "not-applicable",
+        };
+      }
 
-    const health = await bundleIndexDiagnostics.check();
-    if (health?.status === "ok") {
-      return {
-        adapterName,
-        status: "ok",
-        health,
-      };
-    }
+      const health = await bundleIndexDiagnostics.check();
+      if (health?.status === "ok") {
+        return {
+          adapterName: database.name,
+          status: "ok",
+          health,
+        };
+      }
 
-    if (!bundleIndexDiagnostics.repair) {
-      return {
-        adapterName,
-        status: health.status,
-        health,
-      };
-    }
+      if (!bundleIndexDiagnostics.repair) {
+        return {
+          adapterName: database.name,
+          status: health.status,
+          health,
+        };
+      }
 
-    const repair = await bundleIndexDiagnostics.repair();
-    const postRepairHealth = await bundleIndexDiagnostics.check();
-    if (postRepairHealth.status !== "ok") {
+      const repair = await bundleIndexDiagnostics.repair();
+      const postRepairHealth = await bundleIndexDiagnostics.check();
+      if (postRepairHealth.status !== "ok") {
+        return {
+          adapterName: database.name,
+          status: postRepairHealth.status,
+          health,
+          postRepairHealth,
+          repair,
+        };
+      }
+
       return {
-        adapterName,
-        status: postRepairHealth.status,
+        adapterName: database.name,
+        status: "repaired",
         health,
         postRepairHealth,
         repair,
       };
+    } finally {
+      await database.onUnmount?.();
     }
-
-    return {
-      adapterName,
-      status: "repaired",
-      health,
-      postRepairHealth,
-      repair,
-    };
   } catch (error) {
     return {
       status: "error",
@@ -976,7 +978,7 @@ export async function doctor(
       details.native = await checkNativeStatus({ cwd });
     }
 
-    details.bundleIndex = await checkBundleIndexStatus({ cwd, fix });
+    details.bundleIndex = await checkBundleIndexStatus({ fix });
 
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
