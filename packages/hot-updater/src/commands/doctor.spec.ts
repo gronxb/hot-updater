@@ -269,7 +269,7 @@ describe("doctor", () => {
     expect(mockLoadHotUpdater).not.toHaveBeenCalled();
   });
 
-  it("reports bundle index repair as not applicable for adapters without maintenance hooks", async () => {
+  it("reports bundle index repair as not applicable for adapters without diagnostics hooks", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
@@ -323,8 +323,12 @@ describe("doctor", () => {
       adapterName: "s3",
       hotUpdater: {
         adapterName: "s3",
-        checkBundleIndex,
-        repairBundleIndex,
+        diagnostics: {
+          bundleIndex: {
+            check: checkBundleIndex,
+            repair: repairBundleIndex,
+          },
+        },
       },
     });
     mockReadPackageUp.mockResolvedValue({
@@ -382,8 +386,12 @@ describe("doctor", () => {
       adapterName: "s3",
       hotUpdater: {
         adapterName: "s3",
-        checkBundleIndex,
-        repairBundleIndex,
+        diagnostics: {
+          bundleIndex: {
+            check: checkBundleIndex,
+            repair: repairBundleIndex,
+          },
+        },
       },
     });
     mockReadPackageUp.mockResolvedValue({

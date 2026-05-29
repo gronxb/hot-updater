@@ -435,13 +435,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
     },
   };
 
-  Object.defineProperty(api, "checkBundleIndex", {
+  Object.defineProperty(api, "diagnostics", {
     configurable: true,
     enumerable: true,
     get(this: DatabaseAPI<TContext>) {
-      const checkBundleIndex = getPlugin().checkBundleIndex;
-      if (!checkBundleIndex) {
-        Object.defineProperty(this, "checkBundleIndex", {
+      const diagnostics = getPlugin().diagnostics;
+      if (!diagnostics) {
+        Object.defineProperty(this, "diagnostics", {
           configurable: true,
           enumerable: true,
           value: undefined,
@@ -449,41 +449,28 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return undefined;
       }
 
-      const wrapped: NonNullable<DatabaseAPI<TContext>["checkBundleIndex"]> = (
-        context?: HotUpdaterContext<TContext>,
-      ) => getPlugin().checkBundleIndex!(context);
-      Object.defineProperty(this, "checkBundleIndex", {
-        configurable: true,
-        enumerable: true,
-        value: wrapped,
-      });
-      return wrapped;
-    },
-  });
-
-  Object.defineProperty(api, "repairBundleIndex", {
-    configurable: true,
-    enumerable: true,
-    get(this: DatabaseAPI<TContext>) {
-      const repairBundleIndex = getPlugin().repairBundleIndex;
-      if (!repairBundleIndex) {
-        Object.defineProperty(this, "repairBundleIndex", {
-          configurable: true,
-          enumerable: true,
-          value: undefined,
-        });
-        return undefined;
+      const wrappedDiagnostics: NonNullable<
+        DatabaseAPI<TContext>["diagnostics"]
+      > = {};
+      if (diagnostics.bundleIndex) {
+        wrappedDiagnostics.bundleIndex = {
+          check: (context?: HotUpdaterContext<TContext>) =>
+            getPlugin().diagnostics!.bundleIndex!.check(context),
+          ...(diagnostics.bundleIndex.repair
+            ? {
+                repair: (context?: HotUpdaterContext<TContext>) =>
+                  getPlugin().diagnostics!.bundleIndex!.repair!(context),
+              }
+            : {}),
+        };
       }
 
-      const wrapped: NonNullable<DatabaseAPI<TContext>["repairBundleIndex"]> = (
-        context?: HotUpdaterContext<TContext>,
-      ) => getPlugin().repairBundleIndex!(context);
-      Object.defineProperty(this, "repairBundleIndex", {
+      Object.defineProperty(this, "diagnostics", {
         configurable: true,
         enumerable: true,
-        value: wrapped,
+        value: wrappedDiagnostics,
       });
-      return wrapped;
+      return wrappedDiagnostics;
     },
   });
 

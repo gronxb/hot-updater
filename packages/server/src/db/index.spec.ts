@@ -896,9 +896,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       expect(factory).not.toHaveBeenCalled();
-      expect(hotUpdater.checkBundleIndex).toBeUndefined();
+      expect(hotUpdater.diagnostics).toBeUndefined();
       expect(factory).toHaveBeenCalledTimes(1);
-      expect(hotUpdater.checkBundleIndex).toBeUndefined();
+      expect(hotUpdater.diagnostics).toBeUndefined();
       expect(factory).toHaveBeenCalledTimes(1);
     });
 

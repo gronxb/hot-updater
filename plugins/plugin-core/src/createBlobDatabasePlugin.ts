@@ -1332,61 +1332,67 @@ export const createBlobDatabasePlugin = <TConfig>({
           return allRoot?.channels ?? [];
         },
 
-        async checkBundleIndex() {
-          const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
-          const allRoot = await loadStoredManagementRoot({});
-          const indexedBundles = allRoot
-            ? await loadAllBundlesFromRoot(allRoot)
-            : null;
+        diagnostics: {
+          bundleIndex: {
+            async check() {
+              const canonicalBundles =
+                await loadCanonicalBundlesForIndexRepair();
+              const allRoot = await loadStoredManagementRoot({});
+              const indexedBundles = allRoot
+                ? await loadAllBundlesFromRoot(allRoot)
+                : null;
 
-          return compareBundleIndex({
-            canonicalBundles,
-            indexedBundles,
-            rootMissing: !allRoot,
-          });
-        },
+              return compareBundleIndex({
+                canonicalBundles,
+                indexedBundles,
+                rootMissing: !allRoot,
+              });
+            },
 
-        async repairBundleIndex() {
-          const canonicalBundles = await loadCanonicalBundlesForIndexRepair();
-          const previousRoot = await loadStoredManagementRoot({});
-          const previousBundles = previousRoot
-            ? await loadAllBundlesFromRoot(previousRoot)
-            : null;
-          const previousArtifacts =
-            previousRoot && previousBundles
-              ? buildManagementIndexArtifacts(
-                  previousBundles,
-                  previousRoot.pageSize,
-                )
-              : undefined;
-          const nextArtifacts = buildManagementIndexArtifacts(
-            canonicalBundles,
-            managementIndexPageSize,
-          );
-          const indexedObjectKeys = await listObjects(
-            `${MANAGEMENT_INDEX_PREFIX}/`,
-          );
-          const nextObjectKeys = new Set([
-            ...nextArtifacts.pages.keys(),
-            ...nextArtifacts.scopes.map((scope) => scope.rootKey),
-          ]);
+            async repair() {
+              const canonicalBundles =
+                await loadCanonicalBundlesForIndexRepair();
+              const previousRoot = await loadStoredManagementRoot({});
+              const previousBundles = previousRoot
+                ? await loadAllBundlesFromRoot(previousRoot)
+                : null;
+              const previousArtifacts =
+                previousRoot && previousBundles
+                  ? buildManagementIndexArtifacts(
+                      previousBundles,
+                      previousRoot.pageSize,
+                    )
+                  : undefined;
+              const nextArtifacts = buildManagementIndexArtifacts(
+                canonicalBundles,
+                managementIndexPageSize,
+              );
+              const indexedObjectKeys = await listObjects(
+                `${MANAGEMENT_INDEX_PREFIX}/`,
+              );
+              const nextObjectKeys = new Set([
+                ...nextArtifacts.pages.keys(),
+                ...nextArtifacts.scopes.map((scope) => scope.rootKey),
+              ]);
 
-          await persistManagementIndexArtifacts(
-            nextArtifacts,
-            previousArtifacts,
-          );
-          await Promise.all(
-            indexedObjectKeys
-              .filter((key) => !nextObjectKeys.has(key))
-              .map((key) => deleteObject(key).catch(() => {})),
-          );
-          replaceManagementRootCache(nextArtifacts);
+              await persistManagementIndexArtifacts(
+                nextArtifacts,
+                previousArtifacts,
+              );
+              await Promise.all(
+                indexedObjectKeys
+                  .filter((key) => !nextObjectKeys.has(key))
+                  .map((key) => deleteObject(key).catch(() => {})),
+              );
+              replaceManagementRootCache(nextArtifacts);
 
-          return {
-            scannedBundles: canonicalBundles.length,
-            indexedBundles: canonicalBundles.length,
-            ...summarizeManagementIndexArtifacts(nextArtifacts),
-          };
+              return {
+                scannedBundles: canonicalBundles.length,
+                indexedBundles: canonicalBundles.length,
+                ...summarizeManagementIndexArtifacts(nextArtifacts),
+              };
+            },
+          },
         },
 
         async commitBundle({ changedSets }) {

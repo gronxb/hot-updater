@@ -2,10 +2,7 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type {
-  BundleIndexHealth,
-  BundleIndexRepairResult,
-} from "@hot-updater/plugin-core";
+import type { DatabaseDiagnostics } from "@hot-updater/plugin-core";
 import type { Migrator } from "@hot-updater/server";
 import { createJiti } from "jiti";
 
@@ -17,8 +14,7 @@ export interface HotUpdaterInstance {
     version: string | "latest",
     name?: string,
   ) => { code: string; path: string };
-  checkBundleIndex?: () => Promise<BundleIndexHealth>;
-  repairBundleIndex?: () => Promise<BundleIndexRepairResult>;
+  diagnostics?: DatabaseDiagnostics;
   adapterName: string;
 }
 

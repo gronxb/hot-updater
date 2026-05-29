@@ -39,7 +39,7 @@ To repair safe local metadata issues, run:
 npx hot-updater doctor --fix
 ```
 
-`--fix` loads your Hot Updater config and runs maintenance hooks exposed by the
+`--fix` loads your Hot Updater config and runs diagnostics hooks exposed by the
 active database adapter. For blob-style adapters, this can rebuild the
 management bundle index from canonical `update.json` manifests. The command
 checks the index again after repair and reports a failure if the index is still
@@ -96,7 +96,7 @@ as blocked because applying migrations or redeploying a server usually depends
 on provider credentials and environment-specific access.
 
 Bundle index repair is only available when the active database adapter exposes
-maintenance hooks. Adapters without those hooks report `not-applicable`.
+diagnostics hooks. Adapters without those hooks report `not-applicable`.
 
 ## Check Infrastructure
 

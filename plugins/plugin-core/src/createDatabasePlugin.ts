@@ -8,6 +8,7 @@ import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
+  DatabaseDiagnostics,
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
@@ -39,12 +40,7 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
     },
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  checkBundleIndex?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => ReturnType<NonNullable<DatabasePlugin<TContext>["checkBundleIndex"]>>;
-  repairBundleIndex?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => ReturnType<NonNullable<DatabasePlugin<TContext>["repairBundleIndex"]>>;
+  diagnostics?: DatabaseDiagnostics<TContext>;
 }
 
 /**
@@ -541,13 +537,13 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         },
       });
 
-      Object.defineProperty(plugin, "checkBundleIndex", {
+      Object.defineProperty(plugin, "diagnostics", {
         configurable: true,
         enumerable: true,
         get() {
-          const directCheckBundleIndex = getMethods().checkBundleIndex;
-          if (!directCheckBundleIndex) {
-            Object.defineProperty(plugin, "checkBundleIndex", {
+          const directDiagnostics = getMethods().diagnostics;
+          if (!directDiagnostics) {
+            Object.defineProperty(plugin, "diagnostics", {
               configurable: true,
               enumerable: true,
               value: undefined,
@@ -555,55 +551,35 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return undefined;
           }
 
-          const wrappedCheckBundleIndex: NonNullable<
-            DatabasePlugin<TContext>["checkBundleIndex"]
-          > = async (context) => {
-            if (context === undefined) {
-              return directCheckBundleIndex();
-            }
-
-            return directCheckBundleIndex(context);
-          };
-
-          Object.defineProperty(plugin, "checkBundleIndex", {
-            configurable: true,
-            enumerable: true,
-            value: wrappedCheckBundleIndex,
-          });
-          return wrappedCheckBundleIndex;
-        },
-      });
-
-      Object.defineProperty(plugin, "repairBundleIndex", {
-        configurable: true,
-        enumerable: true,
-        get() {
-          const directRepairBundleIndex = getMethods().repairBundleIndex;
-          if (!directRepairBundleIndex) {
-            Object.defineProperty(plugin, "repairBundleIndex", {
-              configurable: true,
-              enumerable: true,
-              value: undefined,
-            });
-            return undefined;
+          const wrappedDiagnostics: DatabaseDiagnostics<TContext> = {};
+          if (directDiagnostics.bundleIndex) {
+            const directBundleIndex = directDiagnostics.bundleIndex;
+            wrappedDiagnostics.bundleIndex = {
+              check: async (context) => {
+                if (context === undefined) {
+                  return directBundleIndex.check();
+                }
+                return directBundleIndex.check(context);
+              },
+              ...(directBundleIndex.repair
+                ? {
+                    repair: async (context) => {
+                      if (context === undefined) {
+                        return directBundleIndex.repair!();
+                      }
+                      return directBundleIndex.repair!(context);
+                    },
+                  }
+                : {}),
+            };
           }
 
-          const wrappedRepairBundleIndex: NonNullable<
-            DatabasePlugin<TContext>["repairBundleIndex"]
-          > = async (context) => {
-            if (context === undefined) {
-              return directRepairBundleIndex();
-            }
-
-            return directRepairBundleIndex(context);
-          };
-
-          Object.defineProperty(plugin, "repairBundleIndex", {
+          Object.defineProperty(plugin, "diagnostics", {
             configurable: true,
             enumerable: true,
-            value: wrappedRepairBundleIndex,
+            value: wrappedDiagnostics,
           });
-          return wrappedRepairBundleIndex;
+          return wrappedDiagnostics;
         },
       });
 

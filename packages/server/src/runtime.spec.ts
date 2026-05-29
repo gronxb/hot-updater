@@ -739,9 +739,9 @@ describe("runtime createHotUpdater", () => {
     });
 
     expect(factory).not.toHaveBeenCalled();
-    expect(hotUpdater.repairBundleIndex).toBeUndefined();
+    expect(hotUpdater.diagnostics).toBeUndefined();
     expect(factory).toHaveBeenCalledTimes(1);
-    expect(hotUpdater.repairBundleIndex).toBeUndefined();
+    expect(hotUpdater.diagnostics).toBeUndefined();
     expect(factory).toHaveBeenCalledTimes(1);
   });
 

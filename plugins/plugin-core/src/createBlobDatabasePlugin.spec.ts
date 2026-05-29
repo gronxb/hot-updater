@@ -1108,7 +1108,7 @@ describe("blobDatabase plugin", () => {
     seedUpdateManifests([indexedBundle, missingBundle]);
     seedPagedBundlesIndex([indexedBundle]);
 
-    await expect(plugin.checkBundleIndex?.()).resolves.toEqual({
+    await expect(plugin.diagnostics?.bundleIndex?.check()).resolves.toEqual({
       status: "stale",
       canonicalBundles: 2,
       indexedBundles: 1,
@@ -1135,7 +1135,9 @@ describe("blobDatabase plugin", () => {
     seedUpdateManifests([indexedBundle, missingBundle]);
     seedPagedBundlesIndex([indexedBundle]);
 
-    await expect(plugin.repairBundleIndex?.()).resolves.toMatchObject({
+    await expect(
+      plugin.diagnostics?.bundleIndex?.repair?.(),
+    ).resolves.toMatchObject({
       scannedBundles: 2,
       indexedBundles: 2,
     });

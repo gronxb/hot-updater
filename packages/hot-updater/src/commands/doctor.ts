@@ -827,17 +827,16 @@ async function checkBundleIndexStatus({
 
   try {
     const { hotUpdater, adapterName } = await loadHotUpdater("", { cwd });
-    const checkBundleIndex = hotUpdater.checkBundleIndex;
-    const repairBundleIndex = hotUpdater.repairBundleIndex;
+    const bundleIndexDiagnostics = hotUpdater.diagnostics?.bundleIndex;
 
-    if (!checkBundleIndex && !repairBundleIndex) {
+    if (!bundleIndexDiagnostics) {
       return {
         adapterName,
         status: "not-applicable",
       };
     }
 
-    const health = checkBundleIndex ? await checkBundleIndex() : undefined;
+    const health = await bundleIndexDiagnostics.check();
     if (health?.status === "ok") {
       return {
         adapterName,
@@ -846,19 +845,17 @@ async function checkBundleIndexStatus({
       };
     }
 
-    if (!repairBundleIndex) {
+    if (!bundleIndexDiagnostics.repair) {
       return {
         adapterName,
-        status: health?.status ?? "not-applicable",
+        status: health.status,
         health,
       };
     }
 
-    const repair = await repairBundleIndex();
-    const postRepairHealth = checkBundleIndex
-      ? await checkBundleIndex()
-      : undefined;
-    if (postRepairHealth && postRepairHealth.status !== "ok") {
+    const repair = await bundleIndexDiagnostics.repair();
+    const postRepairHealth = await bundleIndexDiagnostics.check();
+    if (postRepairHealth.status !== "ok") {
       return {
         adapterName,
         status: postRepairHealth.status,

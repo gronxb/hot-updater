@@ -111,6 +111,17 @@ export interface BundleIndexRepairResult {
   scopesWritten: number;
 }
 
+export interface BundleIndexDiagnostics<TContext = unknown> {
+  check: (context?: HotUpdaterContext<TContext>) => Promise<BundleIndexHealth>;
+  repair?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<BundleIndexRepairResult>;
+}
+
+export interface DatabaseDiagnostics<TContext = unknown> {
+  bundleIndex?: BundleIndexDiagnostics<TContext>;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
@@ -139,12 +150,7 @@ export interface DatabasePlugin<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
-  checkBundleIndex?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<BundleIndexHealth>;
-  repairBundleIndex?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<BundleIndexRepairResult>;
+  diagnostics?: DatabaseDiagnostics<TContext>;
   onUnmount?: () => Promise<void>;
   name: string;
   deleteBundle: (
