@@ -97,6 +97,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.numericBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-action-result.yaml
@@ -146,6 +147,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.qaBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 # Android can leave the intermediate action text stale while the native
 # metadata already has the QA bundle staged. Verify the actual reloaded state.
@@ -194,6 +196,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.numericBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 # The intermediate action string differs by platform, so verify the reloaded outcome.
 - runFlow:

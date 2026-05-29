@@ -88,6 +88,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.rolloutBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-action-result.yaml

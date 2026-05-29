@@ -67,6 +67,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.firstBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/restart-app-home.yaml
@@ -134,6 +135,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.secondBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/restart-app-home.yaml

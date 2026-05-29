@@ -77,6 +77,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.phase2A}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runScript:
     file: ../scripts/control.js
@@ -134,6 +135,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.phase2B}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/restart-app-home.yaml
@@ -194,6 +196,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.phase2C}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-store-download.yaml
@@ -284,6 +287,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.phase2D}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-store-download.yaml

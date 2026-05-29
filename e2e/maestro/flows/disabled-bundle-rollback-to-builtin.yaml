@@ -63,6 +63,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.currentBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/restart-app-home.yaml

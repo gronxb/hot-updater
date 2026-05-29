@@ -141,6 +141,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.sharedBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-action-result.yaml
@@ -224,6 +225,7 @@ onFlowComplete:
       ACTION: waitForMetadata
       BUNDLE_ID: ${output.sharedBundleId}
       CONTROL_URL: ${CONTROL_URL}
+      RELAUNCH_LIMIT: "0"
       VERIFICATION_PENDING: "true"
 - runFlow:
     file: subflows/assert-update-action-result.yaml
