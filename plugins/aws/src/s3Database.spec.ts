@@ -1683,7 +1683,52 @@ describe("s3Database plugin", () => {
     ]);
   });
 
-  it("reports archived direct S3 metadata reads with lifecycle guidance", async () => {
+  it("skips archived app-version manifests during update checks", async () => {
+    const archivedUpdateKey = "production/ios/*/update.json";
+    const activeUpdateKey = "production/ios/1.0.0/update.json";
+    const archivedBundle = createBundleJson(
+      "production",
+      "ios",
+      "*",
+      "00000000-0000-0000-0000-000000000002",
+    );
+    const activeBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "00000000-0000-0000-0000-000000000001",
+    );
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "*",
+      "1.0.0",
+    ]);
+    fakeStore[archivedUpdateKey] = JSON.stringify([archivedBundle]);
+    fakeStore[activeUpdateKey] = JSON.stringify([activeBundle]);
+    archivedObjectKeys.set(archivedUpdateKey, "GLACIER");
+    loadedObjectKeys = [];
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "ios",
+      }),
+    ).resolves.toEqual({
+      fileHash: activeBundle.fileHash,
+      id: activeBundle.id,
+      message: activeBundle.message,
+      shouldForceUpdate: activeBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: activeBundle.storageUri,
+    });
+    expect(loadedObjectKeys[0]).toBe("production/ios/target-app-versions.json");
+    expect(new Set(loadedObjectKeys.slice(1))).toEqual(
+      new Set([archivedUpdateKey, activeUpdateKey]),
+    );
+  });
+
+  it("treats archived direct S3 metadata reads as missing", async () => {
     const updateKey = "production/ios/fingerprint-1/update.json";
     const bundle = createBundleJsonFingerprint(
       "production",
@@ -1694,29 +1739,14 @@ describe("s3Database plugin", () => {
     fakeStore[updateKey] = JSON.stringify([bundle]);
     archivedObjectKeys.set(updateKey, "GLACIER");
 
-    let error: unknown;
-    try {
-      await plugin.getUpdateInfo?.({
+    await expect(
+      plugin.getUpdateInfo?.({
         _updateStrategy: "fingerprint",
         bundleId: "00000000-0000-0000-0000-000000000000",
         fingerprintHash: "fingerprint-1",
         platform: "ios",
-      });
-    } catch (e) {
-      error = e;
-    }
-
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).name).toBe("S3ArchivedObjectError");
-    expect((error as Error).message).toContain(
-      'S3 object "production/ios/fingerprint-1/update.json" in bucket "test-bucket" is archived (GLACIER) and cannot be read.',
-    );
-    expect((error as Error).message).toContain(
-      'exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json"',
-    );
-    expect((error as Error & { cause?: unknown }).cause).toMatchObject({
-      name: "InvalidObjectState",
-    });
+      }),
+    ).resolves.toBeNull();
   });
 
   it("should return a bundle without internal keys from getBundleById", async () => {
