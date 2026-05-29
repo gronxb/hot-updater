@@ -391,6 +391,7 @@ export interface BlobOperations {
   loadObject: <T>(key: string) => Promise<T | null>;
   uploadObject: <T>(key: string, data: T) => Promise<void>;
   deleteObject: (key: string) => Promise<void>;
+  shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
   invalidatePaths: (paths: string[]) => Promise<void>;
   apiBasePath: string;
 }
@@ -418,6 +419,7 @@ export const createBlobDatabasePlugin = <TConfig>({
       loadObject,
       uploadObject,
       deleteObject,
+      shouldSkipLoadObjectError,
       invalidatePaths,
       apiBasePath,
     } = factory(config);
@@ -955,7 +957,15 @@ export const createBlobDatabasePlugin = <TConfig>({
         /^[^/]+\/(?:ios|android)\/[^/]+\/update\.json$/.test(key),
       );
       const filePromises = updateJsonKeys.map(async (key) => {
-        const bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+        let bundlesData: Bundle[] = [];
+        try {
+          bundlesData = (await loadObject<Bundle[]>(key)) ?? [];
+        } catch (error) {
+          if (shouldSkipLoadObjectError?.(error, key)) {
+            return [];
+          }
+          throw error;
+        }
         return bundlesData.map((bundle) => ({
           ...bundle,
           _updateJsonKey: key,

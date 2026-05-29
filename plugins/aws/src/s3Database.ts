@@ -313,6 +313,8 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
         uploadJsonToS3(client, bucketName, toStorageKey(key), data),
       deleteObject: (key: string) =>
         deleteObjectInS3(client, bucketName, toStorageKey(key)),
+      shouldSkipLoadObjectError: (error) =>
+        error instanceof Error && error.name === "S3ArchivedObjectError",
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (
           cloudfrontClient &&

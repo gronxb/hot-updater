@@ -1652,12 +1652,43 @@ describe("s3Database plugin", () => {
     expect(bundles.data).toEqual([bundleC, bundleB, bundleA]);
   });
 
-  it("reports archived S3 metadata objects with lifecycle guidance", async () => {
-    const updateKey = "production/ios/1.0.0/update.json";
-    const bundle = createBundleJson(
+  it("skips archived stale update manifests while rebuilding from SSOT", async () => {
+    const archivedUpdateKey = "production/ios/0.9.0/update.json";
+    const activeUpdateKey = "production/ios/1.0.0/update.json";
+    const archivedBundle = createBundleJson(
+      "production",
+      "ios",
+      "0.9.0",
+      "archived-update-json",
+    );
+    const activeBundle = createBundleJson(
       "production",
       "ios",
       "1.0.0",
+      "active-update-json",
+    );
+    fakeStore[archivedUpdateKey] = JSON.stringify([archivedBundle]);
+    fakeStore[activeUpdateKey] = JSON.stringify([activeBundle]);
+    archivedObjectKeys.set(archivedUpdateKey, "GLACIER");
+    loadedObjectKeys = [];
+
+    const bundles = await plugin.getBundles({ limit: 20 });
+
+    expect(bundles.data).toEqual([activeBundle]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      archivedUpdateKey,
+      activeUpdateKey,
+      getManagementPageKey({}, 0),
+    ]);
+  });
+
+  it("reports archived direct S3 metadata reads with lifecycle guidance", async () => {
+    const updateKey = "production/ios/fingerprint-1/update.json";
+    const bundle = createBundleJsonFingerprint(
+      "production",
+      "ios",
+      "fingerprint-1",
       "archived-update-json",
     );
     fakeStore[updateKey] = JSON.stringify([bundle]);
@@ -1665,7 +1696,12 @@ describe("s3Database plugin", () => {
 
     let error: unknown;
     try {
-      await plugin.getBundles({ limit: 20 });
+      await plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        fingerprintHash: "fingerprint-1",
+        platform: "ios",
+      });
     } catch (e) {
       error = e;
     }
@@ -1673,7 +1709,7 @@ describe("s3Database plugin", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).name).toBe("S3ArchivedObjectError");
     expect((error as Error).message).toContain(
-      'S3 object "production/ios/1.0.0/update.json" in bucket "test-bucket" is archived (GLACIER) and cannot be read.',
+      'S3 object "production/ios/fingerprint-1/update.json" in bucket "test-bucket" is archived (GLACIER) and cannot be read.',
     );
     expect((error as Error).message).toContain(
       'exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json"',
