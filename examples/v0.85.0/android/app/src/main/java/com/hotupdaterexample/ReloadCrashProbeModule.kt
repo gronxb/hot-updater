@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class ReloadCrashProbeModule(
     reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
-    override fun getName(): String = "ReloadCrashProbe"
+    override fun getName(): String = NAME
 
     init {
         val creationIndex = creationCount.incrementAndGet()
@@ -40,6 +40,7 @@ class ReloadCrashProbeModule(
     }
 
     companion object {
+        const val NAME = "ReloadCrashProbe"
         private const val TAG = "ReloadCrashProbe"
         private val creationCount = AtomicInteger(0)
     }

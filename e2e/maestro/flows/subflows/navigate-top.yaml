@@ -1,15 +1,22 @@
 appId: ${APP_ID}
 ---
+- tapOn:
+    id: e2e-nav-top
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1000
+- tapOn:
+    id: android:id/aerr_wait
+    optional: true
+- tapOn:
+    text: Wait
+    optional: true
 - scrollUntilVisible:
     element:
       id: runtime-bundle-id
-    direction: UP
+    direction: DOWN
     timeout: 10000
 - extendedWaitUntil:
     visible:
       id: runtime-bundle-id
-    timeout: 10000
-- extendedWaitUntil:
-    visible:
-      id: section-runtime-snapshot
     timeout: 10000

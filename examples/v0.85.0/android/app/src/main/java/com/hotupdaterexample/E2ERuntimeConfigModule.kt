@@ -2,21 +2,17 @@ package com.hotupdaterexample
 
 import android.content.Context
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
 
 class E2ERuntimeConfigModule(
     reactContext: ReactApplicationContext,
-) : ReactContextBaseJavaModule(reactContext) {
-    override fun getName(): String = "E2ERuntimeConfig"
+) : NativeE2ERuntimeConfigSpec(reactContext) {
+    override fun getName(): String = NAME
 
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    fun getAppBaseUrl(): String? {
+    override fun getAppBaseUrl(): String? {
         return getString(APP_BASE_URL_KEY)
     }
 
-    @ReactMethod(isBlockingSynchronousMethod = true)
-    fun getChannelNamespace(): String? {
+    override fun getChannelNamespace(): String? {
         return getString(CHANNEL_NAMESPACE_KEY)
     }
 
@@ -31,6 +27,7 @@ class E2ERuntimeConfigModule(
     }
 
     companion object {
+        const val NAME = "E2ERuntimeConfig"
         private const val PREFERENCES_NAME = "HotUpdaterE2E"
         private const val APP_BASE_URL_KEY = "HOT_UPDATER_E2E_APP_BASE_URL"
         private const val CHANNEL_NAMESPACE_KEY = "HOT_UPDATER_E2E_CHANNEL_NAMESPACE"
