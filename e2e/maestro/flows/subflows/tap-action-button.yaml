@@ -33,12 +33,5 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
-      - scrollUntilVisible:
-          element:
-            id: section-action-results
-          direction: DOWN
-          timeout: 10000
-      - extendedWaitUntil:
-          visible:
-            id: section-action-results
-          timeout: 10000
+      - runFlow:
+          file: navigate-action-results.yaml

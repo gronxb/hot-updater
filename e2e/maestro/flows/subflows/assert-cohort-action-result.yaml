@@ -1,16 +1,4 @@
 appId: ${APP_ID}
 ---
-- tapOn:
-    id: e2e-nav-top
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 500
-- scrollUntilVisible:
-    element:
-      id: section-action-results
-    direction: DOWN
-    timeout: 10000
-- extendedWaitUntil:
-    visible:
-      id: section-action-results
-    timeout: 10000
+- runFlow:
+    file: navigate-action-results.yaml
