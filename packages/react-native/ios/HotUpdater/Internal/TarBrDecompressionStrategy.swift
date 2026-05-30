@@ -8,18 +8,18 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
 
     func isValid(file: String) -> Bool {
         guard FileManager.default.fileExists(atPath: file) else {
-            NSLog("[TarBrStrategy] Invalid file: doesn't exist")
+            hotUpdaterLog("[TarBrStrategy] Invalid file: doesn't exist")
             return false
         }
 
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: file)
             guard let fileSize = attributes[.size] as? UInt64, fileSize >= Self.MIN_FILE_SIZE else {
-                NSLog("[TarBrStrategy] Invalid file: too small")
+                hotUpdaterLog("[TarBrStrategy] Invalid file: too small")
                 return false
             }
         } catch {
-            NSLog("[TarBrStrategy] Invalid file: cannot read attributes - \(error.localizedDescription)")
+            hotUpdaterLog("[TarBrStrategy] Invalid file: cannot read attributes - \(error.localizedDescription)")
             return false
         }
 
@@ -27,13 +27,13 @@ class TarBrDecompressionStrategy: DecompressionStrategy {
     }
 
     func decompress(file: String, to destination: String, progressHandler: @escaping (Double) -> Void) throws {
-        NSLog("[TarBrStrategy] Starting extraction of \(file) to \(destination)")
+        hotUpdaterLog("[TarBrStrategy] Starting extraction of \(file) to \(destination)")
         try StreamingTarArchiveExtractor.extractCompressedTar(
             file: file,
             to: destination,
             algorithm: .brotli,
             progressHandler: progressHandler
         )
-        NSLog("[TarBrStrategy] Successfully extracted all entries")
+        hotUpdaterLog("[TarBrStrategy] Successfully extracted all entries")
     }
 }

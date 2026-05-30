@@ -15,7 +15,7 @@ class HashUtils {
      */
     static func calculateSHA256(fileURL: URL) -> String? {
         guard let fileHandle = try? FileHandle(forReadingFrom: fileURL) else {
-            NSLog("[HashUtils] Failed to open file: \(fileURL.path)")
+            hotUpdaterLog("[HashUtils] Failed to open file: \(fileURL.path)")
             return nil
         }
 
@@ -48,14 +48,14 @@ class HashUtils {
      */
     static func verifyHash(fileURL: URL, expectedHash: String) -> Bool {
         guard let actualHash = calculateSHA256(fileURL: fileURL) else {
-            NSLog("[HashUtils] Failed to calculate hash")
+            hotUpdaterLog("[HashUtils] Failed to calculate hash")
             return false
         }
 
         let matches = actualHash.caseInsensitiveCompare(expectedHash) == .orderedSame
 
         if !matches {
-            NSLog("[HashUtils] Hash mismatch - Expected: \(expectedHash), Actual: \(actualHash)")
+            hotUpdaterLog("[HashUtils] Hash mismatch - Expected: \(expectedHash), Actual: \(actualHash)")
         }
 
         return matches

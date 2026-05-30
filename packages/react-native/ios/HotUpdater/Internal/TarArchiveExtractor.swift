@@ -198,11 +198,11 @@ enum TarArchiveExtractor {
             try skipPadding(in: handle, size: size)
 
         case hardLinkType, symbolicLinkType:
-            NSLog("[TarArchiveExtractor] Skipping link entry: \(rawPath) -> \(linkPath)")
+            hotUpdaterLog("[TarArchiveExtractor] Skipping link entry: \(rawPath) -> \(linkPath)")
             try skipEntryPayload(in: handle, size: size)
 
         default:
-            NSLog("[TarArchiveExtractor] Skipping unsupported TAR entry type: \(typeFlag) (\(rawPath))")
+            hotUpdaterLog("[TarArchiveExtractor] Skipping unsupported TAR entry type: \(typeFlag) (\(rawPath))")
             try skipEntryPayload(in: handle, size: size)
         }
     }

@@ -37,17 +37,17 @@ class DecompressService {
         // Try each signature-based strategy first.
         for strategy in signatureStrategies {
             if strategy.isValid(file: file) {
-                NSLog("[DecompressService] Using strategy for \(fileName)")
+                hotUpdaterLog("[DecompressService] Using strategy for \(fileName)")
                 try strategy.decompress(file: file, to: destination, progressHandler: progressHandler)
                 return
             }
         }
 
-        NSLog("[DecompressService] No ZIP/TAR.GZ signature matched for \(fileName), trying TAR.BR fallback")
+        hotUpdaterLog("[DecompressService] No ZIP/TAR.GZ signature matched for \(fileName), trying TAR.BR fallback")
 
         do {
             try tarBrStrategy.decompress(file: file, to: destination, progressHandler: progressHandler)
-            NSLog("[DecompressService] Using TAR.BR fallback for \(fileName)")
+            hotUpdaterLog("[DecompressService] Using TAR.BR fallback for \(fileName)")
             return
         } catch {
             let invalidArchiveError = createInvalidArchiveError(
@@ -55,7 +55,7 @@ class DecompressService {
                 fileSize: fileSize,
                 underlyingError: error
             )
-            NSLog("[DecompressService] \(invalidArchiveError.localizedDescription)")
+            hotUpdaterLog("[DecompressService] \(invalidArchiveError.localizedDescription)")
             throw invalidArchiveError
         }
     }
@@ -81,7 +81,7 @@ class DecompressService {
                 return true
             }
         }
-        NSLog("[DecompressService] No ZIP/TAR.GZ signature matched for file: \(file). TAR.BR is handled during extraction fallback.")
+        hotUpdaterLog("[DecompressService] No ZIP/TAR.GZ signature matched for file: \(file). TAR.BR is handled during extraction fallback.")
         return false
     }
 

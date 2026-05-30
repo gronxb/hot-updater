@@ -210,7 +210,7 @@ enum ZipArchiveExtractor {
         }
 
         if entry.isSymbolicLink {
-            NSLog("[ZipArchiveExtractor] Skipping symbolic link entry: \(entry.path)")
+            hotUpdaterLog("[ZipArchiveExtractor] Skipping symbolic link entry: \(entry.path)")
             return
         }
 
