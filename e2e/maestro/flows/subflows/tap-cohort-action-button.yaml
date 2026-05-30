@@ -1,5 +1,7 @@
 appId: ${APP_ID}
 ---
+- launchApp:
+    clearState: false
 - runFlow:
     file: navigate-cohort-actions.yaml
     env:

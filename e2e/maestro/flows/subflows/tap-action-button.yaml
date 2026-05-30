@@ -3,6 +3,8 @@ appId: ${APP_ID}
 - retry:
     maxRetries: 3
     commands:
+      - launchApp:
+          clearState: false
       - tapOn:
           id: android:id/aerr_wait
           optional: true
