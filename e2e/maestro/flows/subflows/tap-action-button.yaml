@@ -33,11 +33,12 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
-      - runFlow:
-          file: navigate-actions.yaml
-          env:
-            APP_ID: ${APP_ID}
+      - scrollUntilVisible:
+          element:
+            id: update-action-result
+          direction: DOWN
+          timeout: 10000
       - extendedWaitUntil:
           visible:
-            id: current-channel-summary
+            id: update-action-result
           timeout: 10000
