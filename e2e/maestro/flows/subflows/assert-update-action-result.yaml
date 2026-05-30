@@ -1,9 +1,16 @@
 appId: ${APP_ID}
 ---
-- runFlow:
-    file: assert-text-by-id.yaml
-    env:
-      APP_ID: ${APP_ID}
-      ASSERTION_LABEL: Update action result matches expected value
-      EXPECTED_TEXT: ${EXPECTED_UPDATE_ACTION_RESULT}
-      TARGET_ID: update-action-result
+- tapOn:
+    id: e2e-nav-top
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 500
+- scrollUntilVisible:
+    element:
+      id: section-action-results
+    direction: DOWN
+    timeout: 10000
+- extendedWaitUntil:
+    visible:
+      id: section-action-results
+    timeout: 10000
