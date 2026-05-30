@@ -33,5 +33,3 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
-      - runFlow:
-          file: navigate-action-results.yaml
