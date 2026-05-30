@@ -35,10 +35,10 @@ appId: ${APP_ID}
           optional: true
       - scrollUntilVisible:
           element:
-            id: update-action-result
+            id: section-action-results
           direction: DOWN
           timeout: 10000
       - extendedWaitUntil:
           visible:
-            id: update-action-result
+            id: section-action-results
           timeout: 10000
