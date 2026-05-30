@@ -9,6 +9,9 @@ appId: ${APP_ID}
       - tapOn:
           text: Wait
           optional: true
+      - tapOn:
+          id: e2e-nav-top
+          optional: true
       - waitForAnimationToEnd:
           timeout: 500
       - scrollUntilVisible:
