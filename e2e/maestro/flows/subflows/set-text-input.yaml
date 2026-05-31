@@ -29,7 +29,6 @@ appId: ${APP_ID}
       - assertTrue:
           condition: ${maestro.copiedText == FIELD_VALUE}
           label: ${FIELD_LABEL} matches expected value
-- hideKeyboard
 - runFlow:
     file: tap-action-button.yaml
     env:
