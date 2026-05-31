@@ -403,11 +403,6 @@ function App(): React.JSX.Element {
     setCohortInput(nextCohort);
   };
 
-  const submitCohortInput = (nextCohort: string) => {
-    updateCohortInput(nextCohort);
-    applyCohortValue(nextCohort).catch(() => undefined);
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.navBar}>
@@ -573,9 +568,6 @@ function App(): React.JSX.Element {
             autoCorrect={false}
             onChangeText={updateCohortInput}
             onEndEditing={(event) => updateCohortInput(event.nativeEvent.text)}
-            onSubmitEditing={(event) =>
-              submitCohortInput(event.nativeEvent.text)
-            }
             placeholder={initialCohort}
             placeholderTextColor="#6b7280"
             selectTextOnFocus={true}
