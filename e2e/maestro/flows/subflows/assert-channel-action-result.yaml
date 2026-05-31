@@ -2,3 +2,13 @@ appId: ${APP_ID}
 ---
 - runFlow:
     file: navigate-action-results.yaml
+- retry:
+    maxRetries: 5
+    commands:
+      - assertVisible:
+          id: channel-action-result
+      - copyTextFrom:
+          id: channel-action-result
+      - assertTrue:
+          condition: ${maestro.copiedText.startsWith(EXPECTED_CHANNEL_ACTION_RESULT)}
+          label: Channel action result matches expected value
