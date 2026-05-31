@@ -81,7 +81,7 @@ enum StreamingTarArchiveExtractor {
                 return try tarArchiveHasEntries(at: temporaryTarURL.path)
             }
         } catch {
-            hotUpdaterLog("[TarStreamExtractor] Validation failed: \(error.localizedDescription)")
+            NSLog("[TarStreamExtractor] Validation failed: \(error.localizedDescription)")
             return false
         }
     }

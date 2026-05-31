@@ -31,7 +31,7 @@ class FileManagerService: FileSystemService {
             try fileManager.createDirectory(atPath: path, withIntermediateDirectories: true, attributes: nil)
             return true
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to create directory at \(path): \(error)")
+            NSLog("[FileSystemService] Failed to create directory at \(path): \(error)")
             return false
         }
     }
@@ -40,7 +40,7 @@ class FileManagerService: FileSystemService {
         do {
             try fileManager.removeItem(atPath: path)
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to remove item at \(path): \(error)")
+            NSLog("[FileSystemService] Failed to remove item at \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
     }
@@ -49,7 +49,7 @@ class FileManagerService: FileSystemService {
         do {
             try fileManager.moveItem(atPath: srcPath, toPath: dstPath)
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to move item from \(srcPath) to \(dstPath): \(error)")
+            NSLog("[FileSystemService] Failed to move item from \(srcPath) to \(dstPath): \(error)")
             throw FileSystemError.fileOperationFailed(srcPath, error)
         }
     }
@@ -58,7 +58,7 @@ class FileManagerService: FileSystemService {
         do {
             try fileManager.copyItem(atPath: srcPath, toPath: dstPath)
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to copy item from \(srcPath) to \(dstPath): \(error)")
+            NSLog("[FileSystemService] Failed to copy item from \(srcPath) to \(dstPath): \(error)")
             throw FileSystemError.fileOperationFailed(srcPath, error)
         }
     }
@@ -67,7 +67,7 @@ class FileManagerService: FileSystemService {
         do {
             return try fileManager.contentsOfDirectory(atPath: path)
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to get directory contents at \(path): \(error)")
+            NSLog("[FileSystemService] Failed to get directory contents at \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
     }
@@ -76,7 +76,7 @@ class FileManagerService: FileSystemService {
         do {
             return try fileManager.attributesOfItem(atPath: path)
         } catch let error {
-            hotUpdaterLog("[FileSystemService] Failed to get attributes for \(path): \(error)")
+            NSLog("[FileSystemService] Failed to get attributes for \(path): \(error)")
             throw FileSystemError.fileOperationFailed(path, error)
         }
     }

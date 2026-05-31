@@ -270,7 +270,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
 
-            hotUpdaterLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in
@@ -298,7 +298,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                 DispatchQueue.main.async {
                     switch result {
                     case .success:
-                        hotUpdaterLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
+                        NSLog("[HotUpdaterImpl] Update successful for \(bundleId). Resolving promise.")
                         if let channel, !channel.isEmpty {
                             do {
                                 if channel == self.getDefaultChannel() {
@@ -307,12 +307,12 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                                     try self.preferences.setItem(channel, forKey: Self.CHANNEL_STORAGE_KEY)
                                 }
                             } catch {
-                                hotUpdaterLog("[HotUpdaterImpl] Failed to persist channel override: \(error)")
+                                NSLog("[HotUpdaterImpl] Failed to persist channel override: \(error)")
                             }
                         }
                         resolve(true)
                     case .failure(let error):
-                        hotUpdaterLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
+                        NSLog("[HotUpdaterImpl] Update failed for \(bundleId) - Error: \(error)")
 
                         let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
                         let nsError = error as NSError
@@ -323,7 +323,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         } catch let error {
             // Main error boundary - catch and convert all errors to JS rejection
             let nsError = error as NSError
-            hotUpdaterLog("[HotUpdaterImpl] Error in updateBundleFromJS - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
+            NSLog("[HotUpdaterImpl] Error in updateBundleFromJS - Domain: \(nsError.domain), Code: \(nsError.code), Description: \(nsError.localizedDescription)")
 
             reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
@@ -448,7 +448,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             do {
                 try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
             } catch {
-                hotUpdaterLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
+                NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
             self.currentLaunchSelection = nil
             resolver(success)
@@ -514,7 +514,7 @@ final class HotUpdaterRecoveryManager: NSObject {
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
             return PendingCrashRecovery.from(json: json)
         } catch {
-            hotUpdaterLog("[HotUpdaterRecovery] Failed to read crash marker: \(error)")
+            NSLog("[HotUpdaterRecovery] Failed to read crash marker: \(error)")
             return nil
         }
     }
@@ -676,9 +676,9 @@ final class HotUpdaterRecoveryManager: NSObject {
                 objc_sync_enter(self)
                 self.recoveryRequested = false
                 objc_sync_exit(self)
-                hotUpdaterLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
+                NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
             } else {
-                hotUpdaterLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(bundleId ?? "nil")")
+                NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(bundleId ?? "nil")")
             }
         }
 
@@ -704,7 +704,7 @@ final class HotUpdaterRecoveryManager: NSObject {
             let data = try JSONSerialization.data(withJSONObject: payload)
             try data.write(to: crashMarkerURL, options: .atomic)
         } catch {
-            hotUpdaterLog("[HotUpdaterRecovery] Failed to write crash marker: \(error)")
+            NSLog("[HotUpdaterRecovery] Failed to write crash marker: \(error)")
         }
     }
 }

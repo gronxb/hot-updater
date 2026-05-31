@@ -107,7 +107,7 @@ public class SignatureVerifier {
      */
     private static func getPublicKeyFromConfig() -> String? {
         guard let publicKeyPEM = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY") as? String else {
-            hotUpdaterLog("[SignatureVerifier] HOT_UPDATER_PUBLIC_KEY not found in Info.plist")
+            NSLog("[SignatureVerifier] HOT_UPDATER_PUBLIC_KEY not found in Info.plist")
             return nil
         }
         return publicKeyPEM
@@ -154,20 +154,20 @@ public class SignatureVerifier {
 
         // Rule: null/empty fileHash → REJECT
         guard let hash = fileHash, !hash.isEmpty else {
-            hotUpdaterLog("[SignatureVerifier] fileHash is null or empty. Rejecting update.")
+            NSLog("[SignatureVerifier] fileHash is null or empty. Rejecting update.")
             return .failure(.missingFileHash)
         }
 
         if isSignedFormat(hash) {
             // Signed format: sig:<signature>
             guard let signature = extractSignature(hash) else {
-                hotUpdaterLog("[SignatureVerifier] Failed to extract signature from fileHash")
+                NSLog("[SignatureVerifier] Failed to extract signature from fileHash")
                 return .failure(.invalidSignatureFormat)
             }
 
             // Rule: sig:... + public key NOT configured → REJECT
             guard signingEnabled else {
-                hotUpdaterLog("[SignatureVerifier] Signed bundle but public key not configured. Cannot verify.")
+                NSLog("[SignatureVerifier] Signed bundle but public key not configured. Cannot verify.")
                 return .failure(.publicKeyNotConfigured)
             }
 
@@ -178,7 +178,7 @@ public class SignatureVerifier {
 
             // Rule: <hash> + public key configured → REJECT
             if signingEnabled {
-                hotUpdaterLog("[SignatureVerifier] Unsigned bundle not allowed when signing is enabled. Rejecting.")
+                NSLog("[SignatureVerifier] Unsigned bundle not allowed when signing is enabled. Rejecting.")
                 return .failure(.unsignedNotAllowed)
             }
 
@@ -194,14 +194,14 @@ public class SignatureVerifier {
      * @return Result indicating verification success or failure
      */
     public static func verifyHash(fileURL: URL, expectedHash: String) -> Result<Void, SignatureVerificationError> {
-        hotUpdaterLog("[SignatureVerifier] Verifying hash for file: \(fileURL.lastPathComponent)")
+        NSLog("[SignatureVerifier] Verifying hash for file: \(fileURL.lastPathComponent)")
 
         guard HashUtils.verifyHash(fileURL: fileURL, expectedHash: expectedHash) else {
-            hotUpdaterLog("[SignatureVerifier] Hash mismatch!")
+            NSLog("[SignatureVerifier] Hash mismatch!")
             return .failure(.fileHashMismatch)
         }
 
-        hotUpdaterLog("[SignatureVerifier] ✅ Hash verified successfully")
+        NSLog("[SignatureVerifier] ✅ Hash verified successfully")
         return .success(())
     }
 
@@ -214,11 +214,11 @@ public class SignatureVerifier {
      * @return Result indicating verification success or failure with error
      */
     public static func verifySignature(fileURL: URL, signatureBase64: String) -> Result<Void, SignatureVerificationError> {
-        hotUpdaterLog("[SignatureVerifier] Verifying signature for file: \(fileURL.lastPathComponent)")
+        NSLog("[SignatureVerifier] Verifying signature for file: \(fileURL.lastPathComponent)")
 
         // Get public key from config
         guard let publicKeyPEM = getPublicKeyFromConfig() else {
-            hotUpdaterLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
+            NSLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
             return .failure(.publicKeyNotConfigured)
         }
 
@@ -233,11 +233,11 @@ public class SignatureVerifier {
 
         // Calculate file hash
         guard let fileHashHex = HashUtils.calculateSHA256(fileURL: fileURL) else {
-            hotUpdaterLog("[SignatureVerifier] Failed to calculate file hash")
+            NSLog("[SignatureVerifier] Failed to calculate file hash")
             return .failure(.fileReadFailed)
         }
 
-        hotUpdaterLog("[SignatureVerifier] Calculated file hash: \(fileHashHex)")
+        NSLog("[SignatureVerifier] Calculated file hash: \(fileHashHex)")
 
         return verifySignature(fileHash: fileHashHex, signatureBase64: signatureBase64, publicKey: publicKey)
     }
@@ -247,7 +247,7 @@ public class SignatureVerifier {
      */
     public static func verifyHashSignature(fileHash: String, signatureBase64: String) -> Result<Void, SignatureVerificationError> {
         guard let publicKeyPEM = getPublicKeyFromConfig() else {
-            hotUpdaterLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
+            NSLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
             return .failure(.publicKeyNotConfigured)
         }
 
@@ -265,19 +265,19 @@ public class SignatureVerifier {
     private static func verifySignature(fileHash: String, signatureBase64: String, publicKey: SecKey) -> Result<Void, SignatureVerificationError> {
         guard !signatureBase64.isEmpty,
               let signatureData = Data(base64Encoded: signatureBase64) else {
-            hotUpdaterLog("[SignatureVerifier] Failed to decode signature from base64")
+            NSLog("[SignatureVerifier] Failed to decode signature from base64")
             return .failure(.invalidSignatureFormat)
         }
 
         guard let fileHashData = dataFromHexString(fileHash) else {
-            hotUpdaterLog("[SignatureVerifier] Failed to convert fileHash from hex")
+            NSLog("[SignatureVerifier] Failed to convert fileHash from hex")
             return .failure(.invalidSignatureFormat)
         }
 
         let algorithm: SecKeyAlgorithm = .rsaSignatureMessagePKCS1v15SHA256
 
         guard SecKeyIsAlgorithmSupported(publicKey, .verify, algorithm) else {
-            hotUpdaterLog("[SignatureVerifier] RSA-SHA256 algorithm not supported")
+            NSLog("[SignatureVerifier] RSA-SHA256 algorithm not supported")
             return .failure(.securityFrameworkError(-1))
         }
 
@@ -291,15 +291,15 @@ public class SignatureVerifier {
         )
 
         if let err = error?.takeRetainedValue() {
-            hotUpdaterLog("[SignatureVerifier] Verification failed: \(err)")
+            NSLog("[SignatureVerifier] Verification failed: \(err)")
             return .failure(.signatureVerificationFailed)
         }
 
         if verified {
-            hotUpdaterLog("[SignatureVerifier] ✅ Signature verified successfully")
+            NSLog("[SignatureVerifier] ✅ Signature verified successfully")
             return .success(())
         } else {
-            hotUpdaterLog("[SignatureVerifier] ❌ Signature verification failed")
+            NSLog("[SignatureVerifier] ❌ Signature verification failed")
             return .failure(.signatureVerificationFailed)
         }
     }
@@ -320,7 +320,7 @@ public class SignatureVerifier {
 
         // Decode base64
         guard let keyData = Data(base64Encoded: keyString) else {
-            hotUpdaterLog("[SignatureVerifier] Failed to decode public key from base64")
+            NSLog("[SignatureVerifier] Failed to decode public key from base64")
             return .failure(.invalidPublicKeyFormat)
         }
 
@@ -334,7 +334,7 @@ public class SignatureVerifier {
         var error: Unmanaged<CFError>?
         guard let secKey = SecKeyCreateWithData(keyData as CFData, attributes as CFDictionary, &error) else {
             if let err = error?.takeRetainedValue() {
-                hotUpdaterLog("[SignatureVerifier] SecKeyCreateWithData failed: \(err)")
+                NSLog("[SignatureVerifier] SecKeyCreateWithData failed: \(err)")
             }
             return .failure(.invalidPublicKeyFormat)
         }

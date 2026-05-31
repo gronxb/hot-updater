@@ -167,12 +167,12 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
             actualSize = attributes[.size] as? Int64
         } catch {
-            hotUpdaterLog("[DownloadService] Failed to get file attributes: \(error.localizedDescription)")
+            NSLog("[DownloadService] Failed to get file attributes: \(error.localizedDescription)")
             actualSize = nil
         }
 
         if expectedSize > 0, let actualSize = actualSize, actualSize != expectedSize {
-            hotUpdaterLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes")
+            NSLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes")
             // Delete incomplete file
             try? FileManager.default.removeItem(at: location)
             completion?(.failure(DownloadError.incompleteDownload(expected: expectedSize, actual: actualSize)))
@@ -188,10 +188,10 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             }
 
             try persistDownloadedFile(from: location, to: destinationURL)
-            hotUpdaterLog("[DownloadService] Download completed successfully: \(actualSize ?? 0) bytes")
+            NSLog("[DownloadService] Download completed successfully: \(actualSize ?? 0) bytes")
             completion?(.success(destinationURL))
         } catch {
-            hotUpdaterLog("[DownloadService] Failed to copy downloaded file: \(error.localizedDescription)")
+            NSLog("[DownloadService] Failed to copy downloaded file: \(error.localizedDescription)")
             completion?(.failure(error))
         }
     }
@@ -222,7 +222,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
                 if totalBytesExpectedToWrite > 0 {
                     fileSizeHandler(totalBytesExpectedToWrite)
                 } else {
-                    hotUpdaterLog("[DownloadService] Content-Length not available, proceeding without disk space check")
+                    NSLog("[DownloadService] Content-Length not available, proceeding without disk space check")
                 }
                 fileSizeHandlers.removeValue(forKey: downloadTask)
             }
@@ -251,7 +251,7 @@ private extension URLSessionDownloadService {
         do {
             try FileManager.default.moveItem(at: location, to: destinationURL)
         } catch {
-            hotUpdaterLog("[DownloadService] Move failed, falling back to copy: \(error.localizedDescription)")
+            NSLog("[DownloadService] Move failed, falling back to copy: \(error.localizedDescription)")
             try FileManager.default.copyItem(at: location, to: destinationURL)
         }
     }
