@@ -29,8 +29,24 @@ appId: ${APP_ID}
       - assertTrue:
           condition: ${maestro.copiedText == FIELD_VALUE}
           label: ${FIELD_LABEL} matches expected value
-- runFlow:
-    file: tap-action-button.yaml
-    env:
-      APP_ID: ${APP_ID}
-      BUTTON_ID: action-apply-cohort-input
+- tapOn:
+    id: e2e-nav-actions
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 500
+- retry:
+    maxRetries: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: action-apply-cohort-input
+          direction: DOWN
+          timeout: 10000
+      - extendedWaitUntil:
+          visible:
+            id: action-apply-cohort-input
+          timeout: 10000
+      - tapOn:
+          id: action-apply-cohort-input
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 500
