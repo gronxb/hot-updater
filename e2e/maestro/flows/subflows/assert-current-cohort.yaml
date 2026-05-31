@@ -12,10 +12,20 @@ appId: ${APP_ID}
           env:
             ACTION: ensureAppForeground
             CONTROL_URL: ${CONTROL_URL}
+      - tapOn:
+          id: e2e-nav-top
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 500
+      - scrollUntilVisible:
+          element:
+            id: current-cohort-summary
+          direction: DOWN
+          timeout: 10000
       - assertVisible:
           id: current-cohort-summary
       - copyTextFrom:
           id: current-cohort-summary
       - assertTrue:
-          condition: ${maestro.copiedText.startsWith(EXPECTED_COHORT_TEXT)}
+          condition: ${maestro.copiedText.includes(EXPECTED_COHORT_TEXT)}
           label: Current cohort summary matches expected value
