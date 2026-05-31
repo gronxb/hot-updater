@@ -32,8 +32,12 @@ appId: ${APP_ID}
 - tapOn:
     id: e2e-nav-actions
     optional: true
-- waitForAnimationToEnd:
-    timeout: 500
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: sleep
+      CONTROL_URL: ${CONTROL_URL}
+      SECONDS: "1"
 - retry:
     maxRetries: 3
     commands:
@@ -50,3 +54,9 @@ appId: ${APP_ID}
           id: action-apply-cohort-input
           retryTapIfNoChange: true
           waitToSettleTimeoutMs: 500
+- runScript:
+    file: ../../scripts/control.js
+    env:
+      ACTION: sleep
+      CONTROL_URL: ${CONTROL_URL}
+      SECONDS: "1"
