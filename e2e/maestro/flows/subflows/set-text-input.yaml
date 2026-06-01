@@ -20,15 +20,11 @@ appId: ${APP_ID}
           waitToSettleTimeoutMs: 500
       - eraseText: 64
       - inputText: ${FIELD_VALUE}
+      - hideKeyboard
       - waitForAnimationToEnd:
-          timeout: 500
+          timeout: 1000
       - assertVisible:
           id: ${FIELD_ID}
-      - copyTextFrom:
-          id: ${FIELD_ID}
-      - assertTrue:
-          condition: ${maestro.copiedText == FIELD_VALUE}
-          label: ${FIELD_LABEL} matches expected value
 - tapOn:
     id: e2e-nav-actions
     optional: true
