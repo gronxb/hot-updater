@@ -406,6 +406,12 @@ function logE2e(event: string, details?: unknown) {
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
+function writeResultDiagnosticFile(fileName: string, contents: string) {
+  const filePath = path.join(session.resultsDir, fileName);
+  fs.writeFileSync(filePath, contents);
+  return filePath;
+}
+
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -3442,6 +3448,10 @@ function createWaitForMetadataTimeoutError(args: {
 }) {
   const observedState = getMetadataState(args.metadata.value);
   const nativeLogs = readHotUpdaterNativeLogs();
+  const nativeLogPath = writeResultDiagnosticFile(
+    "wait-for-metadata-native.log",
+    nativeLogs,
+  );
   const nativeLogTail = nativeLogs.split("\n").filter(Boolean).slice(-30);
   const signatureFailure = nativeLogTail.find((line) =>
     /signature verification failed|SIGNATURE_VERIFICATION_FAILED/i.test(line),
@@ -3452,6 +3462,7 @@ function createWaitForMetadataTimeoutError(args: {
     `${formatObservedMetadataState(observedState)}.`,
     ...(signatureFailure ? [`Native failure: ${signatureFailure}`] : []),
     `Metadata path: ${args.metadata.path}`,
+    `Native log path: ${nativeLogPath}`,
   ].join("\n");
 
   return createEndpointError(message, {
@@ -3465,6 +3476,7 @@ function createWaitForMetadataTimeoutError(args: {
       launchReport: args.launchReport,
       metadata: args.metadata,
       metadataState: observedState,
+      nativeLogPath,
       nativeLogTail,
     },
     platform: session.platform,
@@ -4158,6 +4170,58 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
   return rewritten;
 }
 
+function summarizeUpdateInfoPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return { kind: typeof payload };
+  }
+
+  const updateInfo = payload as {
+    changedAssets?: Record<string, unknown> | null;
+    fileUrl?: unknown;
+    id?: unknown;
+    manifestUrl?: unknown;
+    status?: unknown;
+  };
+  const appReachableBaseUrl = getAppReachableControlBaseUrl();
+  const changedAssetEntries =
+    updateInfo.changedAssets && typeof updateInfo.changedAssets === "object"
+      ? Object.values(updateInfo.changedAssets)
+      : [];
+  const changedAssetUrlCount = changedAssetEntries.filter((asset) => {
+    if (!asset || typeof asset !== "object") {
+      return false;
+    }
+
+    const file = (asset as { file?: { url?: unknown } }).file;
+    return typeof file?.url === "string";
+  }).length;
+  const proxiedChangedAssetUrlCount = changedAssetEntries.filter((asset) => {
+    if (!asset || typeof asset !== "object") {
+      return false;
+    }
+
+    const file = (asset as { file?: { url?: unknown } }).file;
+    return (
+      typeof file?.url === "string" && file.url.startsWith(appReachableBaseUrl)
+    );
+  }).length;
+
+  return {
+    changedAssetUrlCount,
+    fileUrlPresent: typeof updateInfo.fileUrl === "string",
+    fileUrlProxied:
+      typeof updateInfo.fileUrl === "string" &&
+      updateInfo.fileUrl.startsWith(appReachableBaseUrl),
+    id: typeof updateInfo.id === "string" ? updateInfo.id : null,
+    manifestUrlPresent: typeof updateInfo.manifestUrl === "string",
+    manifestUrlProxied:
+      typeof updateInfo.manifestUrl === "string" &&
+      updateInfo.manifestUrl.startsWith(appReachableBaseUrl),
+    proxiedChangedAssetUrlCount,
+    status: typeof updateInfo.status === "string" ? updateInfo.status : null,
+  };
+}
+
 export async function handleProxyUpdateRequest(request: Request) {
   const requestUrl = new URL(request.url);
   const targetUrl = new URL(getControllerReachableAppBaseUrl());
@@ -4190,6 +4254,11 @@ export async function handleProxyUpdateRequest(request: Request) {
     try {
       const payload = JSON.parse(body);
       const rewrittenPayload = rewriteUpdateInfoAssetUrls(payload);
+      logE2e("proxied update response", {
+        original: summarizeUpdateInfoPayload(payload),
+        rewritten: summarizeUpdateInfoPayload(rewrittenPayload),
+        status: response.status,
+      });
       headersToApp.delete("content-encoding");
       headersToApp.delete("content-length");
       return new Response(JSON.stringify(rewrittenPayload), {
