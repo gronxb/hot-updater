@@ -24,6 +24,11 @@ appId: ${APP_ID}
           timeout: 1000
       - assertVisible:
           id: ${FIELD_ID}
+      - copyTextFrom:
+          id: ${FIELD_ID}
+      - assertTrue:
+          condition: ${maestro.copiedText.trim() === FIELD_VALUE}
+          label: Text input matches requested value
 - tapOn:
     id: e2e-nav-actions
     optional: true
