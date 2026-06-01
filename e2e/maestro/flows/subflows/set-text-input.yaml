@@ -19,7 +19,8 @@ appId: ${APP_ID}
           retryTapIfNoChange: true
           waitToSettleTimeoutMs: 500
       - eraseText: 64
-      - inputText: ${FIELD_VALUE}
+      - setClipboard: ${FIELD_VALUE}
+      - pasteText
       - waitForAnimationToEnd:
           timeout: 1000
       - assertVisible:
