@@ -20,7 +20,6 @@ appId: ${APP_ID}
           waitToSettleTimeoutMs: 500
       - eraseText: 64
       - inputText: ${FIELD_VALUE}
-      - hideKeyboard
       - waitForAnimationToEnd:
           timeout: 1000
       - assertVisible:
