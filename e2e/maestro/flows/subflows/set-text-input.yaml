@@ -23,6 +23,16 @@ appId: ${APP_ID}
       - pasteText
       - waitForAnimationToEnd:
           timeout: 1000
+      - tapOn:
+          id: e2e-nav-actions
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 1000
+      - scrollUntilVisible:
+          element:
+            id: ${FIELD_ID}
+          direction: DOWN
+          timeout: 10000
       - assertVisible:
           id: ${FIELD_ID}
       - copyTextFrom:
@@ -30,9 +40,6 @@ appId: ${APP_ID}
       - assertTrue:
           condition: ${maestro.copiedText.trim() === FIELD_VALUE}
           label: Text input matches requested value
-- tapOn:
-    id: e2e-nav-actions
-    optional: true
 - runScript:
     file: ../../scripts/control.js
     env:
