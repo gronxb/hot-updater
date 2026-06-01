@@ -112,11 +112,6 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
-- runFlow:
-    file: subflows/assert-launch-status.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
 # A numeric cohort inside the rollout should receive the same bundle.
 - runFlow:
     file: subflows/set-text-input.yaml

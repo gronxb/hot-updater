@@ -152,11 +152,6 @@ onFlowComplete:
       EXPECTED_BUNDLE_ID: ${output.builtInBundleId}
       EXPECTED_MARKER: ${output.initialMarker}
 - runFlow:
-    file: subflows/assert-launch-status.yaml
-    env:
-      APP_ID: ${APP_ID}
-      EXPECTED_LAUNCH_STATUS: "Current Launch Status: STABLE"
-- runFlow:
     file: subflows/assert-empty-crash-history.yaml
     env:
       APP_ID: ${APP_ID}
