@@ -102,6 +102,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-reload-app
 - runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
@@ -154,6 +159,11 @@ onFlowComplete:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-reload-app
 - runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
+- runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
       APP_ID: ${APP_ID}
@@ -192,6 +202,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
@@ -237,6 +252,11 @@ onFlowComplete:
     env:
       APP_ID: ${APP_ID}
       BUTTON_ID: action-reload-app
+- runFlow:
+    file: subflows/launch-app-home.yaml
+    env:
+      APP_ID: ${APP_ID}
+      CONTROL_URL: ${CONTROL_URL}
 - runFlow:
     file: subflows/assert-bundle-marker.yaml
     env:
