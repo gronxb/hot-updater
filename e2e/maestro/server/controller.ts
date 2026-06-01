@@ -267,6 +267,8 @@ const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
 const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
 const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
 const NATIVE_ARTIFACT_LOCK_STALE_MS = 45 * 60 * 1_000;
+const NATIVE_ARTIFACT_RM_MAX_RETRIES = 5;
+const NATIVE_ARTIFACT_RM_RETRY_DELAY_MS = 500;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
@@ -938,7 +940,7 @@ async function writeReuseAppInstallMarker(cacheKey: string) {
 }
 
 async function copyNativeArtifact(sourcePath: string, targetPath: string) {
-  await fsPromises.rm(targetPath, { recursive: true, force: true });
+  await removeNativeArtifactPath(targetPath);
   await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
   if (process.platform === "darwin") {
     const result = spawnSync("cp", ["-cR", sourcePath, targetPath], {
@@ -958,6 +960,15 @@ async function copyNativeArtifact(sourcePath: string, targetPath: string) {
     errorOnExist: false,
     force: true,
     recursive: true,
+  });
+}
+
+async function removeNativeArtifactPath(targetPath: string) {
+  await fsPromises.rm(targetPath, {
+    force: true,
+    maxRetries: NATIVE_ARTIFACT_RM_MAX_RETRIES,
+    recursive: true,
+    retryDelay: NATIVE_ARTIFACT_RM_RETRY_DELAY_MS,
   });
 }
 
@@ -1075,7 +1086,7 @@ async function saveNativeArtifactToCache(args: {
   const tempArtifactPath = `${paths.artifactPath}.tmp-${process.pid}-${Date.now()}`;
   await fsPromises.mkdir(paths.entryDir, { recursive: true });
   await copyNativeArtifact(args.sourcePath, tempArtifactPath);
-  await fsPromises.rm(paths.artifactPath, { recursive: true, force: true });
+  await removeNativeArtifactPath(paths.artifactPath);
   await fsPromises.rename(tempArtifactPath, paths.artifactPath);
   await fsPromises.writeFile(
     paths.manifestPath,
@@ -1124,7 +1135,7 @@ async function restoreIosPodsFromCache(key: string) {
     (await fsPromises.readFile(manifestPath, "utf8")) !==
       (await fsPromises.readFile(podfileLockPath, "utf8"))
   ) {
-    await fsPromises.rm(targetPath, { recursive: true, force: true });
+    await removeNativeArtifactPath(targetPath);
     logE2e("ios pods cache manifest mismatch", {
       key: key.slice(0, 16),
       manifestPath,
@@ -1149,7 +1160,7 @@ async function saveIosPodsToCache(key: string) {
   const tempPodsPath = `${paths.podsPath}.tmp-${process.pid}-${Date.now()}`;
   await fsPromises.mkdir(paths.entryDir, { recursive: true });
   await copyNativeArtifact(sourcePath, tempPodsPath);
-  await fsPromises.rm(paths.podsPath, { recursive: true, force: true });
+  await removeNativeArtifactPath(paths.podsPath);
   await fsPromises.rename(tempPodsPath, paths.podsPath);
   await fsPromises.writeFile(
     paths.manifestPath,
