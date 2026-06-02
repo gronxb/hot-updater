@@ -41,6 +41,7 @@ const defaultJobTimeoutMs = Number(
   process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 45 * 60 * 1000,
 );
 const defaultPollIntervalMs = 1000;
+const closeConnectionHeader = { connection: "close" } as const;
 
 function defaultFetch(url: string, init: RequestInit): Promise<ResponseLike> {
   return fetch(url, init);
@@ -141,7 +142,7 @@ export class ControlClient {
   ): Promise<JsonObject> {
     const response = await this.fetch(`${this.baseUrl}${pathName}`, {
       body: body === undefined ? undefined : JSON.stringify(body),
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...closeConnectionHeader },
       method: "POST",
       signal: AbortSignal.timeout(this.httpTimeoutMs),
     });
@@ -179,6 +180,7 @@ export class ControlClient {
 
   private async getJsonUntraced(pathName: string): Promise<JsonObject> {
     const response = await this.fetch(`${this.baseUrl}${pathName}`, {
+      headers: closeConnectionHeader,
       method: "GET",
       signal: AbortSignal.timeout(this.httpTimeoutMs),
     });

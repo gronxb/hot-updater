@@ -120,6 +120,17 @@ function navTargetForTestID(testID) {
   if (testID.startsWith("action-set-") || testID === "action-restore-initial-cohort") {
     return "e2e-nav-cohort-actions";
   }
+  if (
+    testID === "launch-status-result" ||
+    testID === "launch-crashed-bundle-result" ||
+    testID === "current-channel-summary" ||
+    testID === "current-cohort-summary" ||
+    testID === "update-store-downloaded" ||
+    testID === "update-store-download-paths" ||
+    testID.startsWith("runtime-")
+  ) {
+    return "e2e-nav-top";
+  }
   if (testID.startsWith("action-") || testID.endsWith("-input")) {
     return "e2e-nav-actions";
   }

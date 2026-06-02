@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { resolveSuiteScenarioNames } from "../maestro/scenarios.ts";
 import {
   detoxScenarioWaves,
+  getDetoxScenarioDefinition,
   listDetoxScenarioNames,
   resolveDetoxSuiteScenarioNames,
 } from "./scenarios.ts";
@@ -15,6 +16,22 @@ const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
+
+function scenarioStages(scenarioName: string): readonly string[] {
+  return getDetoxScenarioDefinition(scenarioName).steps.map(
+    (step) => step.stage,
+  );
+}
+
+function controlStepBody(scenarioName: string, stage: string) {
+  const step = getDetoxScenarioDefinition(scenarioName).steps.find(
+    (entry) => entry.stage === stage,
+  );
+  if (!step || step.kind !== "control") {
+    throw new Error(`Missing control step ${stage} in ${scenarioName}`);
+  }
+  return step.body ?? {};
+}
 
 describe("Detox scenario port catalog", () => {
   it("ports the Maestro default suite names into Detox-owned waves", () => {
@@ -151,5 +168,111 @@ describe("Detox scenario port catalog", () => {
     expect(controlPortIndex).toBeGreaterThan(-1);
     expect(controlPortIndex).toBeLessThan(serverPortIndex);
     expect(controlPortIndex).toBeLessThan(providerPortIndex);
+  });
+
+  it("keeps launch status assertions on the top section instead of action results", async () => {
+    // Given: launch status lives in the Runtime Snapshot/Launch Status area.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+
+    // When: the navigation target resolver is inspected.
+    const launchStatusIndex = detoxJestSpec.indexOf(
+      'testID === "launch-status-result"',
+    );
+    const genericResultIndex = detoxJestSpec.indexOf(
+      'testID.endsWith("-result")',
+    );
+
+    // Then: the top-section special case must win before the generic result tab.
+    expect(launchStatusIndex).toBeGreaterThan(-1);
+    expect(launchStatusIndex).toBeLessThan(genericResultIndex);
+  });
+
+  it("ports the target-cohorts-only pending verification and stable launch sequence", () => {
+    // Given: Maestro verifies the pending bundle before reloading into stable.
+    const stages = scenarioStages("target-cohorts-only");
+
+    // When: the Detox scenario is inspected.
+    // Then: it keeps the same pending -> result -> reload -> stable order.
+    expect(stages).toEqual([
+      "deploy target cohort bundle",
+      "enter qa cohort",
+      "apply qa cohort",
+      "assert qa cohort applied",
+      "install target cohort update",
+      "wait target cohort metadata pending",
+      "assert target cohort install result",
+      "reload target cohort update",
+      "wait target cohort metadata stable",
+      "assert target cohort launch",
+    ]);
+    expect(
+      controlStepBody(
+        "target-cohorts-only",
+        "wait target cohort metadata pending",
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody(
+        "target-cohorts-only",
+        "wait target cohort metadata stable",
+      ).verificationPending,
+    ).toBe(false);
+    expect(
+      controlStepBody("target-cohorts-only", "deploy target cohort bundle")
+        .rollout,
+    ).toBe(0);
+  });
+
+  it("ports the force-update-auto-reload pending verification before stable launch", () => {
+    // Given: Maestro observes the pending force-update before app restart.
+    const stages = scenarioStages("force-update-auto-reload");
+
+    // When: the Detox scenario is inspected.
+    // Then: it waits pending first, reloads, then verifies the stable launch.
+    expect(stages).toEqual([
+      "deploy force update bundle",
+      "install force update",
+      "wait force update metadata pending",
+      "reload force update",
+      "wait force update metadata stable",
+      "assert force update launch",
+    ]);
+    expect(
+      controlStepBody(
+        "force-update-auto-reload",
+        "wait force update metadata pending",
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody(
+        "force-update-auto-reload",
+        "wait force update metadata stable",
+      ).verificationPending,
+    ).toBe(false);
+  });
+
+  it("ports the archive-to-diff OTA install and metadata verification sequence", () => {
+    // Given: Maestro installs the archive OTA before asserting archive storage.
+    const stages = scenarioStages("bspatch-archive-to-diff-ota");
+
+    // When: the Detox scenario is inspected.
+    // Then: both archive and diff phases include install, pending, reload, and stable checks.
+    expect(stages).toEqual([
+      "deploy archive base bundle",
+      "launch archive base app",
+      "install archive base update",
+      "wait archive base metadata pending",
+      "assert first ota uses archive",
+      "reload archive base update",
+      "wait archive base metadata stable",
+      "deploy diff bundle",
+      "assert archive diff bases",
+      "launch archive diff app",
+      "install archive diff update",
+      "wait archive diff metadata pending",
+      "reload archive diff update",
+      "wait archive diff metadata stable",
+      "assert archive diff patch",
+    ]);
   });
 });

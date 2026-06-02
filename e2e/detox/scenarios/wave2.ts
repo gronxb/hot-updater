@@ -1,3 +1,4 @@
+import { archiveToDiffScenario } from "./archive-to-diff.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
@@ -73,55 +74,7 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
       },
     ],
   },
-  {
-    name: "bspatch-archive-to-diff-ota",
-    wave: 2,
-    steps: [
-      {
-        body: {
-          bundleProfile: "archive300mb",
-          channel: "production",
-          marker: "archive-base-detox",
-          mode: "reset",
-          safeBundleIds: [],
-          targetAppVersion: "1.0.x",
-        },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "archiveBundleId",
-        stage: "deploy archive base bundle",
-      },
-      {
-        body: {
-          bundleId: "$archiveBundleId",
-        },
-        kind: "control",
-        pathName: "/e2e/assert-first-ota-uses-archive",
-        stage: "assert first ota uses archive",
-      },
-      {
-        body: {
-          channel: "production",
-          diffBaseBundleId: "$archiveBundleId",
-          marker: "archive-diff-detox",
-          mode: "reset",
-          patchMaxBaseBundles: 1,
-          safeBundleIds: ["$archiveBundleId"],
-          targetAppVersion: "1.0.x",
-        },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "diffBundleId",
-        stage: "deploy diff bundle",
-      },
-      {
-        body: { baseBundleId: "$archiveBundleId" },
-        kind: "control",
-        pathName: "/e2e/assert-bsdiff-patch-applied",
-        stage: "assert archive diff patch",
-      },
-    ],
-  },
+  archiveToDiffScenario,
   {
     name: "bspatch-consecutive-diff-ota",
     wave: 2,

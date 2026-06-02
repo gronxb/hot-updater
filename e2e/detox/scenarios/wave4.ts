@@ -24,12 +24,22 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "install force update",
         testID: "action-install-current-channel-update",
       },
+      {
+        body: {
+          bundleId: "$forceBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait force update metadata pending",
+      },
       { action: "reload", kind: "device", stage: "reload force update" },
       {
         body: { bundleId: "$forceBundleId", verificationPending: false },
         kind: "control",
         pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait force update metadata",
+        stage: "wait force update metadata stable",
       },
       {
         contains: "Current Launch Status: STABLE",

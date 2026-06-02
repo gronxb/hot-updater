@@ -122,6 +122,44 @@ describe("Detox control client", () => {
     ]);
   });
 
+  it("closes control HTTP connections so job polling does not fail on stale sockets", async () => {
+    // Given: the control server starts and completes a long-running bootstrap job.
+    const calls: {
+      readonly connection: string | null;
+      readonly url: string;
+    }[] = [];
+    const fetch: ControlFetch = (url, init) => {
+      calls.push({
+        connection: new Headers(init.headers).get("connection"),
+        url,
+      });
+      if (url.endsWith("/e2e/jobs/bootstrap")) {
+        return Promise.resolve(jsonResponse(200, { jobId: "bootstrap-job" }));
+      }
+      return Promise.resolve(jsonResponse(200, { status: "succeeded" }));
+    };
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      pollDelayMs: () => Promise.resolve(),
+    });
+
+    // When: a job stage polls for completion.
+    await client.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
+
+    // Then: both the start request and status poll opt out of socket reuse.
+    expect(calls).toEqual([
+      {
+        connection: "close",
+        url: "http://127.0.0.1:3010/e2e/jobs/bootstrap",
+      },
+      {
+        connection: "close",
+        url: "http://127.0.0.1:3010/e2e/jobs/bootstrap-job",
+      },
+    ]);
+  });
+
   it("fails a failed control job once with the server error", async () => {
     // Given: the control server reports a failed metadata job.
     const calls: string[] = [];
