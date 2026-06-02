@@ -26,7 +26,7 @@ module.exports = {
         process.env.HOT_UPDATER_E2E_ANDROID_TEST_BINARY_PATH ||
         "examples/v0.85.0/android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk",
       build:
-        "cd examples/v0.85.0/android && ./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release",
+        "cd examples/v0.85.0/android && ./gradlew assembleRelease assembleAndroidTest -DtestBuildType=release -PHOT_UPDATER_E2E_DEBUGGABLE=true",
     },
   },
   devices: {

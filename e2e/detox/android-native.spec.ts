@@ -10,6 +10,7 @@ const androidRootBuildGradlePath = path.join(
   "examples/v0.85.0/android/build.gradle",
 );
 const buildGradlePath = path.join(androidAppDir, "build.gradle");
+const detoxRcPath = path.join(repoDir, ".detoxrc.js");
 const mainManifestPath = path.join(
   androidAppDir,
   "src/main/AndroidManifest.xml",
@@ -108,6 +109,23 @@ describe("Detox Android native setup", () => {
     // Then: the scoped androidTest manifest supplies the missing attributes.
     for (const marker of activityMarkers) {
       expect(androidTestManifest).toContain(marker);
+    }
+  });
+
+  it("builds the Android release app as debuggable for E2E file evidence", async () => {
+    // Given: the shared control server inspects private app files with run-as.
+    const detoxRc = await readText(detoxRcPath);
+
+    // When: Detox builds the release app used by provider verification.
+    const requiredBuildMarkers = [
+      "assembleRelease assembleAndroidTest",
+      "-DtestBuildType=release",
+      "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    ];
+
+    // Then: Android release installs stay compatible with bundle-store checks.
+    for (const marker of requiredBuildMarkers) {
+      expect(detoxRc).toContain(marker);
     }
   });
 });
