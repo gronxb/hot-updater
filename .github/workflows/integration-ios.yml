@@ -33,7 +33,7 @@ jobs:
         run: bundle install
 
       - name: Library Build
-        run: pnpm nx run @hot-updater/react-native:build
+        run: pnpm build
 
       - name: Swift Tests
         run: pnpm test:swift
@@ -71,7 +71,7 @@ jobs:
         run: bundle install
 
       - name: Library Build
-        run: pnpm nx run @hot-updater/react-native:build
+        run: pnpm build
 
       - name: Swift Tests
         run: pnpm test:swift
