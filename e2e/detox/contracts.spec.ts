@@ -12,6 +12,10 @@ const packageJsonPath = path.join(repoDir, "package.json");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxConfigPath = path.join(repoDir, ".detoxrc.js");
 const detoxJestConfigPath = path.join(repoDir, "e2e/detox/jest.config.js");
+const detoxControlServerPath = path.join(
+  repoDir,
+  "e2e/detox/scripts/control-server.ts",
+);
 
 async function readRootPackageJson(): Promise<{
   readonly devDependencies?: Record<string, string>;
@@ -191,6 +195,7 @@ describe("Detox E2E harness contract", () => {
         {
           HOT_UPDATER_DETOX_ARGV_PATH: argvPath,
           HOT_UPDATER_DETOX_NODE_OPTIONS_PATH: nodeOptionsPath,
+          HOT_UPDATER_E2E_CONTROL_BASE_URL: "http://127.0.0.1:3109",
           PATH: `${tempDir}:${process.env.PATH ?? ""}`,
         },
       );
@@ -206,5 +211,38 @@ describe("Detox E2E harness contract", () => {
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  it("keeps Detox control traffic on the control port when provider PORT is set", async () => {
+    // Given: split provider jobs run the update server and control plane on
+    // different ports.
+    const { buildDetoxChildEnv, buildDetoxControlServerEnv } = await import(
+      detoxControlServerPath
+    );
+    const providerEnv = {
+      HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3009/hot-updater",
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+      HOT_UPDATER_SERVER_PORT: "3009",
+      PORT: "3009",
+    } satisfies Record<string, string>;
+
+    // When: the Detox runner prepares host-side Jest and control-server env.
+    const detoxEnv = buildDetoxChildEnv("ios", providerEnv);
+    const controlServerEnv = buildDetoxControlServerEnv("ios", providerEnv);
+
+    // Then: Jest talks to the control server while the control server proxies
+    // provider requests to the update server.
+    expect(detoxEnv.CONTROL_URL).toBe("http://127.0.0.1:3109");
+    expect(detoxEnv.HOT_UPDATER_E2E_CONTROL_BASE_URL).toBe(
+      "http://127.0.0.1:3109",
+    );
+    expect(detoxEnv.PORT).toBe("3009");
+    expect(controlServerEnv.PORT).toBe("3109");
+    expect(controlServerEnv.HOT_UPDATER_E2E_APP_BASE_URL).toBe(
+      "http://127.0.0.1:3009/hot-updater",
+    );
+    expect(controlServerEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
+      "http://localhost:3109/e2e/runtime-config",
+    );
   });
 });

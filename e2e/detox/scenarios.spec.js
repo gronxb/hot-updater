@@ -52,9 +52,9 @@ function controlBaseUrl() {
     return process.env.HOT_UPDATER_E2E_CONTROL_BASE_URL;
   }
   const port =
+    process.env.HOT_UPDATER_E2E_CONTROL_PORT ||
     process.env.PORT ||
     process.env.HOT_UPDATER_SERVER_PORT ||
-    process.env.HOT_UPDATER_E2E_CONTROL_PORT ||
     "3107";
   return `http://127.0.0.1:${port}`;
 }

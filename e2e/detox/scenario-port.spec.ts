@@ -128,4 +128,28 @@ describe("Detox scenario port catalog", () => {
     expect(detoxJestSpec).toContain("device.terminateApp");
     expect(detoxJestSpec).toContain("delete: true");
   });
+
+  it("prefers the Detox control port over provider ports for host control traffic", async () => {
+    // Given: dashboard split jobs set PORT/HOT_UPDATER_SERVER_PORT for the
+    // provider update server and HOT_UPDATER_E2E_CONTROL_PORT for control.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+
+    // When: the fallback control URL is inspected.
+    const controlBaseUrlBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("function controlBaseUrl()"),
+      detoxJestSpec.indexOf("function textFromAttributes"),
+    );
+    const controlPortIndex = controlBaseUrlBody.indexOf(
+      "process.env.HOT_UPDATER_E2E_CONTROL_PORT",
+    );
+    const serverPortIndex = controlBaseUrlBody.indexOf(
+      "process.env.HOT_UPDATER_SERVER_PORT",
+    );
+    const providerPortIndex = controlBaseUrlBody.indexOf("process.env.PORT");
+
+    // Then: a missing explicit CONTROL_URL cannot silently target the provider.
+    expect(controlPortIndex).toBeGreaterThan(-1);
+    expect(controlPortIndex).toBeLessThan(serverPortIndex);
+    expect(controlPortIndex).toBeLessThan(providerPortIndex);
+  });
 });

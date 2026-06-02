@@ -8,10 +8,13 @@ import {
   listDetoxSuiteNames,
   resolveDetoxSuiteScenarioNames,
 } from "../scenarios.ts";
+import {
+  buildDetoxChildEnv,
+  type DetoxPlatform,
+  startDetoxControlServer,
+} from "./control-server.ts";
 
 const supportedPlatforms = ["ios", "android"] as const;
-
-type DetoxPlatform = (typeof supportedPlatforms)[number];
 
 type RunOptions = {
   readonly dryRun: boolean;
@@ -178,16 +181,6 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function nodeOptionsForDetox(): string {
-  const existingOptions = (process.env.NODE_OPTIONS ?? "")
-    .split(/\s+/)
-    .filter(Boolean);
-  if (existingOptions.includes("--experimental-vm-modules")) {
-    return existingOptions.join(" ");
-  }
-  return [...existingOptions, "--experimental-vm-modules"].join(" ");
-}
-
 function detoxCommand(platform: DetoxPlatform, scenarios: readonly string[]) {
   return [
     "detox",
@@ -219,7 +212,7 @@ function formatRunPlan(
   ].join("\n");
 }
 
-function run(options: RunOptions): number {
+async function run(options: RunOptions): Promise<number> {
   if (options.help) {
     console.log(usage());
     return 0;
@@ -239,23 +232,25 @@ function run(options: RunOptions): number {
   console.log(plan);
   for (const platform of options.platforms) {
     const command = detoxCommand(platform, scenarios);
-    const result = spawnSync(command[0], command.slice(1), {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        NODE_OPTIONS: nodeOptionsForDetox(),
-      },
-      stdio: "inherit",
-    });
-    if (result.status !== 0) {
-      return result.status ?? 1;
+    const controlServer = await startDetoxControlServer(platform);
+    try {
+      const result = spawnSync(command[0], command.slice(1), {
+        encoding: "utf8",
+        env: buildDetoxChildEnv(platform),
+        stdio: "inherit",
+      });
+      if (result.status !== 0) {
+        return result.status ?? 1;
+      }
+    } finally {
+      await controlServer.stop();
     }
   }
   return 0;
 }
 
 try {
-  process.exitCode = run(parseArgs(process.argv.slice(2)));
+  process.exitCode = await run(parseArgs(process.argv.slice(2)));
 } catch (error) {
   if (error instanceof Error) {
     console.error(error.message);
