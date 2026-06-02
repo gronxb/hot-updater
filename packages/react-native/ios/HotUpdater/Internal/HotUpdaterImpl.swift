@@ -224,7 +224,17 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                 }
                 manifestUrl = url
             }
-            let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
+            let changedAssetsPayload: [String: [String: Any]]? = {
+                if let changedAssetsJson = data["changedAssetsJson"] as? String,
+                   !changedAssetsJson.isEmpty,
+                   let jsonData = changedAssetsJson.data(using: .utf8),
+                   let jsonObject = try? JSONSerialization.jsonObject(with: jsonData),
+                   let payload = jsonObject as? [String: [String: Any]] {
+                    return payload
+                }
+
+                return data["changedAssets"] as? [String: [String: Any]]
+            }()
             let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
                 guard let fileHash = entry.value["fileHash"] as? String,
                       !fileHash.isEmpty

@@ -401,6 +401,10 @@ export async function updateBundle(
     typeof paramsOrBundleId === "string"
       ? undefined
       : paramsOrBundleId.changedAssets;
+  const targetChangedAssetsJson =
+    Platform.OS === "ios" && targetChangedAssets
+      ? JSON.stringify(targetChangedAssets)
+      : null;
 
   const promise = (async () => {
     try {
@@ -408,7 +412,11 @@ export async function updateBundle(
         bundleId: updateBundleId,
         channel: targetChannel,
         changedAssets:
-          (targetChangedAssets as Record<string, ChangedAsset> | null) ?? null,
+          Platform.OS === "ios"
+            ? null
+            : ((targetChangedAssets as Record<string, ChangedAsset> | null) ??
+              null),
+        changedAssetsJson: targetChangedAssetsJson,
         fileUrl: targetFileUrl,
         fileHash: targetFileHash ?? null,
         manifestFileHash: targetManifestFileHash ?? null,

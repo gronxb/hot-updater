@@ -44,6 +44,10 @@ export interface UpdateBundleParams {
    * the currently active bundle.
    */
   changedAssets?: UnsafeObject | null;
+  /**
+   * JSON fallback for iOS new-architecture object bridging.
+   */
+  changedAssetsJson?: string | null;
 }
 
 export interface Spec extends TurboModule {

@@ -584,6 +584,9 @@ RCT_EXPORT_MODULE();
     if (params.changedAssets()) {
         paramDict[@"changedAssets"] = params.changedAssets();
     }
+    if (params.changedAssetsJson()) {
+        paramDict[@"changedAssetsJson"] = params.changedAssetsJson();
+    }
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();
     }
