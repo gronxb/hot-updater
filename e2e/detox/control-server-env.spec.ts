@@ -42,4 +42,37 @@ describe("Detox control server environment", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("falls back to the control proxy URL when the env target omits the app base URL", async () => {
+    // Given: the env target file exists but does not contain the provider URL.
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-detox-env-"),
+    );
+    const envTargetPath = path.join(tempDir, ".env.hotupdater");
+    await fs.writeFile(
+      envTargetPath,
+      [
+        "# malformed and unrelated entries are ignored",
+        "MALFORMED_LINE",
+        "=missing-key",
+        "OTHER_URL=https://updates.example.com/hot-updater",
+      ].join("\n"),
+    );
+
+    try {
+      // When: the Detox control server env is built for a split child.
+      const controlServerEnv = buildDetoxControlServerEnv("ios", {
+        HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3009/hot-updater",
+        HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+        HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+      });
+
+      // Then: malformed file content does not replace the configured proxy.
+      expect(controlServerEnv.HOT_UPDATER_E2E_APP_BASE_URL).toBe(
+        "http://127.0.0.1:3009/hot-updater",
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });
