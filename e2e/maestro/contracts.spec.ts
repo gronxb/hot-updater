@@ -250,6 +250,30 @@ describe("Maestro E2E contract", () => {
     expect(nativeCacheKeySource).toContain("minBundleId: E2E_MIN_BUNDLE_ID");
   });
 
+  it("fails provider database operations once without retry wrappers", async () => {
+    const source = await readControllerSource();
+    const databaseStart = source.indexOf("async function withDatabasePlugin");
+    const databaseEnd = source.indexOf(
+      "\n}\n\nasync function fetchBundlesPage",
+      databaseStart,
+    );
+    const bundleListStart = source.indexOf("async function fetchBundlesPage");
+    const bundleListEnd = source.indexOf(
+      "\n}\n\nasync function isBundleVisible",
+      bundleListStart,
+    );
+    const databaseSource = source.slice(databaseStart, databaseEnd);
+    const bundleListSource = source.slice(bundleListStart, bundleListEnd);
+
+    expect(source).not.toContain("PROVIDER_OPERATION_RETRY_ATTEMPTS");
+    expect(source).not.toContain("PROVIDER_OPERATION_RETRY_DELAY_MS");
+    expect(source).not.toContain("isTransientProviderError");
+    expect(databaseSource).not.toContain("provider database operation retry");
+    expect(databaseSource).not.toContain("await sleep(");
+    expect(bundleListSource).not.toContain("hot-updater cli bundle list retry");
+    expect(bundleListSource).not.toContain("await sleep(");
+  });
+
   it("keeps update-check timeout diagnostics inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(

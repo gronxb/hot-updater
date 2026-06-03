@@ -348,12 +348,6 @@ const REMOTE_BUNDLE_CLEAR_VERIFY_ATTEMPTS = Number(
 const REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS || 500,
 );
-const PROVIDER_OPERATION_RETRY_ATTEMPTS = Number(
-  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_ATTEMPTS || 3,
-);
-const PROVIDER_OPERATION_RETRY_DELAY_MS = Number(
-  process.env.HOT_UPDATER_E2E_PROVIDER_OPERATION_RETRY_DELAY_MS || 1000,
-);
 const PROVIDER_READY_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_READY_WAIT_ATTEMPTS || 120,
 );
@@ -433,13 +427,6 @@ function writeResultDiagnosticFile(fileName: string, contents: string) {
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isTransientProviderError(error: unknown) {
-  const message = formatErrorMessage(error);
-  return /\b(fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|network timeout)\b/i.test(
-    message,
-  );
 }
 
 function hashText(value: string) {
@@ -1995,52 +1982,26 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
-  let lastError: unknown = null;
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (
+        options: null,
+      ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+    };
+  const originalCwd = process.cwd();
+  let databasePlugin: DatabasePlugin | null = null;
 
-  for (
-    let attempt = 1;
-    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
-    attempt += 1
-  ) {
-    const { loadConfig } =
-      (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-        loadConfig: (
-          options: null,
-        ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
-      };
-    const originalCwd = process.cwd();
-    let databasePlugin: DatabasePlugin | null = null;
-
-    try {
-      process.chdir(session.exampleDir);
-      return await withHotUpdaterControlEnv(async () => {
-        const config = await loadConfig(null);
-        databasePlugin = await config.database();
-        return await callback(databasePlugin);
-      });
-    } catch (error) {
-      lastError = error;
-      if (
-        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
-        !isTransientProviderError(error)
-      ) {
-        throw error;
-      }
-
-      logE2e("provider database operation retry", {
-        attempt,
-        error: formatErrorMessage(error),
-        platform: session.platform,
-        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
-      });
-      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
-    } finally {
-      await databasePlugin?.onUnmount?.();
-      process.chdir(originalCwd);
-    }
+  try {
+    process.chdir(session.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      databasePlugin = await config.database();
+      return await callback(databasePlugin);
+    });
+  } finally {
+    await databasePlugin?.onUnmount?.();
+    process.chdir(originalCwd);
   }
-
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function fetchBundlesPage(args: {
@@ -2065,43 +2026,10 @@ async function fetchBundlesPage(args: {
     cliArgs.push("-c", args.channel);
   }
 
-  let response: BundleListPage | null = null;
-  let lastError: unknown = null;
-
-  for (
-    let attempt = 1;
-    attempt <= PROVIDER_OPERATION_RETRY_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      response = parseHotUpdaterCliJson<BundleListPage>(
-        "bundle list",
-        runHotUpdaterCliCapture(cliArgs),
-      );
-      break;
-    } catch (error) {
-      lastError = error;
-      if (
-        attempt >= PROVIDER_OPERATION_RETRY_ATTEMPTS ||
-        !isTransientProviderError(error)
-      ) {
-        throw error;
-      }
-
-      logE2e("hot-updater cli bundle list retry", {
-        attempt,
-        channel: args.channel ?? null,
-        error: formatErrorMessage(error),
-        platform: session.platform,
-        retryDelayMs: PROVIDER_OPERATION_RETRY_DELAY_MS,
-      });
-      await sleep(PROVIDER_OPERATION_RETRY_DELAY_MS);
-    }
-  }
-
-  if (!response) {
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
-  }
+  const response = parseHotUpdaterCliJson<BundleListPage>(
+    "bundle list",
+    runHotUpdaterCliCapture(cliArgs),
+  );
 
   const bundles = normalizeBundleListResponse(response);
   logE2e("hot-updater cli bundle list", {
