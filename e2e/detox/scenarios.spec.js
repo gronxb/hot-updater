@@ -98,9 +98,16 @@ function resolvePlaceholders(value) {
   return value;
 }
 
-function saveControlResult(saveResultAs, result) {
+function saveControlResult(saveResultAs, saveResultFieldsAs, result) {
   for (const [key, value] of Object.entries(result)) {
     stageValues[key] = value;
+  }
+  for (const [sourceKey, targetKey] of Object.entries(
+    saveResultFieldsAs || {},
+  )) {
+    if (Object.hasOwn(result, sourceKey)) {
+      stageValues[targetKey] = result[sourceKey];
+    }
   }
   if (!saveResultAs) return;
   if (typeof result[saveResultAs] === "string") {
@@ -184,6 +191,7 @@ async function runControlStep(step) {
     : controlClient.postJson.bind(controlClient);
   saveControlResult(
     step.saveResultAs,
+    step.saveResultFieldsAs,
     await runner(step.stage, step.pathName, body),
   );
 }

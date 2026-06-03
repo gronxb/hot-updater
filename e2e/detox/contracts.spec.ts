@@ -245,4 +245,52 @@ describe("Detox E2E harness contract", () => {
       "http://localhost:3109/e2e/runtime-config",
     );
   });
+
+  it("resolves an iOS simulator name to a UDID for xcodebuild", async () => {
+    // Given: split dashboard jobs pass simulator names to Detox config.
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-xcrun-"),
+    );
+    const fakeXcrunPath = path.join(tempDir, "xcrun");
+    await fs.writeFile(
+      fakeXcrunPath,
+      [
+        "#!/usr/bin/env bash",
+        "cat <<'JSON'",
+        JSON.stringify({
+          devices: {
+            "com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+              {
+                isAvailable: true,
+                name: "iPhone 16",
+                udid: "0368C5D9-1111-2222-3333-444455556666",
+              },
+            ],
+          },
+        }),
+        "JSON",
+      ].join("\n"),
+      "utf8",
+    );
+    await fs.chmod(fakeXcrunPath, 0o755);
+
+    try {
+      const { buildDetoxControlServerEnv } = await import(
+        detoxControlServerPath
+      );
+
+      // When: the control server environment is prepared for iOS.
+      const controlServerEnv = buildDetoxControlServerEnv("ios", {
+        HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 16",
+        PATH: `${tempDir}:${process.env.PATH ?? ""}`,
+      });
+
+      // Then: xcodebuild receives the simulator UDID, not the display name.
+      expect(controlServerEnv.HOT_UPDATER_E2E_DEVICE_ID).toBe(
+        "0368C5D9-1111-2222-3333-444455556666",
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
 });

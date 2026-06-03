@@ -275,4 +275,181 @@ describe("Detox scenario port catalog", () => {
       "assert archive diff patch",
     ]);
   });
+
+  it("ports multi-asset replacement through stable first and second installs", () => {
+    // Given: Maestro verifies each multi-asset OTA after a stable relaunch.
+    const stages = scenarioStages("multi-asset-replacement");
+
+    // When: the Detox scenario is inspected.
+    // Then: both bundles become stable before asset replacement assertions run.
+    expect(stages).toEqual([
+      "launch built-in app",
+      "deploy first multi-asset bundle",
+      "install first multi-asset update",
+      "wait first multi-asset metadata pending",
+      "reload first multi-asset update",
+      "wait first multi-asset metadata stable",
+      "assert first multi-assets stored",
+      "deploy second multi-asset bundle",
+      "install second multi-asset update",
+      "wait second multi-asset metadata pending",
+      "reload second multi-asset update",
+      "wait second multi-asset metadata stable",
+      "assert multi-assets replaced",
+    ]);
+    expect(
+      controlStepBody(
+        "multi-asset-replacement",
+        "wait first multi-asset metadata pending",
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody(
+        "multi-asset-replacement",
+        "wait first multi-asset metadata stable",
+      ).verificationPending,
+    ).toBe(false);
+    expect(
+      controlStepBody(
+        "multi-asset-replacement",
+        "wait second multi-asset metadata pending",
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody(
+        "multi-asset-replacement",
+        "wait second multi-asset metadata stable",
+      ).verificationPending,
+    ).toBe(false);
+  });
+
+  it("passes the tracked diff asset path into consecutive bsdiff assertions", () => {
+    // Given: Android and iOS use different primary bundle asset names.
+    const stages = scenarioStages("bspatch-consecutive-diff-ota");
+    const body = controlStepBody(
+      "bspatch-consecutive-diff-ota",
+      "assert consecutive diff patch",
+    );
+
+    // When: the bsdiff assertion is inspected.
+    // Then: the diff is installed against a stable base and uses the deploy result path.
+    expect(stages).toEqual([
+      "deploy first diff bundle",
+      "install first diff bundle",
+      "wait first diff metadata pending",
+      "reload first diff bundle",
+      "wait first diff metadata stable",
+      "deploy second diff bundle",
+      "install second diff bundle",
+      "wait second diff metadata pending",
+      "assert consecutive diff patch",
+      "reload second diff bundle",
+      "wait second diff metadata stable",
+    ]);
+    expect(body.assetPath).toBe("$diffPatchAssetPath");
+  });
+
+  it("ports manifest diff fallback through an installed previous bundle", () => {
+    // Given: Maestro installs bundle A before asserting bundle C fallback.
+    const stages = scenarioStages("bspatch-manifest-diff-fallback");
+
+    // When: the Detox scenario is inspected.
+    // Then: previous OTA state exists in the bundle store before fallback.
+    expect(stages).toEqual([
+      "deploy manifest base bundle",
+      "install manifest base update",
+      "wait manifest base metadata pending",
+      "reload manifest base update",
+      "wait manifest base metadata stable",
+      "deploy manifest intermediate bundle",
+      "deploy manifest fallback bundle",
+      "assert manifest fallback patch bases",
+      "install manifest fallback update",
+      "wait manifest fallback metadata pending",
+      "reload manifest fallback update",
+      "wait manifest fallback metadata stable",
+      "assert manifest diff fallback",
+    ]);
+  });
+
+  it("ports targeted cohort switchback as bundle state, not restore text", () => {
+    // Given: Maestro verifies numeric -> qa -> numeric bundle transitions.
+    const stages = scenarioStages("targeted-cohort-switchback");
+
+    // When: the Detox scenario is inspected.
+    // Then: the switchback asserts reloaded bundle state instead of restore UI text.
+    expect(stages).toEqual([
+      "deploy numeric cohort bundle",
+      "compute numeric rollout sample",
+      "deploy qa cohort bundle",
+      "enter numeric cohort",
+      "apply numeric cohort",
+      "assert numeric cohort applied",
+      "install numeric cohort update",
+      "wait numeric cohort metadata pending",
+      "reload numeric cohort update",
+      "wait numeric cohort metadata stable",
+      "assert numeric cohort launch",
+      "enter qa cohort",
+      "apply qa cohort",
+      "install qa cohort update",
+      "wait qa cohort metadata pending",
+      "reload qa cohort update",
+      "wait qa cohort metadata stable",
+      "assert qa cohort launch",
+      "restore numeric cohort",
+      "apply restored numeric cohort",
+      "assert numeric cohort restored",
+      "install numeric cohort rollback",
+      "wait numeric cohort rollback pending",
+      "reload numeric cohort rollback",
+      "wait numeric cohort rollback stable",
+      "assert numeric cohort rollback launch",
+    ]);
+  });
+
+  it("ports disabled rollback scenarios through active OTA metadata before disabling", () => {
+    // Given: rollback flows must first stabilize the OTA that will be disabled.
+    const builtinStages = scenarioStages("disabled-bundle-rollback-to-builtin");
+    const previousStages = scenarioStages(
+      "disabled-bundle-rollback-to-previous-ota",
+    );
+
+    // When: both Detox rollback scenarios are inspected.
+    // Then: each disables only after pending, reload, stable, and active checks.
+    expect(builtinStages).toEqual([
+      "capture built-in bundle",
+      "deploy current bundle",
+      "install current bundle",
+      "wait current bundle metadata pending",
+      "reload current bundle",
+      "wait current bundle metadata stable",
+      "assert current bundle active",
+      "disable current bundle",
+      "install rollback to built-in",
+      "reload to built-in",
+      "assert metadata reset",
+      "assert no crashed bundle",
+    ]);
+    expect(previousStages).toEqual([
+      "deploy previous bundle",
+      "install previous bundle",
+      "wait previous bundle metadata pending",
+      "reload previous bundle",
+      "wait previous bundle metadata stable",
+      "assert previous bundle active",
+      "deploy next bundle",
+      "install next bundle",
+      "wait next bundle metadata pending",
+      "reload next bundle",
+      "wait next bundle metadata stable",
+      "assert next bundle active",
+      "disable next bundle",
+      "install rollback to previous bundle",
+      "wait previous rollback metadata pending",
+      "reload previous bundle",
+      "wait previous rollback metadata stable",
+      "assert previous ota active",
+    ]);
+  });
 });

@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -75,6 +75,72 @@ function resolveRuntimeConfigUrl(
   return `http://localhost:${controlPort}/e2e/runtime-config`;
 }
 
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return Object.fromEntries(Object.entries(value));
+}
+
+function isLikelyUdid(value: string): boolean {
+  return /^[0-9A-Fa-f-]{20,}$/.test(value);
+}
+
+function resolveIosSimulatorUdidByName(
+  simulatorName: string,
+  env: NodeJS.ProcessEnv,
+): string {
+  if (isLikelyUdid(simulatorName)) {
+    return simulatorName;
+  }
+
+  const result = spawnSync(
+    "xcrun",
+    ["simctl", "list", "devices", "available", "-j"],
+    {
+      encoding: "utf8",
+      env,
+    },
+  );
+  if (result.status !== 0 || !result.stdout) {
+    return simulatorName;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return simulatorName;
+    }
+    throw error;
+  }
+  const root = readRecord(parsed);
+  const devices = readRecord(root?.devices);
+  if (!devices) {
+    return simulatorName;
+  }
+
+  for (const runtimeDevices of Object.values(devices)) {
+    if (!Array.isArray(runtimeDevices)) {
+      continue;
+    }
+    for (const device of runtimeDevices) {
+      const simulator = readRecord(device);
+      if (
+        simulator?.name === simulatorName &&
+        simulator.udid &&
+        typeof simulator.udid === "string" &&
+        simulator.isAvailable !== false
+      ) {
+        return simulator.udid;
+      }
+    }
+  }
+
+  return simulatorName;
+}
+
 function resolveDeviceId(
   platform: DetoxPlatform,
   env: NodeJS.ProcessEnv,
@@ -89,10 +155,11 @@ function resolveDeviceId(
       "emulator-5554"
     );
   }
-  return (
+  return resolveIosSimulatorUdidByName(
     env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME ??
-    env.IOS_SIMULATOR_NAME ??
-    "iPhone 16"
+      env.IOS_SIMULATOR_NAME ??
+      "iPhone 16",
+    env,
   );
 }
 

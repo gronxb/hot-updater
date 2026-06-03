@@ -10,6 +10,7 @@ export type DetoxScenarioStep =
       readonly body?: JsonObject;
       readonly kind: "control";
       readonly pathName: string;
+      readonly saveResultFieldsAs?: Readonly<Record<string, string>>;
       readonly saveResultAs?: string;
       readonly stage: string;
     }

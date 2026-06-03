@@ -78,10 +78,42 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-install-current-channel-update",
       },
       {
+        body: {
+          bundleId: "$currentBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait current bundle metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload current bundle",
+      },
+      {
+        body: { bundleId: "$currentBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait current bundle metadata stable",
+      },
+      {
+        body: { bundleId: "$currentBundleId" },
+        kind: "control",
+        pathName: "/e2e/assert-metadata-active",
+        stage: "assert current bundle active",
+      },
+      {
         body: { bundleId: "$currentBundleId", enabled: false },
         kind: "control",
         pathName: "/e2e/jobs/patch-bundle",
         stage: "disable current bundle",
+      },
+      {
+        kind: "tap",
+        stage: "install rollback to built-in",
+        testID: "action-install-current-channel-update",
       },
       { action: "reload", kind: "device", stage: "reload to built-in" },
       {
@@ -122,6 +154,33 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       {
         body: {
+          bundleId: "$previousBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait previous bundle metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload previous bundle",
+      },
+      {
+        body: { bundleId: "$previousBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait previous bundle metadata stable",
+      },
+      {
+        body: { bundleId: "$previousBundleId" },
+        kind: "control",
+        pathName: "/e2e/assert-metadata-active",
+        stage: "assert previous bundle active",
+      },
+      {
+        body: {
           channel: "production",
           marker: "disabled-next-detox",
           mode: "reset",
@@ -134,12 +193,65 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy next bundle",
       },
       {
+        kind: "tap",
+        stage: "install next bundle",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        body: {
+          bundleId: "$nextBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait next bundle metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload next bundle",
+      },
+      {
+        body: { bundleId: "$nextBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait next bundle metadata stable",
+      },
+      {
+        body: { bundleId: "$nextBundleId" },
+        kind: "control",
+        pathName: "/e2e/assert-metadata-active",
+        stage: "assert next bundle active",
+      },
+      {
         body: { bundleId: "$nextBundleId", enabled: false },
         kind: "control",
         pathName: "/e2e/jobs/patch-bundle",
         stage: "disable next bundle",
       },
+      {
+        kind: "tap",
+        stage: "install rollback to previous bundle",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        body: {
+          bundleId: "$previousBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait previous rollback metadata pending",
+      },
       { action: "reload", kind: "device", stage: "reload previous bundle" },
+      {
+        body: { bundleId: "$previousBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait previous rollback metadata stable",
+      },
       {
         body: { bundleId: "$previousBundleId" },
         kind: "control",

@@ -1,6 +1,12 @@
 import { archiveToDiffScenario } from "./archive-to-diff.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
+const multiAssetPaths = [
+  "assets/src/test/_fixture-multi-asset-a.bmp",
+  "assets/src/test/_fixture-multi-asset-b.bmp",
+  "assets/src/test/_fixture-multi-asset-c.bmp",
+] as const;
+
 export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "multi-asset-replacement",
@@ -28,11 +34,31 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       {
         body: {
-          assetPaths: [
-            "assets/src/test/_fixture-multi-asset-a.bmp",
-            "assets/src/test/_fixture-multi-asset-b.bmp",
-            "assets/src/test/_fixture-multi-asset-c.bmp",
-          ],
+          bundleId: "$firstBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait first multi-asset metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload first multi-asset update",
+      },
+      {
+        body: {
+          bundleId: "$firstBundleId",
+          verificationPending: false,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait first multi-asset metadata stable",
+      },
+      {
+        body: {
+          assetPaths: multiAssetPaths,
           bundleId: "$firstBundleId",
         },
         kind: "control",
@@ -60,11 +86,31 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       {
         body: {
-          assetPaths: [
-            "assets/src/test/_fixture-multi-asset-a.bmp",
-            "assets/src/test/_fixture-multi-asset-b.bmp",
-            "assets/src/test/_fixture-multi-asset-c.bmp",
-          ],
+          bundleId: "$secondBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait second multi-asset metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload second multi-asset update",
+      },
+      {
+        body: {
+          bundleId: "$secondBundleId",
+          verificationPending: false,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait second multi-asset metadata stable",
+      },
+      {
+        body: {
+          assetPaths: multiAssetPaths,
           bundleId: "$secondBundleId",
           previousBundleId: "$firstBundleId",
         },
@@ -94,6 +140,32 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy first diff bundle",
       },
       {
+        kind: "tap",
+        stage: "install first diff bundle",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        body: {
+          bundleId: "$firstBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait first diff metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload first diff bundle",
+      },
+      {
+        body: { bundleId: "$firstBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait first diff metadata stable",
+      },
+      {
         body: {
           channel: "production",
           diffBaseBundleId: "$firstBundleId",
@@ -109,13 +181,40 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy second diff bundle",
       },
       {
+        kind: "tap",
+        stage: "install second diff bundle",
+        testID: "action-install-current-channel-update",
+      },
+      {
         body: {
+          bundleId: "$secondBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait second diff metadata pending",
+      },
+      {
+        body: {
+          assetPath: "$diffPatchAssetPath",
           baseBundleId: "$firstBundleId",
           bundleId: "$secondBundleId",
         },
         kind: "control",
         pathName: "/e2e/assert-bsdiff-patch-applied",
         stage: "assert consecutive diff patch",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload second diff bundle",
+      },
+      {
+        body: { bundleId: "$secondBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait second diff metadata stable",
       },
     ],
   },
@@ -169,17 +268,93 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy manifest base bundle",
       },
       {
+        kind: "tap",
+        stage: "install manifest base update",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        body: {
+          bundleId: "$previousBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait manifest base metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload manifest base update",
+      },
+      {
+        body: { bundleId: "$previousBundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait manifest base metadata stable",
+      },
+      {
         body: {
           channel: "production",
-          marker: "manifest-fallback-detox",
+          marker: "manifest-intermediate-detox",
           mode: "reset",
           safeBundleIds: ["$previousBundleId"],
           targetAppVersion: "1.0.x",
         },
         kind: "control",
         pathName: "/e2e/jobs/deploy-bundle",
+        saveResultAs: "intermediateBundleId",
+        stage: "deploy manifest intermediate bundle",
+      },
+      {
+        body: {
+          channel: "production",
+          marker: "manifest-fallback-detox",
+          mode: "reset",
+          patchMaxBaseBundles: 1,
+          safeBundleIds: ["$previousBundleId", "$intermediateBundleId"],
+          targetAppVersion: "1.0.x",
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/deploy-bundle",
         saveResultAs: "bundleId",
         stage: "deploy manifest fallback bundle",
+      },
+      {
+        body: {
+          absentBaseBundleIds: ["$previousBundleId"],
+          bundleId: "$bundleId",
+          expectedBaseBundleIds: ["$intermediateBundleId"],
+        },
+        kind: "control",
+        pathName: "/e2e/assert-bundle-patch-bases",
+        stage: "assert manifest fallback patch bases",
+      },
+      {
+        kind: "tap",
+        stage: "install manifest fallback update",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        body: {
+          bundleId: "$bundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait manifest fallback metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload manifest fallback update",
+      },
+      {
+        body: { bundleId: "$bundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait manifest fallback metadata stable",
       },
       {
         body: {
