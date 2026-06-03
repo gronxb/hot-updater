@@ -69,6 +69,7 @@ type SessionState = {
   envSourceFile: string;
   exampleDir: string;
   initialMarker: string;
+  iosBinaryPath: string | null;
   iosDerivedDataPath: string;
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
@@ -491,6 +492,11 @@ const session: SessionState = {
   exampleDir: EXAMPLE_DIR,
   initialMarker:
     platform === "ios" ? "builtin-ios-maestro" : "builtin-android-maestro",
+  iosBinaryPath: process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
+    ? path.isAbsolute(process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH)
+      ? process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
+      : path.join(EXAMPLE_DIR, process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH)
+    : null,
   iosDerivedDataPath:
     process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
     "/tmp/hotupdater-v085-ios-maestro",
@@ -2744,6 +2750,25 @@ async function prepareReusableIosArtifact(appPath: string, cacheKey: string) {
   });
 }
 
+async function prepareExplicitReusableIosBinary(cacheKey: string) {
+  if (!session.reuseApp || !session.iosBinaryPath) {
+    return false;
+  }
+  if (!fs.existsSync(session.iosBinaryPath)) {
+    logE2e("ios explicit binary missing", {
+      artifactPath: session.iosBinaryPath,
+    });
+    return false;
+  }
+
+  session.builtArtifactPath = session.iosBinaryPath;
+  await prepareReusableIosArtifact(session.iosBinaryPath, cacheKey);
+  logE2e("ios explicit reusable binary prepared", {
+    artifactPath: path.relative(REPO_DIR, session.iosBinaryPath),
+  });
+  return true;
+}
+
 function iosDerivedDataCacheKeyPath() {
   return path.join(session.iosDerivedDataPath, IOS_DERIVED_DATA_CACHE_KEY_FILE);
 }
@@ -2787,6 +2812,10 @@ async function prepareIosRelease() {
     "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
   );
   const nativeCacheKey = nativeArtifactCacheKey();
+
+  if (await prepareExplicitReusableIosBinary(nativeCacheKey)) {
+    return;
+  }
 
   if (session.reuseApp && fs.existsSync(builtAppPath)) {
     const existingCacheKey = await readIosDerivedDataCacheKey();

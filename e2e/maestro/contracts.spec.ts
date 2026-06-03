@@ -148,6 +148,27 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS");
   });
 
+  it("reuses an explicit iOS binary without deleting shared derived data", async () => {
+    const source = await readControllerSource();
+    const sessionStart = source.indexOf("const session: SessionState =");
+    const prepareStart = source.indexOf("async function prepareIosRelease");
+    const prepareEnd = source.indexOf(
+      "\n}\n\nasync function prepareAndroidRelease",
+      prepareStart,
+    );
+    const sessionSource = source.slice(sessionStart, prepareStart);
+    const prepareSource = source.slice(prepareStart, prepareEnd);
+
+    expect(sessionSource).toContain("iosBinaryPath:");
+    expect(sessionSource).toContain("HOT_UPDATER_E2E_IOS_BINARY_PATH");
+    expect(prepareSource).toContain("prepareExplicitReusableIosBinary");
+    expect(
+      prepareSource.indexOf("prepareExplicitReusableIosBinary"),
+    ).toBeLessThan(
+      prepareSource.indexOf("ios derived data cache key mismatch"),
+    );
+  });
+
   it("warms the app cohort update-check URL before launching OTA bundles", async () => {
     const source = await readControllerSource();
 
