@@ -1205,8 +1205,13 @@ async function saveIosPodsToCache(key: string) {
 async function readNativeArtifactLock(lockPath: string) {
   try {
     const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split("\n");
+    const pid = Number.parseInt(pidLine ?? "", 10);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return null;
+    }
+
     return {
-      pid: Number.parseInt(pidLine ?? "", 10),
+      pid,
     };
   } catch {
     return null;

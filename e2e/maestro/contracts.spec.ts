@@ -130,4 +130,20 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("deploy process lock acquired");
     expect(source).toContain("deploy process lock waiting");
   });
+
+  it("does not evict a just-created native artifact lock with a partial owner file", async () => {
+    const source = await readControllerSource();
+    const lockReaderStart = source.indexOf(
+      "async function readNativeArtifactLock",
+    );
+    const lockReaderEnd = source.indexOf(
+      "\n}\n\nfunction isProcessRunning",
+      lockReaderStart,
+    );
+    const lockReaderSource = source.slice(lockReaderStart, lockReaderEnd);
+
+    expect(lockReaderSource).toContain("Number.isInteger(pid)");
+    expect(lockReaderSource).toContain("return null");
+    expect(source).toContain("? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS");
+  });
 });
