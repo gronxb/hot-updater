@@ -157,6 +157,30 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("cohort: cohortValue");
   });
 
+  it("seeds the E2E cohort before a cold app launch can request updates", async () => {
+    const source = await readControllerSource();
+    const resetStart = source.indexOf("async function resetLocalAppState");
+    const resetEnd = source.indexOf(
+      "\n}\n\nasync function assertBundlePatchBases",
+      resetStart,
+    );
+    const prepareStart = source.indexOf("async function prepareAppLaunch");
+    const prepareEnd = source.indexOf(
+      "\n}\n\nasync function bootstrap",
+      prepareStart,
+    );
+    const resetSource = source.slice(resetStart, resetEnd);
+    const prepareSource = source.slice(prepareStart, prepareEnd);
+
+    expect(source).toContain("E2E_DEFAULT_COHORT");
+    expect(source).toContain("seedMissingE2ECohort");
+    expect(source).toContain("defaults");
+    expect(source).toContain("HotUpdaterCohort.xml");
+    expect(resetSource).toContain("await seedMissingE2ECohort()");
+    expect(prepareSource).toContain("await seedMissingE2ECohort()");
+    expect(source).not.toContain('reason: "cohort-unavailable"');
+  });
+
   it("keeps update-check timeout diagnostics inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(

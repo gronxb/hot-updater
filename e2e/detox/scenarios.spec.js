@@ -225,7 +225,12 @@ async function runDeviceAction(step) {
     return;
   }
   if (step.action === "resetAppState") {
-    await device.launchApp({ delete: true, newInstance: true });
+    await controlClient.postJson(
+      `${step.stage}: reset local app state`,
+      "/e2e/reset-local-app-state",
+      {},
+    );
+    await device.launchApp({ newInstance: true });
     markSynchronizationRestoredByLaunch();
     return;
   }
@@ -305,7 +310,7 @@ describe("HotUpdater Detox scenarios", () => {
     }
     await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
     await controlClient.postJson("reset local app state", "/e2e/reset-local-app-state", {});
-    await device.launchApp({ delete: true, newInstance: true });
+    await device.launchApp({ newInstance: true });
     markSynchronizationRestoredByLaunch();
   });
 

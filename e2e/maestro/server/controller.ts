@@ -271,6 +271,7 @@ const NATIVE_ARTIFACT_RM_MAX_RETRIES = 5;
 const NATIVE_ARTIFACT_RM_RETRY_DELAY_MS = 500;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
+const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
 const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
 const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
@@ -4553,6 +4554,19 @@ function readAndroidStringPreference(xml: string, key: string) {
   return match?.[1] ? decodeXmlText(match[1]) : null;
 }
 
+function encodeXmlText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function shellSingleQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function readAndroidE2ECohort() {
   const prefsPath = `/data/data/${session.appId}/shared_prefs/${E2E_ANDROID_COHORT_PREFS_FILE}`;
   const prefsXml = runCapture(
@@ -4581,20 +4595,88 @@ function readCurrentE2ECohort() {
     : readAndroidE2ECohort();
 }
 
+function writeIosE2ECohort(cohort: string) {
+  runCapture("xcrun", [
+    "simctl",
+    "spawn",
+    deviceId as string,
+    "defaults",
+    "write",
+    session.appId,
+    E2E_IOS_COHORT_DEFAULTS_KEY,
+    "-string",
+    cohort,
+  ]);
+}
+
+function writeAndroidE2ECohort(cohort: string) {
+  const prefsDir = `/data/data/${session.appId}/shared_prefs`;
+  const prefsPath = `${prefsDir}/${E2E_ANDROID_COHORT_PREFS_FILE}`;
+  const prefsXml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    `    <string name="${E2E_ANDROID_COHORT_PREFS_KEY}">${encodeXmlText(cohort)}</string>`,
+    "</map>",
+    "",
+  ].join("\n");
+
+  runCapture("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "run-as",
+    session.appId,
+    "sh",
+    "-c",
+    [
+      `mkdir -p ${shellSingleQuote(prefsDir)}`,
+      `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
+    ].join(" && "),
+  ]);
+}
+
+async function seedMissingE2ECohort() {
+  const existingCohort = readCurrentE2ECohort();
+  if (existingCohort) {
+    logE2e("e2e cohort seed preserved", {
+      cohort: existingCohort,
+      platform: session.platform,
+    });
+    return existingCohort;
+  }
+
+  const cohort = normalizeE2ECohort(E2E_DEFAULT_COHORT);
+  if (!cohort) {
+    throw new Error("HOT_UPDATER_E2E_DEFAULT_COHORT must not be empty");
+  }
+
+  if (session.platform === "ios") {
+    writeIosE2ECohort(cohort);
+  } else {
+    writeAndroidE2ECohort(cohort);
+  }
+
+  const seededCohort = readCurrentE2ECohort();
+  if (seededCohort !== cohort) {
+    throw new Error(
+      `Failed to seed ${session.platform} E2E cohort: expected ${cohort}, observed ${seededCohort ?? "missing"}`,
+    );
+  }
+
+  logE2e("e2e cohort seeded", {
+    cohort,
+    platform: session.platform,
+  });
+  return cohort;
+}
+
 async function warmCohortUpdateCheckVisibility(args: {
   bundleId: string;
   channel: string;
   minBundleId: string;
   requestBundleId: string;
 }) {
-  const cohortValue = readCurrentE2ECohort();
-  if (!cohortValue) {
-    logE2e("update check cohort warm skipped", {
-      platform: session.platform,
-      reason: "cohort-unavailable",
-    });
-    return;
-  }
+  const cohortValue = await seedMissingE2ECohort();
 
   const url = buildAppVersionUpdateCheckUrl({
     bundleId: args.requestBundleId,
@@ -5338,6 +5420,7 @@ async function ensureAppForeground() {
 
 async function prepareAppLaunch() {
   assertConfiguredBaseUrl();
+  await seedMissingE2ECohort();
 
   if (session.platform === "ios") {
     runCapture(
@@ -6548,6 +6631,7 @@ async function resetLocalAppState() {
   } else {
     clearAndroidLocalAppState();
   }
+  await seedMissingE2ECohort();
 
   logE2e("local app state reset on demand", {
     platform: session.platform,

@@ -158,7 +158,27 @@ describe("Detox scenario port catalog", () => {
       "for (const port of androidReversePorts())",
     );
     expect(detoxJestSpec).toContain("device.terminateApp");
-    expect(detoxJestSpec).toContain("delete: true");
+    expect(detoxJestSpec).toContain("/e2e/reset-local-app-state");
+  });
+
+  it("does not delete seeded control-server app state after reset", async () => {
+    // Given: the control server resets bundle state and seeds a deterministic
+    // cohort before the first cold launch can request an update-check URL.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const beforeEachBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("beforeEach(async () =>"),
+      detoxJestSpec.indexOf("\n  afterEach(async () =>"),
+    );
+
+    // When: Detox launches the app after reset.
+    const resetIndex = beforeEachBody.indexOf("/e2e/reset-local-app-state");
+    const launchIndex = beforeEachBody.indexOf("device.launchApp");
+
+    // Then: launch keeps the freshly reset/seeded data instead of deleting it.
+    expect(resetIndex).toBeGreaterThan(-1);
+    expect(launchIndex).toBeGreaterThan(resetIndex);
+    expect(beforeEachBody).toContain("device.launchApp({ newInstance: true })");
+    expect(beforeEachBody).not.toContain("delete: true");
   });
 
   it("foregrounds the running app before Detox UI interactions", async () => {
