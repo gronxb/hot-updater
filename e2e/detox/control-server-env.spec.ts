@@ -1,0 +1,45 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { buildDetoxControlServerEnv } from "./scripts/control-server.ts";
+
+describe("Detox control server environment", () => {
+  it("uses the profile app base URL as the provider target when control proxy env is present", async () => {
+    // Given: dashboard split jobs expose a control proxy URL and write the
+    // provider URL to the env target file.
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-detox-env-"),
+    );
+    const envTargetPath = path.join(tempDir, ".env.hotupdater");
+    await fs.writeFile(
+      envTargetPath,
+      "HOT_UPDATER_APP_BASE_URL=https://updates.example.com/hot-updater\n",
+    );
+
+    try {
+      // When: the Detox control server env is built for a split child.
+      const controlServerEnv = buildDetoxControlServerEnv("ios", {
+        HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3009/hot-updater",
+        HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+        HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+        HOT_UPDATER_SERVER_PORT: "3009",
+        PORT: "3009",
+      });
+
+      // Then: provider proxying targets the real update server while control
+      // traffic stays on the Detox control port.
+      expect(controlServerEnv.PORT).toBe("3109");
+      expect(controlServerEnv.HOT_UPDATER_E2E_APP_BASE_URL).toBe(
+        "https://updates.example.com/hot-updater",
+      );
+      expect(controlServerEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
+        "http://localhost:3109/e2e/runtime-config",
+      );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+});
