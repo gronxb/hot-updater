@@ -3905,14 +3905,15 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
-function getControllerReachableProviderHealthUrl() {
-  const url = new URL(getControllerReachableAppBaseUrl());
+function getControllerReachableProviderReadinessUrl() {
+  const url = new URL(`${getControllerReachableAppBaseUrl()}/api/bundles`);
   if (!isLoopbackHost(url.hostname)) {
     return null;
   }
 
-  url.pathname = "/";
-  url.search = "";
+  url.searchParams.set("platform", session.platform);
+  url.searchParams.set("enabled", "true");
+  url.searchParams.set("limit", "1");
   url.hash = "";
   return url.toString();
 }
@@ -3970,7 +3971,7 @@ async function patchEnvRuntimeConfigUrl() {
 }
 
 async function waitForLocalProviderReady() {
-  const url = getControllerReachableProviderHealthUrl();
+  const url = getControllerReachableProviderReadinessUrl();
   if (!url) {
     return;
   }

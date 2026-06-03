@@ -290,6 +290,30 @@ describe("Maestro E2E contract", () => {
     expect(bundleListSource).not.toContain("channels.map(");
   });
 
+  it("waits for the provider bundle-list API before bootstrapping", async () => {
+    const source = await readControllerSource();
+    const readinessUrlStart = source.indexOf(
+      "function getControllerReachableProviderReadinessUrl",
+    );
+    const readinessUrlEnd = source.indexOf(
+      "\n}\n\nfunction getAndroidControlDevicePort",
+      readinessUrlStart,
+    );
+    const waitStart = source.indexOf(
+      "async function waitForLocalProviderReady",
+    );
+    const waitEnd = source.indexOf("\n}\n\nfunction getUrlPort", waitStart);
+    const readinessUrlSource = source.slice(readinessUrlStart, readinessUrlEnd);
+    const waitSource = source.slice(waitStart, waitEnd);
+
+    expect(readinessUrlSource).toContain("/api/bundles");
+    expect(readinessUrlSource).toContain('url.searchParams.set("platform"');
+    expect(readinessUrlSource).toContain('url.searchParams.set("enabled"');
+    expect(readinessUrlSource).toContain('url.searchParams.set("limit", "1")');
+    expect(waitSource).toContain("getControllerReachableProviderReadinessUrl");
+    expect(waitSource).not.toContain("ProviderHealthUrl");
+  });
+
   it("keeps update-check timeout diagnostics inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(
