@@ -1,15 +1,12 @@
 import path from "path";
-import { fileURLToPath } from "url";
 
 import { s3Database, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { config } from "dotenv";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 // Load optional .env.hotupdater file for local development
-config({ path: path.join(__dirname, ".env.hotupdater") });
+config({ path: path.resolve(process.cwd(), ".env.hotupdater") });
 
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 

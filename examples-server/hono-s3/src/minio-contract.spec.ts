@@ -38,4 +38,18 @@ describe("standalone-s3 local S3 contract", () => {
     expect(dbSource).not.toContain("http://localhost:4566");
     expect(dbSource).not.toContain("localstack s3");
   });
+
+  it("loads service environment from the server workdir", async () => {
+    // Given: hot-updater-agent injects service env into examples-server/hono-s3/.env.hotupdater.
+    const dbSource = await readProjectFile("src/db.ts");
+
+    // When: the Hono S3 server starts from its package workdir.
+    // Then: auth and MinIO settings come from that injected root-level file.
+    expect(dbSource).toContain(
+      'config({ path: path.resolve(process.cwd(), ".env.hotupdater") })',
+    );
+    expect(dbSource).not.toContain(
+      'config({ path: path.join(__dirname, ".env.hotupdater") })',
+    );
+  });
 });
