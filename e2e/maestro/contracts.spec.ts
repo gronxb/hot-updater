@@ -146,4 +146,14 @@ describe("Maestro E2E contract", () => {
     expect(lockReaderSource).toContain("return null");
     expect(source).toContain("? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS");
   });
+
+  it("warms the app cohort update-check URL before launching OTA bundles", async () => {
+    const source = await readControllerSource();
+
+    expect(source).toContain("readCurrentE2ECohort");
+    expect(source).toContain("warmCohortUpdateCheckVisibility");
+    expect(source).toContain("HotUpdater_CustomCohort");
+    expect(source).toContain("HotUpdaterCohort.xml");
+    expect(source).toContain("cohort: cohortValue");
+  });
 });

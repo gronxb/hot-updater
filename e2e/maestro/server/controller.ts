@@ -271,6 +271,9 @@ const NATIVE_ARTIFACT_RM_MAX_RETRIES = 5;
 const NATIVE_ARTIFACT_RM_RETRY_DELAY_MS = 500;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
+const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
+const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
+const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
@@ -4371,10 +4374,11 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
 function buildAppVersionUpdateCheckUrl(args: {
   bundleId: string;
   channel: string;
+  cohort?: string;
   minBundleId: string;
 }) {
   const encode = (value: string) => encodeURIComponent(value);
-  return [
+  const segments = [
     getControllerReachableAppBaseUrl(),
     "app-version",
     encode(session.platform),
@@ -4382,7 +4386,11 @@ function buildAppVersionUpdateCheckUrl(args: {
     encode(args.channel),
     encode(args.minBundleId),
     encode(args.bundleId),
-  ].join("/");
+  ];
+  if (args.cohort) {
+    segments.push(encode(args.cohort));
+  }
+  return segments.join("/");
 }
 
 function getCurrentUpdateCheckBundleId() {
@@ -4410,6 +4418,28 @@ async function waitForUpdateCheckVisibility(args: {
     channel: args.channel,
     minBundleId,
   });
+  await waitForUpdateCheckVisibilityUrl({
+    bundleId: args.bundleId,
+    channel: args.channel,
+    minBundleId,
+    requestBundleId: args.requestBundleId,
+    url,
+  });
+  await warmCohortUpdateCheckVisibility({
+    bundleId: args.bundleId,
+    channel: args.channel,
+    minBundleId,
+    requestBundleId: args.requestBundleId,
+  });
+}
+
+async function waitForUpdateCheckVisibilityUrl(args: {
+  bundleId: string;
+  channel: string;
+  minBundleId: string;
+  requestBundleId: string;
+  url: string;
+}) {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
@@ -4482,6 +4512,103 @@ async function waitForUpdateCheckVisibility(args: {
       },
     },
   );
+}
+
+function normalizeE2ECohort(value: string) {
+  const cohort = value.trim();
+  return cohort.length > 0 ? cohort : null;
+}
+
+function readIosE2ECohort() {
+  const cohort = runCapture(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "read",
+      session.appId,
+      E2E_IOS_COHORT_DEFAULTS_KEY,
+    ],
+    { allowFailure: true },
+  );
+  return normalizeE2ECohort(cohort);
+}
+
+function decodeXmlText(value: string) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+function readAndroidStringPreference(xml: string, key: string) {
+  const pattern = new RegExp(
+    `<string\\s+name="${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}">([^<]*)<\\/string>`,
+  );
+  const match = pattern.exec(xml);
+  return match?.[1] ? decodeXmlText(match[1]) : null;
+}
+
+function readAndroidE2ECohort() {
+  const prefsPath = `/data/data/${session.appId}/shared_prefs/${E2E_ANDROID_COHORT_PREFS_FILE}`;
+  const prefsXml = runCapture(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      session.appId,
+      "cat",
+      prefsPath,
+    ],
+    { allowFailure: true },
+  );
+  const cohort = readAndroidStringPreference(
+    prefsXml,
+    E2E_ANDROID_COHORT_PREFS_KEY,
+  );
+  return cohort ? normalizeE2ECohort(cohort) : null;
+}
+
+function readCurrentE2ECohort() {
+  return session.platform === "ios"
+    ? readIosE2ECohort()
+    : readAndroidE2ECohort();
+}
+
+async function warmCohortUpdateCheckVisibility(args: {
+  bundleId: string;
+  channel: string;
+  minBundleId: string;
+  requestBundleId: string;
+}) {
+  const cohortValue = readCurrentE2ECohort();
+  if (!cohortValue) {
+    logE2e("update check cohort warm skipped", {
+      platform: session.platform,
+      reason: "cohort-unavailable",
+    });
+    return;
+  }
+
+  const url = buildAppVersionUpdateCheckUrl({
+    bundleId: args.requestBundleId,
+    channel: args.channel,
+    cohort: cohortValue,
+    minBundleId: args.minBundleId,
+  });
+  await waitForUpdateCheckVisibilityUrl({
+    bundleId: args.bundleId,
+    channel: args.channel,
+    minBundleId: args.minBundleId,
+    requestBundleId: args.requestBundleId,
+    url,
+  });
 }
 
 async function waitForUpdateCheckExcludesBundle(args: {
