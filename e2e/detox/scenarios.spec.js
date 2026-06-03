@@ -196,6 +196,22 @@ async function waitForVisibleText(testID, contains) {
   }
 }
 
+async function runTapStep(step) {
+  const target = await waitForTestID(step.testID);
+  if (!step.expectResultContains) {
+    await target.tap();
+    return;
+  }
+
+  await device.disableSynchronization();
+  try {
+    await target.tap();
+    await waitForVisibleText("update-action-result", step.expectResultContains);
+  } finally {
+    await device.enableSynchronization();
+  }
+}
+
 async function runDeviceAction(step) {
   if (step.action === "terminate") {
     await device.terminateApp();
@@ -237,10 +253,7 @@ async function runScenarioStep(step) {
   } else if (step.kind === "device") {
     await runDeviceAction(step);
   } else if (step.kind === "tap") {
-    await (await waitForTestID(step.testID)).tap();
-    if (step.expectResultContains) {
-      await waitForVisibleText("update-action-result", step.expectResultContains);
-    }
+    await runTapStep(step);
   } else if (step.kind === "typeText") {
     await (await waitForTestID(step.testID)).replaceText(
       String(resolvePlaceholders(step.text)),
