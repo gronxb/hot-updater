@@ -40,13 +40,20 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
     name: "numeric-cohort-rollout",
     wave: 3,
     steps: [
+      { action: "launch", kind: "device", stage: "launch built-in app" },
+      {
+        kind: "control",
+        pathName: "/e2e/capture-built-in-bundle-id",
+        saveResultAs: "builtInBundleId",
+        stage: "capture built-in bundle id",
+      },
       {
         body: {
           channel: "production",
           marker: "numeric-cohort-detox",
           mode: "reset",
-          rollout: 50,
-          safeBundleIds: [],
+          rollout: 10,
+          safeBundleIds: ["$builtInBundleId"],
           targetAppVersion: "1.0.x",
         },
         kind: "control",
@@ -58,8 +65,28 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         body: { bundleId: "$bundleId" },
         kind: "control",
         pathName: "/e2e/compute-rollout-sample",
-        saveResultAs: "rolloutSample",
+        saveResultFieldsAs: {
+          excludedCohort: "excludedCohort",
+          includedCohort: "includedCohort",
+        },
         stage: "compute rollout sample",
+      },
+      {
+        kind: "typeText",
+        stage: "enter included cohort",
+        testID: "cohort-input",
+        text: "$includedCohort",
+      },
+      {
+        kind: "tap",
+        stage: "apply included cohort",
+        testID: "action-apply-cohort-input",
+      },
+      {
+        contains: "set -> $includedCohort",
+        kind: "assertText",
+        stage: "assert included cohort applied",
+        testID: "cohort-action-result",
       },
       {
         kind: "tap",
@@ -67,10 +94,75 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-install-current-channel-update",
       },
       {
+        body: {
+          bundleId: "$bundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait rollout metadata pending",
+      },
+      {
         contains: "current-channel",
         kind: "assertText",
         stage: "assert rollout action result",
         testID: "update-action-result",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload rollout update",
+      },
+      {
+        body: { bundleId: "$bundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait rollout metadata stable",
+      },
+      {
+        contains: "$bundleId",
+        kind: "assertText",
+        stage: "assert rollout launch",
+        testID: "runtime-bundle-id",
+      },
+      {
+        kind: "typeText",
+        stage: "enter excluded cohort",
+        testID: "cohort-input",
+        text: "$excludedCohort",
+      },
+      {
+        kind: "tap",
+        stage: "apply excluded cohort",
+        testID: "action-apply-cohort-input",
+      },
+      {
+        contains: "set -> $excludedCohort",
+        kind: "assertText",
+        stage: "assert excluded cohort applied",
+        testID: "cohort-action-result",
+      },
+      {
+        kind: "tap",
+        stage: "install excluded cohort update",
+        testID: "action-install-current-channel-update",
+      },
+      {
+        kind: "control",
+        pathName: "/e2e/assert-metadata-reset",
+        stage: "assert excluded metadata reset",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload excluded cohort state",
+      },
+      {
+        contains: "$builtInBundleId",
+        kind: "assertText",
+        stage: "assert excluded cohort built-in bundle",
+        testID: "runtime-bundle-id",
       },
     ],
   },

@@ -272,6 +272,10 @@ const NATIVE_ARTIFACT_RM_RETRY_DELAY_MS = 500;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
+const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
+  "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
+const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
+const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
@@ -4049,10 +4053,39 @@ function ensureAndroidControlReverse() {
 function getHotUpdaterControlEnv(
   env: NodeJS.ProcessEnv | undefined = undefined,
 ) {
-  return {
+  const baseEnv = {
     ...env,
     HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
+
+  return {
+    ...baseEnv,
+    NODE_OPTIONS: nodeOptionsForDeployChild(baseEnv),
+  } satisfies NodeJS.ProcessEnv;
+}
+
+function nodeOptionsForDeployChild(env: NodeJS.ProcessEnv) {
+  const existingOptions = (env.NODE_OPTIONS ?? "").split(/\s+/).filter(Boolean);
+  if (
+    existingOptions.some((option) =>
+      NODE_MAX_OLD_SPACE_SIZE_PATTERN.test(option),
+    )
+  ) {
+    return existingOptions.join(" ");
+  }
+
+  const configuredSize = Number.parseInt(
+    env[DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY] ?? "",
+    10,
+  );
+  const maxOldSpaceSizeMb =
+    Number.isFinite(configuredSize) && configuredSize > 0
+      ? configuredSize
+      : DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB;
+
+  return [...existingOptions, `--max-old-space-size=${maxOldSpaceSizeMb}`].join(
+    " ",
+  );
 }
 
 async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {

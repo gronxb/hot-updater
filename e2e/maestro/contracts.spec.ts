@@ -12,6 +12,11 @@ type RouteContract = {
 };
 
 const routeSourcePath = path.join(import.meta.dirname, "server", "routes.ts");
+const controllerSourcePath = path.join(
+  import.meta.dirname,
+  "server",
+  "controller.ts",
+);
 
 const defaultScenarioOrder = [
   "release-ota-recovery",
@@ -71,6 +76,10 @@ async function readRouteSource(): Promise<string> {
   return fs.readFile(routeSourcePath, "utf8");
 }
 
+async function readControllerSource(): Promise<string> {
+  return fs.readFile(controllerSourcePath, "utf8");
+}
+
 describe("Maestro E2E contract", () => {
   it("keeps the default scenario suite order stable", () => {
     // Given: the current Maestro scenario catalog used by dashboard sharding.
@@ -102,5 +111,13 @@ describe("Maestro E2E contract", () => {
         expect(source).toContain(route.requiredError);
       }
     }
+  });
+
+  it("runs deploy child processes with an E2E-scoped Node heap guard", async () => {
+    const source = await readControllerSource();
+
+    expect(source).toContain("HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB");
+    expect(source).toContain("nodeOptionsForDeployChild");
+    expect(source).toContain("NODE_OPTIONS: nodeOptionsForDeployChild");
   });
 });

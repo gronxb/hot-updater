@@ -33,6 +33,16 @@ function controlStepBody(scenarioName: string, stage: string) {
   return step.body ?? {};
 }
 
+function controlStepDefinition(scenarioName: string, stage: string) {
+  const step = getDetoxScenarioDefinition(scenarioName).steps.find(
+    (entry) => entry.stage === stage,
+  );
+  if (!step || step.kind !== "control") {
+    throw new Error(`Missing control step ${stage} in ${scenarioName}`);
+  }
+  return step;
+}
+
 describe("Detox scenario port catalog", () => {
   it("ports the Maestro default suite names into Detox-owned waves", () => {
     // Given: Maestro default order remains the parity oracle.
@@ -370,6 +380,56 @@ describe("Detox scenario port catalog", () => {
       "wait manifest fallback metadata stable",
       "assert manifest diff fallback",
     ]);
+  });
+
+  it("ports numeric cohort rollout through an included rollout sample", () => {
+    const stages = scenarioStages("numeric-cohort-rollout");
+
+    expect(stages).toEqual([
+      "launch built-in app",
+      "capture built-in bundle id",
+      "deploy numeric cohort bundle",
+      "compute rollout sample",
+      "enter included cohort",
+      "apply included cohort",
+      "assert included cohort applied",
+      "install rollout update",
+      "wait rollout metadata pending",
+      "assert rollout action result",
+      "reload rollout update",
+      "wait rollout metadata stable",
+      "assert rollout launch",
+      "enter excluded cohort",
+      "apply excluded cohort",
+      "assert excluded cohort applied",
+      "install excluded cohort update",
+      "assert excluded metadata reset",
+      "reload excluded cohort state",
+      "assert excluded cohort built-in bundle",
+    ]);
+    expect(
+      controlStepDefinition("numeric-cohort-rollout", "compute rollout sample")
+        .saveResultFieldsAs,
+    ).toEqual({
+      excludedCohort: "excludedCohort",
+      includedCohort: "includedCohort",
+    });
+    expect(
+      controlStepBody("numeric-cohort-rollout", "deploy numeric cohort bundle")
+        .rollout,
+    ).toBe(10);
+    expect(
+      controlStepBody("numeric-cohort-rollout", "deploy numeric cohort bundle")
+        .safeBundleIds,
+    ).toEqual(["$builtInBundleId"]);
+    expect(
+      controlStepBody("numeric-cohort-rollout", "wait rollout metadata pending")
+        .verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody("numeric-cohort-rollout", "wait rollout metadata stable")
+        .verificationPending,
+    ).toBe(false);
   });
 
   it("ports targeted cohort switchback as bundle state, not restore text", () => {
