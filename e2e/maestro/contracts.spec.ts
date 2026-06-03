@@ -156,4 +156,19 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("HotUpdaterCohort.xml");
     expect(source).toContain("cohort: cohortValue");
   });
+
+  it("keeps update-check timeout diagnostics inside helper scope", async () => {
+    const source = await readControllerSource();
+    const helperStart = source.indexOf(
+      "async function waitForUpdateCheckVisibilityUrl",
+    );
+    const helperEnd = source.indexOf(
+      "\n}\n\nfunction normalizeE2ECohort",
+      helperStart,
+    );
+    const helperSource = source.slice(helperStart, helperEnd);
+
+    expect(helperSource).toContain("minBundleId: args.minBundleId");
+    expect(helperSource).not.toContain("\n        minBundleId,\n");
+  });
 });

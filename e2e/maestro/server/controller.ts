@@ -4487,7 +4487,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
     request: {
       bundleId: args.requestBundleId,
       channel: args.channel,
-      minBundleId,
+      minBundleId: args.minBundleId,
     },
     url,
   });
@@ -4508,7 +4508,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       request: {
         bundleId: args.requestBundleId,
         channel: args.channel,
-        minBundleId,
+        minBundleId: args.minBundleId,
       },
     },
   );
