@@ -27,6 +27,7 @@ let createControlClient;
 let getDetoxScenarioDefinition;
 let controlClient;
 let stageValues;
+let synchronizationDisabledUntilLaunch = false;
 
 function isAndroidRun() {
   return [
@@ -196,6 +197,16 @@ async function waitForVisibleText(testID, contains) {
   }
 }
 
+async function disableSynchronizationUntilLaunch() {
+  if (synchronizationDisabledUntilLaunch) return;
+  await device.disableSynchronization();
+  synchronizationDisabledUntilLaunch = true;
+}
+
+function markSynchronizationRestoredByLaunch() {
+  synchronizationDisabledUntilLaunch = false;
+}
+
 async function runTapStep(step) {
   const target = await waitForTestID(step.testID);
   if (!step.expectResultContains) {
@@ -203,13 +214,9 @@ async function runTapStep(step) {
     return;
   }
 
-  await device.disableSynchronization();
-  try {
-    await target.tap();
-    await waitForVisibleText("update-action-result", step.expectResultContains);
-  } finally {
-    await device.enableSynchronization();
-  }
+  await disableSynchronizationUntilLaunch();
+  await target.tap();
+  await waitForVisibleText("update-action-result", step.expectResultContains);
 }
 
 async function runDeviceAction(step) {
@@ -219,16 +226,19 @@ async function runDeviceAction(step) {
   }
   if (step.action === "resetAppState") {
     await device.launchApp({ delete: true, newInstance: true });
+    markSynchronizationRestoredByLaunch();
     return;
   }
   if (step.action === "reload") {
     await device.terminateApp();
     await device.launchApp({ newInstance: true });
+    markSynchronizationRestoredByLaunch();
     return;
   }
   await controlClient.postJson(`${step.stage}: prepare launch`, "/e2e/prepare-app-launch", {});
   try {
     await device.launchApp({ newInstance: true });
+    markSynchronizationRestoredByLaunch();
   } catch (error) {
     if (!step.stage.toLowerCase().includes("crash")) throw error;
   }
@@ -296,6 +306,7 @@ describe("HotUpdater Detox scenarios", () => {
     await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
     await controlClient.postJson("reset local app state", "/e2e/reset-local-app-state", {});
     await device.launchApp({ delete: true, newInstance: true });
+    markSynchronizationRestoredByLaunch();
   });
 
   afterEach(async () => {

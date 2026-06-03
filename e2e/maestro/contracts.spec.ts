@@ -120,4 +120,14 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("nodeOptionsForDeployChild");
     expect(source).toContain("NODE_OPTIONS: nodeOptionsForDeployChild");
   });
+
+  it("serializes deploy child processes with a host-level E2E lock", async () => {
+    const source = await readControllerSource();
+
+    expect(source).toContain("HOT_UPDATER_E2E_DEPLOY_LOCK_DIR");
+    expect(source).toContain("acquireDeployProcessLock");
+    expect(source).toContain("releaseDeployProcessLock");
+    expect(source).toContain("deploy process lock acquired");
+    expect(source).toContain("deploy process lock waiting");
+  });
 });

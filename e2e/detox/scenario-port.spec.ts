@@ -217,17 +217,31 @@ describe("Detox scenario port catalog", () => {
     }
   });
 
-  it("disables Detox synchronization only while install actions are in flight", async () => {
+  it("keeps Detox synchronization disabled until the app is relaunched after install actions", async () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const installTapBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("async function runTapStep"),
       detoxJestSpec.indexOf("async function runScenarioStep"),
     );
+    const deviceActionBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function runDeviceAction"),
+      detoxJestSpec.indexOf("async function runControlStep"),
+    );
+    const syncHelperBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function disableSynchronizationUntilLaunch"),
+      detoxJestSpec.indexOf("async function runTapStep"),
+    );
 
     expect(installTapBody).toContain("step.expectResultContains");
-    expect(installTapBody).toContain("device.disableSynchronization()");
-    expect(installTapBody).toContain("device.enableSynchronization()");
-    expect(installTapBody).toContain("finally");
+    expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
+    expect(syncHelperBody).toContain("device.disableSynchronization()");
+    expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
+    expect(installTapBody).toContain(
+      'waitForVisibleText("update-action-result", step.expectResultContains)',
+    );
+    expect(installTapBody).not.toContain("device.enableSynchronization()");
+    expect(installTapBody).not.toContain("finally");
+    expect(deviceActionBody).toContain("markSynchronizationRestoredByLaunch()");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });

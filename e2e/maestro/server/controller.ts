@@ -274,6 +274,7 @@ const E2E_APP_VERSION = "1.0";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
+const DEPLOY_PROCESS_LOCK_DIR_ENV_KEY = "HOT_UPDATER_E2E_DEPLOY_LOCK_DIR";
 const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
@@ -669,6 +670,15 @@ function bareBuildCacheRoot() {
   }
 
   return path.resolve(REPO_DIR, cacheDir);
+}
+
+function deployProcessLockRoot() {
+  const lockDir = process.env[DEPLOY_PROCESS_LOCK_DIR_ENV_KEY];
+  if (lockDir) {
+    return path.resolve(REPO_DIR, lockDir);
+  }
+
+  return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock");
 }
 
 function readOptionalFileHash(filePath: string) {
@@ -5431,6 +5441,102 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
   }
 }
 
+async function readDeployProcessLockOwner(lockPath: string) {
+  try {
+    return JSON.parse(
+      await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
+    ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
+  } catch {
+    return null;
+  }
+}
+
+function isDeployProcessLockOwnerAlive(
+  owner: Awaited<ReturnType<typeof readDeployProcessLockOwner>>,
+) {
+  if (!owner || typeof owner.pid !== "number" || !Number.isInteger(owner.pid)) {
+    return true;
+  }
+
+  return isProcessRunning(owner.pid);
+}
+
+async function acquireDeployProcessLock() {
+  const lockRoot = deployProcessLockRoot();
+  const lockPath = path.join(lockRoot, "deploy.lock");
+  await fsPromises.mkdir(lockRoot, { recursive: true });
+  let loggedWait = false;
+
+  while (true) {
+    try {
+      await fsPromises.mkdir(lockPath);
+      await fsPromises.writeFile(
+        path.join(lockPath, "owner.json"),
+        JSON.stringify(
+          {
+            pid: process.pid,
+            platform: session.platform,
+            startedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+      logE2e("deploy process lock acquired", {
+        lockPath,
+        platform: session.platform,
+      });
+      return lockPath;
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        !("code" in error) ||
+        error.code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      const stats = await fsPromises.stat(lockPath).catch(() => null);
+      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
+      const owner = await readDeployProcessLockOwner(lockPath);
+      if (!isDeployProcessLockOwnerAlive(owner)) {
+        logE2e("deploy process lock owner exited; removing", {
+          lockPath,
+          owner,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        loggedWait = false;
+        continue;
+      }
+
+      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
+        logE2e("deploy process lock stale; removing", {
+          ageMs,
+          lockPath,
+          owner,
+        });
+        await fsPromises.rm(lockPath, { force: true, recursive: true });
+        continue;
+      }
+
+      if (!loggedWait) {
+        logE2e("deploy process lock waiting", {
+          lockPath,
+          owner,
+          platform: session.platform,
+        });
+        loggedWait = true;
+      }
+      await sleep(BARE_BUILD_CACHE_LOCK_WAIT_MS);
+    }
+  }
+}
+
+async function releaseDeployProcessLock(lockPath: string) {
+  await fsPromises.rm(lockPath, { force: true, recursive: true });
+}
+
 async function deployBundle(request: DeployBundleRequest) {
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
   const remoteChannel = getRemoteChannel(request.channel);
@@ -5507,10 +5613,12 @@ async function deployBundle(request: DeployBundleRequest) {
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
-  const lockPath = await acquireBareBuildCacheLock(cacheEnv);
+  const deployProcessLockPath = await acquireDeployProcessLock();
+  let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
+      bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv);
       const deployStartedAt = Date.now();
       const output = await runLogged("node", args, {
         cwd: session.exampleDir,
@@ -5520,9 +5628,13 @@ async function deployBundle(request: DeployBundleRequest) {
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
     } finally {
-      if (lockPath) {
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
+      if (bareBuildLockPath) {
+        await fsPromises.rm(bareBuildLockPath, {
+          force: true,
+          recursive: true,
+        });
       }
+      await releaseDeployProcessLock(deployProcessLockPath);
     }
   })();
   const bundleId = extractDeployBundleId(deployOutput);
