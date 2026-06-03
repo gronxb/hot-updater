@@ -26,12 +26,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy runtime channel bundle",
       },
       {
-        kind: "typeText",
-        stage: "enter runtime channel",
-        testID: "runtime-channel-input",
-        text: "beta",
-      },
-      {
         kind: "tap",
         stage: "install runtime channel update",
         testID: "action-install-runtime-channel-update",

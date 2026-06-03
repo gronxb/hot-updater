@@ -91,7 +91,6 @@ describe("Detox scenario port catalog", () => {
 
     // Then: scenarios use testIDs and control stages without sleeps/retries.
     expect(joinedSources).toContain("action-install-current-channel-update");
-    expect(joinedSources).toContain("runtime-channel-input");
     expect(joinedSources).toContain("cohort-input");
     expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\b/i);
   });
@@ -289,6 +288,36 @@ describe("Detox scenario port catalog", () => {
     // Then: the top-section special case must win before the generic result tab.
     expect(launchStatusIndex).toBeGreaterThan(-1);
     expect(launchStatusIndex).toBeLessThan(genericResultIndex);
+  });
+
+  it("routes action inputs to the actions section before generic runtime fields", async () => {
+    // Given: runtime-channel-input is rendered under the Actions section.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+
+    // When: the navigation target resolver is inspected.
+    const inputIndex = detoxJestSpec.indexOf('testID.endsWith("-input")');
+    const runtimeIndex = detoxJestSpec.indexOf('testID.startsWith("runtime-")');
+
+    // Then: input fields must not be routed to the top section.
+    expect(inputIndex).toBeGreaterThan(-1);
+    expect(inputIndex).toBeLessThan(runtimeIndex);
+  });
+
+  it("only disables Detox synchronization for install taps", async () => {
+    // Given: install buttons can start native download work that Detox sees as busy.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const tapBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("function shouldDisableSynchronizationForTap"),
+      detoxJestSpec.indexOf("async function runDeviceAction"),
+    );
+
+    // When: tap handling is inspected.
+    // Then: cohort/channel utility buttons keep normal synchronization.
+    expect(tapBody).toContain("shouldDisableSynchronizationForTap");
+    expect(tapBody).toContain('testID.startsWith("action-install-")');
+    expect(tapBody).not.toContain(
+      "await disableSynchronizationUntilLaunch();\n  await target.tap();",
+    );
   });
 
   it("ports the target-cohorts-only pending verification and stable launch sequence", () => {
@@ -525,7 +554,6 @@ describe("Detox scenario port catalog", () => {
       "launch default channel",
       "capture built-in bundle id",
       "deploy runtime channel bundle",
-      "enter runtime channel",
       "install runtime channel update",
       "wait runtime channel metadata pending",
       "assert runtime channel result",
@@ -542,6 +570,11 @@ describe("Detox scenario port catalog", () => {
         "wait runtime channel metadata pending",
       ).verificationPending,
     ).toBe(true);
+    expect(
+      getDetoxScenarioDefinition("runtime-channel-switch-reset").steps.some(
+        (step) => step.kind === "typeText",
+      ),
+    ).toBe(false);
   });
 
   it("ports numeric cohort rollout through an included rollout sample", () => {

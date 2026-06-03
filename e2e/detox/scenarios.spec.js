@@ -134,6 +134,9 @@ function navTargetForTestID(testID) {
   if (testID.startsWith("action-set-") || testID === "action-restore-initial-cohort") {
     return "e2e-nav-cohort-actions";
   }
+  if (testID.startsWith("action-") || testID.endsWith("-input")) {
+    return "e2e-nav-actions";
+  }
   if (
     testID === "launch-status-result" ||
     testID === "launch-crashed-bundle-result" ||
@@ -144,9 +147,6 @@ function navTargetForTestID(testID) {
     testID.startsWith("runtime-")
   ) {
     return "e2e-nav-top";
-  }
-  if (testID.startsWith("action-") || testID.endsWith("-input")) {
-    return "e2e-nav-actions";
   }
   if (testID.endsWith("-result")) {
     return "e2e-nav-action-results";
@@ -203,13 +203,19 @@ async function disableSynchronizationUntilLaunch() {
   synchronizationDisabledUntilLaunch = true;
 }
 
+function shouldDisableSynchronizationForTap(testID) {
+  return testID.startsWith("action-install-");
+}
+
 function markSynchronizationRestoredByLaunch() {
   synchronizationDisabledUntilLaunch = false;
 }
 
 async function runTapStep(step) {
   const target = await waitForTestID(step.testID);
-  await disableSynchronizationUntilLaunch();
+  if (shouldDisableSynchronizationForTap(step.testID)) {
+    await disableSynchronizationUntilLaunch();
+  }
   await target.tap();
 }
 
