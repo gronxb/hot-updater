@@ -171,4 +171,22 @@ describe("Maestro E2E contract", () => {
     expect(helperSource).toContain("minBundleId: args.minBundleId");
     expect(helperSource).not.toContain("\n        minBundleId,\n");
   });
+
+  it("keeps update-check request URLs inside helper scope", async () => {
+    const source = await readControllerSource();
+    const helperStart = source.indexOf(
+      "async function waitForUpdateCheckVisibilityUrl",
+    );
+    const helperEnd = source.indexOf(
+      "\n}\n\nfunction normalizeE2ECohort",
+      helperStart,
+    );
+    const helperSource = source.slice(helperStart, helperEnd);
+
+    expect(helperSource).toContain("fetch(args.url,");
+    expect(helperSource).toContain("url: args.url");
+    expect(helperSource).toContain("`URL: ${args.url}`");
+    expect(helperSource).not.toContain("fetch(url,");
+    expect(helperSource).not.toContain("`URL: ${url}`");
+  });
 });

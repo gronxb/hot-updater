@@ -4445,7 +4445,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
 
   for (let index = 0; index < 360; index += 1) {
     try {
-      const response = await fetch(url, {
+      const response = await fetch(args.url, {
         headers: {
           "Hot-Updater-SDK-Version": "e2e",
         },
@@ -4465,7 +4465,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
             bundleId: args.bundleId,
             channel: args.channel,
             requestBundleId: args.requestBundleId,
-            url,
+            url: args.url,
           });
           return;
         }
@@ -4489,14 +4489,14 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       channel: args.channel,
       minBundleId: args.minBundleId,
     },
-    url,
+    url: args.url,
   });
 
   throw createEndpointError(
     [
       "Timed out waiting for update check visibility.",
       `Expected update check to return bundleId=${args.bundleId}.`,
-      `URL: ${url}`,
+      `URL: ${args.url}`,
     ].join("\n"),
     {
       expected: {
