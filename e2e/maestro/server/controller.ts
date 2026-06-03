@@ -202,11 +202,14 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
 const NATIVE_ARTIFACT_CACHE_VERSION = 4;
 const IOS_PODS_CACHE_VERSION = 2;
 const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
+const E2E_MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
+const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const IOS_RELEASE_BUILD_SETTINGS = [
   "ONLY_ACTIVE_ARCH=YES",
   "COMPILER_INDEX_STORE_ENABLE=NO",
   "GCC_GENERATE_DEBUGGING_SYMBOLS=NO",
   "SWIFT_COMPILATION_MODE=singlefile",
+  `HOT_UPDATER_MIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`,
 ];
 const BUILT_IN_BUNDLE_CACHE_INPUT_PATHS = [
   "package.json",
@@ -283,7 +286,6 @@ const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
 const LARGE_ARCHIVE_ASSET_REQUIRE_PATH =
@@ -886,6 +888,7 @@ function nativeArtifactCacheKey(architecture?: string | null) {
       cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
       hotUpdaterFingerprint: hotUpdaterNativeFingerprintHash(),
       initialMarker: session.initialMarker,
+      minBundleId: E2E_MIN_BUNDLE_ID,
       platform: session.platform,
       runtime: {
         arch: process.arch,
@@ -2953,6 +2956,7 @@ async function buildDebuggableAndroidRelease(
     "--no-daemon",
     "--max-workers=2",
     "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+    `-PMIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`,
     "-Pkotlin.compiler.execution.strategy=in-process",
     ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
   ];
@@ -4397,7 +4401,7 @@ function buildAppVersionUpdateCheckUrl(args: {
 function getCurrentUpdateCheckBundleId() {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
-  return metadataState.stagingBundleId ?? NIL_UUID;
+  return metadataState.stagingBundleId ?? E2E_MIN_BUNDLE_ID;
 }
 
 function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
@@ -4413,7 +4417,7 @@ async function waitForUpdateCheckVisibility(args: {
   channel: string;
   requestBundleId: string;
 }) {
-  const minBundleId = NIL_UUID;
+  const minBundleId = E2E_MIN_BUNDLE_ID;
   const url = buildAppVersionUpdateCheckUrl({
     bundleId: args.requestBundleId,
     channel: args.channel,
@@ -5521,7 +5525,7 @@ async function bootstrap() {
 }
 
 async function captureBuiltInBundleId() {
-  const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;
+  const builtInBundleId = E2E_MIN_BUNDLE_ID;
 
   session.builtInBundleId = builtInBundleId;
 

@@ -181,6 +181,53 @@ describe("Maestro E2E contract", () => {
     expect(source).not.toContain('reason: "cohort-unavailable"');
   });
 
+  it("prewarms the built-in release update-check key before first OTA deploy", async () => {
+    const source = await readControllerSource();
+    const visibilityStart = source.indexOf(
+      "async function waitForUpdateCheckVisibility",
+    );
+    const visibilityEnd = source.indexOf(
+      "\n}\n\nasync function waitForUpdateCheckVisibilityUrl",
+      visibilityStart,
+    );
+    const currentBundleIdStart = source.indexOf(
+      "function getCurrentUpdateCheckBundleId",
+    );
+    const currentBundleIdEnd = source.indexOf(
+      "\n}\n\nfunction shouldWaitForUpdateCheckVisibility",
+      currentBundleIdStart,
+    );
+    const nativeCacheKeyStart = source.indexOf(
+      "function nativeArtifactCacheKey",
+    );
+    const nativeCacheKeyEnd = source.indexOf(
+      "\n}\n\nfunction nativeArtifactCachePaths",
+      nativeCacheKeyStart,
+    );
+    const visibilitySource = source.slice(visibilityStart, visibilityEnd);
+    const currentBundleIdSource = source.slice(
+      currentBundleIdStart,
+      currentBundleIdEnd,
+    );
+    const nativeCacheKeySource = source.slice(
+      nativeCacheKeyStart,
+      nativeCacheKeyEnd,
+    );
+
+    expect(source).toContain(
+      'const E2E_MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000"',
+    );
+    expect(source).toContain(
+      "`HOT_UPDATER_MIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`",
+    );
+    expect(source).toContain("`-PMIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`");
+    expect(visibilitySource).toContain("const minBundleId = E2E_MIN_BUNDLE_ID");
+    expect(currentBundleIdSource).toContain(
+      "metadataState.stagingBundleId ?? E2E_MIN_BUNDLE_ID",
+    );
+    expect(nativeCacheKeySource).toContain("minBundleId: E2E_MIN_BUNDLE_ID");
+  });
+
   it("keeps update-check timeout diagnostics inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(
