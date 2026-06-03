@@ -35,15 +35,17 @@ function isAndroidRun() {
   ].some((value) => value?.toLowerCase().includes("android"));
 }
 
-function androidReverseHostPort() {
-  return Number.parseInt(
-    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ||
-      process.env.HOT_UPDATER_SERVER_PORT ||
-      process.env.PORT ||
-      process.env.HOT_UPDATER_E2E_CONTROL_PORT ||
-      "3007",
-    10,
-  );
+function androidReversePorts() {
+  return [
+    process.env.HOT_UPDATER_E2E_CONTROL_PORT,
+    process.env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT,
+    process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT,
+    process.env.HOT_UPDATER_SERVER_PORT,
+    process.env.PORT,
+  ]
+    .map((value) => Number.parseInt(value || "", 10))
+    .filter((value) => Number.isInteger(value) && value > 0)
+    .filter((value, index, values) => values.indexOf(value) === index);
 }
 
 function controlBaseUrl() {
@@ -156,7 +158,17 @@ async function navigateToTestID(testID) {
   await element(by.id(navTarget)).tap();
 }
 
+async function ensureAppForegroundForInteraction() {
+  await controlClient.postJson(
+    "ensure app foreground",
+    "/e2e/ensure-app-foreground",
+    {},
+  );
+  await device.launchApp({ newInstance: false });
+}
+
 async function waitForTestID(testID) {
+  await ensureAppForegroundForInteraction();
   await navigateToTestID(testID);
   await waitFor(element(by.id(testID))).toBeVisible().withTimeout(30000);
   return element(by.id(testID));
@@ -239,7 +251,9 @@ describe("HotUpdater Detox scenarios", () => {
     });
     stageValues = {};
     if (isAndroidRun()) {
-      await device.reverseTcpPort(androidReverseHostPort());
+      for (const port of androidReversePorts()) {
+        await device.reverseTcpPort(port);
+      }
     }
     await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
     await controlClient.postJson("reset local app state", "/e2e/reset-local-app-state", {});
@@ -249,7 +263,9 @@ describe("HotUpdater Detox scenarios", () => {
   afterEach(async () => {
     await device.terminateApp();
     if (isAndroidRun()) {
-      await device.unreverseTcpPort(androidReverseHostPort());
+      for (const port of androidReversePorts()) {
+        await device.unreverseTcpPort(port);
+      }
     }
   });
 

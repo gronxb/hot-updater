@@ -26,6 +26,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         saveResultAs: "stableBundleId",
         stage: "deploy stable bundle",
       },
+      { action: "launch", kind: "device", stage: "launch stable update app" },
       {
         kind: "tap",
         stage: "install stable update",
@@ -64,6 +65,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         saveResultAs: "crashBundleId",
         stage: "deploy crash bundle",
       },
+      { action: "launch", kind: "device", stage: "launch crash update app" },
       {
         kind: "tap",
         stage: "install crash update",

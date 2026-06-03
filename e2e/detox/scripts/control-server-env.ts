@@ -108,7 +108,7 @@ function resolveRuntimeConfigUrl(
   }
   if (platform === "android") {
     const devicePort = parsePositivePort(
-      env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107",
+      env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? controlPort,
       "HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT",
     );
     return `http://localhost:${devicePort}/e2e/runtime-config`;

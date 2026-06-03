@@ -267,6 +267,7 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         saveResultAs: "previousBundleId",
         stage: "deploy manifest base bundle",
       },
+      { action: "launch", kind: "device", stage: "launch manifest base app" },
       {
         kind: "tap",
         stage: "install manifest base update",
@@ -329,6 +330,11 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         kind: "control",
         pathName: "/e2e/assert-bundle-patch-bases",
         stage: "assert manifest fallback patch bases",
+      },
+      {
+        action: "launch",
+        kind: "device",
+        stage: "launch manifest fallback app",
       },
       {
         kind: "tap",

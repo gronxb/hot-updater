@@ -7,10 +7,29 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
     steps: [
       { action: "launch", kind: "device", stage: "launch default channel" },
       {
+        kind: "control",
+        pathName: "/e2e/capture-built-in-bundle-id",
+        saveResultAs: "builtInBundleId",
+        stage: "capture built-in bundle id",
+      },
+      {
+        body: {
+          channel: "beta",
+          marker: "runtime-channel-beta-detox",
+          message: "Detox runtime channel bundle",
+          mode: "reset",
+          targetAppVersion: "1.0.x",
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/deploy-bundle",
+        saveResultAs: "runtimeBundleId",
+        stage: "deploy runtime channel bundle",
+      },
+      {
         kind: "typeText",
         stage: "enter runtime channel",
         testID: "runtime-channel-input",
-        text: "qa-runtime",
+        text: "beta",
       },
       {
         kind: "tap",
@@ -18,10 +37,31 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-install-runtime-channel-update",
       },
       {
-        contains: "runtime-channel:qa-runtime",
+        body: {
+          bundleId: "$runtimeBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait runtime channel metadata pending",
+      },
+      {
+        contains: "runtime-channel -> beta",
         kind: "assertText",
         stage: "assert runtime channel result",
-        testID: "update-action-result",
+        testID: "channel-action-result",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload runtime channel update",
+      },
+      {
+        contains: "$runtimeBundleId",
+        kind: "assertText",
+        stage: "assert runtime channel bundle",
+        testID: "runtime-bundle-id",
       },
       {
         kind: "tap",
@@ -29,10 +69,21 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-reset-runtime-channel",
       },
       {
-        contains: "runtime-channel -> reset",
+        contains: "reset -> true",
         kind: "assertText",
         stage: "assert runtime channel reset",
         testID: "channel-action-result",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload default channel",
+      },
+      {
+        contains: "$builtInBundleId",
+        kind: "assertText",
+        stage: "assert reset built-in bundle",
+        testID: "runtime-bundle-id",
       },
     ],
   },

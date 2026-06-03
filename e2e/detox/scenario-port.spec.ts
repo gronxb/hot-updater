@@ -152,8 +152,27 @@ describe("Detox scenario port catalog", () => {
     // Then: app state and Android reverse TCP forwarding are cleaned per scenario.
     expect(detoxJestSpec).toContain("device.reverseTcpPort");
     expect(detoxJestSpec).toContain("device.unreverseTcpPort");
+    expect(detoxJestSpec).toContain("HOT_UPDATER_E2E_CONTROL_PORT");
+    expect(detoxJestSpec).toContain("HOT_UPDATER_SERVER_PORT");
+    expect(detoxJestSpec).toContain(
+      "for (const port of androidReversePorts())",
+    );
     expect(detoxJestSpec).toContain("device.terminateApp");
     expect(detoxJestSpec).toContain("delete: true");
+  });
+
+  it("foregrounds the running app before Detox UI interactions", async () => {
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const waitForTestIdBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function ensureAppForegroundForInteraction"),
+      detoxJestSpec.indexOf("async function runDeviceAction"),
+    );
+
+    expect(waitForTestIdBody).toContain("/e2e/ensure-app-foreground");
+    expect(waitForTestIdBody).toContain(
+      "device.launchApp({ newInstance: false })",
+    );
+    expect(waitForTestIdBody).not.toMatch(/\bretry\b/i);
   });
 
   it("prefers the Detox control port over provider ports for host control traffic", async () => {
@@ -367,6 +386,7 @@ describe("Detox scenario port catalog", () => {
     // Then: previous OTA state exists in the bundle store before fallback.
     expect(stages).toEqual([
       "deploy manifest base bundle",
+      "launch manifest base app",
       "install manifest base update",
       "wait manifest base metadata pending",
       "reload manifest base update",
@@ -374,12 +394,62 @@ describe("Detox scenario port catalog", () => {
       "deploy manifest intermediate bundle",
       "deploy manifest fallback bundle",
       "assert manifest fallback patch bases",
+      "launch manifest fallback app",
       "install manifest fallback update",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
       "assert manifest diff fallback",
     ]);
+  });
+
+  it("ports release recovery launch boundaries before each install", () => {
+    const stages = scenarioStages("release-ota-recovery");
+
+    expect(stages).toEqual([
+      "launch built-in app",
+      "capture built-in bundle id",
+      "deploy stable bundle",
+      "launch stable update app",
+      "install stable update",
+      "wait stable metadata pending",
+      "reload stable bundle",
+      "wait stable metadata active",
+      "assert stable launch",
+      "deploy crash bundle",
+      "launch crash update app",
+      "install crash update",
+      "wait crash metadata pending",
+      "launch crash bundle",
+      "wait crash recovery",
+      "assert recovered launch",
+    ]);
+  });
+
+  it("ports runtime channel switching as an OTA state transition", () => {
+    const stages = scenarioStages("runtime-channel-switch-reset");
+
+    expect(stages).toEqual([
+      "launch default channel",
+      "capture built-in bundle id",
+      "deploy runtime channel bundle",
+      "enter runtime channel",
+      "install runtime channel update",
+      "wait runtime channel metadata pending",
+      "assert runtime channel result",
+      "reload runtime channel update",
+      "assert runtime channel bundle",
+      "reset runtime channel",
+      "assert runtime channel reset",
+      "reload default channel",
+      "assert reset built-in bundle",
+    ]);
+    expect(
+      controlStepBody(
+        "runtime-channel-switch-reset",
+        "wait runtime channel metadata pending",
+      ).verificationPending,
+    ).toBe(true);
   });
 
   it("ports numeric cohort rollout through an included rollout sample", () => {

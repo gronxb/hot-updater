@@ -108,4 +108,25 @@ describe("Detox control server environment", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("uses each Android split control port as the app runtime config port", () => {
+    // Given: Android split shards run distinct host control servers.
+    const first = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CONTROL_PORT: "3108",
+      HOT_UPDATER_SERVER_PORT: "3008",
+      PORT: "3008",
+    });
+    const second = buildDetoxControlServerEnv("android", {
+      HOT_UPDATER_E2E_CONTROL_PORT: "3112",
+      HOT_UPDATER_SERVER_PORT: "3012",
+      PORT: "3012",
+    });
+
+    expect(first.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
+      "http://localhost:3108/e2e/runtime-config",
+    );
+    expect(second.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
+      "http://localhost:3112/e2e/runtime-config",
+    );
+  });
 });
