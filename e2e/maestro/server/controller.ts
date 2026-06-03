@@ -4700,10 +4700,12 @@ function writeAndroidE2ECohort(cohort: string) {
     session.appId,
     "sh",
     "-c",
-    [
-      `mkdir -p ${shellSingleQuote(prefsDir)}`,
-      `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
-    ].join(" && "),
+    shellSingleQuote(
+      [
+        `mkdir -p ${shellSingleQuote(prefsDir)}`,
+        `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
+      ].join(" && "),
+    ),
   ]);
 }
 
