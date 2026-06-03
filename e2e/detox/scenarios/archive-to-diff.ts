@@ -58,6 +58,24 @@ export const archiveToDiffScenario: DetoxScenarioDefinition = {
       stage: "wait archive base metadata stable",
     },
     {
+      contains: "$archiveBundleId",
+      kind: "assertText",
+      stage: "assert archive base bundle id",
+      testID: "runtime-bundle-id",
+    },
+    {
+      contains: "archive-base-detox",
+      kind: "assertText",
+      stage: "assert archive base marker",
+      testID: "runtime-scenario-marker",
+    },
+    {
+      contains: "Current Launch Status: STABLE",
+      kind: "assertText",
+      stage: "assert archive base stable launch",
+      testID: "launch-status-result",
+    },
+    {
       body: {
         channel: "production",
         diffBaseBundleId: "$archiveBundleId",
@@ -121,6 +139,24 @@ export const archiveToDiffScenario: DetoxScenarioDefinition = {
       kind: "control",
       pathName: "/e2e/assert-bsdiff-patch-applied",
       stage: "assert archive diff patch",
+    },
+    {
+      contains: "$diffBundleId",
+      kind: "assertText",
+      stage: "assert archive diff bundle id",
+      testID: "runtime-bundle-id",
+    },
+    {
+      contains: "archive-diff-detox",
+      kind: "assertText",
+      stage: "assert archive diff marker",
+      testID: "runtime-scenario-marker",
+    },
+    {
+      contains: "Current Launch Status: STABLE",
+      kind: "assertText",
+      stage: "assert archive diff stable launch",
+      testID: "launch-status-result",
     },
   ],
 };

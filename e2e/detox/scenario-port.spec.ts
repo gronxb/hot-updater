@@ -385,6 +385,9 @@ describe("Detox scenario port catalog", () => {
       "assert first ota uses archive",
       "reload archive base update",
       "wait archive base metadata stable",
+      "assert archive base bundle id",
+      "assert archive base marker",
+      "assert archive base stable launch",
       "deploy diff bundle",
       "assert archive diff bases",
       "launch archive diff app",
@@ -393,6 +396,9 @@ describe("Detox scenario port catalog", () => {
       "reload archive diff update",
       "wait archive diff metadata stable",
       "assert archive diff patch",
+      "assert archive diff bundle id",
+      "assert archive diff marker",
+      "assert archive diff stable launch",
     ]);
   });
 
