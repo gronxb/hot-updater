@@ -100,6 +100,10 @@ function resolvePlaceholders(value) {
   return value;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function saveControlResult(saveResultAs, saveResultFieldsAs, result) {
   for (const [key, value] of Object.entries(result)) {
     stageValues[key] = value;
@@ -164,6 +168,9 @@ async function ensureAppForegroundForInteraction() {
     "/e2e/ensure-app-foreground",
     {},
   );
+  if (isAndroidRun()) {
+    await device.sendToHome();
+  }
   await device.launchApp({ newInstance: false });
 }
 
@@ -172,6 +179,21 @@ async function waitForTestID(testID) {
   await navigateToTestID(testID);
   await waitFor(element(by.id(testID))).toBeVisible().withTimeout(30000);
   return element(by.id(testID));
+}
+
+async function waitForVisibleText(testID, contains) {
+  await navigateToTestID(testID);
+  const expectedText = String(resolvePlaceholders(contains));
+  const target = element(
+    by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText)))),
+  );
+  await waitFor(target).toBeVisible().withTimeout(30000);
+  const text = textFromAttributes(await target.getAttributes());
+  if (!text.includes(expectedText)) {
+    throw new Error(
+      `${testID} expected to contain "${expectedText}", received "${text}"`,
+    );
+  }
 }
 
 async function runDeviceAction(step) {
@@ -216,6 +238,9 @@ async function runScenarioStep(step) {
     await runDeviceAction(step);
   } else if (step.kind === "tap") {
     await (await waitForTestID(step.testID)).tap();
+    if (step.expectResultContains) {
+      await waitForVisibleText("update-action-result", step.expectResultContains);
+    }
   } else if (step.kind === "typeText") {
     await (await waitForTestID(step.testID)).replaceText(
       String(resolvePlaceholders(step.text)),

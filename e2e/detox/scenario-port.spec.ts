@@ -172,7 +172,49 @@ describe("Detox scenario port catalog", () => {
     expect(waitForTestIdBody).toContain(
       "device.launchApp({ newInstance: false })",
     );
+    expect(waitForTestIdBody).toContain("device.sendToHome()");
     expect(waitForTestIdBody).not.toMatch(/\bretry\b/i);
+    expect(waitForTestIdBody).not.toContain("device.terminateApp");
+    expect(detoxJestSpec).toContain("by.text(new RegExp");
+  });
+
+  it("waits for install action results before metadata polling", () => {
+    const installSteps = [
+      ["release-ota-recovery", "install stable update", "$stableBundleId"],
+      ["release-ota-recovery", "install crash update", "$crashBundleId"],
+      [
+        "bspatch-manifest-diff-fallback",
+        "install manifest base update",
+        "$previousBundleId",
+      ],
+      [
+        "bspatch-manifest-diff-fallback",
+        "install manifest fallback update",
+        "$bundleId",
+      ],
+      [
+        "runtime-channel-switch-reset",
+        "install runtime channel update",
+        "$runtimeBundleId",
+      ],
+      [
+        "disabled-bundle-rollback-to-previous-ota",
+        "install previous bundle",
+        "$previousBundleId",
+      ],
+    ] as const;
+
+    for (const [scenarioName, stage, expected] of installSteps) {
+      const step = getDetoxScenarioDefinition(scenarioName).steps.find(
+        (entry) => entry.stage === stage,
+      );
+
+      expect(step).toMatchObject({
+        expectResultContains: expected,
+        kind: "tap",
+        testID: expect.stringContaining("action-install-"),
+      });
+    }
   });
 
   it("prefers the Detox control port over provider ports for host control traffic", async () => {

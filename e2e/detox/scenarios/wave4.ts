@@ -20,6 +20,7 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy force update bundle",
       },
       {
+        expectResultContains: "$forceBundleId",
         kind: "tap",
         stage: "install force update",
         testID: "action-install-current-channel-update",
@@ -73,6 +74,7 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy current bundle",
       },
       {
+        expectResultContains: "$currentBundleId",
         kind: "tap",
         stage: "install current bundle",
         testID: "action-install-current-channel-update",
@@ -148,6 +150,7 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy previous bundle",
       },
       {
+        expectResultContains: "$previousBundleId",
         kind: "tap",
         stage: "install previous bundle",
         testID: "action-install-current-channel-update",
@@ -193,6 +196,7 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy next bundle",
       },
       {
+        expectResultContains: "$nextBundleId",
         kind: "tap",
         stage: "install next bundle",
         testID: "action-install-current-channel-update",
@@ -231,6 +235,7 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "disable next bundle",
       },
       {
+        expectResultContains: "$previousBundleId",
         kind: "tap",
         stage: "install rollback to previous bundle",
         testID: "action-install-current-channel-update",

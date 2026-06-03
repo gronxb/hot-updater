@@ -15,6 +15,7 @@ export type DetoxScenarioStep =
       readonly stage: string;
     }
   | {
+      readonly expectResultContains?: string;
       readonly kind: "tap";
       readonly stage: string;
       readonly testID: string;

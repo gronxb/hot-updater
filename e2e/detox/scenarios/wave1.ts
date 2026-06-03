@@ -28,6 +28,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       { action: "launch", kind: "device", stage: "launch stable update app" },
       {
+        expectResultContains: "$stableBundleId",
         kind: "tap",
         stage: "install stable update",
         testID: "action-install-current-channel-update",
@@ -67,6 +68,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       { action: "launch", kind: "device", stage: "launch crash update app" },
       {
+        expectResultContains: "$crashBundleId",
         kind: "tap",
         stage: "install crash update",
         testID: "action-install-current-channel-update",

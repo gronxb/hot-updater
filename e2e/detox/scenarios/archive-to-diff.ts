@@ -24,6 +24,7 @@ export const archiveToDiffScenario: DetoxScenarioDefinition = {
       stage: "launch archive base app",
     },
     {
+      expectResultContains: "$archiveBundleId",
       kind: "tap",
       stage: "install archive base update",
       testID: "action-install-current-channel-update",
@@ -87,6 +88,7 @@ export const archiveToDiffScenario: DetoxScenarioDefinition = {
       stage: "launch archive diff app",
     },
     {
+      expectResultContains: "$diffBundleId",
       kind: "tap",
       stage: "install archive diff update",
       testID: "action-install-current-channel-update",
