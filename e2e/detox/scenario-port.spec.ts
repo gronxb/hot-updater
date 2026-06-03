@@ -376,6 +376,18 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
+  it("keeps archive-to-diff on the same default bundle profile as Maestro", () => {
+    // Given: the Maestro parity flow does not set BUNDLE_PROFILE for archive-to-diff.
+    const deployBody = controlStepBody(
+      "bspatch-archive-to-diff-ota",
+      "deploy archive base bundle",
+    );
+
+    // When: Detox ports the same deploy step.
+    // Then: it must not opt into the separate archive300mb stress fixture.
+    expect(deployBody.bundleProfile).toBeUndefined();
+  });
+
   it("ports multi-asset replacement through stable first and second installs", () => {
     // Given: Maestro verifies each multi-asset OTA after a stable relaunch.
     const stages = scenarioStages("multi-asset-replacement");

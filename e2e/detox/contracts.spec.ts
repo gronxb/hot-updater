@@ -90,6 +90,7 @@ describe("Detox E2E harness contract", () => {
     expect(configText).toContain("HOT_UPDATER_E2E_ANDROID_SERIAL");
     expect(configText).toContain("e2e/detox/jest.config.js");
     expect(configText).toContain("maxWorkers: 1");
+    expect(configText).toContain("bail: 1");
     expect(configText).toContain(
       'globalSetup: "detox/runners/jest/globalSetup"',
     );

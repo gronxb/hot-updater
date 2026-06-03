@@ -6,7 +6,6 @@ export const archiveToDiffScenario: DetoxScenarioDefinition = {
   steps: [
     {
       body: {
-        bundleProfile: "archive300mb",
         channel: "production",
         marker: "archive-base-detox",
         mode: "reset",
