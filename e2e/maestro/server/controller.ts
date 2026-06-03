@@ -3970,6 +3970,11 @@ async function patchEnvRuntimeConfigUrl() {
   });
 }
 
+function getHotUpdaterManagementHeaders() {
+  const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+  return authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+}
+
 async function waitForLocalProviderReady() {
   const url = getControllerReachableProviderReadinessUrl();
   if (!url) {
@@ -3980,6 +3985,7 @@ async function waitForLocalProviderReady() {
   for (let attempt = 1; attempt <= PROVIDER_READY_WAIT_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, {
+        headers: getHotUpdaterManagementHeaders(),
         signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
       });
       if (response.ok) {

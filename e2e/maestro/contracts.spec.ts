@@ -303,14 +303,24 @@ describe("Maestro E2E contract", () => {
       "async function waitForLocalProviderReady",
     );
     const waitEnd = source.indexOf("\n}\n\nfunction getUrlPort", waitStart);
+    const headersStart = source.indexOf(
+      "function getHotUpdaterManagementHeaders",
+    );
+    const headersEnd = source.indexOf(
+      "\n}\n\nasync function waitForLocalProviderReady",
+      headersStart,
+    );
     const readinessUrlSource = source.slice(readinessUrlStart, readinessUrlEnd);
     const waitSource = source.slice(waitStart, waitEnd);
+    const headersSource = source.slice(headersStart, headersEnd);
 
     expect(readinessUrlSource).toContain("/api/bundles");
     expect(readinessUrlSource).toContain('url.searchParams.set("platform"');
     expect(readinessUrlSource).toContain('url.searchParams.set("enabled"');
     expect(readinessUrlSource).toContain('url.searchParams.set("limit", "1")');
     expect(waitSource).toContain("getControllerReachableProviderReadinessUrl");
+    expect(waitSource).toContain("getHotUpdaterManagementHeaders()");
+    expect(headersSource).toContain("Authorization: `Bearer ${authToken}`");
     expect(waitSource).not.toContain("ProviderHealthUrl");
   });
 
