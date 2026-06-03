@@ -274,6 +274,22 @@ describe("Maestro E2E contract", () => {
     expect(bundleListSource).not.toContain("await sleep(");
   });
 
+  it("keeps reset channel database reads sequential inside one plugin instance", async () => {
+    const source = await readControllerSource();
+    const bundleListStart = source.indexOf(
+      "async function fetchEnabledBundlesFromDatabase",
+    );
+    const bundleListEnd = source.indexOf(
+      "\n}\n\nasync function patchBundle",
+      bundleListStart,
+    );
+    const bundleListSource = source.slice(bundleListStart, bundleListEnd);
+
+    expect(bundleListSource).toContain("for (const channel of channels)");
+    expect(bundleListSource).not.toContain("Promise.all(");
+    expect(bundleListSource).not.toContain("channels.map(");
+  });
+
   it("keeps update-check timeout diagnostics inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(

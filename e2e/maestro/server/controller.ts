@@ -2113,9 +2113,10 @@ async function fetchEnabledBundlesFromDatabase(
       return data;
     }
 
-    const pages = await Promise.all(
-      channels.map((channel) =>
-        databasePlugin.getBundles({
+    const pages: Array<Awaited<ReturnType<DatabasePlugin["getBundles"]>>> = [];
+    for (const channel of channels) {
+      pages.push(
+        await databasePlugin.getBundles({
           limit,
           orderBy: {
             direction: "desc",
@@ -2127,8 +2128,8 @@ async function fetchEnabledBundlesFromDatabase(
             platform: session.platform,
           },
         }),
-      ),
-    );
+      );
+    }
 
     return pages.flatMap((page) => page.data);
   });
