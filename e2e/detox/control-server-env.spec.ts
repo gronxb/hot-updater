@@ -7,6 +7,39 @@ import { describe, expect, it } from "vitest";
 import { buildDetoxControlServerEnv } from "./scripts/control-server.ts";
 
 describe("Detox control server environment", () => {
+  it("uses a unique iOS DerivedData path for each split control server", () => {
+    const first = buildDetoxControlServerEnv("ios", {
+      HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-ios-s1",
+      HOT_UPDATER_E2E_CONTROL_PORT: "3107",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 16",
+    });
+    const second = buildDetoxControlServerEnv("ios", {
+      HOT_UPDATER_E2E_CHANNEL_NAMESPACE: "e2e-job-ios-s2",
+      HOT_UPDATER_E2E_CONTROL_PORT: "3109",
+      HOT_UPDATER_E2E_IOS_SIMULATOR_NAME: "iPhone 17 Pro",
+    });
+
+    expect(first.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH).toContain(
+      "e2e-job-ios-s1",
+    );
+    expect(second.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH).toContain(
+      "e2e-job-ios-s2",
+    );
+    expect(first.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH).not.toBe(
+      second.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH,
+    );
+  });
+
+  it("preserves an explicit iOS DerivedData override", () => {
+    const controlServerEnv = buildDetoxControlServerEnv("ios", {
+      HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/tmp/custom-derived-data",
+    });
+
+    expect(controlServerEnv.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH).toBe(
+      "/tmp/custom-derived-data",
+    );
+  });
+
   it("uses the profile app base URL as the provider target when control proxy env is present", async () => {
     // Given: dashboard split jobs expose a control proxy URL and write the
     // provider URL to the env target file.

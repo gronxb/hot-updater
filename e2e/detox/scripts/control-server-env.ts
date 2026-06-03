@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -203,6 +204,37 @@ function resolveDeviceId(
   );
 }
 
+function safeFileToken(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function resolveIosDerivedDataPath(
+  platform: DetoxPlatform,
+  controlPort: string,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  if (platform !== "ios") return undefined;
+  if (env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH) {
+    return env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH;
+  }
+
+  const scope = safeFileToken(
+    [
+      env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE,
+      env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
+      env.HOT_UPDATER_E2E_IOS_SIMULATOR_NAME,
+      env.HOT_UPDATER_E2E_DEVICE_ID,
+      controlPort,
+    ]
+      .filter(Boolean)
+      .join("-"),
+  );
+  return path.join(
+    os.tmpdir(),
+    `hotupdater-v085-ios-detox-${scope || controlPort}`,
+  );
+}
+
 function resolveAppId(platform: DetoxPlatform, env: NodeJS.ProcessEnv): string {
   if (env.HOT_UPDATER_E2E_APP_ID) {
     return env.HOT_UPDATER_E2E_APP_ID;
@@ -237,11 +269,19 @@ export function buildDetoxControlServerEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const controlPort = resolveControlPort(env);
+  const iosDerivedDataPath = resolveIosDerivedDataPath(
+    platform,
+    controlPort,
+    env,
+  );
   return {
     ...env,
     HOT_UPDATER_E2E_APP_BASE_URL: resolveAppBaseUrl(env),
     HOT_UPDATER_E2E_APP_ID: resolveAppId(platform, env),
     HOT_UPDATER_E2E_DEVICE_ID: resolveDeviceId(platform, env),
+    ...(iosDerivedDataPath
+      ? { HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: iosDerivedDataPath }
+      : {}),
     HOT_UPDATER_E2E_PLATFORM: platform,
     HOT_UPDATER_E2E_RESULTS_DIR:
       env.HOT_UPDATER_E2E_RESULTS_DIR ?? path.join(resultsRoot, platform),
