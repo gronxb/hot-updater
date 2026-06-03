@@ -205,14 +205,22 @@ describe("Detox control client", () => {
     }
   });
 
-  it("times out a running control job before the Jest scenario timeout", async () => {
+  it("cancels a running control job before the Jest scenario timeout", async () => {
     // Given: the control server accepts a job but never marks it terminal.
-    const calls: string[] = [];
+    const calls: { readonly method: string; readonly url: string }[] = [];
     let now = 0;
-    const fetch: ControlFetch = (url) => {
-      calls.push(url);
+    const fetch: ControlFetch = (url, init) => {
+      calls.push({ method: init.method ?? "GET", url });
       if (url.endsWith("/e2e/jobs/deploy-bundle")) {
         return Promise.resolve(jsonResponse(200, { jobId: "job-hung" }));
+      }
+      if (init.method === "DELETE") {
+        return Promise.resolve(
+          jsonResponse(200, {
+            error: "cancelled by control client timeout",
+            status: "cancelled",
+          }),
+        );
       }
       return Promise.resolve(jsonResponse(200, { status: "running" }));
     };
@@ -236,7 +244,7 @@ describe("Detox control client", () => {
       caught = error;
     }
 
-    // Then: the client reports the job id before Jest's 12 minute ceiling.
+    // Then: the client reports the job id and cancels the server job before Jest's 12 minute ceiling.
     expect(caught).toBeInstanceOf(ControlJobError);
     if (caught instanceof ControlJobError) {
       expect(caught.jobId).toBe("job-hung");
@@ -244,7 +252,14 @@ describe("Detox control client", () => {
       expect(caught.message).toContain("timed out after 600000ms");
     }
     expect(now).toBeLessThan(720000);
-    expect(calls).toContain("http://127.0.0.1:3010/e2e/jobs/job-hung");
+    expect(calls).toContainEqual({
+      method: "GET",
+      url: "http://127.0.0.1:3010/e2e/jobs/job-hung",
+    });
+    expect(calls.at(-1)).toEqual({
+      method: "DELETE",
+      url: "http://127.0.0.1:3010/e2e/jobs/job-hung",
+    });
     expect(timings).toEqual([
       {
         diagnostic:

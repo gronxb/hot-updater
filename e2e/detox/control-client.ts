@@ -160,7 +160,7 @@ export class ControlClient {
         `/e2e/jobs/${jobId}`,
       );
       if (state.status === "succeeded") return state.result ?? {};
-      if (state.status === "failed") {
+      if (state.status === "failed" || state.status === "cancelled") {
         throw new ControlJobError({
           jobId,
           message: state.error ?? "Unknown control job failure",
@@ -168,13 +168,34 @@ export class ControlClient {
         });
       }
       if (this.nowMs() >= deadlineMs) {
+        const cancelError = await this.cancelJobUntraced(stage, jobId);
+        const cancelSuffix = cancelError
+          ? `; cancel request failed: ${cancelError}`
+          : "";
         throw new ControlJobError({
           jobId,
-          message: `timed out after ${this.jobTimeoutMs}ms`,
+          message: `timed out after ${this.jobTimeoutMs}ms${cancelSuffix}`,
           stage,
         });
       }
       await this.pollDelayMs(this.pollIntervalMs);
+    }
+  }
+
+  private async cancelJobUntraced(
+    stage: string,
+    jobId: string,
+  ): Promise<string | null> {
+    try {
+      const response = await this.fetch(`${this.baseUrl}/e2e/jobs/${jobId}`, {
+        headers: closeConnectionHeader,
+        method: "DELETE",
+        signal: AbortSignal.timeout(this.httpTimeoutMs),
+      });
+      await readResponseJson(response, `/e2e/jobs/${jobId}`, stage);
+      return null;
+    } catch (error) {
+      return formatDiagnostic(error);
     }
   }
 

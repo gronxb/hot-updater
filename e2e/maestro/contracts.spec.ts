@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { listSuiteNames, resolveSuiteScenarioNames } from "./scenarios.ts";
 
 type RouteContract = {
-  readonly method: "all" | "get" | "post";
+  readonly method: "all" | "delete" | "get" | "post";
   readonly path: string;
   readonly requiredError?: string;
 };
@@ -66,6 +66,7 @@ const routeContracts: readonly RouteContract[] = [
     requiredError: "bundleId and verificationPending are required",
   },
   { method: "get", path: "/e2e/jobs/:jobId" },
+  { method: "delete", path: "/e2e/jobs/:jobId" },
   { method: "post", path: "/e2e/capture-built-in-bundle-id" },
   { method: "post", path: "/e2e/reset-remote-bundles" },
   { method: "post", path: "/e2e/reset-local-app-state" },
@@ -264,10 +265,16 @@ describe("Maestro E2E contract", () => {
 
     expect(source).toContain("HOT_UPDATER_E2E_UPDATE_CHECK_HTTP_TIMEOUT_MS");
     expect(visibilitySource).toContain(
-      "signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS)",
+      "signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal)",
+    );
+    expect(visibilitySource).toContain(
+      "await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal)",
     );
     expect(exclusionSource).toContain(
-      "signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS)",
+      "signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal)",
+    );
+    expect(exclusionSource).toContain(
+      "await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal)",
     );
   });
 

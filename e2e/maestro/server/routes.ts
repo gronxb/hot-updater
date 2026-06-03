@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
 import {
+  cancelJob,
   getJob,
   handleAssertBundleAssetsStored,
   handleAssertBundlePatchBases,
@@ -210,6 +211,15 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
 
 app.get("/e2e/jobs/:jobId", async (c) => {
   const job = getJob(c.req.param("jobId"));
+  if (!job) {
+    return c.json({ error: "Job not found" }, 404);
+  }
+
+  return c.json(job);
+});
+
+app.delete("/e2e/jobs/:jobId", async (c) => {
+  const job = cancelJob(c.req.param("jobId"));
   if (!job) {
     return c.json({ error: "Job not found" }, 404);
   }

@@ -25,7 +25,7 @@ export type StageTiming = {
 export type ControlJobState = {
   readonly error?: string;
   readonly result?: JsonObject;
-  readonly status: "failed" | "running" | "succeeded";
+  readonly status: "cancelled" | "failed" | "running" | "succeeded";
 };
 
 export class ControlEndpointError extends Error {
@@ -106,7 +106,12 @@ export function readJobState(
   label: string,
 ): ControlJobState {
   const status = source.status;
-  if (status !== "failed" && status !== "running" && status !== "succeeded") {
+  if (
+    status !== "cancelled" &&
+    status !== "failed" &&
+    status !== "running" &&
+    status !== "succeeded"
+  ) {
     throw new ControlProtocolError(`${label} returned invalid job status`);
   }
 

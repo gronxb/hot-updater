@@ -25,10 +25,14 @@ type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
 
 type JobResult = Record<string, unknown>;
 
+type JobExecutionContext = {
+  signal: AbortSignal;
+};
+
 type JobState = {
   error?: string;
   result?: JobResult;
-  status: "failed" | "running" | "succeeded";
+  status: "cancelled" | "failed" | "running" | "succeeded";
 };
 
 type DeployMode = "crash" | "reset";
@@ -518,7 +522,35 @@ function getRemoteResetChannels() {
 }
 
 const jobs = new Map<string, JobState>();
+const jobAbortControllers = new Map<string, AbortController>();
 let bootstrapJobId: string | null = null;
+
+function getAbortSignalReason(signal: AbortSignal) {
+  const reason = signal.reason;
+  if (reason instanceof Error) {
+    return reason.message;
+  }
+  if (typeof reason === "string") {
+    return reason;
+  }
+  return "cancelled";
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new Error(`Control job cancelled: ${getAbortSignalReason(signal)}`);
+  }
+}
+
+async function abortableSleep(durationMs: number, signal?: AbortSignal) {
+  await sleep(durationMs, undefined, signal ? { signal } : undefined);
+}
+
+function fetchSignal(timeoutMs: number, signal?: AbortSignal) {
+  return signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
+}
 
 function runCapture(
   command: string,
@@ -559,8 +591,10 @@ async function runLogged(
     cwd?: string;
     env?: NodeJS.ProcessEnv;
     logPath: string;
+    signal?: AbortSignal;
   },
 ) {
+  throwIfAborted(options.signal);
   await fsPromises.mkdir(path.dirname(options.logPath), { recursive: true });
 
   const output: Buffer[] = [];
@@ -572,6 +606,7 @@ async function runLogged(
     stdio: ["ignore", "pipe", "pipe"],
   });
   let childExited = false;
+  let killTimer: NodeJS.Timeout | null = null;
   const killChildGroup = () => {
     if (childExited || child.pid === undefined) {
       return;
@@ -586,8 +621,27 @@ async function runLogged(
         return;
       }
     }
+    killTimer = setTimeout(() => {
+      if (childExited || child.pid === undefined) {
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          return;
+        }
+      }
+    }, 5000);
+    killTimer.unref();
   };
   process.once("exit", killChildGroup);
+  options.signal?.addEventListener("abort", killChildGroup, { once: true });
+  if (options.signal?.aborted) {
+    killChildGroup();
+  }
 
   child.stdout.on("data", (chunk: Buffer) => {
     output.push(chunk);
@@ -606,6 +660,10 @@ async function runLogged(
     child.once("exit", (code, signal) => {
       childExited = true;
       process.removeListener("exit", killChildGroup);
+      options.signal?.removeEventListener("abort", killChildGroup);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
       resolve({ code, signal });
     });
   });
@@ -614,6 +672,7 @@ async function runLogged(
     setTimeout(resolve, COMMAND_STDIO_DRAIN_GRACE_MS),
   );
   logStream.end();
+  throwIfAborted(options.signal);
 
   if ((exitResult.code !== 0 || exitResult.signal) && !options.allowFailure) {
     throw new Error(
@@ -4419,6 +4478,7 @@ async function waitForUpdateCheckVisibility(args: {
   bundleId: string;
   channel: string;
   requestBundleId: string;
+  signal?: AbortSignal;
 }) {
   const minBundleId = E2E_MIN_BUNDLE_ID;
   const url = buildAppVersionUpdateCheckUrl({
@@ -4431,6 +4491,7 @@ async function waitForUpdateCheckVisibility(args: {
     channel: args.channel,
     minBundleId,
     requestBundleId: args.requestBundleId,
+    signal: args.signal,
     url,
   });
   await warmCohortUpdateCheckVisibility({
@@ -4438,6 +4499,7 @@ async function waitForUpdateCheckVisibility(args: {
     channel: args.channel,
     minBundleId,
     requestBundleId: args.requestBundleId,
+    signal: args.signal,
   });
 }
 
@@ -4446,18 +4508,20 @@ async function waitForUpdateCheckVisibilityUrl(args: {
   channel: string;
   minBundleId: string;
   requestBundleId: string;
+  signal?: AbortSignal;
   url: string;
 }) {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
   for (let index = 0; index < 360; index += 1) {
+    throwIfAborted(args.signal);
     try {
       const response = await fetch(args.url, {
         headers: {
           "Hot-Updater-SDK-Version": "e2e",
         },
-        signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS),
+        signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();
       lastObserved = body;
@@ -4485,7 +4549,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       lastError = error instanceof Error ? error.message : String(error);
     }
 
-    await sleep(E2E_POLL_INTERVAL_MS);
+    await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
   logE2e("update check visibility timeout", {
@@ -4683,6 +4747,7 @@ async function warmCohortUpdateCheckVisibility(args: {
   channel: string;
   minBundleId: string;
   requestBundleId: string;
+  signal?: AbortSignal;
 }) {
   const cohortValue = await seedMissingE2ECohort();
 
@@ -4697,6 +4762,7 @@ async function warmCohortUpdateCheckVisibility(args: {
     channel: args.channel,
     minBundleId: args.minBundleId,
     requestBundleId: args.requestBundleId,
+    signal: args.signal,
     url,
   });
 }
@@ -4704,6 +4770,7 @@ async function warmCohortUpdateCheckVisibility(args: {
 async function waitForUpdateCheckExcludesBundle(args: {
   bundleId: string;
   channel: string;
+  signal?: AbortSignal;
 }) {
   const minBundleId = NIL_UUID;
   const url = buildAppVersionUpdateCheckUrl({
@@ -4715,12 +4782,13 @@ async function waitForUpdateCheckExcludesBundle(args: {
   let lastError: string | null = null;
 
   for (let index = 0; index < 240; index += 1) {
+    throwIfAborted(args.signal);
     try {
       const response = await fetch(url, {
         headers: {
           "Hot-Updater-SDK-Version": "e2e",
         },
-        signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS),
+        signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();
       lastObserved = body;
@@ -4753,7 +4821,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
       lastError = error instanceof Error ? error.message : String(error);
     }
 
-    await sleep(E2E_POLL_INTERVAL_MS);
+    await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
   logE2e("update check exclusion timeout", {
@@ -5063,6 +5131,7 @@ type WaitForMetadataOptions = {
   attempts?: number;
   recoveredStableBundleId?: string;
   relaunchLimit?: number;
+  signal?: AbortSignal;
 };
 
 function resolveMetadataWaitOption(
@@ -5094,6 +5163,7 @@ async function waitForIosMetadataState(
     relaunchIndex += 1
   ) {
     for (let index = 0; index < attempts; index += 1) {
+      throwIfAborted(options.signal);
       totalAttempts += 1;
 
       const metadata = readIosMetadataSnapshot();
@@ -5126,7 +5196,7 @@ async function waitForIosMetadataState(
           }
         }
       }
-      await sleep(E2E_POLL_INTERVAL_MS);
+      await abortableSleep(E2E_POLL_INTERVAL_MS, options.signal);
     }
 
     const metadata = readIosMetadataSnapshot();
@@ -5147,7 +5217,7 @@ async function waitForIosMetadataState(
     });
     await prepareAppLaunch();
     launchIosApp();
-    await sleep(E2E_IOS_LAUNCH_SETTLE_MS);
+    await abortableSleep(E2E_IOS_LAUNCH_SETTLE_MS, options.signal);
   }
 
   throw createWaitForMetadataTimeoutError({
@@ -5180,6 +5250,7 @@ async function waitForAndroidMetadataState(
     relaunchIndex += 1
   ) {
     for (let index = 0; index < attempts; index += 1) {
+      throwIfAborted(options.signal);
       totalAttempts += 1;
 
       const metadata = readAndroidMetadataSnapshot(
@@ -5214,7 +5285,7 @@ async function waitForAndroidMetadataState(
           }
         }
       }
-      await sleep(E2E_POLL_INTERVAL_MS);
+      await abortableSleep(E2E_POLL_INTERVAL_MS, options.signal);
     }
 
     const metadata = readAndroidMetadataSnapshot(
@@ -5237,7 +5308,7 @@ async function waitForAndroidMetadataState(
     });
     await prepareAppLaunch();
     launchAndroidApp();
-    await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
+    await abortableSleep(E2E_ANDROID_LAUNCH_SETTLE_MS, options.signal);
   }
 
   throw createWaitForMetadataTimeoutError({
@@ -5568,7 +5639,10 @@ function bareBuildCacheEnv({
   };
 }
 
-async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
+async function acquireBareBuildCacheLock(
+  env: NodeJS.ProcessEnv | undefined,
+  signal?: AbortSignal,
+) {
   const cacheDir = env?.HOT_UPDATER_BARE_BUILD_CACHE_DIR;
   const cacheKey = env?.HOT_UPDATER_BARE_BUILD_CACHE_KEY;
   if (!cacheDir || !cacheKey) {
@@ -5608,6 +5682,7 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
   };
 
   while (true) {
+    throwIfAborted(signal);
     try {
       await fsPromises.mkdir(lockPath);
       await fsPromises.writeFile(
@@ -5660,7 +5735,7 @@ async function acquireBareBuildCacheLock(env: NodeJS.ProcessEnv | undefined) {
         logE2e("bare build cache lock waiting", { cacheKey });
         loggedWait = true;
       }
-      await sleep(BARE_BUILD_CACHE_LOCK_WAIT_MS);
+      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
     }
   }
 }
@@ -5685,13 +5760,14 @@ function isDeployProcessLockOwnerAlive(
   return isProcessRunning(owner.pid);
 }
 
-async function acquireDeployProcessLock() {
+async function acquireDeployProcessLock(signal?: AbortSignal) {
   const lockRoot = deployProcessLockRoot();
   const lockPath = path.join(lockRoot, "deploy.lock");
   await fsPromises.mkdir(lockRoot, { recursive: true });
   let loggedWait = false;
 
   while (true) {
+    throwIfAborted(signal);
     try {
       await fsPromises.mkdir(lockPath);
       await fsPromises.writeFile(
@@ -5752,7 +5828,7 @@ async function acquireDeployProcessLock() {
         });
         loggedWait = true;
       }
-      await sleep(BARE_BUILD_CACHE_LOCK_WAIT_MS);
+      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
     }
   }
 }
@@ -5761,7 +5837,11 @@ async function releaseDeployProcessLock(lockPath: string) {
   await fsPromises.rm(lockPath, { force: true, recursive: true });
 }
 
-async function deployBundle(request: DeployBundleRequest) {
+async function deployBundle(
+  request: DeployBundleRequest,
+  context?: JobExecutionContext,
+) {
+  const signal = context?.signal;
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
   const remoteChannel = getRemoteChannel(request.channel);
   const patchEnabled =
@@ -5770,12 +5850,15 @@ async function deployBundle(request: DeployBundleRequest) {
   const updateCheckRequestBundleId = getCurrentUpdateCheckBundleId();
 
   if (bundleProfile === "archive300mb") {
+    throwIfAborted(signal);
     await ensureLargeArchiveAsset();
   }
   if (bundleProfile === "multiAssetReplacement") {
+    throwIfAborted(signal);
     await ensureMultiAssetFixtures(request.marker);
   }
 
+  throwIfAborted(signal);
   await applyDeployConfig({
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
@@ -5837,17 +5920,18 @@ async function deployBundle(request: DeployBundleRequest) {
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
-  const deployProcessLockPath = await acquireDeployProcessLock();
+  const deployProcessLockPath = await acquireDeployProcessLock(signal);
   let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
-      bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv);
+      bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
       const deployStartedAt = Date.now();
       const output = await runLogged("node", args, {
         cwd: session.exampleDir,
         env: getHotUpdaterControlEnv(cacheEnv),
         logPath: deployLogPath,
+        signal,
       });
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
@@ -5925,6 +6009,7 @@ async function deployBundle(request: DeployBundleRequest) {
       bundleId,
       channel: bundle.channel,
       requestBundleId: updateCheckRequestBundleId,
+      signal,
     });
   }
 
@@ -5976,7 +6061,12 @@ async function deployBundle(request: DeployBundleRequest) {
   };
 }
 
-async function updateBundle(request: PatchBundleRequest) {
+async function updateBundle(
+  request: PatchBundleRequest,
+  context?: JobExecutionContext,
+) {
+  const signal = context?.signal;
+  throwIfAborted(signal);
   await patchBundle(request.bundleId, {
     enabled: request.enabled,
     rolloutCohortCount: request.rolloutCohortCount,
@@ -5989,6 +6079,7 @@ async function updateBundle(request: PatchBundleRequest) {
     await waitForUpdateCheckExcludesBundle({
       bundleId: bundle.id,
       channel: bundle.channel,
+      signal,
     });
   }
 
@@ -6043,6 +6134,7 @@ async function waitForMetadata(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
+  throwIfAborted(options.signal);
   if (session.platform === "ios") {
     await waitForIosMetadataState(bundleId, verificationPending, options);
   } else {
@@ -6872,22 +6964,42 @@ async function cleanup() {
   return {};
 }
 
-function createJob(task: () => Promise<JobResult>) {
+function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
   const jobId = randomUUID();
+  const abortController = new AbortController();
+  jobAbortControllers.set(jobId, abortController);
   jobs.set(jobId, { status: "running" });
 
-  void task()
+  void task({ signal: abortController.signal })
     .then((result) => {
+      if (abortController.signal.aborted) {
+        return;
+      }
       jobs.set(jobId, { result, status: "succeeded" });
     })
     .catch((error: unknown) => {
       const message =
         error instanceof Error ? error.message : "Unknown E2E job failure";
+      if (abortController.signal.aborted) {
+        logE2e("control job cancelled", {
+          error: message,
+          jobId,
+        });
+        const current = jobs.get(jobId);
+        if (current?.status === "running") {
+          jobs.set(jobId, { error: message, status: "cancelled" });
+        }
+        return;
+      }
       logE2e("control job failed", {
         error: message,
+        jobId,
         stack: error instanceof Error ? error.stack : undefined,
       });
       jobs.set(jobId, { error: message, status: "failed" });
+    })
+    .finally(() => {
+      jobAbortControllers.delete(jobId);
     });
 
   return jobId;
@@ -6906,11 +7018,11 @@ export function startBootstrapJob() {
 }
 
 export function startDeployBundleJob(request: DeployBundleRequest) {
-  return createJob(() => deployBundle(request));
+  return createJob((context) => deployBundle(request, context));
 }
 
 export function startPatchBundleJob(request: PatchBundleRequest) {
-  return createJob(() => updateBundle(request));
+  return createJob((context) => updateBundle(request, context));
 }
 
 export function startWaitForMetadataJob(
@@ -6918,12 +7030,31 @@ export function startWaitForMetadataJob(
   verificationPending: boolean,
   options: WaitForMetadataOptions = {},
 ) {
-  return createJob(() =>
-    waitForMetadata(bundleId, verificationPending, options),
+  return createJob((context) =>
+    waitForMetadata(bundleId, verificationPending, {
+      ...options,
+      signal: context.signal,
+    }),
   );
 }
 
 export function getJob(jobId: string) {
+  return jobs.get(jobId) ?? null;
+}
+
+export function cancelJob(jobId: string) {
+  const job = jobs.get(jobId);
+  if (!job) {
+    return null;
+  }
+  if (job.status !== "running") {
+    return job;
+  }
+
+  const error = "cancelled by control client timeout";
+  jobs.set(jobId, { error, status: "cancelled" });
+  jobAbortControllers.get(jobId)?.abort(new Error(error));
+  logE2e("control job cancel requested", { jobId });
   return jobs.get(jobId) ?? null;
 }
 
