@@ -243,6 +243,34 @@ describe("Maestro E2E contract", () => {
     expect(helperSource).not.toContain("\n        minBundleId,\n");
   });
 
+  it("bounds provider update-check fetches so control jobs cannot hang forever", async () => {
+    const source = await readControllerSource();
+    const visibilityStart = source.indexOf(
+      "async function waitForUpdateCheckVisibilityUrl",
+    );
+    const visibilityEnd = source.indexOf(
+      "\n}\n\nfunction normalizeE2ECohort",
+      visibilityStart,
+    );
+    const exclusionStart = source.indexOf(
+      "async function waitForUpdateCheckExcludesBundle",
+    );
+    const exclusionEnd = source.indexOf(
+      "\n}\n\nasync function updateBundle",
+      exclusionStart,
+    );
+    const visibilitySource = source.slice(visibilityStart, visibilityEnd);
+    const exclusionSource = source.slice(exclusionStart, exclusionEnd);
+
+    expect(source).toContain("HOT_UPDATER_E2E_UPDATE_CHECK_HTTP_TIMEOUT_MS");
+    expect(visibilitySource).toContain(
+      "signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS)",
+    );
+    expect(exclusionSource).toContain(
+      "signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS)",
+    );
+  });
+
   it("keeps update-check request URLs inside helper scope", async () => {
     const source = await readControllerSource();
     const helperStart = source.indexOf(

@@ -38,7 +38,7 @@ type ControlClientOptions = {
 
 const defaultHttpTimeoutMs = 120 * 1000;
 const defaultJobTimeoutMs = Number(
-  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 45 * 60 * 1000,
+  process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 10 * 60 * 1000,
 );
 const defaultPollIntervalMs = 1000;
 const closeConnectionHeader = { connection: "close" } as const;

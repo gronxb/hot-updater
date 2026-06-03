@@ -204,4 +204,57 @@ describe("Detox control client", () => {
       expect(caught.message).toContain("metadata mismatch");
     }
   });
+
+  it("times out a running control job before the Jest scenario timeout", async () => {
+    // Given: the control server accepts a job but never marks it terminal.
+    const calls: string[] = [];
+    let now = 0;
+    const fetch: ControlFetch = (url) => {
+      calls.push(url);
+      if (url.endsWith("/e2e/jobs/deploy-bundle")) {
+        return Promise.resolve(jsonResponse(200, { jobId: "job-hung" }));
+      }
+      return Promise.resolve(jsonResponse(200, { status: "running" }));
+    };
+    const timings: StageTiming[] = [];
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      nowMs: () => now,
+      onStageTiming: (timing) => timings.push(timing),
+      pollDelayMs: (durationMs) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+    });
+
+    // When: the stage waits for the hung job with default settings.
+    let caught: unknown;
+    try {
+      await client.runJob("bundle deploy", "/e2e/jobs/deploy-bundle", {});
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then: the client reports the job id before Jest's 12 minute ceiling.
+    expect(caught).toBeInstanceOf(ControlJobError);
+    if (caught instanceof ControlJobError) {
+      expect(caught.jobId).toBe("job-hung");
+      expect(caught.stage).toBe("bundle deploy");
+      expect(caught.message).toContain("timed out after 600000ms");
+    }
+    expect(now).toBeLessThan(720000);
+    expect(calls).toContain("http://127.0.0.1:3010/e2e/jobs/job-hung");
+    expect(timings).toEqual([
+      {
+        diagnostic:
+          "bundle deploy job job-hung failed: timed out after 600000ms",
+        durationMs: 600000,
+        endedAtMs: 600000,
+        outcome: "failed",
+        stage: "bundle deploy",
+        startedAtMs: 0,
+      },
+    ]);
+  });
 });

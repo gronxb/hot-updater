@@ -358,6 +358,9 @@ const PROVIDER_READY_WAIT_DELAY_MS = Number(
 const PROVIDER_READY_HTTP_TIMEOUT_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_READY_HTTP_TIMEOUT_MS || 2000,
 );
+const UPDATE_CHECK_HTTP_TIMEOUT_MS = Number(
+  process.env.HOT_UPDATER_E2E_UPDATE_CHECK_HTTP_TIMEOUT_MS || 2000,
+);
 const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
 );
@@ -4454,6 +4457,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
         headers: {
           "Hot-Updater-SDK-Version": "e2e",
         },
+        signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS),
       });
       const body = await response.text();
       lastObserved = body;
@@ -4716,6 +4720,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
         headers: {
           "Hot-Updater-SDK-Version": "e2e",
         },
+        signal: AbortSignal.timeout(UPDATE_CHECK_HTTP_TIMEOUT_MS),
       });
       const body = await response.text();
       lastObserved = body;
