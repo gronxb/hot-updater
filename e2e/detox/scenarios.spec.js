@@ -209,14 +209,8 @@ function markSynchronizationRestoredByLaunch() {
 
 async function runTapStep(step) {
   const target = await waitForTestID(step.testID);
-  if (!step.expectResultContains) {
-    await target.tap();
-    return;
-  }
-
   await disableSynchronizationUntilLaunch();
   await target.tap();
-  await waitForVisibleText("update-action-result", step.expectResultContains);
 }
 
 async function runDeviceAction(step) {

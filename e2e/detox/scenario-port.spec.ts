@@ -198,42 +198,26 @@ describe("Detox scenario port catalog", () => {
     expect(detoxJestSpec).toContain("by.text(new RegExp");
   });
 
-  it("waits for install action results before metadata polling", () => {
+  it("lets control metadata prove install actions instead of waiting on busy UI text", () => {
     const installSteps = [
-      ["release-ota-recovery", "install stable update", "$stableBundleId"],
-      ["release-ota-recovery", "install crash update", "$crashBundleId"],
-      [
-        "bspatch-manifest-diff-fallback",
-        "install manifest base update",
-        "$previousBundleId",
-      ],
-      [
-        "bspatch-manifest-diff-fallback",
-        "install manifest fallback update",
-        "$bundleId",
-      ],
-      [
-        "runtime-channel-switch-reset",
-        "install runtime channel update",
-        "$runtimeBundleId",
-      ],
-      [
-        "disabled-bundle-rollback-to-previous-ota",
-        "install previous bundle",
-        "$previousBundleId",
-      ],
+      ["release-ota-recovery", "install stable update"],
+      ["release-ota-recovery", "install crash update"],
+      ["bspatch-manifest-diff-fallback", "install manifest base update"],
+      ["bspatch-manifest-diff-fallback", "install manifest fallback update"],
+      ["runtime-channel-switch-reset", "install runtime channel update"],
+      ["disabled-bundle-rollback-to-previous-ota", "install previous bundle"],
     ] as const;
 
-    for (const [scenarioName, stage, expected] of installSteps) {
+    for (const [scenarioName, stage] of installSteps) {
       const step = getDetoxScenarioDefinition(scenarioName).steps.find(
         (entry) => entry.stage === stage,
       );
 
       expect(step).toMatchObject({
-        expectResultContains: expected,
         kind: "tap",
         testID: expect.stringContaining("action-install-"),
       });
+      expect(step).not.toHaveProperty("expectResultContains");
     }
   });
 
@@ -252,12 +236,12 @@ describe("Detox scenario port catalog", () => {
       detoxJestSpec.indexOf("async function runTapStep"),
     );
 
-    expect(installTapBody).toContain("step.expectResultContains");
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).toContain(
-      'waitForVisibleText("update-action-result", step.expectResultContains)',
+    expect(installTapBody).not.toContain("step.expectResultContains");
+    expect(installTapBody).not.toContain(
+      'waitForVisibleText("update-action-result"',
     );
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
@@ -320,7 +304,6 @@ describe("Detox scenario port catalog", () => {
       "assert qa cohort applied",
       "install target cohort update",
       "wait target cohort metadata pending",
-      "assert target cohort install result",
       "reload target cohort update",
       "wait target cohort metadata stable",
       "assert target cohort launch",

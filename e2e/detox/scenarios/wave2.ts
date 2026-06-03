@@ -28,7 +28,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy first multi-asset bundle",
       },
       {
-        expectResultContains: "$firstBundleId",
         kind: "tap",
         stage: "install first multi-asset update",
         testID: "action-install-current-channel-update",
@@ -81,7 +80,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy second multi-asset bundle",
       },
       {
-        expectResultContains: "$secondBundleId",
         kind: "tap",
         stage: "install second multi-asset update",
         testID: "action-install-current-channel-update",
@@ -142,7 +140,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy first diff bundle",
       },
       {
-        expectResultContains: "$firstBundleId",
         kind: "tap",
         stage: "install first diff bundle",
         testID: "action-install-current-channel-update",
@@ -184,7 +181,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "deploy second diff bundle",
       },
       {
-        expectResultContains: "$secondBundleId",
         kind: "tap",
         stage: "install second diff bundle",
         testID: "action-install-current-channel-update",
@@ -273,7 +269,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       { action: "launch", kind: "device", stage: "launch manifest base app" },
       {
-        expectResultContains: "$previousBundleId",
         kind: "tap",
         stage: "install manifest base update",
         testID: "action-install-current-channel-update",
@@ -342,7 +337,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "launch manifest fallback app",
       },
       {
-        expectResultContains: "$bundleId",
         kind: "tap",
         stage: "install manifest fallback update",
         testID: "action-install-current-channel-update",

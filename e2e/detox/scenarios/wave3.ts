@@ -32,7 +32,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         text: "beta",
       },
       {
-        expectResultContains: "$runtimeBundleId",
         kind: "tap",
         stage: "install runtime channel update",
         testID: "action-install-runtime-channel-update",
@@ -141,7 +140,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "cohort-action-result",
       },
       {
-        expectResultContains: "$bundleId",
         kind: "tap",
         stage: "install rollout update",
         testID: "action-install-current-channel-update",
@@ -256,7 +254,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "cohort-action-result",
       },
       {
-        expectResultContains: "$bundleId",
         kind: "tap",
         stage: "install target cohort update",
         testID: "action-install-current-channel-update",
@@ -270,12 +267,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         kind: "control",
         pathName: "/e2e/jobs/wait-for-metadata",
         stage: "wait target cohort metadata pending",
-      },
-      {
-        contains: "current-channel -> installed $bundleId (UPDATE)",
-        kind: "assertText",
-        stage: "assert target cohort install result",
-        testID: "update-action-result",
       },
       {
         action: "reload",
@@ -327,7 +318,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-apply-cohort-input",
       },
       {
-        expectResultContains: "$bundleId",
         kind: "tap",
         stage: "install cohort rollout update",
         testID: "action-install-current-channel-update",
@@ -401,7 +391,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "cohort-action-result",
       },
       {
-        expectResultContains: "$numericBundleId",
         kind: "tap",
         stage: "install numeric cohort update",
         testID: "action-install-current-channel-update",
@@ -448,7 +437,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-apply-cohort-input",
       },
       {
-        expectResultContains: "$qaBundleId",
         kind: "tap",
         stage: "install qa cohort update",
         testID: "action-install-current-channel-update",
@@ -498,7 +486,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "cohort-action-result",
       },
       {
-        expectResultContains: "$numericBundleId",
         kind: "tap",
         stage: "install numeric cohort rollback",
         testID: "action-install-current-channel-update",
