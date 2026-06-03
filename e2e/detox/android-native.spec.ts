@@ -38,9 +38,13 @@ describe("Detox Android native setup", () => {
     // When: Detox is configured for the example app.
     const requiredGradleMarkers = [
       'url("$rootDir/../../../node_modules/detox/Detox-android")',
+      'includeGroup("com.wix")',
+      'excludeGroup("com.wix")',
+      "repositories.configureEach",
+      "MavenArtifactRepository",
       'testBuildType System.getProperty("testBuildType", "debug")',
       'testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"',
-      'androidTestImplementation("com.wix:detox:+")',
+      'androidTestImplementation("com.wix:detox:20.51.3")',
       'androidTestImplementation("androidx.test:core:1.6.1")',
       'androidTestImplementation("androidx.test:runner:1.6.2")',
       'androidTestImplementation("androidx.test:rules:1.6.1")',
@@ -50,6 +54,10 @@ describe("Detox Android native setup", () => {
     for (const marker of requiredGradleMarkers) {
       expect(`${androidRootBuildGradle}\n${buildGradle}`).toContain(marker);
     }
+
+    expect(androidRootBuildGradle).toMatch(
+      /allprojects\s*\{[\s\S]*repositories\s*\{[\s\S]*url\("\$rootDir\/\.\.\/\.\.\/\.\.\/node_modules\/detox\/Detox-android"\)[\s\S]*mavenCentral/,
+    );
   });
 
   it("keeps local control-server traffic available to Android tests", async () => {

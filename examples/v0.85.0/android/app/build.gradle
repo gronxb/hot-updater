@@ -122,7 +122,7 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     implementation("androidx.appcompat:appcompat:1.7.1")
-    androidTestImplementation("com.wix:detox:+")
+    androidTestImplementation("com.wix:detox:20.51.3")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
