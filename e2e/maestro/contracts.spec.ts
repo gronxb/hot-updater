@@ -122,14 +122,23 @@ describe("Maestro E2E contract", () => {
     expect(source).toContain("NODE_OPTIONS: nodeOptionsForDeployChild");
   });
 
-  it("serializes deploy child processes with a host-level E2E lock", async () => {
+  it("serializes deploy child processes with a worktree-scoped E2E lock", async () => {
     const source = await readControllerSource();
+    const lockRootStart = source.indexOf("function deployProcessLockRoot");
+    const lockRootEnd = source.indexOf(
+      "\n}\n\nfunction readOptionalFileHash",
+      lockRootStart,
+    );
+    const lockRootSource = source.slice(lockRootStart, lockRootEnd);
 
     expect(source).toContain("HOT_UPDATER_E2E_DEPLOY_LOCK_DIR");
     expect(source).toContain("acquireDeployProcessLock");
     expect(source).toContain("releaseDeployProcessLock");
     expect(source).toContain("deploy process lock acquired");
     expect(source).toContain("deploy process lock waiting");
+    expect(lockRootSource).toContain('createHash("sha256")');
+    expect(lockRootSource).toContain(".update(REPO_DIR)");
+    expect(lockRootSource).toContain("worktreeHash");
   });
 
   it("does not evict a just-created native artifact lock with a partial owner file", async () => {

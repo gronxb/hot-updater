@@ -758,7 +758,11 @@ function deployProcessLockRoot() {
     return path.resolve(REPO_DIR, lockDir);
   }
 
-  return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock");
+  const worktreeHash = createHash("sha256")
+    .update(REPO_DIR)
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
 }
 
 function readOptionalFileHash(filePath: string) {
