@@ -103,6 +103,20 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
+  it("injects the fixed E2E min bundle id into Detox release builds", async () => {
+    // Given: provider scenarios compare the built-in bundle id after rollbacks.
+    const detoxConfig = await fs.readFile(detoxConfigPath, "utf8");
+
+    // When: Detox builds the release binaries used by the dashboard.
+    // Then: both native builds receive the same deterministic min bundle id.
+    expect(detoxConfig).toContain(
+      "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+    );
+    expect(detoxConfig).toContain(
+      "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+    );
+  });
+
   it("transforms TypeScript support modules loaded by Detox Jest", async () => {
     // Given: the Detox JS spec dynamically loads TypeScript scenario modules.
     const jestConfig = await fs.readFile(detoxJestConfigPath, "utf8");
