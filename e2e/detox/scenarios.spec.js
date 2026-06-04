@@ -212,23 +212,11 @@ function markSynchronizationRestoredByLaunch() {
 }
 
 async function runTapStep(step) {
-  if (step.testID === "action-install-current-channel-update") {
-    await waitForCurrentChannelDownload();
-  }
   const target = await waitForTestID(step.testID);
   if (shouldDisableSynchronizationForTap(step.testID)) {
     await disableSynchronizationUntilLaunch();
   }
   await target.tap();
-}
-
-async function waitForCurrentChannelDownload() {
-  await waitForTestID("update-store-downloaded");
-  await waitFor(
-    element(by.id("update-store-downloaded").and(by.text("true"))),
-  )
-    .toBeVisible()
-    .withTimeout(30000);
 }
 
 async function runDeviceAction(step) {

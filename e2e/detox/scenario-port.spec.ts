@@ -320,18 +320,18 @@ describe("Detox scenario port catalog", () => {
     );
   });
 
-  it("waits for the current-channel update to be downloaded before install taps", async () => {
+  it("taps install actions directly and lets metadata jobs prove downloads", async () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const tapBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("async function runTapStep"),
       detoxJestSpec.indexOf("async function runDeviceAction"),
     );
 
-    expect(tapBody).toContain("waitForCurrentChannelDownload()");
-    expect(tapBody.indexOf("waitForCurrentChannelDownload()")).toBeLessThan(
-      tapBody.indexOf("await target.tap()"),
+    expect(tapBody).not.toContain("waitForCurrentChannelDownload()");
+    expect(detoxJestSpec).not.toContain(
+      "function waitForCurrentChannelDownload",
     );
-    expect(tapBody).toContain('"update-store-downloaded"');
+    expect(tapBody).toContain("await target.tap()");
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
