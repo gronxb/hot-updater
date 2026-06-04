@@ -27,6 +27,7 @@ export type DetoxScenarioStep =
     }
   | {
       readonly contains: string;
+      readonly ensureForeground?: boolean;
       readonly kind: "assertText";
       readonly stage: string;
       readonly testID: string;

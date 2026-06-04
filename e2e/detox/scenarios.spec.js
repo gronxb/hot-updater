@@ -175,8 +175,8 @@ async function ensureAppForegroundForInteraction() {
   }
 }
 
-async function waitForTestID(testID) {
-  await ensureAppForegroundForInteraction();
+async function waitForTestID(testID, options = {}) {
+  if (options.ensureForeground !== false) await ensureAppForegroundForInteraction();
   await navigateToTestID(testID);
   const target = element(by.id(testID));
   await waitFor(target)
@@ -284,7 +284,7 @@ async function runScenarioStep(step) {
       String(resolvePlaceholders(step.text)),
     );
   } else if (step.kind === "assertText") {
-    const target = await waitForTestID(step.testID);
+    const target = await waitForTestID(step.testID, { ensureForeground: step.ensureForeground });
     await detoxExpect(target).toBeVisible();
     const text = textFromAttributes(await target.getAttributes());
     const expectedText = String(resolvePlaceholders(step.contains));

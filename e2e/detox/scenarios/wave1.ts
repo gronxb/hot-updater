@@ -93,6 +93,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
       },
       {
         contains: "Current Launch Status: RECOVERED",
+        ensureForeground: false,
         kind: "assertText",
         stage: "assert recovered launch",
         testID: "launch-status-result",
