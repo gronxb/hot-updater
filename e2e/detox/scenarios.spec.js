@@ -309,6 +309,11 @@ describe("HotUpdater Detox scenarios", () => {
       }
     }
     await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
+    await controlClient.postJson(
+      "reset remote bundles",
+      "/e2e/reset-remote-bundles",
+      {},
+    );
     await controlClient.postJson("reset local app state", "/e2e/reset-local-app-state", {});
     await device.launchApp({ newInstance: true });
     markSynchronizationRestoredByLaunch();

@@ -143,12 +143,12 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("resets app state and Android host-port forwarding around each scenario", async () => {
-    // Given: every scenario must start from clean app and network state.
+  it("resets remote bundles, app state, and Android host-port forwarding around each scenario", async () => {
+    // Given: every scenario must start from clean remote, app, and network state.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
 
     // When: the Detox Jest lifecycle is inspected.
-    // Then: app state and Android reverse TCP forwarding are cleaned per scenario.
+    // Then: remote bundles, app state, and Android reverse TCP forwarding are cleaned per scenario.
     expect(detoxJestSpec).toContain("device.reverseTcpPort");
     expect(detoxJestSpec).toContain("device.unreverseTcpPort");
     expect(detoxJestSpec).toContain("HOT_UPDATER_E2E_CONTROL_PORT");
@@ -157,12 +157,13 @@ describe("Detox scenario port catalog", () => {
       "for (const port of androidReversePorts())",
     );
     expect(detoxJestSpec).toContain("device.terminateApp");
+    expect(detoxJestSpec).toContain("/e2e/reset-remote-bundles");
     expect(detoxJestSpec).toContain("/e2e/reset-local-app-state");
   });
 
   it("does not delete seeded control-server app state after reset", async () => {
-    // Given: the control server resets bundle state and seeds a deterministic
-    // cohort before the first cold launch can request an update-check URL.
+    // Given: the control server resets remote bundles and local app state
+    // before the first cold launch can request an update-check URL.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const beforeEachBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("beforeEach(async () =>"),
@@ -170,12 +171,20 @@ describe("Detox scenario port catalog", () => {
     );
 
     // When: Detox launches the app after reset.
-    const resetIndex = beforeEachBody.indexOf("/e2e/reset-local-app-state");
+    const bootstrapIndex = beforeEachBody.indexOf("/e2e/jobs/bootstrap");
+    const resetRemoteIndex = beforeEachBody.indexOf(
+      "/e2e/reset-remote-bundles",
+    );
+    const resetLocalIndex = beforeEachBody.indexOf(
+      "/e2e/reset-local-app-state",
+    );
     const launchIndex = beforeEachBody.indexOf("device.launchApp");
 
     // Then: launch keeps the freshly reset/seeded data instead of deleting it.
-    expect(resetIndex).toBeGreaterThan(-1);
-    expect(launchIndex).toBeGreaterThan(resetIndex);
+    expect(bootstrapIndex).toBeGreaterThan(-1);
+    expect(resetRemoteIndex).toBeGreaterThan(bootstrapIndex);
+    expect(resetLocalIndex).toBeGreaterThan(resetRemoteIndex);
+    expect(launchIndex).toBeGreaterThan(resetLocalIndex);
     expect(beforeEachBody).toContain("device.launchApp({ newInstance: true })");
     expect(beforeEachBody).not.toContain("delete: true");
   });
