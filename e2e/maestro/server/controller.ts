@@ -3971,8 +3971,48 @@ async function patchEnvRuntimeConfigUrl() {
 }
 
 function getHotUpdaterManagementHeaders() {
-  const authToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+  const authToken = readHotUpdaterAuthToken();
   return authToken ? { Authorization: `Bearer ${authToken}` } : undefined;
+}
+
+function readHotUpdaterAuthToken() {
+  const envToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
+  if (envToken) {
+    return envToken;
+  }
+
+  if (!fs.existsSync(session.envSourceFile)) {
+    return null;
+  }
+
+  const source = fs.readFileSync(session.envSourceFile, "utf8");
+  for (const line of source.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) {
+      continue;
+    }
+
+    const match = trimmed.match(/^HOT_UPDATER_AUTH_TOKEN\s*=\s*(.*)$/);
+    const token = match ? parseEnvTokenValue(match[1]).trim() : "";
+    if (token) {
+      return token;
+    }
+  }
+
+  return null;
+}
+
+function parseEnvTokenValue(rawValue: string) {
+  const value = rawValue.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  const commentIndex = value.search(/\s#/);
+  return commentIndex >= 0 ? value.slice(0, commentIndex).trim() : value;
 }
 
 async function waitForLocalProviderReady() {

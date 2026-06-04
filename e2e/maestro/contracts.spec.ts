@@ -320,6 +320,8 @@ describe("Maestro E2E contract", () => {
     expect(readinessUrlSource).toContain('url.searchParams.set("limit", "1")');
     expect(waitSource).toContain("getControllerReachableProviderReadinessUrl");
     expect(waitSource).toContain("getHotUpdaterManagementHeaders()");
+    expect(headersSource).toContain("readHotUpdaterAuthToken()");
+    expect(headersSource).toContain("session.envSourceFile");
     expect(headersSource).toContain("Authorization: `Bearer ${authToken}`");
     expect(waitSource).not.toContain("ProviderHealthUrl");
   });
