@@ -2,9 +2,9 @@ package com.hotupdater
 
 import android.os.StatFs
 import android.util.Log
+import com.hotupdater.vendor.brotli.dec.BrotliInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.brotli.dec.BrotliInputStream
 import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
