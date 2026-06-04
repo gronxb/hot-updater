@@ -2111,50 +2111,24 @@ async function fetchBundleByIdFromDatabase(bundleId: string) {
   return bundle;
 }
 
-async function fetchEnabledBundlesFromDatabase(
+async function fetchEnabledBundlesForRemoteReset(
   limit: number,
   channels: readonly string[] | null = null,
 ) {
-  let bundles: Bundle[];
+  let bundles: BundleListEntry[];
   try {
-    bundles = await withDatabasePlugin(async (databasePlugin) => {
-      if (!channels) {
-        const { data } = await databasePlugin.getBundles({
+    const channelList = channels ?? [undefined];
+    const pages: BundleListPage[] = [];
+    for (const channel of channelList) {
+      pages.push(
+        await fetchBundlesPage({
+          channel,
           limit,
-          orderBy: {
-            direction: "desc",
-            field: "id",
-          },
-          where: {
-            enabled: true,
-            platform: session.platform,
-          },
-        });
-
-        return data;
-      }
-
-      const pages: Array<Awaited<ReturnType<DatabasePlugin["getBundles"]>>> =
-        [];
-      for (const channel of channels) {
-        pages.push(
-          await databasePlugin.getBundles({
-            limit,
-            orderBy: {
-              direction: "desc",
-              field: "id",
-            },
-            where: {
-              channel,
-              enabled: true,
-              platform: session.platform,
-            },
-          }),
-        );
-      }
-
-      return pages.flatMap((page) => page.data);
-    });
+          offset: 0,
+        }),
+      );
+    }
+    bundles = pages.flatMap((page) => page.data);
   } catch (error) {
     throw new Error(
       "Failed to list enabled remote bundles for reset readiness",
@@ -2164,15 +2138,15 @@ async function fetchEnabledBundlesFromDatabase(
     );
   }
 
-  const normalized = normalizeBundleListEntries(bundles);
-  logE2e("database enabled bundle list", {
+  const enabledBundles = bundles.filter((bundle) => bundle.enabled);
+  logE2e("provider enabled bundle list", {
     channels,
-    count: normalized.length,
+    count: enabledBundles.length,
     limit,
     platform: session.platform,
   });
 
-  return normalized;
+  return enabledBundles;
 }
 
 async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
@@ -2431,7 +2405,7 @@ async function fetchRemainingRemoteBundle(
     ).flatMap((page) => page.data)[0];
   }
 
-  return (await fetchEnabledBundlesFromDatabase(1, resetChannels))[0];
+  return (await fetchEnabledBundlesForRemoteReset(1, resetChannels))[0];
 }
 
 async function clearRemoteBundles({
@@ -2444,7 +2418,7 @@ async function clearRemoteBundles({
   while (true) {
     const nextBatch =
       mode === "disable"
-        ? (await fetchEnabledBundlesFromDatabase(100, resetChannels)).filter(
+        ? (await fetchEnabledBundlesForRemoteReset(100, resetChannels)).filter(
             (bundle) => !clearedIds.has(bundle.id),
           )
         : (

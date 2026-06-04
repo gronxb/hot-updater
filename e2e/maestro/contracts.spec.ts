@@ -274,10 +274,10 @@ describe("Maestro E2E contract", () => {
     expect(bundleListSource).not.toContain("await sleep(");
   });
 
-  it("keeps reset channel database reads sequential inside one plugin instance", async () => {
+  it("keeps reset channel provider-list reads sequential", async () => {
     const source = await readControllerSource();
     const bundleListStart = source.indexOf(
-      "async function fetchEnabledBundlesFromDatabase",
+      "async function fetchEnabledBundlesForRemoteReset",
     );
     const bundleListEnd = source.indexOf(
       "\n}\n\nasync function patchBundle",
@@ -285,9 +285,26 @@ describe("Maestro E2E contract", () => {
     );
     const bundleListSource = source.slice(bundleListStart, bundleListEnd);
 
-    expect(bundleListSource).toContain("for (const channel of channels)");
+    expect(bundleListSource).toContain("for (const channel of channelList)");
     expect(bundleListSource).not.toContain("Promise.all(");
     expect(bundleListSource).not.toContain("channels.map(");
+  });
+
+  it("uses the provider bundle-list API for remote reset discovery", async () => {
+    const source = await readControllerSource();
+    const resetListStart = source.indexOf(
+      "async function fetchEnabledBundlesForRemoteReset",
+    );
+    const resetListEnd = source.indexOf(
+      "\n}\n\nasync function patchBundle",
+      resetListStart,
+    );
+    const resetListSource = source.slice(resetListStart, resetListEnd);
+
+    expect(resetListStart).toBeGreaterThan(-1);
+    expect(resetListSource).toContain("fetchBundlesPage");
+    expect(resetListSource).not.toContain("withDatabasePlugin");
+    expect(resetListSource).not.toContain("databasePlugin.getBundles");
   });
 
   it("waits for the provider bundle-list API before bootstrapping", async () => {
@@ -358,7 +375,7 @@ describe("Maestro E2E contract", () => {
       jobStart,
     );
     const resetListStart = source.indexOf(
-      "async function fetchEnabledBundlesFromDatabase",
+      "async function fetchEnabledBundlesForRemoteReset",
     );
     const resetListEnd = source.indexOf(
       "\n}\n\nasync function patchBundle",

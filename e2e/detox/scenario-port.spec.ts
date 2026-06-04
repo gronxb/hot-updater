@@ -503,7 +503,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("passes the tracked diff asset path into consecutive bsdiff assertions", () => {
+  it("waits for consecutive bsdiff installs to become stable before asserting patch evidence", () => {
     // Given: Android and iOS use different primary bundle asset names.
     const stages = scenarioStages("bspatch-consecutive-diff-ota");
     const body = controlStepBody(
@@ -522,9 +522,9 @@ describe("Detox scenario port catalog", () => {
       "deploy second diff bundle",
       "install second diff bundle",
       "wait second diff metadata pending",
-      "assert consecutive diff patch",
       "reload second diff bundle",
       "wait second diff metadata stable",
+      "assert consecutive diff patch",
     ]);
     expect(body.assetPath).toBe("$diffPatchAssetPath");
   });

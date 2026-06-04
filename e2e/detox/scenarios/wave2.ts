@@ -196,16 +196,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "wait second diff metadata pending",
       },
       {
-        body: {
-          assetPath: "$diffPatchAssetPath",
-          baseBundleId: "$firstBundleId",
-          bundleId: "$secondBundleId",
-        },
-        kind: "control",
-        pathName: "/e2e/assert-bsdiff-patch-applied",
-        stage: "assert consecutive diff patch",
-      },
-      {
         action: "reload",
         kind: "device",
         stage: "reload second diff bundle",
@@ -215,6 +205,16 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
         kind: "control",
         pathName: "/e2e/jobs/wait-for-metadata",
         stage: "wait second diff metadata stable",
+      },
+      {
+        body: {
+          assetPath: "$diffPatchAssetPath",
+          baseBundleId: "$firstBundleId",
+          bundleId: "$secondBundleId",
+        },
+        kind: "control",
+        pathName: "/e2e/assert-bsdiff-patch-applied",
+        stage: "assert consecutive diff patch",
       },
     ],
   },
