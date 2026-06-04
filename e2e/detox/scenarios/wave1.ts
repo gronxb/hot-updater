@@ -91,6 +91,7 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         pathName: "/e2e/wait-for-crash-recovery",
         stage: "wait crash recovery",
       },
+      { action: "launch", kind: "device", stage: "launch recovered app" },
       {
         contains: "Current Launch Status: RECOVERED",
         kind: "assertText",

@@ -320,6 +320,21 @@ describe("Detox scenario port catalog", () => {
     );
   });
 
+  it("waits for the current-channel update to be downloaded before install taps", async () => {
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const tapBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function runTapStep"),
+      detoxJestSpec.indexOf("async function runDeviceAction"),
+    );
+
+    expect(tapBody).toContain("waitForCurrentChannelDownload()");
+    expect(tapBody.indexOf("waitForCurrentChannelDownload()")).toBeLessThan(
+      tapBody.indexOf("await target.tap()"),
+    );
+    expect(tapBody).toContain('"update-store-downloaded"');
+    expect(tapBody).not.toMatch(/\bretry\b/i);
+  });
+
   it("ports the target-cohorts-only pending verification and stable launch sequence", () => {
     // Given: Maestro verifies the pending bundle before reloading into stable.
     const stages = scenarioStages("target-cohorts-only");
@@ -543,6 +558,7 @@ describe("Detox scenario port catalog", () => {
       "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
+      "launch recovered app",
       "assert recovered launch",
     ]);
   });
