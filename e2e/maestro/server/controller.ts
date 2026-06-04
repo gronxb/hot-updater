@@ -3598,6 +3598,10 @@ function readAndroidStoreSnapshot(
   };
 }
 
+function androidRecoveryLaunchReportPath() {
+  return path.join(session.resultsDir, "recovery-launch-report.json");
+}
+
 function readAndroidMetadataSnapshot(localFileName: string) {
   return readAndroidStoreSnapshot("metadata.json", localFileName);
 }
@@ -4961,7 +4965,7 @@ function readAndroidRecoveryDiagnostics() {
     ),
     launchReport: readAndroidStoreSnapshot(
       "launch-report.json",
-      "recovery-launch-report.json",
+      path.basename(androidRecoveryLaunchReportPath()),
     ),
     metadata: readAndroidStoreSnapshot(
       "metadata.json",
@@ -6894,7 +6898,7 @@ async function assertLaunchReportState({
   optional,
   status,
 }: LaunchReportAssertion) {
-  const launchReportPath =
+  let launchReportPath =
     session.platform === "ios"
       ? path.join(ensureStorePath(), "launch-report.json")
       : path.join(session.resultsDir, "launch-report-assert.json");
@@ -6909,7 +6913,11 @@ async function assertLaunchReportState({
       if (optional) {
         return {};
       }
-      throw new Error("launch-report.json is missing");
+      const recoveryLaunchReportPath = androidRecoveryLaunchReportPath();
+      if (!fs.existsSync(recoveryLaunchReportPath)) {
+        throw new Error("launch-report.json is missing");
+      }
+      launchReportPath = recoveryLaunchReportPath;
     }
   } else if (!fs.existsSync(launchReportPath)) {
     if (optional) {

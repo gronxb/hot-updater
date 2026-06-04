@@ -239,6 +239,29 @@ describe("Maestro E2E contract", () => {
     expect(androidSource).not.toContain("wait-for-metadata-launch-report.json");
   });
 
+  it("asserts Android recovery from the launch report captured by the recovery wait", async () => {
+    // Given: Android can clear the current launch report after recovery is observed.
+    const source = await readControllerSource();
+    const assertionStart = source.indexOf(
+      "async function assertLaunchReportState",
+    );
+    const assertionSource = source.slice(
+      assertionStart,
+      source.indexOf(
+        "\n}\n\nasync function assertCrashHistory",
+        assertionStart,
+      ),
+    );
+
+    // When: the follow-up launch-report assertion runs after recovery wait.
+    // Then: it can use the recovery wait's durable report, not stale metadata output.
+    expect(source).toContain("function androidRecoveryLaunchReportPath()");
+    expect(assertionSource).toContain("androidRecoveryLaunchReportPath()");
+    expect(assertionSource).not.toContain(
+      "wait-for-metadata-launch-report.json",
+    );
+  });
+
   it("prewarms the built-in release update-check key before first OTA deploy", async () => {
     const source = await readControllerSource();
     const visibilityStart = source.indexOf(
