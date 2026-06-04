@@ -189,20 +189,26 @@ describe("Detox scenario port catalog", () => {
     expect(beforeEachBody).not.toContain("delete: true");
   });
 
-  it("foregrounds the running app before Detox UI interactions", async () => {
+  it("keeps iOS read-only assertions on the active launch session", async () => {
+    // Given: the foreground helper runs before every Detox UI assertion.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const waitForTestIdBody = detoxJestSpec.slice(
+    const foregroundBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("async function ensureAppForegroundForInteraction"),
-      detoxJestSpec.indexOf("async function runDeviceAction"),
+      detoxJestSpec.indexOf("async function waitForTestID"),
     );
 
-    expect(waitForTestIdBody).toContain("/e2e/ensure-app-foreground");
-    expect(waitForTestIdBody).toContain(
-      "device.launchApp({ newInstance: false })",
+    // When: the helper foregrounds the app.
+    // Then: only Android uses a Detox relaunch; iOS keeps transient launch reports intact.
+    expect(foregroundBody).toContain("/e2e/ensure-app-foreground");
+    expect(foregroundBody).toContain("device.sendToHome()");
+    expect(foregroundBody).toContain(
+      "if (isAndroidRun()) {\n    await device.sendToHome();\n    await device.launchApp({ newInstance: false });\n  }",
     );
-    expect(waitForTestIdBody).toContain("device.sendToHome()");
-    expect(waitForTestIdBody).not.toMatch(/\bretry\b/i);
-    expect(waitForTestIdBody).not.toContain("device.terminateApp");
+    expect(foregroundBody).not.toMatch(
+      /\}\s*await device\.launchApp\(\{ newInstance: false \}\);/,
+    );
+    expect(foregroundBody).not.toMatch(/\bretry\b/i);
+    expect(foregroundBody).not.toContain("device.terminateApp");
     expect(detoxJestSpec).toContain("by.text(new RegExp");
   });
 

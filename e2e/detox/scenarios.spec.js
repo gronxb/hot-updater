@@ -171,8 +171,8 @@ async function ensureAppForegroundForInteraction() {
   );
   if (isAndroidRun()) {
     await device.sendToHome();
+    await device.launchApp({ newInstance: false });
   }
-  await device.launchApp({ newInstance: false });
 }
 
 async function waitForTestID(testID) {
