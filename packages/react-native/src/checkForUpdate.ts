@@ -60,7 +60,7 @@ const isResetToBuiltInResponse = (updateInfo: AppUpdateInfo): boolean => {
   return (
     updateInfo.status === "ROLLBACK" &&
     updateInfo.id === NIL_UUID &&
-    updateInfo.fileUrl === null
+    updateInfo.fileUrl == null
   );
 };
 

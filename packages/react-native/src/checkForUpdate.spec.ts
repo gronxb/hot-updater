@@ -81,4 +81,27 @@ describe("checkForUpdate", () => {
     expect(nativeMocks.resetChannel).toHaveBeenCalledTimes(1);
     expect(nativeMocks.updateBundle).not.toHaveBeenCalled();
   });
+
+  it("resets native state for built-in rollback when fileUrl is omitted", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(async () =>
+        JSON.parse(
+          JSON.stringify({
+            ...createBuiltinRollbackInfo(),
+            fileUrl: undefined,
+          }),
+        ),
+      ),
+    } satisfies HotUpdaterResolver;
+    const { checkForUpdate } = await import("./checkForUpdate");
+
+    const updateInfo = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
+
+    await expect(updateInfo?.updateBundle()).resolves.toBe(true);
+    expect(nativeMocks.resetChannel).toHaveBeenCalledTimes(1);
+    expect(nativeMocks.updateBundle).not.toHaveBeenCalled();
+  });
 });
