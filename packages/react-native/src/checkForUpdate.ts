@@ -159,11 +159,7 @@ export async function checkForUpdate(
   return {
     ...updateInfo,
     updateBundle: async () => {
-      if (
-        explicitChannel &&
-        isSwitched &&
-        isResetToBuiltInResponse(updateInfo)
-      ) {
+      if (isResetToBuiltInResponse(updateInfo)) {
         return resetChannel();
       }
 
