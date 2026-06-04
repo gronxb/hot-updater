@@ -432,6 +432,7 @@ function App(): React.JSX.Element {
         ref={scrollViewRef}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="always"
+        testID="e2e-scroll-content"
       >
         <Text style={styles.title}>HotUpdaterExample</Text>
         <Text style={styles.description}>

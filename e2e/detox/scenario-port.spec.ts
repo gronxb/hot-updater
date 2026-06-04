@@ -16,6 +16,7 @@ const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
+const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 
 function scenarioStages(scenarioName: string): readonly string[] {
   return getDetoxScenarioDefinition(scenarioName).steps.map(
@@ -318,6 +319,22 @@ describe("Detox scenario port catalog", () => {
     expect(inputIndex).toBeLessThan(runtimeIndex);
   });
 
+  it("scrolls inside the app content when Android layout offsets are not ready", async () => {
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+    const waitForTestIDBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function waitForTestID"),
+      detoxJestSpec.indexOf("async function waitForVisibleText"),
+    );
+
+    expect(exampleAppSource).toContain('testID="e2e-scroll-content"');
+    expect(waitForTestIDBody).toContain('by.id("e2e-scroll-content")');
+    expect(waitForTestIDBody).toContain(".whileElement(");
+    expect(waitForTestIDBody).toContain('.scroll(260, "down")');
+    expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);
+    expect(waitForTestIDBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("only disables Detox synchronization for install taps", async () => {
     // Given: install buttons can start native download work that Detox sees as busy.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
@@ -581,6 +598,58 @@ describe("Detox scenario port catalog", () => {
       "assert recovered metadata active",
       "assert crash history",
     ]);
+  });
+
+  it("reattaches Android Detox after control-server crash recovery", async () => {
+    // Given: the control server relaunches Android outside Detox while waiting
+    // for the native recovery marker.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const reattachBody = detoxJestSpec.slice(
+      detoxJestSpec.indexOf("async function reattachAfterExternalLaunch"),
+      detoxJestSpec.indexOf("async function runControlStep"),
+    );
+
+    // When: the wait-for-crash-recovery control step completes.
+    // Then: Android reconnects through Detox without adding a scenario-level relaunch.
+    expect(reattachBody).toContain(
+      'pathName !== "/e2e/wait-for-crash-recovery"',
+    );
+    expect(reattachBody).toContain("if (!isAndroidRun()) return;");
+    expect(reattachBody).toContain(
+      "await device.launchApp({ newInstance: false });",
+    );
+    expect(reattachBody).toContain("markSynchronizationRestoredByLaunch();");
+    expect(reattachBody).not.toMatch(/\bretry\b/i);
+    expect(scenarioStages("release-ota-recovery")).not.toContain(
+      "launch recovered app",
+    );
+  });
+
+  it("waits for cohort rollout metadata to become stable before active assertion", () => {
+    const stages = scenarioStages("target-cohorts-rollout-interaction");
+
+    expect(stages).toEqual([
+      "deploy cohort rollout bundle",
+      "enter qa cohort",
+      "apply qa cohort",
+      "install cohort rollout update",
+      "wait cohort rollout metadata pending",
+      "reload cohort rollout update",
+      "wait cohort rollout metadata stable",
+      "assert cohort rollout active",
+    ]);
+    expect(
+      controlStepBody(
+        "target-cohorts-rollout-interaction",
+        "wait cohort rollout metadata pending",
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      controlStepBody(
+        "target-cohorts-rollout-interaction",
+        "wait cohort rollout metadata stable",
+      ).verificationPending,
+    ).toBe(false);
   });
 
   it("ports runtime channel switching as an OTA state transition", () => {

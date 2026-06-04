@@ -178,8 +178,13 @@ async function ensureAppForegroundForInteraction() {
 async function waitForTestID(testID) {
   await ensureAppForegroundForInteraction();
   await navigateToTestID(testID);
-  await waitFor(element(by.id(testID))).toBeVisible().withTimeout(30000);
-  return element(by.id(testID));
+  const target = element(by.id(testID));
+  await waitFor(target)
+    .toBeVisible()
+    .whileElement(by.id("e2e-scroll-content"))
+    .scroll(260, "down");
+  await waitFor(target).toBeVisible().withTimeout(30000);
+  return target;
 }
 
 async function waitForVisibleText(testID, contains) {
@@ -209,6 +214,13 @@ function shouldDisableSynchronizationForTap(testID) {
 
 function markSynchronizationRestoredByLaunch() {
   synchronizationDisabledUntilLaunch = false;
+}
+
+async function reattachAfterExternalLaunch(pathName) {
+  if (!isAndroidRun()) return;
+  if (pathName !== "/e2e/wait-for-crash-recovery") return;
+  await device.launchApp({ newInstance: false });
+  markSynchronizationRestoredByLaunch();
 }
 
 async function runTapStep(step) {
@@ -254,11 +266,9 @@ async function runControlStep(step) {
   const runner = step.pathName.startsWith("/e2e/jobs/")
     ? controlClient.runJob.bind(controlClient)
     : controlClient.postJson.bind(controlClient);
-  saveControlResult(
-    step.saveResultAs,
-    step.saveResultFieldsAs,
-    await runner(step.stage, step.pathName, body),
-  );
+  const result = await runner(step.stage, step.pathName, body);
+  saveControlResult(step.saveResultAs, step.saveResultFieldsAs, result);
+  await reattachAfterExternalLaunch(step.pathName);
 }
 
 async function runScenarioStep(step) {

@@ -317,6 +317,27 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "action-install-current-channel-update",
       },
       {
+        body: {
+          bundleId: "$bundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait cohort rollout metadata pending",
+      },
+      {
+        action: "reload",
+        kind: "device",
+        stage: "reload cohort rollout update",
+      },
+      {
+        body: { bundleId: "$bundleId", verificationPending: false },
+        kind: "control",
+        pathName: "/e2e/jobs/wait-for-metadata",
+        stage: "wait cohort rollout metadata stable",
+      },
+      {
         body: { bundleId: "$bundleId" },
         kind: "control",
         pathName: "/e2e/assert-metadata-active",
