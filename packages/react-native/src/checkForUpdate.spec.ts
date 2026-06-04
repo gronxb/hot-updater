@@ -30,6 +30,7 @@ const createBuiltinRollbackInfo = (): AppUpdateAvailableInfo => ({
   id: "00000000-0000-0000-0000-000000000000",
   manifestFileHash: null,
   manifestUrl: null,
+  message: null,
   shouldForceUpdate: true,
   status: "ROLLBACK",
 });
@@ -71,7 +72,10 @@ describe("checkForUpdate", () => {
     };
     const { checkForUpdate } = await import("./checkForUpdate");
 
-    const updateInfo = await checkForUpdate({ resolver });
+    const updateInfo = await checkForUpdate({
+      resolver,
+      updateStrategy: "appVersion",
+    });
 
     await expect(updateInfo?.updateBundle()).resolves.toBe(true);
     expect(nativeMocks.resetChannel).toHaveBeenCalledTimes(1);
