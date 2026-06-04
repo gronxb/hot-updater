@@ -110,12 +110,6 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         testID: "runtime-scenario-marker",
       },
       {
-        contains: "Current Crashed Bundle ID: $crashBundleId",
-        kind: "assertText",
-        stage: "assert crashed bundle result",
-        testID: "launch-crashed-bundle-result",
-      },
-      {
         body: { bundleId: "$stableBundleId" },
         kind: "control",
         pathName: "/e2e/assert-metadata-active",

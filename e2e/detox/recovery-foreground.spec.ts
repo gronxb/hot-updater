@@ -50,4 +50,28 @@ describe("Detox recovery foreground handling", () => {
       testID: "runtime-bundle-id",
     });
   });
+
+  it("uses crash history instead of transient crashed-bundle UI text", () => {
+    // Given: the recovered UI can clear the transient crashed bundle text.
+    const scenario = getDetoxScenarioDefinition("release-ota-recovery");
+    const stages = scenario.steps.map((step) => step.stage);
+    const crashHistoryIndex = stages.indexOf("assert crash history");
+    const metadataIndex = stages.indexOf("assert recovered metadata active");
+
+    // When: recovery evidence is asserted after the native launch report.
+    // Then: durable crash history owns the crashedBundleId assertion.
+    expect(
+      scenario.steps.find(
+        (step) => step.stage === "assert crashed bundle result",
+      ),
+    ).toBeUndefined();
+    expect(
+      scenario.steps.find(
+        (step) =>
+          step.kind === "assertText" &&
+          step.testID === "launch-crashed-bundle-result",
+      ),
+    ).toBeUndefined();
+    expect(crashHistoryIndex).toBeGreaterThan(metadataIndex);
+  });
 });
