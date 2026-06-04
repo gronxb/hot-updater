@@ -303,6 +303,13 @@ describe("Maestro E2E contract", () => {
       "async function waitForLocalProviderReady",
     );
     const waitEnd = source.indexOf("\n}\n\nfunction getUrlPort", waitStart);
+    const readinessUrlsStart = source.indexOf(
+      "function getLocalProviderReadinessUrls",
+    );
+    const readinessUrlsEnd = source.indexOf(
+      "\n}\n\nfunction getAndroidControlDevicePort",
+      readinessUrlsStart,
+    );
     const headersStart = source.indexOf(
       "function getHotUpdaterManagementHeaders",
     );
@@ -311,6 +318,10 @@ describe("Maestro E2E contract", () => {
       headersStart,
     );
     const readinessUrlSource = source.slice(readinessUrlStart, readinessUrlEnd);
+    const readinessUrlsSource = source.slice(
+      readinessUrlsStart,
+      readinessUrlsEnd,
+    );
     const waitSource = source.slice(waitStart, waitEnd);
     const headersSource = source.slice(headersStart, headersEnd);
 
@@ -318,8 +329,13 @@ describe("Maestro E2E contract", () => {
     expect(readinessUrlSource).toContain('url.searchParams.set("platform"');
     expect(readinessUrlSource).toContain('url.searchParams.set("enabled"');
     expect(readinessUrlSource).toContain('url.searchParams.set("limit", "1")');
-    expect(waitSource).toContain("getControllerReachableProviderReadinessUrl");
+    expect(readinessUrlsSource).toContain(
+      "getControllerReachableProviderReadinessUrl",
+    );
+    expect(readinessUrlsSource).toContain("getRemoteResetChannels()");
+    expect(readinessUrlsSource).toContain('url.searchParams.set("channel"');
     expect(waitSource).toContain("getHotUpdaterManagementHeaders()");
+    expect(waitSource).toContain("getLocalProviderReadinessUrls()");
     expect(headersSource).toContain("readHotUpdaterAuthToken()");
     expect(headersSource).toContain("session.envSourceFile");
     expect(headersSource).toContain("Authorization: `Bearer ${authToken}`");

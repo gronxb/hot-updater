@@ -3918,6 +3918,22 @@ function getControllerReachableProviderReadinessUrl() {
   return url.toString();
 }
 
+function getLocalProviderReadinessUrls() {
+  const baseUrl = getControllerReachableProviderReadinessUrl();
+  if (!baseUrl) {
+    return [];
+  }
+
+  const urls = [baseUrl];
+  for (const channel of getRemoteResetChannels() ?? []) {
+    const url = new URL(baseUrl);
+    url.searchParams.set("channel", channel);
+    urls.push(url.toString());
+  }
+
+  return urls;
+}
+
 function getAndroidControlDevicePort() {
   const port = Number.parseInt(
     process.env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107",
@@ -4016,29 +4032,39 @@ function parseEnvTokenValue(rawValue: string) {
 }
 
 async function waitForLocalProviderReady() {
-  const url = getControllerReachableProviderReadinessUrl();
-  if (!url) {
+  const urls = getLocalProviderReadinessUrls();
+  if (urls.length === 0) {
     return;
   }
 
   let lastError: string | null = null;
   for (let attempt = 1; attempt <= PROVIDER_READY_WAIT_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await fetch(url, {
-        headers: getHotUpdaterManagementHeaders(),
-        signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
-      });
-      if (response.ok) {
-        logE2e("local provider ready", {
-          attempt,
-          platform: session.platform,
-          url,
+    let ready = true;
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
+          headers: getHotUpdaterManagementHeaders(),
+          signal: AbortSignal.timeout(PROVIDER_READY_HTTP_TIMEOUT_MS),
         });
-        return;
+        if (!response.ok) {
+          ready = false;
+          lastError = `${url} HTTP ${response.status}`;
+          break;
+        }
+      } catch (error) {
+        ready = false;
+        lastError = `${url} ${formatErrorMessage(error)}`;
+        break;
       }
-      lastError = `HTTP ${response.status}`;
-    } catch (error) {
-      lastError = formatErrorMessage(error);
+    }
+
+    if (ready) {
+      logE2e("local provider ready", {
+        attempt,
+        platform: session.platform,
+        urls,
+      });
+      return;
     }
 
     if (attempt === 1 || attempt % 10 === 0) {
@@ -4047,14 +4073,14 @@ async function waitForLocalProviderReady() {
         lastError,
         platform: session.platform,
         retryDelayMs: PROVIDER_READY_WAIT_DELAY_MS,
-        url,
+        urls,
       });
     }
     await sleep(PROVIDER_READY_WAIT_DELAY_MS);
   }
 
   throw new Error(
-    `Timed out waiting for local provider ${url}: ${lastError ?? "unknown error"}`,
+    `Timed out waiting for local provider ${urls.join(", ")}: ${lastError ?? "unknown error"}`,
   );
 }
 
