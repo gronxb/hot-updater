@@ -554,7 +554,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("ports release recovery launch boundaries before each install", () => {
+  it("ports release recovery without relaunching over recovered state", () => {
     const stages = scenarioStages("release-ota-recovery");
 
     expect(stages).toEqual([
@@ -573,8 +573,13 @@ describe("Detox scenario port catalog", () => {
       "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
-      "launch recovered app",
+      "assert recovered bundle id",
+      "assert recovered marker",
       "assert recovered launch",
+      "assert crashed bundle result",
+      "assert recovery launch report",
+      "assert recovered metadata active",
+      "assert crash history",
     ]);
   });
 
