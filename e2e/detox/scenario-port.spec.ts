@@ -590,11 +590,11 @@ describe("Detox scenario port catalog", () => {
       "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
-      "assert recovered launch",
+      "assert recovery launch report",
+      "assert recovered stable launch",
       "assert recovered bundle id",
       "assert recovered marker",
       "assert crashed bundle result",
-      "assert recovery launch report",
       "assert recovered metadata active",
       "assert crash history",
     ]);

@@ -92,10 +92,16 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "wait crash recovery",
       },
       {
-        contains: "Current Launch Status: RECOVERED",
+        body: { crashedBundleId: "$crashBundleId", status: "RECOVERED" },
+        kind: "control",
+        pathName: "/e2e/assert-launch-report",
+        stage: "assert recovery launch report",
+      },
+      {
+        contains: "Current Launch Status: STABLE",
         ensureForeground: false,
         kind: "assertText",
-        stage: "assert recovered launch",
+        stage: "assert recovered stable launch",
         testID: "launch-status-result",
       },
       {
@@ -115,12 +121,6 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         kind: "assertText",
         stage: "assert crashed bundle result",
         testID: "launch-crashed-bundle-result",
-      },
-      {
-        body: { crashedBundleId: "$crashBundleId", status: "RECOVERED" },
-        kind: "control",
-        pathName: "/e2e/assert-launch-report",
-        stage: "assert recovery launch report",
       },
       {
         body: { bundleId: "$stableBundleId" },
