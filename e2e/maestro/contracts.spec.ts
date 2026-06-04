@@ -212,6 +212,33 @@ describe("Maestro E2E contract", () => {
     expect(source).not.toContain('reason: "cohort-unavailable"');
   });
 
+  it("requires the current launch report during crash recovery waits", async () => {
+    // Given: wait-for-metadata can leave a stale launch-report fallback copy.
+    const source = await readControllerSource();
+    const iosStart = source.indexOf("function readIosRecoveryDiagnostics()");
+    const androidStart = source.indexOf(
+      "function readAndroidRecoveryDiagnostics()",
+    );
+    const iosSource = source.slice(
+      iosStart,
+      source.indexOf(
+        "\n}\n\nfunction readAndroidRecoveryDiagnostics",
+        iosStart,
+      ),
+    );
+    const androidSource = source.slice(
+      androidStart,
+      source.indexOf("\n}\n\nfunction launchAndroidApp", androidStart),
+    );
+
+    // When: crash recovery waits decide whether recovery has completed.
+    // Then: they must not pass from stale wait-for-metadata launch reports.
+    expect(iosSource).not.toContain("withFallbackJsonSnapshot");
+    expect(androidSource).not.toContain("withFallbackJsonSnapshot");
+    expect(iosSource).not.toContain("wait-for-metadata-launch-report.json");
+    expect(androidSource).not.toContain("wait-for-metadata-launch-report.json");
+  });
+
   it("prewarms the built-in release update-check key before first OTA deploy", async () => {
     const source = await readControllerSource();
     const visibilityStart = source.indexOf(

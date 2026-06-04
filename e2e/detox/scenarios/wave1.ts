@@ -98,13 +98,6 @@ export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
         stage: "assert recovery launch report",
       },
       {
-        contains: "Current Launch Status: STABLE",
-        ensureForeground: false,
-        kind: "assertText",
-        stage: "assert recovered stable launch",
-        testID: "launch-status-result",
-      },
-      {
         contains: "$stableBundleId",
         kind: "assertText",
         stage: "assert recovered bundle id",

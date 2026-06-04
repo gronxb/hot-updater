@@ -3367,20 +3367,6 @@ function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
   }
 }
 
-function withFallbackJsonSnapshot(
-  primary: JsonSnapshot,
-  fallbackLocalFileName: string,
-) {
-  if (primary.exists || primary.readError) {
-    return primary;
-  }
-
-  const fallback = readOptionalJsonSnapshot(
-    path.join(session.resultsDir, fallbackLocalFileName),
-  );
-  return fallback.exists ? fallback : primary;
-}
-
 function firstMetadataValue(...values: unknown[]) {
   return values.find((value) => value !== undefined) ?? null;
 }
@@ -4956,20 +4942,14 @@ function readIosRecoveryDiagnostics() {
     crashMarker: readOptionalJsonSnapshot(
       path.join(storePath, "recovery-crash-marker.json"),
     ),
-    launchReport: withFallbackJsonSnapshot(
-      readOptionalJsonSnapshot(path.join(storePath, "launch-report.json")),
-      "wait-for-metadata-launch-report.json",
+    launchReport: readOptionalJsonSnapshot(
+      path.join(storePath, "launch-report.json"),
     ),
     metadata: readOptionalJsonSnapshot(path.join(storePath, "metadata.json")),
   };
 }
 
 function readAndroidRecoveryDiagnostics() {
-  const launchReport = readAndroidStoreSnapshot(
-    "launch-report.json",
-    "recovery-launch-report.json",
-  );
-
   return {
     crashHistory: readAndroidStoreSnapshot(
       "crashed-history.json",
@@ -4979,9 +4959,9 @@ function readAndroidRecoveryDiagnostics() {
       "recovery-crash-marker.json",
       "recovery-crash-marker.json",
     ),
-    launchReport: withFallbackJsonSnapshot(
-      launchReport,
-      "wait-for-metadata-launch-report.json",
+    launchReport: readAndroidStoreSnapshot(
+      "launch-report.json",
+      "recovery-launch-report.json",
     ),
     metadata: readAndroidStoreSnapshot(
       "metadata.json",
