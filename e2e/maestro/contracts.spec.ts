@@ -328,10 +328,16 @@ describe("Maestro E2E contract", () => {
     expect(readinessUrlSource).toContain("/api/bundles");
     expect(readinessUrlSource).toContain('url.searchParams.set("platform"');
     expect(readinessUrlSource).toContain('url.searchParams.set("enabled"');
-    expect(readinessUrlSource).toContain('url.searchParams.set("limit", "1")');
+    expect(source).toContain("REMOTE_RESET_READINESS_LIMIT = 100");
+    expect(source).toContain("PROVIDER_READY_BUNDLE_LIMITS");
+    expect(readinessUrlSource).toContain("limit: number");
+    expect(readinessUrlSource).toContain(
+      'url.searchParams.set("limit", String(limit))',
+    );
     expect(readinessUrlsSource).toContain(
       "getControllerReachableProviderReadinessUrl",
     );
+    expect(readinessUrlsSource).toContain("PROVIDER_READY_BUNDLE_LIMITS");
     expect(readinessUrlsSource).toContain("getRemoteResetChannels()");
     expect(readinessUrlsSource).toContain('url.searchParams.set("channel"');
     expect(waitSource).toContain("getHotUpdaterManagementHeaders()");
@@ -340,6 +346,35 @@ describe("Maestro E2E contract", () => {
     expect(headersSource).toContain("session.envSourceFile");
     expect(headersSource).toContain("Authorization: `Bearer ${authToken}`");
     expect(waitSource).not.toContain("ProviderHealthUrl");
+  });
+
+  it("logs provider reset fetch causes without retrying provider operations", async () => {
+    const source = await readControllerSource();
+    const jobStart = source.indexOf(
+      "function createJob(task: (context: JobExecutionContext) => Promise<JobResult>)",
+    );
+    const jobEnd = source.indexOf(
+      "\n}\n\nexport function startBootstrapJob",
+      jobStart,
+    );
+    const resetListStart = source.indexOf(
+      "async function fetchEnabledBundlesFromDatabase",
+    );
+    const resetListEnd = source.indexOf(
+      "\n}\n\nasync function patchBundle",
+      resetListStart,
+    );
+    const jobSource = source.slice(jobStart, jobEnd);
+    const resetListSource = source.slice(resetListStart, resetListEnd);
+
+    expect(source).toContain("formatErrorCause");
+    expect(jobSource).toContain("cause: formatErrorCause(error)");
+    expect(resetListSource).toContain(
+      "Failed to list enabled remote bundles for reset readiness",
+    );
+    expect(resetListSource).toContain("cause: error");
+    expect(resetListSource).not.toContain("await sleep(");
+    expect(resetListSource).not.toContain("PROVIDER_OPERATION_RETRY");
   });
 
   it("keeps update-check timeout diagnostics inside helper scope", async () => {

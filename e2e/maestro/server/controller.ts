@@ -357,6 +357,8 @@ const PROVIDER_READY_WAIT_DELAY_MS = Number(
 const PROVIDER_READY_HTTP_TIMEOUT_MS = Number(
   process.env.HOT_UPDATER_E2E_PROVIDER_READY_HTTP_TIMEOUT_MS || 2000,
 );
+const REMOTE_RESET_READINESS_LIMIT = 100;
+const PROVIDER_READY_BUNDLE_LIMITS = [1, REMOTE_RESET_READINESS_LIMIT] as const;
 const UPDATE_CHECK_HTTP_TIMEOUT_MS = Number(
   process.env.HOT_UPDATER_E2E_UPDATE_CHECK_HTTP_TIMEOUT_MS || 2000,
 );
@@ -427,6 +429,23 @@ function writeResultDiagnosticFile(fileName: string, contents: string) {
 
 function formatErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function formatErrorCause(error: unknown) {
+  if (!(error instanceof Error) || error.cause === undefined) {
+    return undefined;
+  }
+
+  const cause = error.cause;
+  if (cause instanceof Error) {
+    return {
+      message: cause.message,
+      name: cause.name,
+      stack: cause.stack,
+    };
+  }
+
+  return String(cause);
 }
 
 function hashText(value: string) {
@@ -2096,43 +2115,54 @@ async function fetchEnabledBundlesFromDatabase(
   limit: number,
   channels: readonly string[] | null = null,
 ) {
-  const bundles = await withDatabasePlugin(async (databasePlugin) => {
-    if (!channels) {
-      const { data } = await databasePlugin.getBundles({
-        limit,
-        orderBy: {
-          direction: "desc",
-          field: "id",
-        },
-        where: {
-          enabled: true,
-          platform: session.platform,
-        },
-      });
-
-      return data;
-    }
-
-    const pages: Array<Awaited<ReturnType<DatabasePlugin["getBundles"]>>> = [];
-    for (const channel of channels) {
-      pages.push(
-        await databasePlugin.getBundles({
+  let bundles: Bundle[];
+  try {
+    bundles = await withDatabasePlugin(async (databasePlugin) => {
+      if (!channels) {
+        const { data } = await databasePlugin.getBundles({
           limit,
           orderBy: {
             direction: "desc",
             field: "id",
           },
           where: {
-            channel,
             enabled: true,
             platform: session.platform,
           },
-        }),
-      );
-    }
+        });
 
-    return pages.flatMap((page) => page.data);
-  });
+        return data;
+      }
+
+      const pages: Array<Awaited<ReturnType<DatabasePlugin["getBundles"]>>> =
+        [];
+      for (const channel of channels) {
+        pages.push(
+          await databasePlugin.getBundles({
+            limit,
+            orderBy: {
+              direction: "desc",
+              field: "id",
+            },
+            where: {
+              channel,
+              enabled: true,
+              platform: session.platform,
+            },
+          }),
+        );
+      }
+
+      return pages.flatMap((page) => page.data);
+    });
+  } catch (error) {
+    throw new Error(
+      "Failed to list enabled remote bundles for reset readiness",
+      {
+        cause: error,
+      },
+    );
+  }
 
   const normalized = normalizeBundleListEntries(bundles);
   logE2e("database enabled bundle list", {
@@ -3905,7 +3935,11 @@ function getControllerReachableAppBaseUrl() {
   return url.toString().replace(/\/+$/, "");
 }
 
-function getControllerReachableProviderReadinessUrl() {
+function getControllerReachableProviderReadinessUrl({
+  limit,
+}: {
+  readonly limit: number;
+}) {
   const url = new URL(`${getControllerReachableAppBaseUrl()}/api/bundles`);
   if (!isLoopbackHost(url.hostname)) {
     return null;
@@ -3913,22 +3947,26 @@ function getControllerReachableProviderReadinessUrl() {
 
   url.searchParams.set("platform", session.platform);
   url.searchParams.set("enabled", "true");
-  url.searchParams.set("limit", "1");
+  url.searchParams.set("limit", String(limit));
   url.hash = "";
   return url.toString();
 }
 
 function getLocalProviderReadinessUrls() {
-  const baseUrl = getControllerReachableProviderReadinessUrl();
-  if (!baseUrl) {
-    return [];
-  }
+  const urls: string[] = [];
 
-  const urls = [baseUrl];
-  for (const channel of getRemoteResetChannels() ?? []) {
-    const url = new URL(baseUrl);
-    url.searchParams.set("channel", channel);
-    urls.push(url.toString());
+  for (const limit of PROVIDER_READY_BUNDLE_LIMITS) {
+    const baseUrl = getControllerReachableProviderReadinessUrl({ limit });
+    if (!baseUrl) {
+      continue;
+    }
+
+    urls.push(baseUrl);
+    for (const channel of getRemoteResetChannels() ?? []) {
+      const url = new URL(baseUrl);
+      url.searchParams.set("channel", channel);
+      urls.push(url.toString());
+    }
   }
 
   return urls;
@@ -7025,6 +7063,7 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
         return;
       }
       logE2e("control job failed", {
+        cause: formatErrorCause(error),
         error: message,
         jobId,
         stack: error instanceof Error ? error.stack : undefined,
