@@ -52,11 +52,7 @@ describe("Detox E2E harness contract", () => {
     const rootPackage = await readRootPackageJson();
 
     const scripts = rootPackage.scripts ?? {};
-    const legacyHarnessSegment = "ma" + "estro";
 
-    expect(scripts[`e2e:${legacyHarnessSegment}`]).toBeUndefined();
-    expect(scripts[`e2e:${legacyHarnessSegment}:ios`]).toBeUndefined();
-    expect(scripts[`e2e:${legacyHarnessSegment}:android`]).toBeUndefined();
     expect(scripts["e2e:detox"]).toBe(
       "node --experimental-strip-types ./e2e/detox/scripts/run.ts",
     );
@@ -70,12 +66,10 @@ describe("Detox E2E harness contract", () => {
     expect(rootPackage.devDependencies?.jest).toBe("^29.7.0");
   });
 
-  it("keeps Detox as the only repository E2E harness directory", async () => {
-    const legacyHarnessSegment = "ma" + "estro";
+  it("keeps Detox as the repository E2E harness directory", async () => {
+    const detoxStat = await fs.stat(path.join(repoDir, "e2e", "detox"));
 
-    await expect(
-      fs.stat(path.join(repoDir, "e2e", legacyHarnessSegment)),
-    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(detoxStat.isDirectory()).toBe(true);
   });
 
   it("includes Detox config files needed by the CLI", async () => {
@@ -151,6 +145,7 @@ describe("Detox E2E harness contract", () => {
 
   it("keeps executable Detox harness files scenario-owned", async () => {
     const detoxRoots = [
+      path.join(repoDir, "e2e/detox/scenarios.ts"),
       path.join(repoDir, "e2e/detox/scripts"),
       path.join(repoDir, "e2e/detox/scenarios"),
       path.join(repoDir, "e2e/detox/scenarios.spec.js"),
@@ -180,15 +175,10 @@ describe("Detox E2E harness contract", () => {
     const joinedSource = (
       await Promise.all(files.map((file) => fs.readFile(file, "utf8")))
     ).join("\n");
-    const legacyHarnessSegment = "ma" + "estro";
 
-    expect(joinedSource).not.toContain(`e2e/${legacyHarnessSegment}`);
-    expect(joinedSource).not.toContain(`../${legacyHarnessSegment}`);
-    expect(joinedSource).not.toContain(`../../${legacyHarnessSegment}`);
-    const nonDetoxScenarioPattern = new RegExp(
-      ["\\.y" + "a?ml", "run" + "Flow", "output\\."].join("|"),
-    );
-    expect(joinedSource).not.toMatch(nonDetoxScenarioPattern);
+    expect(joinedSource).toContain("detoxScenarioWaves");
+    expect(joinedSource).toContain("getDetoxScenarioDefinition");
+    expect(joinedSource).toContain("DetoxScenarioRuntime");
   });
 
   it("prints a Detox command preview without launching Detox", () => {

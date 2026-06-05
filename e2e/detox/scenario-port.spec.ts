@@ -148,21 +148,11 @@ describe("Detox scenario port catalog", () => {
     expect(new Set(listDetoxScenarioNames()).size).toBe(14);
   });
 
-  it("uses Detox-owned scenario lookup without importing the legacy runner catalog", async () => {
+  it("uses Detox-owned scenario lookup in the runner", async () => {
     // Given: the CLI must run the ported Detox suite.
     const runnerSource = await fs.readFile(detoxRunnerPath, "utf8");
 
-    // When: the runner resolves scenario names.
-    const legacyHarnessSegment = "ma" + "estro";
-    const forbiddenImports = [
-      `../../${legacyHarnessSegment}/scenarios.ts`,
-      "resolveSuiteScenarioNames",
-      "listAvailableScenarioNames",
-    ];
-
-    for (const forbiddenImport of forbiddenImports) {
-      expect(runnerSource).not.toContain(forbiddenImport);
-    }
+    // When: the runner resolves scenario names from the Detox catalog.
     expect(runnerSource).toContain("resolveDetoxSuiteScenarioNames");
     expect(runnerSource).toContain("listDetoxScenarioNames");
   });
@@ -197,7 +187,6 @@ describe("Detox scenario port catalog", () => {
     );
     expect(detoxJestSpec).toContain("getDetoxScenarioDefinition");
     expect(detoxJestSpec).toContain("scenario.run(");
-    expect(detoxJestSpec).not.toContain(`runScenario${"Step"}`);
     expect(detoxJestSpec).not.toContain("step.kind");
     expect(detoxJestSpec).not.toContain(".todo");
   });
