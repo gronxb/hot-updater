@@ -36,7 +36,7 @@ const notify = proxy<{
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
 const DEFAULT_E2E_RUNTIME_CONFIG_URL =
   "http://localhost:3107/e2e/runtime-config";
-const E2E_SCENARIO_MARKER = "targeted-qa-maestro";
+const E2E_SCENARIO_MARKER = "targeted-qa-detox";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
 

@@ -15,10 +15,10 @@ import {
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
-} from "../../../packages/core/src/bundleArtifacts.ts";
-import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
-import type { Bundle } from "../../../packages/core/src/types.ts";
-import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
+} from "../../packages/core/src/bundleArtifacts.ts";
+import { getRolledOutNumericCohorts } from "../../packages/core/src/rollout.ts";
+import type { Bundle } from "../../packages/core/src/types.ts";
+import type { DatabasePlugin } from "../../plugins/plugin-core/src/types/index.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -174,7 +174,7 @@ type JsonSnapshot = {
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_DIR = path.resolve(__dirname, "../../..");
+const REPO_DIR = path.resolve(__dirname, "../..");
 const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
@@ -394,7 +394,7 @@ const E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
 const E2E_METADATA_WAIT_RELAUNCH_LIMIT = Number(
   process.env.HOT_UPDATER_E2E_METADATA_WAIT_RELAUNCH_LIMIT || 2,
 );
-const LOG_PREFIX = "[maestro-e2e]";
+const LOG_PREFIX = "[detox-e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
   if (value.length <= maxLength) {
@@ -497,7 +497,7 @@ const session: SessionState = {
   envSourceFile: HOT_UPDATER_ENV_FILE,
   exampleDir: EXAMPLE_DIR,
   initialMarker:
-    platform === "ios" ? "builtin-ios-maestro" : "builtin-android-maestro",
+    platform === "ios" ? "builtin-ios-detox" : "builtin-android-detox",
   iosBinaryPath: process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
     ? path.isAbsolute(process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH)
       ? process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
@@ -505,7 +505,7 @@ const session: SessionState = {
     : null,
   iosDerivedDataPath:
     process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
-    "/tmp/hotupdater-v085-ios-maestro",
+    "/tmp/hotupdater-v085-ios-detox",
   largeArchiveAssetBackupPath: null,
   largeArchiveAssetPath: path.join(
     EXAMPLE_DIR,
@@ -2006,7 +2006,7 @@ async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
-    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+    (await import("../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (
         options: null,
       ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
@@ -2728,21 +2728,6 @@ async function writeIosDerivedDataCacheKey(cacheKey: string) {
   await fsPromises.writeFile(iosDerivedDataCacheKeyPath(), `${cacheKey}\n`);
 }
 
-const IOS_RETRYABLE_BUILD_PATTERNS = [
-  /fatal error: 'glog\/logging\.h' file not found/,
-  /fatal error: 'react\/renderer\/components\/view\/HostPlatformTouch\.h' file not found/,
-  /Build input file cannot be found: '.+\/ios\/build\/generated\/ios\/ReactCodegen\/.+'/,
-];
-
-async function shouldRetryIosReleaseBuild(logPath: string) {
-  if (!fs.existsSync(logPath)) {
-    return false;
-  }
-
-  const contents = await fsPromises.readFile(logPath, "utf8");
-  return IOS_RETRYABLE_BUILD_PATTERNS.some((pattern) => pattern.test(contents));
-}
-
 async function prepareIosRelease() {
   const builtAppPath = path.join(
     session.iosDerivedDataPath,
@@ -2832,9 +2817,9 @@ async function prepareIosRelease() {
         await installPods();
       }
 
-      const xcodebuildLogPath = path.join(session.resultsDir, "xcodebuild.log");
-      const getXcodebuildArgs = (serialized: boolean) => {
-        const args = [
+      await runLogged(
+        "xcodebuild",
+        [
           "-workspace",
           path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
           "-scheme",
@@ -2848,47 +2833,13 @@ async function prepareIosRelease() {
           "-derivedDataPath",
           session.iosDerivedDataPath,
           ...IOS_RELEASE_BUILD_SETTINGS,
-        ];
-
-        if (serialized) {
-          args.push("-jobs", "1");
-        }
-
-        args.push("build");
-        return args;
-      };
-
-      try {
-        await runLogged("xcodebuild", getXcodebuildArgs(false), {
+          "build",
+        ],
+        {
           env: RELEASE_BUNDLE_ENV,
-          logPath: xcodebuildLogPath,
-        });
-      } catch (error) {
-        const shouldRetry = await shouldRetryIosReleaseBuild(xcodebuildLogPath);
-        if (!shouldRetry) {
-          throw error;
-        }
-
-        console.warn(
-          "[maestro-e2e] retrying iOS release build after transient header resolution failure",
-        );
-
-        await fsPromises
-          .rename(
-            xcodebuildLogPath,
-            path.join(session.resultsDir, "xcodebuild.attempt-1.log"),
-          )
-          .catch(() => {});
-        await fsPromises.rm(session.iosDerivedDataPath, {
-          force: true,
-          recursive: true,
-        });
-
-        await runLogged("xcodebuild", getXcodebuildArgs(true), {
-          env: RELEASE_BUNDLE_ENV,
-          logPath: xcodebuildLogPath,
-        });
-      }
+          logPath: path.join(session.resultsDir, "xcodebuild.log"),
+        },
+      );
     },
     key: nativeCacheKey,
     logLabel: "ios-release",
@@ -2969,7 +2920,7 @@ async function prepareAndroidRelease() {
 
   if (!canRunAsAndroidApp()) {
     throw new Error(
-      "Android app must be debuggable so Maestro can inspect internal app files with run-as.",
+      "Android app must be debuggable so E2E assertions can inspect internal app files with run-as.",
     );
   }
 }
@@ -5904,7 +5855,7 @@ async function deployBundle(
   });
 
   const deployOutputPath = await fsPromises.mkdtemp(
-    path.join(os.tmpdir(), "hu-maestro-deploy-"),
+    path.join(os.tmpdir(), "hu-detox-deploy-"),
   );
   const args = [
     HOT_UPDATER_CLI_PATH,

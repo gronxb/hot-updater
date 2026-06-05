@@ -12,7 +12,7 @@ app.use("*", cors());
 
 app.get("/", (c) => {
   return c.json({
-    service: "Hot Updater Maestro Control Server",
+    service: "Hot Updater E2E Control Server",
     status: "ok",
     version: "1.0.0",
   });
@@ -39,7 +39,7 @@ try {
     },
     (info) => {
       console.log(
-        `Hot Updater Maestro Control Server listening on http://${hostname}:${info.port}`,
+        `Hot Updater E2E Control Server listening on http://${hostname}:${info.port}`,
       );
     },
   );

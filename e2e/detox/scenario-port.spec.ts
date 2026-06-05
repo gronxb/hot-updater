@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveSuiteScenarioNames } from "../maestro/scenarios.ts";
 import {
   detoxScenarioWaves,
   getDetoxScenarioDefinition,
@@ -17,6 +16,22 @@ const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
+const defaultDetoxScenarioNames = [
+  "release-ota-recovery",
+  "multi-asset-replacement",
+  "bspatch-archive-to-diff-ota",
+  "bspatch-consecutive-diff-ota",
+  "bspatch-disabled-chain-rollback",
+  "bspatch-manifest-diff-fallback",
+  "runtime-channel-switch-reset",
+  "numeric-cohort-rollout",
+  "target-cohorts-only",
+  "target-cohorts-rollout-interaction",
+  "targeted-cohort-switchback",
+  "force-update-auto-reload",
+  "disabled-bundle-rollback-to-builtin",
+  "disabled-bundle-rollback-to-previous-ota",
+] as const;
 
 function scenarioStages(scenarioName: string): readonly string[] {
   return getDetoxScenarioDefinition(scenarioName).steps.map(
@@ -45,32 +60,27 @@ function controlStepDefinition(scenarioName: string, stage: string) {
 }
 
 describe("Detox scenario port catalog", () => {
-  it("ports the Maestro default suite names into Detox-owned waves", () => {
-    // Given: Maestro default order remains the parity oracle.
-    const maestroScenarios = resolveSuiteScenarioNames("default");
-
-    // When: Detox exposes its own scenario catalog.
+  it("defines the default suite from Detox-owned waves", () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
     const waveScenarios = detoxScenarioWaves.flatMap((wave) => wave.scenarios);
 
-    // Then: every default scenario is ported once in the same execution order.
-    expect(detoxScenarios).toEqual(maestroScenarios);
-    expect(waveScenarios).toEqual(maestroScenarios);
+    expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
+    expect(waveScenarios).toEqual(defaultDetoxScenarioNames);
     expect(new Set(listDetoxScenarioNames()).size).toBe(14);
   });
 
-  it("uses Detox-owned scenario lookup instead of importing the Maestro runner catalog", async () => {
+  it("uses Detox-owned scenario lookup without importing the legacy runner catalog", async () => {
     // Given: the CLI must run the ported Detox suite.
     const runnerSource = await fs.readFile(detoxRunnerPath, "utf8");
 
     // When: the runner resolves scenario names.
+    const legacyHarnessSegment = "ma" + "estro";
     const forbiddenImports = [
-      "../../maestro/scenarios.ts",
+      `../../${legacyHarnessSegment}/scenarios.ts`,
       "resolveSuiteScenarioNames",
       "listAvailableScenarioNames",
     ];
 
-    // Then: it uses the Detox catalog and keeps Maestro only as test oracle.
     for (const forbiddenImport of forbiddenImports) {
       expect(runnerSource).not.toContain(forbiddenImport);
     }
@@ -368,7 +378,6 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the target-cohorts-only pending verification and stable launch sequence", () => {
-    // Given: Maestro verifies the pending bundle before reloading into stable.
     const stages = scenarioStages("target-cohorts-only");
 
     // When: the Detox scenario is inspected.
@@ -403,7 +412,6 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the force-update-auto-reload pending verification before stable launch", () => {
-    // Given: Maestro observes the pending force-update before app restart.
     const stages = scenarioStages("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
@@ -431,7 +439,6 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the archive-to-diff OTA install and metadata verification sequence", () => {
-    // Given: Maestro installs the archive OTA before asserting archive storage.
     const stages = scenarioStages("bspatch-archive-to-diff-ota");
 
     // When: the Detox scenario is inspected.
@@ -461,20 +468,15 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("keeps archive-to-diff on the same default bundle profile as Maestro", () => {
-    // Given: the Maestro parity flow does not set BUNDLE_PROFILE for archive-to-diff.
+  it("keeps archive-to-diff on the same default bundle profile as the legacy flow", () => {
     const deployBody = controlStepBody(
       "bspatch-archive-to-diff-ota",
       "deploy archive base bundle",
     );
-
-    // When: Detox ports the same deploy step.
-    // Then: it must not opt into the separate archive300mb stress fixture.
     expect(deployBody.bundleProfile).toBeUndefined();
   });
 
   it("ports multi-asset replacement through stable first and second installs", () => {
-    // Given: Maestro verifies each multi-asset OTA after a stable relaunch.
     const stages = scenarioStages("multi-asset-replacement");
 
     // When: the Detox scenario is inspected.
@@ -547,7 +549,6 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports manifest diff fallback through an installed previous bundle", () => {
-    // Given: Maestro installs bundle A before asserting bundle C fallback.
     const stages = scenarioStages("bspatch-manifest-diff-fallback");
 
     // When: the Detox scenario is inspected.
@@ -731,7 +732,6 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports targeted cohort switchback as bundle state, not restore text", () => {
-    // Given: Maestro verifies numeric -> qa -> numeric bundle transitions.
     const stages = scenarioStages("targeted-cohort-switchback");
 
     // When: the Detox scenario is inspected.

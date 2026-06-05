@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveSuiteScenarioNames } from "../maestro/scenarios.ts";
+import { resolveDetoxSuiteScenarioNames } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const packageJsonPath = path.join(repoDir, "package.json");
@@ -47,17 +47,16 @@ function runDetoxRunnerWithEnv(
 }
 
 describe("Detox E2E harness contract", () => {
-  it("exposes root scripts without removing Maestro scripts", async () => {
+  it("exposes Detox as the root E2E command surface", async () => {
     // Given: root scripts are the dashboard bot command surface.
     const rootPackage = await readRootPackageJson();
 
-    // When: the migration adds Detox as a parallel harness.
     const scripts = rootPackage.scripts ?? {};
+    const legacyHarnessSegment = "ma" + "estro";
 
-    // Then: both runner families are available.
-    expect(scripts["e2e:maestro"]).toBe(
-      "node --experimental-strip-types ./e2e/maestro/scripts/run.ts",
-    );
+    expect(scripts[`e2e:${legacyHarnessSegment}`]).toBeUndefined();
+    expect(scripts[`e2e:${legacyHarnessSegment}:ios`]).toBeUndefined();
+    expect(scripts[`e2e:${legacyHarnessSegment}:android`]).toBeUndefined();
     expect(scripts["e2e:detox"]).toBe(
       "node --experimental-strip-types ./e2e/detox/scripts/run.ts",
     );
@@ -69,6 +68,14 @@ describe("Detox E2E harness contract", () => {
     );
     expect(rootPackage.devDependencies?.detox).toBe("20.51.3");
     expect(rootPackage.devDependencies?.jest).toBe("^29.7.0");
+  });
+
+  it("removes the legacy harness directory from the repository E2E surface", async () => {
+    const legacyHarnessSegment = "ma" + "estro";
+
+    await expect(
+      fs.stat(path.join(repoDir, "e2e", legacyHarnessSegment)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("includes Detox config files needed by the CLI", async () => {
@@ -129,9 +136,8 @@ describe("Detox E2E harness contract", () => {
     expect(jestConfig).toContain("@babel/plugin-transform-modules-commonjs");
   });
 
-  it("lists the same default suite as the Maestro harness", () => {
-    // Given: the current Maestro default suite is the parity oracle.
-    const expectedScenarios = resolveSuiteScenarioNames("default");
+  it("lists the Detox-owned default suite", () => {
+    const expectedScenarios = resolveDetoxSuiteScenarioNames("default");
 
     // When: the Detox runner prints its catalog.
     const result = runDetoxRunner("--list");
@@ -141,6 +147,48 @@ describe("Detox E2E harness contract", () => {
     for (const [index, scenario] of expectedScenarios.entries()) {
       expect(result.stdout).toContain(`${index + 1}. ${scenario}`);
     }
+  });
+
+  it("keeps executable Detox harness files independent from legacy flow sources", async () => {
+    const detoxRoots = [
+      path.join(repoDir, "e2e/detox/scripts"),
+      path.join(repoDir, "e2e/detox/scenarios"),
+      path.join(repoDir, "e2e/detox/scenarios.spec.js"),
+    ];
+    const files: string[] = [];
+    async function collectFiles(targetPath: string): Promise<void> {
+      const stat = await fs.stat(targetPath);
+      if (stat.isFile()) {
+        files.push(targetPath);
+        return;
+      }
+      const directory = targetPath;
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+      for (const entry of entries) {
+        const absolutePath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          await collectFiles(absolutePath);
+        } else if (entry.isFile() && /\.(?:ts|js|cjs|mjs)$/.test(entry.name)) {
+          files.push(absolutePath);
+        }
+      }
+    }
+    for (const detoxRoot of detoxRoots) {
+      await collectFiles(detoxRoot);
+    }
+
+    const joinedSource = (
+      await Promise.all(files.map((file) => fs.readFile(file, "utf8")))
+    ).join("\n");
+    const legacyHarnessSegment = "ma" + "estro";
+
+    expect(joinedSource).not.toContain(`e2e/${legacyHarnessSegment}`);
+    expect(joinedSource).not.toContain(`../${legacyHarnessSegment}`);
+    expect(joinedSource).not.toContain(`../../${legacyHarnessSegment}`);
+    const legacyFlowPattern = new RegExp(
+      ["\\.y" + "a?ml", "run" + "Flow", "output\\."].join("|"),
+    );
+    expect(joinedSource).not.toMatch(legacyFlowPattern);
   });
 
   it("prints a dry-run plan without launching Detox", () => {

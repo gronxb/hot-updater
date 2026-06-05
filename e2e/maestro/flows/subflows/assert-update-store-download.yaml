@@ -1,9 +1,0 @@
-appId: ${APP_ID}
----
-- runScript:
-    file: ../../scripts/control.js
-    env:
-      ACTION: assertBundleAssetsStored
-      ASSET_PATHS: ${EXPECTED_DOWNLOAD_PATH}
-      BUNDLE_ID: ${BUNDLE_ID}
-      CONTROL_URL: ${CONTROL_URL}
