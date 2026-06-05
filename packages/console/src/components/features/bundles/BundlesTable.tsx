@@ -226,7 +226,7 @@ export function BundlesTable({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
         {isMobile ? (
-          <div className="flex flex-col">
+          <div className="flex h-full flex-col overflow-y-auto">
             {bundles.length ? (
               bundles.map((bundle) => {
                 const isExpanded = bundle.id === expandedBundleId;
