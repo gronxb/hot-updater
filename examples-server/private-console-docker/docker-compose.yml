@@ -1,0 +1,23 @@
+services:
+  console:
+    build:
+      context: ../..
+      dockerfile: examples-server/private-console-docker/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 1422
+      HOT_UPDATER_CONFIG_PATH: /app/hot-updater.config.ts
+    expose:
+      - "1422"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - console
+    ports:
+      - "1422:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    restart: unless-stopped

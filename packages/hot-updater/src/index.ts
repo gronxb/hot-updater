@@ -21,7 +21,11 @@ import {
 } from "@/commandOptions";
 import { handleAppVersion } from "@/commands/appVersion";
 import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
-import { getConsolePort, openConsole } from "@/commands/console";
+import {
+  type ConsoleCommandOptions,
+  openConsole,
+  resolveConsoleLaunchOptions,
+} from "@/commands/console";
 import {
   type DeployOptions,
   deploy,
@@ -70,6 +74,14 @@ const parseRolloutCohortCount = (value: string) => {
     throw new InvalidArgumentError("must be an integer between 0 and 1000");
   }
   return count;
+};
+
+const parsePortOption = (value: string) => {
+  const port = Number.parseInt(value, 10);
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new InvalidArgumentError("must be an integer between 1 and 65535");
+  }
+  return port;
 };
 
 const program = new Command();
@@ -363,12 +375,21 @@ program
 program
   .command("console")
   .description("open the console")
-  .action(async () => {
+  .option("--host <host>", "host to bind the console server")
+  .option("--port <port>", "port to bind the console server", parsePortOption)
+  .option("--config <path>", "path to hot-updater.config file")
+  .option("--public", "bind to 0.0.0.0 for externally protected access")
+  .action(async (options: ConsoleCommandOptions) => {
     printBanner();
 
-    const port = await getConsolePort();
+    const launchOptions = await resolveConsoleLaunchOptions(options);
+    if (launchOptions.shouldWarnExternalAuth) {
+      p.log.warn(
+        "Console has no built-in authentication. Put Cloudflare Access, oauth2-proxy, nginx basic auth, Tailscale, or another private access layer in front of it.",
+      );
+    }
 
-    await openConsole(port);
+    await openConsole(launchOptions);
   });
 
 program

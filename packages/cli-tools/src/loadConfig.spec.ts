@@ -30,6 +30,7 @@ describe("loadConfig", () => {
 
   afterEach(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -118,6 +119,119 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.releaseChannel).toBe("from-null-context");
+  });
+
+  it("loads an explicit config path outside the current working directory", async () => {
+    const configRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-explicit-config-"),
+    );
+    await writeProjectFile(
+      configRoot,
+      "custom.hot-updater.config.ts",
+      [
+        "export default {",
+        "  releaseChannel: 'from-explicit-config',",
+        "  console: {",
+        "    port: 4123,",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null, {
+        configPath: path.join(configRoot, "custom.hot-updater.config.ts"),
+      });
+
+      expect(config.releaseChannel).toBe("from-explicit-config");
+      expect(config.console.port).toBe(4123);
+    } finally {
+      await fs.rm(configRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the config path from HOT_UPDATER_CONFIG_PATH", async () => {
+    const configRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-env-config-"),
+    );
+    await writeProjectFile(
+      configRoot,
+      "private-console.config.ts",
+      [
+        "export default {",
+        "  releaseChannel: 'from-env-config',",
+        "  console: {",
+        "    port: 5123,",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+    vi.stubEnv(
+      "HOT_UPDATER_CONFIG_PATH",
+      path.join(configRoot, "private-console.config.ts"),
+    );
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.releaseChannel).toBe("from-env-config");
+      expect(config.console.port).toBe(5123);
+    } finally {
+      await fs.rm(configRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers an explicit config path over HOT_UPDATER_CONFIG_PATH", async () => {
+    const envConfigRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-env-precedence-"),
+    );
+    const explicitConfigRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-explicit-precedence-"),
+    );
+    await writeProjectFile(
+      envConfigRoot,
+      "hot-updater.config.ts",
+      "export default { releaseChannel: 'from-env-config' };\n",
+    );
+    await writeProjectFile(
+      explicitConfigRoot,
+      "hot-updater.config.ts",
+      "export default { releaseChannel: 'from-explicit-config' };\n",
+    );
+    vi.stubEnv(
+      "HOT_UPDATER_CONFIG_PATH",
+      path.join(envConfigRoot, "hot-updater.config.ts"),
+    );
+
+    try {
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null, {
+        configPath: path.join(explicitConfigRoot, "hot-updater.config.ts"),
+      });
+
+      expect(config.releaseChannel).toBe("from-explicit-config");
+    } finally {
+      await Promise.all([
+        fs.rm(envConfigRoot, { recursive: true, force: true }),
+        fs.rm(explicitConfigRoot, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it("includes the missing explicit config path in the error message", async () => {
+    const missingConfigPath = path.join(
+      projectRoot,
+      "missing-hot-updater.config.ts",
+    );
+    const { loadConfig } = await import("./loadConfig");
+
+    await expect(
+      loadConfig(null, { configPath: missingConfigPath }),
+    ).rejects.toThrow(missingConfigPath);
   });
 
   it("preserves legacy merge semantics for arrays in user config", async () => {

@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import path from "path";
 
 import type {
@@ -16,12 +17,17 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
+export type LoadHotUpdaterConfigRuntimeOptions = {
+  configPath?: string;
+  cwd?: string;
+};
+
+const getDefaultPlatformConfig = (cwd: string): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
   let infoPlistPaths: string[] = []; // fallback
   try {
     const plistFiles = fg.sync("**/Info.plist", {
-      cwd: path.join(getCwd(), "ios"),
+      cwd: path.join(cwd, "ios"),
       absolute: false,
       onlyFiles: true,
       ignore: [
@@ -45,7 +51,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   let androidManifestPaths: string[] = []; // fallback
   try {
     const manifestFiles = fg.sync(path.join("**", "AndroidManifest.xml"), {
-      cwd: path.join(getCwd(), "android"),
+      cwd: path.join(cwd, "android"),
       absolute: false,
       onlyFiles: true,
       ignore: ["**/build/**", "**/.gradle/**"],
@@ -65,7 +71,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   let stringResourcePaths: string[] = []; // fallback
   try {
     const stringsFiles = fg.sync(path.join("**", "strings.xml"), {
-      cwd: path.join(getCwd(), "android"),
+      cwd: path.join(cwd, "android"),
       absolute: false,
       onlyFiles: true,
     });
@@ -91,7 +97,7 @@ const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   };
 };
 
-const getDefaultConfig = (): ConfigInput => {
+const getDefaultConfig = (cwd: string): ConfigInput => {
   return {
     cacheDir: path.join("node_modules", ".hot-updater"),
     releaseChannel: "production",
@@ -107,7 +113,7 @@ const getDefaultConfig = (): ConfigInput => {
     console: {
       port: 1422,
     },
-    platform: getDefaultPlatformConfig(),
+    platform: getDefaultPlatformConfig(cwd),
     nativeBuild: { android: {}, ios: {} },
     build: () => {
       throw new Error("build plugin is required");
@@ -134,17 +140,23 @@ const mergeConfigSources = (
 
 const getConfigLoaderOptions = (
   options: HotUpdaterConfigOptions,
+  runtimeOptions: Required<LoadHotUpdaterConfigRuntimeOptions>,
 ): LoadConfigOptions<ConfigInput> => {
-  const cwd = getCwd();
+  const configExtension = path.extname(runtimeOptions.configPath);
+  const configBasename = configExtension
+    ? path.basename(runtimeOptions.configPath, configExtension)
+    : undefined;
 
   return {
-    cwd,
-    stopAt: path.dirname(cwd),
+    cwd: runtimeOptions.cwd,
+    stopAt: path.dirname(runtimeOptions.cwd),
     merge: false,
     sources: [
       {
-        files: "hot-updater.config",
-        extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
+        files: configBasename ?? "hot-updater.config",
+        extensions: configExtension
+          ? [configExtension.slice(1)]
+          : ["js", "cjs", "ts", "cts", "mjs", "mts"],
         rewrite: async (config: unknown) => {
           return typeof config === "function"
             ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
@@ -157,12 +169,57 @@ const getConfigLoaderOptions = (
   };
 };
 
+const resolveExplicitConfigPath = async (
+  configPath: string,
+): Promise<string> => {
+  const resolvedPath = path.resolve(configPath);
+
+  try {
+    const stats = await fs.stat(resolvedPath);
+    if (!stats.isFile()) {
+      throw new Error(`Hot Updater config path is not a file: ${resolvedPath}`);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes(resolvedPath)) {
+      throw error;
+    }
+    throw new Error(`Hot Updater config path does not exist: ${resolvedPath}`);
+  }
+
+  return resolvedPath;
+};
+
+const resolveRuntimeOptions = async (
+  runtimeOptions?: LoadHotUpdaterConfigRuntimeOptions,
+): Promise<Required<LoadHotUpdaterConfigRuntimeOptions>> => {
+  const explicitConfigPath =
+    runtimeOptions?.configPath ?? process.env["HOT_UPDATER_CONFIG_PATH"];
+
+  if (explicitConfigPath) {
+    const configPath = await resolveExplicitConfigPath(explicitConfigPath);
+    return {
+      configPath,
+      cwd: runtimeOptions?.cwd ?? path.dirname(configPath),
+    };
+  }
+
+  return {
+    configPath: "",
+    cwd: runtimeOptions?.cwd ?? getCwd(),
+  };
+};
+
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
+  runtimeOptions?: LoadHotUpdaterConfigRuntimeOptions,
 ): Promise<ConfigResponse> => {
+  const resolvedRuntimeOptions = await resolveRuntimeOptions(runtimeOptions);
   const { config } = await loadUnconfig<ConfigInput>(
-    getConfigLoaderOptions(options),
+    getConfigLoaderOptions(options, resolvedRuntimeOptions),
   );
 
-  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
+  return mergeConfigSources(
+    config,
+    getDefaultConfig(resolvedRuntimeOptions.cwd),
+  ) as ConfigResponse;
 };

@@ -23,6 +23,20 @@ type WaitForConsoleReadyOptions = {
   sleep?: (ms: number) => Promise<unknown>;
 };
 
+export type ConsoleCommandOptions = {
+  config?: string;
+  host?: string;
+  port?: number;
+  public?: boolean;
+};
+
+export type ConsoleLaunchOptions = {
+  configPath?: string;
+  host?: string;
+  port: number;
+  shouldWarnExternalAuth: boolean;
+};
+
 const getConsoleServerUrl = (port: number) => `http://127.0.0.1:${port}`;
 
 export const isConsoleServerReady = async (port: number) => {
@@ -74,34 +88,62 @@ export const waitForConsoleReady = async ({
   throw new Error(`Timed out waiting for the console server on port ${port}.`);
 };
 
-export const getConsolePort = async (config?: ConfigResponse) => {
+export const getConsolePort = async (
+  config?: Pick<ConfigResponse, "console">,
+  configPath?: string,
+) => {
   if (config?.console.port) {
     return config.console.port;
   }
 
-  const $config = await loadConfig(null);
+  const $config = await loadConfig(null, { configPath });
   return $config.console.port;
 };
 
+export const resolveConsoleLaunchOptions = async (
+  options: ConsoleCommandOptions,
+  config?: Pick<ConfigResponse, "console">,
+): Promise<ConsoleLaunchOptions> => {
+  const host = options.public ? "0.0.0.0" : (options.host ?? "127.0.0.1");
+  const shouldWarnExternalAuth =
+    options.public === true || host === "0.0.0.0" || host === "::";
+
+  return {
+    configPath: options.config,
+    host,
+    port: options.port ?? (await getConsolePort(config, options.config)),
+    shouldWarnExternalAuth,
+  };
+};
+
 export const openConsole = async (
-  port: number,
+  options: number | ConsoleLaunchOptions,
   listeningListener?: ((info: { port: number }) => void) | undefined,
 ) => {
+  const launchOptions: ConsoleLaunchOptions =
+    typeof options === "number"
+      ? {
+          port: options,
+          host: "127.0.0.1",
+          shouldWarnExternalAuth: false,
+        }
+      : options;
   const require = createRequire(import.meta.url);
   const consolePkgPath = require.resolve("@hot-updater/console/package.json");
   const consoleDir = path.dirname(consolePkgPath);
-  const nitroServerPath = path.join(
-    consoleDir,
-    ".output",
-    "server",
-    "index.mjs",
-  );
+  const serveBinPath = path.join(consoleDir, "bin", "serve.mjs");
+  const serveArgs = [
+    serveBinPath,
+    "--host",
+    launchOptions.host ?? "127.0.0.1",
+    "--port",
+    launchOptions.port.toString(),
+    ...(launchOptions.configPath ? ["--config", launchOptions.configPath] : []),
+  ];
 
-  const child = execa("node", [nitroServerPath], {
+  const child = execa("node", serveArgs, {
     env: {
       ...process.env,
-      PORT: port.toString(),
-      NITRO_PORT: port.toString(),
     },
     stdin: "inherit",
     stdout: "inherit",
@@ -144,8 +186,8 @@ export const openConsole = async (
   });
 
   try {
-    await waitForConsoleReady({ child, port });
-    listeningListener?.({ port });
+    await waitForConsoleReady({ child, port: launchOptions.port });
+    listeningListener?.({ port: launchOptions.port });
   } catch (error) {
     cleanupProcessListeners();
     stopChild("SIGTERM");

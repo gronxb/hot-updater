@@ -4,8 +4,12 @@
   "version": "0.32.0",
   "files": [
     ".output",
+    "bin",
     "package.json"
   ],
+  "bin": {
+    "hot-updater-console": "./bin/serve.mjs"
+  },
   "exports": {
     "./package.json": "./package.json"
   },

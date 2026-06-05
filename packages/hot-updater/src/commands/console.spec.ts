@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isConsoleServerReady, waitForConsoleReady } from "./console";
+import {
+  isConsoleServerReady,
+  resolveConsoleLaunchOptions,
+  waitForConsoleReady,
+} from "./console";
 
 describe("isConsoleServerReady", () => {
   afterEach(() => {
@@ -81,5 +85,41 @@ describe("waitForConsoleReady", () => {
         checkReady: vi.fn().mockResolvedValue(false),
       }),
     ).rejects.toThrow("Timed out waiting for the console server on port 3000.");
+  });
+});
+
+describe("resolveConsoleLaunchOptions", () => {
+  it("passes host port and config to the console process", async () => {
+    await expect(
+      resolveConsoleLaunchOptions(
+        {
+          host: "127.0.0.1",
+          port: 4122,
+          config: "/tmp/hot-updater.config.ts",
+        },
+        { console: { gitUrl: "", port: 1422 } },
+      ),
+    ).resolves.toEqual({
+      configPath: "/tmp/hot-updater.config.ts",
+      host: "127.0.0.1",
+      port: 4122,
+      shouldWarnExternalAuth: false,
+    });
+  });
+
+  it("resolves public mode to host 0.0.0.0 and warns about external auth", async () => {
+    await expect(
+      resolveConsoleLaunchOptions(
+        {
+          public: true,
+        },
+        { console: { gitUrl: "", port: 1422 } },
+      ),
+    ).resolves.toEqual({
+      configPath: undefined,
+      host: "0.0.0.0",
+      port: 1422,
+      shouldWarnExternalAuth: true,
+    });
   });
 });

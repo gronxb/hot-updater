@@ -1,6 +1,6 @@
 ---
 title: "Console (Rollback & Force Update)"
-description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
+description: "Opens a console server based on plugins configured in `hot-updater.config.ts`."
 icon: Terminal
 ---
 
@@ -46,6 +46,21 @@ Execute the following command:
 ```package-install
 npx hot-updater console
 ```
+
+The command binds to `127.0.0.1` by default. You can override the local server
+settings when running the console in a private environment:
+
+```bash
+npx hot-updater console --host 127.0.0.1 --port 1422
+npx hot-updater console --public --config /app/hot-updater.config.ts
+```
+
+<Callout type="warn">
+The console does not include built-in authentication. When exposing it outside
+your machine, protect the whole console origin with Cloudflare Access,
+oauth2-proxy, nginx Basic Auth, Tailscale, or an equivalent private access
+layer. See [Deploy Console Privately](/docs/guides/deploy-console-privately).
+</Callout>
 
 You can also use the bundle CLI for automation and CI scripts:
 

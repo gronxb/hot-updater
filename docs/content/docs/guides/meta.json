@@ -8,6 +8,7 @@
     "bundle-diffing",
     "rollout-cohorts",
     "console",
+    "deploy-console-privately",
     "ai-agents",
     "simulator-test",
     "channel-management",

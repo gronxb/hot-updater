@@ -59,6 +59,22 @@ pnpm test:type
 
 The console will be available at `http://localhost:3000`.
 
+## 🚢 Private Node Deployment
+
+After building the package, run the Node server entrypoint:
+
+```bash
+HOT_UPDATER_CONFIG_PATH=/app/hot-updater.config.ts \
+HOST=127.0.0.1 \
+PORT=1422 \
+npx hot-updater-console
+```
+
+Use `--host`, `--port`, and `--config` for explicit runtime settings. The
+console does not include built-in authentication; protect the whole origin with
+Cloudflare Access, oauth2-proxy, nginx Basic Auth, Tailscale, or another
+private access layer before exposing it.
+
 ## 📁 Project Structure
 
 ```

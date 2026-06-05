@@ -1,0 +1,125 @@
+---
+title: "Deploy Console Privately"
+description: "Run the Hot Updater console on a private Node server behind external authentication."
+icon: Shield
+---
+
+<Callout type="warn">
+This is experimental. The console intentionally does not include users,
+passwords, sessions, RBAC, or audit logs. Put an external access layer in front
+of the entire console origin before exposing it to a network.
+</Callout>
+
+## Deployment model
+
+`@hot-updater/console` can run as a Node server. The server reads the same
+`hot-updater.config.ts` shape used by the CLI, so your container must include:
+
+- `@hot-updater/console`
+- `hot-updater`
+- the provider packages used by your config
+- the `hot-updater.config.ts` file
+- provider secrets injected as environment variables
+
+Authentication stays outside the console. Use Cloudflare Access, oauth2-proxy,
+nginx Basic Auth, Tailscale, or another private network/access proxy.
+
+Protect the whole origin, not only visible HTML routes. The generated server
+also serves framework action/function routes used by the UI.
+
+## Server command
+
+Run the package bin directly:
+
+```bash
+HOT_UPDATER_CONFIG_PATH=/app/hot-updater.config.ts \
+HOST=127.0.0.1 \
+PORT=1422 \
+npx hot-updater-console
+```
+
+The bin accepts the same runtime flags:
+
+```bash
+npx hot-updater-console --host 127.0.0.1 --port 1422 --config /app/hot-updater.config.ts
+```
+
+Use `HOST=0.0.0.0` only when another private access layer is the only published
+entrypoint.
+
+## CLI command
+
+The `hot-updater` CLI can start the console with explicit deployment settings:
+
+```bash
+npx hot-updater console --host 127.0.0.1 --port 1422 --config ./hot-updater.config.ts
+```
+
+For a container behind an auth proxy:
+
+```bash
+npx hot-updater console --public --config /app/hot-updater.config.ts
+```
+
+`--public` binds the server to `0.0.0.0` and prints a warning that external
+authentication is required.
+
+## Docker with nginx Basic Auth
+
+The repository includes a minimal Compose example at
+`examples-server/private-console-docker`.
+
+```bash
+cd examples-server/private-console-docker
+docker compose up --build
+```
+
+The example publishes nginx on `http://localhost:1422` and keeps the console
+service on the private Compose network. The sample Basic Auth credentials are
+`admin` / `changeme`; replace `.htpasswd` before using this pattern.
+
+```yaml title="docker-compose.yml"
+services:
+  console:
+    build:
+      context: ../..
+      dockerfile: examples-server/private-console-docker/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: 1422
+      HOT_UPDATER_CONFIG_PATH: /app/hot-updater.config.ts
+    expose:
+      - "1422"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - console
+    ports:
+      - "1422:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+```
+
+## Provider secrets
+
+Keep secrets out of the image. Inject them at runtime and read them from
+`hot-updater.config.ts`.
+
+```bash
+docker run \
+  -e HOT_UPDATER_CONFIG_PATH=/app/hot-updater.config.ts \
+  -e CLOUDFLARE_ACCOUNT_ID=... \
+  -e CLOUDFLARE_API_TOKEN=... \
+  -p 1422:1422 \
+  your-console-image
+```
+
+## Operational checklist
+
+- Publish only the external access proxy.
+- Keep `hot-updater.config.ts` and provider secrets on the server side.
+- Rotate provider tokens as you would for CLI deployment credentials.
+- Use HTTPS at the access proxy.
+- Avoid path-only auth rules; protect the entire console origin.
