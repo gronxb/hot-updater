@@ -9,28 +9,23 @@ const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
 const e2eSourceDirectories = ["e2e/control-server/", "e2e/detox/"] as const;
 const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
-const migrationWaveModelPattern =
-  /\bDetoxScenarioWave\b|\bdetoxScenarioWaves\b|\bwave[1-4]Scenarios\b|\bwave:\s*[1-4]\b/;
-
-async function readSourceFiles(
-  rootDir: string,
-): Promise<readonly { readonly file: string; readonly source: string }[]> {
-  const entries = await fs.readdir(rootDir, { withFileTypes: true });
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const absolutePath = path.join(rootDir, entry.name);
-      if (entry.isDirectory()) return readSourceFiles(absolutePath);
-      if (!/\.(?:js|ts)$/.test(entry.name)) return [];
-      return [
-        {
-          file: path.relative(repoDir, absolutePath),
-          source: await fs.readFile(absolutePath, "utf8"),
-        },
-      ];
-    }),
-  );
-  return files.flat();
-}
+const expectedScenarioModuleFiles = [
+  "bspatch-archive-to-diff-ota.ts",
+  "bspatch-consecutive-diff-ota.ts",
+  "bspatch-disabled-chain-rollback.ts",
+  "bspatch-manifest-diff-fallback.ts",
+  "disabled-bundle-rollback-to-builtin.ts",
+  "disabled-bundle-rollback-to-previous-ota.ts",
+  "force-update-auto-reload.ts",
+  "multi-asset-replacement.ts",
+  "numeric-cohort-rollout.ts",
+  "release-ota-recovery.ts",
+  "runtime-channel-switch-reset.ts",
+  "target-cohorts-only.ts",
+  "target-cohorts-rollout-interaction.ts",
+  "targeted-cohort-switchback.ts",
+  "types.ts",
+] as const;
 
 function trackedE2eFiles(): readonly string[] {
   const result = spawnSync("git", ["ls-files", "e2e"], {
@@ -66,15 +61,9 @@ describe("Detox-first source shape", () => {
     expect(exampleIgnoreSource).not.toMatch(/(?:^|\n)\/?e2e\/?(?:\n|$)/);
   });
 
-  it("groups scenarios by user flow instead of migration waves", async () => {
-    const scenarioFiles = await fs.readdir(scenarioDir);
-    const detoxSources = await readSourceFiles(detoxDir);
+  it("keeps each Detox scenario in an explicit catalog module", async () => {
+    const scenarioFiles = (await fs.readdir(scenarioDir)).sort();
 
-    expect(scenarioFiles.filter((file) => /^wave\d+\.ts$/.test(file))).toEqual(
-      [],
-    );
-    expect(detoxSources.map(({ source }) => source).join("\n")).not.toMatch(
-      migrationWaveModelPattern,
-    );
+    expect(scenarioFiles).toEqual([...expectedScenarioModuleFiles].sort());
   });
 });

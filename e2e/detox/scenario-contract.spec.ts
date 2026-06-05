@@ -153,7 +153,7 @@ async function controlStepDefinition(
 }
 
 describe("Detox scenario contract", () => {
-  it("defines the default suite from Detox-owned user-flow modules", () => {
+  it("defines the default suite from Detox-owned catalog modules", () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
