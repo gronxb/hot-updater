@@ -9,7 +9,7 @@ import { wave4Scenarios } from "./scenarios/wave4.ts";
 
 export type {
   DetoxScenarioDefinition,
-  DetoxScenarioStep,
+  DetoxScenarioDriver,
 } from "./scenarios/types.ts";
 
 export const detoxScenarioWaves: readonly DetoxScenarioWave[] = [

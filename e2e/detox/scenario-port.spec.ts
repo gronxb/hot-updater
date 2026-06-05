@@ -4,12 +4,14 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import type { JsonObject } from "./control-client.ts";
 import {
   detoxScenarioWaves,
   getDetoxScenarioDefinition,
   listDetoxScenarioNames,
   resolveDetoxSuiteScenarioNames,
 } from "./scenarios.ts";
+import type { DetoxControlOptions, DetoxScenarioDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
@@ -33,34 +35,105 @@ const defaultDetoxScenarioNames = [
   "disabled-bundle-rollback-to-previous-ota",
 ] as const;
 
+type RecordedScenarioCall =
+  | {
+      readonly kind: "assertText";
+      readonly stage: string;
+      readonly testID: string;
+    }
+  | {
+      readonly body?: JsonObject;
+      readonly kind: "control";
+      readonly options?: DetoxControlOptions;
+      readonly pathName: string;
+      readonly stage: string;
+    }
+  | {
+      readonly kind:
+        | "launch"
+        | "reload"
+        | "resetAppState"
+        | "tap"
+        | "terminate"
+        | "typeText";
+      readonly stage: string;
+      readonly testID?: string;
+    };
+
 function scenarioStages(scenarioName: string): readonly string[] {
-  return getDetoxScenarioDefinition(scenarioName).steps.map(
-    (step) => step.stage,
-  );
+  return getDetoxScenarioDefinition(scenarioName).stages;
 }
 
-function controlStepBody(scenarioName: string, stage: string) {
-  const step = getDetoxScenarioDefinition(scenarioName).steps.find(
-    (entry) => entry.stage === stage,
-  );
-  if (!step || step.kind !== "control") {
-    throw new Error(`Missing control step ${stage} in ${scenarioName}`);
-  }
-  return step.body ?? {};
+async function recordScenarioCalls(
+  scenarioName: string,
+): Promise<readonly RecordedScenarioCall[]> {
+  const calls: RecordedScenarioCall[] = [];
+  const driver: DetoxScenarioDriver = {
+    assertText: (stage, testID) => {
+      calls.push({ kind: "assertText", stage, testID });
+      return Promise.resolve();
+    },
+    control: (stage, pathName, body, options) => {
+      calls.push({ body, kind: "control", options, pathName, stage });
+      return Promise.resolve();
+    },
+    launch: (stage) => {
+      calls.push({ kind: "launch", stage });
+      return Promise.resolve();
+    },
+    reload: (stage) => {
+      calls.push({ kind: "reload", stage });
+      return Promise.resolve();
+    },
+    resetAppState: (stage) => {
+      calls.push({ kind: "resetAppState", stage });
+      return Promise.resolve();
+    },
+    tap: (stage, testID) => {
+      calls.push({ kind: "tap", stage, testID });
+      return Promise.resolve();
+    },
+    terminate: (stage) => {
+      calls.push({ kind: "terminate", stage });
+      return Promise.resolve();
+    },
+    typeText: (stage, testID) => {
+      calls.push({ kind: "typeText", stage, testID });
+      return Promise.resolve();
+    },
+  };
+  await getDetoxScenarioDefinition(scenarioName).run(driver);
+  return calls;
 }
 
-function controlStepDefinition(scenarioName: string, stage: string) {
-  const step = getDetoxScenarioDefinition(scenarioName).steps.find(
+async function controlStepBody(
+  scenarioName: string,
+  stage: string,
+): Promise<JsonObject> {
+  const call = (await recordScenarioCalls(scenarioName)).find(
     (entry) => entry.stage === stage,
   );
-  if (!step || step.kind !== "control") {
+  if (!call || call.kind !== "control") {
     throw new Error(`Missing control step ${stage} in ${scenarioName}`);
   }
-  return step;
+  return call.body ?? {};
+}
+
+async function controlStepDefinition(
+  scenarioName: string,
+  stage: string,
+): Promise<Extract<RecordedScenarioCall, { readonly kind: "control" }>> {
+  const call = (await recordScenarioCalls(scenarioName)).find(
+    (entry) => entry.stage === stage,
+  );
+  if (!call || call.kind !== "control") {
+    throw new Error(`Missing control step ${stage} in ${scenarioName}`);
+  }
+  return call;
 }
 
 describe("Detox scenario port catalog", () => {
-  it("defines the default suite from Detox-owned waves", () => {
+  it("defines the default suite from Detox-owned waves", async () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
     const waveScenarios = detoxScenarioWaves.flatMap((wave) => wave.scenarios);
 
@@ -106,23 +179,23 @@ describe("Detox scenario port catalog", () => {
     expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\b/i);
   });
 
-  it("executes every ported scenario through the Detox step runner", async () => {
+  it("executes every ported scenario through Detox-owned scenario functions", async () => {
     // Given: Detox CLI selects scenarios through Jest testNamePattern.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
 
-    // When: the ported scenario names are compared with the Jest suite.
-    const scenarioNames = listDetoxScenarioNames();
-
-    // Then: every scenario can be selected by the wrapper command.
-    for (const scenarioName of scenarioNames) {
-      expect(detoxJestSpec).toContain(`"${scenarioName}"`);
-    }
+    // When: the Jest suite source is inspected.
+    // Then: the suite discovers scenario names from the Detox catalog.
+    expect(detoxJestSpec).toContain(
+      "const scenarioNames = listDetoxScenarioNames();",
+    );
     expect(detoxJestSpec).toContain("getDetoxScenarioDefinition");
-    expect(detoxJestSpec).toContain("runScenarioStep");
+    expect(detoxJestSpec).toContain("scenario.run(");
+    expect(detoxJestSpec).not.toContain("runScenarioStep");
+    expect(detoxJestSpec).not.toContain("step.kind");
     expect(detoxJestSpec).not.toContain(".todo");
   });
 
-  it("emits a Jest testNamePattern that matches Detox full test names", () => {
+  it("emits a Jest testNamePattern that matches Detox full test names", async () => {
     const dryRunOutput = execFileSync(
       "pnpm",
       [
@@ -204,26 +277,27 @@ describe("Detox scenario port catalog", () => {
     // Given: the foreground helper runs before every Detox UI assertion.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const foregroundBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function ensureAppForegroundForInteraction"),
-      detoxJestSpec.indexOf("async function waitForTestID"),
+      detoxJestSpec.indexOf("async ensureAppForegroundForInteraction"),
+      detoxJestSpec.indexOf("async waitForTestID"),
     );
 
     // When: the helper foregrounds the app.
     // Then: only Android uses a Detox relaunch; iOS keeps transient launch reports intact.
     expect(foregroundBody).toContain("/e2e/ensure-app-foreground");
     expect(foregroundBody).toContain("device.sendToHome()");
+    expect(foregroundBody).toContain("if (isAndroidRun())");
     expect(foregroundBody).toContain(
-      "if (isAndroidRun()) {\n    await device.sendToHome();\n    await device.launchApp({ newInstance: false });\n  }",
+      "await device.launchApp({ newInstance: false });",
     );
     expect(foregroundBody).not.toMatch(
       /\}\s*await device\.launchApp\(\{ newInstance: false \}\);/,
     );
     expect(foregroundBody).not.toMatch(/\bretry\b/i);
     expect(foregroundBody).not.toContain("device.terminateApp");
-    expect(detoxJestSpec).toContain("by.text(new RegExp");
+    expect(detoxJestSpec).toContain("text.includes(expectedText)");
   });
 
-  it("lets control metadata prove install actions instead of waiting on busy UI text", () => {
+  it("lets control metadata prove install actions instead of waiting on busy UI text", async () => {
     const installSteps = [
       ["release-ota-recovery", "install stable update"],
       ["release-ota-recovery", "install crash update"],
@@ -234,31 +308,31 @@ describe("Detox scenario port catalog", () => {
     ] as const;
 
     for (const [scenarioName, stage] of installSteps) {
-      const step = getDetoxScenarioDefinition(scenarioName).steps.find(
+      const call = (await recordScenarioCalls(scenarioName)).find(
         (entry) => entry.stage === stage,
       );
 
-      expect(step).toMatchObject({
+      expect(call).toMatchObject({
         kind: "tap",
         testID: expect.stringContaining("action-install-"),
       });
-      expect(step).not.toHaveProperty("expectResultContains");
+      expect(call).not.toHaveProperty("expectResultContains");
     }
   });
 
   it("keeps Detox synchronization disabled until the app is relaunched after install actions", async () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const installTapBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function runTapStep"),
-      detoxJestSpec.indexOf("async function runScenarioStep"),
+      detoxJestSpec.indexOf("async tap(stage"),
+      detoxJestSpec.indexOf("async terminate(stage"),
     );
     const deviceActionBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function runDeviceAction"),
-      detoxJestSpec.indexOf("async function runControlStep"),
+      detoxJestSpec.indexOf("async launch("),
+      detoxJestSpec.indexOf("async tap(stage"),
     );
     const syncHelperBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("async function disableSynchronizationUntilLaunch"),
-      detoxJestSpec.indexOf("async function runTapStep"),
+      detoxJestSpec.indexOf("function navTargetForTestID"),
     );
 
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
@@ -333,8 +407,8 @@ describe("Detox scenario port catalog", () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
     const waitForTestIDBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function waitForTestID"),
-      detoxJestSpec.indexOf("async function waitForVisibleText"),
+      detoxJestSpec.indexOf("async waitForTestID"),
+      detoxJestSpec.indexOf('describe("HotUpdater Detox scenarios"'),
     );
 
     expect(exampleAppSource).toContain('testID="e2e-scroll-content"');
@@ -350,7 +424,7 @@ describe("Detox scenario port catalog", () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const tapBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("function shouldDisableSynchronizationForTap"),
-      detoxJestSpec.indexOf("async function runDeviceAction"),
+      detoxJestSpec.indexOf("async launch(stage)"),
     );
 
     // When: tap handling is inspected.
@@ -365,8 +439,8 @@ describe("Detox scenario port catalog", () => {
   it("taps install actions directly and lets metadata jobs prove downloads", async () => {
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const tapBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function runTapStep"),
-      detoxJestSpec.indexOf("async function runDeviceAction"),
+      detoxJestSpec.indexOf("async tap(stage"),
+      detoxJestSpec.indexOf("async terminate(stage"),
     );
 
     expect(tapBody).not.toContain("waitForCurrentChannelDownload()");
@@ -377,7 +451,7 @@ describe("Detox scenario port catalog", () => {
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
-  it("ports the target-cohorts-only pending verification and stable launch sequence", () => {
+  it("ports the target-cohorts-only pending verification and stable launch sequence", async () => {
     const stages = scenarioStages("target-cohorts-only");
 
     // When: the Detox scenario is inspected.
@@ -394,24 +468,32 @@ describe("Detox scenario port catalog", () => {
       "assert target cohort launch",
     ]);
     expect(
-      controlStepBody(
-        "target-cohorts-only",
-        "wait target cohort metadata pending",
+      (
+        await controlStepBody(
+          "target-cohorts-only",
+          "wait target cohort metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody(
-        "target-cohorts-only",
-        "wait target cohort metadata stable",
+      (
+        await controlStepBody(
+          "target-cohorts-only",
+          "wait target cohort metadata stable",
+        )
       ).verificationPending,
     ).toBe(false);
     expect(
-      controlStepBody("target-cohorts-only", "deploy target cohort bundle")
-        .rollout,
+      (
+        await controlStepBody(
+          "target-cohorts-only",
+          "deploy target cohort bundle",
+        )
+      ).rollout,
     ).toBe(0);
   });
 
-  it("ports the force-update-auto-reload pending verification before stable launch", () => {
+  it("ports the force-update-auto-reload pending verification before stable launch", async () => {
     const stages = scenarioStages("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
@@ -425,20 +507,24 @@ describe("Detox scenario port catalog", () => {
       "assert force update launch",
     ]);
     expect(
-      controlStepBody(
-        "force-update-auto-reload",
-        "wait force update metadata pending",
+      (
+        await controlStepBody(
+          "force-update-auto-reload",
+          "wait force update metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody(
-        "force-update-auto-reload",
-        "wait force update metadata stable",
+      (
+        await controlStepBody(
+          "force-update-auto-reload",
+          "wait force update metadata stable",
+        )
       ).verificationPending,
     ).toBe(false);
   });
 
-  it("ports the archive-to-diff OTA install and metadata verification sequence", () => {
+  it("ports the archive-to-diff OTA install and metadata verification sequence", async () => {
     const stages = scenarioStages("bspatch-archive-to-diff-ota");
 
     // When: the Detox scenario is inspected.
@@ -468,15 +554,15 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("keeps archive-to-diff on the same default bundle profile as the legacy flow", () => {
-    const deployBody = controlStepBody(
+  it("keeps archive-to-diff on the same default bundle profile as the legacy flow", async () => {
+    const deployBody = await controlStepBody(
       "bspatch-archive-to-diff-ota",
       "deploy archive base bundle",
     );
     expect(deployBody.bundleProfile).toBeUndefined();
   });
 
-  it("ports multi-asset replacement through stable first and second installs", () => {
+  it("ports multi-asset replacement through stable first and second installs", async () => {
     const stages = scenarioStages("multi-asset-replacement");
 
     // When: the Detox scenario is inspected.
@@ -497,35 +583,43 @@ describe("Detox scenario port catalog", () => {
       "assert multi-assets replaced",
     ]);
     expect(
-      controlStepBody(
-        "multi-asset-replacement",
-        "wait first multi-asset metadata pending",
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "wait first multi-asset metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody(
-        "multi-asset-replacement",
-        "wait first multi-asset metadata stable",
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "wait first multi-asset metadata stable",
+        )
       ).verificationPending,
     ).toBe(false);
     expect(
-      controlStepBody(
-        "multi-asset-replacement",
-        "wait second multi-asset metadata pending",
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "wait second multi-asset metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody(
-        "multi-asset-replacement",
-        "wait second multi-asset metadata stable",
+      (
+        await controlStepBody(
+          "multi-asset-replacement",
+          "wait second multi-asset metadata stable",
+        )
       ).verificationPending,
     ).toBe(false);
   });
 
-  it("waits for consecutive bsdiff installs to become stable before asserting patch evidence", () => {
+  it("waits for consecutive bsdiff installs to become stable before asserting patch evidence", async () => {
     // Given: Android and iOS use different primary bundle asset names.
     const stages = scenarioStages("bspatch-consecutive-diff-ota");
-    const body = controlStepBody(
+    const body = await controlStepBody(
       "bspatch-consecutive-diff-ota",
       "assert consecutive diff patch",
     );
@@ -548,7 +642,7 @@ describe("Detox scenario port catalog", () => {
     expect(body.assetPath).toBe("$diffPatchAssetPath");
   });
 
-  it("ports manifest diff fallback through an installed previous bundle", () => {
+  it("ports manifest diff fallback through an installed previous bundle", async () => {
     const stages = scenarioStages("bspatch-manifest-diff-fallback");
 
     // When: the Detox scenario is inspected.
@@ -572,7 +666,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("ports release recovery without relaunching over recovered state", () => {
+  it("ports release recovery without relaunching over recovered state", async () => {
     const stages = scenarioStages("release-ota-recovery");
 
     expect(stages).toEqual([
@@ -604,8 +698,8 @@ describe("Detox scenario port catalog", () => {
     // for the native recovery marker.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const reattachBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function reattachAfterExternalLaunch"),
-      detoxJestSpec.indexOf("async function runControlStep"),
+      detoxJestSpec.indexOf("async reattachAfterExternalLaunch"),
+      detoxJestSpec.indexOf("async waitForTestID"),
     );
 
     // When: the wait-for-crash-recovery control step completes.
@@ -624,7 +718,7 @@ describe("Detox scenario port catalog", () => {
     );
   });
 
-  it("waits for cohort rollout metadata to become stable before active assertion", () => {
+  it("waits for cohort rollout metadata to become stable before active assertion", async () => {
     const stages = scenarioStages("target-cohorts-rollout-interaction");
 
     expect(stages).toEqual([
@@ -638,20 +732,24 @@ describe("Detox scenario port catalog", () => {
       "assert cohort rollout active",
     ]);
     expect(
-      controlStepBody(
-        "target-cohorts-rollout-interaction",
-        "wait cohort rollout metadata pending",
+      (
+        await controlStepBody(
+          "target-cohorts-rollout-interaction",
+          "wait cohort rollout metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody(
-        "target-cohorts-rollout-interaction",
-        "wait cohort rollout metadata stable",
+      (
+        await controlStepBody(
+          "target-cohorts-rollout-interaction",
+          "wait cohort rollout metadata stable",
+        )
       ).verificationPending,
     ).toBe(false);
   });
 
-  it("ports runtime channel switching as an OTA state transition", () => {
+  it("ports runtime channel switching as an OTA state transition", async () => {
     const stages = scenarioStages("runtime-channel-switch-reset");
 
     expect(stages).toEqual([
@@ -669,19 +767,21 @@ describe("Detox scenario port catalog", () => {
       "assert reset built-in bundle",
     ]);
     expect(
-      controlStepBody(
-        "runtime-channel-switch-reset",
-        "wait runtime channel metadata pending",
+      (
+        await controlStepBody(
+          "runtime-channel-switch-reset",
+          "wait runtime channel metadata pending",
+        )
       ).verificationPending,
     ).toBe(true);
     expect(
-      getDetoxScenarioDefinition("runtime-channel-switch-reset").steps.some(
-        (step) => step.kind === "typeText",
+      (await recordScenarioCalls("runtime-channel-switch-reset")).some(
+        (call) => call.kind === "typeText",
       ),
     ).toBe(false);
   });
 
-  it("ports numeric cohort rollout through an included rollout sample", () => {
+  it("ports numeric cohort rollout through an included rollout sample", async () => {
     const stages = scenarioStages("numeric-cohort-rollout");
 
     expect(stages).toEqual([
@@ -707,31 +807,51 @@ describe("Detox scenario port catalog", () => {
       "assert excluded cohort built-in bundle",
     ]);
     expect(
-      controlStepDefinition("numeric-cohort-rollout", "compute rollout sample")
-        .saveResultFieldsAs,
+      (
+        await controlStepDefinition(
+          "numeric-cohort-rollout",
+          "compute rollout sample",
+        )
+      ).options?.saveResultFieldsAs,
     ).toEqual({
       excludedCohort: "excludedCohort",
       includedCohort: "includedCohort",
     });
     expect(
-      controlStepBody("numeric-cohort-rollout", "deploy numeric cohort bundle")
-        .rollout,
+      (
+        await controlStepBody(
+          "numeric-cohort-rollout",
+          "deploy numeric cohort bundle",
+        )
+      ).rollout,
     ).toBe(10);
     expect(
-      controlStepBody("numeric-cohort-rollout", "deploy numeric cohort bundle")
-        .safeBundleIds,
+      (
+        await controlStepBody(
+          "numeric-cohort-rollout",
+          "deploy numeric cohort bundle",
+        )
+      ).safeBundleIds,
     ).toEqual(["$builtInBundleId"]);
     expect(
-      controlStepBody("numeric-cohort-rollout", "wait rollout metadata pending")
-        .verificationPending,
+      (
+        await controlStepBody(
+          "numeric-cohort-rollout",
+          "wait rollout metadata pending",
+        )
+      ).verificationPending,
     ).toBe(true);
     expect(
-      controlStepBody("numeric-cohort-rollout", "wait rollout metadata stable")
-        .verificationPending,
+      (
+        await controlStepBody(
+          "numeric-cohort-rollout",
+          "wait rollout metadata stable",
+        )
+      ).verificationPending,
     ).toBe(false);
   });
 
-  it("ports targeted cohort switchback as bundle state, not restore text", () => {
+  it("ports targeted cohort switchback as bundle state, not restore text", async () => {
     const stages = scenarioStages("targeted-cohort-switchback");
 
     // When: the Detox scenario is inspected.
@@ -766,7 +886,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("ports disabled rollback scenarios through active OTA metadata before disabling", () => {
+  it("ports disabled rollback scenarios through active OTA metadata before disabling", async () => {
     // Given: rollback flows must first stabilize the OTA that will be disabled.
     const builtinStages = scenarioStages("disabled-bundle-rollback-to-builtin");
     const previousStages = scenarioStages(

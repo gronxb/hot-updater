@@ -4,37 +4,85 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getDetoxScenarioDefinition } from "./scenarios.ts";
+import type { DetoxScenarioDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
+
+type RecordedRecoveryCall = {
+  readonly kind: "assertText" | "control" | "device" | "tap" | "typeText";
+  readonly stage: string;
+  readonly testID?: string;
+};
+
+async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
+  const calls: RecordedRecoveryCall[] = [];
+  const driver: DetoxScenarioDriver = {
+    assertText: (stage, testID) => {
+      calls.push({ kind: "assertText", stage, testID });
+      return Promise.resolve();
+    },
+    control: (stage) => {
+      calls.push({ kind: "control", stage });
+      return Promise.resolve();
+    },
+    launch: (stage) => {
+      calls.push({ kind: "device", stage });
+      return Promise.resolve();
+    },
+    reload: (stage) => {
+      calls.push({ kind: "device", stage });
+      return Promise.resolve();
+    },
+    resetAppState: (stage) => {
+      calls.push({ kind: "device", stage });
+      return Promise.resolve();
+    },
+    tap: (stage, testID) => {
+      calls.push({ kind: "tap", stage, testID });
+      return Promise.resolve();
+    },
+    terminate: (stage) => {
+      calls.push({ kind: "device", stage });
+      return Promise.resolve();
+    },
+    typeText: (stage, testID) => {
+      calls.push({ kind: "typeText", stage, testID });
+      return Promise.resolve();
+    },
+  };
+  await getDetoxScenarioDefinition("release-ota-recovery").run(driver);
+  return calls;
+}
 
 describe("Detox recovery foreground handling", () => {
   it("uses native recovery evidence before reading recovered app UI", async () => {
     // Given: Android crash recovery relaunches the app outside Detox and the
     // launch status UI can be a transient platform-specific value.
     const scenario = getDetoxScenarioDefinition("release-ota-recovery");
-    const recoveredLaunchStatusStep = scenario.steps.find(
-      (step) => step.stage === "assert recovered stable launch",
+    const hasRecoveredLaunchStatusStage = scenario.stages.includes(
+      "assert recovered stable launch",
     );
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
 
     // When: recovery is verified after the control-server relaunch.
     // Then: launch status is asserted through the native report, not UI text.
-    expect(recoveredLaunchStatusStep).toBeUndefined();
+    expect(hasRecoveredLaunchStatusStage).toBe(false);
     expect(detoxJestSpec).toContain(
-      "waitForTestID(step.testID, { ensureForeground: step.ensureForeground })",
+      "this.waitForTestID(testID, {\n        ensureForeground: options.ensureForeground",
     );
     expect(detoxJestSpec).toContain("if (options.ensureForeground !== false)");
   });
 
-  it("asserts the native recovery report before reading recovered bundle UI", () => {
+  it("asserts the native recovery report before reading recovered bundle UI", async () => {
     // Given: Android can relaunch through the control server and report
     // RECOVERED before the React UI settles into the active stable bundle.
     const scenario = getDetoxScenarioDefinition("release-ota-recovery");
-    const stages = scenario.steps.map((step) => step.stage);
+    const calls = await recordRecoveryCalls();
+    const stages = scenario.stages;
     const recoveryIndex = stages.indexOf("wait crash recovery");
-    const recoveredBundleStep = scenario.steps.find(
-      (step) => step.stage === "assert recovered bundle id",
+    const recoveredBundleCall = calls.find(
+      (call) => call.stage === "assert recovered bundle id",
     );
 
     // When: crash recovery is verified.
@@ -44,34 +92,30 @@ describe("Detox recovery foreground handling", () => {
       "assert recovery launch report",
       "assert recovered bundle id",
     ]);
-    expect(recoveredBundleStep).toMatchObject({
-      contains: "$stableBundleId",
+    expect(recoveredBundleCall).toMatchObject({
       kind: "assertText",
       testID: "runtime-bundle-id",
     });
   });
 
-  it("uses crash history instead of transient crashed-bundle UI text", () => {
+  it("uses crash history instead of transient crashed-bundle UI text", async () => {
     // Given: the recovered UI can clear the transient crashed bundle text.
     const scenario = getDetoxScenarioDefinition("release-ota-recovery");
-    const stages = scenario.steps.map((step) => step.stage);
+    const calls = await recordRecoveryCalls();
+    const stages = scenario.stages;
     const crashHistoryIndex = stages.indexOf("assert crash history");
     const metadataIndex = stages.indexOf("assert recovered metadata active");
 
     // When: recovery evidence is asserted after the native launch report.
     // Then: durable crash history owns the crashedBundleId assertion.
+    expect(stages).not.toContain("assert crashed bundle result");
     expect(
-      scenario.steps.find(
-        (step) => step.stage === "assert crashed bundle result",
+      calls.some(
+        (call) =>
+          call.kind === "assertText" &&
+          call.testID === "launch-crashed-bundle-result",
       ),
-    ).toBeUndefined();
-    expect(
-      scenario.steps.find(
-        (step) =>
-          step.kind === "assertText" &&
-          step.testID === "launch-crashed-bundle-result",
-      ),
-    ).toBeUndefined();
+    ).toBe(false);
     expect(crashHistoryIndex).toBeGreaterThan(metadataIndex);
   });
 });

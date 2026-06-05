@@ -5,28 +5,15 @@ const {
   expect: detoxExpect,
   waitFor,
 } = require("detox");
+const { createControlClient } = require("./control-client.ts");
+const {
+  getDetoxScenarioDefinition,
+  listDetoxScenarioNames,
+} = require("./scenarios.ts");
 
-const scenarioNames = [
-  "release-ota-recovery",
-  "multi-asset-replacement",
-  "bspatch-archive-to-diff-ota",
-  "bspatch-consecutive-diff-ota",
-  "bspatch-disabled-chain-rollback",
-  "bspatch-manifest-diff-fallback",
-  "runtime-channel-switch-reset",
-  "numeric-cohort-rollout",
-  "target-cohorts-only",
-  "target-cohorts-rollout-interaction",
-  "targeted-cohort-switchback",
-  "force-update-auto-reload",
-  "disabled-bundle-rollback-to-builtin",
-  "disabled-bundle-rollback-to-previous-ota",
-];
+const scenarioNames = listDetoxScenarioNames();
 
-let createControlClient;
-let getDetoxScenarioDefinition;
 let controlClient;
-let stageValues;
 let synchronizationDisabledUntilLaunch = false;
 
 function isAndroidRun() {
@@ -73,65 +60,25 @@ function textFromAttributes(attributes) {
   return "";
 }
 
-function readStageValue(key) {
-  if (Object.hasOwn(stageValues, key)) return stageValues[key];
-  throw new Error(`Missing Detox scenario value: ${key}`);
+function shouldDisableSynchronizationForTap(testID) {
+  return testID.startsWith("action-install-");
 }
 
-function resolvePlaceholders(value) {
-  if (typeof value === "string") {
-    if (value.startsWith("$") && value.indexOf("$", 1) === -1) {
-      return readStageValue(value.slice(1));
-    }
-    return value.replace(/\$([A-Za-z0-9_]+)/g, (_, key) =>
-      String(readStageValue(key)),
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => resolvePlaceholders(item));
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        resolvePlaceholders(item),
-      ]),
-    );
-  }
-  return value;
+function markSynchronizationRestoredByLaunch() {
+  synchronizationDisabledUntilLaunch = false;
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function saveControlResult(saveResultAs, saveResultFieldsAs, result) {
-  for (const [key, value] of Object.entries(result)) {
-    stageValues[key] = value;
-  }
-  for (const [sourceKey, targetKey] of Object.entries(
-    saveResultFieldsAs || {},
-  )) {
-    if (Object.hasOwn(result, sourceKey)) {
-      stageValues[targetKey] = result[sourceKey];
-    }
-  }
-  if (!saveResultAs) return;
-  if (typeof result[saveResultAs] === "string") {
-    stageValues[saveResultAs] = result[saveResultAs];
-    return;
-  }
-  if (typeof result.bundleId === "string") {
-    stageValues[saveResultAs] = result.bundleId;
-    return;
-  }
-  if (typeof result.builtInBundleId === "string") {
-    stageValues[saveResultAs] = result.builtInBundleId;
-  }
+async function disableSynchronizationUntilLaunch() {
+  if (synchronizationDisabledUntilLaunch) return;
+  await device.disableSynchronization();
+  synchronizationDisabledUntilLaunch = true;
 }
 
 function navTargetForTestID(testID) {
-  if (testID.startsWith("action-set-") || testID === "action-restore-initial-cohort") {
+  if (
+    testID.startsWith("action-set-") ||
+    testID === "action-restore-initial-cohort"
+  ) {
     return "e2e-nav-cohort-actions";
   }
   if (testID.startsWith("action-") || testID.endsWith("-input")) {
@@ -163,148 +110,198 @@ async function navigateToTestID(testID) {
   await element(by.id(navTarget)).tap();
 }
 
-async function ensureAppForegroundForInteraction() {
-  await controlClient.postJson(
-    "ensure app foreground",
-    "/e2e/ensure-app-foreground",
-    {},
-  );
-  if (isAndroidRun()) {
-    await device.sendToHome();
-    await device.launchApp({ newInstance: false });
+class DetoxScenarioRuntime {
+  constructor(client) {
+    this.controlClient = client;
+    this.stageValues = {};
   }
-}
 
-async function waitForTestID(testID, options = {}) {
-  if (options.ensureForeground !== false) await ensureAppForegroundForInteraction();
-  await navigateToTestID(testID);
-  const target = element(by.id(testID));
-  await waitFor(target)
-    .toBeVisible()
-    .whileElement(by.id("e2e-scroll-content"))
-    .scroll(260, "down");
-  await waitFor(target).toBeVisible().withTimeout(30000);
-  return target;
-}
-
-async function waitForVisibleText(testID, contains) {
-  await navigateToTestID(testID);
-  const expectedText = String(resolvePlaceholders(contains));
-  const target = element(
-    by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText)))),
-  );
-  await waitFor(target).toBeVisible().withTimeout(30000);
-  const text = textFromAttributes(await target.getAttributes());
-  if (!text.includes(expectedText)) {
-    throw new Error(
-      `${testID} expected to contain "${expectedText}", received "${text}"`,
-    );
+  async assertText(stage, testID, contains, options = {}) {
+    await this.runStage(stage, async () => {
+      const target = await this.waitForTestID(testID, {
+        ensureForeground: options.ensureForeground,
+      });
+      await detoxExpect(target).toBeVisible();
+      const text = textFromAttributes(await target.getAttributes());
+      const expectedText = String(this.resolvePlaceholders(contains));
+      if (!text.includes(expectedText)) {
+        throw new Error(
+          `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
+        );
+      }
+    });
   }
-}
 
-async function disableSynchronizationUntilLaunch() {
-  if (synchronizationDisabledUntilLaunch) return;
-  await device.disableSynchronization();
-  synchronizationDisabledUntilLaunch = true;
-}
-
-function shouldDisableSynchronizationForTap(testID) {
-  return testID.startsWith("action-install-");
-}
-
-function markSynchronizationRestoredByLaunch() {
-  synchronizationDisabledUntilLaunch = false;
-}
-
-async function reattachAfterExternalLaunch(pathName) {
-  if (!isAndroidRun()) return;
-  if (pathName !== "/e2e/wait-for-crash-recovery") return;
-  await device.launchApp({ newInstance: false });
-  markSynchronizationRestoredByLaunch();
-}
-
-async function runTapStep(step) {
-  const target = await waitForTestID(step.testID);
-  if (shouldDisableSynchronizationForTap(step.testID)) {
-    await disableSynchronizationUntilLaunch();
+  async control(stage, pathName, body, options = {}) {
+    await this.runStage(stage, async () => {
+      const resolvedBody = this.resolvePlaceholders(body);
+      const runner = pathName.startsWith("/e2e/jobs/")
+        ? this.controlClient.runJob.bind(this.controlClient)
+        : this.controlClient.postJson.bind(this.controlClient);
+      const result = await runner(stage, pathName, resolvedBody);
+      this.saveControlResult(options, result);
+      await this.reattachAfterExternalLaunch(pathName);
+    });
   }
-  await target.tap();
-}
 
-async function runDeviceAction(step) {
-  if (step.action === "terminate") {
-    await device.terminateApp();
-    return;
+  async launch(stage) {
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: prepare launch`,
+        "/e2e/prepare-app-launch",
+        {},
+      );
+      try {
+        await device.launchApp({ newInstance: true });
+        markSynchronizationRestoredByLaunch();
+      } catch (error) {
+        if (!stage.toLowerCase().includes("crash")) throw error;
+      }
+    });
   }
-  if (step.action === "resetAppState") {
-    await controlClient.postJson(
-      `${step.stage}: reset local app state`,
-      "/e2e/reset-local-app-state",
-      {},
-    );
-    await device.launchApp({ newInstance: true });
-    markSynchronizationRestoredByLaunch();
-    return;
-  }
-  if (step.action === "reload") {
-    await device.terminateApp();
-    await device.launchApp({ newInstance: true });
-    markSynchronizationRestoredByLaunch();
-    return;
-  }
-  await controlClient.postJson(`${step.stage}: prepare launch`, "/e2e/prepare-app-launch", {});
-  try {
-    await device.launchApp({ newInstance: true });
-    markSynchronizationRestoredByLaunch();
-  } catch (error) {
-    if (!step.stage.toLowerCase().includes("crash")) throw error;
-  }
-}
 
-async function runControlStep(step) {
-  const body = resolvePlaceholders(step.body);
-  const runner = step.pathName.startsWith("/e2e/jobs/")
-    ? controlClient.runJob.bind(controlClient)
-    : controlClient.postJson.bind(controlClient);
-  const result = await runner(step.stage, step.pathName, body);
-  saveControlResult(step.saveResultAs, step.saveResultFieldsAs, result);
-  await reattachAfterExternalLaunch(step.pathName);
-}
+  async reload(stage) {
+    await this.runStage(stage, async () => {
+      await device.terminateApp();
+      await device.launchApp({ newInstance: true });
+      markSynchronizationRestoredByLaunch();
+    });
+  }
 
-async function runScenarioStep(step) {
-  console.log(`[detox-stage:start] ${step.stage}`);
-  if (step.kind === "control") {
-    await runControlStep(step);
-  } else if (step.kind === "device") {
-    await runDeviceAction(step);
-  } else if (step.kind === "tap") {
-    await runTapStep(step);
-  } else if (step.kind === "typeText") {
-    await (await waitForTestID(step.testID)).replaceText(
-      String(resolvePlaceholders(step.text)),
-    );
-  } else if (step.kind === "assertText") {
-    const target = await waitForTestID(step.testID, { ensureForeground: step.ensureForeground });
-    await detoxExpect(target).toBeVisible();
-    const text = textFromAttributes(await target.getAttributes());
-    const expectedText = String(resolvePlaceholders(step.contains));
-    if (!text.includes(expectedText)) {
-      throw new Error(
-        `${step.stage} expected ${step.testID} to contain "${expectedText}", received "${text}"`,
+  async resetAppState(stage) {
+    await this.runStage(stage, async () => {
+      await this.controlClient.postJson(
+        `${stage}: reset local app state`,
+        "/e2e/reset-local-app-state",
+        {},
+      );
+      await device.launchApp({ newInstance: true });
+      markSynchronizationRestoredByLaunch();
+    });
+  }
+
+  async tap(stage, testID) {
+    await this.runStage(stage, async () => {
+      const target = await this.waitForTestID(testID);
+      if (shouldDisableSynchronizationForTap(testID)) {
+        await disableSynchronizationUntilLaunch();
+      }
+      await target.tap();
+    });
+  }
+
+  async terminate(stage) {
+    await this.runStage(stage, async () => {
+      await device.terminateApp();
+    });
+  }
+
+  async typeText(stage, testID, text) {
+    await this.runStage(stage, async () => {
+      const target = await this.waitForTestID(testID);
+      await target.replaceText(String(this.resolvePlaceholders(text)));
+    });
+  }
+
+  readStageValue(key) {
+    if (Object.hasOwn(this.stageValues, key)) return this.stageValues[key];
+    throw new Error(`Missing Detox scenario value: ${key}`);
+  }
+
+  resolvePlaceholders(value) {
+    if (typeof value === "string") {
+      if (value.startsWith("$") && value.indexOf("$", 1) === -1) {
+        return this.readStageValue(value.slice(1));
+      }
+      return value.replace(/\$([A-Za-z0-9_]+)/g, (_, key) =>
+        String(this.readStageValue(key)),
       );
     }
-  } else {
-    throw new Error(`Unsupported Detox scenario step: ${step.kind}`);
+    if (Array.isArray(value)) {
+      return value.map((item) => this.resolvePlaceholders(item));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key,
+          this.resolvePlaceholders(item),
+        ]),
+      );
+    }
+    return value;
   }
-  console.log(`[detox-stage:done] ${step.stage}`);
+
+  async runStage(stage, operation) {
+    console.log(`[detox-stage:start] ${stage}`);
+    try {
+      await operation();
+      console.log(`[detox-stage:done] ${stage}`);
+    } catch (error) {
+      console.log(`[detox-stage:failed] ${stage}`);
+      throw error;
+    }
+  }
+
+  saveControlResult(options, result) {
+    for (const [key, value] of Object.entries(result)) {
+      this.stageValues[key] = value;
+    }
+    for (const [sourceKey, targetKey] of Object.entries(
+      options.saveResultFieldsAs || {},
+    )) {
+      if (Object.hasOwn(result, sourceKey)) {
+        this.stageValues[targetKey] = result[sourceKey];
+      }
+    }
+    if (!options.saveResultAs) return;
+    if (typeof result[options.saveResultAs] === "string") {
+      this.stageValues[options.saveResultAs] = result[options.saveResultAs];
+      return;
+    }
+    if (typeof result.bundleId === "string") {
+      this.stageValues[options.saveResultAs] = result.bundleId;
+      return;
+    }
+    if (typeof result.builtInBundleId === "string") {
+      this.stageValues[options.saveResultAs] = result.builtInBundleId;
+    }
+  }
+
+  async ensureAppForegroundForInteraction() {
+    await this.controlClient.postJson(
+      "ensure app foreground",
+      "/e2e/ensure-app-foreground",
+      {},
+    );
+    if (isAndroidRun()) {
+      await device.sendToHome();
+      await device.launchApp({ newInstance: false });
+    }
+  }
+
+  async reattachAfterExternalLaunch(pathName) {
+    if (!isAndroidRun()) return;
+    if (pathName !== "/e2e/wait-for-crash-recovery") return;
+    await device.launchApp({ newInstance: false });
+    markSynchronizationRestoredByLaunch();
+  }
+
+  async waitForTestID(testID, options = {}) {
+    if (options.ensureForeground !== false) {
+      await this.ensureAppForegroundForInteraction();
+    }
+    await navigateToTestID(testID);
+    const target = element(by.id(testID));
+    await waitFor(target)
+      .toBeVisible()
+      .whileElement(by.id("e2e-scroll-content"))
+      .scroll(260, "down");
+    await waitFor(target).toBeVisible().withTimeout(30000);
+    return target;
+  }
 }
 
 describe("HotUpdater Detox scenarios", () => {
-  beforeAll(async () => {
-    ({ createControlClient } = await import("./control-client.ts"));
-    ({ getDetoxScenarioDefinition } = await import("./scenarios.ts"));
-  });
-
   beforeEach(async () => {
     controlClient = createControlClient({
       baseUrl: controlBaseUrl(),
@@ -312,7 +309,6 @@ describe("HotUpdater Detox scenarios", () => {
         console.log(`[detox-stage:timing] ${JSON.stringify(timing)}`);
       },
     });
-    stageValues = {};
     if (isAndroidRun()) {
       for (const port of androidReversePorts()) {
         await device.reverseTcpPort(port);
@@ -324,7 +320,11 @@ describe("HotUpdater Detox scenarios", () => {
       "/e2e/reset-remote-bundles",
       {},
     );
-    await controlClient.postJson("reset local app state", "/e2e/reset-local-app-state", {});
+    await controlClient.postJson(
+      "reset local app state",
+      "/e2e/reset-local-app-state",
+      {},
+    );
     await device.launchApp({ newInstance: true });
     markSynchronizationRestoredByLaunch();
   });
@@ -347,9 +347,8 @@ describe("HotUpdater Detox scenarios", () => {
   for (const scenarioName of scenarioNames) {
     it(scenarioName, async () => {
       const scenario = getDetoxScenarioDefinition(scenarioName);
-      for (const step of scenario.steps) {
-        await runScenarioStep(step);
-      }
+      const driver = new DetoxScenarioRuntime(controlClient);
+      await scenario.run(driver);
     });
   }
 });

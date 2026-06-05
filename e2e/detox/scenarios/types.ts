@@ -1,41 +1,43 @@
 import type { JsonObject } from "../control-client.ts";
 
-export type DetoxScenarioStep =
-  | {
-      readonly action: "launch" | "reload" | "resetAppState" | "terminate";
-      readonly kind: "device";
-      readonly stage: string;
-    }
-  | {
-      readonly body?: JsonObject;
-      readonly kind: "control";
-      readonly pathName: string;
-      readonly saveResultFieldsAs?: Readonly<Record<string, string>>;
-      readonly saveResultAs?: string;
-      readonly stage: string;
-    }
-  | {
-      readonly kind: "tap";
-      readonly stage: string;
-      readonly testID: string;
-    }
-  | {
-      readonly kind: "typeText";
-      readonly stage: string;
-      readonly testID: string;
-      readonly text: string;
-    }
-  | {
-      readonly contains: string;
-      readonly ensureForeground?: boolean;
-      readonly kind: "assertText";
-      readonly stage: string;
-      readonly testID: string;
-    };
+export type DetoxControlOptions = {
+  readonly saveResultAs?: string;
+  readonly saveResultFieldsAs?: Readonly<Record<string, string>>;
+};
+
+export type DetoxAssertTextOptions = {
+  readonly ensureForeground?: boolean;
+};
+
+export type DetoxScenarioDriver = {
+  readonly assertText: (
+    stage: string,
+    testID: string,
+    contains: string,
+    options?: DetoxAssertTextOptions,
+  ) => Promise<void>;
+  readonly control: (
+    stage: string,
+    pathName: string,
+    body?: JsonObject,
+    options?: DetoxControlOptions,
+  ) => Promise<void>;
+  readonly launch: (stage: string) => Promise<void>;
+  readonly reload: (stage: string) => Promise<void>;
+  readonly resetAppState: (stage: string) => Promise<void>;
+  readonly tap: (stage: string, testID: string) => Promise<void>;
+  readonly terminate: (stage: string) => Promise<void>;
+  readonly typeText: (
+    stage: string,
+    testID: string,
+    text: string,
+  ) => Promise<void>;
+};
 
 export type DetoxScenarioDefinition = {
   readonly name: string;
-  readonly steps: readonly DetoxScenarioStep[];
+  readonly run: (scenario: DetoxScenarioDriver) => Promise<void>;
+  readonly stages: readonly string[];
   readonly wave: 1 | 2 | 3 | 4;
 };
 

@@ -3,97 +3,125 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "runtime-channel-switch-reset",
+    stages: [
+      "launch default channel",
+      "capture built-in bundle id",
+      "deploy runtime channel bundle",
+      "install runtime channel update",
+      "wait runtime channel metadata pending",
+      "assert runtime channel result",
+      "reload runtime channel update",
+      "assert runtime channel bundle",
+      "reset runtime channel",
+      "assert runtime channel reset",
+      "reload default channel",
+      "assert reset built-in bundle",
+    ],
     wave: 3,
-    steps: [
-      { action: "launch", kind: "device", stage: "launch default channel" },
-      {
-        kind: "control",
-        pathName: "/e2e/capture-built-in-bundle-id",
-        saveResultAs: "builtInBundleId",
-        stage: "capture built-in bundle id",
-      },
-      {
-        body: {
+    run: async (scenario) => {
+      await scenario.launch("launch default channel");
+      await scenario.control(
+        "capture built-in bundle id",
+        "/e2e/capture-built-in-bundle-id",
+        {},
+        {
+          saveResultAs: "builtInBundleId",
+        },
+      );
+      await scenario.control(
+        "deploy runtime channel bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "beta",
           marker: "runtime-channel-beta-detox",
           message: "Detox runtime channel bundle",
           mode: "reset",
           targetAppVersion: "1.0.x",
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "runtimeBundleId",
-        stage: "deploy runtime channel bundle",
-      },
-      {
-        kind: "tap",
-        stage: "install runtime channel update",
-        testID: "action-install-runtime-channel-update",
-      },
-      {
-        body: {
+        {
+          saveResultAs: "runtimeBundleId",
+        },
+      );
+      await scenario.tap(
+        "install runtime channel update",
+        "action-install-runtime-channel-update",
+      );
+      await scenario.control(
+        "wait runtime channel metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$runtimeBundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait runtime channel metadata pending",
-      },
-      {
-        contains: "runtime-channel -> beta",
-        kind: "assertText",
-        stage: "assert runtime channel result",
-        testID: "channel-action-result",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload runtime channel update",
-      },
-      {
-        contains: "$runtimeBundleId",
-        kind: "assertText",
-        stage: "assert runtime channel bundle",
-        testID: "runtime-bundle-id",
-      },
-      {
-        kind: "tap",
-        stage: "reset runtime channel",
-        testID: "action-reset-runtime-channel",
-      },
-      {
-        contains: "reset -> true",
-        kind: "assertText",
-        stage: "assert runtime channel reset",
-        testID: "channel-action-result",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload default channel",
-      },
-      {
-        contains: "$builtInBundleId",
-        kind: "assertText",
-        stage: "assert reset built-in bundle",
-        testID: "runtime-bundle-id",
-      },
-    ],
+      );
+      await scenario.assertText(
+        "assert runtime channel result",
+        "channel-action-result",
+        "runtime-channel -> beta",
+      );
+      await scenario.reload("reload runtime channel update");
+      await scenario.assertText(
+        "assert runtime channel bundle",
+        "runtime-bundle-id",
+        "$runtimeBundleId",
+      );
+      await scenario.tap(
+        "reset runtime channel",
+        "action-reset-runtime-channel",
+      );
+      await scenario.assertText(
+        "assert runtime channel reset",
+        "channel-action-result",
+        "reset -> true",
+      );
+      await scenario.reload("reload default channel");
+      await scenario.assertText(
+        "assert reset built-in bundle",
+        "runtime-bundle-id",
+        "$builtInBundleId",
+      );
+    },
   },
   {
     name: "numeric-cohort-rollout",
+    stages: [
+      "launch built-in app",
+      "capture built-in bundle id",
+      "deploy numeric cohort bundle",
+      "compute rollout sample",
+      "enter included cohort",
+      "apply included cohort",
+      "assert included cohort applied",
+      "install rollout update",
+      "wait rollout metadata pending",
+      "assert rollout action result",
+      "reload rollout update",
+      "wait rollout metadata stable",
+      "assert rollout launch",
+      "enter excluded cohort",
+      "apply excluded cohort",
+      "assert excluded cohort applied",
+      "install excluded cohort update",
+      "assert excluded metadata reset",
+      "reload excluded cohort state",
+      "assert excluded cohort built-in bundle",
+    ],
     wave: 3,
-    steps: [
-      { action: "launch", kind: "device", stage: "launch built-in app" },
-      {
-        kind: "control",
-        pathName: "/e2e/capture-built-in-bundle-id",
-        saveResultAs: "builtInBundleId",
-        stage: "capture built-in bundle id",
-      },
-      {
-        body: {
+    run: async (scenario) => {
+      await scenario.launch("launch built-in app");
+      await scenario.control(
+        "capture built-in bundle id",
+        "/e2e/capture-built-in-bundle-id",
+        {},
+        {
+          saveResultAs: "builtInBundleId",
+        },
+      );
+      await scenario.control(
+        "deploy numeric cohort bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "production",
           marker: "numeric-cohort-detox",
           mode: "reset",
@@ -101,122 +129,112 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
           safeBundleIds: ["$builtInBundleId"],
           targetAppVersion: "1.0.x",
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "bundleId",
-        stage: "deploy numeric cohort bundle",
-      },
-      {
-        body: { bundleId: "$bundleId" },
-        kind: "control",
-        pathName: "/e2e/compute-rollout-sample",
-        saveResultFieldsAs: {
-          excludedCohort: "excludedCohort",
-          includedCohort: "includedCohort",
+        {
+          saveResultAs: "bundleId",
         },
-        stage: "compute rollout sample",
-      },
-      {
-        kind: "typeText",
-        stage: "enter included cohort",
-        testID: "cohort-input",
-        text: "$includedCohort",
-      },
-      {
-        kind: "tap",
-        stage: "apply included cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        contains: "set -> $includedCohort",
-        kind: "assertText",
-        stage: "assert included cohort applied",
-        testID: "cohort-action-result",
-      },
-      {
-        kind: "tap",
-        stage: "install rollout update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+      );
+      await scenario.control(
+        "compute rollout sample",
+        "/e2e/compute-rollout-sample",
+        {
+          bundleId: "$bundleId",
+        },
+        {
+          saveResultFieldsAs: {
+            excludedCohort: "excludedCohort",
+            includedCohort: "includedCohort",
+          },
+        },
+      );
+      await scenario.typeText(
+        "enter included cohort",
+        "cohort-input",
+        "$includedCohort",
+      );
+      await scenario.tap("apply included cohort", "action-apply-cohort-input");
+      await scenario.assertText(
+        "assert included cohort applied",
+        "cohort-action-result",
+        "set -> $includedCohort",
+      );
+      await scenario.tap(
+        "install rollout update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait rollout metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$bundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait rollout metadata pending",
-      },
-      {
-        contains: "current-channel",
-        kind: "assertText",
-        stage: "assert rollout action result",
-        testID: "update-action-result",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload rollout update",
-      },
-      {
-        body: { bundleId: "$bundleId", verificationPending: false },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait rollout metadata stable",
-      },
-      {
-        contains: "$bundleId",
-        kind: "assertText",
-        stage: "assert rollout launch",
-        testID: "runtime-bundle-id",
-      },
-      {
-        kind: "typeText",
-        stage: "enter excluded cohort",
-        testID: "cohort-input",
-        text: "$excludedCohort",
-      },
-      {
-        kind: "tap",
-        stage: "apply excluded cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        contains: "set -> $excludedCohort",
-        kind: "assertText",
-        stage: "assert excluded cohort applied",
-        testID: "cohort-action-result",
-      },
-      {
-        kind: "tap",
-        stage: "install excluded cohort update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        kind: "control",
-        pathName: "/e2e/assert-metadata-reset",
-        stage: "assert excluded metadata reset",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload excluded cohort state",
-      },
-      {
-        contains: "$builtInBundleId",
-        kind: "assertText",
-        stage: "assert excluded cohort built-in bundle",
-        testID: "runtime-bundle-id",
-      },
-    ],
+      );
+      await scenario.assertText(
+        "assert rollout action result",
+        "update-action-result",
+        "current-channel",
+      );
+      await scenario.reload("reload rollout update");
+      await scenario.control(
+        "wait rollout metadata stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$bundleId",
+          verificationPending: false,
+        },
+      );
+      await scenario.assertText(
+        "assert rollout launch",
+        "runtime-bundle-id",
+        "$bundleId",
+      );
+      await scenario.typeText(
+        "enter excluded cohort",
+        "cohort-input",
+        "$excludedCohort",
+      );
+      await scenario.tap("apply excluded cohort", "action-apply-cohort-input");
+      await scenario.assertText(
+        "assert excluded cohort applied",
+        "cohort-action-result",
+        "set -> $excludedCohort",
+      );
+      await scenario.tap(
+        "install excluded cohort update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "assert excluded metadata reset",
+        "/e2e/assert-metadata-reset",
+      );
+      await scenario.reload("reload excluded cohort state");
+      await scenario.assertText(
+        "assert excluded cohort built-in bundle",
+        "runtime-bundle-id",
+        "$builtInBundleId",
+      );
+    },
   },
   {
     name: "target-cohorts-only",
+    stages: [
+      "deploy target cohort bundle",
+      "enter qa cohort",
+      "apply qa cohort",
+      "assert qa cohort applied",
+      "install target cohort update",
+      "wait target cohort metadata pending",
+      "reload target cohort update",
+      "wait target cohort metadata stable",
+      "assert target cohort launch",
+    ],
     wave: 3,
-    steps: [
-      {
-        body: {
+    run: async (scenario) => {
+      await scenario.control(
+        "deploy target cohort bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "production",
           marker: "target-cohorts-only-detox",
           mode: "reset",
@@ -225,68 +243,64 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
           targetAppVersion: "1.0.x",
           targetCohorts: ["qa"],
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "bundleId",
-        stage: "deploy target cohort bundle",
-      },
-      {
-        kind: "typeText",
-        stage: "enter qa cohort",
-        testID: "cohort-input",
-        text: "qa",
-      },
-      {
-        kind: "tap",
-        stage: "apply qa cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        contains: "set -> qa",
-        kind: "assertText",
-        stage: "assert qa cohort applied",
-        testID: "cohort-action-result",
-      },
-      {
-        kind: "tap",
-        stage: "install target cohort update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+        {
+          saveResultAs: "bundleId",
+        },
+      );
+      await scenario.typeText("enter qa cohort", "cohort-input", "qa");
+      await scenario.tap("apply qa cohort", "action-apply-cohort-input");
+      await scenario.assertText(
+        "assert qa cohort applied",
+        "cohort-action-result",
+        "set -> qa",
+      );
+      await scenario.tap(
+        "install target cohort update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait target cohort metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$bundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait target cohort metadata pending",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload target cohort update",
-      },
-      {
-        body: { bundleId: "$bundleId", verificationPending: false },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait target cohort metadata stable",
-      },
-      {
-        contains: "Current Launch Status: STABLE",
-        kind: "assertText",
-        stage: "assert target cohort launch",
-        testID: "launch-status-result",
-      },
-    ],
+      );
+      await scenario.reload("reload target cohort update");
+      await scenario.control(
+        "wait target cohort metadata stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$bundleId",
+          verificationPending: false,
+        },
+      );
+      await scenario.assertText(
+        "assert target cohort launch",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
+      );
+    },
   },
   {
     name: "target-cohorts-rollout-interaction",
+    stages: [
+      "deploy cohort rollout bundle",
+      "enter qa cohort",
+      "apply qa cohort",
+      "install cohort rollout update",
+      "wait cohort rollout metadata pending",
+      "reload cohort rollout update",
+      "wait cohort rollout metadata stable",
+      "assert cohort rollout active",
+    ],
     wave: 3,
-    steps: [
-      {
-        body: {
+    run: async (scenario) => {
+      await scenario.control(
+        "deploy cohort rollout bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "production",
           marker: "cohort-rollout-detox",
           mode: "reset",
@@ -295,62 +309,79 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
           targetAppVersion: "1.0.x",
           targetCohorts: ["qa"],
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "bundleId",
-        stage: "deploy cohort rollout bundle",
-      },
-      {
-        kind: "typeText",
-        stage: "enter qa cohort",
-        testID: "cohort-input",
-        text: "qa",
-      },
-      {
-        kind: "tap",
-        stage: "apply qa cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        kind: "tap",
-        stage: "install cohort rollout update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+        {
+          saveResultAs: "bundleId",
+        },
+      );
+      await scenario.typeText("enter qa cohort", "cohort-input", "qa");
+      await scenario.tap("apply qa cohort", "action-apply-cohort-input");
+      await scenario.tap(
+        "install cohort rollout update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait cohort rollout metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$bundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait cohort rollout metadata pending",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload cohort rollout update",
-      },
-      {
-        body: { bundleId: "$bundleId", verificationPending: false },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait cohort rollout metadata stable",
-      },
-      {
-        body: { bundleId: "$bundleId" },
-        kind: "control",
-        pathName: "/e2e/assert-metadata-active",
-        stage: "assert cohort rollout active",
-      },
-    ],
+      );
+      await scenario.reload("reload cohort rollout update");
+      await scenario.control(
+        "wait cohort rollout metadata stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$bundleId",
+          verificationPending: false,
+        },
+      );
+      await scenario.control(
+        "assert cohort rollout active",
+        "/e2e/assert-metadata-active",
+        {
+          bundleId: "$bundleId",
+        },
+      );
+    },
   },
   {
     name: "targeted-cohort-switchback",
+    stages: [
+      "deploy numeric cohort bundle",
+      "compute numeric rollout sample",
+      "deploy qa cohort bundle",
+      "enter numeric cohort",
+      "apply numeric cohort",
+      "assert numeric cohort applied",
+      "install numeric cohort update",
+      "wait numeric cohort metadata pending",
+      "reload numeric cohort update",
+      "wait numeric cohort metadata stable",
+      "assert numeric cohort launch",
+      "enter qa cohort",
+      "apply qa cohort",
+      "install qa cohort update",
+      "wait qa cohort metadata pending",
+      "reload qa cohort update",
+      "wait qa cohort metadata stable",
+      "assert qa cohort launch",
+      "restore numeric cohort",
+      "apply restored numeric cohort",
+      "assert numeric cohort restored",
+      "install numeric cohort rollback",
+      "wait numeric cohort rollback pending",
+      "reload numeric cohort rollback",
+      "wait numeric cohort rollback stable",
+      "assert numeric cohort rollback launch",
+    ],
     wave: 3,
-    steps: [
-      {
-        body: {
+    run: async (scenario) => {
+      await scenario.control(
+        "deploy numeric cohort bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "production",
           marker: "targeted-numeric-rollout-detox",
           mode: "reset",
@@ -358,23 +389,27 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
           safeBundleIds: [],
           targetAppVersion: "1.0.x",
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "numericBundleId",
-        stage: "deploy numeric cohort bundle",
-      },
-      {
-        body: { bundleId: "$numericBundleId" },
-        kind: "control",
-        pathName: "/e2e/compute-rollout-sample",
-        saveResultFieldsAs: {
-          includedCohort: "numericIncludedCohort",
-          rolloutCohortCount: "numericRolloutCohortCount",
+        {
+          saveResultAs: "numericBundleId",
         },
-        stage: "compute numeric rollout sample",
-      },
-      {
-        body: {
+      );
+      await scenario.control(
+        "compute numeric rollout sample",
+        "/e2e/compute-rollout-sample",
+        {
+          bundleId: "$numericBundleId",
+        },
+        {
+          saveResultFieldsAs: {
+            includedCohort: "numericIncludedCohort",
+            rolloutCohortCount: "numericRolloutCohortCount",
+          },
+        },
+      );
+      await scenario.control(
+        "deploy qa cohort bundle",
+        "/e2e/jobs/deploy-bundle",
+        {
           channel: "production",
           marker: "targeted-qa-detox",
           mode: "reset",
@@ -383,158 +418,118 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
           targetAppVersion: "1.0.x",
           targetCohorts: ["qa"],
         },
-        kind: "control",
-        pathName: "/e2e/jobs/deploy-bundle",
-        saveResultAs: "qaBundleId",
-        stage: "deploy qa cohort bundle",
-      },
-      {
-        kind: "typeText",
-        stage: "enter numeric cohort",
-        testID: "cohort-input",
-        text: "$numericIncludedCohort",
-      },
-      {
-        kind: "tap",
-        stage: "apply numeric cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        contains: "set -> $numericIncludedCohort",
-        kind: "assertText",
-        stage: "assert numeric cohort applied",
-        testID: "cohort-action-result",
-      },
-      {
-        kind: "tap",
-        stage: "install numeric cohort update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+        {
+          saveResultAs: "qaBundleId",
+        },
+      );
+      await scenario.typeText(
+        "enter numeric cohort",
+        "cohort-input",
+        "$numericIncludedCohort",
+      );
+      await scenario.tap("apply numeric cohort", "action-apply-cohort-input");
+      await scenario.assertText(
+        "assert numeric cohort applied",
+        "cohort-action-result",
+        "set -> $numericIncludedCohort",
+      );
+      await scenario.tap(
+        "install numeric cohort update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait numeric cohort metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$numericBundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait numeric cohort metadata pending",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload numeric cohort update",
-      },
-      {
-        body: {
+      );
+      await scenario.reload("reload numeric cohort update");
+      await scenario.control(
+        "wait numeric cohort metadata stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$numericBundleId",
           verificationPending: false,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait numeric cohort metadata stable",
-      },
-      {
-        contains: "$numericBundleId",
-        kind: "assertText",
-        stage: "assert numeric cohort launch",
-        testID: "runtime-bundle-id",
-      },
-      {
-        kind: "typeText",
-        stage: "enter qa cohort",
-        testID: "cohort-input",
-        text: "qa",
-      },
-      {
-        kind: "tap",
-        stage: "apply qa cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        kind: "tap",
-        stage: "install qa cohort update",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+      );
+      await scenario.assertText(
+        "assert numeric cohort launch",
+        "runtime-bundle-id",
+        "$numericBundleId",
+      );
+      await scenario.typeText("enter qa cohort", "cohort-input", "qa");
+      await scenario.tap("apply qa cohort", "action-apply-cohort-input");
+      await scenario.tap(
+        "install qa cohort update",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait qa cohort metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$qaBundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait qa cohort metadata pending",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload qa cohort update",
-      },
-      {
-        body: { bundleId: "$qaBundleId", verificationPending: false },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait qa cohort metadata stable",
-      },
-      {
-        contains: "$qaBundleId",
-        kind: "assertText",
-        stage: "assert qa cohort launch",
-        testID: "runtime-bundle-id",
-      },
-      {
-        kind: "typeText",
-        stage: "restore numeric cohort",
-        testID: "cohort-input",
-        text: "$numericIncludedCohort",
-      },
-      {
-        kind: "tap",
-        stage: "apply restored numeric cohort",
-        testID: "action-apply-cohort-input",
-      },
-      {
-        contains: "set -> $numericIncludedCohort",
-        kind: "assertText",
-        stage: "assert numeric cohort restored",
-        testID: "cohort-action-result",
-      },
-      {
-        kind: "tap",
-        stage: "install numeric cohort rollback",
-        testID: "action-install-current-channel-update",
-      },
-      {
-        body: {
+      );
+      await scenario.reload("reload qa cohort update");
+      await scenario.control(
+        "wait qa cohort metadata stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$qaBundleId",
+          verificationPending: false,
+        },
+      );
+      await scenario.assertText(
+        "assert qa cohort launch",
+        "runtime-bundle-id",
+        "$qaBundleId",
+      );
+      await scenario.typeText(
+        "restore numeric cohort",
+        "cohort-input",
+        "$numericIncludedCohort",
+      );
+      await scenario.tap(
+        "apply restored numeric cohort",
+        "action-apply-cohort-input",
+      );
+      await scenario.assertText(
+        "assert numeric cohort restored",
+        "cohort-action-result",
+        "set -> $numericIncludedCohort",
+      );
+      await scenario.tap(
+        "install numeric cohort rollback",
+        "action-install-current-channel-update",
+      );
+      await scenario.control(
+        "wait numeric cohort rollback pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$numericBundleId",
           relaunchLimit: 0,
           verificationPending: true,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait numeric cohort rollback pending",
-      },
-      {
-        action: "reload",
-        kind: "device",
-        stage: "reload numeric cohort rollback",
-      },
-      {
-        body: {
+      );
+      await scenario.reload("reload numeric cohort rollback");
+      await scenario.control(
+        "wait numeric cohort rollback stable",
+        "/e2e/jobs/wait-for-metadata",
+        {
           bundleId: "$numericBundleId",
           verificationPending: false,
         },
-        kind: "control",
-        pathName: "/e2e/jobs/wait-for-metadata",
-        stage: "wait numeric cohort rollback stable",
-      },
-      {
-        contains: "$numericBundleId",
-        kind: "assertText",
-        stage: "assert numeric cohort rollback launch",
-        testID: "runtime-bundle-id",
-      },
-    ],
+      );
+      await scenario.assertText(
+        "assert numeric cohort rollback launch",
+        "runtime-bundle-id",
+        "$numericBundleId",
+      );
+    },
   },
 ];
