@@ -70,7 +70,7 @@ describe("Detox E2E harness contract", () => {
     expect(rootPackage.devDependencies?.jest).toBe("^29.7.0");
   });
 
-  it("removes the legacy harness directory from the repository E2E surface", async () => {
+  it("keeps Detox as the only repository E2E harness directory", async () => {
     const legacyHarnessSegment = "ma" + "estro";
 
     await expect(
@@ -149,7 +149,7 @@ describe("Detox E2E harness contract", () => {
     }
   });
 
-  it("keeps executable Detox harness files independent from legacy flow sources", async () => {
+  it("keeps executable Detox harness files scenario-owned", async () => {
     const detoxRoots = [
       path.join(repoDir, "e2e/detox/scripts"),
       path.join(repoDir, "e2e/detox/scenarios"),
@@ -185,10 +185,10 @@ describe("Detox E2E harness contract", () => {
     expect(joinedSource).not.toContain(`e2e/${legacyHarnessSegment}`);
     expect(joinedSource).not.toContain(`../${legacyHarnessSegment}`);
     expect(joinedSource).not.toContain(`../../${legacyHarnessSegment}`);
-    const legacyFlowPattern = new RegExp(
+    const nonDetoxScenarioPattern = new RegExp(
       ["\\.y" + "a?ml", "run" + "Flow", "output\\."].join("|"),
     );
-    expect(joinedSource).not.toMatch(legacyFlowPattern);
+    expect(joinedSource).not.toMatch(nonDetoxScenarioPattern);
   });
 
   it("prints a dry-run plan without launching Detox", () => {

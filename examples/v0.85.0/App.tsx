@@ -26,6 +26,7 @@ import {
   View,
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
+import { LaunchArguments } from "react-native-launch-arguments";
 import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
@@ -83,9 +84,26 @@ type UpdateProgressDetails = {
 
 type ScrollTarget = "actions" | "cohortActions" | "crashHistory" | "results";
 
-const fallbackBaseURL = HOT_UPDATER_APP_BASE_URL || DEFAULT_APP_BASE_URL;
+type E2ELaunchArguments = {
+  readonly HOT_UPDATER_APP_BASE_URL?: unknown;
+  readonly HOT_UPDATER_E2E_RUNTIME_CONFIG_URL?: unknown;
+};
+
+const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
+
+const detoxLaunchArgumentString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : null;
+
+const fallbackBaseURL =
+  detoxLaunchArgumentString(e2eLaunchArguments.HOT_UPDATER_APP_BASE_URL) ??
+  HOT_UPDATER_APP_BASE_URL ??
+  DEFAULT_APP_BASE_URL;
 const runtimeConfigURL =
-  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL;
+  detoxLaunchArgumentString(
+    e2eLaunchArguments.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
+  ) ??
+  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL ??
+  DEFAULT_E2E_RUNTIME_CONFIG_URL;
 
 const fetchRuntimeConfigBaseURL = async () => {
   const response = await fetch(runtimeConfigURL);

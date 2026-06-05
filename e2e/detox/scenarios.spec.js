@@ -49,6 +49,26 @@ function controlBaseUrl() {
   return `http://127.0.0.1:${port}`;
 }
 
+function runtimeLaunchArgs() {
+  const launchArgs = {};
+  const runtimeConfigURL = process.env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL;
+  const appBaseURL =
+    process.env.HOT_UPDATER_E2E_APP_BASE_URL ||
+    process.env.HOT_UPDATER_APP_BASE_URL;
+  if (runtimeConfigURL) {
+    launchArgs.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL = runtimeConfigURL;
+  }
+  if (appBaseURL) {
+    launchArgs.HOT_UPDATER_APP_BASE_URL = appBaseURL;
+  }
+  return launchArgs;
+}
+
+async function launchApp(options = {}) {
+  await device.launchApp({ ...options, launchArgs: runtimeLaunchArgs() });
+  markSynchronizationRestoredByLaunch();
+}
+
 function textFromAttributes(attributes) {
   if (!attributes || typeof attributes !== "object") return "";
   for (const field of ["text", "label", "value"]) {
@@ -152,8 +172,7 @@ class DetoxScenarioRuntime {
         {},
       );
       try {
-        await device.launchApp({ newInstance: true });
-        markSynchronizationRestoredByLaunch();
+        await launchApp({ newInstance: true });
       } catch (error) {
         if (!stage.toLowerCase().includes("crash")) throw error;
       }
@@ -163,8 +182,7 @@ class DetoxScenarioRuntime {
   async reload(stage) {
     await this.runStage(stage, async () => {
       await device.terminateApp();
-      await device.launchApp({ newInstance: true });
-      markSynchronizationRestoredByLaunch();
+      await launchApp({ newInstance: true });
     });
   }
 
@@ -175,8 +193,7 @@ class DetoxScenarioRuntime {
         "/e2e/reset-local-app-state",
         {},
       );
-      await device.launchApp({ newInstance: true });
-      markSynchronizationRestoredByLaunch();
+      await launchApp({ newInstance: true });
     });
   }
 
@@ -275,15 +292,14 @@ class DetoxScenarioRuntime {
     );
     if (isAndroidRun()) {
       await device.sendToHome();
-      await device.launchApp({ newInstance: false });
+      await launchApp({ newInstance: false });
     }
   }
 
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
-    await device.launchApp({ newInstance: false });
-    markSynchronizationRestoredByLaunch();
+    await launchApp({ newInstance: false });
   }
 
   async waitForTestID(testID, options = {}) {
@@ -325,8 +341,7 @@ describe("HotUpdater Detox scenarios", () => {
       "/e2e/reset-local-app-state",
       {},
     );
-    await device.launchApp({ newInstance: true });
-    markSynchronizationRestoredByLaunch();
+    await launchApp({ newInstance: true });
   });
 
   afterEach(async () => {

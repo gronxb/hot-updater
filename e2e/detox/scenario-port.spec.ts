@@ -265,15 +265,56 @@ describe("Detox scenario port catalog", () => {
     const resetLocalIndex = beforeEachBody.indexOf(
       "/e2e/reset-local-app-state",
     );
-    const launchIndex = beforeEachBody.indexOf("device.launchApp");
+    const launchIndex = beforeEachBody.indexOf("launchApp");
 
     // Then: launch keeps the freshly reset/seeded data instead of deleting it.
     expect(bootstrapIndex).toBeGreaterThan(-1);
     expect(resetRemoteIndex).toBeGreaterThan(bootstrapIndex);
     expect(resetLocalIndex).toBeGreaterThan(resetRemoteIndex);
     expect(launchIndex).toBeGreaterThan(resetLocalIndex);
-    expect(beforeEachBody).toContain("device.launchApp({ newInstance: true })");
+    expect(beforeEachBody).toContain("launchApp({ newInstance: true })");
     expect(beforeEachBody).not.toContain("delete: true");
+  });
+
+  it("passes runtime config through Detox launch arguments", async () => {
+    // Given: split provider jobs assign a per-shard runtime config URL at test
+    // runtime, after the native app has already been built.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+
+    // When: Detox launches or reattaches the app.
+    // Then: every launch goes through launchArgs instead of relying on @env.
+    expect(detoxJestSpec).toContain("function runtimeLaunchArgs()");
+    expect(detoxJestSpec).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
+    expect(detoxJestSpec).toContain("launchArgs: runtimeLaunchArgs()");
+    expect(detoxJestSpec).not.toContain(
+      "device.launchApp({ newInstance: true })",
+    );
+    expect(detoxJestSpec).not.toContain(
+      "device.launchApp({ newInstance: false })",
+    );
+  });
+
+  it("reads E2E runtime config from Detox launch arguments before @env", async () => {
+    // Given: provider-specific URLs must remain runtime values so native builds
+    // can be reused across profiles and shards.
+    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+
+    // When: the example app resolves its Hot Updater runtime config URL.
+    // Then: Detox launch arguments take precedence over react-native-dotenv.
+    const launchArgumentsIndex = exampleAppSource.indexOf(
+      "LaunchArguments.value",
+    );
+    const runtimeConfigIndex = exampleAppSource.indexOf(
+      "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL",
+    );
+
+    expect(exampleAppSource).toContain("react-native-launch-arguments");
+    expect(launchArgumentsIndex).toBeGreaterThan(-1);
+    expect(runtimeConfigIndex).toBe(-1);
+    expect(exampleAppSource).toContain("detoxLaunchArgumentString");
+    expect(exampleAppSource).not.toContain(
+      "const runtimeConfigURL =\n  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL;",
+    );
   });
 
   it("keeps iOS read-only assertions on the active launch session", async () => {
@@ -290,10 +331,10 @@ describe("Detox scenario port catalog", () => {
     expect(foregroundBody).toContain("device.sendToHome()");
     expect(foregroundBody).toContain("if (isAndroidRun())");
     expect(foregroundBody).toContain(
-      "await device.launchApp({ newInstance: false });",
+      "await launchApp({ newInstance: false });",
     );
     expect(foregroundBody).not.toMatch(
-      /\}\s*await device\.launchApp\(\{ newInstance: false \}\);/,
+      /\}\s*await launchApp\(\{ newInstance: false \}\);/,
     );
     expect(foregroundBody).not.toMatch(/\bretry\b/i);
     expect(foregroundBody).not.toContain("device.terminateApp");
@@ -347,7 +388,9 @@ describe("Detox scenario port catalog", () => {
     );
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
-    expect(deviceActionBody).toContain("markSynchronizationRestoredByLaunch()");
+    expect(deviceActionBody).toContain(
+      "await launchApp({ newInstance: true })",
+    );
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -557,7 +600,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("keeps archive-to-diff on the same default bundle profile as the legacy flow", async () => {
+  it("keeps archive-to-diff on the Detox default bundle profile", async () => {
     const deployBody = await controlStepBody(
       "bspatch-archive-to-diff-ota",
       "deploy archive base bundle",
@@ -711,10 +754,7 @@ describe("Detox scenario port catalog", () => {
       'pathName !== "/e2e/wait-for-crash-recovery"',
     );
     expect(reattachBody).toContain("if (!isAndroidRun()) return;");
-    expect(reattachBody).toContain(
-      "await device.launchApp({ newInstance: false });",
-    );
-    expect(reattachBody).toContain("markSynchronizationRestoredByLaunch();");
+    expect(reattachBody).toContain("await launchApp({ newInstance: false });");
     expect(reattachBody).not.toMatch(/\bretry\b/i);
     expect(await scenarioStages("release-ota-recovery")).not.toContain(
       "launch recovered app",
@@ -890,7 +930,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports disabled rollback scenarios through active OTA metadata before disabling", async () => {
-    // Given: rollback flows must first stabilize the OTA that will be disabled.
+    // Given: rollback scenarios must first stabilize the OTA that will be disabled.
     const builtinStages = await scenarioStages(
       "disabled-bundle-rollback-to-builtin",
     );
