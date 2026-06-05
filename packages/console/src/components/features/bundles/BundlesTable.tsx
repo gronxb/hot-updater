@@ -118,6 +118,7 @@ export function BundlesTable({
   const isMobile = useIsMobile();
   const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const cursorPagination = pagination as CursorPaginationInfo | undefined;
   const bundleIds = bundles.map((bundle) => bundle.id);
   const selectedBundles = bundles.filter((bundle) =>
@@ -130,7 +131,7 @@ export function BundlesTable({
   const { data: childBundles = [], isLoading: isChildBundlesLoading } =
     useBundleChildrenQuery(expandedBundleId ?? "");
   const deleteBundleMutation = useDeleteBundleMutation();
-  const isDeleting = deleteBundleMutation.isPending;
+  const isDeleting = deleteBundleMutation.isPending || isDeletingSelected;
 
   const bundleColumns = createBundleColumns({
     expandedBundleId,
@@ -193,18 +194,19 @@ export function BundlesTable({
       return;
     }
 
+    setIsDeletingSelected(true);
     try {
-      await Promise.all(
-        selectedBundles.map((bundle) =>
-          deleteBundleMutation.mutateAsync({ bundleId: bundle.id }),
-        ),
-      );
+      for (const bundle of selectedBundles) {
+        await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
+      }
       toast.success(`${selectedBundles.length} bundles deleted successfully`);
       setSelectedBundleIds([]);
       setDeleteDialogOpen(false);
     } catch (error) {
       toast.error("Failed to delete selected bundles");
       console.error(error);
+    } finally {
+      setIsDeletingSelected(false);
     }
   };
 
