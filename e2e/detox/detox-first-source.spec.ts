@@ -7,19 +7,10 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
-const retiredFlowDir = ["e2e", "ma" + "estro", ""].join("/");
-const retiredHarnessMarkerPattern = new RegExp(["ma", "estro"].join(""), "i");
-const detoxFlowFilePattern = new RegExp(
-  ["e2e/detox/.*\\.", "ya?", "ml$"].join(""),
-  "i",
-);
-const retiredMigrationModelPattern = new RegExp(
-  [
-    "\\bDetoxScenario",
-    "Wave\\b|\\bdetoxScenario",
-    "Waves\\b|\\bwave[1-4]Scenarios\\b|\\bwave:\\s*[1-4]\\b",
-  ].join(""),
-);
+const e2eSourceDirectories = ["e2e/control-server/", "e2e/detox/"] as const;
+const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
+const migrationWaveModelPattern =
+  /\bDetoxScenarioWave\b|\bdetoxScenarioWaves\b|\bwave[1-4]Scenarios\b|\bwave:\s*[1-4]\b/;
 
 async function readSourceFiles(
   rootDir: string,
@@ -52,24 +43,27 @@ function trackedE2eFiles(): readonly string[] {
 }
 
 describe("Detox-first source shape", () => {
-  it("keeps active E2E source free of retired flow files", () => {
+  it("keeps active E2E source inside Detox-owned directories", () => {
     const activeE2eFiles = trackedE2eFiles();
 
     expect(
-      activeE2eFiles.filter((file) => file.startsWith(retiredFlowDir)),
+      activeE2eFiles.filter(
+        (file) =>
+          !e2eSourceDirectories.some((directory) => file.startsWith(directory)),
+      ),
     ).toEqual([]);
     expect(
-      activeE2eFiles.filter((file) => detoxFlowFilePattern.test(file)),
+      activeE2eFiles.filter((file) => textScenarioFilePattern.test(file)),
     ).toEqual([]);
   });
 
-  it("keeps example app ignore rules free of retired harness artifacts", async () => {
+  it("keeps example app ignore rules from hiding E2E source", async () => {
     const exampleIgnoreSource = await fs.readFile(
       path.join(repoDir, "examples/v0.85.0/.gitignore"),
       "utf8",
     );
 
-    expect(exampleIgnoreSource).not.toMatch(retiredHarnessMarkerPattern);
+    expect(exampleIgnoreSource).not.toMatch(/(?:^|\n)\/?e2e\/?(?:\n|$)/);
   });
 
   it("groups scenarios by user flow instead of migration waves", async () => {
@@ -80,7 +74,7 @@ describe("Detox-first source shape", () => {
       [],
     );
     expect(detoxSources.map(({ source }) => source).join("\n")).not.toMatch(
-      retiredMigrationModelPattern,
+      migrationWaveModelPattern,
     );
   });
 });
