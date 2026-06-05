@@ -1,45 +1,39 @@
-import type {
-  DetoxScenarioDefinition,
-  DetoxScenarioWave,
-} from "./scenarios/types.ts";
-import { wave1Scenarios } from "./scenarios/wave1.ts";
-import { wave2Scenarios } from "./scenarios/wave2.ts";
-import { wave3Scenarios } from "./scenarios/wave3.ts";
-import { wave4Scenarios } from "./scenarios/wave4.ts";
+import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-diff-ota.ts";
+import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
+import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
+import { bspatchManifestDiffFallbackScenario } from "./scenarios/bspatch-manifest-diff-fallback.ts";
+import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
+import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
+import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
+import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
+import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
+import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
+import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
+import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
+import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
+import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
+import type { DetoxScenarioDefinition } from "./scenarios/types.ts";
 
 export type {
   DetoxScenarioDefinition,
   DetoxScenarioDriver,
 } from "./scenarios/types.ts";
 
-export const detoxScenarioWaves: readonly DetoxScenarioWave[] = [
-  {
-    label: "recovery",
-    scenarios: wave1Scenarios.map((scenario) => scenario.name),
-    wave: 1,
-  },
-  {
-    label: "asset and patch",
-    scenarios: wave2Scenarios.map((scenario) => scenario.name),
-    wave: 2,
-  },
-  {
-    label: "channel and cohort",
-    scenarios: wave3Scenarios.map((scenario) => scenario.name),
-    wave: 3,
-  },
-  {
-    label: "reload and rollback",
-    scenarios: wave4Scenarios.map((scenario) => scenario.name),
-    wave: 4,
-  },
-];
-
 const detoxScenarios: readonly DetoxScenarioDefinition[] = [
-  ...wave1Scenarios,
-  ...wave2Scenarios,
-  ...wave3Scenarios,
-  ...wave4Scenarios,
+  releaseOtaRecoveryScenario,
+  multiAssetReplacementScenario,
+  bspatchArchiveToDiffOtaScenario,
+  bspatchConsecutiveDiffOtaScenario,
+  bspatchDisabledChainRollbackScenario,
+  bspatchManifestDiffFallbackScenario,
+  runtimeChannelSwitchResetScenario,
+  numericCohortRolloutScenario,
+  targetCohortsOnlyScenario,
+  targetCohortsRolloutInteractionScenario,
+  targetedCohortSwitchbackScenario,
+  forceUpdateAutoReloadScenario,
+  disabledBundleRollbackToBuiltinScenario,
+  disabledBundleRollbackToPreviousOtaScenario,
 ];
 
 export function listDetoxSuiteNames(): readonly string[] {

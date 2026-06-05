@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
 import {
-  detoxScenarioWaves,
   getDetoxScenarioDefinition,
   listDetoxScenarioNames,
   resolveDetoxSuiteScenarioNames,
@@ -15,7 +14,12 @@ import type { DetoxControlOptions, DetoxScenarioDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
+const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
+const detoxScenarioRuntimePath = path.join(
+  repoDir,
+  "e2e/detox/scenario-runtime.js",
+);
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const runtimeConfigPath = path.join(
@@ -106,6 +110,16 @@ async function recordScenarioCalls(
   return calls;
 }
 
+async function readDetoxRuntimeSource(): Promise<string> {
+  return (
+    await Promise.all(
+      [detoxJestSpecPath, detoxPagePath, detoxScenarioRuntimePath].map((file) =>
+        fs.readFile(file, "utf8"),
+      ),
+    )
+  ).join("\n");
+}
+
 async function scenarioStages(
   scenarioName: string,
 ): Promise<readonly string[]> {
@@ -139,12 +153,11 @@ async function controlStepDefinition(
 }
 
 describe("Detox scenario contract", () => {
-  it("defines the default suite from Detox-owned waves", async () => {
+  it("defines the default suite from Detox-owned user-flow modules", () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
-    const waveScenarios = detoxScenarioWaves.flatMap((wave) => wave.scenarios);
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
-    expect(waveScenarios).toEqual(defaultDetoxScenarioNames);
+    expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
     expect(new Set(listDetoxScenarioNames()).size).toBe(14);
   });
 
@@ -225,20 +238,20 @@ describe("Detox scenario contract", () => {
 
   it("resets remote bundles, app state, and Android host-port forwarding around each scenario", async () => {
     // Given: every scenario must start from clean remote, app, and network state.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxRuntimeSource = await readDetoxRuntimeSource();
 
     // When: the Detox Jest lifecycle is inspected.
     // Then: remote bundles, app state, and Android reverse TCP forwarding are cleaned per scenario.
-    expect(detoxJestSpec).toContain("device.reverseTcpPort");
-    expect(detoxJestSpec).toContain("device.unreverseTcpPort");
-    expect(detoxJestSpec).toContain("HOT_UPDATER_E2E_CONTROL_PORT");
-    expect(detoxJestSpec).toContain("HOT_UPDATER_SERVER_PORT");
-    expect(detoxJestSpec).toContain(
+    expect(detoxRuntimeSource).toContain("device.reverseTcpPort");
+    expect(detoxRuntimeSource).toContain("device.unreverseTcpPort");
+    expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_CONTROL_PORT");
+    expect(detoxRuntimeSource).toContain("HOT_UPDATER_SERVER_PORT");
+    expect(detoxRuntimeSource).toContain(
       "for (const port of androidReversePorts())",
     );
-    expect(detoxJestSpec).toContain("device.terminateApp");
-    expect(detoxJestSpec).toContain("/e2e/reset-remote-bundles");
-    expect(detoxJestSpec).toContain("/e2e/reset-local-app-state");
+    expect(detoxRuntimeSource).toContain("device.terminateApp");
+    expect(detoxRuntimeSource).toContain("/e2e/reset-remote-bundles");
+    expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
   });
 
   it("does not delete seeded control-server app state after reset", async () => {
@@ -272,17 +285,17 @@ describe("Detox scenario contract", () => {
   it("passes runtime config through Detox launch arguments", async () => {
     // Given: split provider jobs assign a per-shard runtime config URL at test
     // runtime, after the native app has already been built.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxRuntimeSource = await readDetoxRuntimeSource();
 
     // When: Detox launches or reattaches the app.
     // Then: every launch goes through launchArgs instead of relying on @env.
-    expect(detoxJestSpec).toContain("function runtimeLaunchArgs()");
-    expect(detoxJestSpec).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
-    expect(detoxJestSpec).toContain("launchArgs: runtimeLaunchArgs()");
-    expect(detoxJestSpec).not.toContain(
+    expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
+    expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
+    expect(detoxRuntimeSource).toContain("launchArgs: runtimeLaunchArgs()");
+    expect(detoxRuntimeSource).not.toContain(
       "device.launchApp({ newInstance: true })",
     );
-    expect(detoxJestSpec).not.toContain(
+    expect(detoxRuntimeSource).not.toContain(
       "device.launchApp({ newInstance: false })",
     );
   });
@@ -317,10 +330,16 @@ describe("Detox scenario contract", () => {
 
   it("keeps iOS read-only assertions on the active launch session", async () => {
     // Given: the foreground helper runs before every Detox UI assertion.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const foregroundBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async ensureAppForegroundForInteraction"),
-      detoxJestSpec.indexOf("async waitForTestID"),
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const foregroundBody = detoxPageSource.slice(
+      detoxPageSource.indexOf(
+        "async function ensureAppForegroundForInteraction",
+      ),
+      detoxPageSource.indexOf("async function findVisibleTestID"),
     );
 
     // When: the helper foregrounds the app.
@@ -336,7 +355,7 @@ describe("Detox scenario contract", () => {
     );
     expect(foregroundBody).not.toMatch(/\bretry\b/i);
     expect(foregroundBody).not.toContain("device.terminateApp");
-    expect(detoxJestSpec).toContain("text.includes(expectedText)");
+    expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
   it("lets control metadata prove install actions instead of waiting on busy UI text", async () => {
@@ -363,18 +382,24 @@ describe("Detox scenario contract", () => {
   });
 
   it("keeps Detox synchronization disabled until the app is relaunched after install actions", async () => {
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const installTapBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async tap(stage"),
-      detoxJestSpec.indexOf("async terminate(stage"),
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
     );
-    const deviceActionBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async launch("),
-      detoxJestSpec.indexOf("async tap(stage"),
+    const installTapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
     );
-    const syncHelperBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async function disableSynchronizationUntilLaunch"),
-      detoxJestSpec.indexOf("function navTargetForTestID"),
+    const deviceActionBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async launch("),
+      detoxRuntimeSource.indexOf("async tap(stage"),
+    );
+    const syncHelperBody = detoxPageSource.slice(
+      detoxPageSource.indexOf(
+        "async function disableSynchronizationUntilLaunch",
+      ),
+      detoxPageSource.indexOf("function navTargetForTestID"),
     );
 
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
@@ -396,12 +421,12 @@ describe("Detox scenario contract", () => {
   it("prefers the Detox control port over provider ports for host control traffic", async () => {
     // Given: dashboard split jobs set PORT/HOT_UPDATER_SERVER_PORT for the
     // provider update server and HOT_UPDATER_E2E_CONTROL_PORT for control.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     // When: the fallback control URL is inspected.
-    const controlBaseUrlBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("function controlBaseUrl()"),
-      detoxJestSpec.indexOf("function textFromAttributes"),
+    const controlBaseUrlBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("function controlBaseUrl()"),
+      detoxPageSource.indexOf("function runtimeLaunchArgs"),
     );
     const controlPortIndex = controlBaseUrlBody.indexOf(
       "process.env.HOT_UPDATER_E2E_CONTROL_PORT",
@@ -419,13 +444,13 @@ describe("Detox scenario contract", () => {
 
   it("keeps launch status assertions on the top section instead of action results", async () => {
     // Given: launch status lives in the Runtime Snapshot/Launch Status area.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     // When: the navigation target resolver is inspected.
-    const launchStatusIndex = detoxJestSpec.indexOf(
+    const launchStatusIndex = detoxPageSource.indexOf(
       'testID === "launch-status-result"',
     );
-    const genericResultIndex = detoxJestSpec.indexOf(
+    const genericResultIndex = detoxPageSource.indexOf(
       'testID.endsWith("-result")',
     );
 
@@ -436,11 +461,13 @@ describe("Detox scenario contract", () => {
 
   it("routes action inputs to the actions section before generic runtime fields", async () => {
     // Given: runtime-channel-input is rendered under the Actions section.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     // When: the navigation target resolver is inspected.
-    const inputIndex = detoxJestSpec.indexOf('testID.endsWith("-input")');
-    const runtimeIndex = detoxJestSpec.indexOf('testID.startsWith("runtime-")');
+    const inputIndex = detoxPageSource.indexOf('testID.endsWith("-input")');
+    const runtimeIndex = detoxPageSource.indexOf(
+      'testID.startsWith("runtime-")',
+    );
 
     // Then: input fields must not be routed to the top section.
     expect(inputIndex).toBeGreaterThan(-1);
@@ -448,11 +475,11 @@ describe("Detox scenario contract", () => {
   });
 
   it("scrolls inside the app content when Android layout offsets are not ready", async () => {
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
-    const waitForTestIDBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async waitForTestID"),
-      detoxJestSpec.indexOf('describe("HotUpdater Detox scenarios"'),
+    const waitForTestIDBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function findVisibleTestID"),
+      detoxPageSource.indexOf("module.exports"),
     );
 
     expect(exampleAppSource).toContain('testID="e2e-scroll-content"');
@@ -465,11 +492,12 @@ describe("Detox scenario contract", () => {
 
   it("only disables Detox synchronization for install taps", async () => {
     // Given: install buttons can start native download work that Detox sees as busy.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const tapBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("function shouldDisableSynchronizationForTap"),
-      detoxJestSpec.indexOf("async launch(stage)"),
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
     );
+    const tapBody = `${detoxPageSource}\n${detoxRuntimeSource}`;
 
     // When: tap handling is inspected.
     // Then: cohort/channel utility buttons keep normal synchronization.
@@ -481,14 +509,17 @@ describe("Detox scenario contract", () => {
   });
 
   it("taps install actions directly and lets metadata jobs prove downloads", async () => {
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const tapBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async tap(stage"),
-      detoxJestSpec.indexOf("async terminate(stage"),
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
     );
 
     expect(tapBody).not.toContain("waitForCurrentChannelDownload()");
-    expect(detoxJestSpec).not.toContain(
+    expect(detoxRuntimeSource).not.toContain(
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
@@ -740,10 +771,13 @@ describe("Detox scenario contract", () => {
   it("reattaches Android Detox after control-server crash recovery", async () => {
     // Given: the control server relaunches Android outside Detox while waiting
     // for the native recovery marker.
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
-    const reattachBody = detoxJestSpec.slice(
-      detoxJestSpec.indexOf("async reattachAfterExternalLaunch"),
-      detoxJestSpec.indexOf("async waitForTestID"),
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const reattachBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async reattachAfterExternalLaunch"),
+      detoxRuntimeSource.indexOf("module.exports"),
     );
 
     // When: the wait-for-crash-recovery control step completes.

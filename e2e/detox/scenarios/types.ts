@@ -37,11 +37,4 @@ export type DetoxScenarioDriver = {
 export type DetoxScenarioDefinition = {
   readonly name: string;
   readonly run: (scenario: DetoxScenarioDriver) => Promise<void>;
-  readonly wave: 1 | 2 | 3 | 4;
-};
-
-export type DetoxScenarioWave = {
-  readonly label: string;
-  readonly scenarios: readonly string[];
-  readonly wave: 1 | 2 | 3 | 4;
 };

@@ -83,18 +83,31 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-client.ts",
       "e2e/detox/control-protocol.ts",
       "e2e/detox/control-server-env.spec.ts",
+      "e2e/detox/detox-first-source.spec.ts",
+      "e2e/detox/detox-page.js",
       "e2e/detox/jest.config.js",
       "e2e/detox/recovery-foreground.spec.ts",
       "e2e/detox/scenario-context.spec.ts",
       "e2e/detox/scenario-context.ts",
       "e2e/detox/scenario-contract.spec.ts",
+      "e2e/detox/scenario-runtime.js",
       "e2e/detox/scenarios.spec.js",
       "e2e/detox/scenarios.ts",
+      "e2e/detox/scenarios/bspatch-archive-to-diff-ota.ts",
+      "e2e/detox/scenarios/bspatch-consecutive-diff-ota.ts",
+      "e2e/detox/scenarios/bspatch-disabled-chain-rollback.ts",
+      "e2e/detox/scenarios/bspatch-manifest-diff-fallback.ts",
+      "e2e/detox/scenarios/disabled-bundle-rollback-to-builtin.ts",
+      "e2e/detox/scenarios/disabled-bundle-rollback-to-previous-ota.ts",
+      "e2e/detox/scenarios/force-update-auto-reload.ts",
+      "e2e/detox/scenarios/multi-asset-replacement.ts",
+      "e2e/detox/scenarios/numeric-cohort-rollout.ts",
+      "e2e/detox/scenarios/release-ota-recovery.ts",
+      "e2e/detox/scenarios/runtime-channel-switch-reset.ts",
+      "e2e/detox/scenarios/target-cohorts-only.ts",
+      "e2e/detox/scenarios/target-cohorts-rollout-interaction.ts",
+      "e2e/detox/scenarios/targeted-cohort-switchback.ts",
       "e2e/detox/scenarios/types.ts",
-      "e2e/detox/scenarios/wave1.ts",
-      "e2e/detox/scenarios/wave2.ts",
-      "e2e/detox/scenarios/wave3.ts",
-      "e2e/detox/scenarios/wave4.ts",
       "e2e/detox/scripts/control-server-env.ts",
       "e2e/detox/scripts/control-server.ts",
       "e2e/detox/scripts/run.ts",
@@ -232,7 +245,7 @@ describe("Detox E2E harness contract", () => {
       await Promise.all(files.map((file) => fs.readFile(file, "utf8")))
     ).join("\n");
 
-    expect(joinedSource).toContain("detoxScenarioWaves");
+    expect(joinedSource).toContain("releaseOtaRecoveryScenario");
     expect(joinedSource).toContain("getDetoxScenarioDefinition");
     expect(joinedSource).toContain("DetoxScenarioRuntime");
   });

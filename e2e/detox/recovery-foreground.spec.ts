@@ -7,7 +7,11 @@ import { getDetoxScenarioDefinition } from "./scenarios.ts";
 import type { DetoxScenarioDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
-const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
+const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
+const detoxScenarioRuntimePath = path.join(
+  repoDir,
+  "e2e/detox/scenario-runtime.js",
+);
 
 type RecordedRecoveryCall = {
   readonly kind: "assertText" | "control" | "device" | "tap" | "typeText";
@@ -67,15 +71,21 @@ describe("Detox recovery foreground handling", () => {
     const hasRecoveredLaunchStatusStage = stages.includes(
       "assert recovered stable launch",
     );
-    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScenarioRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
 
     // When: recovery is verified after the control-server relaunch.
     // Then: launch status is asserted through the native report, not UI text.
     expect(hasRecoveredLaunchStatusStage).toBe(false);
-    expect(detoxJestSpec).toContain(
-      "this.waitForTestID(testID, {\n        ensureForeground: options.ensureForeground",
+    expect(detoxScenarioRuntimeSource).toContain(
+      "findVisibleTestID(this.controlClient, testID, {\n        ensureForeground: options.ensureForeground",
     );
-    expect(detoxJestSpec).toContain("if (options.ensureForeground !== false)");
+    expect(detoxPageSource).toContain(
+      "if (options.ensureForeground !== false)",
+    );
   });
 
   it("asserts the native recovery report before reading recovered bundle UI", async () => {
