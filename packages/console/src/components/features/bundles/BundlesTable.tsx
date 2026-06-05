@@ -11,8 +11,10 @@ import {
   ChevronUp,
   Fingerprint,
   Package,
+  Trash2,
 } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
+import { toast } from "sonner";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -21,6 +23,16 @@ import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -32,7 +44,11 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useFilterParams } from "@/hooks/useFilterParams";
-import { useBundleChildCountsQuery, useBundleChildrenQuery } from "@/lib/api";
+import {
+  useBundleChildCountsQuery,
+  useBundleChildrenQuery,
+  useDeleteBundleMutation,
+} from "@/lib/api";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -100,12 +116,22 @@ export function BundlesTable({
 }: BundlesTableProps) {
   const { setFilters } = useFilterParams();
   const isMobile = useIsMobile();
+  const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const cursorPagination = pagination as CursorPaginationInfo | undefined;
   const bundleIds = bundles.map((bundle) => bundle.id);
+  const selectedBundles = bundles.filter((bundle) =>
+    selectedBundleIds.includes(bundle.id),
+  );
+  const allBundlesSelected =
+    bundles.length > 0 && selectedBundles.length === bundles.length;
   const { data: patchCountsByBundleId = {} } =
     useBundleChildCountsQuery(bundleIds);
   const { data: childBundles = [], isLoading: isChildBundlesLoading } =
     useBundleChildrenQuery(expandedBundleId ?? "");
+  const deleteBundleMutation = useDeleteBundleMutation();
+  const isDeleting = deleteBundleMutation.isPending || isDeletingSelected;
 
   const bundleColumns = createBundleColumns({
     expandedBundleId,
@@ -150,15 +176,57 @@ export function BundlesTable({
       before: undefined,
     });
   };
+
+  const toggleBundleSelection = (bundleId: string) => {
+    setSelectedBundleIds((current) =>
+      current.includes(bundleId)
+        ? current.filter((selectedBundleId) => selectedBundleId !== bundleId)
+        : [...current, bundleId],
+    );
+  };
+
+  const handleToggleAllBundles = () => {
+    setSelectedBundleIds(allBundlesSelected ? [] : bundleIds);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (isDeleting || selectedBundles.length === 0) {
+      return;
+    }
+
+    setIsDeletingSelected(true);
+    try {
+      for (const bundle of selectedBundles) {
+        await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
+      }
+      toast.success(`${selectedBundles.length} bundles deleted successfully`);
+      setSelectedBundleIds([]);
+      setDeleteDialogOpen(false);
+    } catch (error) {
+      toast.error("Failed to delete selected bundles");
+      console.error(error);
+    } finally {
+      setIsDeletingSelected(false);
+    }
+  };
+
+  const handleDeleteDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && isDeleting) {
+      return;
+    }
+
+    setDeleteDialogOpen(nextOpen);
+  };
+
   const startEntry =
     bundles.length === 0 ? 0 : (currentPage - 1) * DEFAULT_PAGE_LIMIT + 1;
   const endEntry = startEntry === 0 ? 0 : startEntry + bundles.length - 1;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+      <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm [&_[data-slot=table-container]]:h-full [&_[data-slot=table-container]]:overflow-auto">
         {isMobile ? (
-          <div className="flex flex-col">
+          <div className="flex h-full flex-col overflow-y-auto">
             {bundles.length ? (
               bundles.map((bundle) => {
                 const isExpanded = bundle.id === expandedBundleId;
@@ -178,6 +246,16 @@ export function BundlesTable({
                       isExpanded && "bg-primary/5",
                     )}
                   >
+                    <label className="flex items-center gap-2 border-b border-border/60 px-4 py-3 text-xs font-medium text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={selectedBundleIds.includes(bundle.id)}
+                        className="size-4 accent-primary"
+                        onChange={() => toggleBundleSelection(bundle.id)}
+                      />
+                      Select bundle
+                    </label>
+
                     <button
                       type="button"
                       className="flex w-full flex-col gap-4 p-4 text-left"
@@ -363,6 +441,15 @@ export function BundlesTable({
                   key={headerGroup.id}
                   className="border-b border-border/60 hover:bg-transparent"
                 >
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      checked={allBundlesSelected}
+                      aria-label="Select all bundles"
+                      className="size-4 accent-primary"
+                      onChange={handleToggleAllBundles}
+                    />
+                  </TableHead>
                   {headerGroup.headers.map((header) => (
                     <TableHead
                       key={header.id}
@@ -399,6 +486,22 @@ export function BundlesTable({
                         )}
                         onClick={() => onDetailClick(row.original)}
                       >
+                        <TableCell
+                          className="py-3"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedBundleIds.includes(
+                              row.original.id,
+                            )}
+                            aria-label={`Select bundle ${row.original.id}`}
+                            className="size-4 accent-primary"
+                            onChange={() =>
+                              toggleBundleSelection(row.original.id)
+                            }
+                          />
+                        </TableCell>
                         {row.getVisibleCells().map((cell) => (
                           <TableCell key={cell.id} className="py-3">
                             {flexRender(
@@ -412,7 +515,7 @@ export function BundlesTable({
                       {isExpanded ? (
                         <TableRow className="hover:bg-transparent">
                           <TableCell
-                            colSpan={bundleColumns.length}
+                            colSpan={bundleColumns.length + 1}
                             className="border-t-0 p-0"
                           >
                             <BundleChildrenPanel
@@ -431,7 +534,7 @@ export function BundlesTable({
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={bundleColumns.length}
+                    colSpan={bundleColumns.length + 1}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No bundles found matching your filters.
@@ -449,6 +552,18 @@ export function BundlesTable({
           <span className="text-foreground">{endEntry}</span> entries
         </div>
         <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          {selectedBundles.length > 0 ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="h-8 flex-1 px-3 text-xs sm:flex-none"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 data-icon="inline-start" />
+              Delete selected ({selectedBundles.length})
+            </Button>
+          ) : null}
           <div className="text-xs font-medium text-muted-foreground">
             Page <span className="text-foreground">{currentPage}</span>
             {totalPages > 0 ? (
@@ -480,6 +595,41 @@ export function BundlesTable({
           </Button>
         </div>
       </div>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={handleDeleteDialogOpenChange}
+      >
+        <AlertDialogContent
+          onEscapeKeyDown={(event) => {
+            if (isDeleting) {
+              event.preventDefault();
+            }
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete selected bundles?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete{" "}
+              {selectedBundles.length} bundles and remove them from storage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteSelected();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

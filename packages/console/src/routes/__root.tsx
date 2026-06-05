@@ -123,7 +123,7 @@ function RootLayout() {
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-h-0 min-w-0">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
