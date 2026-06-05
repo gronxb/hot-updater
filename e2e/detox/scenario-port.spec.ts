@@ -18,6 +18,10 @@ const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
+const runtimeConfigPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
+);
 const defaultDetoxScenarioNames = [
   "release-ota-recovery",
   "multi-asset-replacement",
@@ -294,25 +298,30 @@ describe("Detox scenario port catalog", () => {
     );
   });
 
-  it("reads E2E runtime config from Detox launch arguments before @env", async () => {
+  it("keeps Detox runtime config wiring outside App.tsx", async () => {
     // Given: provider-specific URLs must remain runtime values so native builds
-    // can be reused across profiles and shards.
+    // can be reused across profiles and shards without bloating App.tsx.
     const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+    const runtimeConfigSource = await fs.readFile(runtimeConfigPath, "utf8");
 
-    // When: the example app resolves its Hot Updater runtime config URL.
-    // Then: Detox launch arguments take precedence over react-native-dotenv.
-    const launchArgumentsIndex = exampleAppSource.indexOf(
+    // When: the example app wires HotUpdater.
+    // Then: App.tsx imports a runtime helper and the helper gives Detox launch
+    // arguments precedence over react-native-dotenv.
+    const launchArgumentsIndex = runtimeConfigSource.indexOf(
       "LaunchArguments.value",
     );
-    const runtimeConfigIndex = exampleAppSource.indexOf(
+    const runtimeConfigIndex = runtimeConfigSource.indexOf(
       "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL",
     );
 
-    expect(exampleAppSource).toContain("react-native-launch-arguments");
+    expect(exampleAppSource).toContain("./src/e2eRuntimeConfig");
+    expect(exampleAppSource).not.toContain("react-native-launch-arguments");
+    expect(exampleAppSource).not.toContain('from "@env"');
+    expect(runtimeConfigSource).toContain("react-native-launch-arguments");
     expect(launchArgumentsIndex).toBeGreaterThan(-1);
     expect(runtimeConfigIndex).toBe(-1);
-    expect(exampleAppSource).toContain("detoxLaunchArgumentString");
-    expect(exampleAppSource).not.toContain(
+    expect(runtimeConfigSource).toContain("detoxLaunchArgumentString");
+    expect(runtimeConfigSource).not.toContain(
       "const runtimeConfigURL =\n  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL;",
     );
   });

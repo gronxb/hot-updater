@@ -191,11 +191,11 @@ describe("Detox E2E harness contract", () => {
     expect(joinedSource).not.toMatch(nonDetoxScenarioPattern);
   });
 
-  it("prints a dry-run plan without launching Detox", () => {
+  it("prints a Detox command preview without launching Detox", () => {
     // Given: a focused scenario smoke run.
     const scenario = "release-ota-recovery";
 
-    // When: the Detox runner is asked for an iOS dry-run plan.
+    // When: the Detox runner is asked for an iOS command preview.
     const result = runDetoxRunner(
       "--platform",
       "ios",

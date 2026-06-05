@@ -5,10 +5,6 @@
  * @format
  */
 
-import {
-  HOT_UPDATER_APP_BASE_URL,
-  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-} from "@env";
 import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -26,17 +22,18 @@ import {
   View,
 } from "react-native";
 import BootSplash from "react-native-bootsplash";
-import { LaunchArguments } from "react-native-launch-arguments";
 import { proxy, useSnapshot } from "valtio";
+
+import {
+  fallbackHotUpdaterBaseURL,
+  resolveHotUpdaterBaseURL,
+} from "./src/e2eRuntimeConfig";
 
 const notify = proxy<{
   status?: string;
   crashedBundleId?: string;
 }>({});
 
-const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
-const DEFAULT_E2E_RUNTIME_CONFIG_URL =
-  "http://localhost:3107/e2e/runtime-config";
 const E2E_SCENARIO_MARKER = "targeted-qa-detox";
 const E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH =
   "assets/src/test/_fixture-archive-300mb-random.bmp";
@@ -54,10 +51,6 @@ function loadE2EDeployBundleAssets() {
 }
 
 loadE2EDeployBundleAssets();
-
-type RuntimeConfigResponse = {
-  baseURL?: unknown;
-};
 
 type RuntimeSnapshot = {
   appVersion: string | null;
@@ -84,49 +77,8 @@ type UpdateProgressDetails = {
 
 type ScrollTarget = "actions" | "cohortActions" | "crashHistory" | "results";
 
-type E2ELaunchArguments = {
-  readonly HOT_UPDATER_APP_BASE_URL?: unknown;
-  readonly HOT_UPDATER_E2E_RUNTIME_CONFIG_URL?: unknown;
-};
-
-const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
-
-const detoxLaunchArgumentString = (value: unknown) =>
-  typeof value === "string" && value.trim() ? value.trim() : null;
-
-const fallbackBaseURL =
-  detoxLaunchArgumentString(e2eLaunchArguments.HOT_UPDATER_APP_BASE_URL) ??
-  HOT_UPDATER_APP_BASE_URL ??
-  DEFAULT_APP_BASE_URL;
-const runtimeConfigURL =
-  detoxLaunchArgumentString(
-    e2eLaunchArguments.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-  ) ??
-  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL ??
-  DEFAULT_E2E_RUNTIME_CONFIG_URL;
-
-const fetchRuntimeConfigBaseURL = async () => {
-  const response = await fetch(runtimeConfigURL);
-  if (!response.ok) {
-    throw new Error(`runtime config returned HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as RuntimeConfigResponse;
-  return typeof payload.baseURL === "string" && payload.baseURL.trim()
-    ? payload.baseURL.trim()
-    : null;
-};
-
-const resolveBaseURL = async () => {
-  try {
-    return (await fetchRuntimeConfigBaseURL()) ?? fallbackBaseURL;
-  } catch {
-    return fallbackBaseURL;
-  }
-};
-
 HotUpdater.init({
-  baseURL: resolveBaseURL,
+  baseURL: resolveHotUpdaterBaseURL,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;
@@ -139,7 +91,7 @@ HotUpdater.init({
 
 const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   appVersion: HotUpdater.getAppVersion(),
-  baseURL: fallbackBaseURL,
+  baseURL: fallbackHotUpdaterBaseURL,
   bundleId: HotUpdater.getBundleId(),
   channel: HotUpdater.getChannel(),
   cohort: HotUpdater.getCohort(),
@@ -300,7 +252,7 @@ function App(): React.JSX.Element {
   const cohortSummary = `current=${runtimeSnapshot.cohort} initial=${initialCohort}`;
 
   const refreshRuntimeSnapshot = async () => {
-    const baseURL = await resolveBaseURL();
+    const baseURL = await resolveHotUpdaterBaseURL();
     setRuntimeSnapshot({ ...readRuntimeSnapshot(), baseURL });
   };
 
