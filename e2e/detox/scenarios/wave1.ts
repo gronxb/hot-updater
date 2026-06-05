@@ -3,28 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const wave1Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "release-ota-recovery",
-    stages: [
-      "launch built-in app",
-      "capture built-in bundle id",
-      "deploy stable bundle",
-      "launch stable update app",
-      "install stable update",
-      "wait stable metadata pending",
-      "reload stable bundle",
-      "wait stable metadata active",
-      "assert stable launch",
-      "deploy crash bundle",
-      "launch crash update app",
-      "install crash update",
-      "wait crash metadata pending",
-      "launch crash bundle",
-      "wait crash recovery",
-      "assert recovery launch report",
-      "assert recovered bundle id",
-      "assert recovered marker",
-      "assert recovered metadata active",
-      "assert crash history",
-    ],
     wave: 1,
     run: async (scenario) => {
       await scenario.launch("launch built-in app");

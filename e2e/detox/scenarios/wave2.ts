@@ -3,21 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "multi-asset-replacement",
-    stages: [
-      "launch built-in app",
-      "deploy first multi-asset bundle",
-      "install first multi-asset update",
-      "wait first multi-asset metadata pending",
-      "reload first multi-asset update",
-      "wait first multi-asset metadata stable",
-      "assert first multi-assets stored",
-      "deploy second multi-asset bundle",
-      "install second multi-asset update",
-      "wait second multi-asset metadata pending",
-      "reload second multi-asset update",
-      "wait second multi-asset metadata stable",
-      "assert multi-assets replaced",
-    ],
     wave: 2,
     run: async (scenario) => {
       await scenario.launch("launch built-in app");
@@ -124,29 +109,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "bspatch-archive-to-diff-ota",
-    stages: [
-      "deploy archive base bundle",
-      "launch archive base app",
-      "install archive base update",
-      "wait archive base metadata pending",
-      "assert first ota uses archive",
-      "reload archive base update",
-      "wait archive base metadata stable",
-      "assert archive base bundle id",
-      "assert archive base marker",
-      "assert archive base stable launch",
-      "deploy diff bundle",
-      "assert archive diff bases",
-      "launch archive diff app",
-      "install archive diff update",
-      "wait archive diff metadata pending",
-      "reload archive diff update",
-      "wait archive diff metadata stable",
-      "assert archive diff patch",
-      "assert archive diff bundle id",
-      "assert archive diff marker",
-      "assert archive diff stable launch",
-    ],
     wave: 2,
     run: async (scenario) => {
       await scenario.control(
@@ -282,19 +244,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "bspatch-consecutive-diff-ota",
-    stages: [
-      "deploy first diff bundle",
-      "install first diff bundle",
-      "wait first diff metadata pending",
-      "reload first diff bundle",
-      "wait first diff metadata stable",
-      "deploy second diff bundle",
-      "install second diff bundle",
-      "wait second diff metadata pending",
-      "reload second diff bundle",
-      "wait second diff metadata stable",
-      "assert consecutive diff patch",
-    ],
     wave: 2,
     run: async (scenario) => {
       await scenario.control(
@@ -385,11 +334,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "bspatch-disabled-chain-rollback",
-    stages: [
-      "deploy chain base bundle",
-      "disable chain base bundle",
-      "assert disabled chain bases",
-    ],
     wave: 2,
     run: async (scenario) => {
       await scenario.control(
@@ -426,23 +370,6 @@ export const wave2Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "bspatch-manifest-diff-fallback",
-    stages: [
-      "deploy manifest base bundle",
-      "launch manifest base app",
-      "install manifest base update",
-      "wait manifest base metadata pending",
-      "reload manifest base update",
-      "wait manifest base metadata stable",
-      "deploy manifest intermediate bundle",
-      "deploy manifest fallback bundle",
-      "assert manifest fallback patch bases",
-      "launch manifest fallback app",
-      "install manifest fallback update",
-      "wait manifest fallback metadata pending",
-      "reload manifest fallback update",
-      "wait manifest fallback metadata stable",
-      "assert manifest diff fallback",
-    ],
     wave: 2,
     run: async (scenario) => {
       await scenario.control(

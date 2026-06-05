@@ -3,14 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "force-update-auto-reload",
-    stages: [
-      "deploy force update bundle",
-      "install force update",
-      "wait force update metadata pending",
-      "reload force update",
-      "wait force update metadata stable",
-      "assert force update launch",
-    ],
     wave: 4,
     run: async (scenario) => {
       await scenario.control(
@@ -59,20 +51,6 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "disabled-bundle-rollback-to-builtin",
-    stages: [
-      "capture built-in bundle",
-      "deploy current bundle",
-      "install current bundle",
-      "wait current bundle metadata pending",
-      "reload current bundle",
-      "wait current bundle metadata stable",
-      "assert current bundle active",
-      "disable current bundle",
-      "install rollback to built-in",
-      "reload to built-in",
-      "assert metadata reset",
-      "assert no crashed bundle",
-    ],
     wave: 4,
     run: async (scenario) => {
       await scenario.control(
@@ -153,26 +131,6 @@ export const wave4Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "disabled-bundle-rollback-to-previous-ota",
-    stages: [
-      "deploy previous bundle",
-      "install previous bundle",
-      "wait previous bundle metadata pending",
-      "reload previous bundle",
-      "wait previous bundle metadata stable",
-      "assert previous bundle active",
-      "deploy next bundle",
-      "install next bundle",
-      "wait next bundle metadata pending",
-      "reload next bundle",
-      "wait next bundle metadata stable",
-      "assert next bundle active",
-      "disable next bundle",
-      "install rollback to previous bundle",
-      "wait previous rollback metadata pending",
-      "reload previous bundle",
-      "wait previous rollback metadata stable",
-      "assert previous ota active",
-    ],
     wave: 4,
     run: async (scenario) => {
       await scenario.control(

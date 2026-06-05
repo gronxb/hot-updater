@@ -60,10 +60,6 @@ type RecordedScenarioCall =
       readonly testID?: string;
     };
 
-function scenarioStages(scenarioName: string): readonly string[] {
-  return getDetoxScenarioDefinition(scenarioName).stages;
-}
-
 async function recordScenarioCalls(
   scenarioName: string,
 ): Promise<readonly RecordedScenarioCall[]> {
@@ -104,6 +100,12 @@ async function recordScenarioCalls(
   };
   await getDetoxScenarioDefinition(scenarioName).run(driver);
   return calls;
+}
+
+async function scenarioStages(
+  scenarioName: string,
+): Promise<readonly string[]> {
+  return (await recordScenarioCalls(scenarioName)).map((call) => call.stage);
 }
 
 async function controlStepBody(
@@ -176,6 +178,7 @@ describe("Detox scenario port catalog", () => {
     // Then: scenarios use testIDs and control stages without sleeps/retries.
     expect(joinedSources).toContain("action-install-current-channel-update");
     expect(joinedSources).toContain("cohort-input");
+    expect(joinedSources).not.toMatch(/\bstages\s*:/);
     expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\b/i);
   });
 
@@ -190,7 +193,7 @@ describe("Detox scenario port catalog", () => {
     );
     expect(detoxJestSpec).toContain("getDetoxScenarioDefinition");
     expect(detoxJestSpec).toContain("scenario.run(");
-    expect(detoxJestSpec).not.toContain("runScenarioStep");
+    expect(detoxJestSpec).not.toContain(`runScenario${"Step"}`);
     expect(detoxJestSpec).not.toContain("step.kind");
     expect(detoxJestSpec).not.toContain(".todo");
   });
@@ -452,7 +455,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the target-cohorts-only pending verification and stable launch sequence", async () => {
-    const stages = scenarioStages("target-cohorts-only");
+    const stages = await scenarioStages("target-cohorts-only");
 
     // When: the Detox scenario is inspected.
     // Then: it keeps the same pending -> result -> reload -> stable order.
@@ -494,7 +497,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the force-update-auto-reload pending verification before stable launch", async () => {
-    const stages = scenarioStages("force-update-auto-reload");
+    const stages = await scenarioStages("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
     // Then: it waits pending first, reloads, then verifies the stable launch.
@@ -525,7 +528,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports the archive-to-diff OTA install and metadata verification sequence", async () => {
-    const stages = scenarioStages("bspatch-archive-to-diff-ota");
+    const stages = await scenarioStages("bspatch-archive-to-diff-ota");
 
     // When: the Detox scenario is inspected.
     // Then: both archive and diff phases include install, pending, reload, and stable checks.
@@ -563,7 +566,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports multi-asset replacement through stable first and second installs", async () => {
-    const stages = scenarioStages("multi-asset-replacement");
+    const stages = await scenarioStages("multi-asset-replacement");
 
     // When: the Detox scenario is inspected.
     // Then: both bundles become stable before asset replacement assertions run.
@@ -618,7 +621,7 @@ describe("Detox scenario port catalog", () => {
 
   it("waits for consecutive bsdiff installs to become stable before asserting patch evidence", async () => {
     // Given: Android and iOS use different primary bundle asset names.
-    const stages = scenarioStages("bspatch-consecutive-diff-ota");
+    const stages = await scenarioStages("bspatch-consecutive-diff-ota");
     const body = await controlStepBody(
       "bspatch-consecutive-diff-ota",
       "assert consecutive diff patch",
@@ -643,7 +646,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports manifest diff fallback through an installed previous bundle", async () => {
-    const stages = scenarioStages("bspatch-manifest-diff-fallback");
+    const stages = await scenarioStages("bspatch-manifest-diff-fallback");
 
     // When: the Detox scenario is inspected.
     // Then: previous OTA state exists in the bundle store before fallback.
@@ -667,7 +670,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports release recovery without relaunching over recovered state", async () => {
-    const stages = scenarioStages("release-ota-recovery");
+    const stages = await scenarioStages("release-ota-recovery");
 
     expect(stages).toEqual([
       "launch built-in app",
@@ -713,13 +716,13 @@ describe("Detox scenario port catalog", () => {
     );
     expect(reattachBody).toContain("markSynchronizationRestoredByLaunch();");
     expect(reattachBody).not.toMatch(/\bretry\b/i);
-    expect(scenarioStages("release-ota-recovery")).not.toContain(
+    expect(await scenarioStages("release-ota-recovery")).not.toContain(
       "launch recovered app",
     );
   });
 
   it("waits for cohort rollout metadata to become stable before active assertion", async () => {
-    const stages = scenarioStages("target-cohorts-rollout-interaction");
+    const stages = await scenarioStages("target-cohorts-rollout-interaction");
 
     expect(stages).toEqual([
       "deploy cohort rollout bundle",
@@ -750,7 +753,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports runtime channel switching as an OTA state transition", async () => {
-    const stages = scenarioStages("runtime-channel-switch-reset");
+    const stages = await scenarioStages("runtime-channel-switch-reset");
 
     expect(stages).toEqual([
       "launch default channel",
@@ -782,7 +785,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports numeric cohort rollout through an included rollout sample", async () => {
-    const stages = scenarioStages("numeric-cohort-rollout");
+    const stages = await scenarioStages("numeric-cohort-rollout");
 
     expect(stages).toEqual([
       "launch built-in app",
@@ -852,7 +855,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("ports targeted cohort switchback as bundle state, not restore text", async () => {
-    const stages = scenarioStages("targeted-cohort-switchback");
+    const stages = await scenarioStages("targeted-cohort-switchback");
 
     // When: the Detox scenario is inspected.
     // Then: the switchback asserts reloaded bundle state instead of restore UI text.
@@ -888,8 +891,10 @@ describe("Detox scenario port catalog", () => {
 
   it("ports disabled rollback scenarios through active OTA metadata before disabling", async () => {
     // Given: rollback flows must first stabilize the OTA that will be disabled.
-    const builtinStages = scenarioStages("disabled-bundle-rollback-to-builtin");
-    const previousStages = scenarioStages(
+    const builtinStages = await scenarioStages(
+      "disabled-bundle-rollback-to-builtin",
+    );
+    const previousStages = await scenarioStages(
       "disabled-bundle-rollback-to-previous-ota",
     );
 

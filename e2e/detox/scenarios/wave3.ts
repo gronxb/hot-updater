@@ -3,20 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   {
     name: "runtime-channel-switch-reset",
-    stages: [
-      "launch default channel",
-      "capture built-in bundle id",
-      "deploy runtime channel bundle",
-      "install runtime channel update",
-      "wait runtime channel metadata pending",
-      "assert runtime channel result",
-      "reload runtime channel update",
-      "assert runtime channel bundle",
-      "reset runtime channel",
-      "assert runtime channel reset",
-      "reload default channel",
-      "assert reset built-in bundle",
-    ],
     wave: 3,
     run: async (scenario) => {
       await scenario.launch("launch default channel");
@@ -85,28 +71,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "numeric-cohort-rollout",
-    stages: [
-      "launch built-in app",
-      "capture built-in bundle id",
-      "deploy numeric cohort bundle",
-      "compute rollout sample",
-      "enter included cohort",
-      "apply included cohort",
-      "assert included cohort applied",
-      "install rollout update",
-      "wait rollout metadata pending",
-      "assert rollout action result",
-      "reload rollout update",
-      "wait rollout metadata stable",
-      "assert rollout launch",
-      "enter excluded cohort",
-      "apply excluded cohort",
-      "assert excluded cohort applied",
-      "install excluded cohort update",
-      "assert excluded metadata reset",
-      "reload excluded cohort state",
-      "assert excluded cohort built-in bundle",
-    ],
     wave: 3,
     run: async (scenario) => {
       await scenario.launch("launch built-in app");
@@ -218,17 +182,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "target-cohorts-only",
-    stages: [
-      "deploy target cohort bundle",
-      "enter qa cohort",
-      "apply qa cohort",
-      "assert qa cohort applied",
-      "install target cohort update",
-      "wait target cohort metadata pending",
-      "reload target cohort update",
-      "wait target cohort metadata stable",
-      "assert target cohort launch",
-    ],
     wave: 3,
     run: async (scenario) => {
       await scenario.control(
@@ -285,16 +238,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "target-cohorts-rollout-interaction",
-    stages: [
-      "deploy cohort rollout bundle",
-      "enter qa cohort",
-      "apply qa cohort",
-      "install cohort rollout update",
-      "wait cohort rollout metadata pending",
-      "reload cohort rollout update",
-      "wait cohort rollout metadata stable",
-      "assert cohort rollout active",
-    ],
     wave: 3,
     run: async (scenario) => {
       await scenario.control(
@@ -348,34 +291,6 @@ export const wave3Scenarios: readonly DetoxScenarioDefinition[] = [
   },
   {
     name: "targeted-cohort-switchback",
-    stages: [
-      "deploy numeric cohort bundle",
-      "compute numeric rollout sample",
-      "deploy qa cohort bundle",
-      "enter numeric cohort",
-      "apply numeric cohort",
-      "assert numeric cohort applied",
-      "install numeric cohort update",
-      "wait numeric cohort metadata pending",
-      "reload numeric cohort update",
-      "wait numeric cohort metadata stable",
-      "assert numeric cohort launch",
-      "enter qa cohort",
-      "apply qa cohort",
-      "install qa cohort update",
-      "wait qa cohort metadata pending",
-      "reload qa cohort update",
-      "wait qa cohort metadata stable",
-      "assert qa cohort launch",
-      "restore numeric cohort",
-      "apply restored numeric cohort",
-      "assert numeric cohort restored",
-      "install numeric cohort rollback",
-      "wait numeric cohort rollback pending",
-      "reload numeric cohort rollback",
-      "wait numeric cohort rollback stable",
-      "assert numeric cohort rollback launch",
-    ],
     wave: 3,
     run: async (scenario) => {
       await scenario.control(

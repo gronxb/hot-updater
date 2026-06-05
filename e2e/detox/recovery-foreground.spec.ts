@@ -55,12 +55,16 @@ async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
   return calls;
 }
 
+async function recoveryStages(): Promise<readonly string[]> {
+  return (await recordRecoveryCalls()).map((call) => call.stage);
+}
+
 describe("Detox recovery foreground handling", () => {
   it("uses native recovery evidence before reading recovered app UI", async () => {
     // Given: Android crash recovery relaunches the app outside Detox and the
     // launch status UI can be a transient platform-specific value.
-    const scenario = getDetoxScenarioDefinition("release-ota-recovery");
-    const hasRecoveredLaunchStatusStage = scenario.stages.includes(
+    const stages = await recoveryStages();
+    const hasRecoveredLaunchStatusStage = stages.includes(
       "assert recovered stable launch",
     );
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
@@ -77,9 +81,8 @@ describe("Detox recovery foreground handling", () => {
   it("asserts the native recovery report before reading recovered bundle UI", async () => {
     // Given: Android can relaunch through the control server and report
     // RECOVERED before the React UI settles into the active stable bundle.
-    const scenario = getDetoxScenarioDefinition("release-ota-recovery");
     const calls = await recordRecoveryCalls();
-    const stages = scenario.stages;
+    const stages = calls.map((call) => call.stage);
     const recoveryIndex = stages.indexOf("wait crash recovery");
     const recoveredBundleCall = calls.find(
       (call) => call.stage === "assert recovered bundle id",
@@ -100,9 +103,8 @@ describe("Detox recovery foreground handling", () => {
 
   it("uses crash history instead of transient crashed-bundle UI text", async () => {
     // Given: the recovered UI can clear the transient crashed bundle text.
-    const scenario = getDetoxScenarioDefinition("release-ota-recovery");
     const calls = await recordRecoveryCalls();
-    const stages = scenario.stages;
+    const stages = calls.map((call) => call.stage);
     const crashHistoryIndex = stages.indexOf("assert crash history");
     const metadataIndex = stages.indexOf("assert recovered metadata active");
 
