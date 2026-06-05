@@ -136,4 +136,20 @@ describe("Detox Android native setup", () => {
       expect(detoxRc).toContain(marker);
     }
   });
+
+  it("limits Detox Android native builds to the attached emulator ABI", async () => {
+    // Given: provider verification runs Detox against an attached Android emulator.
+    const detoxRc = await readText(detoxRcPath);
+
+    // When: Detox builds the Android app and test APK.
+    const requiredAbiMarkers = [
+      "assembleRelease assembleAndroidTest",
+      "-PreactNativeArchitectures=x86_64",
+    ];
+
+    // Then: E2E builds avoid compiling unused device ABIs.
+    for (const marker of requiredAbiMarkers) {
+      expect(detoxRc).toContain(marker);
+    }
+  });
 });
