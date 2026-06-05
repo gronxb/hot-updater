@@ -8,6 +8,7 @@ const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
 const retiredFlowDir = ["e2e", "ma" + "estro", ""].join("/");
+const retiredHarnessMarkerPattern = new RegExp(["ma", "estro"].join(""), "i");
 const detoxFlowFilePattern = new RegExp(
   ["e2e/detox/.*\\.", "ya?", "ml$"].join(""),
   "i",
@@ -60,6 +61,15 @@ describe("Detox-first source shape", () => {
     expect(
       activeE2eFiles.filter((file) => detoxFlowFilePattern.test(file)),
     ).toEqual([]);
+  });
+
+  it("keeps example app ignore rules free of retired harness artifacts", async () => {
+    const exampleIgnoreSource = await fs.readFile(
+      path.join(repoDir, "examples/v0.85.0/.gitignore"),
+      "utf8",
+    );
+
+    expect(exampleIgnoreSource).not.toMatch(retiredHarnessMarkerPattern);
   });
 
   it("groups scenarios by user flow instead of migration waves", async () => {
