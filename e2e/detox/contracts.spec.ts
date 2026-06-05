@@ -72,6 +72,62 @@ describe("Detox E2E harness contract", () => {
     expect(detoxStat.isDirectory()).toBe(true);
   });
 
+  it("keeps the tracked E2E source surface Detox-first", async () => {
+    const expectedE2eFiles = [
+      "e2e/control-server/controller.ts",
+      "e2e/control-server/index.ts",
+      "e2e/control-server/routes.ts",
+      "e2e/detox/android-native.spec.ts",
+      "e2e/detox/contracts.spec.ts",
+      "e2e/detox/control-client.spec.ts",
+      "e2e/detox/control-client.ts",
+      "e2e/detox/control-protocol.ts",
+      "e2e/detox/control-server-env.spec.ts",
+      "e2e/detox/jest.config.js",
+      "e2e/detox/recovery-foreground.spec.ts",
+      "e2e/detox/scenario-context.spec.ts",
+      "e2e/detox/scenario-context.ts",
+      "e2e/detox/scenario-contract.spec.ts",
+      "e2e/detox/scenarios.spec.js",
+      "e2e/detox/scenarios.ts",
+      "e2e/detox/scenarios/types.ts",
+      "e2e/detox/scenarios/wave1.ts",
+      "e2e/detox/scenarios/wave2.ts",
+      "e2e/detox/scenarios/wave3.ts",
+      "e2e/detox/scenarios/wave4.ts",
+      "e2e/detox/scripts/control-server-env.ts",
+      "e2e/detox/scripts/control-server.ts",
+      "e2e/detox/scripts/run.ts",
+    ];
+    const result = spawnSync(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard", "e2e"],
+      {
+        cwd: repoDir,
+        encoding: "utf8",
+      },
+    );
+    const trackedFiles = (
+      await Promise.all(
+        result.stdout
+          .split("\n")
+          .filter(Boolean)
+          .map(async (file) => {
+            try {
+              await fs.access(path.join(repoDir, file));
+              return file;
+            } catch (error) {
+              if (error instanceof Error) return null;
+              throw error;
+            }
+          }),
+      )
+    ).filter((file) => file !== null);
+
+    expect(result.status).toBe(0);
+    expect(trackedFiles.toSorted()).toEqual(expectedE2eFiles);
+  });
+
   it("includes Detox config files needed by the CLI", async () => {
     // Given: Detox CLI discovery depends on root config files.
     const detoxConfig = await fs.readFile(detoxConfigPath, "utf8");

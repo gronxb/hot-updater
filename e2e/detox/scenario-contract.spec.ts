@@ -138,7 +138,7 @@ async function controlStepDefinition(
   return call;
 }
 
-describe("Detox scenario port catalog", () => {
+describe("Detox scenario contract", () => {
   it("defines the default suite from Detox-owned waves", async () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
     const waveScenarios = detoxScenarioWaves.flatMap((wave) => wave.scenarios);
@@ -149,7 +149,7 @@ describe("Detox scenario port catalog", () => {
   });
 
   it("uses Detox-owned scenario lookup in the runner", async () => {
-    // Given: the CLI must run the ported Detox suite.
+    // Given: the CLI must run the Detox suite.
     const runnerSource = await fs.readFile(detoxRunnerPath, "utf8");
 
     // When: the runner resolves scenario names from the Detox catalog.
@@ -166,7 +166,7 @@ describe("Detox scenario port catalog", () => {
         .map((file) => fs.readFile(path.join(scenarioDir, file), "utf8")),
     );
 
-    // When: the ported scenario sources are inspected.
+    // When: the Detox scenario sources are inspected.
     const joinedSources = sources.join("\n");
 
     // Then: scenarios use testIDs and control stages without sleeps/retries.
@@ -176,7 +176,7 @@ describe("Detox scenario port catalog", () => {
     expect(joinedSources).not.toMatch(/\bsleep\b|\bsetTimeout\b|\bretry\b/i);
   });
 
-  it("executes every ported scenario through Detox-owned scenario functions", async () => {
+  it("executes every Detox scenario through Detox-owned scenario functions", async () => {
     // Given: Detox CLI selects scenarios through Jest testNamePattern.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
 
@@ -495,7 +495,7 @@ describe("Detox scenario port catalog", () => {
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
-  it("ports the target-cohorts-only pending verification and stable launch sequence", async () => {
+  it("models target-cohorts-only pending verification and stable launch sequence", async () => {
     const stages = await scenarioStages("target-cohorts-only");
 
     // When: the Detox scenario is inspected.
@@ -537,7 +537,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(0);
   });
 
-  it("ports the force-update-auto-reload pending verification before stable launch", async () => {
+  it("models force-update-auto-reload pending verification before stable launch", async () => {
     const stages = await scenarioStages("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
@@ -568,7 +568,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("ports the archive-to-diff OTA install and metadata verification sequence", async () => {
+  it("models archive-to-diff OTA install and metadata verification sequence", async () => {
     const stages = await scenarioStages("bspatch-archive-to-diff-ota");
 
     // When: the Detox scenario is inspected.
@@ -606,7 +606,7 @@ describe("Detox scenario port catalog", () => {
     expect(deployBody.bundleProfile).toBeUndefined();
   });
 
-  it("ports multi-asset replacement through stable first and second installs", async () => {
+  it("models multi-asset replacement through stable first and second installs", async () => {
     const stages = await scenarioStages("multi-asset-replacement");
 
     // When: the Detox scenario is inspected.
@@ -686,7 +686,7 @@ describe("Detox scenario port catalog", () => {
     expect(body.assetPath).toBe("$diffPatchAssetPath");
   });
 
-  it("ports manifest diff fallback through an installed previous bundle", async () => {
+  it("models manifest diff fallback through an installed previous bundle", async () => {
     const stages = await scenarioStages("bspatch-manifest-diff-fallback");
 
     // When: the Detox scenario is inspected.
@@ -710,7 +710,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("ports release recovery without relaunching over recovered state", async () => {
+  it("models release recovery without relaunching over recovered state", async () => {
     const stages = await scenarioStages("release-ota-recovery");
 
     expect(stages).toEqual([
@@ -790,7 +790,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("ports runtime channel switching as an OTA state transition", async () => {
+  it("models runtime channel switching as an OTA state transition", async () => {
     const stages = await scenarioStages("runtime-channel-switch-reset");
 
     expect(stages).toEqual([
@@ -822,7 +822,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("ports numeric cohort rollout through an included rollout sample", async () => {
+  it("models numeric cohort rollout through an included rollout sample", async () => {
     const stages = await scenarioStages("numeric-cohort-rollout");
 
     expect(stages).toEqual([
@@ -892,7 +892,7 @@ describe("Detox scenario port catalog", () => {
     ).toBe(false);
   });
 
-  it("ports targeted cohort switchback as bundle state, not restore text", async () => {
+  it("models targeted cohort switchback as bundle state, not restore text", async () => {
     const stages = await scenarioStages("targeted-cohort-switchback");
 
     // When: the Detox scenario is inspected.
@@ -927,7 +927,7 @@ describe("Detox scenario port catalog", () => {
     ]);
   });
 
-  it("ports disabled rollback scenarios through active OTA metadata before disabling", async () => {
+  it("models disabled rollback scenarios through active OTA metadata before disabling", async () => {
     // Given: rollback scenarios must first stabilize the OTA that will be disabled.
     const builtinStages = await scenarioStages(
       "disabled-bundle-rollback-to-builtin",
