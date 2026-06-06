@@ -23,6 +23,7 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import { resolveUpdateCheckRequestBundleId } from "./update-check-request-bundle-id.ts";
 import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
@@ -3356,7 +3357,7 @@ function buildAppVersionUpdateCheckUrl(args: {
 function getCurrentUpdateCheckBundleId() {
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
-  return metadataState.stagingBundleId ?? E2E_MIN_BUNDLE_ID;
+  return resolveUpdateCheckRequestBundleId(metadataState);
 }
 
 function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
