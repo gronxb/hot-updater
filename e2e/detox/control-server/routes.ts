@@ -439,6 +439,7 @@ app.post("/e2e/wait-for-crash-recovery", async (c) => {
     await handleWaitForCrashRecovery(
       payload.stableBundleId,
       payload.crashedBundleId,
+      { signal: c.req.raw.signal },
     ),
   );
 });

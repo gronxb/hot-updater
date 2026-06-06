@@ -18,6 +18,8 @@ import {
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
 import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
+import { waitForCrashRecoveryState } from "./crash-recovery-wait.ts";
+import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -3829,24 +3831,23 @@ function readIosRecoveryDiagnostics() {
   };
 }
 
-function readAndroidRecoveryDiagnostics() {
+function readAndroidRecoveryDiagnostics(
+  artifactNames: CrashRecoveryArtifactNames,
+) {
   return {
     crashHistory: readAndroidStoreSnapshot(
       "crashed-history.json",
-      "recovery-crash-history.json",
+      artifactNames.crashHistory,
     ),
     crashMarker: readAndroidStoreSnapshot(
       "recovery-crash-marker.json",
-      "recovery-crash-marker.json",
+      artifactNames.crashMarker,
     ),
     launchReport: readAndroidStoreSnapshot(
       "launch-report.json",
-      path.basename(androidRecoveryLaunchReportPath()),
+      artifactNames.launchReport,
     ),
-    metadata: readAndroidStoreSnapshot(
-      "metadata.json",
-      "recovery-metadata.json",
-    ),
+    metadata: readAndroidStoreSnapshot("metadata.json", artifactNames.metadata),
   };
 }
 
@@ -4200,51 +4201,24 @@ async function waitForAndroidMetadataState(
 async function waitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  attempts = 360,
+  options: { attempts?: number; signal?: AbortSignal } = {},
 ) {
-  let androidRelaunchAttempts = 0;
-
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics =
+  return waitForCrashRecoveryState({
+    androidLaunchSettleMs: E2E_ANDROID_LAUNCH_SETTLE_MS,
+    attempts: options.attempts ?? 360,
+    crashedBundleId,
+    createTimeoutError: createWaitForRecoveryTimeoutError,
+    getLaunchReportState,
+    getMetadataState,
+    launchAndroidApp,
+    platform: fixtureSession.platform,
+    pollIntervalMs: E2E_POLL_INTERVAL_MS,
+    readDiagnostics: (artifactNames) =>
       fixtureSession.platform === "ios"
         ? readIosRecoveryDiagnostics()
-        : readAndroidRecoveryDiagnostics();
-    const metadataState = getMetadataState(diagnostics.metadata.value);
-    const launchReportState = getLaunchReportState(
-      diagnostics.launchReport.value,
-    );
-
-    if (
-      metadataState.stagingBundleId === stableBundleId &&
-      metadataState.verificationPending === false &&
-      launchReportState.status === "RECOVERED" &&
-      launchReportState.crashedBundleId === crashedBundleId
-    ) {
-      return {};
-    }
-
-    if (
-      fixtureSession.platform === "android" &&
-      diagnostics.crashMarker.exists &&
-      androidRelaunchAttempts < 3
-    ) {
-      launchAndroidApp();
-      androidRelaunchAttempts += 1;
-      await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
-      continue;
-    }
-
-    await sleep(E2E_POLL_INTERVAL_MS);
-  }
-
-  const diagnostics =
-    fixtureSession.platform === "ios"
-      ? readIosRecoveryDiagnostics()
-      : readAndroidRecoveryDiagnostics();
-  throw createWaitForRecoveryTimeoutError({
-    attempts,
-    crashedBundleId,
-    ...diagnostics,
+        : readAndroidRecoveryDiagnostics(artifactNames),
+    signal: options.signal,
+    sleepMs: abortableSleep,
     stableBundleId,
   });
 }
@@ -5881,8 +5855,9 @@ export async function handleAssertCrashHistory(bundleId: string) {
 export async function handleWaitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
+  options: { signal?: AbortSignal } = {},
 ) {
-  return waitForCrashRecovery(stableBundleId, crashedBundleId);
+  return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
 }
 
 export async function handlePrepareAppLaunch() {
