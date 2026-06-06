@@ -60,7 +60,7 @@ const isResetToBuiltInResponse = (updateInfo: AppUpdateInfo): boolean => {
   return (
     updateInfo.status === "ROLLBACK" &&
     updateInfo.id === NIL_UUID &&
-    updateInfo.fileUrl == null
+    updateInfo.fileUrl === null
   );
 };
 
@@ -159,7 +159,11 @@ export async function checkForUpdate(
   return {
     ...updateInfo,
     updateBundle: async () => {
-      if (isResetToBuiltInResponse(updateInfo)) {
+      if (
+        explicitChannel &&
+        isSwitched &&
+        isResetToBuiltInResponse(updateInfo)
+      ) {
         return resetChannel();
       }
 

@@ -224,17 +224,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
                 }
                 manifestUrl = url
             }
-            let changedAssetsPayload: [String: [String: Any]]? = {
-                if let changedAssetsJson = data["changedAssetsJson"] as? String,
-                   !changedAssetsJson.isEmpty,
-                   let jsonData = changedAssetsJson.data(using: .utf8),
-                   let jsonObject = try? JSONSerialization.jsonObject(with: jsonData),
-                   let payload = jsonObject as? [String: [String: Any]] {
-                    return payload
-                }
-
-                return data["changedAssets"] as? [String: [String: Any]]
-            }()
+            let changedAssetsPayload = data["changedAssets"] as? [String: [String: Any]]
             let changedAssets = changedAssetsPayload?.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
                 guard let fileHash = entry.value["fileHash"] as? String,
                       !fileHash.isEmpty
@@ -279,6 +269,8 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
             // Extract progress callback if provided
             let progressCallback = data["progressCallback"] as? RCTResponseSenderBlock
+
+            NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), fileUrl: \(fileUrl?.absoluteString ?? "nil"), fileHash: \(fileHash ?? "nil")")
 
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, fileUrl: fileUrl, fileHash: fileHash, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, changedAssets: changedAssets, progressHandler: { payload in

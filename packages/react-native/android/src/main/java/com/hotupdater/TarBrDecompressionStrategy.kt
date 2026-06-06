@@ -1,7 +1,7 @@
 package com.hotupdater
 
 import android.util.Log
-import com.hotupdater.vendor.brotli.dec.BrotliInputStream
+import org.brotli.dec.BrotliInputStream
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream

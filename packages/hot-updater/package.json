@@ -186,7 +186,7 @@
     "sql-formatter": "15.6.10",
     "strip-final-newline": "4.0.0",
     "strnum": "2.2.3",
-    "supports-color": "8.1.1",
+    "supports-color": "7.2.0",
     "to-regex-range": "5.0.1",
     "unicorn-magic": "0.3.0",
     "which": "2.0.2",

@@ -28,9 +28,6 @@ const nativeModuleMock = vi.hoisted(() => {
     updateBundle: vi.fn(),
   };
 });
-const platformMock = vi.hoisted(() => ({
-  OS: "ios",
-}));
 
 vi.mock("react-native", () => ({
   NativeEventEmitter: class {
@@ -38,7 +35,9 @@ vi.mock("react-native", () => ({
       return { remove: () => {} };
     }
   },
-  Platform: platformMock,
+  Platform: {
+    OS: "ios",
+  },
 }));
 
 vi.mock("./specs/NativeHotUpdater", () => ({
@@ -48,7 +47,6 @@ vi.mock("./specs/NativeHotUpdater", () => ({
 describe("notifyAppReady", () => {
   beforeEach(() => {
     vi.resetModules();
-    platformMock.OS = "ios";
     nativeModuleMock.notifyAppReady.mockReset();
     nativeModuleMock.getBaseURL.mockReset();
     nativeModuleMock.getBundleId.mockReset();
@@ -458,8 +456,7 @@ describe("notifyAppReady", () => {
 
     expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
       bundleId: "bundle-789",
-      changedAssets: null,
-      changedAssetsJson: JSON.stringify({
+      changedAssets: {
         "index.ios.bundle": {
           file: {
             compression: "br",
@@ -474,41 +471,7 @@ describe("notifyAppReady", () => {
             patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
           },
         },
-      }),
-      channel: undefined,
-      fileHash: "sig:archive",
-      fileUrl: "https://example.com/bundle.zip",
-      manifestFileHash: "sig:manifest",
-      manifestUrl: "https://example.com/manifest.json",
-    });
-  });
-
-  it("keeps changed assets as an object on Android", async () => {
-    platformMock.OS = "android";
-    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
-    nativeModuleMock.updateBundle.mockResolvedValue(true);
-
-    const { updateBundle } = await import("./native");
-    const changedAssets = {
-      "index.android.bundle": {
-        fileHash: "hash-next",
       },
-    };
-
-    await updateBundle({
-      bundleId: "bundle-789",
-      changedAssets,
-      fileHash: "sig:archive",
-      fileUrl: "https://example.com/bundle.zip",
-      manifestFileHash: "sig:manifest",
-      manifestUrl: "https://example.com/manifest.json",
-      status: "UPDATE",
-    });
-
-    expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
-      bundleId: "bundle-789",
-      changedAssets,
-      changedAssetsJson: null,
       channel: undefined,
       fileHash: "sig:archive",
       fileUrl: "https://example.com/bundle.zip",

@@ -30,19 +30,6 @@ volatile sig_atomic_t gHotUpdaterShouldRollback = 0;
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
-NSString *HotUpdaterInfoDictionaryValue(
-  NSDictionary *infoDictionary,
-  NSString *key,
-  NSString *placeholder
-)
-{
-  NSString *value = infoDictionary[key];
-  if (!value || value.length == 0 || [value isEqualToString:placeholder]) {
-    return nil;
-  }
-  return value;
-}
-
 size_t HotUpdaterSafeStringLength(const char *value, size_t maxLength)
 {
   size_t length = 0;
@@ -193,20 +180,12 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
 #if DEBUG
     uuid = @"00000000-0000-0000-0000-000000000000";
 #else
+    // Step 1: Try to read HOT_UPDATER_BUILD_TIMESTAMP from Info.plist
     NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-    NSString *customValue =
-      HotUpdaterInfoDictionaryValue(
-        infoDictionary,
-        @"HOT_UPDATER_MIN_BUNDLE_ID",
-        @"$(HOT_UPDATER_MIN_BUNDLE_ID)"
-      )
-      ?: HotUpdaterInfoDictionaryValue(
-        infoDictionary,
-        @"HOT_UPDATER_BUILD_TIMESTAMP",
-        @"$(HOT_UPDATER_BUILD_TIMESTAMP)"
-      );
+    NSString *customValue = infoDictionary[@"HOT_UPDATER_BUILD_TIMESTAMP"];
 
-    if (customValue) {
+    // Step 2: If custom value exists and is not empty
+    if (customValue && customValue.length > 0 && ![customValue isEqualToString:@"$(HOT_UPDATER_BUILD_TIMESTAMP)"]) {
       // Check if it's a timestamp (pure digits) or UUID
       NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
       BOOL isTimestamp = ([customValue rangeOfCharacterFromSet:nonDigits].location == NSNotFound);
@@ -583,9 +562,6 @@ RCT_EXPORT_MODULE();
     }
     if (params.changedAssets()) {
         paramDict[@"changedAssets"] = params.changedAssets();
-    }
-    if (params.changedAssetsJson()) {
-        paramDict[@"changedAssetsJson"] = params.changedAssetsJson();
     }
     if (params.channel()) {
         paramDict[@"channel"] = params.channel();
