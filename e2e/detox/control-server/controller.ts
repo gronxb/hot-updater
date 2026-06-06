@@ -4356,7 +4356,7 @@ async function bootstrap() {
 }
 
 async function captureBuiltInBundleId() {
-  const builtInBundleId = E2E_MIN_BUNDLE_ID;
+  const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;
 
   fixtureSession.builtInBundleId = builtInBundleId;
 

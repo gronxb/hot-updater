@@ -282,6 +282,25 @@ describe("Detox scenario contract", () => {
     expect(beforeEachBody).not.toContain("delete: true");
   });
 
+  it("captures the built-in bundle id with the same suffix contract as Maestro", async () => {
+    // Given: HotUpdater.getBundleId() can expose a platform-generated UUID
+    // with the built-in minimum id suffix.
+    const controllerSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+
+    // When: scenarios capture the built-in bundle id for later UI assertions.
+    // Then: Detox must preserve Maestro's suffix contract instead of requiring
+    // a hard-coded full UUID that iOS does not expose.
+    expect(controllerSource).toContain(
+      "const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;",
+    );
+    expect(controllerSource).not.toContain(
+      "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
+    );
+  });
+
   it("passes runtime config through Detox launch arguments", async () => {
     // Given: split provider jobs assign a per-shard runtime config URL at test
     // runtime, after the native app has already been built.
