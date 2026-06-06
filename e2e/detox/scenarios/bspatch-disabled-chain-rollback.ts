@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
   name: "bspatch-disabled-chain-rollback",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy chain base bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -18,15 +18,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "baseBundleId",
       },
     );
-    await scenario.control(
-      "disable chain base bundle",
-      "/e2e/jobs/patch-bundle",
-      {
-        bundleId: "$baseBundleId",
-        enabled: false,
-      },
-    );
-    await scenario.control(
+    await app.control("disable chain base bundle", "/e2e/jobs/patch-bundle", {
+      bundleId: "$baseBundleId",
+      enabled: false,
+    });
+    await app.control(
       "assert disabled chain bases",
       "/e2e/assert-bundle-patch-bases",
       {

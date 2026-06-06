@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
   name: "bspatch-consecutive-diff-ota",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy first diff bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -18,11 +18,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "firstBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install first diff bundle",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait first diff metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -31,8 +31,8 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload first diff bundle");
-    await scenario.control(
+    await app.reload("reload first diff bundle");
+    await app.control(
       "wait first diff metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -40,7 +40,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy second diff bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -56,11 +56,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "secondBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install second diff bundle",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait second diff metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -69,8 +69,8 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload second diff bundle");
-    await scenario.control(
+    await app.reload("reload second diff bundle");
+    await app.control(
       "wait second diff metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -78,7 +78,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert consecutive diff patch",
       "/e2e/assert-bsdiff-patch-applied",
       {

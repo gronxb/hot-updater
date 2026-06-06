@@ -74,9 +74,9 @@ describe("Detox E2E harness contract", () => {
 
   it("keeps the tracked E2E source surface Detox-first", async () => {
     const expectedE2eFiles = [
-      "e2e/control-server/controller.ts",
-      "e2e/control-server/index.ts",
-      "e2e/control-server/routes.ts",
+      "e2e/detox/control-server/controller.ts",
+      "e2e/detox/control-server/index.ts",
+      "e2e/detox/control-server/routes.ts",
       "e2e/detox/android-native.spec.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
@@ -90,7 +90,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenario-context.spec.ts",
       "e2e/detox/scenario-context.ts",
       "e2e/detox/scenario-contract.spec.ts",
-      "e2e/detox/scenario-runtime.js",
+      "e2e/detox/detox-app-driver.js",
       "e2e/detox/scenarios.spec.js",
       "e2e/detox/scenarios.ts",
       "e2e/detox/scenarios/bspatch-archive-to-diff-ota.ts",
@@ -138,7 +138,7 @@ describe("Detox E2E harness contract", () => {
     ).filter((file) => file !== null);
 
     expect(result.status).toBe(0);
-    expect(trackedFiles.toSorted()).toEqual(expectedE2eFiles);
+    expect(trackedFiles.toSorted()).toEqual(expectedE2eFiles.toSorted());
   });
 
   it("includes Detox config files needed by the CLI", async () => {
@@ -274,7 +274,7 @@ describe("Detox E2E harness contract", () => {
 
     expect(joinedSource).toContain("releaseOtaRecoveryScenario");
     expect(joinedSource).toContain("getDetoxScenarioDefinition");
-    expect(joinedSource).toContain("DetoxScenarioRuntime");
+    expect(joinedSource).toContain("DetoxAppDriver");
   });
 
   it("prints a Detox command preview without launching Detox", () => {

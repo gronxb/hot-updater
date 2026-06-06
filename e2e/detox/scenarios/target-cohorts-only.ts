@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
   name: "target-cohorts-only",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy target cohort bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -19,18 +19,18 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleId",
       },
     );
-    await scenario.typeText("enter qa cohort", "cohort-input", "qa");
-    await scenario.tap("apply qa cohort", "action-apply-cohort-input");
-    await scenario.assertText(
+    await app.typeText("enter qa cohort", "cohort-input", "qa");
+    await app.tap("apply qa cohort", "action-apply-cohort-input");
+    await app.assertText(
       "assert qa cohort applied",
       "cohort-action-result",
       "set -> qa",
     );
-    await scenario.tap(
+    await app.tap(
       "install target cohort update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait target cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -39,8 +39,8 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload target cohort update");
-    await scenario.control(
+    await app.reload("reload target cohort update");
+    await app.control(
       "wait target cohort metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -48,7 +48,7 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert target cohort launch",
       "launch-status-result",
       "Current Launch Status: STABLE",

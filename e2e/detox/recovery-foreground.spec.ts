@@ -4,13 +4,13 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { getDetoxScenarioDefinition } from "./scenarios.ts";
-import type { DetoxScenarioDriver } from "./scenarios.ts";
+import type { DetoxAppDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScenarioRuntimePath = path.join(
   repoDir,
-  "e2e/detox/scenario-runtime.js",
+  "e2e/detox/detox-app-driver.js",
 );
 
 type RecordedRecoveryCall = {
@@ -21,7 +21,7 @@ type RecordedRecoveryCall = {
 
 async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
   const calls: RecordedRecoveryCall[] = [];
-  const driver: DetoxScenarioDriver = {
+  const app: DetoxAppDriver = {
     assertText: (stage, testID) => {
       calls.push({ kind: "assertText", stage, testID });
       return Promise.resolve();
@@ -55,7 +55,7 @@ async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
       return Promise.resolve();
     },
   };
-  await getDetoxScenarioDefinition("release-ota-recovery").run(driver);
+  await getDetoxScenarioDefinition("release-ota-recovery").run(app);
   return calls;
 }
 

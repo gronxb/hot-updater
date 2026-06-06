@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
   name: "force-update-auto-reload",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy force update bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -18,11 +18,11 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
         saveResultAs: "forceBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install force update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait force update metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -31,8 +31,8 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload force update");
-    await scenario.control(
+    await app.reload("reload force update");
+    await app.control(
       "wait force update metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -40,7 +40,7 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert force update launch",
       "launch-status-result",
       "Current Launch Status: STABLE",

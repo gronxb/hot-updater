@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
   name: "bspatch-manifest-diff-fallback",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy manifest base bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -17,12 +17,12 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "previousBundleId",
       },
     );
-    await scenario.launch("launch manifest base app");
-    await scenario.tap(
+    await app.launch("launch manifest base app");
+    await app.tap(
       "install manifest base update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait manifest base metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -31,8 +31,8 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload manifest base update");
-    await scenario.control(
+    await app.reload("reload manifest base update");
+    await app.control(
       "wait manifest base metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -40,7 +40,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy manifest intermediate bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -54,7 +54,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "intermediateBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy manifest fallback bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -69,7 +69,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "assert manifest fallback patch bases",
       "/e2e/assert-bundle-patch-bases",
       {
@@ -78,12 +78,12 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         expectedBaseBundleIds: ["$intermediateBundleId"],
       },
     );
-    await scenario.launch("launch manifest fallback app");
-    await scenario.tap(
+    await app.launch("launch manifest fallback app");
+    await app.tap(
       "install manifest fallback update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait manifest fallback metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -92,8 +92,8 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload manifest fallback update");
-    await scenario.control(
+    await app.reload("reload manifest fallback update");
+    await app.control(
       "wait manifest fallback metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -101,7 +101,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert manifest diff fallback",
       "/e2e/assert-manifest-diff-applied",
       {

@@ -2,9 +2,9 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
   name: "runtime-channel-switch-reset",
-  run: async (scenario) => {
-    await scenario.launch("launch default channel");
-    await scenario.control(
+  run: async (app) => {
+    await app.launch("launch default channel");
+    await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",
       {},
@@ -12,7 +12,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
         saveResultAs: "builtInBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy runtime channel bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -26,11 +26,11 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
         saveResultAs: "runtimeBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install runtime channel update",
       "action-install-runtime-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait runtime channel metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -39,25 +39,25 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert runtime channel result",
       "channel-action-result",
       "runtime-channel -> beta",
     );
-    await scenario.reload("reload runtime channel update");
-    await scenario.assertText(
+    await app.reload("reload runtime channel update");
+    await app.assertText(
       "assert runtime channel bundle",
       "runtime-bundle-id",
       "$runtimeBundleId",
     );
-    await scenario.tap("reset runtime channel", "action-reset-runtime-channel");
-    await scenario.assertText(
+    await app.tap("reset runtime channel", "action-reset-runtime-channel");
+    await app.assertText(
       "assert runtime channel reset",
       "channel-action-result",
       "reset -> true",
     );
-    await scenario.reload("reload default channel");
-    await scenario.assertText(
+    await app.reload("reload default channel");
+    await app.assertText(
       "assert reset built-in bundle",
       "runtime-bundle-id",
       "$builtInBundleId",

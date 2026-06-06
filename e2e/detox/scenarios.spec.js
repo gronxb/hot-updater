@@ -10,7 +10,7 @@ const {
   isAndroidRun,
   launchApp,
 } = require("./detox-page.js");
-const { DetoxScenarioRuntime } = require("./scenario-runtime.js");
+const { DetoxAppDriver } = require("./detox-app-driver.js");
 
 const scenarioNames = listDetoxScenarioNames();
 
@@ -61,8 +61,8 @@ describe("HotUpdater Detox scenarios", () => {
   for (const scenarioName of scenarioNames) {
     it(scenarioName, async () => {
       const scenario = getDetoxScenarioDefinition(scenarioName);
-      const driver = new DetoxScenarioRuntime(controlClient);
-      await scenario.run(driver);
+      const app = new DetoxAppDriver(controlClient);
+      await scenario.run(app);
     });
   }
 });

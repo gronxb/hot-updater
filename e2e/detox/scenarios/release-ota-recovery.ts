@@ -2,9 +2,9 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
   name: "release-ota-recovery",
-  run: async (scenario) => {
-    await scenario.launch("launch built-in app");
-    await scenario.control(
+  run: async (app) => {
+    await app.launch("launch built-in app");
+    await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",
       {},
@@ -12,7 +12,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         saveResultAs: "builtInBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy stable bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -27,12 +27,12 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         saveResultAs: "stableBundleId",
       },
     );
-    await scenario.launch("launch stable update app");
-    await scenario.tap(
+    await app.launch("launch stable update app");
+    await app.tap(
       "install stable update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait stable metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -40,8 +40,8 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload stable bundle");
-    await scenario.control(
+    await app.reload("reload stable bundle");
+    await app.control(
       "wait stable metadata active",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -49,12 +49,12 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert stable launch",
       "launch-status-result",
       "Current Launch Status: STABLE",
     );
-    await scenario.control(
+    await app.control(
       "deploy crash bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -69,12 +69,12 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         saveResultAs: "crashBundleId",
       },
     );
-    await scenario.launch("launch crash update app");
-    await scenario.tap(
+    await app.launch("launch crash update app");
+    await app.tap(
       "install crash update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait crash metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -83,16 +83,12 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.launch("launch crash bundle");
-    await scenario.control(
-      "wait crash recovery",
-      "/e2e/wait-for-crash-recovery",
-      {
-        crashedBundleId: "$crashBundleId",
-        stableBundleId: "$stableBundleId",
-      },
-    );
-    await scenario.control(
+    await app.launch("launch crash bundle");
+    await app.control("wait crash recovery", "/e2e/wait-for-crash-recovery", {
+      crashedBundleId: "$crashBundleId",
+      stableBundleId: "$stableBundleId",
+    });
+    await app.control(
       "assert recovery launch report",
       "/e2e/assert-launch-report",
       {
@@ -100,29 +96,25 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         status: "RECOVERED",
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert recovered bundle id",
       "runtime-bundle-id",
       "$stableBundleId",
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert recovered marker",
       "runtime-scenario-marker",
       "stable-detox-recovery",
     );
-    await scenario.control(
+    await app.control(
       "assert recovered metadata active",
       "/e2e/assert-metadata-active",
       {
         bundleId: "$stableBundleId",
       },
     );
-    await scenario.control(
-      "assert crash history",
-      "/e2e/assert-crash-history",
-      {
-        bundleId: "$crashBundleId",
-      },
-    );
+    await app.control("assert crash history", "/e2e/assert-crash-history", {
+      bundleId: "$crashBundleId",
+    });
   },
 };

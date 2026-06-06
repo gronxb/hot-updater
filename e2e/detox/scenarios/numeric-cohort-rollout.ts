@@ -2,9 +2,9 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
   name: "numeric-cohort-rollout",
-  run: async (scenario) => {
-    await scenario.launch("launch built-in app");
-    await scenario.control(
+  run: async (app) => {
+    await app.launch("launch built-in app");
+    await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",
       {},
@@ -12,7 +12,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         saveResultAs: "builtInBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy numeric cohort bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -27,7 +27,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "compute rollout sample",
       "/e2e/compute-rollout-sample",
       {
@@ -40,22 +40,22 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         },
       },
     );
-    await scenario.typeText(
+    await app.typeText(
       "enter included cohort",
       "cohort-input",
       "$includedCohort",
     );
-    await scenario.tap("apply included cohort", "action-apply-cohort-input");
-    await scenario.assertText(
+    await app.tap("apply included cohort", "action-apply-cohort-input");
+    await app.assertText(
       "assert included cohort applied",
       "cohort-action-result",
       "set -> $includedCohort",
     );
-    await scenario.tap(
+    await app.tap(
       "install rollout update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait rollout metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -64,13 +64,13 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert rollout action result",
       "update-action-result",
       "current-channel",
     );
-    await scenario.reload("reload rollout update");
-    await scenario.control(
+    await app.reload("reload rollout update");
+    await app.control(
       "wait rollout metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -78,32 +78,32 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert rollout launch",
       "runtime-bundle-id",
       "$bundleId",
     );
-    await scenario.typeText(
+    await app.typeText(
       "enter excluded cohort",
       "cohort-input",
       "$excludedCohort",
     );
-    await scenario.tap("apply excluded cohort", "action-apply-cohort-input");
-    await scenario.assertText(
+    await app.tap("apply excluded cohort", "action-apply-cohort-input");
+    await app.assertText(
       "assert excluded cohort applied",
       "cohort-action-result",
       "set -> $excludedCohort",
     );
-    await scenario.tap(
+    await app.tap(
       "install excluded cohort update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "assert excluded metadata reset",
       "/e2e/assert-metadata-reset",
     );
-    await scenario.reload("reload excluded cohort state");
-    await scenario.assertText(
+    await app.reload("reload excluded cohort state");
+    await app.assertText(
       "assert excluded cohort built-in bundle",
       "runtime-bundle-id",
       "$builtInBundleId",

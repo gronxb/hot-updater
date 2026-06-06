@@ -2,9 +2,9 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
   name: "multi-asset-replacement",
-  run: async (scenario) => {
-    await scenario.launch("launch built-in app");
-    await scenario.control(
+  run: async (app) => {
+    await app.launch("launch built-in app");
+    await app.control(
       "deploy first multi-asset bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -19,11 +19,11 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         saveResultAs: "firstBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install first multi-asset update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait first multi-asset metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -32,8 +32,8 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload first multi-asset update");
-    await scenario.control(
+    await app.reload("reload first multi-asset update");
+    await app.control(
       "wait first multi-asset metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -41,7 +41,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert first multi-assets stored",
       "/e2e/assert-bundle-assets-stored",
       {
@@ -53,7 +53,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         bundleId: "$firstBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy second multi-asset bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -68,11 +68,11 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         saveResultAs: "secondBundleId",
       },
     );
-    await scenario.tap(
+    await app.tap(
       "install second multi-asset update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait second multi-asset metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -81,8 +81,8 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload second multi-asset update");
-    await scenario.control(
+    await app.reload("reload second multi-asset update");
+    await app.control(
       "wait second multi-asset metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -90,7 +90,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert multi-assets replaced",
       "/e2e/assert-multiple-assets-replaced",
       {

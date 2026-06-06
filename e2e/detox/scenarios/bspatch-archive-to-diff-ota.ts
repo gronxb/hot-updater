@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
   name: "bspatch-archive-to-diff-ota",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy archive base bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -17,12 +17,12 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "archiveBundleId",
       },
     );
-    await scenario.launch("launch archive base app");
-    await scenario.tap(
+    await app.launch("launch archive base app");
+    await app.tap(
       "install archive base update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait archive base metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -31,15 +31,15 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert first ota uses archive",
       "/e2e/assert-first-ota-uses-archive",
       {
         bundleId: "$archiveBundleId",
       },
     );
-    await scenario.reload("reload archive base update");
-    await scenario.control(
+    await app.reload("reload archive base update");
+    await app.control(
       "wait archive base metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -47,22 +47,22 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive base bundle id",
       "runtime-bundle-id",
       "$archiveBundleId",
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive base marker",
       "runtime-scenario-marker",
       "archive-base-detox",
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive base stable launch",
       "launch-status-result",
       "Current Launch Status: STABLE",
     );
-    await scenario.control(
+    await app.control(
       "deploy diff bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -78,7 +78,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "diffBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "assert archive diff bases",
       "/e2e/assert-bundle-patch-bases",
       {
@@ -86,12 +86,12 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         expectedBaseBundleIds: ["$archiveBundleId"],
       },
     );
-    await scenario.launch("launch archive diff app");
-    await scenario.tap(
+    await app.launch("launch archive diff app");
+    await app.tap(
       "install archive diff update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait archive diff metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -100,8 +100,8 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload archive diff update");
-    await scenario.control(
+    await app.reload("reload archive diff update");
+    await app.control(
       "wait archive diff metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -109,7 +109,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.control(
+    await app.control(
       "assert archive diff patch",
       "/e2e/assert-bsdiff-patch-applied",
       {
@@ -117,17 +117,17 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
         baseBundleId: "$archiveBundleId",
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive diff bundle id",
       "runtime-bundle-id",
       "$diffBundleId",
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive diff marker",
       "runtime-scenario-marker",
       "archive-diff-detox",
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert archive diff stable launch",
       "launch-status-result",
       "Current Launch Status: STABLE",

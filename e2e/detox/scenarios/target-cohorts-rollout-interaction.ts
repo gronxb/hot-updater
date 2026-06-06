@@ -3,8 +3,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
   {
     name: "target-cohorts-rollout-interaction",
-    run: async (scenario) => {
-      await scenario.control(
+    run: async (app) => {
+      await app.control(
         "deploy cohort rollout bundle",
         "/e2e/jobs/deploy-bundle",
         {
@@ -20,13 +20,13 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           saveResultAs: "bundleId",
         },
       );
-      await scenario.typeText("enter qa cohort", "cohort-input", "qa");
-      await scenario.tap("apply qa cohort", "action-apply-cohort-input");
-      await scenario.tap(
+      await app.typeText("enter qa cohort", "cohort-input", "qa");
+      await app.tap("apply qa cohort", "action-apply-cohort-input");
+      await app.tap(
         "install cohort rollout update",
         "action-install-current-channel-update",
       );
-      await scenario.control(
+      await app.control(
         "wait cohort rollout metadata pending",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -35,8 +35,8 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           verificationPending: true,
         },
       );
-      await scenario.reload("reload cohort rollout update");
-      await scenario.control(
+      await app.reload("reload cohort rollout update");
+      await app.control(
         "wait cohort rollout metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -44,7 +44,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           verificationPending: false,
         },
       );
-      await scenario.control(
+      await app.control(
         "assert cohort rollout active",
         "/e2e/assert-metadata-active",
         {

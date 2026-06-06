@@ -7,8 +7,20 @@ import { describe, expect, it } from "vitest";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxDir = path.join(repoDir, "e2e/detox");
 const scenarioDir = path.join(detoxDir, "scenarios");
-const e2eSourceDirectories = ["e2e/control-server/", "e2e/detox/"] as const;
+const e2eSourceDirectories = ["e2e/detox/"] as const;
 const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
+const legacyHarnessTerms = [
+  "DetoxScenarioRuntime",
+  "DetoxScenarioDriver",
+  "scenario-runtime",
+  "run-flow",
+  "runFlow",
+  "step.kind",
+  "stages\\s*:",
+] as const;
+const legacyHarnessPattern = new RegExp(
+  `\\b(?:${legacyHarnessTerms.join("|")})\\b`,
+);
 const expectedScenarioModuleFiles = [
   "bspatch-archive-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
@@ -65,5 +77,23 @@ describe("Detox-first source shape", () => {
     const scenarioFiles = (await fs.readdir(scenarioDir)).sort();
 
     expect(scenarioFiles).toEqual([...expectedScenarioModuleFiles].sort());
+  });
+
+  it("keeps Detox scenarios as executable app-driver specs, not translated flow data", async () => {
+    const sourceFiles = trackedE2eFiles().filter(
+      (file) => file.startsWith("e2e/detox/") && !file.includes(".spec."),
+    );
+    const sources = await Promise.all(
+      sourceFiles.map(async (file) => ({
+        file,
+        source: await fs.readFile(path.join(repoDir, file), "utf8"),
+      })),
+    );
+
+    expect(
+      sources
+        .filter(({ source }) => legacyHarnessPattern.test(source))
+        .map(({ file }) => file),
+    ).toEqual([]);
   });
 });

@@ -8,7 +8,7 @@ const {
   textFromAttributes,
 } = require("./detox-page.js");
 
-class DetoxScenarioRuntime {
+class DetoxAppDriver {
   constructor(client) {
     this.controlClient = client;
     this.stageValues = {};
@@ -169,4 +169,4 @@ class DetoxScenarioRuntime {
   }
 }
 
-module.exports = { DetoxScenarioRuntime };
+module.exports = { DetoxAppDriver };

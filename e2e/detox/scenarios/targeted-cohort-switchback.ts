@@ -2,8 +2,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
   name: "targeted-cohort-switchback",
-  run: async (scenario) => {
-    await scenario.control(
+  run: async (app) => {
+    await app.control(
       "deploy numeric cohort bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -18,7 +18,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "numericBundleId",
       },
     );
-    await scenario.control(
+    await app.control(
       "compute numeric rollout sample",
       "/e2e/compute-rollout-sample",
       {
@@ -31,7 +31,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         },
       },
     );
-    await scenario.control(
+    await app.control(
       "deploy qa cohort bundle",
       "/e2e/jobs/deploy-bundle",
       {
@@ -47,22 +47,22 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "qaBundleId",
       },
     );
-    await scenario.typeText(
+    await app.typeText(
       "enter numeric cohort",
       "cohort-input",
       "$numericIncludedCohort",
     );
-    await scenario.tap("apply numeric cohort", "action-apply-cohort-input");
-    await scenario.assertText(
+    await app.tap("apply numeric cohort", "action-apply-cohort-input");
+    await app.assertText(
       "assert numeric cohort applied",
       "cohort-action-result",
       "set -> $numericIncludedCohort",
     );
-    await scenario.tap(
+    await app.tap(
       "install numeric cohort update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait numeric cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -71,8 +71,8 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload numeric cohort update");
-    await scenario.control(
+    await app.reload("reload numeric cohort update");
+    await app.control(
       "wait numeric cohort metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -80,18 +80,18 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert numeric cohort launch",
       "runtime-bundle-id",
       "$numericBundleId",
     );
-    await scenario.typeText("enter qa cohort", "cohort-input", "qa");
-    await scenario.tap("apply qa cohort", "action-apply-cohort-input");
-    await scenario.tap(
+    await app.typeText("enter qa cohort", "cohort-input", "qa");
+    await app.tap("apply qa cohort", "action-apply-cohort-input");
+    await app.tap(
       "install qa cohort update",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait qa cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -100,8 +100,8 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload qa cohort update");
-    await scenario.control(
+    await app.reload("reload qa cohort update");
+    await app.control(
       "wait qa cohort metadata stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -109,30 +109,27 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert qa cohort launch",
       "runtime-bundle-id",
       "$qaBundleId",
     );
-    await scenario.typeText(
+    await app.typeText(
       "restore numeric cohort",
       "cohort-input",
       "$numericIncludedCohort",
     );
-    await scenario.tap(
-      "apply restored numeric cohort",
-      "action-apply-cohort-input",
-    );
-    await scenario.assertText(
+    await app.tap("apply restored numeric cohort", "action-apply-cohort-input");
+    await app.assertText(
       "assert numeric cohort restored",
       "cohort-action-result",
       "set -> $numericIncludedCohort",
     );
-    await scenario.tap(
+    await app.tap(
       "install numeric cohort rollback",
       "action-install-current-channel-update",
     );
-    await scenario.control(
+    await app.control(
       "wait numeric cohort rollback pending",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -141,8 +138,8 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await scenario.reload("reload numeric cohort rollback");
-    await scenario.control(
+    await app.reload("reload numeric cohort rollback");
+    await app.control(
       "wait numeric cohort rollback stable",
       "/e2e/jobs/wait-for-metadata",
       {
@@ -150,7 +147,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await scenario.assertText(
+    await app.assertText(
       "assert numeric cohort rollback launch",
       "runtime-bundle-id",
       "$numericBundleId",

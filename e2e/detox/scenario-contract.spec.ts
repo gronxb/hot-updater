@@ -10,7 +10,7 @@ import {
   listDetoxScenarioNames,
   resolveDetoxSuiteScenarioNames,
 } from "./scenarios.ts";
-import type { DetoxControlOptions, DetoxScenarioDriver } from "./scenarios.ts";
+import type { DetoxControlOptions, DetoxAppDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
@@ -18,7 +18,7 @@ const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const detoxScenarioRuntimePath = path.join(
   repoDir,
-  "e2e/detox/scenario-runtime.js",
+  "e2e/detox/detox-app-driver.js",
 );
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
@@ -72,7 +72,7 @@ async function recordScenarioCalls(
   scenarioName: string,
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
-  const driver: DetoxScenarioDriver = {
+  const app: DetoxAppDriver = {
     assertText: (stage, testID) => {
       calls.push({ kind: "assertText", stage, testID });
       return Promise.resolve();
@@ -106,7 +106,7 @@ async function recordScenarioCalls(
       return Promise.resolve();
     },
   };
-  await getDetoxScenarioDefinition(scenarioName).run(driver);
+  await getDetoxScenarioDefinition(scenarioName).run(app);
   return calls;
 }
 
@@ -199,7 +199,7 @@ describe("Detox scenario contract", () => {
       "const scenarioNames = listDetoxScenarioNames();",
     );
     expect(detoxJestSpec).toContain("getDetoxScenarioDefinition");
-    expect(detoxJestSpec).toContain("scenario.run(");
+    expect(detoxJestSpec).toContain("scenario.run(app)");
     expect(detoxJestSpec).not.toContain("step.kind");
     expect(detoxJestSpec).not.toContain(".todo");
   });
@@ -241,7 +241,7 @@ describe("Detox scenario contract", () => {
     const detoxRuntimeSource = await readDetoxRuntimeSource();
 
     // When: the Detox Jest lifecycle is inspected.
-    // Then: remote bundles, app state, and Android reverse TCP forwarding are cleaned per scenario.
+    // Then: remote bundles, app state, and Android reverse TCP forwarding are cleaned per app.
     expect(detoxRuntimeSource).toContain("device.reverseTcpPort");
     expect(detoxRuntimeSource).toContain("device.unreverseTcpPort");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_CONTROL_PORT");

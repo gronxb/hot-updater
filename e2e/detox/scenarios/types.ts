@@ -9,7 +9,7 @@ export type DetoxAssertTextOptions = {
   readonly ensureForeground?: boolean;
 };
 
-export type DetoxScenarioDriver = {
+export type DetoxAppDriver = {
   readonly assertText: (
     stage: string,
     testID: string,
@@ -36,5 +36,5 @@ export type DetoxScenarioDriver = {
 
 export type DetoxScenarioDefinition = {
   readonly name: string;
-  readonly run: (scenario: DetoxScenarioDriver) => Promise<void>;
+  readonly run: (app: DetoxAppDriver) => Promise<void>;
 };

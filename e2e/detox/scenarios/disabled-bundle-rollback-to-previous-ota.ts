@@ -3,8 +3,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinition =
   {
     name: "disabled-bundle-rollback-to-previous-ota",
-    run: async (scenario) => {
-      await scenario.control(
+    run: async (app) => {
+      await app.control(
         "deploy previous bundle",
         "/e2e/jobs/deploy-bundle",
         {
@@ -18,11 +18,11 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           saveResultAs: "previousBundleId",
         },
       );
-      await scenario.tap(
+      await app.tap(
         "install previous bundle",
         "action-install-current-channel-update",
       );
-      await scenario.control(
+      await app.control(
         "wait previous bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -31,8 +31,8 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: true,
         },
       );
-      await scenario.reload("reload previous bundle");
-      await scenario.control(
+      await app.reload("reload previous bundle");
+      await app.control(
         "wait previous bundle metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -40,14 +40,14 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: false,
         },
       );
-      await scenario.control(
+      await app.control(
         "assert previous bundle active",
         "/e2e/assert-metadata-active",
         {
           bundleId: "$previousBundleId",
         },
       );
-      await scenario.control(
+      await app.control(
         "deploy next bundle",
         "/e2e/jobs/deploy-bundle",
         {
@@ -61,11 +61,11 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           saveResultAs: "nextBundleId",
         },
       );
-      await scenario.tap(
+      await app.tap(
         "install next bundle",
         "action-install-current-channel-update",
       );
-      await scenario.control(
+      await app.control(
         "wait next bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -74,8 +74,8 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: true,
         },
       );
-      await scenario.reload("reload next bundle");
-      await scenario.control(
+      await app.reload("reload next bundle");
+      await app.control(
         "wait next bundle metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -83,22 +83,22 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: false,
         },
       );
-      await scenario.control(
+      await app.control(
         "assert next bundle active",
         "/e2e/assert-metadata-active",
         {
           bundleId: "$nextBundleId",
         },
       );
-      await scenario.control("disable next bundle", "/e2e/jobs/patch-bundle", {
+      await app.control("disable next bundle", "/e2e/jobs/patch-bundle", {
         bundleId: "$nextBundleId",
         enabled: false,
       });
-      await scenario.tap(
+      await app.tap(
         "install rollback to previous bundle",
         "action-install-current-channel-update",
       );
-      await scenario.control(
+      await app.control(
         "wait previous rollback metadata pending",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -107,8 +107,8 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: true,
         },
       );
-      await scenario.reload("reload previous bundle");
-      await scenario.control(
+      await app.reload("reload previous bundle");
+      await app.control(
         "wait previous rollback metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -116,7 +116,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: false,
         },
       );
-      await scenario.control(
+      await app.control(
         "assert previous ota active",
         "/e2e/assert-metadata-active",
         {

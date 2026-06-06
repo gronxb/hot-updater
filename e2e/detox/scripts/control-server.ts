@@ -88,7 +88,7 @@ export async function startDetoxControlServer(
     process.execPath,
     [
       "--experimental-strip-types",
-      path.join(repoDir, "e2e/control-server/index.ts"),
+      path.join(repoDir, "e2e/detox/control-server/index.ts"),
     ],
     {
       cwd: repoDir,

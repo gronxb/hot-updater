@@ -3,8 +3,8 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
   {
     name: "disabled-bundle-rollback-to-builtin",
-    run: async (scenario) => {
-      await scenario.control(
+    run: async (app) => {
+      await app.control(
         "capture built-in bundle",
         "/e2e/capture-built-in-bundle-id",
         {},
@@ -12,7 +12,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           saveResultAs: "builtInBundleId",
         },
       );
-      await scenario.control(
+      await app.control(
         "deploy current bundle",
         "/e2e/jobs/deploy-bundle",
         {
@@ -26,11 +26,11 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           saveResultAs: "currentBundleId",
         },
       );
-      await scenario.tap(
+      await app.tap(
         "install current bundle",
         "action-install-current-channel-update",
       );
-      await scenario.control(
+      await app.control(
         "wait current bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -39,8 +39,8 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           verificationPending: true,
         },
       );
-      await scenario.reload("reload current bundle");
-      await scenario.control(
+      await app.reload("reload current bundle");
+      await app.control(
         "wait current bundle metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
@@ -48,32 +48,28 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           verificationPending: false,
         },
       );
-      await scenario.control(
+      await app.control(
         "assert current bundle active",
         "/e2e/assert-metadata-active",
         {
           bundleId: "$currentBundleId",
         },
       );
-      await scenario.control(
-        "disable current bundle",
-        "/e2e/jobs/patch-bundle",
-        {
-          bundleId: "$currentBundleId",
-          enabled: false,
-        },
-      );
-      await scenario.tap(
+      await app.control("disable current bundle", "/e2e/jobs/patch-bundle", {
+        bundleId: "$currentBundleId",
+        enabled: false,
+      });
+      await app.tap(
         "install rollback to built-in",
         "action-install-current-channel-update",
       );
-      await scenario.reload("reload to built-in");
-      await scenario.control(
+      await app.reload("reload to built-in");
+      await app.control(
         "assert metadata reset",
         "/e2e/assert-metadata-reset",
         {},
       );
-      await scenario.assertText(
+      await app.assertText(
         "assert no crashed bundle",
         "launch-crashed-bundle-result",
         "Current Crashed Bundle ID: null",

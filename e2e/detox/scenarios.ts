@@ -16,7 +16,7 @@ import type { DetoxScenarioDefinition } from "./scenarios/types.ts";
 
 export type {
   DetoxScenarioDefinition,
-  DetoxScenarioDriver,
+  DetoxAppDriver,
 } from "./scenarios/types.ts";
 
 const detoxScenarios: readonly DetoxScenarioDefinition[] = [

@@ -15,10 +15,10 @@ import {
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
-} from "../../packages/core/src/bundleArtifacts.ts";
-import { getRolledOutNumericCohorts } from "../../packages/core/src/rollout.ts";
-import type { Bundle } from "../../packages/core/src/types.ts";
-import type { DatabasePlugin } from "../../plugins/plugin-core/src/types/index.ts";
+} from "../../../packages/core/src/bundleArtifacts.ts";
+import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
+import type { Bundle } from "../../../packages/core/src/types.ts";
+import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -174,7 +174,7 @@ type JsonSnapshot = {
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_DIR = path.resolve(__dirname, "../..");
+const REPO_DIR = path.resolve(__dirname, "../../..");
 const HOT_UPDATER_CLI_PATH = path.join(
   REPO_DIR,
   "packages/hot-updater/dist/index.mjs",
@@ -2006,7 +2006,7 @@ async function withDatabasePlugin<T>(
   callback: (databasePlugin: DatabasePlugin) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
-    (await import("../../packages/cli-tools/dist/index.mjs")) as {
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (
         options: null,
       ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
