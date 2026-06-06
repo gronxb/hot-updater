@@ -21,7 +21,6 @@ import {
   handleCaptureState,
   handleCleanup,
   handleComputeRolloutSample,
-  handleReinstallBuiltInApp,
   handleResetLocalAppState,
   handleResetRemoteBundles,
   handleRuntimeConfig,
@@ -282,10 +281,6 @@ app.post("/e2e/assert-first-ota-uses-archive", async (c) => {
   }
 
   return c.json(await handleAssertFirstOtaUsesArchive(payload.bundleId));
-});
-
-app.post("/e2e/reinstall-built-in-app", async (c) => {
-  return c.json(await handleReinstallBuiltInApp());
 });
 
 app.post("/e2e/reset-remote-bundles", async (c) => {

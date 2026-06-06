@@ -2,7 +2,6 @@ import { spawn, spawnSync } from "child_process";
 import { createHash, randomUUID } from "crypto";
 import fs from "fs";
 import fsPromises from "fs/promises";
-import type { FileHandle } from "fs/promises";
 import os from "os";
 import path from "path";
 import { setTimeout as sleep } from "timers/promises";
@@ -54,12 +53,10 @@ type DeployedBundleRecord = {
 };
 
 type SessionState = {
-  androidApkPath: string;
   appBaseUrl: string;
   appBackupPath: string | null;
   appId: string;
   appSourceFile: string;
-  builtArtifactPath: string | null;
   bootstrapResult: JobResult | null;
   builtInBundleId: string | null;
   configBackupPath: string | null;
@@ -69,14 +66,11 @@ type SessionState = {
   envSourceFile: string;
   exampleDir: string;
   initialMarker: string;
-  iosBinaryPath: string | null;
-  iosDerivedDataPath: string;
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
   platform: Platform;
   resultsDir: string;
-  reuseApp: boolean;
   storePath: string | null;
 };
 
@@ -184,8 +178,6 @@ const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
 const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const DEFAULT_ANDROID_APK_RELATIVE_PATH =
-  "android/app/build/outputs/apk/release/app-release.apk";
 const BARE_BUILD_CACHE_VERSION = 1;
 const BARE_BUILD_CACHE_LOCK_STALE_MS = 45 * 60 * 1000;
 const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
@@ -204,54 +196,9 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "packages/hot-updater/src/utils/bundleManifest.ts",
   "packages/react-native",
 ];
-const NATIVE_ARTIFACT_CACHE_VERSION = 4;
-const IOS_PODS_CACHE_VERSION = 2;
-const IOS_DERIVED_DATA_CACHE_KEY_FILE = ".hot-updater-e2e-native-cache-key";
 const E2E_MIN_BUNDLE_ID = "00000000-0000-7000-8000-000000000000";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
-const IOS_RELEASE_BUILD_SETTINGS = [
-  "ONLY_ACTIVE_ARCH=YES",
-  "COMPILER_INDEX_STORE_ENABLE=NO",
-  "GCC_GENERATE_DEBUGGING_SYMBOLS=NO",
-  "SWIFT_COMPILATION_MODE=singlefile",
-  `HOT_UPDATER_MIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`,
-];
-const BUILT_IN_BUNDLE_CACHE_INPUT_PATHS = [
-  "package.json",
-  "pnpm-lock.yaml",
-  "examples/v0.85.0/.env.hotupdater",
-  "examples/v0.85.0/App.tsx",
-  "examples/v0.85.0/index.js",
-  "examples/v0.85.0/package.json",
-  "examples/v0.85.0/babel.config.js",
-  "examples/v0.85.0/metro.config.js",
-  "packages/core",
-  "packages/react-native/package.json",
-  "packages/react-native/src",
-];
-const IOS_PODS_CACHE_INPUT_PATHS = [
-  "package.json",
-  "pnpm-lock.yaml",
-  "examples/v0.85.0/Gemfile",
-  "examples/v0.85.0/Gemfile.lock",
-  "examples/v0.85.0/package.json",
-  "examples/v0.85.0/ios/Podfile",
-  "examples/v0.85.0/ios/Podfile.lock",
-  "packages/react-native/HotUpdater.podspec",
-  "packages/react-native/package.json",
-  "packages/react-native/ios",
-];
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
-const SIGNING_PUBLIC_KEY_RELATIVE_PATH = "keys/public-key.pem";
-const FINGERPRINT_FILE = path.join(EXAMPLE_DIR, "fingerprint.json");
-const IOS_INFO_PLIST_FILE = path.join(
-  EXAMPLE_DIR,
-  "ios/HotUpdaterExample/Info.plist",
-);
-const ANDROID_STRINGS_FILE = path.join(
-  EXAMPLE_DIR,
-  "android/app/src/main/res/values/strings.xml",
-);
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
   maxHistorySize: 10,
@@ -272,11 +219,6 @@ const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
-const NATIVE_ARTIFACT_LOCK_RETRY_MS = 1_000;
-const NATIVE_ARTIFACT_LOCK_TIMEOUT_MS = 45 * 60 * 1_000;
-const NATIVE_ARTIFACT_LOCK_STALE_MS = 45 * 60 * 1_000;
-const NATIVE_ARTIFACT_RM_MAX_RETRIES = 5;
-const NATIVE_ARTIFACT_RM_RETRY_DELAY_MS = 500;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
 const E2E_APP_VERSION = "1.0";
 const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
@@ -330,12 +272,6 @@ const MULTI_ASSET_BMP_ROW_SIZE = Math.ceil((MULTI_ASSET_BMP_WIDTH * 3) / 4) * 4;
 const MULTI_ASSET_BMP_SIZE_BYTES =
   MULTI_ASSET_BMP_HEADER_SIZE +
   MULTI_ASSET_BMP_ROW_SIZE * MULTI_ASSET_BMP_HEIGHT;
-const ANDROID_E2E_ARCHITECTURES = new Set([
-  "armeabi-v7a",
-  "arm64-v8a",
-  "x86",
-  "x86_64",
-]);
 const REMOTE_BUNDLE_DELETE_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_REMOTE_BUNDLE_DELETE_ATTEMPTS || 3,
 );
@@ -416,13 +352,13 @@ function formatLogValue(value: unknown) {
   }
 }
 
-function logE2e(event: string, details?: unknown) {
+function logDetoxFixture(event: string, details?: unknown) {
   const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
 }
 
 function writeResultDiagnosticFile(fileName: string, contents: string) {
-  const filePath = path.join(session.resultsDir, fileName);
+  const filePath = path.join(fixtureSession.resultsDir, fileName);
   fs.writeFileSync(filePath, contents);
   return filePath;
 }
@@ -470,24 +406,13 @@ if (!resultsDir) {
   throw new Error("HOT_UPDATER_E2E_RESULTS_DIR is required");
 }
 
-const session: SessionState = {
-  androidApkPath: path.isAbsolute(
-    process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
-      DEFAULT_ANDROID_APK_RELATIVE_PATH,
-  )
-    ? (process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH as string)
-    : path.join(
-        EXAMPLE_DIR,
-        process.env.HOT_UPDATER_E2E_ANDROID_APK_PATH ??
-          DEFAULT_ANDROID_APK_RELATIVE_PATH,
-      ),
+const fixtureSession: SessionState = {
   appBaseUrl:
     process.env.HOT_UPDATER_E2E_APP_BASE_URL ??
     "http://localhost:3007/hot-updater",
   appBackupPath: null,
   appId,
   appSourceFile: APP_SOURCE_FILE,
-  builtArtifactPath: null,
   bootstrapResult: null,
   builtInBundleId: null,
   configBackupPath: null,
@@ -498,14 +423,6 @@ const session: SessionState = {
   exampleDir: EXAMPLE_DIR,
   initialMarker:
     platform === "ios" ? "builtin-ios-detox" : "builtin-android-detox",
-  iosBinaryPath: process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
-    ? path.isAbsolute(process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH)
-      ? process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH
-      : path.join(EXAMPLE_DIR, process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH)
-    : null,
-  iosDerivedDataPath:
-    process.env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH ??
-    "/tmp/hotupdater-v085-ios-detox",
   largeArchiveAssetBackupPath: null,
   largeArchiveAssetPath: path.join(
     EXAMPLE_DIR,
@@ -514,21 +431,20 @@ const session: SessionState = {
   multiAssetBackupPaths: {},
   platform,
   resultsDir,
-  reuseApp: process.env.HOT_UPDATER_E2E_REUSE_APP === "true",
   storePath: null,
 };
 
 const channelNamespace =
   process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
 
-function getRemoteChannel(channel: string) {
+function getFixtureChannel(channel: string) {
   return channelNamespace ? `${channelNamespace}-${channel}` : channel;
 }
 
-function getRemoteResetChannels() {
+function getFixtureResetChannels() {
   return channelNamespace
     ? E2E_REMOTE_RESET_LOGICAL_CHANNELS.map((channel) =>
-        getRemoteChannel(channel),
+        getFixtureChannel(channel),
       )
     : null;
 }
@@ -564,7 +480,7 @@ function fetchSignal(timeoutMs: number, signal?: AbortSignal) {
     : AbortSignal.timeout(timeoutMs);
 }
 
-function runCapture(
+function captureCommand(
   command: string,
   args: string[],
   options: {
@@ -595,7 +511,7 @@ function runCapture(
   return result.stdout.trim();
 }
 
-async function runLogged(
+async function runLoggedCommand(
   command: string,
   args: string[],
   options: {
@@ -734,15 +650,6 @@ async function readTextIfExists(filePath: string) {
   }
 }
 
-function nativeArtifactCacheRoot() {
-  const cacheDir = process.env.HOT_UPDATER_E2E_NATIVE_CACHE_DIR;
-  if (!cacheDir) {
-    return null;
-  }
-
-  return path.resolve(REPO_DIR, cacheDir);
-}
-
 function bareBuildCacheRoot() {
   const cacheDir = process.env.HOT_UPDATER_E2E_BARE_BUILD_CACHE_DIR;
   if (!cacheDir) {
@@ -765,19 +672,15 @@ function deployProcessLockRoot() {
   return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
 }
 
-function readOptionalFileHash(filePath: string) {
-  if (!fs.existsSync(filePath)) {
-    return "missing";
-  }
-
-  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
 function readGitTrackedInputFiles(inputPaths: string[]) {
-  const output = runCapture("git", ["ls-files", "-z", "--", ...inputPaths], {
-    cwd: REPO_DIR,
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  const output = captureCommand(
+    "git",
+    ["ls-files", "-z", "--", ...inputPaths],
+    {
+      cwd: REPO_DIR,
+      maxBuffer: 32 * 1024 * 1024,
+    },
+  );
 
   return output.split("\0").filter(Boolean).sort();
 }
@@ -811,14 +714,6 @@ function hashCacheInputFiles(inputPaths: string[]) {
   return hash.digest("hex");
 }
 
-function hashBuiltInBundleInputs() {
-  return hashCacheInputFiles(BUILT_IN_BUNDLE_CACHE_INPUT_PATHS);
-}
-
-function hashIosPodsInputs() {
-  return hashCacheInputFiles(IOS_PODS_CACHE_INPUT_PATHS);
-}
-
 function hashBareBuildInputs() {
   return hashCacheInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
 }
@@ -832,667 +727,33 @@ function bareBuildConfigFingerprint() {
   return hashText(match?.[0] ?? "missing");
 }
 
-function signingKeyFingerprint() {
-  const privateKeyPath = path.join(
-    session.exampleDir,
-    SIGNING_PRIVATE_KEY_RELATIVE_PATH,
-  );
-  const publicKeyPath = path.join(
-    session.exampleDir,
-    SIGNING_PUBLIC_KEY_RELATIVE_PATH,
-  );
-
-  return hashText(
-    JSON.stringify({
-      privateKey: readOptionalFileHash(privateKeyPath),
-      publicKey: readOptionalFileHash(publicKeyPath),
-    }),
-  );
-}
-
 async function exportNativePublicKeyFromSigningKey() {
   const privateKeyPath = path.join(
-    session.exampleDir,
+    fixtureSession.exampleDir,
     SIGNING_PRIVATE_KEY_RELATIVE_PATH,
   );
 
   if (!fs.existsSync(privateKeyPath)) {
-    logE2e("native public key export skipped", {
+    logDetoxFixture("native public key export skipped", {
       privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
       reason: "private key file missing",
     });
     return;
   }
 
-  await runLogged(
+  await runLoggedCommand(
     "node",
     [HOT_UPDATER_CLI_PATH, "keys", "export-public", "--yes"],
     {
-      cwd: session.exampleDir,
+      cwd: fixtureSession.exampleDir,
       env: RELEASE_BUNDLE_ENV,
-      logPath: path.join(session.resultsDir, "keys-export-public.log"),
+      logPath: path.join(fixtureSession.resultsDir, "keys-export-public.log"),
     },
   );
 
-  logE2e("native public key exported", {
+  logDetoxFixture("native public key exported", {
     privateKeyPath: path.relative(REPO_DIR, privateKeyPath),
   });
-}
-
-function readToolFingerprint() {
-  if (session.platform !== "ios") {
-    return null;
-  }
-
-  return runCapture("xcodebuild", ["-version"], {
-    allowFailure: true,
-  });
-}
-
-function readFingerprintJsonHash() {
-  if (!fs.existsSync(FINGERPRINT_FILE)) {
-    throw new Error(
-      `Hot Updater fingerprint file is missing: ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
-    );
-  }
-
-  const fingerprint = JSON.parse(fs.readFileSync(FINGERPRINT_FILE, "utf8")) as {
-    android?: { hash?: unknown };
-    ios?: { hash?: unknown };
-  };
-  const platformFingerprint = fingerprint[session.platform]?.hash;
-  if (typeof platformFingerprint !== "string" || !platformFingerprint.trim()) {
-    throw new Error(
-      `Hot Updater ${session.platform} fingerprint hash is missing from ${path.relative(REPO_DIR, FINGERPRINT_FILE)}`,
-    );
-  }
-  return platformFingerprint.trim();
-}
-
-function readIosEmbeddedFingerprintHash() {
-  if (!fs.existsSync(IOS_INFO_PLIST_FILE)) {
-    return null;
-  }
-
-  const source = fs.readFileSync(IOS_INFO_PLIST_FILE, "utf8");
-  const match = source.match(
-    /<key>HOT_UPDATER_FINGERPRINT_HASH<\/key>\s*<string>([^<]+)<\/string>/,
-  );
-  return match?.[1]?.trim() || null;
-}
-
-function readAndroidEmbeddedFingerprintHash() {
-  if (!fs.existsSync(ANDROID_STRINGS_FILE)) {
-    return null;
-  }
-
-  const source = fs.readFileSync(ANDROID_STRINGS_FILE, "utf8");
-  const match = source.match(
-    /<string\s+name="hot_updater_fingerprint_hash"[^>]*>([^<]+)<\/string>/,
-  );
-  return match?.[1]?.trim() || null;
-}
-
-function readEmbeddedFingerprintHash() {
-  return session.platform === "ios"
-    ? readIosEmbeddedFingerprintHash()
-    : readAndroidEmbeddedFingerprintHash();
-}
-
-function hotUpdaterNativeFingerprintHash() {
-  const fingerprintHash = readFingerprintJsonHash();
-  const embeddedHash = readEmbeddedFingerprintHash();
-
-  if (embeddedHash !== fingerprintHash) {
-    throw new Error(
-      [
-        `Hot Updater ${session.platform} fingerprint mismatch.`,
-        `fingerprint.json=${fingerprintHash}`,
-        `embedded=${embeddedHash ?? "missing"}`,
-        "Run `pnpm hot-updater fingerprint create` in examples/v0.85.0 before reusing native artifacts.",
-      ].join(" "),
-    );
-  }
-
-  return fingerprintHash;
-}
-
-function nativeArtifactCacheKey(architecture?: string | null) {
-  return hashText(
-    JSON.stringify({
-      appId: session.appId,
-      architecture: architecture ?? null,
-      builtInBundle: hashBuiltInBundleInputs(),
-      cacheVersion: NATIVE_ARTIFACT_CACHE_VERSION,
-      hotUpdaterFingerprint: hotUpdaterNativeFingerprintHash(),
-      initialMarker: session.initialMarker,
-      minBundleId: E2E_MIN_BUNDLE_ID,
-      platform: session.platform,
-      runtime: {
-        arch: process.arch,
-        platform: process.platform,
-      },
-      signingKey: signingKeyFingerprint(),
-      tool: readToolFingerprint(),
-    }),
-  );
-}
-
-function nativeArtifactCachePaths(key: string) {
-  const root = nativeArtifactCacheRoot();
-  if (!root) {
-    return null;
-  }
-
-  const entryDir = path.join(root, session.platform, key);
-  return {
-    artifactPath: path.join(
-      entryDir,
-      session.platform === "ios" ? "HotUpdaterExample.app" : "app-release.apk",
-    ),
-    entryDir,
-    manifestPath: path.join(entryDir, "manifest.json"),
-    root,
-  };
-}
-
-function iosPodsCacheKey() {
-  return hashText(
-    JSON.stringify({
-      cacheVersion: IOS_PODS_CACHE_VERSION,
-      inputHash: hashIosPodsInputs(),
-      platform: "ios",
-      runtime: {
-        arch: process.arch,
-        platform: process.platform,
-      },
-      tool: readToolFingerprint(),
-    }),
-  );
-}
-
-function iosPodsCachePaths(key: string) {
-  const root = nativeArtifactCacheRoot();
-  if (!root) {
-    return null;
-  }
-
-  const entryDir = path.join(root, "ios-pods", key);
-  return {
-    entryDir,
-    manifestPath: path.join(entryDir, "manifest.json"),
-    podsPath: path.join(entryDir, "Pods"),
-    root,
-  };
-}
-
-function reuseAppInstallMarkerPath(cacheKey: string) {
-  return path.join(
-    EXAMPLE_DIR,
-    "e2e/.reuse-app-installs",
-    `${session.platform}-${hashText(deviceId as string).slice(0, 12)}-${cacheKey}`,
-  );
-}
-
-async function hasReuseAppInstallMarker(cacheKey: string) {
-  return fs.existsSync(reuseAppInstallMarkerPath(cacheKey));
-}
-
-async function writeReuseAppInstallMarker(cacheKey: string) {
-  const markerPath = reuseAppInstallMarkerPath(cacheKey);
-  await fsPromises.mkdir(path.dirname(markerPath), { recursive: true });
-  await fsPromises.writeFile(markerPath, `${new Date().toISOString()}\n`);
-}
-
-async function copyNativeArtifact(sourcePath: string, targetPath: string) {
-  await removeNativeArtifactPath(targetPath);
-  await fsPromises.mkdir(path.dirname(targetPath), { recursive: true });
-  if (process.platform === "darwin") {
-    const result = spawnSync("cp", ["-cR", sourcePath, targetPath], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      return;
-    }
-    logE2e("clone copy failed; falling back to fs copy", {
-      error: result.stderr.trim(),
-      sourcePath,
-      targetPath,
-    });
-  }
-  await fsPromises.cp(sourcePath, targetPath, {
-    errorOnExist: false,
-    force: true,
-    recursive: true,
-  });
-}
-
-async function removeNativeArtifactPath(targetPath: string) {
-  await fsPromises.rm(targetPath, {
-    force: true,
-    maxRetries: NATIVE_ARTIFACT_RM_MAX_RETRIES,
-    recursive: true,
-    retryDelay: NATIVE_ARTIFACT_RM_RETRY_DELAY_MS,
-  });
-}
-
-async function* walkFiles(dir: string): AsyncGenerator<string> {
-  const entries = await fsPromises.readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const entryPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      yield* walkFiles(entryPath);
-    } else if (entry.isFile()) {
-      yield entryPath;
-    }
-  }
-}
-
-function shouldRelocateIosPodsFile(filePath: string) {
-  return [".json", ".pbxproj", ".xcconfig", ".yaml", ".yml"].includes(
-    path.extname(filePath),
-  );
-}
-
-async function relocateIosPodsAbsolutePaths(podsPath: string) {
-  if (!fs.existsSync(podsPath)) {
-    return;
-  }
-
-  const reactCorePrebuiltPath = path.join(podsPath, "React-Core-prebuilt");
-  const reactVfsPath = path.join(reactCorePrebuiltPath, "React-VFS.yaml");
-  let replacements = 0;
-  let files = 0;
-
-  for await (const filePath of walkFiles(podsPath)) {
-    if (!shouldRelocateIosPodsFile(filePath)) {
-      continue;
-    }
-
-    const text = await fsPromises.readFile(filePath, "utf8");
-    const relocated = text
-      .replaceAll(
-        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\/React-VFS\.yaml/g,
-        reactVfsPath,
-      )
-      .replaceAll(
-        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt\//g,
-        `${reactCorePrebuiltPath}/`,
-      );
-    if (relocated === text) {
-      continue;
-    }
-
-    files += 1;
-    replacements +=
-      text.split(
-        /\/[^\s"']*\/examples\/v0\.85\.0\/ios\/Pods\/React-Core-prebuilt/g,
-      ).length - 1;
-    await fsPromises.writeFile(filePath, relocated);
-  }
-
-  if (replacements > 0) {
-    logE2e("ios pods absolute paths relocated", {
-      files,
-      podsPath,
-      replacements,
-    });
-  }
-}
-
-async function restoreNativeArtifactFromCache(args: {
-  architecture?: string | null;
-  key?: string;
-  targetPath: string;
-}) {
-  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
-  const paths = nativeArtifactCachePaths(key);
-  if (!paths) {
-    return false;
-  }
-
-  if (
-    !fs.existsSync(paths.manifestPath) ||
-    !fs.existsSync(paths.artifactPath)
-  ) {
-    logE2e("native artifact cache miss", {
-      key: key.slice(0, 16),
-      platform: session.platform,
-      root: paths.root,
-    });
-    return false;
-  }
-
-  await copyNativeArtifact(paths.artifactPath, args.targetPath);
-  logE2e("native artifact cache hit", {
-    key: key.slice(0, 16),
-    platform: session.platform,
-    source: paths.artifactPath,
-  });
-  return true;
-}
-
-async function saveNativeArtifactToCache(args: {
-  architecture?: string | null;
-  key?: string;
-  sourcePath: string;
-}) {
-  if (!fs.existsSync(args.sourcePath)) {
-    return;
-  }
-
-  const key = args.key ?? nativeArtifactCacheKey(args.architecture);
-  const paths = nativeArtifactCachePaths(key);
-  if (!paths) {
-    return;
-  }
-
-  const tempArtifactPath = `${paths.artifactPath}.tmp-${process.pid}-${Date.now()}`;
-  await fsPromises.mkdir(paths.entryDir, { recursive: true });
-  await copyNativeArtifact(args.sourcePath, tempArtifactPath);
-  await removeNativeArtifactPath(paths.artifactPath);
-  await fsPromises.rename(tempArtifactPath, paths.artifactPath);
-  await fsPromises.writeFile(
-    paths.manifestPath,
-    `${JSON.stringify(
-      {
-        architecture: args.architecture ?? null,
-        createdAt: new Date().toISOString(),
-        key,
-        platform: session.platform,
-        sourcePath: args.sourcePath,
-        version: NATIVE_ARTIFACT_CACHE_VERSION,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  logE2e("native artifact cache saved", {
-    key: key.slice(0, 16),
-    platform: session.platform,
-    target: paths.artifactPath,
-  });
-}
-
-async function restoreIosPodsFromCache(key: string) {
-  const paths = iosPodsCachePaths(key);
-  if (!paths) {
-    return false;
-  }
-
-  const targetPath = path.join(session.exampleDir, "ios/Pods");
-  const manifestPath = path.join(targetPath, "Manifest.lock");
-  const podfileLockPath = path.join(session.exampleDir, "ios/Podfile.lock");
-  if (!fs.existsSync(paths.manifestPath) || !fs.existsSync(paths.podsPath)) {
-    logE2e("ios pods cache miss", {
-      key: key.slice(0, 16),
-      root: paths.root,
-    });
-    return false;
-  }
-
-  await copyNativeArtifact(paths.podsPath, targetPath);
-  await relocateIosPodsAbsolutePaths(targetPath);
-  if (
-    !fs.existsSync(manifestPath) ||
-    !fs.existsSync(podfileLockPath) ||
-    (await fsPromises.readFile(manifestPath, "utf8")) !==
-      (await fsPromises.readFile(podfileLockPath, "utf8"))
-  ) {
-    await removeNativeArtifactPath(targetPath);
-    logE2e("ios pods cache manifest mismatch", {
-      key: key.slice(0, 16),
-      manifestPath,
-      podfileLockPath,
-    });
-    return false;
-  }
-  logE2e("ios pods cache hit", {
-    key: key.slice(0, 16),
-    source: paths.podsPath,
-  });
-  return true;
-}
-
-async function saveIosPodsToCache(key: string) {
-  const paths = iosPodsCachePaths(key);
-  const sourcePath = path.join(session.exampleDir, "ios/Pods");
-  if (!paths || !fs.existsSync(sourcePath)) {
-    return;
-  }
-
-  const tempPodsPath = `${paths.podsPath}.tmp-${process.pid}-${Date.now()}`;
-  await fsPromises.mkdir(paths.entryDir, { recursive: true });
-  await copyNativeArtifact(sourcePath, tempPodsPath);
-  await removeNativeArtifactPath(paths.podsPath);
-  await fsPromises.rename(tempPodsPath, paths.podsPath);
-  await fsPromises.writeFile(
-    paths.manifestPath,
-    `${JSON.stringify(
-      {
-        createdAt: new Date().toISOString(),
-        key,
-        platform: "ios",
-        sourcePath,
-        version: IOS_PODS_CACHE_VERSION,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  logE2e("ios pods cache saved", {
-    key: key.slice(0, 16),
-    target: paths.podsPath,
-  });
-}
-
-async function readNativeArtifactLock(lockPath: string) {
-  try {
-    const [pidLine] = (await fsPromises.readFile(lockPath, "utf8")).split("\n");
-    const pid = Number.parseInt(pidLine ?? "", 10);
-    if (!Number.isInteger(pid) || pid <= 0) {
-      return null;
-    }
-
-    return {
-      pid,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function isProcessRunning(pid: number) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
-
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function removeStaleNativeArtifactLock(lockPath: string) {
-  const [lock, stats] = await Promise.all([
-    readNativeArtifactLock(lockPath),
-    fsPromises.stat(lockPath).catch(() => null),
-  ]);
-  const ageMs = stats ? Date.now() - stats.mtimeMs : Number.POSITIVE_INFINITY;
-  const isStale =
-    lock === null
-      ? ageMs > NATIVE_ARTIFACT_LOCK_STALE_MS
-      : !isProcessRunning(lock.pid);
-
-  if (!isStale) {
-    return false;
-  }
-
-  await fsPromises.rm(lockPath, { force: true });
-  logE2e("native artifact cache stale lock removed", {
-    ageMs,
-    lockPath,
-    pid: lock?.pid ?? null,
-  });
-  return true;
-}
-
-async function withE2ECacheLock<T>({
-  callback,
-  key,
-  label,
-  lockName,
-  root,
-}: {
-  callback: () => Promise<T>;
-  key: string;
-  label: string;
-  lockName: string;
-  root: string;
-}) {
-  await fsPromises.mkdir(root, { recursive: true });
-  const lockPath = path.join(root, lockName);
-  const deadline = Date.now() + NATIVE_ARTIFACT_LOCK_TIMEOUT_MS;
-
-  while (true) {
-    let lockHandle: FileHandle | null = null;
-    try {
-      lockHandle = await fsPromises.open(lockPath, "wx");
-      await lockHandle.writeFile(
-        `${process.pid}\n${new Date().toISOString()}\n`,
-      );
-      logE2e("e2e cache lock acquired", {
-        key: key.slice(0, 16),
-        label,
-        platform: session.platform,
-      });
-      return await callback();
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      if (await removeStaleNativeArtifactLock(lockPath)) {
-        continue;
-      }
-
-      if (Date.now() > deadline) {
-        throw new Error(`Timed out waiting for E2E cache lock ${lockPath}`);
-      }
-      await sleep(NATIVE_ARTIFACT_LOCK_RETRY_MS);
-    } finally {
-      if (lockHandle) {
-        await lockHandle.close();
-        await fsPromises.rm(lockPath, { force: true });
-      }
-    }
-  }
-}
-
-async function buildNativeArtifactWithCacheLock(args: {
-  architecture?: string | null;
-  build: () => Promise<void>;
-  key: string;
-  logLabel: string;
-  targetPath: string;
-}) {
-  const paths = nativeArtifactCachePaths(args.key);
-  if (!paths) {
-    await args.build();
-    return;
-  }
-
-  await fsPromises.mkdir(paths.root, { recursive: true });
-  const lockPath = path.join(
-    paths.root,
-    `${session.platform}-${args.key}.lock`,
-  );
-  const deadline = Date.now() + NATIVE_ARTIFACT_LOCK_TIMEOUT_MS;
-
-  while (true) {
-    let lockHandle: FileHandle | null = null;
-    try {
-      lockHandle = await fsPromises.open(lockPath, "wx");
-      await lockHandle.writeFile(
-        `${process.pid}\n${new Date().toISOString()}\n`,
-      );
-      logE2e("native artifact cache lock acquired", {
-        key: args.key.slice(0, 16),
-        label: args.logLabel,
-        platform: session.platform,
-      });
-
-      const restored = await restoreNativeArtifactFromCache({
-        architecture: args.architecture,
-        key: args.key,
-        targetPath: args.targetPath,
-      });
-      if (!restored) {
-        if (session.platform === "android") {
-          await withE2ECacheLock({
-            callback: args.build,
-            key: args.key,
-            label: `${args.logLabel}-host-build`,
-            lockName: "android-host-build.lock",
-            root: paths.root,
-          });
-        } else {
-          await args.build();
-        }
-        await saveNativeArtifactToCache({
-          architecture: args.architecture,
-          key: args.key,
-          sourcePath: args.targetPath,
-        });
-      }
-      return;
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      if (await removeStaleNativeArtifactLock(lockPath)) {
-        continue;
-      }
-
-      const restored = await restoreNativeArtifactFromCache({
-        architecture: args.architecture,
-        key: args.key,
-        targetPath: args.targetPath,
-      });
-      if (restored) {
-        logE2e("native artifact cache filled by concurrent process", {
-          key: args.key.slice(0, 16),
-          label: args.logLabel,
-          platform: session.platform,
-        });
-        return;
-      }
-
-      if (Date.now() > deadline) {
-        throw new Error(
-          `Timed out waiting for native artifact cache lock ${lockPath}`,
-        );
-      }
-      await sleep(NATIVE_ARTIFACT_LOCK_RETRY_MS);
-    } finally {
-      if (lockHandle) {
-        await lockHandle.close();
-        await fsPromises.rm(lockPath, { force: true });
-      }
-    }
-  }
 }
 
 async function backupFile(filePath: string) {
@@ -1634,8 +895,8 @@ async function ensureMultiAssetFixtures(marker: string) {
   for (const fixture of MULTI_ASSET_FIXTURES) {
     const assetPath = path.join(EXAMPLE_DIR, fixture.relativePath);
 
-    if (!(fixture.relativePath in session.multiAssetBackupPaths)) {
-      session.multiAssetBackupPaths[fixture.relativePath] =
+    if (!(fixture.relativePath in fixtureSession.multiAssetBackupPaths)) {
+      fixtureSession.multiAssetBackupPaths[fixture.relativePath] =
         await backupFile(assetPath);
     }
 
@@ -1646,7 +907,7 @@ async function ensureMultiAssetFixtures(marker: string) {
     );
   }
 
-  logE2e("multi asset fixtures ready", {
+  logDetoxFixture("multi asset fixtures ready", {
     marker,
     paths: MULTI_ASSET_FIXTURES.map((fixture) => fixture.relativePath),
     sizeBytes: MULTI_ASSET_BMP_SIZE_BYTES,
@@ -1656,7 +917,7 @@ async function ensureMultiAssetFixtures(marker: string) {
 async function restoreMultiAssetFixtures() {
   for (const fixture of MULTI_ASSET_FIXTURES) {
     await restoreFile(
-      session.multiAssetBackupPaths[fixture.relativePath] ?? null,
+      fixtureSession.multiAssetBackupPaths[fixture.relativePath] ?? null,
       path.join(EXAMPLE_DIR, fixture.relativePath),
     );
   }
@@ -1664,7 +925,7 @@ async function restoreMultiAssetFixtures() {
 
 async function ensureLargeArchiveAsset() {
   const existingStats = await fsPromises
-    .stat(session.largeArchiveAssetPath)
+    .stat(fixtureSession.largeArchiveAssetPath)
     .catch(() => null);
 
   if (
@@ -1674,15 +935,15 @@ async function ensureLargeArchiveAsset() {
     return;
   }
 
-  if (!session.largeArchiveAssetBackupPath) {
-    session.largeArchiveAssetBackupPath = await backupFile(
-      session.largeArchiveAssetPath,
+  if (!fixtureSession.largeArchiveAssetBackupPath) {
+    fixtureSession.largeArchiveAssetBackupPath = await backupFile(
+      fixtureSession.largeArchiveAssetPath,
     );
   }
 
-  await writeDeterministicBmpFile(session.largeArchiveAssetPath);
-  logE2e("large archive asset ready", {
-    path: path.relative(REPO_DIR, session.largeArchiveAssetPath),
+  await writeDeterministicBmpFile(fixtureSession.largeArchiveAssetPath);
+  logDetoxFixture("large archive asset ready", {
+    path: path.relative(REPO_DIR, fixtureSession.largeArchiveAssetPath),
     sizeBytes: LARGE_ARCHIVE_ASSET_SIZE_BYTES,
   });
 }
@@ -1716,7 +977,10 @@ async function applyAppScenario({
   mode: DeployMode;
   safeBundleIds: string[];
 }) {
-  const source = await fsPromises.readFile(session.appSourceFile, "utf8");
+  const source = await fsPromises.readFile(
+    fixtureSession.appSourceFile,
+    "utf8",
+  );
 
   if (!MARKER_PATTERN.test(source)) {
     throw new Error("Failed to locate E2E scenario marker in App.tsx");
@@ -1778,13 +1042,13 @@ async function applyAppScenario({
     .replace(CRASH_GUARD_PATTERN, crashGuardSource)
     .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);
 
-  await fsPromises.writeFile(session.appSourceFile, nextSource);
-  logE2e("app scenario applied", {
+  await fsPromises.writeFile(fixtureSession.appSourceFile, nextSource);
+  logDetoxFixture("app scenario applied", {
     bundleProfile,
     marker,
     mode,
     safeBundleIds,
-    sourceFile: path.relative(REPO_DIR, session.appSourceFile),
+    sourceFile: path.relative(REPO_DIR, fixtureSession.appSourceFile),
   });
 }
 
@@ -1795,7 +1059,10 @@ async function applyDeployConfig({
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
 }) {
-  const source = await fsPromises.readFile(session.configSourceFile, "utf8");
+  const source = await fsPromises.readFile(
+    fixtureSession.configSourceFile,
+    "utf8",
+  );
 
   if (!AUTO_PATCH_CONFIG_PATTERN.test(source)) {
     throw new Error(
@@ -1837,15 +1104,15 @@ async function applyDeployConfig({
   );
 
   await fsPromises.writeFile(
-    session.configSourceFile,
+    fixtureSession.configSourceFile,
     sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
   );
-  logE2e("deploy config applied", {
+  logDetoxFixture("deploy config applied", {
     deployBaseUrl,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
     resetMetroCache: false,
-    sourceFile: path.relative(REPO_DIR, session.configSourceFile),
+    sourceFile: path.relative(REPO_DIR, fixtureSession.configSourceFile),
   });
 }
 
@@ -1964,18 +1231,18 @@ function parseHotUpdaterCliJson<T>(label: string, output: string): T {
 }
 
 function runHotUpdaterCliCapture(args: string[]) {
-  logE2e("hot-updater cli request", {
+  logDetoxFixture("hot-updater cli request", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
     controlBaseUrl: getControllerReachableAppBaseUrl(),
   });
 
-  const output = runCapture("node", [HOT_UPDATER_CLI_PATH, ...args], {
-    cwd: session.exampleDir,
+  const output = captureCommand("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: fixtureSession.exampleDir,
     env: getHotUpdaterControlEnv(),
     maxBuffer: 16 * 1024 * 1024,
   });
 
-  logE2e("hot-updater cli response", {
+  logDetoxFixture("hot-updater cli response", {
     command: args.join(" "),
     stdout: output,
   });
@@ -1984,20 +1251,20 @@ function runHotUpdaterCliCapture(args: string[]) {
 }
 
 async function runHotUpdaterCliLogged(args: string[], logName: string) {
-  const logPath = path.join(session.resultsDir, logName);
-  logE2e("hot-updater cli start", {
+  const logPath = path.join(fixtureSession.resultsDir, logName);
+  logDetoxFixture("hot-updater cli start", {
     command: `node ${[HOT_UPDATER_CLI_PATH, ...args].join(" ")}`,
     controlBaseUrl: getControllerReachableAppBaseUrl(),
     logPath: path.relative(REPO_DIR, logPath),
   });
 
-  await runLogged("node", [HOT_UPDATER_CLI_PATH, ...args], {
-    cwd: session.exampleDir,
+  await runLoggedCommand("node", [HOT_UPDATER_CLI_PATH, ...args], {
+    cwd: fixtureSession.exampleDir,
     env: getHotUpdaterControlEnv(),
     logPath,
   });
 
-  logE2e("hot-updater cli done", {
+  logDetoxFixture("hot-updater cli done", {
     command: args.join(" "),
   });
 }
@@ -2015,7 +1282,7 @@ async function withDatabasePlugin<T>(
   let databasePlugin: DatabasePlugin | null = null;
 
   try {
-    process.chdir(session.exampleDir);
+    process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       databasePlugin = await config.database();
@@ -2027,7 +1294,7 @@ async function withDatabasePlugin<T>(
   }
 }
 
-async function fetchBundlesPage(args: {
+async function fetchProviderBundlesPage(args: {
   channel?: string;
   limit: number;
   offset: number;
@@ -2041,7 +1308,7 @@ async function fetchBundlesPage(args: {
     "list",
     "--json",
     "-p",
-    session.platform,
+    fixtureSession.platform,
     "--limit",
     String(args.limit),
   ];
@@ -2055,11 +1322,11 @@ async function fetchBundlesPage(args: {
   );
 
   const bundles = normalizeBundleListResponse(response);
-  logE2e("hot-updater cli bundle list", {
+  logDetoxFixture("hot-updater cli bundle list", {
     channel: args.channel ?? null,
     count: bundles.data.length,
     limit: args.limit,
-    platform: session.platform,
+    platform: fixtureSession.platform,
     total: bundles.pagination.total,
   });
 
@@ -2067,14 +1334,14 @@ async function fetchBundlesPage(args: {
 }
 
 async function isBundleVisible(bundleId: string) {
-  const bundles = await fetchBundlesPage({
+  const bundles = await fetchProviderBundlesPage({
     limit: 100,
     offset: 0,
   });
   return bundles.data.some((bundle) => bundle.id === bundleId);
 }
 
-async function fetchBundleById(bundleId: string) {
+async function fetchProviderBundleById(bundleId: string) {
   const bundle = parseHotUpdaterCliJson<Bundle>(
     "bundle show",
     runHotUpdaterCliCapture(["bundle", "show", bundleId, "--json"]),
@@ -2084,7 +1351,7 @@ async function fetchBundleById(bundleId: string) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logE2e("hot-updater cli bundle show", {
+  logDetoxFixture("hot-updater cli bundle show", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
@@ -2094,7 +1361,7 @@ async function fetchBundleById(bundleId: string) {
   return bundle;
 }
 
-async function fetchBundleByIdFromDatabase(bundleId: string) {
+async function fetchProviderBundleByIdFromDatabase(bundleId: string) {
   const bundle = await withDatabasePlugin((databasePlugin) =>
     databasePlugin.getBundleById(bundleId),
   );
@@ -2103,12 +1370,12 @@ async function fetchBundleByIdFromDatabase(bundleId: string) {
     throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
   }
 
-  logE2e("database bundle get", {
+  logDetoxFixture("database bundle get", {
     bundleId: bundle.id,
     channel: bundle.channel,
     enabled: bundle.enabled,
     patchBaseBundleIds: getBundlePatchBaseBundleIds(bundle),
-    platform: session.platform,
+    platform: fixtureSession.platform,
     shouldForceUpdate: bundle.shouldForceUpdate ?? false,
   });
 
@@ -2125,7 +1392,7 @@ async function fetchEnabledBundlesForRemoteReset(
     const pages: BundleListPage[] = [];
     for (const channel of channelList) {
       pages.push(
-        await fetchBundlesPage({
+        await fetchProviderBundlesPage({
           channel,
           limit,
           offset: 0,
@@ -2143,17 +1410,17 @@ async function fetchEnabledBundlesForRemoteReset(
   }
 
   const enabledBundles = bundles.filter((bundle) => bundle.enabled);
-  logE2e("provider enabled bundle list", {
+  logDetoxFixture("provider enabled bundle list", {
     channels,
     count: enabledBundles.length,
     limit,
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 
   return enabledBundles;
 }
 
-async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
+async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
   const definedPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined),
   ) as Partial<Bundle>;
@@ -2165,7 +1432,7 @@ async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
         throw new Error(`No bundle with id ${bundleId}.`);
       }
 
-      await databasePlugin.updateBundle(bundleId, definedPatch);
+      await databasePlugin.updateFixtureBundle(bundleId, definedPatch);
       await databasePlugin.commitBundle();
 
       const refetched = await databasePlugin.getBundleById(bundleId);
@@ -2188,7 +1455,7 @@ async function patchBundle(bundleId: string, patch: Partial<Bundle>) {
     });
   }
 
-  logE2e("hot-updater direct bundle patch", {
+  logDetoxFixture("hot-updater direct bundle patch", {
     bundleId,
     patch: definedPatch,
   });
@@ -2276,7 +1543,7 @@ async function resolveAutoPatchBundleDiff(
     attempt <= AUTO_PATCH_METADATA_WAIT_ATTEMPTS;
     attempt += 1
   ) {
-    const bundle = await fetchBundleByIdFromDatabase(bundleId);
+    const bundle = await fetchProviderBundleByIdFromDatabase(bundleId);
     const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
     const matchingPatch = getBundlePatch(bundle, baseBundleId);
     const patchBaseBundleId =
@@ -2305,13 +1572,13 @@ async function resolveAutoPatchBundleDiff(
       patchFileHash &&
       patchStorageUri
     ) {
-      logE2e("auto patch metadata resolved", {
+      logDetoxFixture("auto patch metadata resolved", {
         attempt,
         baseBundleId,
         bundleId,
         patchAssetPath,
         patchStorageUri,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
 
       return {
@@ -2338,7 +1605,7 @@ async function resolveAutoPatchBundleDiff(
   );
 }
 
-async function deleteBundle(bundleId: string) {
+async function deleteProviderBundle(bundleId: string) {
   let lastError: unknown = null;
 
   for (
@@ -2360,7 +1627,7 @@ async function deleteBundle(bundleId: string) {
     } catch (error) {
       lastError = error;
       const logContents = await readTextIfExists(
-        path.join(session.resultsDir, logName),
+        path.join(fixtureSession.resultsDir, logName),
       );
       if (!DELETE_VERIFY_STILL_EXISTS_PATTERN.test(logContents)) {
         throw error;
@@ -2368,19 +1635,19 @@ async function deleteBundle(bundleId: string) {
 
       const stillVisible = await isBundleVisible(bundleId);
       if (!stillVisible) {
-        logE2e("bundle delete verified after CLI retryable failure", {
+        logDetoxFixture("bundle delete verified after CLI retryable failure", {
           attempt,
           bundleId,
-          platform: session.platform,
+          platform: fixtureSession.platform,
         });
         return;
       }
 
       if (attempt < REMOTE_BUNDLE_DELETE_ATTEMPTS) {
-        logE2e("bundle delete verification still pending", {
+        logDetoxFixture("bundle delete verification still pending", {
           attempt,
           bundleId,
-          platform: session.platform,
+          platform: fixtureSession.platform,
           retryDelayMs: REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS,
         });
         await sleep(REMOTE_BUNDLE_DELETE_RETRY_DELAY_MS);
@@ -2399,7 +1666,7 @@ async function fetchRemainingRemoteBundle(
     return (
       await Promise.all(
         (resetChannels ?? [undefined]).map((channel) =>
-          fetchBundlesPage({
+          fetchProviderBundlesPage({
             channel,
             limit: 1,
             offset: 0,
@@ -2412,12 +1679,12 @@ async function fetchRemainingRemoteBundle(
   return (await fetchEnabledBundlesForRemoteReset(1, resetChannels))[0];
 }
 
-async function clearRemoteBundles({
+async function clearProviderBundles({
   mode = "delete",
 }: { mode?: "delete" | "disable" } = {}) {
   const clearedBundleIds: string[] = [];
   const clearedIds = new Set<string>();
-  const resetChannels = getRemoteResetChannels();
+  const resetChannels = getFixtureResetChannels();
 
   while (true) {
     const nextBatch =
@@ -2428,7 +1695,7 @@ async function clearRemoteBundles({
         : (
             await Promise.all(
               (resetChannels ?? [undefined]).map((channel) =>
-                fetchBundlesPage({
+                fetchProviderBundlesPage({
                   channel,
                   limit: 100,
                   offset: 0,
@@ -2449,7 +1716,7 @@ async function clearRemoteBundles({
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
           (bundle) =>
-            databasePlugin.updateBundle(bundle.id, { enabled: false }),
+            databasePlugin.updateFixtureBundle(bundle.id, { enabled: false }),
         );
         await databasePlugin.commitBundle();
 
@@ -2473,7 +1740,7 @@ async function clearRemoteBundles({
       }
     } else {
       for (const bundle of nextBatch) {
-        await deleteBundle(bundle.id);
+        await deleteProviderBundle(bundle.id);
         clearedIds.add(bundle.id);
         clearedBundleIds.push(bundle.id);
       }
@@ -2498,35 +1765,35 @@ async function clearRemoteBundles({
       break;
     }
 
-    logE2e("remote-bundles reset verification pending", {
+    logDetoxFixture("remote-bundles reset verification pending", {
       attempt,
       bundleId: remainingActiveBundle.id,
       channels: resetChannels,
       mode,
-      platform: session.platform,
+      platform: fixtureSession.platform,
       retryDelayMs: REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS,
     });
 
     if (mode === "disable") {
-      await patchBundle(remainingActiveBundle.id, { enabled: false });
+      await patchProviderBundle(remainingActiveBundle.id, { enabled: false });
     } else {
-      await deleteBundle(remainingActiveBundle.id);
+      await deleteProviderBundle(remainingActiveBundle.id);
     }
     await sleep(REMOTE_BUNDLE_CLEAR_VERIFY_DELAY_MS);
   }
 
   if (remainingActiveBundle) {
     throw new Error(
-      `Failed to clear remote bundles for platform ${session.platform}; bundle ${remainingActiveBundle.id} is still ${mode === "delete" ? "visible" : "enabled"} after reset`,
+      `Failed to clear remote bundles for platform ${fixtureSession.platform}; bundle ${remainingActiveBundle.id} is still ${mode === "delete" ? "visible" : "enabled"} after reset`,
     );
   }
 
-  logE2e("remote-bundles reset", {
+  logDetoxFixture("remote-bundles reset", {
     channels: resetChannels,
     clearedBundleIds,
     clearedCount: clearedBundleIds.length,
     mode,
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 }
 
@@ -2539,7 +1806,7 @@ function updateTrackedBundleRecord(
     targetCohorts?: string[] | null;
   },
 ) {
-  const record = session.deployedBundles.find(
+  const record = fixtureSession.deployedBundles.find(
     (entry) => entry.bundleId === bundleId,
   );
 
@@ -2565,33 +1832,33 @@ function updateTrackedBundleRecord(
 }
 
 function ensureStorePath() {
-  if (session.storePath) {
-    return session.storePath;
+  if (fixtureSession.storePath) {
+    return fixtureSession.storePath;
   }
 
-  if (session.platform === "ios") {
-    const appDataDir = runCapture("xcrun", [
+  if (fixtureSession.platform === "ios") {
+    const appDataDir = captureCommand("xcrun", [
       "simctl",
       "get_app_container",
       deviceId as string,
-      session.appId,
+      fixtureSession.appId,
       "data",
     ]);
-    session.storePath = path.join(appDataDir, "Documents/bundle-store");
-    return session.storePath;
+    fixtureSession.storePath = path.join(appDataDir, "Documents/bundle-store");
+    return fixtureSession.storePath;
   }
 
-  session.storePath = `/data/data/${session.appId}/files/bundle-store`;
-  return session.storePath;
+  fixtureSession.storePath = `/data/data/${fixtureSession.appId}/files/bundle-store`;
+  return fixtureSession.storePath;
 }
 
 async function clearIosLocalBundleState() {
-  runCapture(
+  captureCommand(
     "xcrun",
-    ["simctl", "terminate", deviceId as string, session.appId],
+    ["simctl", "terminate", deviceId as string, fixtureSession.appId],
     { allowFailure: true },
   );
-  runCapture(
+  captureCommand(
     "xcrun",
     [
       "simctl",
@@ -2599,16 +1866,16 @@ async function clearIosLocalBundleState() {
       deviceId as string,
       "defaults",
       "delete",
-      session.appId,
+      fixtureSession.appId,
     ],
     { allowFailure: true },
   );
 
-  const appDataDir = runCapture("xcrun", [
+  const appDataDir = captureCommand("xcrun", [
     "simctl",
     "get_app_container",
     deviceId as string,
-    session.appId,
+    fixtureSession.appId,
     "data",
   ]);
   const documentsDir = path.join(appDataDir, "Documents");
@@ -2642,376 +1909,32 @@ async function clearIosLocalBundleState() {
     }
   }
 
-  logE2e("ios local bundle state reset", {
+  logDetoxFixture("ios local bundle state reset", {
     documentsDir,
   });
 }
 
-function isIosAppInstalled() {
-  const result = spawnSync(
-    "xcrun",
-    ["simctl", "get_app_container", deviceId as string, session.appId, "data"],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  return result.status === 0;
-}
-
-async function installIosArtifact(appPath: string) {
-  session.storePath = undefined;
-  runCapture(
-    "xcrun",
-    ["simctl", "uninstall", deviceId as string, session.appId],
-    { allowFailure: true },
-  );
-  await runLogged("xcrun", ["simctl", "install", deviceId as string, appPath], {
-    logPath: path.join(session.resultsDir, "simctl-install.log"),
-  });
-  await clearIosLocalBundleState();
-}
-
-async function prepareReusableIosArtifact(appPath: string, cacheKey: string) {
-  session.storePath = undefined;
-  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isIosAppInstalled()) {
-    await installIosArtifact(appPath);
-    await writeReuseAppInstallMarker(cacheKey);
-    return;
-  }
-
-  await clearIosLocalBundleState();
-  logE2e("ios reusable app reset without reinstall", {
-    appId: session.appId,
-    artifactPath: path.relative(REPO_DIR, appPath),
-  });
-}
-
-async function prepareExplicitReusableIosBinary(cacheKey: string) {
-  if (!session.reuseApp || !session.iosBinaryPath) {
-    return false;
-  }
-  if (!fs.existsSync(session.iosBinaryPath)) {
-    logE2e("ios explicit binary missing", {
-      artifactPath: session.iosBinaryPath,
-    });
-    return false;
-  }
-
-  session.builtArtifactPath = session.iosBinaryPath;
-  await prepareReusableIosArtifact(session.iosBinaryPath, cacheKey);
-  logE2e("ios explicit reusable binary prepared", {
-    artifactPath: path.relative(REPO_DIR, session.iosBinaryPath),
-  });
-  return true;
-}
-
-function iosDerivedDataCacheKeyPath() {
-  return path.join(session.iosDerivedDataPath, IOS_DERIVED_DATA_CACHE_KEY_FILE);
-}
-
-async function readIosDerivedDataCacheKey() {
-  try {
-    return (
-      await fsPromises.readFile(iosDerivedDataCacheKeyPath(), "utf8")
-    ).trim();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
-    return null;
-  }
-}
-
-async function writeIosDerivedDataCacheKey(cacheKey: string) {
-  await fsPromises.mkdir(session.iosDerivedDataPath, { recursive: true });
-  await fsPromises.writeFile(iosDerivedDataCacheKeyPath(), `${cacheKey}\n`);
-}
-
-async function prepareIosRelease() {
-  const builtAppPath = path.join(
-    session.iosDerivedDataPath,
-    "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
-  );
-  const nativeCacheKey = nativeArtifactCacheKey();
-
-  if (await prepareExplicitReusableIosBinary(nativeCacheKey)) {
-    return;
-  }
-
-  if (session.reuseApp && fs.existsSync(builtAppPath)) {
-    const existingCacheKey = await readIosDerivedDataCacheKey();
-    if (existingCacheKey === nativeCacheKey) {
-      session.builtArtifactPath = builtAppPath;
-      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
-      return;
-    }
-
-    logE2e("ios derived data cache key mismatch", {
-      expected: nativeCacheKey.slice(0, 16),
-      observed: existingCacheKey?.slice(0, 16) ?? null,
-      path: session.iosDerivedDataPath,
-    });
-    await fsPromises.rm(session.iosDerivedDataPath, {
-      force: true,
-      recursive: true,
-    });
-  }
-
-  if (!session.reuseApp) {
-    await fsPromises.rm(session.iosDerivedDataPath, {
-      force: true,
-      recursive: true,
-    });
-  }
-
-  if (
-    await restoreNativeArtifactFromCache({
-      key: nativeCacheKey,
-      targetPath: builtAppPath,
-    })
-  ) {
-    session.builtArtifactPath = builtAppPath;
-    await writeIosDerivedDataCacheKey(nativeCacheKey);
-    if (session.reuseApp) {
-      await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
-    } else {
-      await installIosArtifact(builtAppPath);
-    }
-    return;
-  }
-
-  await buildNativeArtifactWithCacheLock({
-    build: async () => {
-      await fsPromises.rm(session.iosDerivedDataPath, {
-        force: true,
-        recursive: true,
-      });
-
-      await runLogged("bundle", ["install"], {
-        cwd: path.join(session.exampleDir, "ios"),
-        logPath: path.join(session.resultsDir, "bundle-install.log"),
-      });
-
-      const podsCacheKey = iosPodsCacheKey();
-      const installPods = async () => {
-        if (await restoreIosPodsFromCache(podsCacheKey)) {
-          return;
-        }
-        await runLogged("bundle", ["exec", "pod", "install"], {
-          cwd: path.join(session.exampleDir, "ios"),
-          logPath: path.join(session.resultsDir, "pod-install.log"),
-        });
-        await saveIosPodsToCache(podsCacheKey);
-      };
-      const podsCachePaths = iosPodsCachePaths(podsCacheKey);
-      if (podsCachePaths) {
-        await withE2ECacheLock({
-          callback: installPods,
-          key: podsCacheKey,
-          label: "ios-pods",
-          lockName: `ios-pods-${podsCacheKey}.lock`,
-          root: podsCachePaths.root,
-        });
-      } else {
-        await installPods();
-      }
-
-      await runLogged(
-        "xcodebuild",
-        [
-          "-workspace",
-          path.join(session.exampleDir, "ios/HotUpdaterExample.xcworkspace"),
-          "-scheme",
-          "HotUpdaterExample",
-          "-configuration",
-          "Release",
-          "-sdk",
-          "iphonesimulator",
-          "-destination",
-          `id=${deviceId}`,
-          "-derivedDataPath",
-          session.iosDerivedDataPath,
-          ...IOS_RELEASE_BUILD_SETTINGS,
-          "build",
-        ],
-        {
-          env: RELEASE_BUNDLE_ENV,
-          logPath: path.join(session.resultsDir, "xcodebuild.log"),
-        },
-      );
-    },
-    key: nativeCacheKey,
-    logLabel: "ios-release",
-    targetPath: builtAppPath,
-  });
-  session.builtArtifactPath = builtAppPath;
-  await writeIosDerivedDataCacheKey(nativeCacheKey);
-  if (session.reuseApp) {
-    await prepareReusableIosArtifact(builtAppPath, nativeCacheKey);
-  } else {
-    await installIosArtifact(builtAppPath);
-  }
-}
-
-async function prepareAndroidRelease() {
-  const defaultAndroidApkPath = path.join(
-    session.exampleDir,
-    DEFAULT_ANDROID_APK_RELATIVE_PATH,
-  );
-  const architecture = resolveAndroidE2eArchitecture();
-  const nativeCacheKey = nativeArtifactCacheKey(architecture);
-
-  if (!session.reuseApp || !fs.existsSync(session.androidApkPath)) {
-    const restored = await restoreNativeArtifactFromCache({
-      architecture,
-      key: nativeCacheKey,
-      targetPath: session.androidApkPath,
-    });
-    if (!restored) {
-      await buildNativeArtifactWithCacheLock({
-        architecture,
-        build: () =>
-          buildDebuggableAndroidRelease("gradle-release.log", architecture),
-        key: nativeCacheKey,
-        logLabel: "android-release",
-        targetPath: session.androidApkPath,
-      });
-    }
-  }
-
-  session.builtArtifactPath = session.androidApkPath;
-  session.storePath = undefined;
-
-  if (session.reuseApp) {
-    await prepareReusableAndroidArtifact("adb-install.log", nativeCacheKey);
-  } else {
-    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-      allowFailure: true,
-    });
-    await installAndroidArtifact("adb-install.log");
-  }
-
-  if (session.reuseApp && !canRunAsAndroidApp()) {
-    if (
-      path.resolve(session.androidApkPath) !==
-      path.resolve(defaultAndroidApkPath)
-    ) {
-      throw new Error(
-        `Cannot reuse Android app because ${session.androidApkPath} is not debuggable. Rebuild it with HOT_UPDATER_E2E_DEBUGGABLE=true or run without --reuse-app.`,
-      );
-    }
-
-    logE2e("android reused apk is not debuggable; rebuilding release apk");
-    await buildNativeArtifactWithCacheLock({
-      architecture,
-      build: () =>
-        buildDebuggableAndroidRelease("gradle-release-reuse.log", architecture),
-      key: nativeCacheKey,
-      logLabel: "android-release-reuse",
-      targetPath: defaultAndroidApkPath,
-    });
-    session.builtArtifactPath = defaultAndroidApkPath;
-    runCapture("adb", ["-s", deviceId as string, "uninstall", session.appId], {
-      allowFailure: true,
-    });
-    await installAndroidArtifact("adb-install-reuse.log");
-  }
-
-  if (!canRunAsAndroidApp()) {
-    throw new Error(
-      "Android app must be debuggable so E2E assertions can inspect internal app files with run-as.",
-    );
-  }
-}
-
-async function buildDebuggableAndroidRelease(
-  logFileName: string,
-  architecture: string | null = resolveAndroidE2eArchitecture(),
-) {
-  const args = [
-    ":app:assembleRelease",
-    "--build-cache",
-    "--no-daemon",
-    "--max-workers=2",
-    "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-    `-PMIN_BUNDLE_ID=${E2E_MIN_BUNDLE_ID}`,
-    "-Pkotlin.compiler.execution.strategy=in-process",
-    ...(architecture ? [`-PreactNativeArchitectures=${architecture}`] : []),
-  ];
-
-  if (architecture) {
-    logE2e("android e2e release build architecture", { architecture });
-  }
-
-  await runLogged("./gradlew", args, {
-    cwd: path.join(session.exampleDir, "android"),
-    env: RELEASE_BUNDLE_ENV,
-    logPath: path.join(session.resultsDir, logFileName),
-  });
-}
-
-function resolveAndroidE2eArchitecture() {
-  try {
-    const architecture = runCapture(
-      "adb",
-      ["-s", deviceId as string, "shell", "getprop", "ro.product.cpu.abi"],
-      { allowFailure: true },
-    )
-      .replaceAll("\r", "")
-      .trim();
-
-    if (ANDROID_E2E_ARCHITECTURES.has(architecture)) {
-      return architecture;
-    }
-
-    if (architecture) {
-      logE2e("android e2e release build architecture ignored", {
-        architecture,
-      });
-    }
-  } catch (error) {
-    logE2e("android e2e release build architecture detection failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
-
-  return null;
-}
-
 function ensureAndroidFilesDir() {
-  return `/data/data/${session.appId}/files`;
-}
-
-function isAndroidAppInstalled() {
-  const result = spawnSync(
-    "adb",
-    ["-s", deviceId as string, "shell", "pm", "path", session.appId],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  return result.status === 0 && result.stdout.includes("package:");
+  return `/data/data/${fixtureSession.appId}/files`;
 }
 
 function clearAndroidLocalAppState() {
   resetAndroidPackageData();
-  runCapture(
+  captureCommand(
     "adb",
     [
       "-s",
       deviceId as string,
       "shell",
       "run-as",
-      session.appId,
+      fixtureSession.appId,
       "sh",
       "-c",
       [
         `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
         `${ensureAndroidFilesDir()}/bundle-temp`,
         `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
-        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+        `/data/data/${fixtureSession.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
       ].join(" "),
     ],
     { allowFailure: true },
@@ -3019,85 +1942,30 @@ function clearAndroidLocalAppState() {
   if (androidPathExists(`${ensureAndroidFilesDir()}/bundle-store`)) {
     throw new Error("Failed to clear Android bundle-store state");
   }
-  session.storePath = undefined;
-  logE2e("android local app state reset", {
-    appId: session.appId,
+  fixtureSession.storePath = undefined;
+  logDetoxFixture("android local app state reset", {
+    appId: fixtureSession.appId,
   });
 }
 
 function resetAndroidPackageData() {
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
-    { allowFailure: true },
-  );
-  runCapture(
-    "adb",
-    ["-s", deviceId as string, "shell", "pm", "clear", session.appId],
-    { allowFailure: true },
-  );
-}
-
-async function installAndroidArtifact(logFileName: string) {
-  resetAndroidPackageData();
-  await runLogged(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "install",
-      "-r",
-      session.builtArtifactPath as string,
-    ],
-    {
-      logPath: path.join(session.resultsDir, logFileName),
-    },
-  );
-  runCapture(
+  captureCommand(
     "adb",
     [
       "-s",
       deviceId as string,
       "shell",
-      "run-as",
-      session.appId,
-      "sh",
-      "-c",
-      [
-        `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
-        `${ensureAndroidFilesDir()}/bundle-temp`,
-        `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
-        `/data/data/${session.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
-      ].join(" "),
+      "am",
+      "force-stop",
+      fixtureSession.appId,
     ],
     { allowFailure: true },
   );
-}
-
-async function prepareReusableAndroidArtifact(
-  logFileName: string,
-  cacheKey: string,
-) {
-  if (!(await hasReuseAppInstallMarker(cacheKey)) || !isAndroidAppInstalled()) {
-    await installAndroidArtifact(logFileName);
-    await writeReuseAppInstallMarker(cacheKey);
-    return;
-  }
-
-  clearAndroidLocalAppState();
-}
-
-function canRunAsAndroidApp() {
-  const result = spawnSync(
+  captureCommand(
     "adb",
-    ["-s", deviceId as string, "shell", "run-as", session.appId, "true"],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
+    ["-s", deviceId as string, "shell", "pm", "clear", fixtureSession.appId],
+    { allowFailure: true },
   );
-
-  return result.status === 0;
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
@@ -3108,7 +1976,7 @@ function copyAndroidFile(remotePath: string, localPath: string) {
       deviceId as string,
       "exec-out",
       "run-as",
-      session.appId,
+      fixtureSession.appId,
       "cat",
       remotePath,
     ],
@@ -3126,7 +1994,7 @@ function copyAndroidFile(remotePath: string, localPath: string) {
         deviceId as string,
         "shell",
         "run-as",
-        session.appId,
+        fixtureSession.appId,
         "cat",
         remotePath,
       ],
@@ -3167,7 +2035,7 @@ function androidPathExists(remotePath: string, testFlag = "-e") {
       deviceId as string,
       "shell",
       "run-as",
-      session.appId,
+      fixtureSession.appId,
       "test",
       testFlag,
       remotePath,
@@ -3471,7 +2339,7 @@ function createWaitForMetadataTimeoutError(args: {
       nativeLogPath,
       nativeLogTail,
     },
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 }
 
@@ -3502,7 +2370,7 @@ function createWaitForMetadataResetTimeoutError(args: {
       metadata: args.metadata,
       metadataState: observedState,
     },
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 }
 
@@ -3531,7 +2399,7 @@ function readAndroidStoreSnapshot(
 ) {
   const storePath = ensureStorePath();
   const remotePath = `${storePath}/${remoteFileName}`;
-  const localPath = path.join(session.resultsDir, localFileName);
+  const localPath = path.join(fixtureSession.resultsDir, localFileName);
 
   if (!copyAndroidFileIfExists(remotePath, localPath)) {
     return {
@@ -3550,7 +2418,7 @@ function readAndroidStoreSnapshot(
 }
 
 function androidRecoveryLaunchReportPath() {
-  return path.join(session.resultsDir, "recovery-launch-report.json");
+  return path.join(fixtureSession.resultsDir, "recovery-launch-report.json");
 }
 
 function readAndroidMetadataSnapshot(localFileName: string) {
@@ -3572,17 +2440,19 @@ function readAndroidWaitForMetadataDiagnostics() {
 }
 
 function readWaitForMetadataDiagnostics() {
-  return session.platform === "ios"
+  return fixtureSession.platform === "ios"
     ? readIosWaitForMetadataDiagnostics()
     : readAndroidWaitForMetadataDiagnostics();
 }
 
 function readBundleFileSnapshot(bundleId: string) {
   const bundleFileName =
-    session.platform === "ios" ? "index.ios.bundle" : "index.android.bundle";
+    fixtureSession.platform === "ios"
+      ? "index.ios.bundle"
+      : "index.android.bundle";
   const storePath = ensureStorePath();
 
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     const bundleFilePath = path.join(storePath, bundleId, bundleFileName);
     return {
       exists: fs.existsSync(bundleFilePath),
@@ -3599,7 +2469,7 @@ function readBundleFileSnapshot(bundleId: string) {
 }
 
 function readBundleManifestSnapshot(bundleId: string) {
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     return readOptionalJsonSnapshot(
       path.join(ensureStorePath(), bundleId, "manifest.json"),
     );
@@ -3627,7 +2497,7 @@ function getManifestAssetFileHash(manifest: JsonSnapshot, assetPath: string) {
 }
 
 function resolveManifestAssetPath(assetPath: string) {
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     return assetPath;
   }
 
@@ -3677,7 +2547,7 @@ function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
       deviceId as string,
       "shell",
       "run-as",
-      session.appId,
+      fixtureSession.appId,
       "sha256sum",
       remotePath,
     ],
@@ -3717,7 +2587,7 @@ function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
 }
 
 function readBundleAssetFileHash(bundleId: string, assetPath: string) {
-  return session.platform === "ios"
+  return fixtureSession.platform === "ios"
     ? readIosBundleAssetFileHash(bundleId, assetPath)
     : readAndroidBundleAssetFileHash(bundleId, assetPath);
 }
@@ -3831,9 +2701,9 @@ function getLaunchReportState(report: Record<string, unknown> | null) {
 }
 
 function getControllerReachableAppBaseUrl() {
-  const url = new URL(session.appBaseUrl);
+  const url = new URL(fixtureSession.appBaseUrl);
   const androidReverseHostPort =
-    session.platform === "android"
+    fixtureSession.platform === "android"
       ? process.env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT
       : undefined;
   if (
@@ -3864,7 +2734,7 @@ function getControllerReachableProviderReadinessUrl({
     return null;
   }
 
-  url.searchParams.set("platform", session.platform);
+  url.searchParams.set("platform", fixtureSession.platform);
   url.searchParams.set("enabled", "true");
   url.searchParams.set("limit", String(limit));
   url.hash = "";
@@ -3881,7 +2751,7 @@ function getLocalProviderReadinessUrls() {
     }
 
     urls.push(baseUrl);
-    for (const channel of getRemoteResetChannels() ?? []) {
+    for (const channel of getFixtureResetChannels() ?? []) {
       const url = new URL(baseUrl);
       url.searchParams.set("channel", channel);
       urls.push(url.toString());
@@ -3917,7 +2787,7 @@ function getControlServerHostPort() {
 
 function getAppReachableControlBaseUrl() {
   const port =
-    session.platform === "android"
+    fixtureSession.platform === "android"
       ? getAndroidControlDevicePort()
       : getControlServerHostPort();
   return `http://localhost:${port}`;
@@ -3928,16 +2798,19 @@ function getRuntimeConfigUrl() {
 }
 
 async function patchEnvRuntimeConfigUrl() {
-  const source = fs.existsSync(session.envSourceFile)
-    ? await fsPromises.readFile(session.envSourceFile, "utf8")
+  const source = fs.existsSync(fixtureSession.envSourceFile)
+    ? await fsPromises.readFile(fixtureSession.envSourceFile, "utf8")
     : "";
   const lines = source.split(/\r?\n/).filter((line) => {
     const trimmed = line.trim();
     return trimmed && !trimmed.startsWith(`${E2E_RUNTIME_CONFIG_URL_ENV_KEY}=`);
   });
   lines.push(`${E2E_RUNTIME_CONFIG_URL_ENV_KEY}=${getRuntimeConfigUrl()}`);
-  await fsPromises.writeFile(session.envSourceFile, `${lines.join("\n")}\n`);
-  logE2e("runtime config url injected", {
+  await fsPromises.writeFile(
+    fixtureSession.envSourceFile,
+    `${lines.join("\n")}\n`,
+  );
+  logDetoxFixture("runtime config url injected", {
     key: E2E_RUNTIME_CONFIG_URL_ENV_KEY,
     value: getRuntimeConfigUrl(),
   });
@@ -3954,11 +2827,11 @@ function readHotUpdaterAuthToken() {
     return envToken;
   }
 
-  if (!fs.existsSync(session.envSourceFile)) {
+  if (!fs.existsSync(fixtureSession.envSourceFile)) {
     return null;
   }
 
-  const source = fs.readFileSync(session.envSourceFile, "utf8");
+  const source = fs.readFileSync(fixtureSession.envSourceFile, "utf8");
   for (const line of source.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) {
@@ -4016,19 +2889,19 @@ async function waitForLocalProviderReady() {
     }
 
     if (ready) {
-      logE2e("local provider ready", {
+      logDetoxFixture("local provider ready", {
         attempt,
-        platform: session.platform,
+        platform: fixtureSession.platform,
         urls,
       });
       return;
     }
 
     if (attempt === 1 || attempt % 10 === 0) {
-      logE2e("local provider readiness pending", {
+      logDetoxFixture("local provider readiness pending", {
         attempt,
         lastError,
-        platform: session.platform,
+        platform: fixtureSession.platform,
         retryDelayMs: PROVIDER_READY_WAIT_DELAY_MS,
         urls,
       });
@@ -4055,19 +2928,19 @@ function isLoopbackHost(hostname: string) {
 
 function assertConfiguredBaseUrl() {
   try {
-    const url = new URL(session.appBaseUrl);
+    const url = new URL(fixtureSession.appBaseUrl);
     if (!url.protocol || !url.hostname) {
       throw new Error("missing protocol or host");
     }
   } catch (error) {
     throw new Error(
-      `HOT_UPDATER_E2E_APP_BASE_URL must be a valid absolute URL. Received ${JSON.stringify(session.appBaseUrl)} (${formatErrorMessage(error)})`,
+      `HOT_UPDATER_E2E_APP_BASE_URL must be a valid absolute URL. Received ${JSON.stringify(fixtureSession.appBaseUrl)} (${formatErrorMessage(error)})`,
     );
   }
 }
 
 function getAndroidReversePorts() {
-  const appBaseUrl = new URL(session.appBaseUrl);
+  const appBaseUrl = new URL(fixtureSession.appBaseUrl);
   if (!isLoopbackHost(appBaseUrl.hostname)) {
     return null;
   }
@@ -4087,7 +2960,7 @@ function getAndroidReversePorts() {
 }
 
 function ensureAndroidReverse() {
-  if (session.platform !== "android") {
+  if (fixtureSession.platform !== "android") {
     return;
   }
 
@@ -4096,31 +2969,31 @@ function ensureAndroidReverse() {
     return;
   }
 
-  runCapture("adb", [
+  captureCommand("adb", [
     "-s",
     deviceId as string,
     "reverse",
     `tcp:${reversePorts.devicePort}`,
     `tcp:${reversePorts.hostPort}`,
   ]);
-  logE2e("android reverse ready", reversePorts);
+  logDetoxFixture("android reverse ready", reversePorts);
 }
 
 function ensureAndroidControlReverse() {
-  if (session.platform !== "android") {
+  if (fixtureSession.platform !== "android") {
     return;
   }
 
   const devicePort = getAndroidControlDevicePort();
   const hostPort = getControlServerHostPort();
-  runCapture("adb", [
+  captureCommand("adb", [
     "-s",
     deviceId as string,
     "reverse",
     `tcp:${devicePort}`,
     `tcp:${hostPort}`,
   ]);
-  logE2e("android control reverse ready", { devicePort, hostPort });
+  logDetoxFixture("android control reverse ready", { devicePort, hostPort });
 }
 
 function getHotUpdaterControlEnv(
@@ -4187,7 +3060,7 @@ function getRemoteChannelPathSegment(channelSegment: string) {
     return channelSegment;
   }
 
-  return encodeURIComponent(getRemoteChannel(channel));
+  return encodeURIComponent(getFixtureChannel(channel));
 }
 
 function rewriteProxiedUpdatePath(pathname: string) {
@@ -4213,7 +3086,7 @@ export function handleRuntimeConfig() {
   return {
     baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
     channelNamespace,
-    updateServerBaseURL: session.appBaseUrl,
+    updateServerBaseURL: fixtureSession.appBaseUrl,
   };
 }
 
@@ -4347,7 +3220,7 @@ export async function handleProxyUpdateRequest(request: Request) {
     method: request.method,
   });
 
-  logE2e("proxied update request", {
+  logDetoxFixture("proxied update request", {
     method: request.method,
     source: requestUrl.pathname,
     target: targetUrl.toString(),
@@ -4360,7 +3233,7 @@ export async function handleProxyUpdateRequest(request: Request) {
     try {
       const payload = JSON.parse(body);
       const rewrittenPayload = rewriteUpdateInfoAssetUrls(payload);
-      logE2e("proxied update response", {
+      logDetoxFixture("proxied update response", {
         original: summarizeUpdateInfoPayload(payload),
         rewritten: summarizeUpdateInfoPayload(rewrittenPayload),
         status: response.status,
@@ -4413,7 +3286,7 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     method: request.method,
   });
 
-  logE2e("proxied remote asset request", {
+  logDetoxFixture("proxied remote asset request", {
     method: request.method,
     source: requestUrl.pathname,
     target: targetUrl.toString(),
@@ -4436,7 +3309,7 @@ function buildAppVersionUpdateCheckUrl(args: {
   const segments = [
     getControllerReachableAppBaseUrl(),
     "app-version",
-    encode(session.platform),
+    encode(fixtureSession.platform),
     encode(E2E_APP_VERSION),
     encode(args.channel),
     encode(args.minBundleId),
@@ -4522,7 +3395,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
         };
 
         if (payload.id === args.bundleId) {
-          logE2e("update check visibility ready", {
+          logDetoxFixture("update check visibility ready", {
             bundleId: args.bundleId,
             channel: args.channel,
             requestBundleId: args.requestBundleId,
@@ -4540,11 +3413,11 @@ async function waitForUpdateCheckVisibilityUrl(args: {
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
-  logE2e("update check visibility timeout", {
+  logDetoxFixture("update check visibility timeout", {
     expectedBundleId: args.bundleId,
     lastError,
     lastObserved,
-    platform: session.platform,
+    platform: fixtureSession.platform,
     request: {
       bundleId: args.requestBundleId,
       channel: args.channel,
@@ -4565,7 +3438,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       },
       lastError,
       lastObserved,
-      platform: session.platform,
+      platform: fixtureSession.platform,
       request: {
         bundleId: args.requestBundleId,
         channel: args.channel,
@@ -4581,7 +3454,7 @@ function normalizeE2ECohort(value: string) {
 }
 
 function readIosE2ECohort() {
-  const cohort = runCapture(
+  const cohort = captureCommand(
     "xcrun",
     [
       "simctl",
@@ -4589,7 +3462,7 @@ function readIosE2ECohort() {
       deviceId as string,
       "defaults",
       "read",
-      session.appId,
+      fixtureSession.appId,
       E2E_IOS_COHORT_DEFAULTS_KEY,
     ],
     { allowFailure: true },
@@ -4628,15 +3501,15 @@ function shellSingleQuote(value: string) {
 }
 
 function readAndroidE2ECohort() {
-  const prefsPath = `/data/data/${session.appId}/shared_prefs/${E2E_ANDROID_COHORT_PREFS_FILE}`;
-  const prefsXml = runCapture(
+  const prefsPath = `/data/data/${fixtureSession.appId}/shared_prefs/${E2E_ANDROID_COHORT_PREFS_FILE}`;
+  const prefsXml = captureCommand(
     "adb",
     [
       "-s",
       deviceId as string,
       "shell",
       "run-as",
-      session.appId,
+      fixtureSession.appId,
       "cat",
       prefsPath,
     ],
@@ -4650,19 +3523,19 @@ function readAndroidE2ECohort() {
 }
 
 function readCurrentE2ECohort() {
-  return session.platform === "ios"
+  return fixtureSession.platform === "ios"
     ? readIosE2ECohort()
     : readAndroidE2ECohort();
 }
 
 function writeIosE2ECohort(cohort: string) {
-  runCapture("xcrun", [
+  captureCommand("xcrun", [
     "simctl",
     "spawn",
     deviceId as string,
     "defaults",
     "write",
-    session.appId,
+    fixtureSession.appId,
     E2E_IOS_COHORT_DEFAULTS_KEY,
     "-string",
     cohort,
@@ -4670,7 +3543,7 @@ function writeIosE2ECohort(cohort: string) {
 }
 
 function writeAndroidE2ECohort(cohort: string) {
-  const prefsDir = `/data/data/${session.appId}/shared_prefs`;
+  const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
   const prefsPath = `${prefsDir}/${E2E_ANDROID_COHORT_PREFS_FILE}`;
   const prefsXml = [
     "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
@@ -4680,12 +3553,12 @@ function writeAndroidE2ECohort(cohort: string) {
     "",
   ].join("\n");
 
-  runCapture("adb", [
+  captureCommand("adb", [
     "-s",
     deviceId as string,
     "shell",
     "run-as",
-    session.appId,
+    fixtureSession.appId,
     "sh",
     "-c",
     shellSingleQuote(
@@ -4700,9 +3573,9 @@ function writeAndroidE2ECohort(cohort: string) {
 async function seedMissingE2ECohort() {
   const existingCohort = readCurrentE2ECohort();
   if (existingCohort) {
-    logE2e("e2e cohort seed preserved", {
+    logDetoxFixture("e2e cohort seed preserved", {
       cohort: existingCohort,
-      platform: session.platform,
+      platform: fixtureSession.platform,
     });
     return existingCohort;
   }
@@ -4712,7 +3585,7 @@ async function seedMissingE2ECohort() {
     throw new Error("HOT_UPDATER_E2E_DEFAULT_COHORT must not be empty");
   }
 
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     writeIosE2ECohort(cohort);
   } else {
     writeAndroidE2ECohort(cohort);
@@ -4721,13 +3594,13 @@ async function seedMissingE2ECohort() {
   const seededCohort = readCurrentE2ECohort();
   if (seededCohort !== cohort) {
     throw new Error(
-      `Failed to seed ${session.platform} E2E cohort: expected ${cohort}, observed ${seededCohort ?? "missing"}`,
+      `Failed to seed ${fixtureSession.platform} E2E cohort: expected ${cohort}, observed ${seededCohort ?? "missing"}`,
     );
   }
 
-  logE2e("e2e cohort seeded", {
+  logDetoxFixture("e2e cohort seeded", {
     cohort,
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
   return cohort;
 }
@@ -4796,7 +3669,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
           : null;
 
         if (!payload || payload.id !== args.bundleId) {
-          logE2e("update check exclusion ready", {
+          logDetoxFixture("update check exclusion ready", {
             bundleId: args.bundleId,
             channel: args.channel,
             observed: lastObserved,
@@ -4814,11 +3687,11 @@ async function waitForUpdateCheckExcludesBundle(args: {
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
   }
 
-  logE2e("update check exclusion timeout", {
+  logDetoxFixture("update check exclusion timeout", {
     excludedBundleId: args.bundleId,
     lastError,
     lastObserved,
-    platform: session.platform,
+    platform: fixtureSession.platform,
     request: {
       bundleId: args.bundleId,
       channel: args.channel,
@@ -4839,7 +3712,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
       },
       lastError,
       lastObserved,
-      platform: session.platform,
+      platform: fixtureSession.platform,
       request: {
         bundleId: args.bundleId,
         channel: args.channel,
@@ -4884,7 +3757,7 @@ function createWaitForRecoveryTimeoutError(args: {
       metadata: args.metadata,
       metadataState,
     },
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 }
 
@@ -4932,17 +3805,24 @@ function launchAndroidApp({
   explicitActivity?: boolean;
   forceStop?: boolean;
 } = {}) {
-  logE2e("android recovery relaunch", {
-    appId: session.appId,
+  logDetoxFixture("android recovery relaunch", {
+    appId: fixtureSession.appId,
     coldStart: true,
     deviceId,
     explicitActivity,
     forceStop,
   });
   if (forceStop) {
-    runCapture(
+    captureCommand(
       "adb",
-      ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+      [
+        "-s",
+        deviceId as string,
+        "shell",
+        "am",
+        "force-stop",
+        fixtureSession.appId,
+      ],
       {
         allowFailure: true,
         cwd: REPO_DIR,
@@ -4959,7 +3839,7 @@ function launchAndroidApp({
         "start",
         "-W",
         "-n",
-        `${session.appId}/.MainActivity`,
+        `${fixtureSession.appId}/.MainActivity`,
       ]
     : [
         "-s",
@@ -4967,25 +3847,25 @@ function launchAndroidApp({
         "shell",
         "monkey",
         "-p",
-        session.appId,
+        fixtureSession.appId,
         "-c",
         "android.intent.category.LAUNCHER",
         "1",
       ];
-  const launchOutput = runCapture("adb", launchArgs, {
+  const launchOutput = captureCommand("adb", launchArgs, {
     allowFailure: explicitActivity,
     cwd: REPO_DIR,
   });
-  const pid = runCapture(
+  const pid = captureCommand(
     "adb",
-    ["-s", deviceId as string, "shell", "pidof", session.appId],
+    ["-s", deviceId as string, "shell", "pidof", fixtureSession.appId],
     {
       allowFailure: true,
       cwd: REPO_DIR,
     },
   );
-  logE2e("android recovery relaunch started", {
-    appId: session.appId,
+  logDetoxFixture("android recovery relaunch started", {
+    appId: fixtureSession.appId,
     deviceId,
     explicitActivity,
     launchOutput,
@@ -4999,7 +3879,7 @@ async function waitForAndroidForeground(timeoutMs: number) {
 
   while (Date.now() < deadline) {
     focusedPackage = getAndroidFocusedPackage();
-    if (focusedPackage === session.appId) {
+    if (focusedPackage === fixtureSession.appId) {
       return focusedPackage;
     }
 
@@ -5010,13 +3890,17 @@ async function waitForAndroidForeground(timeoutMs: number) {
 }
 
 function launchIosApp() {
-  logE2e("ios metadata wait relaunch", {
-    appId: session.appId,
+  logDetoxFixture("ios metadata wait relaunch", {
+    appId: fixtureSession.appId,
     deviceId,
   });
-  runCapture("xcrun", ["simctl", "launch", deviceId as string, session.appId], {
-    allowFailure: true,
-  });
+  captureCommand(
+    "xcrun",
+    ["simctl", "launch", deviceId as string, fixtureSession.appId],
+    {
+      allowFailure: true,
+    },
+  );
 }
 
 function parseAndroidFocusedPackage(output: string) {
@@ -5044,7 +3928,7 @@ function getAndroidFocusedPackage() {
     return focusedWindowPackage;
   }
 
-  const activityOutput = runCapture(
+  const activityOutput = captureCommand(
     "adb",
     ["-s", deviceId as string, "shell", "dumpsys", "activity", "activities"],
     { allowFailure: true },
@@ -5053,7 +3937,7 @@ function getAndroidFocusedPackage() {
 }
 
 function getAndroidWindowOutput() {
-  return runCapture(
+  return captureCommand(
     "adb",
     ["-s", deviceId as string, "shell", "dumpsys", "window", "windows"],
     { allowFailure: true },
@@ -5073,11 +3957,11 @@ function dismissAndroidAnrWindow(reason: string) {
     return false;
   }
 
-  logE2e("android dismiss anr window", {
+  logDetoxFixture("android dismiss anr window", {
     anrPackage,
     reason,
   });
-  runCapture(
+  captureCommand(
     "adb",
     ["-s", deviceId as string, "shell", "am", "force-stop", anrPackage],
     { allowFailure: true },
@@ -5086,7 +3970,7 @@ function dismissAndroidAnrWindow(reason: string) {
 }
 
 function getAndroidHomePackage() {
-  const resolvedActivity = runCapture(
+  const resolvedActivity = captureCommand(
     "adb",
     [
       "-s",
@@ -5192,7 +4076,7 @@ async function waitForIosMetadataState(
       break;
     }
 
-    logE2e("ios metadata wait retry", {
+    logDetoxFixture("ios metadata wait retry", {
       expectedBundleId: bundleId,
       expectedVerificationPending: verificationPending,
       observed: metadataState,
@@ -5283,7 +4167,7 @@ async function waitForAndroidMetadataState(
       break;
     }
 
-    logE2e("android metadata wait relaunch", {
+    logDetoxFixture("android metadata wait relaunch", {
       expectedBundleId: bundleId,
       expectedVerificationPending: verificationPending,
       observed: metadataState,
@@ -5312,7 +4196,7 @@ async function waitForCrashRecovery(
 
   for (let index = 0; index < attempts; index += 1) {
     const diagnostics =
-      session.platform === "ios"
+      fixtureSession.platform === "ios"
         ? readIosRecoveryDiagnostics()
         : readAndroidRecoveryDiagnostics();
     const metadataState = getMetadataState(diagnostics.metadata.value);
@@ -5330,7 +4214,7 @@ async function waitForCrashRecovery(
     }
 
     if (
-      session.platform === "android" &&
+      fixtureSession.platform === "android" &&
       diagnostics.crashMarker.exists &&
       androidRelaunchAttempts < 3
     ) {
@@ -5344,7 +4228,7 @@ async function waitForCrashRecovery(
   }
 
   const diagnostics =
-    session.platform === "ios"
+    fixtureSession.platform === "ios"
       ? readIosRecoveryDiagnostics()
       : readAndroidRecoveryDiagnostics();
   throw createWaitForRecoveryTimeoutError({
@@ -5356,7 +4240,7 @@ async function waitForCrashRecovery(
 }
 
 async function ensureAppForeground() {
-  if (session.platform !== "android") {
+  if (fixtureSession.platform !== "android") {
     return {};
   }
 
@@ -5366,22 +4250,22 @@ async function ensureAppForeground() {
 
   let focusedPackage = getAndroidFocusedPackage();
   const homePackage = getAndroidHomePackage();
-  if (focusedPackage === session.appId) {
+  if (focusedPackage === fixtureSession.appId) {
     await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
     focusedPackage = getAndroidFocusedPackage();
-    if (focusedPackage === session.appId) {
+    if (focusedPackage === fixtureSession.appId) {
       return {};
     }
 
-    logE2e("android ensure foreground lost after settle", {
+    logDetoxFixture("android ensure foreground lost after settle", {
       focusedPackage,
-      targetAppId: session.appId,
+      targetAppId: fixtureSession.appId,
     });
   }
 
-  logE2e("android ensure foreground", {
+  logDetoxFixture("android ensure foreground", {
     focusedPackage,
-    targetAppId: session.appId,
+    targetAppId: fixtureSession.appId,
   });
 
   const recoverySteps: Array<{
@@ -5394,7 +4278,7 @@ async function ensureAppForeground() {
     recoverySteps.push({
       label: "dismiss-dialog",
       run: async () => {
-        runCapture(
+        captureCommand(
           "adb",
           [
             "-s",
@@ -5422,7 +4306,7 @@ async function ensureAppForeground() {
     {
       label: "home-and-relaunch",
       run: async () => {
-        runCapture(
+        captureCommand(
           "adb",
           [
             "-s",
@@ -5452,33 +4336,33 @@ async function ensureAppForeground() {
     await step.run();
     focusedPackage = await waitForAndroidForeground(step.timeoutMs);
 
-    if (focusedPackage === session.appId) {
-      logE2e("android ensure foreground recovered", {
+    if (focusedPackage === fixtureSession.appId) {
+      logDetoxFixture("android ensure foreground recovered", {
         recoveryStep: step.label,
-        targetAppId: session.appId,
+        targetAppId: fixtureSession.appId,
       });
       await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
       focusedPackage = getAndroidFocusedPackage();
-      if (focusedPackage === session.appId) {
+      if (focusedPackage === fixtureSession.appId) {
         return {};
       }
 
-      logE2e("android ensure foreground lost after settle", {
+      logDetoxFixture("android ensure foreground lost after settle", {
         focusedPackage,
         recoveryStep: step.label,
-        targetAppId: session.appId,
+        targetAppId: fixtureSession.appId,
       });
     }
 
-    logE2e("android ensure foreground retry", {
+    logDetoxFixture("android ensure foreground retry", {
       focusedPackage,
       recoveryStep: step.label,
-      targetAppId: session.appId,
+      targetAppId: fixtureSession.appId,
     });
   }
 
   throw new Error(
-    `Failed to bring ${session.appId} to foreground (focused package: ${focusedPackage ?? "unknown"})`,
+    `Failed to bring ${fixtureSession.appId} to foreground (focused package: ${focusedPackage ?? "unknown"})`,
   );
 }
 
@@ -5486,24 +4370,24 @@ async function prepareAppLaunch() {
   assertConfiguredBaseUrl();
   await seedMissingE2ECohort();
 
-  if (session.platform === "ios") {
-    runCapture(
+  if (fixtureSession.platform === "ios") {
+    captureCommand(
       "xcrun",
-      ["simctl", "terminate", deviceId as string, session.appId],
+      ["simctl", "terminate", deviceId as string, fixtureSession.appId],
       { allowFailure: true },
     );
     await sleep(E2E_POLL_INTERVAL_MS);
     return {};
   }
 
-  if (session.platform !== "android") {
+  if (fixtureSession.platform !== "android") {
     return {};
   }
 
   const focusedPackage = getAndroidFocusedPackage();
-  logE2e("android prepare app launch", {
+  logDetoxFixture("android prepare app launch", {
     focusedPackage,
-    targetAppId: session.appId,
+    targetAppId: fixtureSession.appId,
   });
 
   if (dismissAndroidAnrWindow("prepare-app-launch")) {
@@ -5512,9 +4396,16 @@ async function prepareAppLaunch() {
 
   ensureAndroidReverse();
   ensureAndroidControlReverse();
-  runCapture(
+  captureCommand(
     "adb",
-    ["-s", deviceId as string, "shell", "am", "force-stop", session.appId],
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "force-stop",
+      fixtureSession.appId,
+    ],
     { allowFailure: true },
   );
   await sleep(E2E_POLL_INTERVAL_MS);
@@ -5523,71 +4414,74 @@ async function prepareAppLaunch() {
 }
 
 async function bootstrap() {
-  if (session.bootstrapResult) {
-    logE2e("bootstrap result reused", {
-      platform: session.platform,
+  if (fixtureSession.bootstrapResult) {
+    logDetoxFixture("bootstrap result reused", {
+      platform: fixtureSession.platform,
     });
-    return session.bootstrapResult;
+    return fixtureSession.bootstrapResult;
   }
 
-  if (!session.appBackupPath) {
-    session.appBackupPath = await backupFile(session.appSourceFile);
+  if (!fixtureSession.appBackupPath) {
+    fixtureSession.appBackupPath = await backupFile(
+      fixtureSession.appSourceFile,
+    );
   }
-  if (!session.configBackupPath) {
-    session.configBackupPath = await backupFile(session.configSourceFile);
+  if (!fixtureSession.configBackupPath) {
+    fixtureSession.configBackupPath = await backupFile(
+      fixtureSession.configSourceFile,
+    );
   }
-  if (!session.envBackupPath) {
-    session.envBackupPath = await backupFile(session.envSourceFile);
+  if (!fixtureSession.envBackupPath) {
+    fixtureSession.envBackupPath = await backupFile(
+      fixtureSession.envSourceFile,
+    );
   }
   if (
-    !session.largeArchiveAssetBackupPath &&
-    fs.existsSync(session.largeArchiveAssetPath)
+    !fixtureSession.largeArchiveAssetBackupPath &&
+    fs.existsSync(fixtureSession.largeArchiveAssetPath)
   ) {
-    session.largeArchiveAssetBackupPath = await backupFile(
-      session.largeArchiveAssetPath,
+    fixtureSession.largeArchiveAssetBackupPath = await backupFile(
+      fixtureSession.largeArchiveAssetPath,
     );
   }
 
-  session.builtInBundleId = null;
-  session.deployedBundles = [];
-  session.storePath = null;
+  fixtureSession.builtInBundleId = null;
+  fixtureSession.deployedBundles = [];
+  fixtureSession.storePath = null;
 
   await waitForLocalProviderReady();
-  await clearRemoteBundles({
-    mode: session.reuseApp ? "disable" : "delete",
+  await clearProviderBundles({
+    mode: "delete",
   });
   await restoreFile(
-    session.largeArchiveAssetBackupPath,
-    session.largeArchiveAssetPath,
+    fixtureSession.largeArchiveAssetBackupPath,
+    fixtureSession.largeArchiveAssetPath,
   );
   await restoreMultiAssetFixtures();
-  await restoreFile(session.configBackupPath, session.configSourceFile);
+  await restoreFile(
+    fixtureSession.configBackupPath,
+    fixtureSession.configSourceFile,
+  );
   await patchEnvRuntimeConfigUrl();
   await exportNativePublicKeyFromSigningKey();
   await applyAppScenario({
     bundleProfile: "default",
-    marker: session.initialMarker,
+    marker: fixtureSession.initialMarker,
     mode: "reset",
     safeBundleIds: [],
   });
 
-  if (session.platform === "ios") {
-    await prepareIosRelease();
-  } else {
-    await prepareAndroidRelease();
-  }
-
-  session.bootstrapResult = {
+  fixtureSession.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
-    initialMarker: session.initialMarker,
+    initialMarker: fixtureSession.initialMarker,
   };
-  return session.bootstrapResult;
+  return fixtureSession.bootstrapResult;
 }
 
 async function captureBuiltInBundleId() {
   const builtInBundleId = E2E_MIN_BUNDLE_ID;
 
-  session.builtInBundleId = builtInBundleId;
+  fixtureSession.builtInBundleId = builtInBundleId;
 
   return { builtInBundleId };
 }
@@ -5612,7 +4506,7 @@ function bareBuildCacheEnv({
       inputHash: hashBareBuildInputs(),
       marker: request.marker,
       mode: request.mode,
-      platform: session.platform,
+      platform: fixtureSession.platform,
       safeBundleIds: request.safeBundleIds,
     }),
   );
@@ -5674,14 +4568,14 @@ async function acquireBareBuildCacheLock(
         JSON.stringify(
           {
             pid: process.pid,
-            platform: session.platform,
+            platform: fixtureSession.platform,
             startedAt: new Date().toISOString(),
           },
           null,
           2,
         ),
       );
-      logE2e("bare build cache lock acquired", { cacheKey });
+      logDetoxFixture("bare build cache lock acquired", { cacheKey });
       return lockPath;
     } catch (error) {
       if (
@@ -5697,7 +4591,7 @@ async function acquireBareBuildCacheLock(
       const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
       const owner = await readOwner();
       if (!isOwnerAlive(owner)) {
-        logE2e("bare build cache lock owner exited; removing", {
+        logDetoxFixture("bare build cache lock owner exited; removing", {
           cacheKey,
           owner,
         });
@@ -5707,7 +4601,7 @@ async function acquireBareBuildCacheLock(
       }
 
       if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logE2e("bare build cache lock stale; removing", {
+        logDetoxFixture("bare build cache lock stale; removing", {
           ageMs,
           cacheKey,
         });
@@ -5716,7 +4610,7 @@ async function acquireBareBuildCacheLock(
       }
 
       if (!loggedWait) {
-        logE2e("bare build cache lock waiting", { cacheKey });
+        logDetoxFixture("bare build cache lock waiting", { cacheKey });
         loggedWait = true;
       }
       await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
@@ -5759,16 +4653,16 @@ async function acquireDeployProcessLock(signal?: AbortSignal) {
         JSON.stringify(
           {
             pid: process.pid,
-            platform: session.platform,
+            platform: fixtureSession.platform,
             startedAt: new Date().toISOString(),
           },
           null,
           2,
         ),
       );
-      logE2e("deploy process lock acquired", {
+      logDetoxFixture("deploy process lock acquired", {
         lockPath,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return lockPath;
     } catch (error) {
@@ -5785,7 +4679,7 @@ async function acquireDeployProcessLock(signal?: AbortSignal) {
       const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
       const owner = await readDeployProcessLockOwner(lockPath);
       if (!isDeployProcessLockOwnerAlive(owner)) {
-        logE2e("deploy process lock owner exited; removing", {
+        logDetoxFixture("deploy process lock owner exited; removing", {
           lockPath,
           owner,
         });
@@ -5795,7 +4689,7 @@ async function acquireDeployProcessLock(signal?: AbortSignal) {
       }
 
       if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logE2e("deploy process lock stale; removing", {
+        logDetoxFixture("deploy process lock stale; removing", {
           ageMs,
           lockPath,
           owner,
@@ -5805,10 +4699,10 @@ async function acquireDeployProcessLock(signal?: AbortSignal) {
       }
 
       if (!loggedWait) {
-        logE2e("deploy process lock waiting", {
+        logDetoxFixture("deploy process lock waiting", {
           lockPath,
           owner,
-          platform: session.platform,
+          platform: fixtureSession.platform,
         });
         loggedWait = true;
       }
@@ -5821,13 +4715,13 @@ async function releaseDeployProcessLock(lockPath: string) {
   await fsPromises.rm(lockPath, { force: true, recursive: true });
 }
 
-async function deployBundle(
+async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
 ) {
   const signal = context?.signal;
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
-  const remoteChannel = getRemoteChannel(request.channel);
+  const remoteChannel = getFixtureChannel(request.channel);
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
@@ -5861,7 +4755,7 @@ async function deployBundle(
     HOT_UPDATER_CLI_PATH,
     "deploy",
     "-p",
-    session.platform,
+    fixtureSession.platform,
     "-t",
     request.targetAppVersion,
     "-c",
@@ -5887,10 +4781,10 @@ async function deployBundle(
   }
 
   const deployLogPath = path.join(
-    session.resultsDir,
+    fixtureSession.resultsDir,
     `deploy-${remoteChannel}-${request.marker}.log`,
   );
-  logE2e("deploy start", {
+  logDetoxFixture("deploy start", {
     bundleProfile,
     bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
@@ -5899,7 +4793,7 @@ async function deployBundle(
     logPath: path.relative(REPO_DIR, deployLogPath),
     marker: request.marker,
     mode: request.mode,
-    platform: session.platform,
+    platform: fixtureSession.platform,
     remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
@@ -5911,8 +4805,8 @@ async function deployBundle(
     try {
       bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
       const deployStartedAt = Date.now();
-      const output = await runLogged("node", args, {
-        cwd: session.exampleDir,
+      const output = await runLoggedCommand("node", args, {
+        cwd: fixtureSession.exampleDir,
         env: getHotUpdaterControlEnv(cacheEnv),
         logPath: deployLogPath,
         signal,
@@ -5962,10 +4856,10 @@ async function deployBundle(
         durationMs: deployDurationMs,
         marker: request.marker,
         mode: request.mode,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       };
-      logE2e("deploy timing", deployTiming);
-      logE2e("deploy done", {
+      logDetoxFixture("deploy timing", deployTiming);
+      logDetoxFixture("deploy done", {
         archivePath: path.relative(REPO_DIR, archivePath),
         archiveSizeBytes: archiveStats.size,
         ...deployTiming,
@@ -5982,12 +4876,12 @@ async function deployBundle(
   })();
 
   if (request.targetCohorts && request.targetCohorts.length > 0) {
-    await patchBundle(bundleId, {
+    await patchProviderBundle(bundleId, {
       targetCohorts: request.targetCohorts,
     });
   }
 
-  let bundle = await fetchBundleById(bundleId);
+  let bundle = await fetchProviderBundleById(bundleId);
   if (shouldWaitForUpdateCheckVisibility(request)) {
     await waitForUpdateCheckVisibility({
       bundleId,
@@ -6001,10 +4895,10 @@ async function deployBundle(
     request.diffBaseBundleId !== undefined
       ? await resolveAutoPatchBundleDiff(request.diffBaseBundleId, bundleId)
       : null;
-  bundle = await fetchBundleById(bundleId);
+  bundle = await fetchProviderBundleById(bundleId);
   const patchBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
 
-  session.deployedBundles.push({
+  fixtureSession.deployedBundles.push({
     archiveSizeBytes: archiveDetails.sizeBytes,
     bundleId,
     bundleProfile,
@@ -6032,7 +4926,7 @@ async function deployBundle(
     multiAssetPaths:
       bundleProfile === "multiAssetReplacement"
         ? MULTI_ASSET_FIXTURES.map((fixture) =>
-            session.platform === "ios"
+            fixtureSession.platform === "ios"
               ? fixture.manifestPath
               : fixture.androidManifestPath,
           )
@@ -6045,20 +4939,20 @@ async function deployBundle(
   };
 }
 
-async function updateBundle(
+async function updateFixtureBundle(
   request: PatchBundleRequest,
   context?: JobExecutionContext,
 ) {
   const signal = context?.signal;
   throwIfAborted(signal);
-  await patchBundle(request.bundleId, {
+  await patchProviderBundle(request.bundleId, {
     enabled: request.enabled,
     rolloutCohortCount: request.rolloutCohortCount,
     shouldForceUpdate: request.shouldForceUpdate,
     targetCohorts: request.targetCohorts,
   });
 
-  const bundle = await fetchBundleById(request.bundleId);
+  const bundle = await fetchProviderBundleById(request.bundleId);
   if (request.enabled === false && bundle.enabled === false) {
     await waitForUpdateCheckExcludesBundle({
       bundleId: bundle.id,
@@ -6085,7 +4979,7 @@ async function updateBundle(
 }
 
 async function computeRolloutSample(bundleId: string) {
-  const bundle = await fetchBundleById(bundleId);
+  const bundle = await fetchProviderBundleById(bundleId);
   const rolloutCohorts = getRolledOutNumericCohorts(
     bundleId,
     bundle.rolloutCohortCount ?? null,
@@ -6119,7 +5013,7 @@ async function waitForMetadata(
   options: WaitForMetadataOptions = {},
 ) {
   throwIfAborted(options.signal);
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     await waitForIosMetadataState(bundleId, verificationPending, options);
   } else {
     await waitForAndroidMetadataState(bundleId, verificationPending, options);
@@ -6129,8 +5023,8 @@ async function waitForMetadata(
 }
 
 function readBsdiffPatchLogs() {
-  if (session.platform === "ios") {
-    return runCapture(
+  if (fixtureSession.platform === "ios") {
+    return captureCommand(
       "xcrun",
       [
         "simctl",
@@ -6149,7 +5043,7 @@ function readBsdiffPatchLogs() {
     );
   }
 
-  return runCapture(
+  return captureCommand(
     "adb",
     [
       "-s",
@@ -6169,8 +5063,8 @@ function readBsdiffPatchLogs() {
 }
 
 function readFirstOtaArchiveInstallLogs() {
-  if (session.platform === "ios") {
-    return runCapture(
+  if (fixtureSession.platform === "ios") {
+    return captureCommand(
       "xcrun",
       [
         "simctl",
@@ -6189,7 +5083,7 @@ function readFirstOtaArchiveInstallLogs() {
     );
   }
 
-  return runCapture(
+  return captureCommand(
     "adb",
     [
       "-s",
@@ -6209,8 +5103,8 @@ function readFirstOtaArchiveInstallLogs() {
 }
 
 function readHotUpdaterNativeLogs() {
-  if (session.platform === "ios") {
-    return runCapture(
+  if (fixtureSession.platform === "ios") {
+    return captureCommand(
       "xcrun",
       [
         "simctl",
@@ -6234,7 +5128,7 @@ function readHotUpdaterNativeLogs() {
     );
   }
 
-  return runCapture(
+  return captureCommand(
     "adb",
     [
       "-s",
@@ -6262,7 +5156,7 @@ function readBsdiffPatchStoreEvidence(args: {
   assetPath: string;
   baseBundleId: string;
 }) {
-  const record = session.deployedBundles.find(
+  const record = fixtureSession.deployedBundles.find(
     (entry) =>
       entry.diffBaseBundleId === args.baseBundleId &&
       entry.diffPatchAssetPath === args.assetPath,
@@ -6303,7 +5197,7 @@ function readBsdiffPatchStoreEvidence(args: {
 }
 
 function getPrimaryBundleAssetPath() {
-  return session.platform === "ios"
+  return fixtureSession.platform === "ios"
     ? "index.ios.bundle"
     : "index.android.bundle";
 }
@@ -6333,8 +5227,9 @@ async function readManifestDiffState(args: {
     `baseBundleId=${args.previousBundleId}`,
   ];
   const record =
-    session.deployedBundles.find((entry) => entry.bundleId === args.bundleId) ??
-    null;
+    fixtureSession.deployedBundles.find(
+      (entry) => entry.bundleId === args.bundleId,
+    ) ?? null;
   const ok =
     metadataState.stableBundleId === args.previousBundleId &&
     metadataState.stagingBundleId === args.bundleId &&
@@ -6373,11 +5268,11 @@ async function assertBundleAssetsStored(args: {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readBundleAssetsStoredEvidence(args);
     if (evidence.ok) {
-      logE2e("bundle assets stored", {
+      logDetoxFixture("bundle assets stored", {
         assetPaths: args.assetPaths,
         bundleId: args.bundleId,
         evidence: "manifest-and-bundle-store",
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return {};
     }
@@ -6399,11 +5294,11 @@ async function assertMultipleAssetsReplaced(args: {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const evidence = readMultipleAssetsReplacementEvidence(args);
     if (evidence.ok) {
-      logE2e("multiple assets replaced", {
+      logDetoxFixture("multiple assets replaced", {
         assetPaths: args.assetPaths,
         bundleId: args.bundleId,
         evidence: "manifest-hash-change-and-bundle-store",
-        platform: session.platform,
+        platform: fixtureSession.platform,
         previousBundleId: args.previousBundleId,
       });
       return {};
@@ -6432,14 +5327,14 @@ async function assertBsdiffPatchApplied(args: {
     const evidence = readBsdiffPatchStoreEvidence(args);
     if (evidence.ok && "record" in evidence) {
       const logs = readBsdiffPatchLogs();
-      logE2e("bsdiff patch applied", {
+      logDetoxFixture("bsdiff patch applied", {
         assetPath: args.assetPath,
         baseBundleId: args.baseBundleId,
         bundleId: evidence.record.bundleId,
         evidence: includesAllFragments(logs, expectedFragments)
           ? "bundle-store-and-native-log"
           : "bundle-store",
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return {};
     }
@@ -6457,7 +5352,7 @@ async function assertBsdiffPatchApplied(args: {
       expectedFragments,
       evidence,
       logsTail: logs.split("\n").slice(-20),
-      platform: session.platform,
+      platform: fixtureSession.platform,
     },
   );
 }
@@ -6469,10 +5364,10 @@ async function assertManifestDiffApplied(args: {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const state = await readManifestDiffState(args);
     if (state.ok) {
-      logE2e("manifest diff applied without bsdiff patch", {
+      logDetoxFixture("manifest diff applied without bsdiff patch", {
         bundleId: args.bundleId,
         evidence: "bundle-store-without-archive-or-bsdiff-log",
-        platform: session.platform,
+        platform: fixtureSession.platform,
         previousBundleId: args.previousBundleId,
       });
       return {};
@@ -6501,7 +5396,7 @@ async function assertManifestDiffApplied(args: {
       expectedHash: state.expectedHash,
       manifest: state.manifest,
       metadataState: state.metadataState,
-      platform: session.platform,
+      platform: fixtureSession.platform,
       previousBundleId: args.previousBundleId,
       trackedBundleRecord: state.record,
     },
@@ -6524,12 +5419,12 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       state.metadataState.stableBundleId === null &&
       state.bundleFile.exists
     ) {
-      logE2e("first OTA used archive install path", {
+      logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
         evidence: "bundle-store",
         metadataPath: state.diagnostics.metadata.path,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return {};
     }
@@ -6539,22 +5434,22 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
       state.metadataState.verificationPending === false &&
       state.bundleFile.exists
     ) {
-      logE2e("first OTA used archive install path", {
+      logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         bundleFilePath: state.bundleFile.path,
         evidence: "bundle-store-active",
         metadataPath: state.diagnostics.metadata.path,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return {};
     }
 
     const logs = readFirstOtaArchiveInstallLogs();
     if (includesAllFragments(logs, expectedFragments)) {
-      logE2e("first OTA used archive install path", {
+      logDetoxFixture("first OTA used archive install path", {
         bundleId: args.bundleId,
         evidence: "native-log",
-        platform: session.platform,
+        platform: fixtureSession.platform,
       });
       return {};
     }
@@ -6589,7 +5484,7 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
         metadata: state.diagnostics.metadata,
         metadataState: state.metadataState,
       },
-      platform: session.platform,
+      platform: fixtureSession.platform,
     },
   );
 }
@@ -6597,19 +5492,19 @@ async function assertFirstOtaUsesArchive(args: { bundleId: string }) {
 async function captureState(prefix: string) {
   const storePath = ensureStorePath();
 
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     const metadataPath = path.join(storePath, "metadata.json");
     await waitForFile(metadataPath);
     await fsPromises.copyFile(
       metadataPath,
-      path.join(session.resultsDir, `${prefix}-metadata.json`),
+      path.join(fixtureSession.resultsDir, `${prefix}-metadata.json`),
     );
 
     const launchReportPath = path.join(storePath, "launch-report.json");
     if (fs.existsSync(launchReportPath)) {
       await fsPromises.copyFile(
         launchReportPath,
-        path.join(session.resultsDir, `${prefix}-launch-report.json`),
+        path.join(fixtureSession.resultsDir, `${prefix}-launch-report.json`),
       );
     }
 
@@ -6617,11 +5512,11 @@ async function captureState(prefix: string) {
     if (fs.existsSync(crashHistoryPath)) {
       await fsPromises.copyFile(
         crashHistoryPath,
-        path.join(session.resultsDir, `${prefix}-crashed-history.json`),
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
       );
     } else if (prefix === "stable") {
       await fsPromises.writeFile(
-        path.join(session.resultsDir, `${prefix}-crashed-history.json`),
+        path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
         JSON.stringify(EMPTY_CRASH_HISTORY, null, 2),
       );
     }
@@ -6631,95 +5526,52 @@ async function captureState(prefix: string) {
 
   copyAndroidFile(
     `${storePath}/metadata.json`,
-    path.join(session.resultsDir, `${prefix}-metadata.json`),
+    path.join(fixtureSession.resultsDir, `${prefix}-metadata.json`),
   );
 
   if (
     !copyAndroidFileIfExists(
       `${storePath}/crashed-history.json`,
-      path.join(session.resultsDir, `${prefix}-crashed-history.json`),
+      path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
     ) &&
     prefix === "stable"
   ) {
     await fsPromises.writeFile(
-      path.join(session.resultsDir, `${prefix}-crashed-history.json`),
+      path.join(fixtureSession.resultsDir, `${prefix}-crashed-history.json`),
       JSON.stringify(EMPTY_CRASH_HISTORY, null, 2),
     );
   }
 
   copyAndroidFileIfExists(
     `${storePath}/launch-report.json`,
-    path.join(session.resultsDir, `${prefix}-launch-report.json`),
+    path.join(fixtureSession.resultsDir, `${prefix}-launch-report.json`),
   );
 
   return {};
 }
 
-async function reinstallBuiltInApp() {
-  if (!session.builtArtifactPath) {
-    throw new Error("builtArtifactPath is not available");
-  }
-
-  session.storePath = null;
-
-  if (session.platform === "ios") {
-    if (session.reuseApp) {
-      await prepareReusableIosArtifact(
-        session.builtArtifactPath,
-        nativeArtifactCacheKey(),
-      );
-    } else {
-      await installIosArtifact(session.builtArtifactPath);
-    }
-  } else {
-    if (session.reuseApp) {
-      await prepareReusableAndroidArtifact(
-        "adb-install-reset.log",
-        nativeArtifactCacheKey(resolveAndroidE2eArchitecture()),
-      );
-    } else {
-      runCapture(
-        "adb",
-        ["-s", deviceId as string, "uninstall", session.appId],
-        {
-          allowFailure: true,
-        },
-      );
-      await installAndroidArtifact("adb-install-reset.log");
-    }
-  }
-
-  logE2e("built-in app reinstalled", {
-    appId: session.appId,
-    artifactPath: path.relative(REPO_DIR, session.builtArtifactPath),
-    platform: session.platform,
-  });
-
-  return {};
-}
-
 async function resetRemoteBundles() {
-  await clearRemoteBundles({
-    mode: session.reuseApp ? "disable" : "delete",
+  await clearProviderBundles({
+    mode: "delete",
   });
 
-  logE2e("remote bundles reset on demand", {
-    platform: session.platform,
+  logDetoxFixture("remote bundles reset on demand", {
+    platform: fixtureSession.platform,
   });
 
   return {};
 }
 
 async function resetLocalAppState() {
-  if (session.platform === "ios") {
+  if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {
     clearAndroidLocalAppState();
   }
   await seedMissingE2ECohort();
 
-  logE2e("local app state reset on demand", {
-    platform: session.platform,
+  logDetoxFixture("local app state reset on demand", {
+    platform: fixtureSession.platform,
   });
 
   return {};
@@ -6730,7 +5582,7 @@ async function assertBundlePatchBases(args: {
   bundleId: string;
   expectedBaseBundleIds?: string[];
 }) {
-  const bundle = await fetchBundleById(args.bundleId);
+  const bundle = await fetchProviderBundleById(args.bundleId);
   const observedBaseBundleIds = getBundlePatchBaseBundleIds(bundle);
   const expectedBaseBundleIds = args.expectedBaseBundleIds ?? [];
   const absentBaseBundleIds = args.absentBaseBundleIds ?? [];
@@ -6745,7 +5597,7 @@ async function assertBundlePatchBases(args: {
         bundleId: args.bundleId,
         expectedBaseBundleIds,
         observedBaseBundleIds,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       },
     );
   }
@@ -6761,7 +5613,7 @@ async function assertBundlePatchBases(args: {
         bundleId: args.bundleId,
         expectedBaseBundleIds,
         observedBaseBundleIds,
-        platform: session.platform,
+        platform: fixtureSession.platform,
       },
     );
   }
@@ -6777,16 +5629,16 @@ async function assertBundlePatchBases(args: {
         absentBaseBundleIds,
         bundleId: args.bundleId,
         observedBaseBundleIds,
-        platform: session.platform,
+        platform: fixtureSession.platform,
         unexpectedBaseBundleIds,
       },
     );
   }
 
-  logE2e("bundle patch bases verified", {
+  logDetoxFixture("bundle patch bases verified", {
     bundleId: args.bundleId,
     observedBaseBundleIds,
-    platform: session.platform,
+    platform: fixtureSession.platform,
   });
 
   return {
@@ -6796,11 +5648,11 @@ async function assertBundlePatchBases(args: {
 
 async function assertMetadataActive(bundleId: string) {
   const metadata =
-    session.platform === "ios"
+    fixtureSession.platform === "ios"
       ? readJson(path.join(ensureStorePath(), "metadata.json"))
       : (() => {
           const probePath = path.join(
-            session.resultsDir,
+            fixtureSession.resultsDir,
             "metadata-assert.json",
           );
           copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
@@ -6816,7 +5668,7 @@ async function assertMetadataResetState() {
 
   for (let index = 0; index < attempts; index += 1) {
     const diagnostics =
-      session.platform === "ios"
+      fixtureSession.platform === "ios"
         ? readIosWaitForMetadataDiagnostics()
         : readAndroidWaitForMetadataDiagnostics();
 
@@ -6835,7 +5687,7 @@ async function assertMetadataResetState() {
   }
 
   const diagnostics =
-    session.platform === "ios"
+    fixtureSession.platform === "ios"
       ? readIosWaitForMetadataDiagnostics()
       : readAndroidWaitForMetadataDiagnostics();
   throw createWaitForMetadataResetTimeoutError({
@@ -6850,11 +5702,11 @@ async function assertLaunchReportState({
   status,
 }: LaunchReportAssertion) {
   let launchReportPath =
-    session.platform === "ios"
+    fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "launch-report.json")
-      : path.join(session.resultsDir, "launch-report-assert.json");
+      : path.join(fixtureSession.resultsDir, "launch-report-assert.json");
 
-  if (session.platform === "android") {
+  if (fixtureSession.platform === "android") {
     if (
       !copyAndroidFileIfExists(
         `${ensureStorePath()}/launch-report.json`,
@@ -6883,11 +5735,11 @@ async function assertLaunchReportState({
 
 async function assertCrashHistory(bundleId: string) {
   const crashHistoryPath =
-    session.platform === "ios"
+    fixtureSession.platform === "ios"
       ? path.join(ensureStorePath(), "crashed-history.json")
-      : path.join(session.resultsDir, "crash-history-assert.json");
+      : path.join(fixtureSession.resultsDir, "crash-history-assert.json");
 
-  if (session.platform === "android") {
+  if (fixtureSession.platform === "android") {
     copyAndroidFile(
       `${ensureStorePath()}/crashed-history.json`,
       crashHistoryPath,
@@ -6906,13 +5758,13 @@ async function writeSummary({
   status: string;
 }) {
   await fsPromises.writeFile(
-    path.join(session.resultsDir, "summary.json"),
+    path.join(fixtureSession.resultsDir, "summary.json"),
     JSON.stringify(
       {
         binaryType: "Release",
-        builtInBundleId: session.builtInBundleId,
-        deployedBundles: session.deployedBundles,
-        platform: session.platform,
+        builtInBundleId: fixtureSession.builtInBundleId,
+        deployedBundles: fixtureSession.deployedBundles,
+        platform: fixtureSession.platform,
         scenario,
         status,
       },
@@ -6925,30 +5777,39 @@ async function writeSummary({
 }
 
 async function cleanup() {
-  if (!session.appBackupPath) {
+  if (!fixtureSession.appBackupPath) {
     return {};
   }
 
-  if (session.appBackupPath) {
-    await restoreFile(session.appBackupPath, session.appSourceFile);
+  if (fixtureSession.appBackupPath) {
+    await restoreFile(
+      fixtureSession.appBackupPath,
+      fixtureSession.appSourceFile,
+    );
   }
-  if (session.configBackupPath) {
-    await restoreFile(session.configBackupPath, session.configSourceFile);
+  if (fixtureSession.configBackupPath) {
+    await restoreFile(
+      fixtureSession.configBackupPath,
+      fixtureSession.configSourceFile,
+    );
   }
-  if (session.envBackupPath) {
-    await restoreFile(session.envBackupPath, session.envSourceFile);
+  if (fixtureSession.envBackupPath) {
+    await restoreFile(
+      fixtureSession.envBackupPath,
+      fixtureSession.envSourceFile,
+    );
   }
   await restoreFile(
-    session.largeArchiveAssetBackupPath,
-    session.largeArchiveAssetPath,
+    fixtureSession.largeArchiveAssetBackupPath,
+    fixtureSession.largeArchiveAssetPath,
   );
   await restoreMultiAssetFixtures();
 
-  session.appBackupPath = null;
-  session.configBackupPath = null;
-  session.envBackupPath = null;
-  session.largeArchiveAssetBackupPath = null;
-  session.multiAssetBackupPaths = {};
+  fixtureSession.appBackupPath = null;
+  fixtureSession.configBackupPath = null;
+  fixtureSession.envBackupPath = null;
+  fixtureSession.largeArchiveAssetBackupPath = null;
+  fixtureSession.multiAssetBackupPaths = {};
   return {};
 }
 
@@ -6969,7 +5830,7 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
       const message =
         error instanceof Error ? error.message : "Unknown E2E job failure";
       if (abortController.signal.aborted) {
-        logE2e("control job cancelled", {
+        logDetoxFixture("control job cancelled", {
           error: message,
           jobId,
         });
@@ -6979,7 +5840,7 @@ function createJob(task: (context: JobExecutionContext) => Promise<JobResult>) {
         }
         return;
       }
-      logE2e("control job failed", {
+      logDetoxFixture("control job failed", {
         cause: formatErrorCause(error),
         error: message,
         jobId,
@@ -7007,11 +5868,11 @@ export function startBootstrapJob() {
 }
 
 export function startDeployBundleJob(request: DeployBundleRequest) {
-  return createJob((context) => deployBundle(request, context));
+  return createJob((context) => deployFixtureBundle(request, context));
 }
 
 export function startPatchBundleJob(request: PatchBundleRequest) {
-  return createJob((context) => updateBundle(request, context));
+  return createJob((context) => updateFixtureBundle(request, context));
 }
 
 export function startWaitForMetadataJob(
@@ -7043,7 +5904,7 @@ export function cancelJob(jobId: string) {
   const error = "cancelled by control client timeout";
   jobs.set(jobId, { error, status: "cancelled" });
   jobAbortControllers.get(jobId)?.abort(new Error(error));
-  logE2e("control job cancel requested", { jobId });
+  logDetoxFixture("control job cancel requested", { jobId });
   return jobs.get(jobId) ?? null;
 }
 
@@ -7076,10 +5937,6 @@ export async function handleAssertFirstOtaUsesArchive(bundleId: string) {
 
 export async function handleCaptureState(prefix: string) {
   return captureState(prefix);
-}
-
-export async function handleReinstallBuiltInApp() {
-  return reinstallBuiltInApp();
 }
 
 export async function handleResetRemoteBundles() {

@@ -21,6 +21,7 @@ const legacyHarnessTerms = [
 const legacyHarnessPattern = new RegExp(
   `\\b(?:${legacyHarnessTerms.join("|")})\\b`,
 );
+const controlServerPath = path.join(detoxDir, "control-server/controller.ts");
 const expectedScenarioModuleFiles = [
   "bspatch-archive-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
@@ -95,5 +96,14 @@ describe("Detox-first source shape", () => {
         .filter(({ source }) => legacyHarnessPattern.test(source))
         .map(({ file }) => file),
     ).toEqual([]);
+  });
+
+  it("keeps native app build and install lifecycle in Detox config, not the fixture server", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+
+    expect(controlServerSource).not.toMatch(
+      /\b(?:xcodebuild|gradlew|pod install|simctl",\s*\["install"|adb",\s*\[[^\]]*"install")\b/,
+    );
+    expect(controlServerSource).not.toContain("reinstallBuiltInApp");
   });
 });
