@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import type { JsonObject } from "./control-client.ts";
 import { getDetoxScenarioDefinition } from "./scenarios.ts";
 import type { DetoxAppDriver } from "./scenarios.ts";
 
@@ -14,6 +15,7 @@ const detoxScenarioRuntimePath = path.join(
 );
 
 type RecordedRecoveryCall = {
+  readonly body?: JsonObject;
   readonly kind: "assertText" | "control" | "device" | "tap" | "typeText";
   readonly stage: string;
   readonly testID?: string;
@@ -26,8 +28,8 @@ async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
       calls.push({ kind: "assertText", stage, testID });
       return Promise.resolve();
     },
-    control: (stage) => {
-      calls.push({ kind: "control", stage });
+    control: (stage, _pathName, body) => {
+      calls.push({ body, kind: "control", stage });
       return Promise.resolve();
     },
     launch: (stage) => {
@@ -108,6 +110,21 @@ describe("Detox recovery foreground handling", () => {
     expect(recoveredBundleCall).toMatchObject({
       kind: "assertText",
       testID: "runtime-bundle-id",
+    });
+  });
+
+  it("passes the stable bundle id into the recovery launch report assertion", async () => {
+    const calls = await recordRecoveryCalls();
+
+    expect(
+      calls.find((call) => call.stage === "assert recovery launch report"),
+    ).toMatchObject({
+      body: {
+        crashedBundleId: "$crashBundleId",
+        stableBundleId: "$stableBundleId",
+        status: "RECOVERED",
+      },
+      kind: "control",
     });
   });
 

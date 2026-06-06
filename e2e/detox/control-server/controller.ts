@@ -18,7 +18,10 @@ import {
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
 import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
-import { waitForCrashRecoveryState } from "./crash-recovery-wait.ts";
+import {
+  createCrashRecoveryArtifactNames,
+  waitForCrashRecoveryState,
+} from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
 
 type Platform = "ios" | "android";
@@ -159,6 +162,7 @@ async function forEachWithConcurrency<T>(
 type LaunchReportAssertion = {
   crashedBundleId?: string;
   optional: boolean;
+  stableBundleId?: string;
   status: string;
 };
 
@@ -2431,7 +2435,20 @@ function readAndroidStoreSnapshot(
   };
 }
 
-function androidRecoveryLaunchReportPath() {
+function androidRecoveryLaunchReportPath(
+  args: {
+    crashedBundleId?: string;
+    stableBundleId?: string;
+  } = {},
+) {
+  if (args.crashedBundleId && args.stableBundleId) {
+    const artifactNames = createCrashRecoveryArtifactNames({
+      crashedBundleId: args.crashedBundleId,
+      stableBundleId: args.stableBundleId,
+    });
+    return path.join(fixtureSession.resultsDir, artifactNames.launchReport);
+  }
+
   return path.join(fixtureSession.resultsDir, "recovery-launch-report.json");
 }
 
@@ -5556,6 +5573,7 @@ async function assertMetadataResetState() {
 async function assertLaunchReportState({
   crashedBundleId,
   optional,
+  stableBundleId,
   status,
 }: LaunchReportAssertion) {
   let launchReportPath =
@@ -5573,7 +5591,10 @@ async function assertLaunchReportState({
       if (optional) {
         return {};
       }
-      const recoveryLaunchReportPath = androidRecoveryLaunchReportPath();
+      const recoveryLaunchReportPath = androidRecoveryLaunchReportPath({
+        crashedBundleId,
+        stableBundleId,
+      });
       if (!fs.existsSync(recoveryLaunchReportPath)) {
         throw new Error("launch-report.json is missing");
       }

@@ -93,6 +93,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "/e2e/assert-launch-report",
       {
         crashedBundleId: "$crashBundleId",
+        stableBundleId: "$stableBundleId",
         status: "RECOVERED",
       },
     );

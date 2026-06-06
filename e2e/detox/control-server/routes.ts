@@ -395,6 +395,7 @@ app.post("/e2e/assert-launch-report", async (c) => {
   const payload = (await c.req.json()) as {
     crashedBundleId?: string;
     optional?: boolean;
+    stableBundleId?: string;
     status?: string;
   };
   if (!payload.status) {
@@ -405,6 +406,7 @@ app.post("/e2e/assert-launch-report", async (c) => {
     await handleAssertLaunchReport({
       crashedBundleId: payload.crashedBundleId,
       optional: payload.optional ?? false,
+      stableBundleId: payload.stableBundleId,
       status: payload.status,
     }),
   );
