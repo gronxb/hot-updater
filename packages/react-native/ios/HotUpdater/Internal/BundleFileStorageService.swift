@@ -2057,8 +2057,6 @@ class BundleFileStorageService: BundleStorageService {
         let bundleFileName = fileUrl.lastPathComponent.isEmpty ? "bundle.zip" : fileUrl.lastPathComponent
         let tempBundleFile = (tempDirectory as NSString).appendingPathComponent(bundleFileName)
 
-        NSLog("[BundleStorage] Starting download from \(fileUrl)")
-
         // Download with integrated disk space check
         var diskSpaceError: BundleStorageError? = nil
 
@@ -2067,24 +2065,19 @@ class BundleFileStorageService: BundleStorageService {
             to: tempBundleFile,
             fileSizeHandler: { fileSize in
                 // This will be called when Content-Length is received
-                NSLog("[BundleStorage] File size received: \(fileSize) bytes")
-
                 // Check available disk space
                 do {
                     let attributes = try FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
                     if let freeSize = attributes[.systemFreeSize] as? Int64 {
                         let requiredSpace = fileSize * 2  // ZIP + extracted files
 
-                        NSLog("[BundleStorage] Available: \(freeSize) bytes, Required: \(requiredSpace) bytes")
-
                         if freeSize < requiredSpace {
-                            NSLog("[BundleStorage] Insufficient disk space detected: need \(requiredSpace) bytes, available \(freeSize) bytes")
                             // Store error to be returned in completion handler
                             diskSpaceError = .insufficientDiskSpace
                         }
                     }
                 } catch {
-                    NSLog("[BundleStorage] Failed to check disk space: \(error.localizedDescription)")
+                    _ = error
                 }
             },
             progressHandler: { downloadProgress in
@@ -2109,7 +2102,6 @@ class BundleFileStorageService: BundleStorageService {
 
             // Check for disk space error first before processing download result
             if let diskError = diskSpaceError {
-                NSLog("[BundleStorage] Throwing disk space error")
                 self.cleanupTemporaryFiles([tempDirectory])
                 completion(.failure(diskError))
                 return

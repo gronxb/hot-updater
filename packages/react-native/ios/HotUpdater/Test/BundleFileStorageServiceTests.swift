@@ -234,6 +234,28 @@ struct BundleFileStorageServiceTests {
         #expect(applied.boolValue == false)
         #expect(FileManager.default.fileExists(atPath: outputURL.path) == false)
     }
+
+    @Test
+    func archiveDownloadDoesNotLogRawRuntimeInputsThroughNSLog() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Internal")
+            .appendingPathComponent("BundleFileStorageService.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let forbiddenSnippets = [
+            #"NSLog("[BundleStorage] Starting download from \("#,
+            #"NSLog("[BundleStorage] File size received: \("#,
+            #"NSLog("[BundleStorage] Available: \("#,
+            #"NSLog("[BundleStorage] Insufficient disk space detected: need \("#,
+            #"NSLog("[BundleStorage] Failed to check disk space: \("#,
+            #"NSLog("[BundleStorage] Throwing disk space error")"#,
+        ]
+
+        for snippet in forbiddenSnippets {
+            #expect(source.contains(snippet) == false)
+        }
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"
