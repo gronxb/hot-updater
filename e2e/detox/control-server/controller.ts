@@ -5753,6 +5753,10 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
   return createJob((context) => updateFixtureBundle(request, context));
 }
 
+export function startResetRemoteBundlesJob() {
+  return createJob(() => resetRemoteBundles());
+}
+
 export function startWaitForMetadataJob(
   bundleId: string,
   verificationPending: boolean,

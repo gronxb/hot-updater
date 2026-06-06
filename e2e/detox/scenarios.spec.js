@@ -30,9 +30,9 @@ describe("HotUpdater Detox scenarios", () => {
       }
     }
     await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
-    await controlClient.postJson(
+    await controlClient.runJob(
       "reset remote bundles",
-      "/e2e/reset-remote-bundles",
+      "/e2e/jobs/reset-remote-bundles",
       {},
     );
     await controlClient.postJson(

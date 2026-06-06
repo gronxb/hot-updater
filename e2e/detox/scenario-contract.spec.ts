@@ -250,7 +250,7 @@ describe("Detox scenario contract", () => {
       "for (const port of androidReversePorts())",
     );
     expect(detoxRuntimeSource).toContain("device.terminateApp");
-    expect(detoxRuntimeSource).toContain("/e2e/reset-remote-bundles");
+    expect(detoxRuntimeSource).toContain("/e2e/jobs/reset-remote-bundles");
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
   });
 
@@ -266,7 +266,7 @@ describe("Detox scenario contract", () => {
     // When: Detox launches the app after reset.
     const bootstrapIndex = beforeEachBody.indexOf("/e2e/jobs/bootstrap");
     const resetRemoteIndex = beforeEachBody.indexOf(
-      "/e2e/reset-remote-bundles",
+      "/e2e/jobs/reset-remote-bundles",
     );
     const resetLocalIndex = beforeEachBody.indexOf(
       "/e2e/reset-local-app-state",

@@ -29,6 +29,7 @@ import {
   startBootstrapJob,
   startDeployBundleJob,
   startPatchBundleJob,
+  startResetRemoteBundlesJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
 
@@ -55,6 +56,10 @@ app.onError((error, c) => {
 
 app.post("/e2e/jobs/bootstrap", async (c) => {
   return c.json({ jobId: startBootstrapJob() });
+});
+
+app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
+  return c.json({ jobId: startResetRemoteBundlesJob() });
 });
 
 app.get("/e2e/runtime-config", (c) => {
