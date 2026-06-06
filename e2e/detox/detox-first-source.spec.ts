@@ -107,6 +107,18 @@ describe("Detox-first source shape", () => {
     expect(controlServerSource).not.toContain("reinstallBuiltInApp");
   });
 
+  it("keeps per-interaction foreground recovery out of the control server", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+    const routesSource = await fs.readFile(
+      path.join(detoxDir, "control-server/routes.ts"),
+      "utf8",
+    );
+
+    expect(controlServerSource).not.toContain("ensureAppForeground");
+    expect(controlServerSource).not.toContain("android ensure foreground");
+    expect(routesSource).not.toContain("/e2e/ensure-app-foreground");
+  });
+
   it("keeps provider plugin method names at the fixture boundary", async () => {
     const controlServerSource = await fs.readFile(controlServerPath, "utf8");
 

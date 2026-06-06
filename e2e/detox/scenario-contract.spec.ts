@@ -328,7 +328,7 @@ describe("Detox scenario contract", () => {
     );
   });
 
-  it("keeps iOS read-only assertions on the active launch session", async () => {
+  it("keeps interaction foregrounding inside Detox APIs", async () => {
     // Given: the foreground helper runs before every Detox UI assertion.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxRuntimeSource = await fs.readFile(
@@ -343,9 +343,10 @@ describe("Detox scenario contract", () => {
     );
 
     // When: the helper foregrounds the app.
-    // Then: only Android uses a Detox relaunch; iOS keeps transient launch reports intact.
-    expect(foregroundBody).toContain("/e2e/ensure-app-foreground");
-    expect(foregroundBody).toContain("device.sendToHome()");
+    // Then: only Android uses a Detox relaunch; the control server does not
+    // run an out-of-band recovery ladder before each interaction.
+    expect(foregroundBody).not.toContain("/e2e/ensure-app-foreground");
+    expect(foregroundBody).not.toContain("device.sendToHome()");
     expect(foregroundBody).toContain("if (isAndroidRun())");
     expect(foregroundBody).toContain(
       "await launchApp({ newInstance: false });",

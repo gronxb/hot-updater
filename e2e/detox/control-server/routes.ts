@@ -13,7 +13,6 @@ import {
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleAssertMultipleAssetsReplaced,
-  handleEnsureAppForeground,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyUpdateRequest,
@@ -418,10 +417,6 @@ app.post("/e2e/assert-crash-history", async (c) => {
   }
 
   return c.json(await handleAssertCrashHistory(payload.bundleId));
-});
-
-app.post("/e2e/ensure-app-foreground", async (c) => {
-  return c.json(await handleEnsureAppForeground());
 });
 
 app.post("/e2e/prepare-app-launch", async (c) => {

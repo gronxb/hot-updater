@@ -312,9 +312,6 @@ const E2E_POLL_INTERVAL_MS = Number(
 const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_LAUNCH_SETTLE_MS || 1000,
 );
-const E2E_ANDROID_FOREGROUND_TIMEOUT_MS = Number(
-  process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_TIMEOUT_MS || 30000,
-);
 const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
 );
@@ -3873,22 +3870,6 @@ function launchAndroidApp({
   });
 }
 
-async function waitForAndroidForeground(timeoutMs: number) {
-  const deadline = Date.now() + timeoutMs;
-  let focusedPackage: string | null = null;
-
-  while (Date.now() < deadline) {
-    focusedPackage = getAndroidFocusedPackage();
-    if (focusedPackage === fixtureSession.appId) {
-      return focusedPackage;
-    }
-
-    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
-  }
-
-  return focusedPackage;
-}
-
 function launchIosApp() {
   logDetoxFixture("ios metadata wait relaunch", {
     appId: fixtureSession.appId,
@@ -3967,32 +3948,6 @@ function dismissAndroidAnrWindow(reason: string) {
     { allowFailure: true },
   );
   return true;
-}
-
-function getAndroidHomePackage() {
-  const resolvedActivity = captureCommand(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "cmd",
-      "package",
-      "resolve-activity",
-      "--brief",
-      "-a",
-      "android.intent.action.MAIN",
-      "-c",
-      "android.intent.category.HOME",
-    ],
-    { allowFailure: true },
-  )
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .at(-1);
-
-  return resolvedActivity?.split("/")[0] ?? null;
 }
 
 type WaitForMetadataOptions = {
@@ -4237,133 +4192,6 @@ async function waitForCrashRecovery(
     ...diagnostics,
     stableBundleId,
   });
-}
-
-async function ensureAppForeground() {
-  if (fixtureSession.platform !== "android") {
-    return {};
-  }
-
-  if (dismissAndroidAnrWindow("ensure-app-foreground")) {
-    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
-  }
-
-  let focusedPackage = getAndroidFocusedPackage();
-  const homePackage = getAndroidHomePackage();
-  if (focusedPackage === fixtureSession.appId) {
-    await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
-    focusedPackage = getAndroidFocusedPackage();
-    if (focusedPackage === fixtureSession.appId) {
-      return {};
-    }
-
-    logDetoxFixture("android ensure foreground lost after settle", {
-      focusedPackage,
-      targetAppId: fixtureSession.appId,
-    });
-  }
-
-  logDetoxFixture("android ensure foreground", {
-    focusedPackage,
-    targetAppId: fixtureSession.appId,
-  });
-
-  const recoverySteps: Array<{
-    label: string;
-    run: () => Promise<void>;
-    timeoutMs: number;
-  }> = [];
-
-  if (focusedPackage && focusedPackage !== homePackage) {
-    recoverySteps.push({
-      label: "dismiss-dialog",
-      run: async () => {
-        captureCommand(
-          "adb",
-          [
-            "-s",
-            deviceId as string,
-            "shell",
-            "input",
-            "keyevent",
-            "KEYCODE_BACK",
-          ],
-          { allowFailure: true },
-        );
-      },
-      timeoutMs: 1500,
-    });
-  }
-
-  recoverySteps.push(
-    {
-      label: "relaunch-app",
-      run: async () => {
-        launchAndroidApp();
-      },
-      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
-    },
-    {
-      label: "home-and-relaunch",
-      run: async () => {
-        captureCommand(
-          "adb",
-          [
-            "-s",
-            deviceId as string,
-            "shell",
-            "input",
-            "keyevent",
-            "KEYCODE_HOME",
-          ],
-          { allowFailure: true },
-        );
-        await sleep(E2E_POLL_INTERVAL_MS);
-        launchAndroidApp();
-      },
-      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
-    },
-    {
-      label: "explicit-activity",
-      run: async () => {
-        launchAndroidApp({ explicitActivity: true });
-      },
-      timeoutMs: E2E_ANDROID_FOREGROUND_TIMEOUT_MS,
-    },
-  );
-
-  for (const step of recoverySteps) {
-    await step.run();
-    focusedPackage = await waitForAndroidForeground(step.timeoutMs);
-
-    if (focusedPackage === fixtureSession.appId) {
-      logDetoxFixture("android ensure foreground recovered", {
-        recoveryStep: step.label,
-        targetAppId: fixtureSession.appId,
-      });
-      await sleep(E2E_ANDROID_LAUNCH_SETTLE_MS);
-      focusedPackage = getAndroidFocusedPackage();
-      if (focusedPackage === fixtureSession.appId) {
-        return {};
-      }
-
-      logDetoxFixture("android ensure foreground lost after settle", {
-        focusedPackage,
-        recoveryStep: step.label,
-        targetAppId: fixtureSession.appId,
-      });
-    }
-
-    logDetoxFixture("android ensure foreground retry", {
-      focusedPackage,
-      recoveryStep: step.label,
-      targetAppId: fixtureSession.appId,
-    });
-  }
-
-  throw new Error(
-    `Failed to bring ${fixtureSession.appId} to foreground (focused package: ${focusedPackage ?? "unknown"})`,
-  );
 }
 
 async function prepareAppLaunch() {
@@ -6000,10 +5828,6 @@ export async function handleWaitForCrashRecovery(
   crashedBundleId: string,
 ) {
   return waitForCrashRecovery(stableBundleId, crashedBundleId);
-}
-
-export async function handleEnsureAppForeground() {
-  return ensureAppForeground();
 }
 
 export async function handlePrepareAppLaunch() {

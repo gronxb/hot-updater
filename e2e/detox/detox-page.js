@@ -116,21 +116,15 @@ async function navigateToTestID(testID) {
   await element(by.id(navTarget)).tap();
 }
 
-async function ensureAppForegroundForInteraction(controlClient) {
-  await controlClient.postJson(
-    "ensure app foreground",
-    "/e2e/ensure-app-foreground",
-    {},
-  );
+async function ensureAppForegroundForInteraction() {
   if (isAndroidRun()) {
-    await device.sendToHome();
     await launchApp({ newInstance: false });
   }
 }
 
 async function findVisibleTestID(controlClient, testID, options = {}) {
   if (options.ensureForeground !== false) {
-    await ensureAppForegroundForInteraction(controlClient);
+    await ensureAppForegroundForInteraction();
   }
   await navigateToTestID(testID);
   const target = element(by.id(testID));
