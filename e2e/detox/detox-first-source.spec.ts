@@ -126,4 +126,23 @@ describe("Detox-first source shape", () => {
       "databasePlugin.updateFixtureBundle",
     );
   });
+
+  it("keeps provider visibility waits below the Detox stage timeout", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+
+    expect(controlServerSource).toContain(
+      "HOT_UPDATER_E2E_UPDATE_CHECK_VISIBILITY_ATTEMPTS",
+    );
+    expect(controlServerSource).toContain(
+      "HOT_UPDATER_E2E_UPDATE_CHECK_EXCLUSION_ATTEMPTS",
+    );
+    expect(controlServerSource).toContain("update check visibility pending");
+    expect(controlServerSource).toContain("update check exclusion pending");
+    expect(controlServerSource).not.toMatch(
+      /waitForUpdateCheckVisibilityUrl[\s\S]*index < 360/,
+    );
+    expect(controlServerSource).not.toMatch(
+      /waitForUpdateCheckExcludesBundle[\s\S]*index < 240/,
+    );
+  });
 });

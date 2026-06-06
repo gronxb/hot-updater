@@ -298,6 +298,13 @@ const PROVIDER_READY_BUNDLE_LIMITS = [1, REMOTE_RESET_READINESS_LIMIT] as const;
 const UPDATE_CHECK_HTTP_TIMEOUT_MS = Number(
   process.env.HOT_UPDATER_E2E_UPDATE_CHECK_HTTP_TIMEOUT_MS || 2000,
 );
+const UPDATE_CHECK_VISIBILITY_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_UPDATE_CHECK_VISIBILITY_ATTEMPTS || 60,
+);
+const UPDATE_CHECK_EXCLUSION_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_UPDATE_CHECK_EXCLUSION_ATTEMPTS || 60,
+);
+const UPDATE_CHECK_PROGRESS_LOG_INTERVAL = 10;
 const AUTO_PATCH_METADATA_WAIT_ATTEMPTS = Number(
   process.env.HOT_UPDATER_E2E_AUTO_PATCH_METADATA_WAIT_ATTEMPTS || 120,
 );
@@ -352,6 +359,14 @@ function formatLogValue(value: unknown) {
 function logDetoxFixture(event: string, details?: unknown) {
   const suffix = details === undefined ? "" : ` ${formatLogValue(details)}`;
   console.log(`${LOG_PREFIX} ${event}${suffix}`);
+}
+
+function shouldLogUpdateCheckProgress(attempt: number, attempts: number) {
+  return (
+    attempt === 1 ||
+    attempt === attempts ||
+    attempt % UPDATE_CHECK_PROGRESS_LOG_INTERVAL === 0
+  );
 }
 
 function writeResultDiagnosticFile(fileName: string, contents: string) {
@@ -3372,7 +3387,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
-  for (let index = 0; index < 360; index += 1) {
+  for (let index = 0; index < UPDATE_CHECK_VISIBILITY_ATTEMPTS; index += 1) {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(args.url, {
@@ -3405,6 +3420,26 @@ async function waitForUpdateCheckVisibilityUrl(args: {
       }
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    const attempt = index + 1;
+    if (
+      shouldLogUpdateCheckProgress(attempt, UPDATE_CHECK_VISIBILITY_ATTEMPTS)
+    ) {
+      logDetoxFixture("update check visibility pending", {
+        attempt,
+        attempts: UPDATE_CHECK_VISIBILITY_ATTEMPTS,
+        expectedBundleId: args.bundleId,
+        lastError,
+        lastObserved,
+        platform: fixtureSession.platform,
+        request: {
+          bundleId: args.requestBundleId,
+          channel: args.channel,
+          minBundleId: args.minBundleId,
+        },
+        url: args.url,
+      });
     }
 
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
@@ -3641,7 +3676,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
   let lastObserved: unknown = null;
   let lastError: string | null = null;
 
-  for (let index = 0; index < 240; index += 1) {
+  for (let index = 0; index < UPDATE_CHECK_EXCLUSION_ATTEMPTS; index += 1) {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(url, {
@@ -3679,6 +3714,26 @@ async function waitForUpdateCheckExcludesBundle(args: {
       }
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
+    }
+
+    const attempt = index + 1;
+    if (
+      shouldLogUpdateCheckProgress(attempt, UPDATE_CHECK_EXCLUSION_ATTEMPTS)
+    ) {
+      logDetoxFixture("update check exclusion pending", {
+        attempt,
+        attempts: UPDATE_CHECK_EXCLUSION_ATTEMPTS,
+        excludedBundleId: args.bundleId,
+        lastError,
+        lastObserved,
+        platform: fixtureSession.platform,
+        request: {
+          bundleId: args.bundleId,
+          channel: args.channel,
+          minBundleId,
+        },
+        url,
+      });
     }
 
     await abortableSleep(E2E_POLL_INTERVAL_MS, args.signal);
