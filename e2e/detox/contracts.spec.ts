@@ -187,6 +187,33 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
+  it("pins the iOS Detox build to the resolved simulator destination", () => {
+    // Given: dashboard split jobs resolve simulator names to UDIDs.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        [
+          "process.env.HOT_UPDATER_E2E_DEVICE_ID = '0368C5D9-1111-2222-3333-444455556666';",
+          "const config = require('./.detoxrc.js');",
+          "console.log(config.apps['ios.release'].build);",
+        ].join(""),
+      ],
+      {
+        cwd: repoDir,
+        encoding: "utf8",
+      },
+    );
+
+    // When: Detox reads the iOS release build command.
+    // Then: xcodebuild receives an explicit destination instead of
+    // relying on the first matching simulator.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      "-destination 'id=0368C5D9-1111-2222-3333-444455556666'",
+    );
+  });
+
   it("transforms TypeScript support modules loaded by Detox Jest", async () => {
     // Given: the Detox JS spec dynamically loads TypeScript scenario modules.
     const jestConfig = await fs.readFile(detoxJestConfigPath, "utf8");
