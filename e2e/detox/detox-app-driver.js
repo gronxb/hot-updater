@@ -59,6 +59,7 @@ class DetoxAppDriver {
 
   async reload(stage) {
     await this.runStage(stage, async () => {
+      await disableSynchronizationUntilLaunch();
       await device.terminateApp();
       await launchApp({ newInstance: true });
     });

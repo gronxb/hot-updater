@@ -419,6 +419,24 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("keeps Detox synchronization disabled across explicit reloads", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const reloadBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async reload(stage"),
+      detoxRuntimeSource.indexOf("async resetAppState(stage"),
+    );
+
+    expect(reloadBody).toContain("disableSynchronizationUntilLaunch()");
+    expect(reloadBody).toContain("await launchApp({ newInstance: true })");
+    expect(reloadBody).not.toContain("device.enableSynchronization()");
+    expect(reloadBody).not.toContain("finally");
+    expect(reloadBody).not.toMatch(/\bretry\b/i);
+    expect(reloadBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("prefers the Detox control port over provider ports for host control traffic", async () => {
     // Given: dashboard split jobs set PORT/HOT_UPDATER_SERVER_PORT for the
     // provider update server and HOT_UPDATER_E2E_CONTROL_PORT for control.
