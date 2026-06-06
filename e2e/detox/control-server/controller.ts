@@ -23,6 +23,7 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
 
 type Platform = "ios" | "android";
 type BundleProfile = "archive300mb" | "default" | "multiAssetReplacement";
@@ -3359,11 +3360,12 @@ function getCurrentUpdateCheckBundleId() {
 }
 
 function shouldWaitForUpdateCheckVisibility(request: DeployBundleRequest) {
-  return (
-    request.disabled !== true &&
-    typeof request.rollout !== "number" &&
-    (!request.targetCohorts || request.targetCohorts.length === 0)
-  );
+  return shouldProbeUpdateCheckVisibility({
+    appBaseUrl: fixtureSession.appBaseUrl,
+    disabled: request.disabled,
+    rollout: request.rollout,
+    targetCohorts: request.targetCohorts,
+  });
 }
 
 async function waitForUpdateCheckVisibility(args: {
