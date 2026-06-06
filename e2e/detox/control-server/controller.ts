@@ -1432,7 +1432,7 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
         throw new Error(`No bundle with id ${bundleId}.`);
       }
 
-      await databasePlugin.updateFixtureBundle(bundleId, definedPatch);
+      await databasePlugin.updateBundle(bundleId, definedPatch);
       await databasePlugin.commitBundle();
 
       const refetched = await databasePlugin.getBundleById(bundleId);
@@ -1716,7 +1716,7 @@ async function clearProviderBundles({
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
           (bundle) =>
-            databasePlugin.updateFixtureBundle(bundle.id, { enabled: false }),
+            databasePlugin.updateBundle(bundle.id, { enabled: false }),
         );
         await databasePlugin.commitBundle();
 

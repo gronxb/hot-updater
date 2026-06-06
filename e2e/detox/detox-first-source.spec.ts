@@ -106,4 +106,12 @@ describe("Detox-first source shape", () => {
     );
     expect(controlServerSource).not.toContain("reinstallBuiltInApp");
   });
+
+  it("keeps provider plugin method names at the fixture boundary", async () => {
+    const controlServerSource = await fs.readFile(controlServerPath, "utf8");
+
+    expect(controlServerSource).not.toContain(
+      "databasePlugin.updateFixtureBundle",
+    );
+  });
 });
