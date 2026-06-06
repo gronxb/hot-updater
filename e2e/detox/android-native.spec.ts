@@ -137,17 +137,18 @@ describe("Detox Android native setup", () => {
     }
   });
 
-  it("limits Detox Android native builds to the attached emulator ABI", async () => {
+  it("builds Detox Android native binaries for common emulator ABIs", async () => {
     // Given: provider verification runs Detox against an attached Android emulator.
     const detoxRc = await readText(detoxRcPath);
 
     // When: Detox builds the Android app and test APK.
     const requiredAbiMarkers = [
       "assembleRelease assembleAndroidTest",
-      "-PreactNativeArchitectures=x86_64",
+      'process.env.HOT_UPDATER_E2E_ANDROID_ARCHITECTURES || "arm64-v8a,x86_64"',
+      "-PreactNativeArchitectures=${androidArchitectures}",
     ];
 
-    // Then: E2E builds avoid compiling unused device ABIs.
+    // Then: E2E builds install on both Apple Silicon and x86 emulator images.
     for (const marker of requiredAbiMarkers) {
       expect(detoxRc).toContain(marker);
     }
