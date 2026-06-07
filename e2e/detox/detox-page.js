@@ -74,9 +74,8 @@ function shouldDisableSynchronizationForTap(testID) {
   return testID.startsWith("action-install-");
 }
 
-async function disableSynchronizationUntilLaunch(options = {}) {
-  const force = options.force === true;
-  if (synchronizationDisabledUntilLaunch && !force) return;
+async function disableSynchronizationUntilLaunch() {
+  if (synchronizationDisabledUntilLaunch) return;
   await device.disableSynchronization();
   synchronizationDisabledUntilLaunch = true;
 }

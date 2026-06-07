@@ -411,7 +411,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("waits for Detox-observable install action results after native completion", async () => {
+  it("does not gate install taps on Detox UI result matchers", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -422,13 +422,14 @@ describe("Detox scenario contract", () => {
     );
 
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("expectedResultContains");
-    expect(tapBody).toContain("waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain('"update-action-result"');
-    expect(detoxRuntimeSource).toContain("by.id(");
-    expect(detoxRuntimeSource).toContain("by.text(");
-    expect(detoxRuntimeSource).toContain(".and(");
+    expect(tapBody).not.toContain("expectedResultContains");
+    expect(tapBody).not.toContain("waitForInstallActionResult");
+    expect(detoxRuntimeSource).not.toContain(
+      "async waitForInstallActionResult",
+    );
+    expect(detoxRuntimeSource).not.toContain('"update-action-result"');
+    expect(detoxRuntimeSource).not.toContain("by.text(");
+    expect(detoxRuntimeSource).not.toContain(".and(");
     expect(tapBody).not.toMatch(/\bretry\b/i);
     expect(tapBody).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -489,8 +490,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).toContain("waitForInstallActionResult");
-    expect(installTapBody).toContain("expectedResultContains");
+    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(installTapBody).not.toContain("expectedResultContains");
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
     expect(deviceActionBody).toContain(
@@ -500,18 +501,11 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("re-disables Detox synchronization before reading install action results", async () => {
+  it("keeps install synchronization simple until the next app launch", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
-    );
-    const installResultBody = detoxRuntimeSource.slice(
-      detoxRuntimeSource.indexOf("async waitForInstallActionResult"),
-      detoxRuntimeSource.indexOf(
-        "saveControlResult(options, result)",
-        detoxRuntimeSource.indexOf("async waitForInstallActionResult"),
-      ),
     );
     const syncHelperBody = detoxPageSource.slice(
       detoxPageSource.indexOf(
@@ -520,16 +514,19 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf("function navTargetForTestID"),
     );
 
-    expect(syncHelperBody).toContain("options.force === true");
-    expect(installResultBody).toContain(
-      "await disableSynchronizationUntilLaunch({ force: true });",
+    expect(syncHelperBody).toContain(
+      "if (synchronizationDisabledUntilLaunch) return;",
     );
-    expect(installResultBody).toContain("findVisibleTestID(");
-    expect(installResultBody).not.toMatch(/\bretry\b/i);
-    expect(installResultBody).not.toMatch(/\bsetTimeout\b/i);
+    expect(syncHelperBody).not.toContain("options.force === true");
+    expect(syncHelperBody).not.toContain("device.enableSynchronization()");
+    expect(detoxRuntimeSource).not.toContain(
+      "disableSynchronizationUntilLaunch({ force: true })",
+    );
+    expect(syncHelperBody).not.toMatch(/\bretry\b/i);
+    expect(syncHelperBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("gates install taps on Detox matcher result text waits", async () => {
+  it("lets install taps advance to metadata verification without result waits", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -541,36 +538,36 @@ describe("Detox scenario contract", () => {
 
     expect(installTapBody).not.toContain("isAndroidRun()");
     expect(installTapBody).toContain("if (isInstallAction) {");
-    expect(installTapBody).toContain("waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain("waitFor(");
-    expect(detoxRuntimeSource).toContain("by.text(");
+    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(installTapBody).not.toContain("by.text(");
+    expect(installTapBody).not.toContain(".withTimeout(30000)");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("inspects action result elements without manual polling", async () => {
+  it("keeps action result elements available for explicit assertions only", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
     );
-    const resultWaitStart = detoxRuntimeSource.indexOf(
-      "async waitForInstallActionResult",
-    );
-    const resultWaitBody = detoxRuntimeSource.slice(
-      resultWaitStart,
-      detoxRuntimeSource.indexOf(
-        "saveControlResult(options, result)",
-        resultWaitStart,
-      ),
+    const assertTextBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async assertText(stage"),
+      detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain('"update-action-result"');
+    expect(exampleAppSource).toContain('testID="update-action-result"');
+    expect(detoxPageSource).toContain('testID.endsWith("-result")');
+    expect(detoxPageSource).toContain("e2e-nav-action-results");
+    expect(detoxRuntimeSource).not.toContain('"update-action-result"');
     expect(detoxRuntimeSource).toContain(".toBeVisible()");
-    expect(detoxRuntimeSource).toContain("escapeRegExp");
-    expect(resultWaitBody).toContain("findVisibleTestID(");
-    expect(resultWaitBody).toContain("ensureForeground: false");
-    expect(resultWaitBody).toContain("textFromAttributes");
+    expect(detoxRuntimeSource).not.toContain("escapeRegExp");
+    expect(detoxRuntimeSource).not.toContain(
+      "async waitForInstallActionResult",
+    );
+    expect(assertTextBody).toContain("findVisibleTestID(");
+    expect(assertTextBody).toContain("textFromAttributes");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -698,7 +695,7 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("waitForInstallActionResult");
+    expect(tapBody).not.toContain("waitForInstallActionResult");
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
