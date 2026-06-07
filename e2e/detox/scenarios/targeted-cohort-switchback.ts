@@ -47,6 +47,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "qaBundleId",
       },
     );
+    await app.launch("launch targeted cohort app");
     await app.typeText(
       "enter numeric cohort",
       "cohort-input",

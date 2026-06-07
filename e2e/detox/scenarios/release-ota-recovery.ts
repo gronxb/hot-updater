@@ -3,7 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
   name: "release-ota-recovery",
   run: async (app) => {
-    await app.launch("launch built-in app");
     await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",

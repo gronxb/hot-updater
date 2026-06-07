@@ -18,6 +18,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           saveResultAs: "previousBundleId",
         },
       );
+      await app.launch("launch previous bundle app");
       await app.tap(
         "install previous bundle",
         "action-install-current-channel-update",

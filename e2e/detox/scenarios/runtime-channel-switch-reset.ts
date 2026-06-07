@@ -3,7 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
   name: "runtime-channel-switch-reset",
   run: async (app) => {
-    await app.launch("launch default channel");
     await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",
@@ -26,6 +25,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
         saveResultAs: "runtimeBundleId",
       },
     );
+    await app.launch("launch runtime channel app");
     await app.tap(
       "install runtime channel update",
       "action-install-runtime-channel-update",

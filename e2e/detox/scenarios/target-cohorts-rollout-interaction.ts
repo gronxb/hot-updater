@@ -20,6 +20,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           saveResultAs: "bundleId",
         },
       );
+      await app.launch("launch cohort rollout app");
       await app.typeText("enter qa cohort", "cohort-input", "qa");
       await app.tap("apply qa cohort", "action-apply-cohort-input");
       await app.tap(

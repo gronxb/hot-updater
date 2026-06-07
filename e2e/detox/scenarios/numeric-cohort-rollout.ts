@@ -3,7 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
   name: "numeric-cohort-rollout",
   run: async (app) => {
-    await app.launch("launch built-in app");
     await app.control(
       "capture built-in bundle id",
       "/e2e/capture-built-in-bundle-id",
@@ -40,6 +39,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         },
       },
     );
+    await app.launch("launch numeric cohort app");
     await app.typeText(
       "enter included cohort",
       "cohort-input",

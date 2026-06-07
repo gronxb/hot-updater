@@ -255,9 +255,9 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
   });
 
-  it("does not delete seeded control-server app state after reset", async () => {
+  it("does not launch the app before provider bundles are deployed", async () => {
     // Given: the control server resets remote bundles and local app state
-    // before the first cold launch can request an update-check URL.
+    // before any provider-backed update-check URL can be requested.
     const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
     const beforeEachBody = detoxJestSpec.slice(
       detoxJestSpec.indexOf("beforeEach(async () =>"),
@@ -274,13 +274,41 @@ describe("Detox scenario contract", () => {
     );
     const launchIndex = beforeEachBody.indexOf("launchApp");
 
-    // Then: launch keeps the freshly reset/seeded data instead of deleting it.
+    // Then: a scenario must decide when to launch, after it has deployed the
+    // first provider bundle. Launching here can cache empty CDN responses.
     expect(bootstrapIndex).toBeGreaterThan(-1);
     expect(resetRemoteIndex).toBeGreaterThan(bootstrapIndex);
     expect(resetLocalIndex).toBeGreaterThan(resetRemoteIndex);
-    expect(launchIndex).toBeGreaterThan(resetLocalIndex);
-    expect(beforeEachBody).toContain("launchApp({ newInstance: true })");
+    expect(launchIndex).toBe(-1);
     expect(beforeEachBody).not.toContain("delete: true");
+  });
+
+  it("launches scenarios only after the first deploy-bundle step", async () => {
+    for (const scenarioName of defaultDetoxScenarioNames) {
+      const calls = await recordScenarioCalls(scenarioName);
+      const firstDeployIndex = calls.findIndex(
+        (call) =>
+          call.kind === "control" &&
+          call.pathName === "/e2e/jobs/deploy-bundle",
+      );
+      const firstLaunchIndex = calls.findIndex(
+        (call) => call.kind === "launch",
+      );
+      const firstUiIndex = calls.findIndex(
+        (call) =>
+          call.kind === "assertText" ||
+          call.kind === "tap" ||
+          call.kind === "typeText",
+      );
+
+      expect(firstDeployIndex, scenarioName).toBeGreaterThan(-1);
+      if (firstUiIndex === -1) {
+        expect(firstLaunchIndex, scenarioName).toBe(-1);
+        continue;
+      }
+      expect(firstLaunchIndex, scenarioName).toBeGreaterThan(firstDeployIndex);
+      expect(firstUiIndex, scenarioName).toBeGreaterThan(firstLaunchIndex);
+    }
   });
 
   it("captures the built-in bundle id with the same suffix contract as Maestro", async () => {
@@ -621,6 +649,7 @@ describe("Detox scenario contract", () => {
     // Then: it keeps the same pending -> result -> reload -> stable order.
     expect(stages).toEqual([
       "deploy target cohort bundle",
+      "launch target cohort app",
       "enter qa cohort",
       "apply qa cohort",
       "assert qa cohort applied",
@@ -663,6 +692,7 @@ describe("Detox scenario contract", () => {
     // Then: it waits pending first, reloads, then verifies the stable launch.
     expect(stages).toEqual([
       "deploy force update bundle",
+      "launch force update app",
       "install force update",
       "wait force update metadata pending",
       "reload force update",
@@ -731,8 +761,8 @@ describe("Detox scenario contract", () => {
     // When: the Detox scenario is inspected.
     // Then: both bundles become stable before asset replacement assertions run.
     expect(stages).toEqual([
-      "launch built-in app",
       "deploy first multi-asset bundle",
+      "launch first multi-asset app",
       "install first multi-asset update",
       "wait first multi-asset metadata pending",
       "reload first multi-asset update",
@@ -791,6 +821,7 @@ describe("Detox scenario contract", () => {
     // Then: the diff is installed against a stable base and uses the deploy result path.
     expect(stages).toEqual([
       "deploy first diff bundle",
+      "launch first diff app",
       "install first diff bundle",
       "wait first diff metadata pending",
       "reload first diff bundle",
@@ -833,7 +864,6 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("release-ota-recovery");
 
     expect(stages).toEqual([
-      "launch built-in app",
       "capture built-in bundle id",
       "deploy stable bundle",
       "launch stable update app",
@@ -886,6 +916,7 @@ describe("Detox scenario contract", () => {
 
     expect(stages).toEqual([
       "deploy cohort rollout bundle",
+      "launch cohort rollout app",
       "enter qa cohort",
       "apply qa cohort",
       "install cohort rollout update",
@@ -916,9 +947,9 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("runtime-channel-switch-reset");
 
     expect(stages).toEqual([
-      "launch default channel",
       "capture built-in bundle id",
       "deploy runtime channel bundle",
+      "launch runtime channel app",
       "install runtime channel update",
       "wait runtime channel metadata pending",
       "assert runtime channel result",
@@ -948,10 +979,10 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("numeric-cohort-rollout");
 
     expect(stages).toEqual([
-      "launch built-in app",
       "capture built-in bundle id",
       "deploy numeric cohort bundle",
       "compute rollout sample",
+      "launch numeric cohort app",
       "enter included cohort",
       "apply included cohort",
       "assert included cohort applied",
@@ -1030,6 +1061,7 @@ describe("Detox scenario contract", () => {
       "deploy numeric cohort bundle",
       "compute numeric rollout sample",
       "deploy qa cohort bundle",
+      "launch targeted cohort app",
       "enter numeric cohort",
       "apply numeric cohort",
       "assert numeric cohort applied",
@@ -1070,6 +1102,7 @@ describe("Detox scenario contract", () => {
     expect(builtinStages).toEqual([
       "capture built-in bundle",
       "deploy current bundle",
+      "launch current bundle app",
       "install current bundle",
       "wait current bundle metadata pending",
       "reload current bundle",
@@ -1083,6 +1116,7 @@ describe("Detox scenario contract", () => {
     ]);
     expect(previousStages).toEqual([
       "deploy previous bundle",
+      "launch previous bundle app",
       "install previous bundle",
       "wait previous bundle metadata pending",
       "reload previous bundle",

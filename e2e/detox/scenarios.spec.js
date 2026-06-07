@@ -8,7 +8,6 @@ const {
   androidReversePorts,
   controlBaseUrl,
   isAndroidRun,
-  launchApp,
 } = require("./detox-page.js");
 const { DetoxAppDriver } = require("./detox-app-driver.js");
 
@@ -40,7 +39,6 @@ describe("HotUpdater Detox scenarios", () => {
       "/e2e/reset-local-app-state",
       {},
     );
-    await launchApp({ newInstance: true });
   });
 
   afterEach(async () => {

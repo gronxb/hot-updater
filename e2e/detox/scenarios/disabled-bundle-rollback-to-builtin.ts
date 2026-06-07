@@ -26,6 +26,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           saveResultAs: "currentBundleId",
         },
       );
+      await app.launch("launch current bundle app");
       await app.tap(
         "install current bundle",
         "action-install-current-channel-update",

@@ -3,7 +3,6 @@ import type { DetoxScenarioDefinition } from "./types.ts";
 export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
   name: "multi-asset-replacement",
   run: async (app) => {
-    await app.launch("launch built-in app");
     await app.control(
       "deploy first multi-asset bundle",
       "/e2e/jobs/deploy-bundle",
@@ -19,6 +18,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         saveResultAs: "firstBundleId",
       },
     );
+    await app.launch("launch first multi-asset app");
     await app.tap(
       "install first multi-asset update",
       "action-install-current-channel-update",

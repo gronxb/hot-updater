@@ -18,6 +18,7 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
         saveResultAs: "forceBundleId",
       },
     );
+    await app.launch("launch force update app");
     await app.tap(
       "install force update",
       "action-install-current-channel-update",

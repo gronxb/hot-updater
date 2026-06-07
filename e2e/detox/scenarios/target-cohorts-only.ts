@@ -19,6 +19,7 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleId",
       },
     );
+    await app.launch("launch target cohort app");
     await app.typeText("enter qa cohort", "cohort-input", "qa");
     await app.tap("apply qa cohort", "action-apply-cohort-input");
     await app.assertText(
