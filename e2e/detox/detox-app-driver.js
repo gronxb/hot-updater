@@ -84,7 +84,7 @@ class DetoxAppDriver {
         await disableSynchronizationUntilLaunch();
       }
       await target.tap();
-      if (isInstallAction && isAndroidRun()) {
+      if (isInstallAction) {
         await this.waitForInstallActionResult(stage, expectedResultContains);
       }
     });
