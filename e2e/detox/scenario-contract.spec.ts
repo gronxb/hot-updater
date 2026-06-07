@@ -500,6 +500,35 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("re-disables Detox synchronization before reading install action results", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const installResultBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async waitForInstallActionResult"),
+      detoxRuntimeSource.indexOf(
+        "saveControlResult(options, result)",
+        detoxRuntimeSource.indexOf("async waitForInstallActionResult"),
+      ),
+    );
+    const syncHelperBody = detoxPageSource.slice(
+      detoxPageSource.indexOf(
+        "async function disableSynchronizationUntilLaunch",
+      ),
+      detoxPageSource.indexOf("function navTargetForTestID"),
+    );
+
+    expect(syncHelperBody).toContain("options.force === true");
+    expect(installResultBody).toContain(
+      "await disableSynchronizationUntilLaunch({ force: true });",
+    );
+    expect(installResultBody).toContain("findVisibleTestID(");
+    expect(installResultBody).not.toMatch(/\bretry\b/i);
+    expect(installResultBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("gates install taps on Detox matcher result text waits", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,

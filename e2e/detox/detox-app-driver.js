@@ -154,6 +154,7 @@ class DetoxAppDriver {
     }
     const expectedText = String(this.resolvePlaceholders(expectedResultContains));
     const expectedPattern = new RegExp(`installed ${escapeRegExp(expectedText)}`);
+    await disableSynchronizationUntilLaunch({ force: true });
     const result = await findVisibleTestID(
       this.controlClient,
       "update-action-result",
