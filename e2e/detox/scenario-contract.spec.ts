@@ -378,7 +378,23 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("lets control metadata prove install actions instead of waiting on busy UI text", async () => {
+  it("waits for install action results before metadata jobs prove pending state", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+
+    expect(tapBody).toContain("waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain('"update-action-result"');
+    expect(detoxRuntimeSource).toContain("install action failed");
+    expect(tapBody).not.toMatch(/\bretry\b/i);
+  });
+
+  it("lets control metadata prove install actions after native completion", async () => {
     const installSteps = [
       ["release-ota-recovery", "install stable update"],
       ["release-ota-recovery", "install crash update"],
@@ -425,10 +441,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
+    expect(installTapBody).toContain("waitForInstallActionResult");
     expect(installTapBody).not.toContain("step.expectResultContains");
-    expect(installTapBody).not.toContain(
-      'waitForVisibleText("update-action-result"',
-    );
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
     expect(deviceActionBody).toContain(
@@ -546,7 +560,7 @@ describe("Detox scenario contract", () => {
     );
   });
 
-  it("taps install actions directly and lets metadata jobs prove downloads", async () => {
+  it("keeps metadata jobs responsible for bundle-store verification after install completion", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -561,6 +575,7 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
+    expect(tapBody).toContain("waitForInstallActionResult");
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 

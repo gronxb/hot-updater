@@ -61,6 +61,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install numeric cohort update",
       "action-install-current-channel-update",
+      "$numericBundleId",
     );
     await app.control(
       "wait numeric cohort metadata pending",
@@ -90,6 +91,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install qa cohort update",
       "action-install-current-channel-update",
+      "$qaBundleId",
     );
     await app.control(
       "wait qa cohort metadata pending",
@@ -128,6 +130,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install numeric cohort rollback",
       "action-install-current-channel-update",
+      "$numericBundleId",
     );
     await app.control(
       "wait numeric cohort rollback pending",

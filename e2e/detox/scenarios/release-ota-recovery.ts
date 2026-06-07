@@ -31,6 +31,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install stable update",
       "action-install-current-channel-update",
+      "$stableBundleId",
     );
     await app.control(
       "wait stable metadata pending",
@@ -73,6 +74,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install crash update",
       "action-install-current-channel-update",
+      "$crashBundleId",
     );
     await app.control(
       "wait crash metadata pending",

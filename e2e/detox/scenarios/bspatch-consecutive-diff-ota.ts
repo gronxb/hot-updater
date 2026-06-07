@@ -21,6 +21,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install first diff bundle",
       "action-install-current-channel-update",
+      "$firstBundleId",
     );
     await app.control(
       "wait first diff metadata pending",
@@ -59,6 +60,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install second diff bundle",
       "action-install-current-channel-update",
+      "$secondBundleId",
     );
     await app.control(
       "wait second diff metadata pending",

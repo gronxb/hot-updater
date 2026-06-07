@@ -21,6 +21,7 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install force update",
       "action-install-current-channel-update",
+      "$forceBundleId",
     );
     await app.control(
       "wait force update metadata pending",

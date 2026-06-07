@@ -1,4 +1,4 @@
-const { device, expect: detoxExpect } = require("detox");
+const { by, device, element, expect: detoxExpect, waitFor } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
   findVisibleTestID,
@@ -76,13 +76,16 @@ class DetoxAppDriver {
     });
   }
 
-  async tap(stage, testID) {
+  async tap(stage, testID, expectedResultContains) {
     await this.runStage(stage, async () => {
       const target = await findVisibleTestID(this.controlClient, testID);
       if (shouldDisableSynchronizationForTap(testID)) {
         await disableSynchronizationUntilLaunch();
       }
       await target.tap();
+      if (shouldDisableSynchronizationForTap(testID)) {
+        await this.waitForInstallActionResult(stage, expectedResultContains);
+      }
     });
   }
 
@@ -138,6 +141,37 @@ class DetoxAppDriver {
     }
   }
 
+  async waitForInstallActionResult(stage, expectedResultContains) {
+    const expectedText =
+      typeof expectedResultContains === "string"
+        ? String(this.resolvePlaceholders(expectedResultContains))
+        : "";
+    const resultTarget = await findVisibleTestID(
+      this.controlClient,
+      "update-action-result",
+      { ensureForeground: false },
+    );
+    const terminalPattern = expectedText
+      ? new RegExp(
+          `^Update Action Result: .* -> .*${escapeRegExp(expectedText)}.*$`,
+        )
+      : /^Update Action Result: .* -> (installed|no-update|skipped|error).*$/;
+
+    await waitFor(element(by.text(terminalPattern)))
+      .toBeVisible()
+      .withTimeout(30000);
+
+    const resultText = textFromAttributes(await resultTarget.getAttributes());
+    if (resultText.includes(" -> error ")) {
+      throw new Error(`${stage} install action failed: ${resultText}`);
+    }
+    if (expectedText && !resultText.includes(expectedText)) {
+      throw new Error(
+        `${stage} expected install result to contain "${expectedText}", received "${resultText}"`,
+      );
+    }
+  }
+
   saveControlResult(options, result) {
     for (const [key, value] of Object.entries(result)) {
       this.stageValues[key] = value;
@@ -168,6 +202,10 @@ class DetoxAppDriver {
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
     await launchApp({ newInstance: false });
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 module.exports = { DetoxAppDriver };

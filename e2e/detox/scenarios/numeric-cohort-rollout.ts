@@ -54,6 +54,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install rollout update",
       "action-install-current-channel-update",
+      "$bundleId",
     );
     await app.control(
       "wait rollout metadata pending",
@@ -97,6 +98,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install excluded cohort update",
       "action-install-current-channel-update",
+      "no-update",
     );
     await app.control(
       "assert excluded metadata reset",

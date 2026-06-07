@@ -29,6 +29,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install runtime channel update",
       "action-install-runtime-channel-update",
+      "$runtimeBundleId",
     );
     await app.control(
       "wait runtime channel metadata pending",

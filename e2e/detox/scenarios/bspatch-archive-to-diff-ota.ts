@@ -21,6 +21,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install archive base update",
       "action-install-current-channel-update",
+      "$archiveBundleId",
     );
     await app.control(
       "wait archive base metadata pending",
@@ -90,6 +91,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install archive diff update",
       "action-install-current-channel-update",
+      "$diffBundleId",
     );
     await app.control(
       "wait archive diff metadata pending",

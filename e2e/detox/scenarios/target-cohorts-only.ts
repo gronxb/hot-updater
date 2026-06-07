@@ -29,6 +29,7 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install target cohort update",
       "action-install-current-channel-update",
+      "$bundleId",
     );
     await app.control(
       "wait target cohort metadata pending",

@@ -25,6 +25,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
       await app.tap(
         "install cohort rollout update",
         "action-install-current-channel-update",
+        "$bundleId",
       );
       await app.control(
         "wait cohort rollout metadata pending",
