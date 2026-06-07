@@ -1,4 +1,4 @@
-const { device, expect: detoxExpect } = require("detox");
+const { by, device, element, expect: detoxExpect, waitFor } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
   findVisibleTestID,
@@ -7,6 +7,10 @@ const {
   shouldDisableSynchronizationForTap,
   textFromAttributes,
 } = require("./detox-page.js");
+
+function escapeRegExp(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
 
 class DetoxAppDriver {
   constructor(client) {
@@ -76,7 +80,7 @@ class DetoxAppDriver {
     });
   }
 
-  async tap(stage, testID) {
+  async tap(stage, testID, expectedResultContains) {
     await this.runStage(stage, async () => {
       const target = await findVisibleTestID(this.controlClient, testID);
       const isInstallAction = shouldDisableSynchronizationForTap(testID);
@@ -84,6 +88,9 @@ class DetoxAppDriver {
         await disableSynchronizationUntilLaunch();
       }
       await target.tap();
+      if (isInstallAction) {
+        await this.waitForInstallActionResult(stage, expectedResultContains);
+      }
     });
   }
 
@@ -137,6 +144,21 @@ class DetoxAppDriver {
       console.log(`[detox-stage:failed] ${stage}`);
       throw error;
     }
+  }
+
+  async waitForInstallActionResult(stage, expectedResultContains) {
+    if (typeof expectedResultContains !== "string") {
+      throw new Error(
+        `${stage} install action must provide expected result text`,
+      );
+    }
+    const expectedText = String(this.resolvePlaceholders(expectedResultContains));
+    const expectedPattern = new RegExp(`installed ${escapeRegExp(expectedText)}`);
+    await waitFor(
+      element(by.id("update-action-result").and(by.text(expectedPattern))),
+    )
+      .toBeVisible()
+      .withTimeout(30000);
   }
 
   saveControlResult(options, result) {
