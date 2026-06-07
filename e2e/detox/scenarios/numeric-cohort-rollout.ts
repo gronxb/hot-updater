@@ -98,7 +98,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install excluded cohort update",
       "action-install-current-channel-update",
-      "no-update",
+      "00000000-0000-0000-0000-000000000000",
     );
     await app.control(
       "assert excluded metadata reset",

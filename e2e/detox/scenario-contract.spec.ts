@@ -64,6 +64,7 @@ type RecordedScenarioCall =
         | "tap"
         | "terminate"
         | "typeText";
+      readonly expectedResultContains?: string;
       readonly stage: string;
       readonly testID?: string;
     };
@@ -93,8 +94,8 @@ async function recordScenarioCalls(
       calls.push({ kind: "resetAppState", stage });
       return Promise.resolve();
     },
-    tap: (stage, testID) => {
-      calls.push({ kind: "tap", stage, testID });
+    tap: (stage, testID, expectedResultContains) => {
+      calls.push({ expectedResultContains, kind: "tap", stage, testID });
       return Promise.resolve();
     },
     terminate: (stage) => {
@@ -977,6 +978,13 @@ describe("Detox scenario contract", () => {
         )
       ).verificationPending,
     ).toBe(false);
+    expect(
+      (await recordScenarioCalls("numeric-cohort-rollout")).find(
+        (call) =>
+          call.kind === "tap" &&
+          call.stage === "install excluded cohort update",
+      )?.expectedResultContains,
+    ).toBe("00000000-0000-0000-0000-000000000000");
   });
 
   it("models targeted cohort switchback as bundle state, not restore text", async () => {
