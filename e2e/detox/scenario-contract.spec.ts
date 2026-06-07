@@ -471,6 +471,30 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("does not scroll to visible action results while native install work is busy", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const installResultStart = detoxRuntimeSource.indexOf(
+      "async waitForInstallActionResult(stage",
+    );
+    const installResultBody = detoxRuntimeSource.slice(
+      installResultStart,
+      detoxRuntimeSource.indexOf(
+        "saveControlResult(options",
+        installResultStart,
+      ),
+    );
+
+    expect(installResultBody).toContain('"update-action-result"');
+    expect(installResultBody).toContain(".toExist()");
+    expect(installResultBody).not.toContain("findVisibleTestID");
+    expect(installResultBody).not.toContain(".toBeVisible()");
+    expect(installResultBody).not.toMatch(/\bretry\b/i);
+    expect(installResultBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("keeps Detox synchronization disabled across explicit reloads", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,

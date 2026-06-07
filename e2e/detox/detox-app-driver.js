@@ -147,19 +147,16 @@ class DetoxAppDriver {
       typeof expectedResultContains === "string"
         ? String(this.resolvePlaceholders(expectedResultContains))
         : "";
-    const resultTarget = await findVisibleTestID(
-      this.controlClient,
-      "update-action-result",
-      { ensureForeground: false },
-    );
+    const resultTarget = element(by.id("update-action-result"));
     const terminalPattern = expectedText
       ? new RegExp(
           `^Update Action Result: .* -> .*${escapeRegExp(expectedText)}.*$`,
         )
       : /^Update Action Result: .* -> (installed|no-update|skipped|error).*$/;
 
+    await waitFor(resultTarget).toExist().withTimeout(30000);
     await waitFor(element(by.text(terminalPattern)))
-      .toBeVisible()
+      .toExist()
       .withTimeout(30000);
 
     const resultText = textFromAttributes(await resultTarget.getAttributes());
