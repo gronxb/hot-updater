@@ -471,6 +471,7 @@ function getFixtureResetChannels() {
 
 const jobs = new Map<string, JobState>();
 const jobAbortControllers = new Map<string, AbortController>();
+const remoteAssetProxyTargets = new Map<string, string>();
 let bootstrapJobId: string | null = null;
 
 function getAbortSignalReason(signal: AbortSignal) {
@@ -3103,8 +3104,9 @@ export function handleRuntimeConfig() {
 }
 
 function toAppReachableProxyUrl(url: string) {
-  const encodedUrl = encodeURIComponent(url);
-  return `${getAppReachableControlBaseUrl()}/e2e/proxy-url?url=${encodedUrl}`;
+  const targetId = randomUUID();
+  remoteAssetProxyTargets.set(targetId, url);
+  return `${getAppReachableControlBaseUrl()}/e2e/proxy-url/${targetId}`;
 }
 
 function rewriteRemoteAssetUrl(value: unknown): unknown {
@@ -3275,7 +3277,7 @@ export async function handleProxyUpdateRequest(request: Request) {
 
 export async function handleProxyRemoteAssetRequest(request: Request) {
   const requestUrl = new URL(request.url);
-  const target = requestUrl.searchParams.get("url");
+  const target = getRemoteAssetProxyTarget(requestUrl);
 
   if (!target) {
     return new Response("Missing url", { status: 400 });
@@ -3309,6 +3311,18 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
     status: response.status,
     statusText: response.statusText,
   });
+}
+
+function getRemoteAssetProxyTarget(requestUrl: URL) {
+  const proxyPathPrefix = "/e2e/proxy-url/";
+  if (requestUrl.pathname.startsWith(proxyPathPrefix)) {
+    const targetId = decodeURIComponent(
+      requestUrl.pathname.slice(proxyPathPrefix.length),
+    );
+    return remoteAssetProxyTargets.get(targetId) ?? null;
+  }
+
+  return requestUrl.searchParams.get("url");
 }
 
 function buildAppVersionUpdateCheckUrl(args: {
@@ -5407,6 +5421,7 @@ async function captureState(prefix: string) {
 }
 
 async function resetRemoteBundles() {
+  remoteAssetProxyTargets.clear();
   await clearProviderBundles({
     mode: "delete",
   });
@@ -5637,6 +5652,7 @@ async function writeSummary({
 }
 
 async function cleanup() {
+  remoteAssetProxyTargets.clear();
   if (!fixtureSession.appBackupPath) {
     return {};
   }

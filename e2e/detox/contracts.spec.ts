@@ -92,6 +92,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/detox-first-source.spec.ts",
       "e2e/detox/detox-page.js",
       "e2e/detox/jest.config.js",
+      "e2e/detox/proxy-url-contract.spec.ts",
       "e2e/detox/recovery-foreground.spec.ts",
       "e2e/detox/scenario-context.spec.ts",
       "e2e/detox/scenario-context.ts",

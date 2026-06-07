@@ -74,6 +74,10 @@ app.all("/e2e/proxy-url", async (c) => {
   return handleProxyRemoteAssetRequest(c.req.raw);
 });
 
+app.all("/e2e/proxy-url/:targetId", async (c) => {
+  return handleProxyRemoteAssetRequest(c.req.raw);
+});
+
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
     bundleProfile?: "archive300mb" | "default" | "multiAssetReplacement";
