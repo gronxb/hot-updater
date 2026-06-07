@@ -20,6 +20,10 @@ const detoxScenarioRuntimePath = path.join(
   repoDir,
   "e2e/detox/detox-app-driver.js",
 );
+const detoxControlServerControllerPath = path.join(
+  repoDir,
+  "e2e/detox/control-server/controller.ts",
+);
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const runtimeConfigPath = path.join(
@@ -834,6 +838,30 @@ describe("Detox scenario contract", () => {
       "assert consecutive diff patch",
     ]);
     expect(body.assetPath).toBe("$diffPatchAssetPath");
+  });
+
+  it("resolves auto patch metadata from the provider-visible bundle record", async () => {
+    // Given: standalone providers can expose a just-deployed bundle through the
+    // same CLI surface used by provider assertions before a direct database
+    // plugin read observes it.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const resolverSource = controllerSource.slice(
+      controllerSource.indexOf("async function resolveAutoPatchBundleDiff"),
+      controllerSource.indexOf("async function deleteProviderBundle"),
+    );
+
+    // When: the auto-patch metadata resolver waits for patch fields.
+    // Then: it must use the provider-visible bundle record, not a direct
+    // database-only read that can race or diverge from the provider surface.
+    expect(resolverSource).toContain(
+      "const bundle = await fetchProviderBundleById(bundleId);",
+    );
+    expect(resolverSource).not.toContain(
+      "fetchProviderBundleByIdFromDatabase(bundleId)",
+    );
   });
 
   it("models manifest diff fallback through an installed previous bundle", async () => {

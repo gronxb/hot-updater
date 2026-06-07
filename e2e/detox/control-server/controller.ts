@@ -1381,27 +1381,6 @@ async function fetchProviderBundleById(bundleId: string) {
   return bundle;
 }
 
-async function fetchProviderBundleByIdFromDatabase(bundleId: string) {
-  const bundle = await withDatabasePlugin((databasePlugin) =>
-    databasePlugin.getBundleById(bundleId),
-  );
-
-  if (!bundle) {
-    throw new Error(`Failed to fetch bundle ${bundleId}: bundle not found`);
-  }
-
-  logDetoxFixture("database bundle get", {
-    bundleId: bundle.id,
-    channel: bundle.channel,
-    enabled: bundle.enabled,
-    patchBaseBundleIds: getBundlePatchBaseBundleIds(bundle),
-    platform: fixtureSession.platform,
-    shouldForceUpdate: bundle.shouldForceUpdate ?? false,
-  });
-
-  return bundle;
-}
-
 async function fetchEnabledBundlesForRemoteReset(
   limit: number,
   channels: readonly string[] | null = null,
@@ -1563,7 +1542,7 @@ async function resolveAutoPatchBundleDiff(
     attempt <= AUTO_PATCH_METADATA_WAIT_ATTEMPTS;
     attempt += 1
   ) {
-    const bundle = await fetchProviderBundleByIdFromDatabase(bundleId);
+    const bundle = await fetchProviderBundleById(bundleId);
     const patchAssetPath = resolvePatchAssetPath(bundle, baseBundleId);
     const matchingPatch = getBundlePatch(bundle, baseBundleId);
     const patchBaseBundleId =
