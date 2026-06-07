@@ -154,11 +154,26 @@ class DetoxAppDriver {
     }
     const expectedText = String(this.resolvePlaceholders(expectedResultContains));
     const expectedPattern = new RegExp(`installed ${escapeRegExp(expectedText)}`);
-    await waitFor(
-      element(by.id("update-action-result").and(by.text(expectedPattern))),
-    )
-      .toBeVisible()
-      .withTimeout(30000);
+    const result = await findVisibleTestID(
+      this.controlClient,
+      "update-action-result",
+      {
+        ensureForeground: false,
+      },
+    );
+    const expectedResult = element(
+      by.id("update-action-result").and(by.text(expectedPattern)),
+    );
+    try {
+      await waitFor(expectedResult).toBeVisible().withTimeout(30000);
+    } catch (error) {
+      const actualText = textFromAttributes(await result.getAttributes());
+      const resultError = new Error(
+        `${stage} expected update-action-result to contain "installed ${expectedText}", received "${actualText}"`,
+      );
+      resultError.cause = error;
+      throw resultError;
+    }
   }
 
   saveControlResult(options, result) {

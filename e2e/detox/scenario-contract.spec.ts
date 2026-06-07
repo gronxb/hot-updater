@@ -524,11 +524,24 @@ describe("Detox scenario contract", () => {
       detoxScenarioRuntimePath,
       "utf8",
     );
+    const resultWaitStart = detoxRuntimeSource.indexOf(
+      "async waitForInstallActionResult",
+    );
+    const resultWaitBody = detoxRuntimeSource.slice(
+      resultWaitStart,
+      detoxRuntimeSource.indexOf(
+        "saveControlResult(options, result)",
+        resultWaitStart,
+      ),
+    );
 
     expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
     expect(detoxRuntimeSource).toContain('"update-action-result"');
     expect(detoxRuntimeSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).toContain("escapeRegExp");
+    expect(resultWaitBody).toContain("findVisibleTestID(");
+    expect(resultWaitBody).toContain("ensureForeground: false");
+    expect(resultWaitBody).toContain("textFromAttributes");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
