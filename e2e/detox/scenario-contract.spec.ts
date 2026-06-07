@@ -453,6 +453,23 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("does not wait on iOS install result text while the app can remain busy", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const installTapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+
+    expect(installTapBody).toContain("isAndroidRun()");
+    expect(installTapBody).toContain("waitForInstallActionResult");
+    expect(installTapBody).not.toContain("waitFor(element(by.text");
+    expect(installTapBody).not.toMatch(/\bretry\b/i);
+    expect(installTapBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("keeps Detox synchronization disabled across explicit reloads", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
