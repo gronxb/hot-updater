@@ -13,6 +13,7 @@ import {
   handleAssertMetadataActive,
   handleAssertMetadataReset,
   handleAssertMultipleAssetsReplaced,
+  handleAssertRollbackToBuiltInMetadata,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyUpdateRequest,
@@ -398,6 +399,17 @@ app.post("/e2e/assert-metadata-active", async (c) => {
 
 app.post("/e2e/assert-metadata-reset", async (c) => {
   return c.json(await handleAssertMetadataReset());
+});
+
+app.post("/e2e/assert-rollback-to-built-in-metadata", async (c) => {
+  const payload = (await c.req.json()) as { previousBundleId?: string };
+  if (!payload.previousBundleId) {
+    return c.json({ error: "previousBundleId is required" }, 400);
+  }
+
+  return c.json(
+    await handleAssertRollbackToBuiltInMetadata(payload.previousBundleId),
+  );
 });
 
 app.post("/e2e/assert-launch-report", async (c) => {

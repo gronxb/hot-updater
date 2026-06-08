@@ -44,15 +44,22 @@ class DetoxAppDriver {
 
   async launch(stage) {
     await this.runStage(stage, async () => {
-      await this.controlClient.postJson(
+      const launchState = await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
         {},
       );
+      const isCrashLaunch = stage.toLowerCase().includes("crash");
+      const shouldReattach =
+        isAndroidRun() && launchState.alreadyFocused && !isCrashLaunch;
       try {
+        if (shouldReattach) {
+          await launchApp({ newInstance: false });
+          return;
+        }
         await launchApp({ newInstance: true });
       } catch (error) {
-        if (!stage.toLowerCase().includes("crash")) throw error;
+        if (!isCrashLaunch) throw error;
       }
     });
   }
@@ -83,9 +90,28 @@ class DetoxAppDriver {
       if (isInstallAction) {
         await disableSynchronizationUntilLaunch();
       }
-      this.resolveInstallExpectation(expectedResultContains);
+      const expectedText =
+        this.resolveInstallExpectation(expectedResultContains);
       await target.tap();
+      if (expectedResultContains) {
+        await this.waitForInstallActionResult(expectedText);
+      }
     });
+  }
+
+  async waitForInstallActionResult(expectedText) {
+    const target = await findVisibleTestID(
+      this.controlClient,
+      "update-action-result",
+      { ensureForeground: false },
+    );
+    await detoxExpect(target).toBeVisible();
+    const text = textFromAttributes(await target.getAttributes());
+    if (!text.includes(expectedText)) {
+      throw new Error(
+        `Expected update-action-result to contain "${expectedText}", received "${text}"`,
+      );
+    }
   }
 
   async terminate(stage) {
@@ -107,9 +133,9 @@ class DetoxAppDriver {
   }
 
   resolveInstallExpectation(expectedResultContains) {
-    if (expectedResultContains) {
-      this.resolvePlaceholders(expectedResultContains);
-    }
+    return expectedResultContains
+      ? String(this.resolvePlaceholders(expectedResultContains))
+      : "";
   }
 
   resolvePlaceholders(value) {

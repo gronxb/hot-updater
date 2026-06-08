@@ -389,6 +389,39 @@ describe("Detox scenario contract", () => {
     );
   });
 
+  it("reattaches instead of cold-launching Android when the target app is already focused", async () => {
+    // Given: Android provider jobs can enter a launch stage while the target app
+    // is already foregrounded and Detox-connected.
+    const detoxRuntimeSource = await readDetoxRuntimeSource();
+    const controllerSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/control-server/controller.ts"),
+      "utf8",
+    );
+    const launchBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async launch(stage)"),
+      detoxRuntimeSource.indexOf("async reload(stage)"),
+    );
+    const prepareBody = controllerSource.slice(
+      controllerSource.indexOf("async function prepareAppLaunch()"),
+      controllerSource.indexOf("async function bootstrap()"),
+    );
+
+    // When: the control server reports that focusedPackage matches targetAppId.
+    // Then: the Detox driver must reattach through Detox APIs instead of forcing
+    // a fresh Android app instance, and the control server must not force-stop an
+    // already-focused target app before Detox reconnects.
+    expect(prepareBody).toContain("alreadyFocused");
+    expect(prepareBody).toContain("focusedPackage === fixtureSession.appId");
+    expect(prepareBody).toContain("if (!alreadyFocused) {");
+    expect(launchBody).toContain("const launchState =");
+    expect(launchBody).toContain("launchState.alreadyFocused");
+    expect(launchBody).toContain("isAndroidRun()");
+    expect(launchBody).toContain("newInstance: false");
+    expect(launchBody).toContain("newInstance: true");
+    expect(launchBody).not.toMatch(/\bretry\b/i);
+    expect(launchBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("keeps Detox runtime config wiring outside App.tsx", async () => {
     // Given: provider-specific URLs must remain runtime values so native builds
     // can be reused across profiles and shards without bloating App.tsx.
@@ -448,7 +481,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("does not gate install taps on app action-result text", async () => {
+  it("gates install taps on app action-result text without metadata probing", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -460,10 +493,10 @@ describe("Detox scenario contract", () => {
 
     expect(tapBody).toContain("await target.tap()");
     expect(tapBody).toContain("expectedResultContains");
-    expect(tapBody).not.toContain("waitForInstallActionResult");
-    expect(detoxRuntimeSource).not.toContain(
-      "async waitForInstallActionResult",
-    );
+    expect(tapBody).toContain("await this.waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain('"update-action-result"');
+    expect(detoxRuntimeSource).not.toContain("metadata.json");
     expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
     expect(detoxRuntimeSource).not.toContain(".and(");
     expect(tapBody).not.toMatch(/\bretry\b/i);
@@ -526,7 +559,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(installTapBody).toContain("waitForInstallActionResult");
+    expect(installTapBody).toContain("{ ensureForeground: false }");
     expect(installTapBody).toContain("expectedResultContains");
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
@@ -562,7 +596,7 @@ describe("Detox scenario contract", () => {
     expect(syncHelperBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("does not wait on install result text before metadata jobs", async () => {
+  it("waits on install result text before continuing after install taps", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -574,8 +608,10 @@ describe("Detox scenario contract", () => {
 
     expect(installTapBody).not.toContain("isAndroidRun()");
     expect(installTapBody).toContain("if (isInstallAction) {");
-    expect(installTapBody).not.toContain("if (expectedResultContains) {");
-    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(installTapBody).toContain("if (expectedResultContains) {");
+    expect(installTapBody).toContain("await this.waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain('"update-action-result"');
     expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
     expect(detoxRuntimeSource).not.toContain(".withTimeout(30000)");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
@@ -599,9 +635,7 @@ describe("Detox scenario contract", () => {
     expect(detoxPageSource).toContain("e2e-nav-action-results");
     expect(detoxRuntimeSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).not.toContain("escapeRegExp");
-    expect(detoxRuntimeSource).not.toContain(
-      "async waitForInstallActionResult",
-    );
+    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
     expect(assertTextBody).toContain("findVisibleTestID(");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
@@ -745,7 +779,8 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).not.toContain("waitForInstallActionResult");
+    expect(tapBody).toContain("waitForInstallActionResult");
+    expect(tapBody).toContain('"update-action-result"');
     expect(detoxRuntimeSource).not.toContain(
       "function waitForCurrentChannelDownload",
     );
@@ -1247,10 +1282,20 @@ describe("Detox scenario contract", () => {
       "disable current bundle",
       "launch rollback to built-in app",
       "install rollback to built-in",
+      "assert rollback to built-in metadata",
       "reload to built-in",
-      "assert metadata reset",
       "assert no crashed bundle",
     ]);
+    const rollbackMetadataStep = await controlStepDefinition(
+      "disabled-bundle-rollback-to-builtin",
+      "assert rollback to built-in metadata",
+    );
+    expect(rollbackMetadataStep.pathName).toBe(
+      "/e2e/assert-rollback-to-built-in-metadata",
+    );
+    expect(rollbackMetadataStep.body).toEqual({
+      previousBundleId: "$currentBundleId",
+    });
     expect(previousStages).toEqual([
       "deploy previous bundle",
       "launch previous bundle app",
