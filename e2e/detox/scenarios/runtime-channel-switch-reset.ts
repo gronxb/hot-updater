@@ -11,6 +11,17 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
         saveResultAs: "builtInBundleId",
       },
     );
+    await app.launch("launch built-in runtime channel app");
+    await app.assertText(
+      "assert runtime channel built-in marker",
+      "runtime-scenario-marker",
+      "$initialMarker",
+    );
+    await app.assertText(
+      "assert runtime channel initial summary",
+      "current-channel-summary",
+      "Current Channel Summary: current=production default=production switched=false",
+    );
     await app.control(
       "deploy runtime channel bundle",
       "/e2e/jobs/deploy-bundle",
@@ -44,11 +55,26 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "channel-action-result",
       "runtime-channel -> beta",
     );
-    await app.reload("reload runtime channel update");
+    await app.tap("reload runtime channel update", "action-reload-app");
     await app.assertText(
       "assert runtime channel bundle",
       "runtime-bundle-id",
       "$runtimeBundleId",
+    );
+    await app.assertText(
+      "assert runtime channel marker",
+      "runtime-scenario-marker",
+      "runtime-channel-beta-detox",
+    );
+    await app.assertText(
+      "assert runtime channel launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert runtime channel switched summary",
+      "current-channel-summary",
+      "Current Channel Summary: current=beta default=production switched=true",
     );
     await app.tap("reset runtime channel", "action-reset-runtime-channel");
     await app.assertText(
@@ -56,11 +82,31 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "channel-action-result",
       "reset -> true",
     );
-    await app.reload("reload default channel");
+    await app.tap("reload default channel", "action-reload-app");
     await app.assertText(
       "assert reset built-in bundle",
       "runtime-bundle-id",
       "$builtInBundleId",
+    );
+    await app.assertText(
+      "assert reset built-in marker",
+      "runtime-scenario-marker",
+      "$initialMarker",
+    );
+    await app.assertText(
+      "assert reset launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert reset channel summary",
+      "current-channel-summary",
+      "Current Channel Summary: current=production default=production switched=false",
+    );
+    await app.assertText(
+      "assert reset crash history empty",
+      "crash-history-summary",
+      "No crashed bundles recorded.",
     );
   },
 };

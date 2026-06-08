@@ -66,13 +66,12 @@ class DetoxAppDriver {
 
   async reload(stage) {
     await this.runStage(stage, async () => {
+      await device.terminateApp();
       await this.controlClient.postJson(
         `${stage}: prepare launch`,
         "/e2e/prepare-app-launch",
         {},
       );
-      await disableSynchronizationUntilLaunch();
-      await device.terminateApp();
       await launchApp({ newInstance: true });
     });
   }

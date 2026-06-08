@@ -11,6 +11,16 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "builtInBundleId",
       },
     );
+    await app.launch("launch built-in chain app");
+    await app.assertText(
+      "assert chain built-in marker",
+      "runtime-scenario-marker",
+      "$initialMarker",
+    );
+    await app.control(
+      "reset chain local app state",
+      "/e2e/reset-local-app-state",
+    );
     await app.control(
       "deploy chain bundle A",
       "/e2e/jobs/deploy-bundle",
@@ -56,9 +66,19 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert chain bundle A marker",
+      "runtime-scenario-marker",
+      "chain-a-detox",
+    );
+    await app.assertText(
       "assert chain bundle A launch",
       "runtime-bundle-id",
       "$bundleA",
+    );
+    await app.assertText(
+      "assert chain bundle A launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
     );
 
     await app.control(
@@ -99,9 +119,19 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert chain bundle B marker",
+      "runtime-scenario-marker",
+      "chain-b-detox",
+    );
+    await app.assertText(
       "assert chain bundle B launch",
       "runtime-bundle-id",
       "$bundleB",
+    );
+    await app.assertText(
+      "assert chain bundle B launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
     );
 
     await app.control(
@@ -161,9 +191,34 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert chain bundle C marker",
+      "runtime-scenario-marker",
+      "chain-c-detox",
+    );
+    await app.assertText(
       "assert chain bundle C launch",
       "runtime-bundle-id",
       "$bundleC",
+    );
+    await app.assertText(
+      "assert chain bundle C launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert chain bundle C crash history empty",
+      "crash-history-summary",
+      "No crashed bundles recorded.",
+    );
+    await app.control("capture chain bundle C state", "/e2e/capture-state", {
+      prefix: "bspatch-b-to-c",
+    });
+    await app.control(
+      "assert chain bundle C active",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$bundleC",
+      },
     );
 
     await app.control("disable chain bundle C", "/e2e/jobs/patch-bundle", {
@@ -180,9 +235,31 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert chain bundle B rollback marker",
+      "runtime-scenario-marker",
+      "chain-b-detox",
+    );
+    await app.assertText(
       "assert chain bundle B rollback launch",
       "runtime-bundle-id",
       "$bundleB",
+    );
+    await app.assertText(
+      "assert chain bundle B rollback launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert chain bundle B rollback crashed bundle",
+      "launch-crashed-bundle-result",
+      "Current Crashed Bundle ID: null",
+    );
+    await app.control(
+      "assert chain bundle B rollback active",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$bundleB",
+      },
     );
 
     await app.control("disable chain bundle B", "/e2e/jobs/patch-bundle", {
@@ -199,9 +276,31 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert chain bundle A rollback marker",
+      "runtime-scenario-marker",
+      "chain-a-detox",
+    );
+    await app.assertText(
       "assert chain bundle A rollback launch",
       "runtime-bundle-id",
       "$bundleA",
+    );
+    await app.assertText(
+      "assert chain bundle A rollback launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert chain bundle A rollback crashed bundle",
+      "launch-crashed-bundle-result",
+      "Current Crashed Bundle ID: null",
+    );
+    await app.control(
+      "assert chain bundle A rollback active",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$bundleA",
+      },
     );
 
     await app.control("disable chain bundle A", "/e2e/jobs/patch-bundle", {
@@ -217,6 +316,37 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain built-in bundle",
       "runtime-bundle-id",
       "$builtInBundleId",
+    );
+    await app.assertText(
+      "assert chain built-in marker after rollback",
+      "runtime-scenario-marker",
+      "$initialMarker",
+    );
+    await app.assertText(
+      "assert chain built-in launch status",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert chain built-in crashed bundle",
+      "launch-crashed-bundle-result",
+      "Current Crashed Bundle ID: null",
+    );
+    await app.assertText(
+      "assert chain built-in crash history empty",
+      "crash-history-summary",
+      "No crashed bundles recorded.",
+    );
+    await app.control(
+      "capture chain built-in rollback state",
+      "/e2e/capture-state",
+      {
+        prefix: "bspatch-disabled-chain-to-builtin",
+      },
+    );
+    await app.control(
+      "assert chain built-in metadata reset again",
+      "/e2e/assert-metadata-reset",
     );
   },
 };

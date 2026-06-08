@@ -287,6 +287,13 @@ describe("Detox scenario contract", () => {
   });
 
   it("launches scenarios only after the first deploy-bundle step", async () => {
+    const baselineBeforeDeployScenarios = new Set<string>([
+      "bspatch-disabled-chain-rollback",
+      "disabled-bundle-rollback-to-builtin",
+      "disabled-bundle-rollback-to-previous-ota",
+      "runtime-channel-switch-reset",
+    ]);
+
     for (const scenarioName of defaultDetoxScenarioNames) {
       const calls = await recordScenarioCalls(scenarioName);
       const firstDeployIndex = calls.findIndex(
@@ -307,6 +314,26 @@ describe("Detox scenario contract", () => {
       expect(firstDeployIndex, scenarioName).toBeGreaterThan(-1);
       if (firstUiIndex === -1) {
         expect(firstLaunchIndex, scenarioName).toBe(-1);
+        continue;
+      }
+      if (baselineBeforeDeployScenarios.has(scenarioName)) {
+        const preDeployCalls = calls.slice(0, firstDeployIndex);
+        expect(
+          preDeployCalls.some(
+            (call) =>
+              call.kind === "launch" && call.stage.includes("built-in"),
+          ),
+          scenarioName,
+        ).toBe(true);
+        expect(
+          preDeployCalls.every(
+            (call) =>
+              call.kind === "assertText" ||
+              call.kind === "control" ||
+              call.kind === "launch",
+          ),
+          scenarioName,
+        ).toBe(true);
         continue;
       }
       expect(firstLaunchIndex, scenarioName).toBeGreaterThan(firstDeployIndex);
@@ -664,7 +691,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("keeps Detox synchronization disabled across explicit reloads", async () => {
+  it("keeps explicit reloads at the cold-start boundary", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -674,7 +701,9 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async resetAppState(stage"),
     );
 
-    expect(reloadBody).toContain("disableSynchronizationUntilLaunch()");
+    expect(reloadBody).not.toContain("disableSynchronizationUntilLaunch()");
+    expect(reloadBody).toContain("await device.terminateApp()");
+    expect(reloadBody).toContain('"/e2e/prepare-app-launch"');
     expect(reloadBody).toContain("await launchApp({ newInstance: true })");
     expect(reloadBody).not.toContain("device.enableSynchronization()");
     expect(reloadBody).not.toContain("finally");
@@ -696,8 +725,8 @@ describe("Detox scenario contract", () => {
     const terminateIndex = reloadBody.indexOf("device.terminateApp()");
     const launchIndex = reloadBody.indexOf("launchApp({ newInstance: true })");
 
-    expect(prepareIndex).toBeGreaterThan(-1);
-    expect(terminateIndex).toBeGreaterThan(prepareIndex);
+    expect(terminateIndex).toBeGreaterThan(-1);
+    expect(prepareIndex).toBeGreaterThan(terminateIndex);
     expect(launchIndex).toBeGreaterThan(terminateIndex);
     expect(reloadBody).not.toMatch(/\bretry\b/i);
     expect(reloadBody).not.toMatch(/\bsetTimeout\b/i);
@@ -1211,6 +1240,9 @@ describe("Detox scenario contract", () => {
 
     expect(stages).toEqual([
       "capture built-in bundle id",
+      "launch built-in runtime channel app",
+      "assert runtime channel built-in marker",
+      "assert runtime channel initial summary",
       "deploy runtime channel bundle",
       "launch runtime channel app",
       "install runtime channel update",
@@ -1218,10 +1250,17 @@ describe("Detox scenario contract", () => {
       "assert runtime channel result",
       "reload runtime channel update",
       "assert runtime channel bundle",
+      "assert runtime channel marker",
+      "assert runtime channel launch status",
+      "assert runtime channel switched summary",
       "reset runtime channel",
       "assert runtime channel reset",
       "reload default channel",
       "assert reset built-in bundle",
+      "assert reset built-in marker",
+      "assert reset launch status",
+      "assert reset channel summary",
+      "assert reset crash history empty",
     ]);
     expect(
       (
@@ -1236,6 +1275,11 @@ describe("Detox scenario contract", () => {
         (call) => call.kind === "typeText",
       ),
     ).toBe(false);
+    expect(
+      (await recordScenarioCalls("runtime-channel-switch-reset")).filter(
+        (call) => call.kind === "tap" && call.testID === "action-reload-app",
+      ),
+    ).toHaveLength(2);
   });
 
   it("models numeric cohort rollout through an included rollout sample", async () => {
@@ -1368,18 +1412,27 @@ describe("Detox scenario contract", () => {
     // Then: each disables only after pending, reload, stable, and active checks.
     expect(builtinStages).toEqual([
       "capture built-in bundle",
+      "launch built-in rollback app",
+      "assert rollback built-in marker",
       "deploy current bundle",
       "launch current bundle app",
       "install current bundle",
       "wait current bundle metadata pending",
       "reload current bundle",
       "wait current bundle metadata stable",
+      "assert current bundle marker",
+      "assert current bundle launch status",
       "assert current bundle active",
       "disable current bundle",
-      "reload rollback to built-in app",
+      "launch rollback to built-in app",
       "assert rollback metadata reset",
-      "reload to built-in",
+      "assert rollback built-in bundle",
+      "assert rollback built-in marker",
+      "assert rollback launch status",
       "assert no crashed bundle",
+      "assert rollback crash history empty",
+      "capture rollback built-in state",
+      "assert rollback metadata reset again",
     ]);
     const rollbackMetadataStep = await controlStepDefinition(
       "disabled-bundle-rollback-to-builtin",
@@ -1388,12 +1441,17 @@ describe("Detox scenario contract", () => {
     expect(rollbackMetadataStep.pathName).toBe("/e2e/assert-metadata-reset");
     expect(rollbackMetadataStep.body).toBeUndefined();
     expect(previousStages).toEqual([
+      "capture built-in bundle",
+      "launch built-in previous rollback app",
+      "assert previous rollback built-in marker",
       "deploy previous bundle",
       "launch previous bundle app",
       "install previous bundle",
       "wait previous bundle metadata pending",
       "reload previous bundle",
       "wait previous bundle metadata stable",
+      "assert previous bundle marker",
+      "assert previous bundle launch status",
       "assert previous bundle active",
       "deploy next bundle",
       "launch next bundle app",
@@ -1401,10 +1459,17 @@ describe("Detox scenario contract", () => {
       "wait next bundle metadata pending",
       "reload next bundle",
       "wait next bundle metadata stable",
+      "assert next bundle marker",
+      "assert next bundle launch status",
       "assert next bundle active",
       "disable next bundle",
-      "reload rollback to previous app",
+      "launch rollback to previous app",
       "wait previous rollback metadata stable",
+      "assert previous ota rollback marker",
+      "assert previous ota rollback launch status",
+      "assert previous ota rollback crashed bundle",
+      "assert previous ota rollback crash history empty",
+      "capture previous ota rollback state",
       "assert previous ota active",
     ]);
   });
@@ -1414,6 +1479,9 @@ describe("Detox scenario contract", () => {
 
     expect(stages).toEqual([
       "capture built-in bundle id",
+      "launch built-in chain app",
+      "assert chain built-in marker",
+      "reset chain local app state",
       "deploy chain bundle A",
       "launch chain bundle A app",
       "install chain bundle A",
@@ -1421,14 +1489,18 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A uses archive",
       "reload chain bundle A",
       "wait chain bundle A metadata stable",
+      "assert chain bundle A marker",
       "assert chain bundle A launch",
+      "assert chain bundle A launch status",
       "deploy chain bundle B",
       "launch chain bundle B app",
       "install chain bundle B",
       "wait chain bundle B metadata pending",
       "reload chain bundle B",
       "wait chain bundle B metadata stable",
+      "assert chain bundle B marker",
       "assert chain bundle B launch",
+      "assert chain bundle B launch status",
       "deploy chain bundle C",
       "assert chain bundle C bases",
       "launch chain bundle C app",
@@ -1437,19 +1509,38 @@ describe("Detox scenario contract", () => {
       "reload chain bundle C",
       "wait chain bundle C metadata stable",
       "assert chain bundle C patch",
+      "assert chain bundle C marker",
       "assert chain bundle C launch",
+      "assert chain bundle C launch status",
+      "assert chain bundle C crash history empty",
+      "capture chain bundle C state",
+      "assert chain bundle C active",
       "disable chain bundle C",
       "reload rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
+      "assert chain bundle B rollback marker",
       "assert chain bundle B rollback launch",
+      "assert chain bundle B rollback launch status",
+      "assert chain bundle B rollback crashed bundle",
+      "assert chain bundle B rollback active",
       "disable chain bundle B",
       "reload rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
+      "assert chain bundle A rollback marker",
       "assert chain bundle A rollback launch",
+      "assert chain bundle A rollback launch status",
+      "assert chain bundle A rollback crashed bundle",
+      "assert chain bundle A rollback active",
       "disable chain bundle A",
       "reload rollback to built-in chain",
       "assert chain built-in metadata reset",
       "assert chain built-in bundle",
+      "assert chain built-in marker after rollback",
+      "assert chain built-in launch status",
+      "assert chain built-in crashed bundle",
+      "assert chain built-in crash history empty",
+      "capture chain built-in rollback state",
+      "assert chain built-in metadata reset again",
     ]);
   });
 });

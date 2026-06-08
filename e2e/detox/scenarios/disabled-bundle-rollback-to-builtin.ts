@@ -12,6 +12,12 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           saveResultAs: "builtInBundleId",
         },
       );
+      await app.launch("launch built-in rollback app");
+      await app.assertText(
+        "assert rollback built-in marker",
+        "runtime-scenario-marker",
+        "$initialMarker",
+      );
       await app.control(
         "deploy current bundle",
         "/e2e/jobs/deploy-bundle",
@@ -49,6 +55,16 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
           verificationPending: false,
         },
       );
+      await app.assertText(
+        "assert current bundle marker",
+        "runtime-scenario-marker",
+        "disabled-current-detox",
+      );
+      await app.assertText(
+        "assert current bundle launch status",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
+      );
       await app.control(
         "assert current bundle active",
         "/e2e/assert-metadata-active",
@@ -60,16 +76,42 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         bundleId: "$currentBundleId",
         enabled: false,
       });
-      await app.reload("reload rollback to built-in app");
+      await app.launch("launch rollback to built-in app");
       await app.control(
         "assert rollback metadata reset",
         "/e2e/assert-metadata-reset",
       );
-      await app.reload("reload to built-in");
+      await app.assertText(
+        "assert rollback built-in bundle",
+        "runtime-bundle-id",
+        "$builtInBundleId",
+      );
+      await app.assertText(
+        "assert rollback built-in marker",
+        "runtime-scenario-marker",
+        "$initialMarker",
+      );
+      await app.assertText(
+        "assert rollback launch status",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
+      );
       await app.assertText(
         "assert no crashed bundle",
         "launch-crashed-bundle-result",
         "Current Crashed Bundle ID: null",
+      );
+      await app.assertText(
+        "assert rollback crash history empty",
+        "crash-history-summary",
+        "No crashed bundles recorded.",
+      );
+      await app.control("capture rollback built-in state", "/e2e/capture-state", {
+        prefix: "rollback-to-builtin",
+      });
+      await app.control(
+        "assert rollback metadata reset again",
+        "/e2e/assert-metadata-reset",
       );
     },
   };

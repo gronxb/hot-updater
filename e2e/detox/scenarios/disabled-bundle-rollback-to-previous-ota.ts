@@ -5,6 +5,20 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
     name: "disabled-bundle-rollback-to-previous-ota",
     run: async (app) => {
       await app.control(
+        "capture built-in bundle",
+        "/e2e/capture-built-in-bundle-id",
+        {},
+        {
+          saveResultAs: "builtInBundleId",
+        },
+      );
+      await app.launch("launch built-in previous rollback app");
+      await app.assertText(
+        "assert previous rollback built-in marker",
+        "runtime-scenario-marker",
+        "$initialMarker",
+      );
+      await app.control(
         "deploy previous bundle",
         "/e2e/jobs/deploy-bundle",
         {
@@ -40,6 +54,16 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           bundleId: "$previousBundleId",
           verificationPending: false,
         },
+      );
+      await app.assertText(
+        "assert previous bundle marker",
+        "runtime-scenario-marker",
+        "previous-ota-detox",
+      );
+      await app.assertText(
+        "assert previous bundle launch status",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
       );
       await app.control(
         "assert previous bundle active",
@@ -85,6 +109,16 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
           verificationPending: false,
         },
       );
+      await app.assertText(
+        "assert next bundle marker",
+        "runtime-scenario-marker",
+        "disabled-next-detox",
+      );
+      await app.assertText(
+        "assert next bundle launch status",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
+      );
       await app.control(
         "assert next bundle active",
         "/e2e/assert-metadata-active",
@@ -96,13 +130,40 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         bundleId: "$nextBundleId",
         enabled: false,
       });
-      await app.reload("reload rollback to previous app");
+      await app.launch("launch rollback to previous app");
       await app.control(
         "wait previous rollback metadata stable",
         "/e2e/jobs/wait-for-metadata",
         {
           bundleId: "$previousBundleId",
           verificationPending: false,
+        },
+      );
+      await app.assertText(
+        "assert previous ota rollback marker",
+        "runtime-scenario-marker",
+        "previous-ota-detox",
+      );
+      await app.assertText(
+        "assert previous ota rollback launch status",
+        "launch-status-result",
+        "Current Launch Status: STABLE",
+      );
+      await app.assertText(
+        "assert previous ota rollback crashed bundle",
+        "launch-crashed-bundle-result",
+        "Current Crashed Bundle ID: null",
+      );
+      await app.assertText(
+        "assert previous ota rollback crash history empty",
+        "crash-history-summary",
+        "No crashed bundles recorded.",
+      );
+      await app.control(
+        "capture previous ota rollback state",
+        "/e2e/capture-state",
+        {
+          prefix: "rollback-to-previous",
         },
       );
       await app.control(
