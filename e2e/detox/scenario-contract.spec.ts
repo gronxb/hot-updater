@@ -402,6 +402,25 @@ describe("Detox scenario contract", () => {
     );
   });
 
+  it("seeds Detox scenario values from the bootstrap contract", async () => {
+    // Given: Maestro exposes bootstrap outputs like output.initialMarker to every
+    // scenario step.
+    const detoxJestSpec = await fs.readFile(detoxJestSpecPath, "utf8");
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+
+    // When: Detox creates a per-scenario driver after bootstrap.
+    // Then: the driver must start with bootstrap values so $initialMarker
+    // placeholder assertions match the Maestro baseline.
+    expect(detoxJestSpec).toContain("bootstrapResult = await");
+    expect(detoxJestSpec).toContain(
+      "new DetoxAppDriver(controlClient, bootstrapResult)",
+    );
+    expect(detoxRuntimeSource).toContain("constructor(client, initialValues");
+  });
+
   it("passes runtime config through Detox launch arguments", async () => {
     // Given: split provider jobs assign a per-shard runtime config URL at test
     // runtime, after the native app has already been built.

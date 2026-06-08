@@ -14,9 +14,11 @@ const { DetoxAppDriver } = require("./detox-app-driver.js");
 const scenarioNames = listDetoxScenarioNames();
 
 let controlClient;
+let bootstrapResult = {};
 
 describe("HotUpdater Detox scenarios", () => {
   beforeEach(async () => {
+    bootstrapResult = {};
     controlClient = createControlClient({
       baseUrl: controlBaseUrl(),
       onStageTiming: (timing) => {
@@ -28,7 +30,11 @@ describe("HotUpdater Detox scenarios", () => {
         await device.reverseTcpPort(port);
       }
     }
-    await controlClient.runJob("bootstrap", "/e2e/jobs/bootstrap", {});
+    bootstrapResult = await controlClient.runJob(
+      "bootstrap",
+      "/e2e/jobs/bootstrap",
+      {},
+    );
     await controlClient.runJob(
       "reset remote bundles",
       "/e2e/jobs/reset-remote-bundles",
@@ -59,7 +65,7 @@ describe("HotUpdater Detox scenarios", () => {
   for (const scenarioName of scenarioNames) {
     it(scenarioName, async () => {
       const scenario = getDetoxScenarioDefinition(scenarioName);
-      const app = new DetoxAppDriver(controlClient);
+      const app = new DetoxAppDriver(controlClient, bootstrapResult);
       await scenario.run(app);
     });
   }

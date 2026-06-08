@@ -9,9 +9,9 @@ const {
 } = require("./detox-page.js");
 
 class DetoxAppDriver {
-  constructor(client) {
+  constructor(client, initialValues = {}) {
     this.controlClient = client;
-    this.stageValues = {};
+    this.stageValues = { ...initialValues };
   }
 
   async assertText(stage, testID, contains, options = {}) {
