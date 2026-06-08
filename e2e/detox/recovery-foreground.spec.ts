@@ -83,7 +83,10 @@ describe("Detox recovery foreground handling", () => {
     // Then: launch status is asserted through the native report, not UI text.
     expect(hasRecoveredLaunchStatusStage).toBe(false);
     expect(detoxScenarioRuntimeSource).toContain(
-      "findVisibleTestID(this.controlClient, testID, {\n        ensureForeground: options.ensureForeground",
+      "findVisibleTestID(this.controlClient, testID, {",
+    );
+    expect(detoxScenarioRuntimeSource).toContain(
+      "ensureForeground: options.ensureForeground",
     );
     expect(detoxPageSource).toContain(
       "if (options.ensureForeground !== false)",

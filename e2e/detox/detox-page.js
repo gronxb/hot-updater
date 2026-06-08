@@ -70,6 +70,15 @@ function textFromAttributes(attributes) {
   return "";
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function textMatcherForTestID(testID, expectedText) {
+  if (typeof expectedText !== "string") return by.id(testID);
+  return by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText))));
+}
+
 function shouldDisableSynchronizationForTap(testID) {
   return testID.startsWith("action-install-");
 }
@@ -114,6 +123,9 @@ async function navigateToTestID(testID) {
   const navTarget = navTargetForTestID(testID);
   await waitFor(element(by.id(navTarget))).toBeVisible().withTimeout(30000);
   await element(by.id(navTarget)).tap();
+  const scrollContent = element(by.id("e2e-scroll-content"));
+  await waitFor(scrollContent).toBeVisible().withTimeout(30000);
+  await scrollContent.scrollTo("top");
 }
 
 async function ensureAppForegroundForInteraction() {
@@ -127,13 +139,15 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
     await ensureAppForegroundForInteraction();
   }
   await navigateToTestID(testID);
-  const target = element(by.id(testID));
-  await waitFor(target)
+  const expectedTarget = element(
+    textMatcherForTestID(testID, options.expectedText),
+  );
+  await waitFor(expectedTarget)
     .toBeVisible()
     .whileElement(by.id("e2e-scroll-content"))
     .scroll(260, "down");
-  await waitFor(target).toBeVisible().withTimeout(30000);
-  return target;
+  await waitFor(expectedTarget).toBeVisible().withTimeout(30000);
+  return element(by.id(testID));
 }
 
 async function withSynchronizationDisabledForAssertion(operation) {
@@ -160,5 +174,6 @@ module.exports = {
   launchApp,
   shouldDisableSynchronizationForTap,
   textFromAttributes,
+  textMatcherForTestID,
   withSynchronizationDisabledForAssertion,
 };

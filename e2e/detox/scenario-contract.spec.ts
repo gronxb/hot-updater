@@ -756,8 +756,7 @@ describe("Detox scenario contract", () => {
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
-    expect(assertTextBody).not.toContain("by.id(testID).and(");
-    expect(assertTextBody).not.toContain("by.text(new RegExp");
+    expect(assertTextBody).toContain("expectedText,");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -880,11 +879,44 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf("async function findVisibleTestID"),
       detoxPageSource.indexOf("module.exports"),
     );
+    const navigateBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function navigateToTestID"),
+      detoxPageSource.indexOf(
+        "async function ensureAppForegroundForInteraction",
+      ),
+    );
 
     expect(exampleAppSource).toContain('testID="e2e-scroll-content"');
     expect(waitForTestIDBody).toContain('by.id("e2e-scroll-content")');
+    expect(navigateBody).toContain('scrollTo("top")');
     expect(waitForTestIDBody).toContain(".whileElement(");
     expect(waitForTestIDBody).toContain('.scroll(260, "down")');
+    expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);
+    expect(waitForTestIDBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
+  it("waits for assertion text before reading the id-owned target", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const assertTextBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async assertText(stage"),
+      detoxRuntimeSource.indexOf("async control(stage"),
+    );
+    const waitForTestIDBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function findVisibleTestID"),
+      detoxPageSource.indexOf(
+        "async function withSynchronizationDisabledForAssertion",
+      ),
+    );
+
+    expect(assertTextBody).toContain("expectedText");
+    expect(detoxPageSource).toContain("textMatcherForTestID");
+    expect(detoxPageSource).toContain("escapeRegExp(expectedText)");
+    expect(waitForTestIDBody).toContain("await waitFor(expectedTarget)");
+    expect(waitForTestIDBody).toContain("return element(by.id(testID))");
     expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);
     expect(waitForTestIDBody).not.toMatch(/\bsetTimeout\b/i);
   });

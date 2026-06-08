@@ -22,15 +22,14 @@ describe("Detox assertion parity", () => {
       detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    // Then: Detox must read text from the visible id-owned target. A combined
-    // id/text matcher is not equivalent because Detox can expose React Native
-    // Text labels and selectable text differently across platforms.
+    // Then: Detox must wait for the expected text to be present before reading
+    // the id-owned target. This preserves Maestro's bounded visible text
+    // assertion while still reading the final value from the target testID.
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
+    expect(assertTextBody).toContain("expectedText,");
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
-    expect(assertTextBody).not.toContain("by.id(testID).and(");
-    expect(assertTextBody).not.toContain("by.text(new RegExp");
     expect(assertTextBody).toContain(".toBeVisible()");
     expect(assertTextBody).toContain(".withTimeout(30000)");
   });

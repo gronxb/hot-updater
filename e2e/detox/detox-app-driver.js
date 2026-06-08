@@ -17,11 +17,12 @@ class DetoxAppDriver {
 
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
-      const target = await findVisibleTestID(this.controlClient, testID, {
-        ensureForeground: options.ensureForeground,
-      });
       const expectedText = String(this.resolvePlaceholders(contains));
       await withSynchronizationDisabledForAssertion(async () => {
+        const target = await findVisibleTestID(this.controlClient, testID, {
+          ensureForeground: options.ensureForeground,
+          expectedText,
+        });
         await waitFor(target).toBeVisible().withTimeout(30000);
         const text = textFromAttributes(await target.getAttributes());
         if (!text.includes(expectedText)) {
