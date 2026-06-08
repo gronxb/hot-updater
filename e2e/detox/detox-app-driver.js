@@ -1,4 +1,4 @@
-const { device, expect: detoxExpect } = require("detox");
+const { by, device, element, expect: detoxExpect, waitFor } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
   findVisibleTestID,
@@ -76,7 +76,7 @@ class DetoxAppDriver {
     });
   }
 
-  async tap(stage, testID) {
+  async tap(stage, testID, expectedResultContains) {
     await this.runStage(stage, async () => {
       const target = await findVisibleTestID(this.controlClient, testID);
       const isInstallAction = shouldDisableSynchronizationForTap(testID);
@@ -84,6 +84,9 @@ class DetoxAppDriver {
         await disableSynchronizationUntilLaunch();
       }
       await target.tap();
+      if (expectedResultContains) {
+        await this.waitForInstallActionResult(expectedResultContains);
+      }
     });
   }
 
@@ -98,6 +101,24 @@ class DetoxAppDriver {
       const target = await findVisibleTestID(this.controlClient, testID);
       await target.replaceText(String(this.resolvePlaceholders(text)));
     });
+  }
+
+  async waitForInstallActionResult(expectedResultContains) {
+    const expectedText = String(
+      this.resolvePlaceholders(expectedResultContains),
+    );
+    await findVisibleTestID(this.controlClient, "update-action-result", {
+      ensureForeground: false,
+    });
+    await waitFor(
+      element(
+        by
+          .id("update-action-result")
+          .and(by.text(new RegExp(escapeRegExp(expectedText)))),
+      ),
+    )
+      .toBeVisible()
+      .withTimeout(30000);
   }
 
   readStageValue(key) {
@@ -169,6 +190,10 @@ class DetoxAppDriver {
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
     await launchApp({ newInstance: false });
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 module.exports = { DetoxAppDriver };

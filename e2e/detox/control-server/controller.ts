@@ -1909,6 +1909,7 @@ async function clearIosLocalBundleState() {
     }
   }
 
+  fixtureSession.storePath = null;
   logDetoxFixture("ios local bundle state reset", {
     documentsDir,
   });
