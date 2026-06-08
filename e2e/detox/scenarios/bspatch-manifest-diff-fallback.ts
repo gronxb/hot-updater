@@ -21,7 +21,6 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install manifest base update",
       "action-install-current-channel-update",
-      "$previousBundleId",
     );
     await app.control(
       "wait manifest base metadata pending",
@@ -83,7 +82,6 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install manifest fallback update",
       "action-install-current-channel-update",
-      "$bundleId",
     );
     await app.control(
       "wait manifest fallback metadata pending",

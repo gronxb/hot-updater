@@ -30,7 +30,6 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install target cohort update",
       "action-install-current-channel-update",
-      "$bundleId",
     );
     await app.control(
       "wait target cohort metadata pending",
@@ -40,6 +39,11 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
         relaunchLimit: 0,
         verificationPending: true,
       },
+    );
+    await app.assertText(
+      "assert target cohort action result",
+      "update-action-result",
+      "current-channel -> installed $bundleId (UPDATE)",
     );
     await app.reload("reload target cohort update");
     await app.control(

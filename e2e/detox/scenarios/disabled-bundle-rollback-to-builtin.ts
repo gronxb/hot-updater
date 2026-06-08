@@ -30,7 +30,6 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.tap(
         "install current bundle",
         "action-install-current-channel-update",
-        "$currentBundleId",
       );
       await app.control(
         "wait current bundle metadata pending",
@@ -65,7 +64,6 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.tap(
         "install rollback to built-in",
         "action-install-current-channel-update",
-        "00000000-0000-0000-0000-000000000000",
       );
       await app.control(
         "assert rollback to built-in metadata",

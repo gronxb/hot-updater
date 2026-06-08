@@ -22,7 +22,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install first multi-asset update",
       "action-install-current-channel-update",
-      "$firstBundleId",
     );
     await app.control(
       "wait first multi-asset metadata pending",
@@ -73,7 +72,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install second multi-asset update",
       "action-install-current-channel-update",
-      "$secondBundleId",
     );
     await app.control(
       "wait second multi-asset metadata pending",

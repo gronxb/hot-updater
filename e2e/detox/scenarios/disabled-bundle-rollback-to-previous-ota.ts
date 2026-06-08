@@ -22,7 +22,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.tap(
         "install previous bundle",
         "action-install-current-channel-update",
-        "$previousBundleId",
       );
       await app.control(
         "wait previous bundle metadata pending",
@@ -67,7 +66,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.tap(
         "install next bundle",
         "action-install-current-channel-update",
-        "$nextBundleId",
       );
       await app.control(
         "wait next bundle metadata pending",
@@ -102,7 +100,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.tap(
         "install rollback to previous bundle",
         "action-install-current-channel-update",
-        "$previousBundleId",
       );
       await app.control(
         "wait previous rollback metadata pending",

@@ -83,35 +83,16 @@ class DetoxAppDriver {
     });
   }
 
-  async tap(stage, testID, expectedResultContains) {
+  async tap(stage, testID) {
     await this.runStage(stage, async () => {
       const target = await findVisibleTestID(this.controlClient, testID);
       const isInstallAction = shouldDisableSynchronizationForTap(testID);
       if (isInstallAction) {
         await disableSynchronizationUntilLaunch();
       }
-      const expectedText =
-        this.resolveInstallExpectation(expectedResultContains);
       await target.tap();
-      if (expectedResultContains) {
-        await this.waitForInstallActionResult(expectedText);
-      }
+      await this.reattachAfterInstallTap(isInstallAction);
     });
-  }
-
-  async waitForInstallActionResult(expectedText) {
-    const target = await findVisibleTestID(
-      this.controlClient,
-      "update-action-result",
-      { ensureForeground: false },
-    );
-    await detoxExpect(target).toBeVisible();
-    const text = textFromAttributes(await target.getAttributes());
-    if (!text.includes(expectedText)) {
-      throw new Error(
-        `Expected update-action-result to contain "${expectedText}", received "${text}"`,
-      );
-    }
   }
 
   async terminate(stage) {
@@ -130,12 +111,6 @@ class DetoxAppDriver {
   readStageValue(key) {
     if (Object.hasOwn(this.stageValues, key)) return this.stageValues[key];
     throw new Error(`Missing Detox scenario value: ${key}`);
-  }
-
-  resolveInstallExpectation(expectedResultContains) {
-    return expectedResultContains
-      ? String(this.resolvePlaceholders(expectedResultContains))
-      : "";
   }
 
   resolvePlaceholders(value) {
@@ -200,6 +175,12 @@ class DetoxAppDriver {
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
+    await launchApp({ newInstance: false });
+  }
+
+  async reattachAfterInstallTap(isInstallAction) {
+    if (!isAndroidRun()) return;
+    if (!isInstallAction) return;
     await launchApp({ newInstance: false });
   }
 }

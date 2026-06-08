@@ -68,7 +68,6 @@ type RecordedScenarioCall =
         | "tap"
         | "terminate"
         | "typeText";
-      readonly expectedResultContains?: string;
       readonly stage: string;
       readonly testID?: string;
     };
@@ -98,8 +97,8 @@ async function recordScenarioCalls(
       calls.push({ kind: "resetAppState", stage });
       return Promise.resolve();
     },
-    tap: (stage, testID, expectedResultContains) => {
-      calls.push({ expectedResultContains, kind: "tap", stage, testID });
+    tap: (stage, testID) => {
+      calls.push({ kind: "tap", stage, testID });
       return Promise.resolve();
     },
     terminate: (stage) => {
@@ -327,13 +326,18 @@ describe("Detox scenario contract", () => {
           continue;
         }
 
-        const bundlePlaceholder = `$${call.options.saveResultAs}`;
+        const nextDeployIndex = calls.findIndex(
+          (nextCall, nextIndex) =>
+            nextIndex > index &&
+            nextCall.kind === "control" &&
+            nextCall.pathName === "/e2e/jobs/deploy-bundle",
+        );
         const installIndex = calls.findIndex(
           (nextCall, nextIndex) =>
             nextIndex > index &&
+            (nextDeployIndex === -1 || nextIndex < nextDeployIndex) &&
             nextCall.kind === "tap" &&
-            nextCall.testID === "action-install-current-channel-update" &&
-            nextCall.expectedResultContains === bundlePlaceholder,
+            nextCall.testID === "action-install-current-channel-update",
         );
         if (installIndex === -1) {
           continue;
@@ -481,7 +485,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("gates install taps on app action-result text without metadata probing", async () => {
+  it("does not gate install taps on immediate action-result text", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -492,10 +496,11 @@ describe("Detox scenario contract", () => {
     );
 
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("expectedResultContains");
-    expect(tapBody).toContain("await this.waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain('"update-action-result"');
+    expect(tapBody).not.toContain("expectedResultContains");
+    expect(tapBody).not.toContain("waitForInstallActionResult");
+    expect(detoxRuntimeSource).not.toContain(
+      "async waitForInstallActionResult",
+    );
     expect(detoxRuntimeSource).not.toContain("metadata.json");
     expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
     expect(detoxRuntimeSource).not.toContain(".and(");
@@ -503,34 +508,48 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("passes expected bundle placeholders to install action taps", async () => {
-    const installSteps = {
-      "bspatch-manifest-diff-fallback": [
-        ["install manifest base update", "$previousBundleId"],
-        ["install manifest fallback update", "$bundleId"],
-      ],
-      "disabled-bundle-rollback-to-previous-ota": [
-        ["install previous bundle", "$previousBundleId"],
-      ],
-      "release-ota-recovery": [
-        ["install stable update", "$stableBundleId"],
-        ["install crash update", "$crashBundleId"],
-      ],
-      "runtime-channel-switch-reset": [
-        ["install runtime channel update", "$runtimeBundleId"],
-      ],
-    } as const;
+  it("keeps install action result checks after metadata evidence", async () => {
+    const scenariosWithActionResultAssertions = [
+      "numeric-cohort-rollout",
+      "release-ota-recovery",
+      "target-cohorts-only",
+      "target-cohorts-rollout-interaction",
+      "targeted-cohort-switchback",
+    ] as const;
 
-    for (const [scenarioName, steps] of Object.entries(installSteps)) {
+    for (const scenarioName of scenariosWithActionResultAssertions) {
       const calls = await recordScenarioCalls(scenarioName);
-      for (const [stage, expectedResultContains] of steps) {
-        const call = calls.find((entry) => entry.stage === stage);
+      const installTapIndexes = calls
+        .map((call, index) => ({ call, index }))
+        .filter(
+          ({ call }) =>
+            call.kind === "tap" && call.testID?.startsWith("action-install-"),
+        );
 
-        expect(call).toMatchObject({
-          expectedResultContains,
-          kind: "tap",
-          testID: expect.stringContaining("action-install-"),
-        });
+      for (const { index } of installTapIndexes) {
+        const stageLabel = `${scenarioName}: ${
+          calls[index]?.stage ?? "missing install tap"
+        }`;
+        expect(
+          Object.hasOwn(calls[index] ?? {}, "expectedResultContains"),
+          stageLabel,
+        ).toBe(false);
+        const metadataIndex = calls.findIndex(
+          (entry, nextIndex) =>
+            nextIndex > index &&
+            entry.kind === "control" &&
+            entry.pathName === "/e2e/jobs/wait-for-metadata",
+        );
+        const actionResultIndex = calls.findIndex(
+          (entry, nextIndex) =>
+            nextIndex > index &&
+            entry.kind === "assertText" &&
+            entry.testID === "update-action-result",
+        );
+        if (actionResultIndex !== -1) {
+          expect(metadataIndex, stageLabel).toBeGreaterThan(index);
+          expect(actionResultIndex, stageLabel).toBeGreaterThan(metadataIndex);
+        }
       }
     }
   });
@@ -559,9 +578,9 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).toContain("waitForInstallActionResult");
-    expect(installTapBody).toContain("{ ensureForeground: false }");
-    expect(installTapBody).toContain("expectedResultContains");
+    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(installTapBody).not.toContain("{ ensureForeground: false }");
+    expect(installTapBody).not.toContain("expectedResultContains");
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
     expect(deviceActionBody).toContain(
@@ -596,7 +615,7 @@ describe("Detox scenario contract", () => {
     expect(syncHelperBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("waits on install result text before continuing after install taps", async () => {
+  it("reattaches after install taps without waiting on result text", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -608,10 +627,11 @@ describe("Detox scenario contract", () => {
 
     expect(installTapBody).not.toContain("isAndroidRun()");
     expect(installTapBody).toContain("if (isInstallAction) {");
-    expect(installTapBody).toContain("if (expectedResultContains) {");
-    expect(installTapBody).toContain("await this.waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
-    expect(detoxRuntimeSource).toContain('"update-action-result"');
+    expect(installTapBody).not.toContain("if (expectedResultContains) {");
+    expect(installTapBody).not.toContain("waitForInstallActionResult");
+    expect(detoxRuntimeSource).not.toContain(
+      "async waitForInstallActionResult",
+    );
     expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
     expect(detoxRuntimeSource).not.toContain(".withTimeout(30000)");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
@@ -635,7 +655,9 @@ describe("Detox scenario contract", () => {
     expect(detoxPageSource).toContain("e2e-nav-action-results");
     expect(detoxRuntimeSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).not.toContain("escapeRegExp");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
+    expect(detoxRuntimeSource).not.toContain(
+      "async waitForInstallActionResult",
+    );
     expect(assertTextBody).toContain("findVisibleTestID(");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
@@ -779,8 +801,7 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("waitForInstallActionResult");
-    expect(tapBody).toContain('"update-action-result"');
+    expect(tapBody).not.toContain("waitForInstallActionResult");
     expect(detoxRuntimeSource).not.toContain(
       "function waitForCurrentChannelDownload",
     );
@@ -800,6 +821,7 @@ describe("Detox scenario contract", () => {
       "assert qa cohort applied",
       "install target cohort update",
       "wait target cohort metadata pending",
+      "assert target cohort action result",
       "reload target cohort update",
       "wait target cohort metadata stable",
       "assert target cohort launch",
@@ -960,25 +982,45 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("bspatch-consecutive-diff-ota");
     const body = await controlStepBody(
       "bspatch-consecutive-diff-ota",
-      "assert consecutive diff patch",
+      "assert diff bundle C patch",
     );
 
     // When: the bsdiff assertion is inspected.
-    // Then: the diff is installed against a stable base and uses the deploy result path.
+    // Then: C and D are both installed as bsdiff updates against stable bases.
     expect(stages).toEqual([
-      "deploy first diff bundle",
-      "launch first diff app",
-      "install first diff bundle",
-      "wait first diff metadata pending",
-      "reload first diff bundle",
-      "wait first diff metadata stable",
-      "deploy second diff bundle",
-      "launch second diff app",
-      "install second diff bundle",
-      "wait second diff metadata pending",
-      "reload second diff bundle",
-      "wait second diff metadata stable",
-      "assert consecutive diff patch",
+      "deploy diff bundle A",
+      "launch diff bundle A app",
+      "install diff bundle A",
+      "wait diff bundle A metadata pending",
+      "assert diff bundle A uses archive",
+      "reload diff bundle A",
+      "wait diff bundle A metadata stable",
+      "assert diff bundle A launch",
+      "deploy diff bundle B",
+      "launch diff bundle B app",
+      "install diff bundle B",
+      "wait diff bundle B metadata pending",
+      "reload diff bundle B",
+      "wait diff bundle B metadata stable",
+      "assert diff bundle B launch",
+      "deploy diff bundle C",
+      "assert diff bundle C bases",
+      "launch diff bundle C app",
+      "install diff bundle C",
+      "wait diff bundle C metadata pending",
+      "reload diff bundle C",
+      "wait diff bundle C metadata stable",
+      "assert diff bundle C patch",
+      "assert diff bundle C launch",
+      "deploy diff bundle D",
+      "assert diff bundle D bases",
+      "launch diff bundle D app",
+      "install diff bundle D",
+      "wait diff bundle D metadata pending",
+      "reload diff bundle D",
+      "wait diff bundle D metadata stable",
+      "assert diff bundle D patch",
+      "assert diff bundle D launch",
     ]);
     expect(body.assetPath).toBe("$diffPatchAssetPath");
   });
@@ -1047,6 +1089,7 @@ describe("Detox scenario contract", () => {
       "launch crash update app",
       "install crash update",
       "wait crash metadata pending",
+      "assert crash action result",
       "launch crash bundle",
       "wait crash recovery",
       "assert recovery launch report",
@@ -1086,21 +1129,49 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("target-cohorts-rollout-interaction");
 
     expect(stages).toEqual([
+      "capture built-in bundle id",
       "deploy cohort rollout bundle",
+      "expand cohort rollout bundle",
+      "compute cohort rollout sample",
       "launch cohort rollout app",
-      "enter qa cohort",
+      "enter excluded cohort",
+      "apply excluded cohort",
+      "assert excluded cohort applied",
+      "install excluded cohort update",
+      "assert excluded metadata reset",
+      "reload excluded cohort state",
+      "assert excluded cohort built-in bundle",
+      "enter included cohort",
+      "apply included cohort",
+      "assert included cohort applied",
+      "install included cohort update",
+      "wait included cohort metadata pending",
+      "assert included cohort action result",
+      "reload included cohort update",
+      "wait included cohort metadata stable",
+      "assert included cohort bundle",
+      "restore excluded cohort",
+      "apply restored excluded cohort",
+      "assert restored excluded cohort applied",
+      "install restored excluded cohort update",
+      "assert restored excluded metadata reset",
+      "reload restored excluded cohort state",
+      "assert restored excluded built-in bundle",
       "apply qa cohort",
-      "install cohort rollout update",
-      "wait cohort rollout metadata pending",
-      "reload cohort rollout update",
-      "wait cohort rollout metadata stable",
-      "assert cohort rollout active",
+      "assert qa cohort applied",
+      "install qa cohort update",
+      "wait qa cohort metadata pending",
+      "assert qa cohort action result",
+      "reload qa cohort update",
+      "wait qa cohort metadata stable",
+      "assert qa cohort bundle",
+      "assert qa cohort active",
     ]);
     expect(
       (
         await controlStepBody(
           "target-cohorts-rollout-interaction",
-          "wait cohort rollout metadata pending",
+          "wait included cohort metadata pending",
         )
       ).verificationPending,
     ).toBe(true);
@@ -1108,7 +1179,7 @@ describe("Detox scenario contract", () => {
       (
         await controlStepBody(
           "target-cohorts-rollout-interaction",
-          "wait cohort rollout metadata stable",
+          "wait included cohort metadata stable",
         )
       ).verificationPending,
     ).toBe(false);
@@ -1215,12 +1286,15 @@ describe("Detox scenario contract", () => {
       ).verificationPending,
     ).toBe(false);
     expect(
-      (await recordScenarioCalls("numeric-cohort-rollout")).find(
-        (call) =>
-          call.kind === "tap" &&
-          call.stage === "install excluded cohort update",
-      )?.expectedResultContains,
-    ).toBe("00000000-0000-0000-0000-000000000000");
+      Object.hasOwn(
+        (await recordScenarioCalls("numeric-cohort-rollout")).find(
+          (call) =>
+            call.kind === "tap" &&
+            call.stage === "install excluded cohort update",
+        ) ?? {},
+        "expectedResultContains",
+      ),
+    ).toBe(false);
   });
 
   it("models targeted cohort switchback as bundle state, not restore text", async () => {
@@ -1238,6 +1312,7 @@ describe("Detox scenario contract", () => {
       "assert numeric cohort applied",
       "install numeric cohort update",
       "wait numeric cohort metadata pending",
+      "assert numeric cohort action result",
       "reload numeric cohort update",
       "wait numeric cohort metadata stable",
       "assert numeric cohort launch",
@@ -1318,6 +1393,50 @@ describe("Detox scenario contract", () => {
       "reload previous bundle",
       "wait previous rollback metadata stable",
       "assert previous ota active",
+    ]);
+  });
+
+  it("models disabled bsdiff chain rollback through C to B to A to built-in", async () => {
+    const stages = await scenarioStages("bspatch-disabled-chain-rollback");
+
+    expect(stages).toEqual([
+      "capture built-in bundle id",
+      "deploy chain bundle A",
+      "launch chain bundle A app",
+      "install chain bundle A",
+      "wait chain bundle A metadata pending",
+      "assert chain bundle A uses archive",
+      "reload chain bundle A",
+      "wait chain bundle A metadata stable",
+      "assert chain bundle A launch",
+      "deploy chain bundle B",
+      "launch chain bundle B app",
+      "install chain bundle B",
+      "wait chain bundle B metadata pending",
+      "reload chain bundle B",
+      "wait chain bundle B metadata stable",
+      "assert chain bundle B launch",
+      "deploy chain bundle C",
+      "assert chain bundle C bases",
+      "launch chain bundle C app",
+      "install chain bundle C",
+      "wait chain bundle C metadata pending",
+      "reload chain bundle C",
+      "wait chain bundle C metadata stable",
+      "assert chain bundle C patch",
+      "assert chain bundle C launch",
+      "disable chain bundle C",
+      "launch rollback to chain bundle B",
+      "wait chain bundle B rollback metadata stable",
+      "assert chain bundle B rollback launch",
+      "disable chain bundle B",
+      "launch rollback to chain bundle A",
+      "wait chain bundle A rollback metadata stable",
+      "assert chain bundle A rollback launch",
+      "disable chain bundle A",
+      "launch rollback to built-in chain",
+      "assert chain built-in metadata reset",
+      "assert chain built-in bundle",
     ]);
   });
 });

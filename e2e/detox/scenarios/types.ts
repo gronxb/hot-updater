@@ -25,11 +25,7 @@ export type DetoxAppDriver = {
   readonly launch: (stage: string) => Promise<void>;
   readonly reload: (stage: string) => Promise<void>;
   readonly resetAppState: (stage: string) => Promise<void>;
-  readonly tap: (
-    stage: string,
-    testID: string,
-    expectedResultContains?: string,
-  ) => Promise<void>;
+  readonly tap: (stage: string, testID: string) => Promise<void>;
   readonly terminate: (stage: string) => Promise<void>;
   readonly typeText: (
     stage: string,
