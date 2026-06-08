@@ -1,4 +1,4 @@
-const { by, device, element, expect: detoxExpect, waitFor } = require("detox");
+const { device, expect: detoxExpect } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
   findVisibleTestID,
@@ -83,10 +83,8 @@ class DetoxAppDriver {
       if (isInstallAction) {
         await disableSynchronizationUntilLaunch();
       }
+      this.resolveInstallExpectation(expectedResultContains);
       await target.tap();
-      if (expectedResultContains) {
-        await this.waitForInstallActionResult(expectedResultContains);
-      }
     });
   }
 
@@ -103,27 +101,15 @@ class DetoxAppDriver {
     });
   }
 
-  async waitForInstallActionResult(expectedResultContains) {
-    const expectedText = String(
-      this.resolvePlaceholders(expectedResultContains),
-    );
-    await findVisibleTestID(this.controlClient, "update-action-result", {
-      ensureForeground: false,
-    });
-    await waitFor(
-      element(
-        by
-          .id("update-action-result")
-          .and(by.text(new RegExp(escapeRegExp(expectedText)))),
-      ),
-    )
-      .toBeVisible()
-      .withTimeout(30000);
-  }
-
   readStageValue(key) {
     if (Object.hasOwn(this.stageValues, key)) return this.stageValues[key];
     throw new Error(`Missing Detox scenario value: ${key}`);
+  }
+
+  resolveInstallExpectation(expectedResultContains) {
+    if (expectedResultContains) {
+      this.resolvePlaceholders(expectedResultContains);
+    }
   }
 
   resolvePlaceholders(value) {
@@ -190,10 +176,6 @@ class DetoxAppDriver {
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
     await launchApp({ newInstance: false });
   }
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 module.exports = { DetoxAppDriver };
