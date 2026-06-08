@@ -228,6 +228,7 @@ const BARE_BUILD_INLINE_PATTERN =
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
+const BUILT_IN_APP_MARKER = "targeted-qa-detox";
 const E2E_APP_VERSION = "1.0";
 const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
 const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
@@ -441,8 +442,7 @@ const fixtureSession: SessionState = {
   envBackupPath: null,
   envSourceFile: HOT_UPDATER_ENV_FILE,
   exampleDir: EXAMPLE_DIR,
-  initialMarker:
-    platform === "ios" ? "builtin-ios-detox" : "builtin-android-detox",
+  initialMarker: BUILT_IN_APP_MARKER,
   largeArchiveAssetBackupPath: null,
   largeArchiveAssetPath: path.join(
     EXAMPLE_DIR,

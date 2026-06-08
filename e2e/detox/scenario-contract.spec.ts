@@ -320,8 +320,7 @@ describe("Detox scenario contract", () => {
         const preDeployCalls = calls.slice(0, firstDeployIndex);
         expect(
           preDeployCalls.some(
-            (call) =>
-              call.kind === "launch" && call.stage.includes("built-in"),
+            (call) => call.kind === "launch" && call.stage.includes("built-in"),
           ),
           scenarioName,
         ).toBe(true);
@@ -419,6 +418,30 @@ describe("Detox scenario contract", () => {
       "new DetoxAppDriver(controlClient, bootstrapResult)",
     );
     expect(detoxRuntimeSource).toContain("constructor(client, initialValues");
+  });
+
+  it("uses the checked-in native built-in marker for bootstrap assertions", async () => {
+    // Given: provider jobs reuse the native app built during shared setup.
+    const appSource = await fs.readFile(exampleAppPath, "utf8");
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const nativeMarker = appSource.match(
+      /const E2E_SCENARIO_MARKER = "([^"]+)";/,
+    )?.[1];
+
+    // When: Detox seeds Maestro-compatible output.initialMarker.
+    // Then: the seeded marker must match the actual built-in app default,
+    // because Detox-first lifecycle does not reinstall a patched built-in app
+    // from the fixture server.
+    expect(nativeMarker).toBe("targeted-qa-detox");
+    expect(controllerSource).toContain(
+      `const BUILT_IN_APP_MARKER = "${nativeMarker}";`,
+    );
+    expect(controllerSource).toContain("initialMarker: BUILT_IN_APP_MARKER");
+    expect(controllerSource).not.toContain('"builtin-ios-detox"');
+    expect(controllerSource).not.toContain('"builtin-android-detox"');
   });
 
   it("passes runtime config through Detox launch arguments", async () => {
