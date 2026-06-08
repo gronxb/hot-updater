@@ -1,4 +1,4 @@
-const { device, expect: detoxExpect } = require("detox");
+const { by, device, element, expect: detoxExpect, waitFor } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
   findVisibleTestID,
@@ -16,12 +16,16 @@ class DetoxAppDriver {
 
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
-      const target = await findVisibleTestID(this.controlClient, testID, {
+      await findVisibleTestID(this.controlClient, testID, {
         ensureForeground: options.ensureForeground,
       });
-      await detoxExpect(target).toBeVisible();
-      const text = textFromAttributes(await target.getAttributes());
       const expectedText = String(this.resolvePlaceholders(contains));
+      const matchedTarget = element(
+        by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText)))),
+      );
+      await waitFor(matchedTarget).toBeVisible().withTimeout(30000);
+      await detoxExpect(matchedTarget).toBeVisible();
+      const text = textFromAttributes(await matchedTarget.getAttributes());
       if (!text.includes(expectedText)) {
         throw new Error(
           `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
@@ -195,6 +199,10 @@ class DetoxAppDriver {
     if (!isAppReloadAction) return;
     await launchApp({ newInstance: false });
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 module.exports = { DetoxAppDriver };

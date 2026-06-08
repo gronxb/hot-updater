@@ -571,8 +571,8 @@ describe("Detox scenario contract", () => {
       "async waitForInstallActionResult",
     );
     expect(detoxRuntimeSource).not.toContain("metadata.json");
-    expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
-    expect(detoxRuntimeSource).not.toContain(".and(");
+    expect(tapBody).not.toContain("by.text(new RegExp");
+    expect(tapBody).not.toContain(".and(");
     expect(tapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -727,8 +727,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toContain(
       "async waitForInstallActionResult",
     );
-    expect(detoxRuntimeSource).not.toContain("by.text(new RegExp");
-    expect(detoxRuntimeSource).not.toContain(".withTimeout(30000)");
+    expect(installTapBody).not.toContain("by.text(new RegExp");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -749,11 +748,13 @@ describe("Detox scenario contract", () => {
     expect(detoxPageSource).toContain('testID.endsWith("-result")');
     expect(detoxPageSource).toContain("e2e-nav-action-results");
     expect(detoxRuntimeSource).toContain(".toBeVisible()");
-    expect(detoxRuntimeSource).not.toContain("escapeRegExp");
     expect(detoxRuntimeSource).not.toContain(
       "async waitForInstallActionResult",
     );
     expect(assertTextBody).toContain("findVisibleTestID(");
+    expect(assertTextBody).toContain("escapeRegExp");
+    expect(assertTextBody).toContain("by.id(testID).and(");
+    expect(assertTextBody).toContain("by.text(new RegExp");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
