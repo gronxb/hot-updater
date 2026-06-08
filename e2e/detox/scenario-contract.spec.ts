@@ -682,6 +682,27 @@ describe("Detox scenario contract", () => {
     expect(reloadBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("prepares explicit reloads through the same control boundary as Maestro restart-app-home", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const reloadBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async reload(stage"),
+      detoxRuntimeSource.indexOf("async resetAppState(stage"),
+    );
+
+    const prepareIndex = reloadBody.indexOf("/e2e/prepare-app-launch");
+    const terminateIndex = reloadBody.indexOf("device.terminateApp()");
+    const launchIndex = reloadBody.indexOf("launchApp({ newInstance: true })");
+
+    expect(prepareIndex).toBeGreaterThan(-1);
+    expect(terminateIndex).toBeGreaterThan(prepareIndex);
+    expect(launchIndex).toBeGreaterThan(terminateIndex);
+    expect(reloadBody).not.toMatch(/\bretry\b/i);
+    expect(reloadBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("prefers the Detox control port over provider ports for host control traffic", async () => {
     // Given: dashboard split jobs set PORT/HOT_UPDATER_SERVER_PORT for the
     // provider update server and HOT_UPDATER_E2E_CONTROL_PORT for control.
@@ -1355,7 +1376,7 @@ describe("Detox scenario contract", () => {
       "wait current bundle metadata stable",
       "assert current bundle active",
       "disable current bundle",
-      "launch rollback to built-in app",
+      "reload rollback to built-in app",
       "assert rollback metadata reset",
       "reload to built-in",
       "assert no crashed bundle",
@@ -1382,7 +1403,7 @@ describe("Detox scenario contract", () => {
       "wait next bundle metadata stable",
       "assert next bundle active",
       "disable next bundle",
-      "launch rollback to previous app",
+      "reload rollback to previous app",
       "wait previous rollback metadata stable",
       "assert previous ota active",
     ]);

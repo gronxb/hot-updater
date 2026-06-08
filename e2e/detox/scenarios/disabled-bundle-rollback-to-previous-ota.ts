@@ -96,7 +96,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         bundleId: "$nextBundleId",
         enabled: false,
       });
-      await app.launch("launch rollback to previous app");
+      await app.reload("reload rollback to previous app");
       await app.control(
         "wait previous rollback metadata stable",
         "/e2e/jobs/wait-for-metadata",

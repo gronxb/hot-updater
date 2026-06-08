@@ -60,7 +60,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         bundleId: "$currentBundleId",
         enabled: false,
       });
-      await app.launch("launch rollback to built-in app");
+      await app.reload("reload rollback to built-in app");
       await app.control(
         "assert rollback metadata reset",
         "/e2e/assert-metadata-reset",
