@@ -315,7 +315,44 @@ describe("Detox scenario contract", () => {
     }
   });
 
-  it("captures the built-in bundle id with the same suffix contract as Maestro", async () => {
+  it("refreshes provider update-check state before installing each deployed bundle", async () => {
+    for (const scenarioName of defaultDetoxScenarioNames) {
+      const calls = await recordScenarioCalls(scenarioName);
+      for (const [index, call] of calls.entries()) {
+        if (
+          call.kind !== "control" ||
+          call.pathName !== "/e2e/jobs/deploy-bundle" ||
+          !call.options?.saveResultAs
+        ) {
+          continue;
+        }
+
+        const bundlePlaceholder = `$${call.options.saveResultAs}`;
+        const installIndex = calls.findIndex(
+          (nextCall, nextIndex) =>
+            nextIndex > index &&
+            nextCall.kind === "tap" &&
+            nextCall.testID === "action-install-current-channel-update" &&
+            nextCall.expectedResultContains === bundlePlaceholder,
+        );
+        if (installIndex === -1) {
+          continue;
+        }
+
+        const refreshIndex = calls.findIndex(
+          (nextCall, nextIndex) =>
+            nextIndex > index &&
+            nextIndex < installIndex &&
+            (nextCall.kind === "launch" || nextCall.kind === "reload"),
+        );
+        expect(refreshIndex, `${scenarioName}: ${call.stage}`).toBeGreaterThan(
+          index,
+        );
+      }
+    }
+  });
+
+  it("captures the built-in bundle id with the minimum-id suffix contract", async () => {
     // Given: HotUpdater.getBundleId() can expose a platform-generated UUID
     // with the built-in minimum id suffix.
     const controllerSource = await fs.readFile(
@@ -324,7 +361,7 @@ describe("Detox scenario contract", () => {
     );
 
     // When: scenarios capture the built-in bundle id for later UI assertions.
-    // Then: Detox must preserve Maestro's suffix contract instead of requiring
+    // Then: Detox must preserve the minimum-id suffix contract instead of requiring
     // a hard-coded full UUID that iOS does not expose.
     expect(controllerSource).toContain(
       "const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;",
@@ -842,6 +879,7 @@ describe("Detox scenario contract", () => {
       "wait first multi-asset metadata stable",
       "assert first multi-assets stored",
       "deploy second multi-asset bundle",
+      "launch second multi-asset app",
       "install second multi-asset update",
       "wait second multi-asset metadata pending",
       "reload second multi-asset update",
@@ -900,6 +938,7 @@ describe("Detox scenario contract", () => {
       "reload first diff bundle",
       "wait first diff metadata stable",
       "deploy second diff bundle",
+      "launch second diff app",
       "install second diff bundle",
       "wait second diff metadata pending",
       "reload second diff bundle",
@@ -1206,6 +1245,7 @@ describe("Detox scenario contract", () => {
       "wait current bundle metadata stable",
       "assert current bundle active",
       "disable current bundle",
+      "launch rollback to built-in app",
       "install rollback to built-in",
       "reload to built-in",
       "assert metadata reset",
@@ -1220,12 +1260,14 @@ describe("Detox scenario contract", () => {
       "wait previous bundle metadata stable",
       "assert previous bundle active",
       "deploy next bundle",
+      "launch next bundle app",
       "install next bundle",
       "wait next bundle metadata pending",
       "reload next bundle",
       "wait next bundle metadata stable",
       "assert next bundle active",
       "disable next bundle",
+      "launch rollback to previous app",
       "install rollback to previous bundle",
       "wait previous rollback metadata pending",
       "reload previous bundle",

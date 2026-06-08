@@ -61,6 +61,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         bundleId: "$currentBundleId",
         enabled: false,
       });
+      await app.launch("launch rollback to built-in app");
       await app.tap(
         "install rollback to built-in",
         "action-install-current-channel-update",

@@ -69,6 +69,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
         saveResultAs: "secondBundleId",
       },
     );
+    await app.launch("launch second multi-asset app");
     await app.tap(
       "install second multi-asset update",
       "action-install-current-channel-update",

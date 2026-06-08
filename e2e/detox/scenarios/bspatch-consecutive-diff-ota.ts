@@ -58,6 +58,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "secondBundleId",
       },
     );
+    await app.launch("launch second diff app");
     await app.tap(
       "install second diff bundle",
       "action-install-current-channel-update",
