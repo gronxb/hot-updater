@@ -752,10 +752,12 @@ describe("Detox scenario contract", () => {
       "async waitForInstallActionResult",
     );
     expect(assertTextBody).toContain("findVisibleTestID(");
-    expect(assertTextBody).toContain("escapeRegExp");
-    expect(assertTextBody).toContain("by.id(testID).and(");
-    expect(assertTextBody).toContain("by.text(new RegExp");
+    expect(assertTextBody).toContain("const target = await findVisibleTestID");
+    expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
+    expect(assertTextBody).toContain(".includes(expectedText)");
+    expect(assertTextBody).not.toContain("by.id(testID).and(");
+    expect(assertTextBody).not.toContain("by.text(new RegExp");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });

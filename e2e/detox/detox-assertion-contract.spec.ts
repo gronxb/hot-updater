@@ -10,8 +10,9 @@ const detoxScenarioRuntimePath = path.join(
 );
 
 describe("Detox assertion parity", () => {
-  it("waits for expected text on the same testID like Maestro text assertions", async () => {
-    // Given: Maestro asserted a visible testID and expected text together.
+  it("reads expected text from the visible testID like Maestro copyTextFrom assertions", async () => {
+    // Given: Maestro asserted a visible testID, copied that node's text, then
+    // checked that the copied text included the expected value.
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -21,11 +22,15 @@ describe("Detox assertion parity", () => {
       detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    // Then: Detox must wait for that combined id/text match before reading text.
-    expect(assertTextBody).toContain("escapeRegExp");
-    expect(assertTextBody).toContain("by.id(testID).and(");
-    expect(assertTextBody).toContain("by.text(new RegExp");
-    expect(assertTextBody).toContain("await waitFor(matchedTarget)");
+    // Then: Detox must read text from the visible id-owned target. A combined
+    // id/text matcher is not equivalent because Detox can expose React Native
+    // Text labels and selectable text differently across platforms.
+    expect(assertTextBody).toContain("const target = await findVisibleTestID");
+    expect(assertTextBody).toContain("await target.getAttributes()");
+    expect(assertTextBody).toContain("textFromAttributes");
+    expect(assertTextBody).toContain(".includes(expectedText)");
+    expect(assertTextBody).not.toContain("by.id(testID).and(");
+    expect(assertTextBody).not.toContain("by.text(new RegExp");
     expect(assertTextBody).toContain(".toBeVisible()");
     expect(assertTextBody).toContain(".withTimeout(30000)");
   });
