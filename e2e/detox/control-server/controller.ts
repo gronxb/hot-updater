@@ -2117,34 +2117,6 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
   }
 }
 
-function assertRollbackToBuiltInMetadata(
-  metadata: Record<string, unknown>,
-  previousBundleId: string,
-) {
-  const metadataState = getMetadataState(metadata);
-  const stableBundleId = metadataState.stableBundleId;
-  const stagingBundleId = metadataState.stagingBundleId;
-  const verificationPending = metadataState.verificationPending;
-
-  if (stableBundleId !== null) {
-    throw new Error(
-      `Expected stableBundleId null but received ${String(stableBundleId)}`,
-    );
-  }
-
-  if (stagingBundleId !== previousBundleId) {
-    throw new Error(
-      `Expected stagingBundleId ${previousBundleId} but received ${String(stagingBundleId)}`,
-    );
-  }
-
-  if (verificationPending !== false) {
-    throw new Error(
-      `Expected verificationPending false but received ${String(verificationPending)}`,
-    );
-  }
-}
-
 function assertLaunchReport(
   filePath: string,
   expectedStatus: string,
@@ -2392,38 +2364,6 @@ function createWaitForMetadataResetTimeoutError(args: {
       stableBundleId: null,
       stagingBundleId: null,
       verificationPending: "false/null",
-    },
-    observed: {
-      crashHistory: args.crashHistory,
-      launchReport: args.launchReport,
-      metadata: args.metadata,
-      metadataState: observedState,
-    },
-    platform: fixtureSession.platform,
-  });
-}
-
-function createWaitForRollbackToBuiltInMetadataTimeoutError(args: {
-  attempts: number;
-  crashHistory: JsonSnapshot;
-  launchReport: JsonSnapshot;
-  metadata: JsonSnapshot;
-  previousBundleId: string;
-}) {
-  const observedState = getMetadataState(args.metadata.value);
-  const message = [
-    "Timed out waiting for rollback-to-built-in metadata state.",
-    `Expected stableBundleId=null, stagingBundleId=${args.previousBundleId}, and verificationPending=false.`,
-    `Observed stableBundleId=${String(observedState.stableBundleId)} and ${formatObservedMetadataState(observedState)}.`,
-    `Metadata path: ${args.metadata.path}`,
-  ].join("\n");
-
-  return createEndpointError(message, {
-    attempts: args.attempts,
-    expected: {
-      stableBundleId: null,
-      stagingBundleId: args.previousBundleId,
-      verificationPending: false,
     },
     observed: {
       crashHistory: args.crashHistory,
@@ -5632,39 +5572,6 @@ async function assertMetadataResetState() {
   });
 }
 
-async function assertRollbackToBuiltInMetadataState(previousBundleId: string) {
-  const attempts = 120;
-
-  for (let index = 0; index < attempts; index += 1) {
-    const diagnostics =
-      fixtureSession.platform === "ios"
-        ? readIosWaitForMetadataDiagnostics()
-        : readAndroidWaitForMetadataDiagnostics();
-
-    if (diagnostics.metadata.value) {
-      try {
-        assertRollbackToBuiltInMetadata(
-          diagnostics.metadata.value,
-          previousBundleId,
-        );
-        return {};
-      } catch {}
-    }
-
-    await sleep(E2E_POLL_INTERVAL_MS);
-  }
-
-  const diagnostics =
-    fixtureSession.platform === "ios"
-      ? readIosWaitForMetadataDiagnostics()
-      : readAndroidWaitForMetadataDiagnostics();
-  throw createWaitForRollbackToBuiltInMetadataTimeoutError({
-    attempts,
-    previousBundleId,
-    ...diagnostics,
-  });
-}
-
 async function assertLaunchReportState({
   crashedBundleId,
   optional,
@@ -5961,12 +5868,6 @@ export async function handleAssertMetadataActive(bundleId: string) {
 
 export async function handleAssertMetadataReset() {
   return assertMetadataResetState();
-}
-
-export async function handleAssertRollbackToBuiltInMetadata(
-  previousBundleId: string,
-) {
-  return assertRollbackToBuiltInMetadataState(previousBundleId);
 }
 
 export async function handleAssertLaunchReport(

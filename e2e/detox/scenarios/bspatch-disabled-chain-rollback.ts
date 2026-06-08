@@ -170,7 +170,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       bundleId: "$bundleC",
       enabled: false,
     });
-    await app.launch("launch rollback to chain bundle B");
+    await app.reload("reload rollback to chain bundle B");
     await app.control(
       "wait chain bundle B rollback metadata stable",
       "/e2e/jobs/wait-for-metadata",
@@ -189,7 +189,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       bundleId: "$bundleB",
       enabled: false,
     });
-    await app.launch("launch rollback to chain bundle A");
+    await app.reload("reload rollback to chain bundle A");
     await app.control(
       "wait chain bundle A rollback metadata stable",
       "/e2e/jobs/wait-for-metadata",
@@ -208,7 +208,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       bundleId: "$bundleA",
       enabled: false,
     });
-    await app.launch("launch rollback to built-in chain");
+    await app.reload("reload rollback to built-in chain");
     await app.control(
       "assert chain built-in metadata reset",
       "/e2e/assert-metadata-reset",

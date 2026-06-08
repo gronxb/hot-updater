@@ -1356,21 +1356,16 @@ describe("Detox scenario contract", () => {
       "assert current bundle active",
       "disable current bundle",
       "launch rollback to built-in app",
-      "install rollback to built-in",
-      "assert rollback to built-in metadata",
+      "assert rollback metadata reset",
       "reload to built-in",
       "assert no crashed bundle",
     ]);
     const rollbackMetadataStep = await controlStepDefinition(
       "disabled-bundle-rollback-to-builtin",
-      "assert rollback to built-in metadata",
+      "assert rollback metadata reset",
     );
-    expect(rollbackMetadataStep.pathName).toBe(
-      "/e2e/assert-rollback-to-built-in-metadata",
-    );
-    expect(rollbackMetadataStep.body).toEqual({
-      previousBundleId: "$currentBundleId",
-    });
+    expect(rollbackMetadataStep.pathName).toBe("/e2e/assert-metadata-reset");
+    expect(rollbackMetadataStep.body).toBeUndefined();
     expect(previousStages).toEqual([
       "deploy previous bundle",
       "launch previous bundle app",
@@ -1388,9 +1383,6 @@ describe("Detox scenario contract", () => {
       "assert next bundle active",
       "disable next bundle",
       "launch rollback to previous app",
-      "install rollback to previous bundle",
-      "wait previous rollback metadata pending",
-      "reload previous bundle",
       "wait previous rollback metadata stable",
       "assert previous ota active",
     ]);
@@ -1426,15 +1418,15 @@ describe("Detox scenario contract", () => {
       "assert chain bundle C patch",
       "assert chain bundle C launch",
       "disable chain bundle C",
-      "launch rollback to chain bundle B",
+      "reload rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
       "assert chain bundle B rollback launch",
       "disable chain bundle B",
-      "launch rollback to chain bundle A",
+      "reload rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
       "assert chain bundle A rollback launch",
       "disable chain bundle A",
-      "launch rollback to built-in chain",
+      "reload rollback to built-in chain",
       "assert chain built-in metadata reset",
       "assert chain built-in bundle",
     ]);
