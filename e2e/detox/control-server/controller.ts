@@ -2076,12 +2076,11 @@ function assertMetadataState(
   bundleId: string,
 ) {
   const metadataState = getMetadataState(metadata);
-  const stagingBundleId = metadataState.stagingBundleId;
   const verificationPending = metadataState.verificationPending;
 
-  if (stagingBundleId !== bundleId) {
+  if (!isMetadataActiveBundle(metadataState, bundleId)) {
     throw new Error(
-      `Expected stagingBundleId ${bundleId} but received ${stagingBundleId}`,
+      `Expected active bundle ${bundleId} but received stableBundleId=${String(metadataState.stableBundleId)} and stagingBundleId=${String(metadataState.stagingBundleId)}`,
     );
   }
 
@@ -2249,15 +2248,29 @@ function getMetadataState(metadata: Record<string, unknown> | null) {
   };
 }
 
+function isMetadataActiveBundle(
+  metadataState: {
+    stableBundleId: string | null;
+    stagingBundleId: string | null;
+  },
+  bundleId: string,
+) {
+  return (
+    metadataState.stagingBundleId === bundleId ||
+    metadataState.stableBundleId === bundleId
+  );
+}
+
 function isExpectedMetadataStateReached(
   metadataState: {
+    stableBundleId: string | null;
     stagingBundleId: string | null;
     verificationPending: boolean | null;
   },
   bundleId: string,
   verificationPending: boolean,
 ) {
-  if (metadataState.stagingBundleId !== bundleId) {
+  if (!isMetadataActiveBundle(metadataState, bundleId)) {
     return false;
   }
 

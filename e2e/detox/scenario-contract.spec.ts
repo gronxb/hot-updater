@@ -577,6 +577,32 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("reattaches Android Detox after app-action reload taps", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+    const reattachBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async reattachAfterInstallTap"),
+      detoxRuntimeSource.indexOf("module.exports"),
+    );
+
+    expect(tapBody).toContain(
+      'const isAppReloadAction = testID === "action-reload-app";',
+    );
+    expect(tapBody).toContain(
+      "await this.reattachAfterAppReloadTap(isAppReloadAction);",
+    );
+    expect(reattachBody).toContain("async reattachAfterAppReloadTap(");
+    expect(reattachBody).toContain("await launchApp({ newInstance: false });");
+    expect(reattachBody).not.toMatch(/\bretry\b/i);
+    expect(reattachBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
   it("keeps install action result checks after metadata evidence", async () => {
     const scenariosWithActionResultAssertions = [
       "numeric-cohort-rollout",
@@ -1466,7 +1492,7 @@ describe("Detox scenario contract", () => {
       "assert current bundle launch status",
       "assert current bundle active",
       "disable current bundle",
-      "launch rollback to built-in app",
+      "reload rollback to built-in app",
       "assert rollback metadata reset",
       "assert rollback built-in bundle",
       "assert rollback built-in marker",
@@ -1505,7 +1531,7 @@ describe("Detox scenario contract", () => {
       "assert next bundle launch status",
       "assert next bundle active",
       "disable next bundle",
-      "launch rollback to previous app",
+      "reload rollback to previous app",
       "wait previous rollback metadata stable",
       "assert previous ota rollback marker",
       "assert previous ota rollback launch status",
@@ -1514,6 +1540,34 @@ describe("Detox scenario contract", () => {
       "capture previous ota rollback state",
       "assert previous ota active",
     ]);
+  });
+
+  it("treats a rollback stable bundle as active metadata", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const activePredicateBody = controllerSource.slice(
+      controllerSource.indexOf("function isMetadataActiveBundle"),
+      controllerSource.indexOf("function isExpectedMetadataStateReached"),
+    );
+    const expectedStateBody = controllerSource.slice(
+      controllerSource.indexOf("function isExpectedMetadataStateReached"),
+      controllerSource.indexOf("function isExpectedCrashRecoveryReached"),
+    );
+
+    expect(activePredicateBody).toContain(
+      "metadataState.stagingBundleId === bundleId ||",
+    );
+    expect(activePredicateBody).toContain(
+      "metadataState.stableBundleId === bundleId",
+    );
+    expect(expectedStateBody).toContain(
+      "isMetadataActiveBundle(metadataState, bundleId)",
+    );
+    expect(expectedStateBody).not.toContain(
+      "metadataState.stagingBundleId !== bundleId",
+    );
   });
 
   it("models disabled bsdiff chain rollback through C to B to A to built-in", async () => {

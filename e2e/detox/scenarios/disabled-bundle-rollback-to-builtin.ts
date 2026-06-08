@@ -76,7 +76,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         bundleId: "$currentBundleId",
         enabled: false,
       });
-      await app.launch("launch rollback to built-in app");
+      await app.reload("reload rollback to built-in app");
       await app.control(
         "assert rollback metadata reset",
         "/e2e/assert-metadata-reset",
@@ -106,9 +106,13 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "crash-history-summary",
         "No crashed bundles recorded.",
       );
-      await app.control("capture rollback built-in state", "/e2e/capture-state", {
-        prefix: "rollback-to-builtin",
-      });
+      await app.control(
+        "capture rollback built-in state",
+        "/e2e/capture-state",
+        {
+          prefix: "rollback-to-builtin",
+        },
+      );
       await app.control(
         "assert rollback metadata reset again",
         "/e2e/assert-metadata-reset",

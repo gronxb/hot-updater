@@ -91,11 +91,13 @@ class DetoxAppDriver {
     await this.runStage(stage, async () => {
       const target = await findVisibleTestID(this.controlClient, testID);
       const isInstallAction = shouldDisableSynchronizationForTap(testID);
+      const isAppReloadAction = testID === "action-reload-app";
       if (isInstallAction) {
         await disableSynchronizationUntilLaunch();
       }
       await target.tap();
       await this.reattachAfterInstallTap(isInstallAction);
+      await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
 
@@ -185,6 +187,12 @@ class DetoxAppDriver {
   async reattachAfterInstallTap(isInstallAction) {
     if (!isAndroidRun()) return;
     if (!isInstallAction) return;
+    await launchApp({ newInstance: false });
+  }
+
+  async reattachAfterAppReloadTap(isAppReloadAction) {
+    if (!isAndroidRun()) return;
+    if (!isAppReloadAction) return;
     await launchApp({ newInstance: false });
   }
 }
