@@ -6,6 +6,7 @@ const {
   launchApp,
   shouldDisableSynchronizationForTap,
   textFromAttributes,
+  withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
 class DetoxAppDriver {
@@ -20,17 +21,19 @@ class DetoxAppDriver {
         ensureForeground: options.ensureForeground,
       });
       const expectedText = String(this.resolvePlaceholders(contains));
-      const matchedTarget = element(
-        by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText)))),
-      );
-      await waitFor(matchedTarget).toBeVisible().withTimeout(30000);
-      await detoxExpect(matchedTarget).toBeVisible();
-      const text = textFromAttributes(await matchedTarget.getAttributes());
-      if (!text.includes(expectedText)) {
-        throw new Error(
-          `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
+      await withSynchronizationDisabledForAssertion(async () => {
+        const matchedTarget = element(
+          by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText)))),
         );
-      }
+        await waitFor(matchedTarget).toBeVisible().withTimeout(30000);
+        await detoxExpect(matchedTarget).toBeVisible();
+        const text = textFromAttributes(await matchedTarget.getAttributes());
+        if (!text.includes(expectedText)) {
+          throw new Error(
+            `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
+          );
+        }
+      });
     });
   }
 

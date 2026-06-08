@@ -2094,18 +2094,11 @@ function assertMetadataState(
 function assertMetadataReset(metadata: Record<string, unknown>) {
   const metadataState = getMetadataState(metadata);
   const stableBundleId = metadataState.stableBundleId;
-  const stagingBundleId = metadataState.stagingBundleId;
   const verificationPending = metadataState.verificationPending;
 
   if (stableBundleId !== null) {
     throw new Error(
       `Expected stableBundleId null but received ${String(stableBundleId)}`,
-    );
-  }
-
-  if (stagingBundleId !== null) {
-    throw new Error(
-      `Expected stagingBundleId null but received ${String(stagingBundleId)}`,
     );
   }
 
@@ -2366,7 +2359,7 @@ function createWaitForMetadataResetTimeoutError(args: {
   const observedState = getMetadataState(args.metadata.value);
   const message = [
     "Timed out waiting for metadata reset state.",
-    "Expected stableBundleId=null, stagingBundleId=null, and verificationPending=false/null.",
+    "Expected stableBundleId=null and verificationPending=false/null.",
     `Observed stableBundleId=${String(observedState.stableBundleId)} and ${formatObservedMetadataState(observedState)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
@@ -2375,7 +2368,6 @@ function createWaitForMetadataResetTimeoutError(args: {
     attempts: args.attempts,
     expected: {
       stableBundleId: null,
-      stagingBundleId: null,
       verificationPending: "false/null",
     },
     observed: {

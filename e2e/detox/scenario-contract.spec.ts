@@ -927,6 +927,31 @@ describe("Detox scenario contract", () => {
     expect(tapBody).not.toMatch(/\bretry\b/i);
   });
 
+  it("treats rollback metadata reset as no stable active OTA", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const resetAssertionBody = controllerSource.slice(
+      controllerSource.indexOf("function assertMetadataReset("),
+      controllerSource.indexOf("function assertLaunchReport("),
+    );
+    const resetTimeoutBody = controllerSource.slice(
+      controllerSource.indexOf(
+        "function createWaitForMetadataResetTimeoutError",
+      ),
+      controllerSource.indexOf("function readIosWaitForMetadataDiagnostics"),
+    );
+
+    expect(resetAssertionBody).toContain("stableBundleId !== null");
+    expect(resetAssertionBody).not.toContain("stagingBundleId !== null");
+    expect(resetAssertionBody).toContain("verificationPending === true");
+    expect(resetTimeoutBody).toContain("Expected stableBundleId=null");
+    expect(resetTimeoutBody).not.toContain(
+      "Expected stableBundleId=null, stagingBundleId=null",
+    );
+  });
+
   it("models target-cohorts-only pending verification and stable launch sequence", async () => {
     const stages = await scenarioStages("target-cohorts-only");
 

@@ -136,6 +136,21 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
   return target;
 }
 
+async function withSynchronizationDisabledForAssertion(operation) {
+  const shouldRestoreSynchronization = !synchronizationDisabledUntilLaunch;
+  if (shouldRestoreSynchronization) {
+    await device.disableSynchronization();
+  }
+
+  try {
+    return await operation();
+  } finally {
+    if (shouldRestoreSynchronization) {
+      await device.enableSynchronization();
+    }
+  }
+}
+
 module.exports = {
   androidReversePorts,
   controlBaseUrl,
@@ -145,4 +160,5 @@ module.exports = {
   launchApp,
   shouldDisableSynchronizationForTap,
   textFromAttributes,
+  withSynchronizationDisabledForAssertion,
 };
