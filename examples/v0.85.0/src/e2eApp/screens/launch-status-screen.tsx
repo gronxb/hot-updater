@@ -14,17 +14,3 @@ export const LaunchStatusScreen = ({ model }: ScreenProps) => (
     </Section>
   </ScreenShell>
 );
-
-export const LaunchCrashedBundleScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="LaunchCrashedBundle">
-    <Section title="Launch Crashed Bundle">
-      <Text
-        selectable
-        style={styles.resultText}
-        testID="launch-crashed-bundle-result"
-      >
-        {model.crashedBundleText}
-      </Text>
-    </Section>
-  </ScreenShell>
-);

@@ -103,7 +103,9 @@ describe("E2E navigation compact surface contract", () => {
     // When: the implementation is inspected for bundled assertion surfaces.
     const runtimeScreenFiles = screenFiles.filter(
       (fileName) =>
-        fileName.startsWith("runtime-") && !fileName.includes("-action-"),
+        fileName.startsWith("runtime-") &&
+        !fileName.includes("-action-") &&
+        !fileName.includes("-input-"),
     );
 
     // Then: each assertion page lives in its own small file.
@@ -119,8 +121,10 @@ describe("E2E navigation compact surface contract", () => {
     for (const fileName of [
       ...runtimeScreenFiles,
       "crash-history-screen.tsx",
-      "launch-screens.tsx",
-      "update-store-screens.tsx",
+      "launch-crashed-bundle-screen.tsx",
+      "launch-status-screen.tsx",
+      "update-store-downloaded-screen.tsx",
+      "update-store-download-paths-screen.tsx",
     ]) {
       const source = await fs.readFile(
         path.join(e2eAppScreensDir, fileName),
@@ -147,6 +151,34 @@ describe("E2E navigation compact surface contract", () => {
       );
       expect(source).not.toContain("ScrollView");
       expect(sourceCodeLineCount(source)).toBeLessThanOrEqual(70);
+    }
+  });
+
+  it("keeps each E2E route screen in its own file", async () => {
+    const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
+      (fileName) => fileName.endsWith(".tsx"),
+    );
+
+    expect(screenFiles).not.toContain("cohort-action-screens.tsx");
+    expect(screenFiles).not.toContain("crash-action-screens.tsx");
+    expect(screenFiles).not.toContain("input-screens.tsx");
+    expect(screenFiles).not.toContain("install-action-screens.tsx");
+    expect(screenFiles).not.toContain("launch-screens.tsx");
+    expect(screenFiles).not.toContain("result-screens.tsx");
+    expect(screenFiles).not.toContain("runtime-action-screens.tsx");
+    expect(screenFiles).not.toContain("update-store-screens.tsx");
+
+    for (const fileName of screenFiles) {
+      if (fileName === "action-button-screen.tsx" || fileName === "types.ts") {
+        continue;
+      }
+
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      const exportedScreens = source.match(/export const \w+Screen/g) ?? [];
+      expect(exportedScreens, fileName).toHaveLength(1);
     }
   });
 

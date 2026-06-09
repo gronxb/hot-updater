@@ -46,10 +46,11 @@ const exampleE2eAppScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens.tsx",
 );
-const exampleE2eAppResultScreensPath = path.join(
-  repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/result-screens.tsx",
-);
+const exampleE2eAppResultScreenPaths = [
+  "examples/v0.85.0/src/e2eApp/screens/channel-action-result-screen.tsx",
+  "examples/v0.85.0/src/e2eApp/screens/update-action-result-screen.tsx",
+  "examples/v0.85.0/src/e2eApp/screens/cohort-action-result-screen.tsx",
+].map((screenPath) => path.join(repoDir, screenPath));
 const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
@@ -772,10 +773,13 @@ describe("Detox scenario contract", () => {
       detoxScreenRoutesPath,
       "utf8",
     );
-    const exampleResultScreenSource = await fs.readFile(
-      exampleE2eAppResultScreensPath,
-      "utf8",
-    );
+    const exampleResultScreenSource = (
+      await Promise.all(
+        exampleE2eAppResultScreenPaths.map((screenPath) =>
+          fs.readFile(screenPath, "utf8"),
+        ),
+      )
+    ).join("\n");
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
