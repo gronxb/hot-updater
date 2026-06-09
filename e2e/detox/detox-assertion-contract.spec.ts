@@ -17,21 +17,71 @@ describe("Detox assertion parity", () => {
       detoxScenarioRuntimePath,
       "utf8",
     );
+    const detoxPageSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/detox-page.js"),
+      "utf8",
+    );
     const assertTextBody = detoxRuntimeSource.slice(
       detoxRuntimeSource.indexOf("async assertText(stage"),
       detoxRuntimeSource.indexOf("async control(stage"),
+    );
+    const waitForTextBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function waitForVisibleTestIDText"),
+      detoxPageSource.indexOf("async function findVisibleTestID"),
     );
 
     // Then: Detox must wait for the expected text to be present before reading
     // the id-owned target. This preserves Maestro's bounded visible text
     // assertion while still reading the final value from the target testID.
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
-    expect(assertTextBody).toContain("expectedText,");
+    expect(assertTextBody).toContain("waitForVisibleTestIDText");
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
-    expect(assertTextBody).toContain(".toBeVisible()");
-    expect(assertTextBody).toContain(".withTimeout(30000)");
+    expect(waitForTextBody).toContain(".toBeVisible()");
+    expect(waitForTextBody).toContain(".withTimeout(30000)");
+  });
+
+  it("scrolls by testID before waiting for assertion text", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const detoxPageSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/detox-page.js"),
+      "utf8",
+    );
+    const assertTextBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async assertText(stage"),
+      detoxRuntimeSource.indexOf("async control(stage"),
+    );
+    const findVisibleBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function findVisibleTestID"),
+      detoxPageSource.indexOf(
+        "async function withSynchronizationDisabledForAssertion",
+      ),
+    );
+    const waitForTextBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function waitForVisibleTestIDText"),
+      detoxPageSource.indexOf("async function findVisibleTestID"),
+    );
+
+    expect(assertTextBody).toContain("const target = await findVisibleTestID");
+    expect(assertTextBody).toContain(
+      "await waitForVisibleTestIDText(testID, expectedText)",
+    );
+    expect(assertTextBody).not.toContain("expectedText,");
+    expect(findVisibleBody).toContain("const target = element(by.id(testID))");
+    expect(findVisibleBody).toContain("await waitFor(target)");
+    expect(findVisibleBody).toContain(".whileElement(");
+    expect(findVisibleBody).toContain('.scroll(260, "down")');
+    expect(findVisibleBody).not.toContain("expectedText");
+    expect(waitForTextBody).toContain("by.id(testID)");
+    expect(waitForTextBody).toContain("by.text(new RegExp");
+    expect(waitForTextBody).toContain("escapeRegExp(expectedText)");
+    expect(waitForTextBody).toContain(".withTimeout(30000)");
+    expect(waitForTextBody).not.toContain(".whileElement(");
+    expect(waitForTextBody).not.toContain(".scroll(");
   });
 
   it("reads assertion text with Detox synchronization temporarily disabled", async () => {

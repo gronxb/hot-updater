@@ -747,7 +747,7 @@ describe("Detox scenario contract", () => {
     expect(exampleAppSource).toContain('testID="update-action-result"');
     expect(detoxPageSource).toContain('testID.endsWith("-result")');
     expect(detoxPageSource).toContain("e2e-nav-action-results");
-    expect(detoxRuntimeSource).toContain(".toBeVisible()");
+    expect(detoxPageSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).not.toContain(
       "async waitForInstallActionResult",
     );
@@ -756,7 +756,7 @@ describe("Detox scenario contract", () => {
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
-    expect(assertTextBody).toContain("expectedText,");
+    expect(assertTextBody).toContain("waitForVisibleTestIDText");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -905,20 +905,32 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async assertText(stage"),
       detoxRuntimeSource.indexOf("async control(stage"),
     );
-    const waitForTestIDBody = detoxPageSource.slice(
+    const findVisibleBody = detoxPageSource.slice(
       detoxPageSource.indexOf("async function findVisibleTestID"),
       detoxPageSource.indexOf(
         "async function withSynchronizationDisabledForAssertion",
       ),
     );
+    const waitForTextBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function waitForVisibleTestIDText"),
+      detoxPageSource.indexOf("async function findVisibleTestID"),
+    );
 
     expect(assertTextBody).toContain("expectedText");
-    expect(detoxPageSource).toContain("textMatcherForTestID");
-    expect(detoxPageSource).toContain("escapeRegExp(expectedText)");
-    expect(waitForTestIDBody).toContain("await waitFor(expectedTarget)");
-    expect(waitForTestIDBody).toContain("return element(by.id(testID))");
-    expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);
-    expect(waitForTestIDBody).not.toMatch(/\bsetTimeout\b/i);
+    expect(assertTextBody).toContain("waitForVisibleTestIDText");
+    expect(assertTextBody).not.toContain("expectedText,");
+    expect(findVisibleBody).toContain("const target = element(by.id(testID))");
+    expect(findVisibleBody).toContain("await waitFor(target)");
+    expect(findVisibleBody).not.toContain("expectedText");
+    expect(waitForTextBody).toContain("escapeRegExp(expectedText)");
+    expect(waitForTextBody).toContain("by.text(new RegExp");
+    expect(waitForTextBody).toContain(".withTimeout(30000)");
+    expect(waitForTextBody).not.toContain(".whileElement(");
+    expect(waitForTextBody).not.toContain(".scroll(");
+    expect(findVisibleBody).not.toMatch(/\bretry\b/i);
+    expect(findVisibleBody).not.toMatch(/\bsetTimeout\b/i);
+    expect(waitForTextBody).not.toMatch(/\bretry\b/i);
+    expect(waitForTextBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
   it("only disables Detox synchronization for install taps", async () => {
