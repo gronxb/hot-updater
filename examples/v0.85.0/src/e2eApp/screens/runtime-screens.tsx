@@ -6,13 +6,13 @@ import { E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH } from "../runtime";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
-export const RuntimeIdentityScreen = ({ model, navigation }: ScreenProps) => {
+export const RuntimeIdentityScreen = ({ model }: ScreenProps) => {
   const hasLargeE2EAsset = Object.keys(
     model.runtimeSnapshot.manifest.assets,
   ).includes(E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH);
 
   return (
-    <ScreenShell current="RuntimeIdentity" navigation={navigation}>
+    <ScreenShell current="RuntimeIdentity">
       <Section title="Runtime Identity">
         <InfoRow
           label="Bundle ID"
@@ -34,8 +34,8 @@ export const RuntimeIdentityScreen = ({ model, navigation }: ScreenProps) => {
   );
 };
 
-export const LaunchStatusScreen = ({ model, navigation }: ScreenProps) => (
-  <ScreenShell current="LaunchStatus" navigation={navigation}>
+export const LaunchStatusScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="LaunchStatus">
     <Section title="Launch Status">
       <Text selectable style={styles.resultText} testID="launch-status-result">
         {model.launchStatusText}
@@ -51,14 +51,14 @@ export const LaunchStatusScreen = ({ model, navigation }: ScreenProps) => (
   </ScreenShell>
 );
 
-export const RuntimeStateScreen = ({ model, navigation }: ScreenProps) => {
+export const RuntimeStateScreen = ({ model }: ScreenProps) => {
   const channelSummary = `current=${model.runtimeSnapshot.channel} default=${
     model.runtimeSnapshot.defaultChannel
   } switched=${String(model.runtimeSnapshot.isChannelSwitched)}`;
   const cohortSummary = `current=${model.runtimeSnapshot.cohort} initial=${model.initialCohort}`;
 
   return (
-    <ScreenShell current="RuntimeState" navigation={navigation}>
+    <ScreenShell current="RuntimeState">
       <Section title="Runtime State">
         <Text
           selectable
@@ -79,8 +79,8 @@ export const RuntimeStateScreen = ({ model, navigation }: ScreenProps) => {
   );
 };
 
-export const UpdateStoreScreen = ({ model, navigation }: ScreenProps) => (
-  <ScreenShell current="UpdateStore" navigation={navigation}>
+export const UpdateStoreScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="UpdateStore">
     <Section title="Update Store">
       <InfoRow
         label="Downloaded"
@@ -96,8 +96,8 @@ export const UpdateStoreScreen = ({ model, navigation }: ScreenProps) => (
   </ScreenShell>
 );
 
-export const CrashHistoryScreen = ({ model, navigation }: ScreenProps) => (
-  <ScreenShell current="CrashHistory" navigation={navigation}>
+export const CrashHistoryScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="CrashHistory">
     <Section
       title={`Crash History (${model.runtimeSnapshot.crashHistory.length})`}
       titleTestID="section-crash-history"

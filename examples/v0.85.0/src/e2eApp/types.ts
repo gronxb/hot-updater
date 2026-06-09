@@ -12,7 +12,3 @@ export type RootStackParamList = {
 };
 
 export type ScreenName = keyof RootStackParamList;
-
-export type ScreenNavigation = {
-  readonly navigate: (screen: ScreenName) => void;
-};

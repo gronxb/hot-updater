@@ -15,17 +15,17 @@ const E2E_SCREEN_URLS = {
   updateStore: "hotupdaterexample://e2e/update-store",
 };
 
-const E2E_SCREEN_NAMES = {
-  actionResults: "ActionResults",
-  cohortInputActions: "CohortInputActions",
-  cohortPresetActions: "CohortPresetActions",
-  crashHistory: "CrashHistory",
-  installActions: "InstallActions",
-  launchStatus: "LaunchStatus",
-  runtimeChannelActions: "RuntimeChannelActions",
-  runtimeIdentity: "RuntimeIdentity",
-  runtimeState: "RuntimeState",
-  updateStore: "UpdateStore",
+const E2E_SCREEN_CONTENT_TEST_IDS = {
+  actionResults: "e2e-screen-action-results",
+  cohortInputActions: "e2e-screen-cohort-input-actions",
+  cohortPresetActions: "e2e-screen-cohort-preset-actions",
+  crashHistory: "e2e-screen-crash-history",
+  installActions: "e2e-screen-install-actions",
+  launchStatus: "e2e-screen-launch-status",
+  runtimeChannelActions: "e2e-screen-runtime-channel-actions",
+  runtimeIdentity: "e2e-screen-runtime-identity",
+  runtimeState: "e2e-screen-runtime-state",
+  updateStore: "e2e-screen-update-store",
 };
 
 function isAndroidRun() {
@@ -166,8 +166,8 @@ function screenPathForTestID(testID) {
   return "runtimeIdentity";
 }
 
-async function waitForActiveScreen(screenName) {
-  await waitFor(element(by.id("e2e-active-screen").and(by.text(screenName))))
+async function waitForActiveScreen(screenContentTestID) {
+  await waitFor(element(by.id(screenContentTestID)))
     .toBeVisible()
     .withTimeout(30000);
 }
@@ -194,7 +194,7 @@ async function openScreenForTestID(testID) {
     url: E2E_SCREEN_URLS[screenPath],
   });
   await withSynchronizationDisabledForPageOpen(async () => {
-    await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath]);
+    await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     const screenContent = element(by.id("e2e-screen-content"));
     await waitFor(screenContent).toBeVisible().withTimeout(30000);
   });

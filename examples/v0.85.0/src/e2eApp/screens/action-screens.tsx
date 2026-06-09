@@ -5,8 +5,8 @@ import { Button, ScreenShell, Section } from "../components";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
-export const InstallActionsScreen = ({ model, navigation }: ScreenProps) => (
-  <ScreenShell current="InstallActions" navigation={navigation}>
+export const InstallActionsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="InstallActions">
     <Section title="Install Actions" titleTestID="section-install-actions">
       <View style={styles.buttonGrid}>
         <Button
@@ -36,11 +36,8 @@ export const InstallActionsScreen = ({ model, navigation }: ScreenProps) => (
   </ScreenShell>
 );
 
-export const RuntimeChannelActionsScreen = ({
-  model,
-  navigation,
-}: ScreenProps) => (
-  <ScreenShell current="RuntimeChannelActions" navigation={navigation}>
+export const RuntimeChannelActionsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="RuntimeChannelActions">
     <Section title="Runtime Channel">
       <TextInput
         accessibilityLabel="Runtime Channel Input"
@@ -74,11 +71,8 @@ export const RuntimeChannelActionsScreen = ({
   </ScreenShell>
 );
 
-export const CohortInputActionsScreen = ({
-  model,
-  navigation,
-}: ScreenProps) => (
-  <ScreenShell current="CohortInputActions" navigation={navigation}>
+export const CohortInputActionsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="CohortInputActions">
     <Section title="Cohort Input">
       <TextInput
         accessibilityLabel="Cohort Override Input"
@@ -104,11 +98,8 @@ export const CohortInputActionsScreen = ({
   </ScreenShell>
 );
 
-export const CohortPresetActionsScreen = ({
-  model,
-  navigation,
-}: ScreenProps) => (
-  <ScreenShell current="CohortPresetActions" navigation={navigation}>
+export const CohortPresetActionsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="CohortPresetActions">
     <Section title="Cohort Presets" titleTestID="section-cohort-actions">
       <View style={styles.buttonGrid}>
         <Button
@@ -126,8 +117,8 @@ export const CohortPresetActionsScreen = ({
   </ScreenShell>
 );
 
-export const ActionResultsScreen = ({ model, navigation }: ScreenProps) => (
-  <ScreenShell current="ActionResults" navigation={navigation}>
+export const ActionResultsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="ActionResults">
     <Section title="Action Results" titleTestID="section-action-results">
       <Text selectable style={styles.resultText} testID="channel-action-result">
         Channel Action Result: {model.channelActionResult}

@@ -68,57 +68,34 @@ export const E2eHotUpdaterApp = ({
         screenOptions={{ headerShown: false }}
       >
         <Stack.Screen name="RuntimeIdentity">
-          {({ navigation }) => (
-            <RuntimeIdentityScreen model={model} navigation={navigation} />
-          )}
+          {() => <RuntimeIdentityScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="LaunchStatus">
-          {({ navigation }) => (
-            <LaunchStatusScreen model={model} navigation={navigation} />
-          )}
+          {() => <LaunchStatusScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="RuntimeState">
-          {({ navigation }) => (
-            <RuntimeStateScreen model={model} navigation={navigation} />
-          )}
+          {() => <RuntimeStateScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="UpdateStore">
-          {({ navigation }) => (
-            <UpdateStoreScreen model={model} navigation={navigation} />
-          )}
+          {() => <UpdateStoreScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="CrashHistory">
-          {({ navigation }) => (
-            <CrashHistoryScreen model={model} navigation={navigation} />
-          )}
+          {() => <CrashHistoryScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="InstallActions">
-          {({ navigation }) => (
-            <InstallActionsScreen model={model} navigation={navigation} />
-          )}
+          {() => <InstallActionsScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="RuntimeChannelActions">
-          {({ navigation }) => (
-            <RuntimeChannelActionsScreen
-              model={model}
-              navigation={navigation}
-            />
-          )}
+          {() => <RuntimeChannelActionsScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="CohortInputActions">
-          {({ navigation }) => (
-            <CohortInputActionsScreen model={model} navigation={navigation} />
-          )}
+          {() => <CohortInputActionsScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="CohortPresetActions">
-          {({ navigation }) => (
-            <CohortPresetActionsScreen model={model} navigation={navigation} />
-          )}
+          {() => <CohortPresetActionsScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="ActionResults">
-          {({ navigation }) => (
-            <ActionResultsScreen model={model} navigation={navigation} />
-          )}
+          {() => <ActionResultsScreen model={model} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

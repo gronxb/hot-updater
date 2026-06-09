@@ -101,7 +101,7 @@ describe("Detox assertion parity", () => {
     expect(openScreenBody).toContain("withSynchronizationDisabledForPageOpen");
     expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
     expect(openScreenBody).toContain(
-      "await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath])",
+      "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );
     expect(openScreenBody).toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");

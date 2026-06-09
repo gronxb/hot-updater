@@ -1,13 +1,6 @@
 import { Platform, StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
-  activeScreenLabel: {
-    alignSelf: "center",
-    color: "#334155",
-    fontSize: 12,
-    fontWeight: "700",
-    marginLeft: 2,
-  },
   assetCard: {
     backgroundColor: "#f3f4f6",
     borderRadius: 8,
@@ -104,26 +97,6 @@ export const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  navBar: {
-    backgroundColor: "#f8fafc",
-    borderBottomColor: "#e2e8f0",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    paddingBottom: 8,
-    paddingHorizontal: 10,
-    paddingTop: Platform.OS === "android" ? 40 : 8,
-  },
-  navButton: {
-    borderRadius: 6,
-    minHeight: 28,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  navButtonText: {
-    fontSize: 11,
   },
   previewImage: {
     height: 120,
