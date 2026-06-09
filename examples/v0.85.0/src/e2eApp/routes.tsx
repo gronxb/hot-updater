@@ -1,11 +1,18 @@
 import React from "react";
 
 import { Stack } from "./route-stack";
-import { actionRoutes } from "./routes/action-routes";
+import { appActionRoutes } from "./routes/app-action-routes";
+import { cohortActionRoutes } from "./routes/cohort-action-routes";
 import { inputRoutes } from "./routes/input-routes";
+import { installActionRoutes } from "./routes/install-action-routes";
 import { readyRoutes } from "./routes/ready-routes";
-import { runtimeRoutes } from "./routes/runtime-routes";
-import { statusRoutes } from "./routes/status-routes";
+import { runtimeActionRoutes } from "./routes/runtime-action-routes";
+import { runtimeBundleRoutes } from "./routes/runtime-bundle-routes";
+import { runtimeChannelRoutes } from "./routes/runtime-channel-routes";
+import { runtimeCohortRoutes } from "./routes/runtime-cohort-routes";
+import { statusLaunchRoutes } from "./routes/status-launch-routes";
+import { statusResultRoutes } from "./routes/status-result-routes";
+import { statusUpdateStoreRoutes } from "./routes/status-update-store-routes";
 
 export const E2eStack = (): React.JSX.Element => (
   <Stack.Navigator
@@ -13,9 +20,16 @@ export const E2eStack = (): React.JSX.Element => (
     screenOptions={{ headerShown: false }}
   >
     {readyRoutes}
-    {runtimeRoutes}
-    {statusRoutes}
+    {runtimeBundleRoutes}
+    {runtimeChannelRoutes}
+    {runtimeCohortRoutes}
+    {statusLaunchRoutes}
+    {statusResultRoutes}
+    {statusUpdateStoreRoutes}
     {inputRoutes}
-    {actionRoutes}
+    {installActionRoutes}
+    {cohortActionRoutes}
+    {runtimeActionRoutes}
+    {appActionRoutes}
   </Stack.Navigator>
 );

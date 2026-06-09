@@ -124,24 +124,33 @@ describe("E2E navigation stack contract", () => {
         fs.readFile(path.join(e2eAppRouteModulesDir, fileName), "utf8"),
       ),
     );
+    expect(routeModuleFiles).toEqual([
+      "app-action-routes.tsx",
+      "cohort-action-routes.tsx",
+      "input-routes.tsx",
+      "install-action-routes.tsx",
+      "ready-routes.tsx",
+      "runtime-action-routes.tsx",
+      "runtime-bundle-routes.tsx",
+      "runtime-channel-routes.tsx",
+      "runtime-cohort-routes.tsx",
+      "status-launch-routes.tsx",
+      "status-result-routes.tsx",
+      "status-update-store-routes.tsx",
+    ]);
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
     );
-
-    expect(routeModuleFiles).toEqual([
-      "action-routes.tsx",
-      "input-routes.tsx",
-      "ready-routes.tsx",
-      "runtime-routes.tsx",
-      "status-routes.tsx",
-    ]);
     expect(stackScreens).toHaveLength(28);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
-    for (const source of routeModuleSources) {
+    for (const [index, source] of routeModuleSources.entries()) {
+      const fileName = routeModuleFiles[index];
+      const routeScreenCount = source.match(/<Stack\.Screen/g) ?? [];
+      expect(routeScreenCount.length, fileName).toBeLessThanOrEqual(4);
       expect(source).not.toContain("ScrollView");
       expect(source).not.toContain("Section");
-      expect(sourceCodeLineCount(source)).toBeLessThanOrEqual(80);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(80);
     }
     await expect(fs.stat(e2eAppRouteGroupDir)).rejects.toMatchObject({
       code: "ENOENT",
