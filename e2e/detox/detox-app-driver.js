@@ -90,13 +90,11 @@ class DetoxAppDriver {
 
   async tap(stage, testID) {
     await this.runStage(stage, async () => {
-      const isInstallAction = testID.startsWith("action-install-");
       const isAppReloadAction = testID === "action-reload-app";
       await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
-      await this.reattachAfterInstallTap(isInstallAction);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
@@ -183,12 +181,6 @@ class DetoxAppDriver {
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
     if (pathName !== "/e2e/wait-for-crash-recovery") return;
-    await launchApp({ newInstance: false });
-  }
-
-  async reattachAfterInstallTap(isInstallAction) {
-    if (!isAndroidRun()) return;
-    if (!isInstallAction) return;
     await launchApp({ newInstance: false });
   }
 

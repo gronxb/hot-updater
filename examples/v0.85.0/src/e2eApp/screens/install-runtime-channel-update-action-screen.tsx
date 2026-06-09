@@ -9,6 +9,7 @@ export const InstallRuntimeChannelUpdateActionScreen = () => {
   return (
     <ActionButtonScreen
       current="InstallRuntimeChannelUpdateAction"
+      deferPress
       onPress={model.installRuntimeChannelUpdate}
       testID="action-install-runtime-channel-update"
       title="Install Runtime"

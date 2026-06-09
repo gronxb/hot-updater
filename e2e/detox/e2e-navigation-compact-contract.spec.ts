@@ -28,6 +28,10 @@ const e2eAppInteractionRouteScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routeGroups/interaction-route-screens.tsx",
 );
+const e2eAppRouteGroupDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routeGroups",
+);
 const e2eAppStackScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
@@ -296,29 +300,29 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppScreensSource.length,
     );
 
-    expect(readyScreenBody).toContain('current="Ready"');
+    expect(readyScreenBody).toContain('testID="e2e-ready-status"');
+    expect(readyScreenBody).not.toContain("ScreenShell");
+    expect(readyScreenBody).not.toContain('current="Ready"');
     expect(readyScreenBody).not.toContain("RuntimeBundleScreen");
     expect(readyScreenBody).not.toContain("RuntimeMarkerScreen");
     expect(readyScreenBody).not.toContain("ActionScreen");
     expect(readyScreenBody).not.toContain("InfoRow");
     expect(readyScreenBody).not.toContain("Button");
+    expect(sourceCodeLineCount(readyScreenBody)).toBeLessThanOrEqual(14);
   });
 
   it("keeps the app entrypoint from becoming a scenario screen registry", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
-    const e2eAppAssertionRouteScreensSource = await fs.readFile(
-      e2eAppAssertionRouteScreensPath,
-      "utf8",
+    const routeGroupFiles = (await fs.readdir(e2eAppRouteGroupDir)).filter(
+      (fileName) => fileName.endsWith("-route-screens.tsx"),
     );
-    const e2eAppInteractionRouteScreensSource = await fs.readFile(
-      e2eAppInteractionRouteScreensPath,
-      "utf8",
+    const routeGroupSources = await Promise.all(
+      routeGroupFiles.map((fileName) =>
+        fs.readFile(path.join(e2eAppRouteGroupDir, fileName), "utf8"),
+      ),
     );
-    const e2eAppRouteGroupSource = [
-      e2eAppAssertionRouteScreensSource,
-      e2eAppInteractionRouteScreensSource,
-    ].join("\n");
+    const e2eAppRouteGroupSource = routeGroupSources.join("\n");
     const e2eAppRuntimeModelContextSource = await fs.readFile(
       e2eAppRuntimeModelContextPath,
       "utf8",
@@ -338,10 +342,14 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutesSource).not.toContain("modelScreens");
     expect(e2eAppRoutesSource).not.toContain("screen.render(model)");
     expect(e2eAppRoutesSource).not.toContain("{() =>");
-    expect(e2eAppRoutesSource).toContain("assertionRouteScreens");
-    expect(e2eAppRoutesSource).toContain("interactionRouteScreens");
-    expect(e2eAppRoutesSource).not.toContain("<AssertionRouteScreens");
-    expect(e2eAppRoutesSource).not.toContain("<InteractionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("runtimeAssertionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("stateAssertionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("resultAssertionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("installActionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("runtimeActionRouteScreens");
+    expect(e2eAppRoutesSource).toContain("cohortActionRouteScreens");
+    expect(e2eAppRoutesSource).not.toContain("assertionRouteScreens");
+    expect(e2eAppRoutesSource).not.toContain("interactionRouteScreens");
     expect(e2eAppRouteGroupSource).not.toContain("modelScreens");
     expect(e2eAppRouteGroupSource).not.toContain("screen.render(model)");
     expect(e2eAppRouteGroupSource).not.toContain("{() =>");
@@ -349,13 +357,13 @@ describe("E2E navigation compact surface contract", () => {
       "component={InstallCurrentChannelUpdateActionScreen}",
     );
     expect(e2eAppRouteGroupSource).toContain("component={CohortInputScreen}");
-    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(40);
-    expect(
-      sourceCodeLineCount(e2eAppAssertionRouteScreensSource),
-    ).toBeLessThanOrEqual(90);
-    expect(
-      sourceCodeLineCount(e2eAppInteractionRouteScreensSource),
-    ).toBeLessThanOrEqual(90);
+    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(34);
+    for (const [index, source] of routeGroupSources.entries()) {
+      expect(
+        sourceCodeLineCount(source),
+        routeGroupFiles[index],
+      ).toBeLessThanOrEqual(56);
+    }
     expect(e2eAppRuntimeModelContextSource).toContain(
       "createContext<E2eRuntimeModel | null>",
     );
@@ -366,6 +374,16 @@ describe("E2E navigation compact surface contract", () => {
       code: "ENOENT",
     });
     await expect(fs.stat(e2eAppStackScreensDir)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      fs.stat(e2eAppAssertionRouteScreensPath),
+    ).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(
+      fs.stat(e2eAppInteractionRouteScreensPath),
+    ).rejects.toMatchObject({
       code: "ENOENT",
     });
   });

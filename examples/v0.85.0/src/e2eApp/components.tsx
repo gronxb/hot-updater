@@ -23,26 +23,41 @@ export const InfoRow = ({
 );
 
 export const Button = ({
+  deferPress = false,
   onPress,
   testID,
   title,
 }: {
+  readonly deferPress?: boolean;
   readonly onPress: () => Promise<void> | void;
   readonly testID: string;
   readonly title: string;
-}) => (
-  <Pressable
-    accessibilityLabel={title}
-    accessibilityRole="button"
-    onPress={() => {
-      void onPress();
-    }}
-    style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-    testID={testID}
-  >
-    <Text style={styles.buttonText}>{title}</Text>
-  </Pressable>
-);
+}) => {
+  const runPress = () => {
+    if (deferPress) {
+      requestAnimationFrame(() => {
+        void onPress();
+      });
+      return;
+    }
+
+    void onPress();
+  };
+
+  return (
+    <Pressable
+      accessibilityLabel={title}
+      accessibilityRole="button"
+      onPress={() => {
+        runPress();
+      }}
+      style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+      testID={testID}
+    >
+      <Text style={styles.buttonText}>{title}</Text>
+    </Pressable>
+  );
+};
 
 export const ScreenShell = ({
   children,

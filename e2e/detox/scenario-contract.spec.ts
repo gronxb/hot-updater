@@ -42,6 +42,22 @@ const exampleE2eAppComponentsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/components.tsx",
 );
+const exampleE2eAppActionButtonScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/action-button-screen.tsx",
+);
+const exampleE2eAppInstallCurrentScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/install-current-channel-update-action-screen.tsx",
+);
+const exampleE2eAppInstallRuntimeScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
+);
+const exampleE2eAppUseRuntimePath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+);
 const exampleE2eAppResultScreenPaths = [
   "examples/v0.85.0/src/e2eApp/screens/channel-action-result-screen.tsx",
   "examples/v0.85.0/src/e2eApp/screens/update-action-result-screen.tsx",
@@ -606,7 +622,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("reattaches Android Detox after app-action reload taps", async () => {
+  it("reattaches Android Detox only after app-action reload taps", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -616,16 +632,19 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async terminate(stage"),
     );
     const reattachBody = detoxRuntimeSource.slice(
-      detoxRuntimeSource.indexOf("async reattachAfterInstallTap"),
+      detoxRuntimeSource.indexOf("async reattachAfterExternalLaunch"),
       detoxRuntimeSource.indexOf("module.exports"),
     );
 
+    expect(tapBody).not.toContain("isInstallAction");
+    expect(tapBody).not.toContain("reattachAfterInstallTap");
     expect(tapBody).toContain(
       'const isAppReloadAction = testID === "action-reload-app";',
     );
     expect(tapBody).toContain(
       "await this.reattachAfterAppReloadTap(isAppReloadAction);",
     );
+    expect(reattachBody).not.toContain("async reattachAfterInstallTap(");
     expect(reattachBody).toContain("async reattachAfterAppReloadTap(");
     expect(reattachBody).toContain("await launchApp({ newInstance: false });");
     expect(reattachBody).not.toMatch(/\bretry\b/i);
@@ -739,7 +758,7 @@ describe("Detox scenario contract", () => {
     expect(syncHelperBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("reattaches after install taps without waiting on result text", async () => {
+  it("does not relaunch or reattach immediately after install taps", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -750,9 +769,9 @@ describe("Detox scenario contract", () => {
     );
 
     expect(installTapBody).not.toContain("isAndroidRun()");
-    expect(installTapBody).toContain(
-      "await this.reattachAfterInstallTap(isInstallAction);",
-    );
+    expect(installTapBody).not.toContain("isInstallAction");
+    expect(installTapBody).not.toContain("reattachAfterInstallTap");
+    expect(detoxRuntimeSource).not.toContain("async reattachAfterInstallTap");
     expect(installTapBody).not.toContain("if (expectedResultContains) {");
     expect(installTapBody).not.toContain("waitForInstallActionResult");
     expect(detoxRuntimeSource).not.toContain(
@@ -761,6 +780,57 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toContain("by.text(new RegExp");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
+  });
+
+  it("defers only install action button work past Detox tap dispatch", async () => {
+    const componentsSource = await fs.readFile(
+      exampleE2eAppComponentsPath,
+      "utf8",
+    );
+    const actionButtonScreenSource = await fs.readFile(
+      exampleE2eAppActionButtonScreenPath,
+      "utf8",
+    );
+    const installCurrentScreenSource = await fs.readFile(
+      exampleE2eAppInstallCurrentScreenPath,
+      "utf8",
+    );
+    const installRuntimeScreenSource = await fs.readFile(
+      exampleE2eAppInstallRuntimeScreenPath,
+      "utf8",
+    );
+    const buttonBody = componentsSource.slice(
+      componentsSource.indexOf("export const Button"),
+      componentsSource.indexOf("export const ScreenShell"),
+    );
+
+    expect(buttonBody).toContain("readonly deferPress?: boolean");
+    expect(buttonBody).toContain("requestAnimationFrame(() => {");
+    expect(buttonBody).toContain("void onPress();");
+    expect(buttonBody).not.toContain("setTimeout");
+    expect(buttonBody).not.toContain("catch(() => undefined)");
+    expect(actionButtonScreenSource).toContain("readonly deferPress?: boolean");
+    expect(actionButtonScreenSource).toContain("deferPress={deferPress}");
+    expect(installCurrentScreenSource).toContain("deferPress");
+    expect(installRuntimeScreenSource).toContain("deferPress");
+  });
+
+  it("publishes cohort action result before refreshing runtime state", async () => {
+    const runtimeSource = await fs.readFile(
+      exampleE2eAppUseRuntimePath,
+      "utf8",
+    );
+    const applyCohortBody = runtimeSource.slice(
+      runtimeSource.indexOf("const applyCohortValue = async"),
+      runtimeSource.indexOf("const updateCohortInput"),
+    );
+
+    expect(applyCohortBody.indexOf("setCohortActionResult")).toBeLessThan(
+      applyCohortBody.indexOf("await refresh()"),
+    );
+    expect(applyCohortBody).toContain("setCohortInput(appliedCohort)");
+    expect(applyCohortBody).not.toMatch(/\bretry\b/i);
+    expect(applyCohortBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
   it("uses action result elements only for explicit assertions", async () => {
