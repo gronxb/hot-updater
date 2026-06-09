@@ -3,24 +3,42 @@ const { by, device, element, waitFor } = require("detox");
 let synchronizationDisabledUntilLaunch = false;
 
 const E2E_SCREEN_URLS = {
-  actions: "hotupdaterexample://e2e/actions",
-  cohorts: "hotupdaterexample://e2e/cohorts",
-  results: "hotupdaterexample://e2e/results",
-  runtime: "hotupdaterexample://e2e/runtime",
+  actionResults: "hotupdaterexample://e2e/results",
+  cohortInputActions: "hotupdaterexample://e2e/cohort-input",
+  cohortPresetActions: "hotupdaterexample://e2e/cohort-presets",
+  crashHistory: "hotupdaterexample://e2e/crash-history",
+  installActions: "hotupdaterexample://e2e/install",
+  launchStatus: "hotupdaterexample://e2e/launch-status",
+  runtimeChannelActions: "hotupdaterexample://e2e/runtime-channel",
+  runtimeIdentity: "hotupdaterexample://e2e/runtime-identity",
+  runtimeState: "hotupdaterexample://e2e/runtime-state",
+  updateStore: "hotupdaterexample://e2e/update-store",
 };
 
 const E2E_SCREEN_NAMES = {
-  actions: "Actions",
-  cohorts: "CohortActions",
-  results: "Results",
-  runtime: "Runtime",
+  actionResults: "ActionResults",
+  cohortInputActions: "CohortInputActions",
+  cohortPresetActions: "CohortPresetActions",
+  crashHistory: "CrashHistory",
+  installActions: "InstallActions",
+  launchStatus: "LaunchStatus",
+  runtimeChannelActions: "RuntimeChannelActions",
+  runtimeIdentity: "RuntimeIdentity",
+  runtimeState: "RuntimeState",
+  updateStore: "UpdateStore",
 };
 
 const E2E_SCREEN_NAV_TARGETS = {
-  actions: "e2e-nav-actions",
-  cohorts: "e2e-nav-cohort-actions",
-  results: "e2e-nav-action-results",
-  runtime: "e2e-nav-top",
+  actionResults: "e2e-nav-action-results",
+  cohortInputActions: "e2e-nav-cohort-input-actions",
+  cohortPresetActions: "e2e-nav-cohort-preset-actions",
+  crashHistory: "e2e-nav-crash-history",
+  installActions: "e2e-nav-install-actions",
+  launchStatus: "e2e-nav-launch-status",
+  runtimeChannelActions: "e2e-nav-runtime-channel-actions",
+  runtimeIdentity: "e2e-nav-runtime-identity",
+  runtimeState: "e2e-nav-runtime-state",
+  updateStore: "e2e-nav-update-store",
 };
 
 function isAndroidRun() {
@@ -110,27 +128,55 @@ function screenPathForTestID(testID) {
     testID.startsWith("action-set-") ||
     testID === "action-restore-initial-cohort"
   ) {
-    return "cohorts";
+    return "cohortPresetActions";
   }
-  if (testID.startsWith("action-") || testID.endsWith("-input")) {
-    return "actions";
+  if (testID === "cohort-input" || testID === "action-apply-cohort-input") {
+    return "cohortInputActions";
+  }
+  if (
+    testID === "runtime-channel-input" ||
+    testID === "action-install-runtime-channel-update" ||
+    testID === "action-reset-runtime-channel" ||
+    testID === "action-reload-app"
+  ) {
+    return "runtimeChannelActions";
+  }
+  if (testID.startsWith("action-")) {
+    return "installActions";
   }
   if (
     testID === "launch-status-result" ||
-    testID === "launch-crashed-bundle-result" ||
+    testID === "launch-crashed-bundle-result"
+  ) {
+    return "launchStatus";
+  }
+  if (
     testID === "current-channel-summary" ||
-    testID === "current-cohort-summary" ||
+    testID === "current-cohort-summary"
+  ) {
+    return "runtimeState";
+  }
+  if (
     testID === "update-store-downloaded" ||
-    testID === "update-store-download-paths" ||
-    testID === "crash-history-summary" ||
+    testID === "update-store-download-paths"
+  ) {
+    return "updateStore";
+  }
+  if (testID === "crash-history-summary") {
+    return "crashHistory";
+  }
+  if (
+    testID === "runtime-bundle-id" ||
+    testID === "runtime-scenario-marker" ||
+    testID === "runtime-large-e2e-asset" ||
     testID.startsWith("runtime-")
   ) {
-    return "runtime";
+    return "runtimeIdentity";
   }
   if (testID.endsWith("-result")) {
-    return "results";
+    return "actionResults";
   }
-  return "runtime";
+  return "runtimeIdentity";
 }
 
 function navTargetForScreenPath(screenPath) {
@@ -146,14 +192,6 @@ async function waitForActiveScreen(screenName) {
 async function activateScreenPath(screenPath) {
   const navTarget = navTargetForScreenPath(screenPath);
   await element(by.id(navTarget)).tap();
-  if (screenPath === "actions") {
-    await waitForActiveScreen("Actions");
-    return;
-  }
-  if (screenPath === "cohorts") {
-    await waitForActiveScreen("CohortActions");
-    return;
-  }
   await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath]);
 }
 
@@ -163,10 +201,9 @@ async function openScreenForTestID(testID) {
     newInstance: false,
     url: E2E_SCREEN_URLS[screenPath],
   });
-  const scrollContent = element(by.id("e2e-scroll-content"));
-  await waitFor(scrollContent).toBeVisible().withTimeout(30000);
+  const screenContent = element(by.id("e2e-screen-content"));
+  await waitFor(screenContent).toBeVisible().withTimeout(30000);
   await activateScreenPath(screenPath);
-  await scrollContent.scrollTo("top");
 }
 
 async function ensureAppForegroundForInteraction() {
@@ -189,10 +226,6 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
   }
   await openScreenForTestID(testID);
   const target = element(by.id(testID));
-  await waitFor(target)
-    .toBeVisible()
-    .whileElement(by.id("e2e-scroll-content"))
-    .scroll(260, "down");
   await waitFor(target).toBeVisible().withTimeout(30000);
   return target;
 }

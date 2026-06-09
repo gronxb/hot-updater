@@ -42,7 +42,7 @@ describe("Detox assertion parity", () => {
     expect(waitForTextBody).toContain(".withTimeout(30000)");
   });
 
-  it("scrolls by testID before waiting for assertion text", async () => {
+  it("opens a target-specific screen before waiting for assertion text", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -71,10 +71,12 @@ describe("Detox assertion parity", () => {
       "await waitForVisibleTestIDText(testID, expectedText)",
     );
     expect(assertTextBody).not.toContain("expectedText,");
+    expect(findVisibleBody).toContain("await openScreenForTestID(testID)");
     expect(findVisibleBody).toContain("const target = element(by.id(testID))");
     expect(findVisibleBody).toContain("await waitFor(target)");
-    expect(findVisibleBody).toContain(".whileElement(");
-    expect(findVisibleBody).toContain('.scroll(260, "down")');
+    expect(findVisibleBody).toContain(".withTimeout(30000)");
+    expect(findVisibleBody).not.toContain(".whileElement(");
+    expect(findVisibleBody).not.toContain(".scroll(");
     expect(findVisibleBody).not.toContain("expectedText");
     expect(waitForTextBody).toContain("by.id(testID)");
     expect(waitForTextBody).toContain("by.text(new RegExp");

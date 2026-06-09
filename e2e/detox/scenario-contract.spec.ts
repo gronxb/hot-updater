@@ -42,6 +42,10 @@ const exampleE2eAppScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens.tsx",
 );
+const exampleE2eAppActionScreensPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/action-screens.tsx",
+);
 const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
@@ -759,7 +763,7 @@ describe("Detox scenario contract", () => {
   it("uses action result elements only for explicit assertions", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const exampleScreenSource = await fs.readFile(
-      exampleE2eAppScreensPath,
+      exampleE2eAppActionScreensPath,
       "utf8",
     );
     const detoxRuntimeSource = await fs.readFile(
@@ -774,7 +778,7 @@ describe("Detox scenario contract", () => {
     expect(exampleScreenSource).toContain('testID="update-action-result"');
     expect(detoxPageSource).toContain('testID.endsWith("-result")');
     expect(detoxPageSource).toContain(
-      'results: "hotupdaterexample://e2e/results"',
+      'actionResults: "hotupdaterexample://e2e/results"',
     );
     expect(detoxPageSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).not.toContain(
@@ -886,22 +890,29 @@ describe("Detox scenario contract", () => {
     expect(launchStatusIndex).toBeLessThan(genericResultIndex);
   });
 
-  it("routes action inputs to the actions section before generic runtime fields", async () => {
-    // Given: runtime-channel-input is rendered under the Actions section.
+  it("routes action inputs to target-specific screens before generic runtime fields", async () => {
+    // Given: input controls live on short action screens, not the runtime page.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     // When: the navigation target resolver is inspected.
-    const inputIndex = detoxPageSource.indexOf('testID.endsWith("-input")');
+    const cohortInputIndex = detoxPageSource.indexOf(
+      'testID === "cohort-input"',
+    );
+    const runtimeInputIndex = detoxPageSource.indexOf(
+      'testID === "runtime-channel-input"',
+    );
     const runtimeIndex = detoxPageSource.indexOf(
       'testID.startsWith("runtime-")',
     );
 
     // Then: input fields must not be routed to the top section.
-    expect(inputIndex).toBeGreaterThan(-1);
-    expect(inputIndex).toBeLessThan(runtimeIndex);
+    expect(cohortInputIndex).toBeGreaterThan(-1);
+    expect(runtimeInputIndex).toBeGreaterThan(-1);
+    expect(cohortInputIndex).toBeLessThan(runtimeIndex);
+    expect(runtimeInputIndex).toBeLessThan(runtimeIndex);
   });
 
-  it("scrolls inside the app content when Android layout offsets are not ready", async () => {
+  it("opens short target-specific screens instead of scrolling the app content", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const exampleComponentSource = await fs.readFile(
       exampleE2eAppComponentsPath,
@@ -918,11 +929,13 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    expect(exampleComponentSource).toContain('testID="e2e-scroll-content"');
-    expect(waitForTestIDBody).toContain('by.id("e2e-scroll-content")');
-    expect(openScreenBody).toContain('scrollTo("top")');
-    expect(waitForTestIDBody).toContain(".whileElement(");
-    expect(waitForTestIDBody).toContain('.scroll(260, "down")');
+    expect(exampleComponentSource).toContain('testID="e2e-screen-content"');
+    expect(exampleComponentSource).not.toContain("ScrollView");
+    expect(openScreenBody).toContain('by.id("e2e-screen-content")');
+    expect(openScreenBody).not.toContain('scrollTo("top")');
+    expect(waitForTestIDBody).not.toContain('by.id("e2e-scroll-content")');
+    expect(waitForTestIDBody).not.toContain(".whileElement(");
+    expect(waitForTestIDBody).not.toContain(".scroll(");
     expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);
     expect(waitForTestIDBody).not.toMatch(/\bsetTimeout\b/i);
   });

@@ -1,5 +1,5 @@
 import React, { type ReactNode } from "react";
-import { Pressable, SafeAreaView, ScrollView, Text, View } from "react-native";
+import { Pressable, SafeAreaView, Text, View } from "react-native";
 
 import { styles } from "./styles";
 import type { ScreenName, ScreenNavigation } from "./types";
@@ -39,10 +39,12 @@ export const Section = ({
 );
 
 export const Button = ({
+  compact = false,
   onPress,
   testID,
   title,
 }: {
+  readonly compact?: boolean;
   readonly onPress: () => Promise<void> | void;
   readonly testID: string;
   readonly title: string;
@@ -53,10 +55,16 @@ export const Button = ({
     onPress={() => {
       Promise.resolve(onPress()).catch(() => undefined);
     }}
-    style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+    style={({ pressed }) => [
+      styles.button,
+      compact && styles.navButton,
+      pressed && styles.buttonPressed,
+    ]}
     testID={testID}
   >
-    <Text style={styles.buttonText}>{title}</Text>
+    <Text style={[styles.buttonText, compact && styles.navButtonText]}>
+      {title}
+    </Text>
   </Pressable>
 );
 
@@ -71,24 +79,63 @@ export const ScreenTabs = ({
 
   return (
     <View style={styles.navBar}>
-      <Button onPress={goTo("Runtime")} testID="e2e-nav-top" title="Runtime" />
       <Button
-        onPress={goTo("Runtime")}
+        compact
+        onPress={goTo("RuntimeIdentity")}
+        testID="e2e-nav-runtime-identity"
+        title="ID"
+      />
+      <Button
+        compact
+        onPress={goTo("LaunchStatus")}
+        testID="e2e-nav-launch-status"
+        title="Launch"
+      />
+      <Button
+        compact
+        onPress={goTo("RuntimeState")}
+        testID="e2e-nav-runtime-state"
+        title="State"
+      />
+      <Button
+        compact
+        onPress={goTo("UpdateStore")}
+        testID="e2e-nav-update-store"
+        title="Store"
+      />
+      <Button
+        compact
+        onPress={goTo("CrashHistory")}
         testID="e2e-nav-crash-history"
         title="Crashes"
       />
       <Button
-        onPress={goTo("Actions")}
-        testID="e2e-nav-actions"
-        title="Actions"
+        compact
+        onPress={goTo("InstallActions")}
+        testID="e2e-nav-install-actions"
+        title="Install"
       />
       <Button
-        onPress={goTo("CohortActions")}
-        testID="e2e-nav-cohort-actions"
-        title="Cohorts"
+        compact
+        onPress={goTo("RuntimeChannelActions")}
+        testID="e2e-nav-runtime-channel-actions"
+        title="Channel"
       />
       <Button
-        onPress={goTo("Results")}
+        compact
+        onPress={goTo("CohortInputActions")}
+        testID="e2e-nav-cohort-input-actions"
+        title="Cohort"
+      />
+      <Button
+        compact
+        onPress={goTo("CohortPresetActions")}
+        testID="e2e-nav-cohort-preset-actions"
+        title="Preset"
+      />
+      <Button
+        compact
+        onPress={goTo("ActionResults")}
         testID="e2e-nav-action-results"
         title="Results"
       />
@@ -110,12 +157,8 @@ export const ScreenShell = ({
 }) => (
   <SafeAreaView style={styles.safeArea}>
     <ScreenTabs current={current} navigation={navigation} />
-    <ScrollView
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="always"
-      testID="e2e-scroll-content"
-    >
+    <View style={styles.content} testID="e2e-screen-content">
       {children}
-    </ScrollView>
+    </View>
   </SafeAreaView>
 );

@@ -2,11 +2,13 @@ export {
   ActionResultsScreen,
   CohortInputActionsScreen,
   CohortPresetActionsScreen,
-  CrashHistoryScreen,
   InstallActionsScreen,
-  LaunchStatusScreen,
   RuntimeChannelActionsScreen,
+} from "./action-screens";
+export {
+  CrashHistoryScreen,
+  LaunchStatusScreen,
   RuntimeIdentityScreen,
   RuntimeStateScreen,
   UpdateStoreScreen,
-} from "./screens/index";
+} from "./runtime-screens";

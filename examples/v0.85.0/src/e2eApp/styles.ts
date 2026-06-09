@@ -49,8 +49,11 @@ export const styles = StyleSheet.create({
     textAlign: "center",
   },
   content: {
+    flex: 1,
     padding: 18,
-    paddingBottom: 40,
+  },
+  crashList: {
+    marginTop: 4,
   },
   crashItem: {
     backgroundColor: "#fff7ed",
@@ -112,6 +115,15 @@ export const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingHorizontal: 10,
     paddingTop: Platform.OS === "android" ? 40 : 8,
+  },
+  navButton: {
+    borderRadius: 6,
+    minHeight: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  navButtonText: {
+    fontSize: 11,
   },
   previewImage: {
     height: 120,

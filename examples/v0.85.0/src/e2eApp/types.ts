@@ -1,8 +1,14 @@
 export type RootStackParamList = {
-  readonly Actions: undefined;
-  readonly CohortActions: undefined;
-  readonly Results: undefined;
-  readonly Runtime: undefined;
+  readonly ActionResults: undefined;
+  readonly CohortInputActions: undefined;
+  readonly CohortPresetActions: undefined;
+  readonly CrashHistory: undefined;
+  readonly InstallActions: undefined;
+  readonly LaunchStatus: undefined;
+  readonly RuntimeChannelActions: undefined;
+  readonly RuntimeIdentity: undefined;
+  readonly RuntimeState: undefined;
+  readonly UpdateStore: undefined;
 };
 
 export type ScreenName = keyof RootStackParamList;
