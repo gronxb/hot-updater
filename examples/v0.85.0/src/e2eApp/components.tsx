@@ -1,4 +1,4 @@
-import React, { type ReactNode, useState } from "react";
+import React, { type ReactNode } from "react";
 import { Pressable, SafeAreaView, Text, View } from "react-native";
 
 import { styles } from "./styles";
@@ -22,12 +22,10 @@ export const InfoRow = ({
 
 export const Button = ({
   onPress,
-  onPressIn,
   testID,
   title,
 }: {
   readonly onPress: () => Promise<void> | void;
-  readonly onPressIn?: () => void;
   readonly testID: string;
   readonly title: string;
 }) => (
@@ -37,47 +35,12 @@ export const Button = ({
     onPress={() => {
       void onPress();
     }}
-    onPressIn={onPressIn}
     style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
     testID={testID}
   >
     <Text style={styles.buttonText}>{title}</Text>
   </Pressable>
 );
-
-export const ActionButtonWithStartCount = ({
-  onPress,
-  testID,
-  title,
-}: {
-  readonly onPress: () => Promise<void> | void;
-  readonly testID: string;
-  readonly title: string;
-}) => {
-  const [startCount, setStartCount] = useState(0);
-
-  return (
-    <>
-      <Button
-        onPressIn={() => {
-          setStartCount((current) => current + 1);
-        }}
-        onPress={() => {
-          return onPress();
-        }}
-        testID={testID}
-        title={title}
-      />
-      <Text
-        selectable
-        style={styles.resultText}
-        testID={`${testID}-start-count`}
-      >
-        Action Start Count: {startCount}
-      </Text>
-    </>
-  );
-};
 
 export const ScreenShell = ({ children }: { readonly children: ReactNode }) => (
   <SafeAreaView style={styles.safeArea}>

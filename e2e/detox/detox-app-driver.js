@@ -1,12 +1,10 @@
 const { device } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
-  findVisibleCurrentTestID,
   findVisibleTestID,
   isAndroidRun,
   launchApp,
   textFromAttributes,
-  waitForCurrentTestIDText,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
@@ -95,10 +93,8 @@ class DetoxAppDriver {
       const isAppReloadAction = testID === "action-reload-app";
       await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
-      const startCount = await this.readActionStartCount(testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
-      await this.waitForActionStartCount(testID, startCount);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
@@ -194,38 +190,6 @@ class DetoxAppDriver {
     await launchApp({ newInstance: false });
   }
 
-  async readActionStartCount(testID) {
-    if (!shouldWaitForActionStartCount(testID)) return null;
-
-    const result = await findVisibleCurrentTestID(
-      actionStartCountTestID(testID),
-    );
-    const text = textFromAttributes(await result.getAttributes());
-    const match = /^Action Start Count: (\d+)$/.exec(text);
-    if (!match) {
-      throw new Error(
-        `Action ${testID} start count was not readable. Received "${text}"`,
-      );
-    }
-    return Number.parseInt(match[1], 10);
-  }
-
-  async waitForActionStartCount(testID, previousCount) {
-    if (previousCount === null) return;
-
-    await waitForCurrentTestIDText(
-      actionStartCountTestID(testID),
-      `Action Start Count: ${previousCount + 1}`,
-    );
-  }
-}
-
-function shouldWaitForActionStartCount(testID) {
-  return testID.startsWith("action-") && testID !== "action-reload-app";
-}
-
-function actionStartCountTestID(testID) {
-  return `${testID}-start-count`;
 }
 
 module.exports = { DetoxAppDriver };

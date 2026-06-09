@@ -1,6 +1,6 @@
 import React from "react";
 
-import { ActionButtonWithStartCount, ScreenShell } from "../components";
+import { Button, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const InstallRuntimeChannelUpdateActionScreen = () => {
@@ -8,7 +8,7 @@ export const InstallRuntimeChannelUpdateActionScreen = () => {
 
   return (
     <ScreenShell>
-      <ActionButtonWithStartCount
+      <Button
         onPress={model.installRuntimeChannelUpdate}
         testID="action-install-runtime-channel-update"
         title="Install Runtime"

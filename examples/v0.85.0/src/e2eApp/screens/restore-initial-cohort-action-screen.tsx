@@ -1,6 +1,6 @@
 import React from "react";
 
-import { ActionButtonWithStartCount, ScreenShell } from "../components";
+import { Button, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RestoreInitialCohortActionScreen = () => {
@@ -8,7 +8,7 @@ export const RestoreInitialCohortActionScreen = () => {
 
   return (
     <ScreenShell>
-      <ActionButtonWithStartCount
+      <Button
         onPress={model.restoreInitialCohort}
         testID="action-restore-initial-cohort"
         title="Restore Cohort"

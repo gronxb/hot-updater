@@ -616,7 +616,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("observes action start after action taps", async () => {
+  it("lets scenario result assertions prove action taps without a start-count UI", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -627,11 +627,10 @@ describe("Detox scenario contract", () => {
     );
 
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain(
-      "await this.waitForActionStartCount(testID, startCount);",
-    );
-    expect(detoxRuntimeSource).toContain("async waitForActionStartCount(");
-    expect(detoxRuntimeSource).toContain("readActionStartCount(testID)");
+    expect(tapBody).not.toContain("waitForActionStartCount");
+    expect(detoxRuntimeSource).not.toContain("async waitForActionStartCount(");
+    expect(detoxRuntimeSource).not.toContain("readActionStartCount(testID)");
+    expect(detoxRuntimeSource).not.toContain("Action Start Count:");
     expect(detoxRuntimeSource).not.toContain("metadata.json");
     expect(tapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
@@ -747,8 +746,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).toContain("waitForActionStartCount(testID");
-    expect(detoxRuntimeSource).toContain("findVisibleCurrentTestID");
+    expect(installTapBody).not.toContain("waitForActionStartCount");
+    expect(detoxRuntimeSource).not.toContain("findVisibleCurrentTestID");
     expect(detoxRuntimeSource).not.toContain("{ ensureForeground: false }");
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
@@ -800,8 +799,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toContain("isInstallAction");
     expect(installTapBody).not.toContain("reattachAfterInstallTap");
     expect(detoxRuntimeSource).not.toContain("async reattachAfterInstallTap");
-    expect(installTapBody).toContain("waitForActionStartCount(testID");
-    expect(detoxRuntimeSource).toContain("async waitForActionStartCount");
+    expect(installTapBody).not.toContain("waitForActionStartCount");
+    expect(detoxRuntimeSource).not.toContain("async waitForActionStartCount");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -839,6 +838,14 @@ describe("Detox scenario contract", () => {
     expect(actionButtonScreenSource).not.toContain("deferPress=");
     expect(installCurrentScreenSource).not.toContain("deferPress");
     expect(installRuntimeScreenSource).not.toContain("deferPress");
+    expect(installCurrentScreenSource).not.toContain(
+      "ActionButtonWithStartCount",
+    );
+    expect(installRuntimeScreenSource).not.toContain(
+      "ActionButtonWithStartCount",
+    );
+    expect(componentsSource).not.toContain("ActionButtonWithStartCount");
+    expect(componentsSource).not.toContain("-start-count");
   });
 
   it("publishes cohort action result before refreshing runtime state", async () => {
@@ -900,7 +907,7 @@ describe("Detox scenario contract", () => {
       'actionResults: "hotupdaterexample://e2e/results"',
     );
     expect(detoxPageSource).toContain(".toBeVisible()");
-    expect(detoxRuntimeSource).toContain("async waitForActionStartCount");
+    expect(detoxRuntimeSource).not.toContain("async waitForActionStartCount");
     expect(assertTextBody).toContain("findVisibleTestID(");
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
     expect(assertTextBody).toContain("await target.getAttributes()");
@@ -911,7 +918,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("observes install action start on the active action screen", async () => {
+  it("keeps install action screens to the single action button", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -924,26 +931,22 @@ describe("Detox scenario contract", () => {
       exampleE2eAppInstallRuntimeScreenPath,
       "utf8",
     );
-    const waitForActionStartCountBody = detoxRuntimeSource.slice(
-      detoxRuntimeSource.indexOf("async waitForActionStartCount"),
-      detoxRuntimeSource.indexOf(
-        "}\n}\n\nfunction shouldWaitForActionStartCount",
-      ),
+    expect(installCurrentScreenSource).toContain("Button");
+    expect(installRuntimeScreenSource).toContain("Button");
+    expect(installCurrentScreenSource).not.toContain(
+      "ActionButtonWithStartCount",
     );
-
-    expect(installCurrentScreenSource).toContain("ActionButtonWithStartCount");
-    expect(installRuntimeScreenSource).toContain("ActionButtonWithStartCount");
-    expect(waitForActionStartCountBody).toContain("waitForCurrentTestIDText");
-    expect(waitForActionStartCountBody).toContain("Action Start Count:");
-    expect(waitForActionStartCountBody).not.toContain(
-      'findVisibleTestID(\n      this.controlClient,\n      "update-action-result"',
+    expect(installRuntimeScreenSource).not.toContain(
+      "ActionButtonWithStartCount",
     );
-    expect(waitForActionStartCountBody).not.toContain("openScreenForTestID");
-    expect(waitForActionStartCountBody).not.toMatch(/\bretry\b/i);
-    expect(waitForActionStartCountBody).not.toMatch(/\bsetTimeout\b/i);
+    expect(detoxRuntimeSource).not.toContain("waitForCurrentTestIDText");
+    expect(detoxRuntimeSource).not.toContain("Action Start Count:");
+    expect(detoxRuntimeSource).not.toContain("openScreenForTestID(testID)");
+    expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
+    expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("observes result-producing action starts on their active action screens", async () => {
+  it("keeps result-producing action screens to the single action button", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -959,40 +962,33 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async terminate(stage"),
     );
 
-    expect(actionScreenSources.join("\n")).toContain(
+    expect(actionScreenSources.join("\n")).toContain("Button");
+    expect(actionScreenSources.join("\n")).not.toContain(
       "ActionButtonWithStartCount",
     );
-    expect(tapBody).toContain("waitForActionStartCount(testID");
-    expect(detoxRuntimeSource).toContain("shouldWaitForActionStartCount");
+    expect(tapBody).not.toContain("waitForActionStartCount");
+    expect(detoxRuntimeSource).not.toContain("shouldWaitForActionStartCount");
     expect(detoxRuntimeSource).toContain('"action-reload-app"');
-    expect(detoxRuntimeSource).toContain("-start-count");
+    expect(detoxRuntimeSource).not.toContain("-start-count");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("observes action start from press-in before async action work can block UI flush", async () => {
+  it("does not add press-in instrumentation to action buttons", async () => {
     const componentsSource = await fs.readFile(
       exampleE2eAppComponentsPath,
       "utf8",
     );
     const buttonBody = componentsSource.slice(
       componentsSource.indexOf("export const Button"),
-      componentsSource.indexOf("export const ActionButtonWithStartCount"),
-    );
-    const actionButtonBody = componentsSource.slice(
-      componentsSource.indexOf("export const ActionButtonWithStartCount"),
       componentsSource.indexOf("export const ScreenShell"),
     );
 
-    expect(buttonBody).toContain("readonly onPressIn?: () => void;");
-    expect(buttonBody).toContain("onPressIn={onPressIn}");
-    expect(actionButtonBody).toContain("onPressIn={() =>");
-    expect(actionButtonBody).toContain(
-      "setStartCount((current) => current + 1);",
-    );
-    expect(actionButtonBody.indexOf("onPressIn={() =>")).toBeLessThan(
-      actionButtonBody.indexOf("onPress={() =>"),
-    );
+    expect(buttonBody).not.toContain("readonly onPressIn?: () => void;");
+    expect(buttonBody).not.toContain("onPressIn={onPressIn}");
+    expect(componentsSource).not.toContain("ActionButtonWithStartCount");
+    expect(componentsSource).not.toContain("setStartCount");
+    expect(componentsSource).not.toContain("Action Start Count:");
   });
 
   it("keeps explicit reloads at the cold-start boundary", async () => {
@@ -1261,7 +1257,7 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("waitForActionStartCount(testID");
+    expect(tapBody).not.toContain("waitForActionStartCount");
     expect(detoxRuntimeSource).not.toContain(
       "function waitForCurrentChannelDownload",
     );
