@@ -86,6 +86,30 @@ describe("Detox assertion parity", () => {
     expect(waitForTextBody).not.toContain(".scroll(");
   });
 
+  it("opens deep-linked target screens without waiting for Detox app idle", async () => {
+    const detoxPageSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/detox-page.js"),
+      "utf8",
+    );
+    const openScreenBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function openScreenForTestID"),
+      detoxPageSource.indexOf(
+        "async function ensureAppForegroundForInteraction",
+      ),
+    );
+
+    expect(openScreenBody).toContain("withSynchronizationDisabledForPageOpen");
+    expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(openScreenBody).toContain(
+      "await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath])",
+    );
+    expect(openScreenBody).toContain('by.id("e2e-screen-content")');
+    expect(openScreenBody).not.toContain("activateScreenPath");
+    expect(
+      openScreenBody.indexOf("withSynchronizationDisabledForPageOpen"),
+    ).toBeLessThan(openScreenBody.indexOf('by.id("e2e-screen-content")'));
+  });
+
   it("reads assertion text with Detox synchronization temporarily disabled", async () => {
     // Given: provider runs can leave the app busy after channel/cohort actions
     // even when the user-visible text is ready to inspect.

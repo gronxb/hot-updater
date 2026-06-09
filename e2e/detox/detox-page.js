@@ -28,19 +28,6 @@ const E2E_SCREEN_NAMES = {
   updateStore: "UpdateStore",
 };
 
-const E2E_SCREEN_NAV_TARGETS = {
-  actionResults: "e2e-nav-action-results",
-  cohortInputActions: "e2e-nav-cohort-input-actions",
-  cohortPresetActions: "e2e-nav-cohort-preset-actions",
-  crashHistory: "e2e-nav-crash-history",
-  installActions: "e2e-nav-install-actions",
-  launchStatus: "e2e-nav-launch-status",
-  runtimeChannelActions: "e2e-nav-runtime-channel-actions",
-  runtimeIdentity: "e2e-nav-runtime-identity",
-  runtimeState: "e2e-nav-runtime-state",
-  updateStore: "e2e-nav-update-store",
-};
-
 function isAndroidRun() {
   return [
     process.env.DETOX_CONFIGURATION,
@@ -179,20 +166,25 @@ function screenPathForTestID(testID) {
   return "runtimeIdentity";
 }
 
-function navTargetForScreenPath(screenPath) {
-  return E2E_SCREEN_NAV_TARGETS[screenPath];
-}
-
 async function waitForActiveScreen(screenName) {
   await waitFor(element(by.id("e2e-active-screen").and(by.text(screenName))))
     .toBeVisible()
     .withTimeout(30000);
 }
 
-async function activateScreenPath(screenPath) {
-  const navTarget = navTargetForScreenPath(screenPath);
-  await element(by.id(navTarget)).tap();
-  await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath]);
+async function withSynchronizationDisabledForPageOpen(operation) {
+  const shouldRestoreSynchronization = !synchronizationDisabledUntilLaunch;
+  if (shouldRestoreSynchronization) {
+    await device.disableSynchronization();
+  }
+
+  try {
+    return await operation();
+  } finally {
+    if (shouldRestoreSynchronization) {
+      await device.enableSynchronization();
+    }
+  }
 }
 
 async function openScreenForTestID(testID) {
@@ -201,9 +193,11 @@ async function openScreenForTestID(testID) {
     newInstance: false,
     url: E2E_SCREEN_URLS[screenPath],
   });
-  const screenContent = element(by.id("e2e-screen-content"));
-  await waitFor(screenContent).toBeVisible().withTimeout(30000);
-  await activateScreenPath(screenPath);
+  await withSynchronizationDisabledForPageOpen(async () => {
+    await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath]);
+    const screenContent = element(by.id("e2e-screen-content"));
+    await waitFor(screenContent).toBeVisible().withTimeout(30000);
+  });
 }
 
 async function ensureAppForegroundForInteraction() {

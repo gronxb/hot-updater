@@ -79,12 +79,17 @@ describe("E2E navigation contract", () => {
     expect(appSource).not.toContain("scrollToSection");
   });
 
-  it("opens the screen needed by a testID through deep linking and visible navigation", async () => {
+  it("opens the screen needed by a testID through direct deep linking", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const openScreenBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function openScreenForTestID"),
+      detoxPageSource.indexOf(
+        "async function ensureAppForegroundForInteraction",
+      ),
+    );
 
     expect(detoxPageSource).toContain("screenPathForTestID");
     expect(detoxPageSource).toContain("openScreenForTestID");
-    expect(detoxPageSource).toContain("navTargetForScreenPath");
     expect(detoxPageSource).toContain('"runtimeIdentity"');
     expect(detoxPageSource).toContain('"cohortInputActions"');
     expect(detoxPageSource).toContain('"runtimeChannelActions"');
@@ -101,7 +106,11 @@ describe("E2E navigation contract", () => {
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/launch-status");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/crash-history");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/update-store");
-    expect(detoxPageSource).toContain("await element(by.id(navTarget)).tap()");
+    expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(openScreenBody).toContain(
+      "await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath])",
+    );
+    expect(openScreenBody).not.toContain(".tap()");
     expect(detoxPageSource).toContain('by.id("e2e-active-screen")');
     expect(detoxPageSource).toContain('by.id("e2e-screen-content")');
     expect(detoxPageSource).not.toContain(".whileElement(");
