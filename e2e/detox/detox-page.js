@@ -2,10 +2,13 @@ const { by, device, element, waitFor } = require("detox");
 const {
   E2E_SCREEN_CONTENT_TEST_IDS,
   E2E_SCREEN_URLS,
+  resultTestIDForActionTestID,
   screenPathForTestID,
 } = require("./detox-screen-routes.js");
 
 let synchronizationDisabledUntilLaunch = false;
+let activeScreenPath;
+const activeResultScreenPaths = {};
 
 function isAndroidRun() {
   return [
@@ -58,6 +61,12 @@ function runtimeLaunchArgs() {
 async function launchApp(options = {}) {
   await device.launchApp({ ...options, launchArgs: runtimeLaunchArgs() });
   synchronizationDisabledUntilLaunch = false;
+  if (options.newInstance !== false) {
+    activeScreenPath = undefined;
+    clearActiveResultScreenPaths();
+    return;
+  }
+  if (typeof options.url === "string") activeScreenPath = undefined;
 }
 
 function textFromAttributes(attributes) {
@@ -89,11 +98,18 @@ async function withSynchronizationDisabledForPageOpen(operation) {
 }
 
 async function openScreenForTestID(testID) {
-  const screenPath = screenPathForTestID(testID);
+  const screenPath =
+    activeResultScreenPaths[testID] || screenPathForTestID(testID);
+  if (activeScreenPath === screenPath) {
+    await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
+    return;
+  }
+
   await withSynchronizationDisabledForPageOpen(async () => {
     await openDeepLinkScreen(E2E_SCREEN_URLS[screenPath]);
     await disableSynchronizationUntilLaunch();
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
+    activeScreenPath = screenPath;
   });
 }
 
@@ -114,6 +130,18 @@ async function ensureAppForegroundForInteraction() {
   if (isAndroidRun()) {
     await launchApp({ newInstance: false });
   }
+}
+
+function clearActiveResultScreenPaths() {
+  for (const testID of Object.keys(activeResultScreenPaths)) {
+    delete activeResultScreenPaths[testID];
+  }
+}
+
+function rememberActionResultScreenPath(actionTestID) {
+  const resultTestID = resultTestIDForActionTestID(actionTestID);
+  if (!resultTestID) return;
+  activeResultScreenPaths[resultTestID] = screenPathForTestID(actionTestID);
 }
 
 async function findVisibleTestID(controlClient, testID, options = {}) {
@@ -138,6 +166,7 @@ module.exports = {
   findVisibleTestID,
   isAndroidRun,
   launchApp,
+  rememberActionResultScreenPath,
   textFromAttributes,
   withSynchronizationDisabledForAssertion,
 };

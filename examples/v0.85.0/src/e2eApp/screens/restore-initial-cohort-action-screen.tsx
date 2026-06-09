@@ -1,17 +1,23 @@
 import React from "react";
+import { Text } from "react-native";
 
+import { Button, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
-import { ActionButtonScreen } from "./action-button-screen";
+import { styles } from "../styles";
 
 export const RestoreInitialCohortActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ActionButtonScreen
-      current="RestoreInitialCohortAction"
-      onPress={model.restoreInitialCohort}
-      testID="action-restore-initial-cohort"
-      title="Restore Cohort"
-    />
+    <ScreenShell current="RestoreInitialCohortAction">
+      <Button
+        onPress={model.restoreInitialCohort}
+        testID="action-restore-initial-cohort"
+        title="Restore Cohort"
+      />
+      <Text style={styles.resultText} testID="cohort-action-result">
+        Cohort Action Result: {model.cohortActionResult}
+      </Text>
+    </ScreenShell>
   );
 };

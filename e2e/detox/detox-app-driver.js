@@ -4,6 +4,7 @@ const {
   findVisibleTestID,
   isAndroidRun,
   launchApp,
+  rememberActionResultScreenPath,
   textFromAttributes,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
@@ -95,6 +96,7 @@ class DetoxAppDriver {
       const target = await findVisibleTestID(this.controlClient, testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
+      rememberActionResultScreenPath(testID);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }

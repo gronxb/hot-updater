@@ -324,6 +324,83 @@ describe("E2E navigation compact surface contract", () => {
     expect(detoxPageSource).not.toContain("e2e-screen-content");
   });
 
+  it("keeps stateful workflow inputs separate from compact action result routes", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
+    const cohortInputScreenSource = await fs.readFile(
+      path.join(e2eAppScreensDir, "cohort-input-screen.tsx"),
+      "utf8",
+    );
+    const runtimeChannelInputScreenSource = await fs.readFile(
+      path.join(e2eAppScreensDir, "runtime-channel-input-screen.tsx"),
+      "utf8",
+    );
+    const applyCohortActionScreenSource = await fs.readFile(
+      path.join(e2eAppScreensDir, "apply-cohort-input-action-screen.tsx"),
+      "utf8",
+    );
+    const installRuntimeActionScreenSource = await fs.readFile(
+      path.join(
+        e2eAppScreensDir,
+        "install-runtime-channel-update-action-screen.tsx",
+      ),
+      "utf8",
+    );
+
+    expect(detoxScreenRoutesSource).toContain(
+      '"action-apply-cohort-input": "applyCohortInputAction"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"action-set-cohort-qa": "setCohortQaAction"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"action-restore-initial-cohort": "restoreInitialCohortAction"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"cohort-action-result": "cohortActionResult"',
+    );
+    expect(detoxScreenRoutesSource).toMatch(
+      /"action-install-runtime-channel-update":\s*"installRuntimeChannelUpdateAction"/,
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"action-reset-runtime-channel": "resetRuntimeChannelAction"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"channel-action-result": "channelActionResult"',
+    );
+
+    expect(cohortInputScreenSource).toContain('testID="cohort-input"');
+    expect(cohortInputScreenSource).not.toContain('testID="action-');
+    expect(cohortInputScreenSource).not.toContain("Action Result:");
+    expect(runtimeChannelInputScreenSource).toContain(
+      'testID="runtime-channel-input"',
+    );
+    expect(runtimeChannelInputScreenSource).not.toContain('testID="action-');
+    expect(runtimeChannelInputScreenSource).not.toContain("Action Result:");
+    expect(applyCohortActionScreenSource).toContain(
+      'testID="action-apply-cohort-input"',
+    );
+    expect(applyCohortActionScreenSource).toContain(
+      'testID="cohort-action-result"',
+    );
+    expect(installRuntimeActionScreenSource).toContain(
+      'testID="action-install-runtime-channel-update"',
+    );
+    expect(installRuntimeActionScreenSource).toContain(
+      'testID="channel-action-result"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      "function resultTestIDForActionTestID(testID)",
+    );
+    expect(detoxPageSource).toContain("activeScreenPath");
+    expect(detoxPageSource).toContain("activeScreenPath === screenPath");
+    expect(detoxPageSource).toContain("activeScreenPath = screenPath");
+    expect(detoxPageSource).toContain("activeResultScreenPaths");
+  });
+
   it("keeps the ready route out of assertion and action surfaces", async () => {
     const e2eAppScreensSource = await fs.readFile(
       e2eAppReadyScreenPath,

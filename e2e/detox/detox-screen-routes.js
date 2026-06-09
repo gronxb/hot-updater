@@ -100,12 +100,26 @@ const TEST_ID_SCREEN_PATHS = {
   "update-store-download-paths": "updateStoreDownloadPaths",
 };
 
+const ACTION_RESULT_TEST_IDS = {
+  "action-apply-cohort-input": "cohort-action-result",
+  "action-install-current-channel-update": "update-action-result",
+  "action-install-runtime-channel-update": "channel-action-result",
+  "action-reset-runtime-channel": "channel-action-result",
+  "action-restore-initial-cohort": "cohort-action-result",
+  "action-set-cohort-qa": "cohort-action-result",
+};
+
 function screenPathForTestID(testID) {
   return TEST_ID_SCREEN_PATHS[testID] || "runtimeBundle";
+}
+
+function resultTestIDForActionTestID(testID) {
+  return ACTION_RESULT_TEST_IDS[testID];
 }
 
 module.exports = {
   E2E_SCREEN_CONTENT_TEST_IDS,
   E2E_SCREEN_URLS,
+  resultTestIDForActionTestID,
   screenPathForTestID,
 };

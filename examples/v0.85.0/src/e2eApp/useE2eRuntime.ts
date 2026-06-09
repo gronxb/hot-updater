@@ -149,6 +149,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   };
 
   const updateCohortInput = (nextCohort: string) => {
+    HotUpdater.setCohort(nextCohort);
     cohortInputRef.current = nextCohort;
     setCohortInput(nextCohort);
   };
