@@ -1983,7 +1983,22 @@ function resetAndroidPackageData() {
   );
 }
 
+function androidRunAsReadablePath(remotePath: string) {
+  const appFilesPrefix = `/data/data/${fixtureSession.appId}/files/`;
+  const userFilesPrefix = `/data/user/0/${fixtureSession.appId}/files/`;
+
+  if (remotePath.startsWith(appFilesPrefix)) {
+    return `files/${remotePath.slice(appFilesPrefix.length)}`;
+  }
+  if (remotePath.startsWith(userFilesPrefix)) {
+    return `files/${remotePath.slice(userFilesPrefix.length)}`;
+  }
+
+  return remotePath;
+}
+
 function readAndroidFileBuffer(remotePath: string) {
+  const runAsPath = androidRunAsReadablePath(remotePath);
   const readAttempts = [
     [
       "-s",
@@ -1992,7 +2007,7 @@ function readAndroidFileBuffer(remotePath: string) {
       "run-as",
       fixtureSession.appId,
       "cat",
-      remotePath,
+      runAsPath,
     ],
     [
       "-s",
@@ -2001,11 +2016,11 @@ function readAndroidFileBuffer(remotePath: string) {
       "run-as",
       fixtureSession.appId,
       "cat",
-      remotePath,
+      runAsPath,
     ],
     ["-s", deviceId as string, "shell", "cat", remotePath],
   ];
-  let readError = "";
+  const readErrors: string[] = [];
 
   for (const args of readAttempts) {
     const result = spawnSync("adb", args, {
@@ -2015,13 +2030,14 @@ function readAndroidFileBuffer(remotePath: string) {
       return { fileBuffer: result.stdout, readError: null };
     }
 
-    readError =
+    readErrors.push(
       result.stderr.toString().trim() ||
-      result.error?.message ||
-      `adb exited ${String(result.status)}`;
+        result.error?.message ||
+        `adb exited ${String(result.status)}`,
+    );
   }
 
-  return { fileBuffer: null, readError };
+  return { fileBuffer: null, readError: readErrors.join(" | ") };
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {
@@ -2040,6 +2056,7 @@ function androidFileExists(remotePath: string) {
 }
 
 function androidPathExists(remotePath: string, testFlag = "-e") {
+  const runAsPath = androidRunAsReadablePath(remotePath);
   let exists = spawnSync(
     "adb",
     [
@@ -2050,7 +2067,7 @@ function androidPathExists(remotePath: string, testFlag = "-e") {
       fixtureSession.appId,
       "test",
       testFlag,
-      remotePath,
+      runAsPath,
     ],
     { stdio: "ignore" },
   );

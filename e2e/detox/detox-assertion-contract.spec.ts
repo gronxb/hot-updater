@@ -84,15 +84,19 @@ describe("Detox assertion parity", () => {
     );
 
     expect(openScreenBody).toContain("withSynchronizationDisabledForPageOpen");
-    expect(openScreenBody).toContain("device.openURL({");
-    expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(openScreenBody).toContain("openDeepLinkScreen");
+    expect(openScreenBody).toContain(
+      "openDeepLinkScreen(E2E_SCREEN_URLS[screenPath])",
+    );
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );
     expect(openScreenBody).toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
-    expect(openScreenBody).not.toContain("launchApp({");
-    expect(openScreenBody.indexOf("device.openURL({")).toBeLessThan(
+    expect(detoxPageSource).toContain("async function openDeepLinkScreen");
+    expect(detoxPageSource).toContain("launchApp({ newInstance: false, url })");
+    expect(detoxPageSource).not.toContain("device.openURL({");
+    expect(openScreenBody.indexOf("openDeepLinkScreen")).toBeLessThan(
       openScreenBody.indexOf('by.id("e2e-screen-content")'),
     );
   });

@@ -13,6 +13,10 @@ const e2eAppPatchSurfacePath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/patchSurface.ts",
 );
+const e2eAppRoutePathsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/route-paths.ts",
+);
 const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
@@ -30,6 +34,10 @@ const androidManifestPath = path.join(
   "examples/v0.85.0/android/app/src/main/AndroidManifest.xml",
 );
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
+const detoxScreenRoutesPath = path.join(
+  repoDir,
+  "e2e/detox/detox-screen-routes.js",
+);
 const examplePackagePath = path.join(repoDir, "examples/v0.85.0/package.json");
 const iosInfoPlistPath = path.join(
   repoDir,
@@ -41,6 +49,10 @@ describe("E2E navigation contract", () => {
     const appSource = await fs.readFile(appPath, "utf8");
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const e2eAppRoutePathsSource = await fs.readFile(
+      e2eAppRoutePathsPath,
+      "utf8",
+    );
     const e2eAppPatchSurfaceSource = await fs.readFile(
       e2eAppPatchSurfacePath,
       "utf8",
@@ -93,7 +105,7 @@ describe("E2E navigation contract", () => {
     expect(e2eAppComponentsSource).toContain(
       "testID={screenContentTestIDs[current]}",
     );
-    expect(e2eAppRoutesSource).toContain("hotupdaterexample://");
+    expect(e2eAppRoutePathsSource).toContain("hotupdaterexample://");
     expect(e2eAppPatchSurfaceSource).toContain("E2E_SCENARIO_MARKER");
     expect(e2eAppPatchSurfaceSource).toContain("E2E_CRASH_GUARD_START");
     expect(e2eAppPatchSurfaceSource).toContain("E2E_DEPLOY_ASSET_GUARD_START");
@@ -103,6 +115,10 @@ describe("E2E navigation contract", () => {
 
   it("opens the screen needed by a testID through direct deep linking", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
     const openScreenBody = detoxPageSource.slice(
       detoxPageSource.indexOf("async function openScreenForTestID"),
       detoxPageSource.indexOf(
@@ -112,53 +128,67 @@ describe("E2E navigation contract", () => {
 
     expect(detoxPageSource).toContain("screenPathForTestID");
     expect(detoxPageSource).toContain("openScreenForTestID");
-    expect(detoxPageSource).toContain("device.openURL({");
-    expect(detoxPageSource).toContain('"runtimeBundle"');
-    expect(detoxPageSource).toContain('"runtimeMarker"');
-    expect(detoxPageSource).toContain('"runtimeLargeAsset"');
-    expect(detoxPageSource).toContain('"cohortInput"');
-    expect(detoxPageSource).toContain('"runtimeChannelInput"');
-    expect(detoxPageSource).toContain(
+    expect(detoxPageSource).toContain("openDeepLinkScreen");
+    expect(detoxScreenRoutesSource).toContain('"runtimeBundle"');
+    expect(detoxScreenRoutesSource).toContain('"runtimeMarker"');
+    expect(detoxScreenRoutesSource).toContain('"runtimeLargeAsset"');
+    expect(detoxScreenRoutesSource).toContain('"cohortInput"');
+    expect(detoxScreenRoutesSource).toContain('"runtimeChannelInput"');
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/action/install-current-channel-update",
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/input/runtime-channel",
     );
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/input/cohort");
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/input/cohort",
+    );
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/action/set-cohort-qa",
     );
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/runtime-bundle");
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/runtime-marker");
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/runtime-bundle",
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/runtime-marker",
+    );
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/runtime-large-asset",
     );
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/launch-status");
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/launch-status",
+    );
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/launch-crashed-bundle",
     );
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/crash-history");
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/crash-history",
+    );
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/update-store-downloaded",
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/update-store-download-paths",
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/channel-action-result",
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/update-action-result",
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/cohort-action-result",
     );
-    expect(openScreenBody).toContain("device.openURL({");
-    expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(openScreenBody).toContain("openDeepLinkScreen");
+    expect(openScreenBody).toContain(
+      "openDeepLinkScreen(E2E_SCREEN_URLS[screenPath])",
+    );
     expect(
       openScreenBody.indexOf("withSynchronizationDisabledForPageOpen"),
-    ).toBeLessThan(openScreenBody.indexOf("device.openURL({"));
-    expect(openScreenBody).not.toContain("launchApp({");
+    ).toBeLessThan(openScreenBody.indexOf("openDeepLinkScreen"));
+    expect(detoxPageSource).toContain("async function openDeepLinkScreen");
+    expect(detoxPageSource).toContain("launchApp({ newInstance: false, url })");
+    expect(detoxPageSource).not.toContain("device.openURL({");
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );

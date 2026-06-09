@@ -3,7 +3,8 @@ import React from "react";
 import { SafeAreaView, Text } from "react-native";
 import { enableScreens } from "react-native-screens";
 
-import { E2eStack, e2eLinking } from "./routes";
+import { e2eLinking } from "./route-paths";
+import { E2eStack } from "./routes";
 import { styles } from "./styles";
 import { useE2eRuntimeModel } from "./useE2eRuntime";
 

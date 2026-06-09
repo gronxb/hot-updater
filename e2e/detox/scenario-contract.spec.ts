@@ -15,6 +15,10 @@ import type { DetoxControlOptions, DetoxAppDriver } from "./scenarios.ts";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
+const detoxScreenRoutesPath = path.join(
+  repoDir,
+  "e2e/detox/detox-screen-routes.js",
+);
 const detoxJestSpecPath = path.join(repoDir, "e2e/detox/scenarios.spec.js");
 const detoxScenarioRuntimePath = path.join(
   repoDir,
@@ -699,7 +703,7 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("function screenPathForTestID"),
+      detoxPageSource.indexOf("async function waitForActiveScreen"),
     );
 
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
@@ -727,7 +731,7 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("function screenPathForTestID"),
+      detoxPageSource.indexOf("async function waitForActiveScreen"),
     );
 
     expect(syncHelperBody).toContain(
@@ -766,6 +770,10 @@ describe("Detox scenario contract", () => {
 
   it("uses action result elements only for explicit assertions", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
     const exampleResultScreenSource = await fs.readFile(
       exampleE2eAppResultScreensPath,
       "utf8",
@@ -782,13 +790,13 @@ describe("Detox scenario contract", () => {
     expect(exampleResultScreenSource).toContain(
       'testID="update-action-result"',
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       'channelActionResult: "hotupdaterexample://e2e/channel-action-result"',
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       'updateActionResult: "hotupdaterexample://e2e/update-action-result"',
     );
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
       'cohortActionResult: "hotupdaterexample://e2e/cohort-action-result"',
     );
     expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
@@ -891,10 +899,16 @@ describe("Detox scenario contract", () => {
   it("keeps launch status assertions on dedicated screens", async () => {
     // Given: launch status and crashed-bundle status live on short screens.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
 
     // Then: both assertions avoid the generic action result route.
-    expect(detoxPageSource).toContain('"launch-status-result": "launchStatus"');
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain(
+      '"launch-status-result": "launchStatus"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
       '"launch-crashed-bundle-result": "launchCrashedBundle"',
     );
     expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
@@ -903,13 +917,19 @@ describe("Detox scenario contract", () => {
   it("routes action inputs to target-specific screens before runtime assertions", async () => {
     // Given: input controls live on short action screens, not the runtime page.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
 
     // Then: input fields must not fall through to runtime assertion screens.
-    expect(detoxPageSource).toContain('"cohort-input": "cohortInput"');
-    expect(detoxPageSource).toContain(
+    expect(detoxScreenRoutesSource).toContain('"cohort-input": "cohortInput"');
+    expect(detoxScreenRoutesSource).toContain(
       '"runtime-channel-input": "runtimeChannelInput"',
     );
-    expect(detoxPageSource).toContain('"runtime-bundle-id": "runtimeBundle"');
+    expect(detoxScreenRoutesSource).toContain(
+      '"runtime-bundle-id": "runtimeBundle"',
+    );
     expect(detoxPageSource).not.toContain('testID.startsWith("runtime-")');
   });
 
@@ -1209,11 +1229,20 @@ describe("Detox scenario contract", () => {
       detoxControlServerControllerPath,
       "utf8",
     );
+    const readerBody = controllerSource.slice(
+      controllerSource.indexOf("function androidRunAsReadablePath"),
+      controllerSource.indexOf("function readAndroidFileBuffer"),
+    );
     const hashBody = controllerSource.slice(
       controllerSource.indexOf("function readAndroidBundleAssetFileHash"),
       controllerSource.indexOf("function readBundleAssetFileHash"),
     );
 
+    expect(readerBody).toContain("`/data/data/${fixtureSession.appId}/files/`");
+    expect(readerBody).toContain(
+      "`/data/user/0/${fixtureSession.appId}/files/`",
+    );
+    expect(readerBody).toContain("return `files/${remotePath.slice");
     expect(hashBody).toContain("readAndroidFileBuffer");
     expect(hashBody).toContain(".update(fileBuffer)");
     expect(hashBody).not.toContain('"sha256sum"');

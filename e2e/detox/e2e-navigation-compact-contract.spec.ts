@@ -12,9 +12,17 @@ const e2eAppReadyScreenPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/ready-screen.tsx",
 );
+const e2eAppRoutePathsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/route-paths.ts",
+);
 const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
+);
+const e2eAppStackScreensPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
 );
 const e2eAppScreensPath = path.join(
   repoDir,
@@ -29,10 +37,18 @@ const e2eAppComponentsPath = path.join(
   "examples/v0.85.0/src/e2eApp/components.tsx",
 );
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
+const detoxScreenRoutesPath = path.join(
+  repoDir,
+  "e2e/detox/detox-screen-routes.js",
+);
 
 describe("E2E navigation compact surface contract", () => {
   it("keeps the default page and assertion routes compact", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppRoutePathsSource = await fs.readFile(
+      e2eAppRoutePathsPath,
+      "utf8",
+    );
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
     const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
     const e2eAppScreenTestIDsSource = await fs.readFile(
@@ -40,22 +56,26 @@ describe("E2E navigation compact surface contract", () => {
       "utf8",
     );
 
-    expect(e2eAppRoutesSource).toContain('Ready: "e2e/ready"');
-    expect(e2eAppRoutesSource).toContain('RuntimeBundle: "e2e/runtime-bundle"');
-    expect(e2eAppRoutesSource).toContain('RuntimeMarker: "e2e/runtime-marker"');
-    expect(e2eAppRoutesSource).toContain(
+    expect(e2eAppRoutePathsSource).toContain('Ready: "e2e/ready"');
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeBundle: "e2e/runtime-bundle"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeMarker: "e2e/runtime-marker"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
       'RuntimeLargeAsset: "e2e/runtime-large-asset"',
     );
-    expect(e2eAppRoutesSource).toContain(
+    expect(e2eAppRoutePathsSource).toContain(
       'LaunchCrashedBundle: "e2e/launch-crashed-bundle"',
     );
-    expect(e2eAppRoutesSource).toContain(
+    expect(e2eAppRoutePathsSource).toContain(
       'ChannelActionResult: "e2e/channel-action-result"',
     );
-    expect(e2eAppRoutesSource).toContain(
+    expect(e2eAppRoutePathsSource).toContain(
       'UpdateActionResult: "e2e/update-action-result"',
     );
-    expect(e2eAppRoutesSource).toContain(
+    expect(e2eAppRoutePathsSource).toContain(
       'CohortActionResult: "e2e/cohort-action-result"',
     );
     expect(e2eAppIndexSource).not.toContain("RuntimeIdentity");
@@ -67,20 +87,27 @@ describe("E2E navigation compact surface contract", () => {
   });
 
   it("keeps action and multi-value assertions on one-target routes", async () => {
-    const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const e2eAppRoutePathsSource = await fs.readFile(
+      e2eAppRoutePathsPath,
+      "utf8",
+    );
     const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
     const e2eAppScreenTestIDsSource = await fs.readFile(
       e2eAppScreenTestIDsPath,
       "utf8",
     );
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
 
-    expect(e2eAppRoutesSource).not.toContain("InstallActions");
-    expect(e2eAppRoutesSource).not.toContain("RuntimeChannelActions");
-    expect(e2eAppRoutesSource).not.toContain("CohortInputActions");
-    expect(e2eAppRoutesSource).not.toContain("CohortPresetActions");
-    expect(e2eAppRoutesSource).not.toContain("RuntimeState");
-    expect(e2eAppRoutesSource).not.toContain("UpdateStore:");
+    expect(e2eAppRoutePathsSource).not.toContain("InstallActions");
+    expect(e2eAppRoutePathsSource).not.toContain("RuntimeChannelActions");
+    expect(e2eAppRoutePathsSource).not.toContain("CohortInputActions");
+    expect(e2eAppRoutePathsSource).not.toContain("CohortPresetActions");
+    expect(e2eAppRoutePathsSource).not.toContain("RuntimeState");
+    expect(e2eAppRoutePathsSource).not.toContain("UpdateStore:");
     expect(e2eAppScreensSource).not.toContain("InstallActionsScreen");
     expect(e2eAppScreensSource).not.toContain("RuntimeChannelActionsScreen");
     expect(e2eAppScreensSource).not.toContain("CohortInputActionsScreen");
@@ -105,8 +132,8 @@ describe("E2E navigation compact surface contract", () => {
       "e2e/update-store-downloaded",
       "e2e/update-store-download-paths",
     ]) {
-      expect(e2eAppRoutesSource).toContain(path);
-      expect(detoxPageSource).toContain(`hotupdaterexample://${path}`);
+      expect(e2eAppRoutePathsSource).toContain(path);
+      expect(detoxScreenRoutesSource).toContain(`hotupdaterexample://${path}`);
     }
 
     expect(e2eAppScreenTestIDsSource).toContain(
@@ -146,6 +173,11 @@ describe("E2E navigation compact surface contract", () => {
 
   it("keeps the app entrypoint from becoming a scenario screen registry", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const e2eAppStackScreensSource = await fs.readFile(
+      e2eAppStackScreensPath,
+      "utf8",
+    );
 
     expect(e2eAppIndexSource).toContain("E2eStack");
     expect(e2eAppIndexSource).not.toContain("Stack.Navigator");
@@ -154,6 +186,12 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppIndexSource).not.toContain("e2e/runtime-");
     expect(e2eAppIndexSource).not.toContain("RuntimeBundleScreen");
     expect(e2eAppIndexSource).not.toContain("InstallCurrentChannelUpdate");
+    expect(e2eAppRoutesSource).not.toContain("e2e/action/");
+    expect(e2eAppRoutesSource).not.toContain("e2e/runtime-");
+    expect(e2eAppRoutesSource).not.toContain("RuntimeBundleScreen");
+    expect(e2eAppRoutesSource).not.toContain("InstallCurrentChannelUpdate");
+    expect(e2eAppRoutesSource.split("\n").length).toBeLessThanOrEqual(80);
+    expect(e2eAppStackScreensSource).toContain("modelScreens");
   });
 
   it("does not swallow E2E action button errors", async () => {
@@ -168,5 +206,24 @@ describe("E2E navigation compact surface contract", () => {
 
     expect(buttonBody).toContain("void onPress()");
     expect(buttonBody).not.toContain("catch(() => undefined)");
+  });
+
+  it("keeps Detox page helpers from becoming the screen route registry", async () => {
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
+
+    expect(detoxPageSource).toContain("screenPathForTestID");
+    expect(detoxPageSource).not.toContain(
+      "const E2E_SCREEN_CONTENT_TEST_IDS =",
+    );
+    expect(detoxPageSource).not.toContain("const E2E_SCREEN_URLS =");
+    expect(detoxScreenRoutesSource).toContain("const E2E_SCREEN_URLS =");
+    expect(detoxScreenRoutesSource).toContain("screenPathForTestID");
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/runtime-marker",
+    );
   });
 });
