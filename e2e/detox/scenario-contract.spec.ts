@@ -753,7 +753,9 @@ describe("Detox scenario contract", () => {
     );
 
     expect(installTapBody).not.toContain("isAndroidRun()");
-    expect(installTapBody).toContain("if (isInstallAction) {");
+    expect(installTapBody).toContain(
+      "await this.reattachAfterInstallTap(isInstallAction);",
+    );
     expect(installTapBody).not.toContain("if (expectedResultContains) {");
     expect(installTapBody).not.toContain("waitForInstallActionResult");
     expect(detoxRuntimeSource).not.toContain(
@@ -986,8 +988,8 @@ describe("Detox scenario contract", () => {
     expect(findVisibleBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("only disables Detox synchronization for install taps", async () => {
-    // Given: install buttons can start native download work that Detox sees as busy.
+  it("only disables Detox synchronization for external-launch action taps", async () => {
+    // Given: install and reload buttons can start native work that makes Detox busy.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
@@ -999,6 +1001,7 @@ describe("Detox scenario contract", () => {
     // Then: cohort/channel utility buttons keep normal synchronization.
     expect(tapBody).toContain("shouldDisableSynchronizationForTap");
     expect(tapBody).toContain('testID.startsWith("action-install-")');
+    expect(tapBody).toContain('testID === "action-reload-app"');
     expect(
       tapBody.indexOf("await disableSynchronizationUntilLaunch();"),
     ).toBeLessThan(
@@ -1007,8 +1010,34 @@ describe("Detox scenario contract", () => {
       ),
     );
     expect(tapBody).toContain(
-      "if (isInstallAction) {\n        await disableSynchronizationUntilLaunch();\n      }\n      const target",
+      "if (shouldDisableSynchronization) {\n        await disableSynchronizationUntilLaunch();\n      }\n      const target",
     );
+  });
+
+  it("re-disables Detox synchronization immediately before external-launch action taps", async () => {
+    // Given: opening a screen can relaunch the app and reset Detox sync state.
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+    const targetLookupIndex = tapBody.indexOf(
+      "const target = await findVisibleTestID(this.controlClient, testID)",
+    );
+    const tapIndex = tapBody.indexOf("await target.tap()");
+    const disableIndexes = [
+      ...tapBody.matchAll(/await disableSynchronizationUntilLaunch\(\);/g),
+    ].map((match) => match.index ?? -1);
+
+    // When: an external-launch action is tapped.
+    // Then: sync is disabled before route lookup and again after lookup.
+    expect(disableIndexes.length).toBeGreaterThanOrEqual(2);
+    expect(disableIndexes[0]).toBeLessThan(targetLookupIndex);
+    expect(disableIndexes[1]).toBeGreaterThan(targetLookupIndex);
+    expect(disableIndexes[1]).toBeLessThan(tapIndex);
   });
 
   it("keeps metadata jobs responsible for bundle-store verification after install completion", async () => {
@@ -1360,6 +1389,30 @@ describe("Detox scenario contract", () => {
       "wait manifest fallback metadata stable",
       "assert manifest diff fallback",
     ]);
+  });
+
+  it("accepts Android manifest fallback evidence when adb cannot hash an existing bundle file", async () => {
+    // Given: Android can report ENOBUFS while reading a private bundle file even
+    // though the bundle file exists and the manifest contains the expected hash.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const manifestStateBody = controllerSource.slice(
+      controllerSource.indexOf("async function readManifestDiffState"),
+      controllerSource.indexOf("async function assertBundleAssetsStored"),
+    );
+
+    // When: manifest fallback evidence is evaluated.
+    // Then: recoverable adb read failures use manifest plus bundle existence.
+    expect(controllerSource).toContain(
+      "function hasManifestBackedBundleEvidence",
+    );
+    expect(controllerSource).toContain("isRecoverableAndroidAssetReadError");
+    expect(manifestStateBody).toContain("hasManifestBackedBundleEvidence({");
+    expect(controllerSource).toContain("assetFile.readError");
+    expect(controllerSource).toContain("bundleFile.exists");
+    expect(controllerSource).toContain("expectedHash !== null");
   });
 
   it("models release recovery without relaunching over recovered state", async () => {

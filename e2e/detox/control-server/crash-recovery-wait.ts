@@ -145,11 +145,7 @@ export async function waitForCrashRecoveryState(
       return {};
     }
 
-    if (
-      options.platform === "android" &&
-      diagnostics.crashMarker.exists &&
-      androidRelaunchAttempts < 3
-    ) {
+    if (options.platform === "android" && androidRelaunchAttempts < 3) {
       options.launchAndroidApp();
       androidRelaunchAttempts += 1;
       await options.sleepMs(options.androidLaunchSettleMs, options.signal);

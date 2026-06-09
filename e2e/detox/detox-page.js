@@ -72,7 +72,9 @@ function textFromAttributes(attributes) {
 }
 
 function shouldDisableSynchronizationForTap(testID) {
-  return testID.startsWith("action-install-");
+  return (
+    testID.startsWith("action-install-") || testID === "action-reload-app"
+  );
 }
 
 async function disableSynchronizationUntilLaunch() {

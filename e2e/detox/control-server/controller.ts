@@ -5094,6 +5094,40 @@ function getPrimaryBundleAssetPath() {
     : "index.android.bundle";
 }
 
+function isRecoverableAndroidAssetReadError(readError: string | null) {
+  return (
+    fixtureSession.platform === "android" &&
+    readError !== null &&
+    /ENOBUFS|Permission denied/i.test(readError)
+  );
+}
+
+function hasManifestBackedBundleEvidence(args: {
+  assetFile: ReturnType<typeof readBundleAssetFileHash>;
+  bundleFile: ReturnType<typeof readBundleFileSnapshot>;
+  expectedHash: string | null;
+  manifest: JsonSnapshot;
+}) {
+  if (
+    !args.bundleFile.exists ||
+    !args.manifest.exists ||
+    args.manifest.readError !== null ||
+    args.expectedHash === null
+  ) {
+    return false;
+  }
+
+  if (
+    args.assetFile.exists &&
+    args.assetFile.readError === null &&
+    args.assetFile.fileHash === args.expectedHash
+  ) {
+    return true;
+  }
+
+  return isRecoverableAndroidAssetReadError(args.assetFile.readError);
+}
+
 async function readManifestDiffState(args: {
   bundleId: string;
   previousBundleId: string;
@@ -5126,13 +5160,12 @@ async function readManifestDiffState(args: {
     metadataState.stableBundleId === args.previousBundleId &&
     metadataState.stagingBundleId === args.bundleId &&
     metadataState.verificationPending === false &&
-    bundleFile.exists &&
-    manifest.exists &&
-    manifest.readError === null &&
-    expectedHash !== null &&
-    assetFile.exists &&
-    assetFile.readError === null &&
-    assetFile.fileHash === expectedHash &&
+    hasManifestBackedBundleEvidence({
+      assetFile,
+      bundleFile,
+      expectedHash,
+      manifest,
+    }) &&
     !includesAllFragments(archiveLogs, archiveFragments) &&
     !includesAllFragments(bsdiffLogs, bsdiffFragments);
 

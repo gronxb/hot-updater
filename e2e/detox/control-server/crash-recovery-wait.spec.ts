@@ -94,4 +94,83 @@ describe("crash recovery wait", () => {
     });
     expect(names.metadata).not.toBe("recovery-metadata.json");
   });
+
+  it("relaunches Android recovery even before the crash marker is readable", async () => {
+    // Given: Android has crashed but run-as diagnostics do not expose the marker yet.
+    const reads: string[] = [];
+    const sleeps: number[] = [];
+    const launches: string[] = [];
+
+    // When: the first poll cannot read recovery files and the second poll recovers.
+    await waitForCrashRecoveryState({
+      androidLaunchSettleMs: 2000,
+      attempts: 3,
+      crashedBundleId: "crashed-1",
+      createTimeoutError: () => new Error("timed out"),
+      getLaunchReportState: (report): LaunchReportState => ({
+        crashedBundleId:
+          typeof report?.crashedBundleId === "string"
+            ? report.crashedBundleId
+            : null,
+        status: typeof report?.status === "string" ? report.status : null,
+      }),
+      getMetadataState: (metadata): MetadataState => ({
+        stagingBundleId:
+          typeof metadata?.stagingBundleId === "string"
+            ? metadata.stagingBundleId
+            : null,
+        verificationPending:
+          typeof metadata?.verificationPending === "boolean"
+            ? metadata.verificationPending
+            : null,
+      }),
+      launchAndroidApp: () => {
+        launches.push("launch");
+      },
+      platform: "android",
+      pollIntervalMs: 1000,
+      readDiagnostics: () => {
+        reads.push("read");
+        if (reads.length === 1) {
+          return {
+            ...pendingDiagnostics(),
+            crashMarker: {
+              exists: false,
+              path: "marker",
+              readError: null,
+              value: null,
+            },
+          };
+        }
+        return {
+          ...pendingDiagnostics(),
+          launchReport: {
+            exists: true,
+            path: "report",
+            readError: null,
+            value: { crashedBundleId: "crashed-1", status: "RECOVERED" },
+          },
+          metadata: {
+            exists: true,
+            path: "metadata",
+            readError: null,
+            value: {
+              stagingBundleId: "stable-1",
+              verificationPending: false,
+            },
+          },
+        };
+      },
+      sleepMs: (durationMs) => {
+        sleeps.push(durationMs);
+        return Promise.resolve();
+      },
+      stableBundleId: "stable-1",
+    });
+
+    // Then: recovery gets a relaunch chance without waiting for marker IO.
+    expect(launches).toEqual(["launch"]);
+    expect(sleeps).toEqual([2000]);
+    expect(reads).toEqual(["read", "read"]);
+  });
 });
