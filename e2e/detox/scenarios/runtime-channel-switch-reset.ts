@@ -18,9 +18,19 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "$initialMarker",
     );
     await app.assertText(
-      "assert runtime channel initial summary",
-      "current-channel-summary",
-      "Current Channel Summary: current=production default=production switched=false",
+      "assert runtime channel initial current",
+      "runtime-current-channel",
+      "production",
+    );
+    await app.assertText(
+      "assert runtime channel initial default",
+      "runtime-default-channel",
+      "production",
+    );
+    await app.assertText(
+      "assert runtime channel initially not switched",
+      "runtime-channel-switched",
+      "false",
     );
     await app.control(
       "deploy runtime channel bundle",
@@ -72,9 +82,19 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "Current Launch Status: STABLE",
     );
     await app.assertText(
-      "assert runtime channel switched summary",
-      "current-channel-summary",
-      "Current Channel Summary: current=beta default=production switched=true",
+      "assert runtime channel switched current",
+      "runtime-current-channel",
+      "beta",
+    );
+    await app.assertText(
+      "assert runtime channel switched default",
+      "runtime-default-channel",
+      "production",
+    );
+    await app.assertText(
+      "assert runtime channel switched",
+      "runtime-channel-switched",
+      "true",
     );
     await app.tap("reset runtime channel", "action-reset-runtime-channel");
     await app.assertText(
@@ -99,14 +119,24 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "Current Launch Status: STABLE",
     );
     await app.assertText(
-      "assert reset channel summary",
-      "current-channel-summary",
-      "Current Channel Summary: current=production default=production switched=false",
+      "assert reset current channel",
+      "runtime-current-channel",
+      "production",
+    );
+    await app.assertText(
+      "assert reset default channel",
+      "runtime-default-channel",
+      "production",
+    );
+    await app.assertText(
+      "assert reset channel not switched",
+      "runtime-channel-switched",
+      "false",
     );
     await app.assertText(
       "assert reset crash history empty",
-      "crash-history-summary",
-      "No crashed bundles recorded.",
+      "crash-history-count",
+      "0",
     );
   },
 };

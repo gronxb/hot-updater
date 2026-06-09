@@ -100,6 +100,24 @@ describe("E2E navigation compact surface contract", () => {
       'RuntimeLargeAsset: "e2e/runtime-large-asset"',
     );
     expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeCurrentChannel: "e2e/runtime-current-channel"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeDefaultChannel: "e2e/runtime-default-channel"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeChannelSwitched: "e2e/runtime-channel-switched"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeCurrentCohort: "e2e/runtime-current-cohort"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'RuntimeInitialCohort: "e2e/runtime-initial-cohort"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
+      'CrashHistoryCount: "e2e/crash-history-count"',
+    );
+    expect(e2eAppRoutePathsSource).toContain(
       'LaunchCrashedBundle: "e2e/launch-crashed-bundle"',
     );
     expect(e2eAppRoutePathsSource).toContain(
@@ -139,15 +157,18 @@ describe("E2E navigation compact surface contract", () => {
     expect(screenFiles).not.toContain("runtime-screens.tsx");
     expect(runtimeScreenFiles).toEqual([
       "runtime-bundle-screen.tsx",
-      "runtime-channel-summary-screen.tsx",
-      "runtime-cohort-summary-screen.tsx",
+      "runtime-channel-switched-screen.tsx",
+      "runtime-current-channel-screen.tsx",
+      "runtime-current-cohort-screen.tsx",
+      "runtime-default-channel-screen.tsx",
+      "runtime-initial-cohort-screen.tsx",
       "runtime-large-asset-screen.tsx",
       "runtime-marker-screen.tsx",
     ]);
 
     for (const fileName of [
       ...runtimeScreenFiles,
-      "crash-history-screen.tsx",
+      "crash-history-count-screen.tsx",
       "launch-crashed-bundle-screen.tsx",
       "launch-status-screen.tsx",
       "update-store-downloaded-screen.tsx",
@@ -247,6 +268,9 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutePathsSource).not.toContain("CohortInputActions");
     expect(e2eAppRoutePathsSource).not.toContain("CohortPresetActions");
     expect(e2eAppRoutePathsSource).not.toContain("RuntimeState");
+    expect(e2eAppRoutePathsSource).not.toContain("RuntimeChannelSummary");
+    expect(e2eAppRoutePathsSource).not.toContain("RuntimeCohortSummary");
+    expect(e2eAppRoutePathsSource).not.toContain("CrashHistory:");
     expect(e2eAppRoutePathsSource).not.toContain("UpdateStore:");
     await expect(fs.stat(e2eAppScreensIndexPath)).rejects.toMatchObject({
       code: "ENOENT",
@@ -264,8 +288,12 @@ describe("E2E navigation compact surface contract", () => {
       "e2e/action/apply-cohort-input",
       "e2e/action/set-cohort-qa",
       "e2e/action/restore-initial-cohort",
-      "e2e/runtime-channel-summary",
-      "e2e/runtime-cohort-summary",
+      "e2e/runtime-current-channel",
+      "e2e/runtime-default-channel",
+      "e2e/runtime-channel-switched",
+      "e2e/runtime-current-cohort",
+      "e2e/runtime-initial-cohort",
+      "e2e/crash-history-count",
       "e2e/update-store-downloaded",
       "e2e/update-store-download-paths",
     ]) {
@@ -288,6 +316,8 @@ describe("E2E navigation compact surface contract", () => {
     expect(detoxPageSource).not.toContain("cohortInputActions");
     expect(detoxPageSource).not.toContain("runtimeState");
     expect(detoxPageSource).not.toContain("updateStore:");
+    expect(detoxPageSource).not.toContain('by.id("e2e-screen-content")');
+    expect(detoxPageSource).not.toContain("e2e-screen-content");
   });
 
   it("keeps the ready route out of assertion and action surfaces", async () => {
@@ -356,6 +386,18 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRouteGroupSource).toContain(
       "component={InstallCurrentChannelUpdateActionScreen}",
     );
+    expect(e2eAppRouteGroupSource).toContain(
+      "component={RuntimeCurrentChannelScreen}",
+    );
+    expect(e2eAppRouteGroupSource).toContain(
+      "component={RuntimeChannelSwitchedScreen}",
+    );
+    expect(e2eAppRouteGroupSource).toContain(
+      "component={CrashHistoryCountScreen}",
+    );
+    expect(e2eAppRouteGroupSource).not.toContain("RuntimeChannelSummary");
+    expect(e2eAppRouteGroupSource).not.toContain("RuntimeCohortSummary");
+    expect(e2eAppRouteGroupSource).not.toContain("CrashHistoryScreen");
     expect(e2eAppRouteGroupSource).toContain("component={CohortInputScreen}");
     expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(34);
     for (const [index, source] of routeGroupSources.entries()) {
@@ -419,5 +461,10 @@ describe("E2E navigation compact surface contract", () => {
     expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/runtime-marker",
     );
+    expect(detoxScreenRoutesSource).toContain(
+      "hotupdaterexample://e2e/runtime-current-channel",
+    );
+    expect(detoxScreenRoutesSource).not.toContain("runtime-channel-summary");
+    expect(detoxScreenRoutesSource).not.toContain("current-channel-summary");
   });
 });

@@ -1,4 +1,4 @@
-import React, { type ReactNode } from "react";
+import React, { type ReactNode, useEffect, useRef, useState } from "react";
 import { Pressable, SafeAreaView, Text, View } from "react-native";
 
 import { screenContentTestIDs } from "./screen-test-ids";
@@ -33,11 +33,21 @@ export const Button = ({
   readonly testID: string;
   readonly title: string;
 }) => {
+  const onPressRef = useRef(onPress);
+  const [deferredPressCount, setDeferredPressCount] = useState(0);
+
+  useEffect(() => {
+    onPressRef.current = onPress;
+  }, [onPress]);
+
+  useEffect(() => {
+    if (deferredPressCount === 0) return;
+    void onPressRef.current();
+  }, [deferredPressCount]);
+
   const runPress = () => {
     if (deferPress) {
-      requestAnimationFrame(() => {
-        void onPress();
-      });
+      setDeferredPressCount((count) => count + 1);
       return;
     }
 
@@ -67,8 +77,8 @@ export const ScreenShell = ({
   readonly current: ScreenName;
 }) => (
   <SafeAreaView style={styles.safeArea}>
-    <View style={styles.content} testID="e2e-screen-content">
-      <View testID={screenContentTestIDs[current]}>{children}</View>
+    <View style={styles.content} testID={screenContentTestIDs[current]}>
+      {children}
     </View>
   </SafeAreaView>
 );

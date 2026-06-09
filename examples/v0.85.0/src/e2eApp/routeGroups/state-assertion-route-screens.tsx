@@ -1,7 +1,7 @@
 import React from "react";
 
 import { Stack } from "../route-stack";
-import { CrashHistoryScreen } from "../screens/crash-history-screen";
+import { CrashHistoryCountScreen } from "../screens/crash-history-count-screen";
 import { LaunchCrashedBundleScreen } from "../screens/launch-crashed-bundle-screen";
 import { LaunchStatusScreen } from "../screens/launch-status-screen";
 import { UpdateStoreDownloadPathsScreen } from "../screens/update-store-download-paths-screen";
@@ -29,8 +29,8 @@ export const stateAssertionRouteScreens = [
     component={UpdateStoreDownloadPathsScreen}
   />,
   <Stack.Screen
-    key="CrashHistory"
-    name="CrashHistory"
-    component={CrashHistoryScreen}
+    key="CrashHistoryCount"
+    name="CrashHistoryCount"
+    component={CrashHistoryCountScreen}
   />,
 ] as const;

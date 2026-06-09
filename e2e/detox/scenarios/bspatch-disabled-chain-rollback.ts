@@ -207,8 +207,8 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     );
     await app.assertText(
       "assert chain bundle C crash history empty",
-      "crash-history-summary",
-      "No crashed bundles recorded.",
+      "crash-history-count",
+      "0",
     );
     await app.control("capture chain bundle C state", "/e2e/capture-state", {
       prefix: "bspatch-b-to-c",
@@ -334,8 +334,8 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     );
     await app.assertText(
       "assert chain built-in crash history empty",
-      "crash-history-summary",
-      "No crashed bundles recorded.",
+      "crash-history-count",
+      "0",
     );
     await app.control(
       "capture chain built-in rollback state",

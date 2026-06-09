@@ -805,8 +805,10 @@ describe("Detox scenario contract", () => {
     );
 
     expect(buttonBody).toContain("readonly deferPress?: boolean");
-    expect(buttonBody).toContain("requestAnimationFrame(() => {");
-    expect(buttonBody).toContain("void onPress();");
+    expect(buttonBody).toContain("useEffect(() => {");
+    expect(buttonBody).toContain("setDeferredPressCount((count) => count + 1)");
+    expect(buttonBody).toContain("void onPressRef.current();");
+    expect(buttonBody).not.toContain("requestAnimationFrame");
     expect(buttonBody).not.toContain("setTimeout");
     expect(buttonBody).not.toContain("catch(() => undefined)");
     expect(actionButtonScreenSource).toContain("readonly deferPress?: boolean");
@@ -1018,9 +1020,11 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    expect(exampleComponentSource).toContain('testID="e2e-screen-content"');
+    expect(exampleComponentSource).toContain(
+      "testID={screenContentTestIDs[current]}",
+    );
     expect(exampleComponentSource).not.toContain("ScrollView");
-    expect(openScreenBody).toContain('by.id("e2e-screen-content")');
+    expect(openScreenBody).not.toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain('scrollTo("top")');
     expect(waitForTestIDBody).not.toContain('by.id("e2e-scroll-content")');
     expect(waitForTestIDBody).not.toContain(".whileElement(");
@@ -1629,7 +1633,9 @@ describe("Detox scenario contract", () => {
       "capture built-in bundle id",
       "launch built-in runtime channel app",
       "assert runtime channel built-in marker",
-      "assert runtime channel initial summary",
+      "assert runtime channel initial current",
+      "assert runtime channel initial default",
+      "assert runtime channel initially not switched",
       "deploy runtime channel bundle",
       "launch runtime channel app",
       "install runtime channel update",
@@ -1639,14 +1645,18 @@ describe("Detox scenario contract", () => {
       "assert runtime channel bundle",
       "assert runtime channel marker",
       "assert runtime channel launch status",
-      "assert runtime channel switched summary",
+      "assert runtime channel switched current",
+      "assert runtime channel switched default",
+      "assert runtime channel switched",
       "reset runtime channel",
       "assert runtime channel reset",
       "reload default channel",
       "assert reset built-in bundle",
       "assert reset built-in marker",
       "assert reset launch status",
-      "assert reset channel summary",
+      "assert reset current channel",
+      "assert reset default channel",
+      "assert reset channel not switched",
       "assert reset crash history empty",
     ]);
     expect(

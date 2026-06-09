@@ -3,7 +3,7 @@ export type RootStackParamList = {
   readonly ChannelActionResult: undefined;
   readonly CohortActionResult: undefined;
   readonly CohortInput: undefined;
-  readonly CrashHistory: undefined;
+  readonly CrashHistoryCount: undefined;
   readonly ClearCrashHistoryAction: undefined;
   readonly InstallCurrentChannelUpdateAction: undefined;
   readonly InstallRuntimeChannelUpdateAction: undefined;
@@ -12,8 +12,11 @@ export type RootStackParamList = {
   readonly Ready: undefined;
   readonly RuntimeBundle: undefined;
   readonly RuntimeChannelInput: undefined;
-  readonly RuntimeChannelSummary: undefined;
-  readonly RuntimeCohortSummary: undefined;
+  readonly RuntimeChannelSwitched: undefined;
+  readonly RuntimeCurrentChannel: undefined;
+  readonly RuntimeCurrentCohort: undefined;
+  readonly RuntimeDefaultChannel: undefined;
+  readonly RuntimeInitialCohort: undefined;
   readonly RuntimeLargeAsset: undefined;
   readonly RuntimeMarker: undefined;
   readonly RefreshRuntimeSnapshotAction: undefined;

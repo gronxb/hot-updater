@@ -103,8 +103,8 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       );
       await app.assertText(
         "assert rollback crash history empty",
-        "crash-history-summary",
-        "No crashed bundles recorded.",
+        "crash-history-count",
+        "0",
       );
       await app.control(
         "capture rollback built-in state",

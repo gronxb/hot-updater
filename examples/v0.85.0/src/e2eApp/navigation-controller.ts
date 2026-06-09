@@ -1,4 +1,7 @@
-import { createNavigationContainerRef } from "@react-navigation/native";
+import {
+  CommonActions,
+  createNavigationContainerRef,
+} from "@react-navigation/native";
 import { useEffect } from "react";
 import { Linking } from "react-native";
 
@@ -15,7 +18,7 @@ export const navigateE2eScreen = (screen: ScreenName): void => {
     return;
   }
 
-  navigationRef.navigate(screen);
+  navigationRef.dispatch(CommonActions.navigate(screen));
 };
 
 export const handleE2eDeepLink = (url: string | null | undefined): void => {

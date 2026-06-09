@@ -97,7 +97,7 @@ describe("Detox assertion parity", () => {
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );
-    expect(openScreenBody).toContain('by.id("e2e-screen-content")');
+    expect(openScreenBody).not.toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
     expect(detoxPageSource).toContain("async function openDeepLinkScreen");
     expect(detoxPageSource).toContain("if (isAndroidRun())");
@@ -140,9 +140,7 @@ describe("Detox assertion parity", () => {
     expect(
       detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
     ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));
-    expect(openScreenBody.indexOf("openDeepLinkScreen")).toBeLessThan(
-      openScreenBody.indexOf('by.id("e2e-screen-content")'),
-    );
+    expect(openScreenBody).not.toContain("e2e-screen-content");
   });
 
   it("reads assertion text with Detox synchronization disabled until launch", async () => {

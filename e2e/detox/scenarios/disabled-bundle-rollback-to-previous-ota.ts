@@ -156,8 +156,8 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       );
       await app.assertText(
         "assert previous ota rollback crash history empty",
-        "crash-history-summary",
-        "No crashed bundles recorded.",
+        "crash-history-count",
+        "0",
       );
       await app.control(
         "capture previous ota rollback state",

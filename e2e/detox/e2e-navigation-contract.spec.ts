@@ -269,7 +269,7 @@ describe("E2E navigation contract", () => {
     expect(openScreenBody).not.toContain(".tap()");
     expect(detoxPageSource).not.toContain('by.id("e2e-active-screen")');
     expect(detoxPageSource).toContain("E2E_SCREEN_CONTENT_TEST_IDS");
-    expect(detoxPageSource).toContain('by.id("e2e-screen-content")');
+    expect(detoxPageSource).not.toContain('by.id("e2e-screen-content")');
     expect(detoxPageSource).not.toContain(".whileElement(");
     expect(detoxPageSource).not.toContain(".scroll(");
   });

@@ -94,8 +94,6 @@ async function openScreenForTestID(testID) {
     await openDeepLinkScreen(E2E_SCREEN_URLS[screenPath]);
     await disableSynchronizationUntilLaunch();
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
-    const screenContent = element(by.id("e2e-screen-content"));
-    await waitFor(screenContent).toBeVisible().withTimeout(30000);
   });
 }
 
