@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
@@ -19,7 +18,10 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch manifest base app");
-    await installCurrentChannelUpdate(app, "install manifest base update");
+    await app.tap(
+      "install manifest base update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait manifest base metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -77,7 +79,10 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch manifest fallback app");
-    await installCurrentChannelUpdate(app, "install manifest fallback update");
+    await app.tap(
+      "install manifest fallback update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait manifest fallback metadata pending",
       "/e2e/jobs/wait-for-metadata",

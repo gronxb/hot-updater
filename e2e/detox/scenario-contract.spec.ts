@@ -165,12 +165,7 @@ async function readDetoxRuntimeSource(): Promise<string> {
 async function scenarioStages(
   scenarioName: string,
 ): Promise<readonly string[]> {
-  return (await recordScenarioCalls(scenarioName))
-    .filter(
-      (call) =>
-        !(call.kind === "assertText" && call.testID === "update-action-start"),
-    )
-    .map((call) => call.stage);
+  return (await recordScenarioCalls(scenarioName)).map((call) => call.stage);
 }
 
 async function controlStepBody(
@@ -657,7 +652,7 @@ describe("Detox scenario contract", () => {
     expect(reattachBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("asserts install action start before metadata or reset controls", async () => {
+  it("keeps install actions free of immediate UI assertions", async () => {
     for (const scenarioName of defaultDetoxScenarioNames) {
       const calls = await recordScenarioCalls(scenarioName);
       const installTapIndexes = calls
@@ -671,12 +666,6 @@ describe("Detox scenario contract", () => {
         const stageLabel = `${scenarioName}: ${
           calls[index]?.stage ?? "missing install tap"
         }`;
-        const installTap = calls[index];
-        const expectedStart =
-          installTap.kind === "tap" &&
-          installTap.testID === "action-install-runtime-channel-update"
-            ? "runtime-channel:beta -> started"
-            : "current-channel -> started";
         const nextCall = calls[index + 1];
         const nextControlIndex = calls.findIndex(
           (entry, nextIndex) =>
@@ -686,15 +675,36 @@ describe("Detox scenario contract", () => {
               entry.pathName === "/e2e/assert-metadata-reset"),
         );
 
-        expect(nextCall?.kind, stageLabel).toBe("assertText");
-        expect(nextCall?.stage, stageLabel).toBe(
-          `assert ${installTap.stage} started`,
-        );
-        expect(nextCall?.testID, stageLabel).toBe("update-action-start");
-        expect(nextCall?.contains, stageLabel).toBe(expectedStart);
-        expect(nextControlIndex, stageLabel).toBeGreaterThan(index + 1);
+        expect(
+          nextCall?.kind === "assertText" &&
+            nextCall.testID === "update-action-start",
+          stageLabel,
+        ).toBe(false);
+        expect(
+          nextCall?.stage.startsWith("assert ") &&
+            nextCall.stage.endsWith(" started"),
+          stageLabel,
+        ).toBe(false);
+        expect(nextControlIndex, stageLabel).toBeGreaterThan(index);
       }
     }
+  });
+
+  it("keeps install actions inline instead of routing through UI-start helpers", async () => {
+    const scenarioDirEntries = await fs.readdir(scenarioDir);
+    const scenarioSources = await Promise.all(
+      scenarioDirEntries
+        .filter((entry) => entry.endsWith(".ts"))
+        .map((entry) => fs.readFile(path.join(scenarioDir, entry), "utf8")),
+    );
+
+    expect(scenarioDirEntries).not.toContain("install-actions.ts");
+    expect(scenarioSources.join("\n")).not.toContain(
+      "installCurrentChannelUpdate",
+    );
+    expect(scenarioSources.join("\n")).not.toContain(
+      "installRuntimeChannelUpdate",
+    );
   });
 
   it("keeps Detox synchronization disabled until the app is relaunched after install actions", async () => {
@@ -860,16 +870,14 @@ describe("Detox scenario contract", () => {
     expect(exampleResultScreenSource).toContain(
       'testID="update-action-result"',
     );
-    expect(exampleResultScreenSource).toContain('testID="update-action-start"');
+    expect(exampleResultScreenSource).not.toContain("update-action-start");
     expect(detoxScreenRoutesSource).toContain(
       'channelActionResult: "hotupdaterexample://e2e/channel-action-result"',
     );
     expect(detoxScreenRoutesSource).toContain(
       'updateActionResult: "hotupdaterexample://e2e/update-action-result"',
     );
-    expect(detoxScreenRoutesSource).toContain(
-      '"update-action-start": "updateActionResult"',
-    );
+    expect(detoxScreenRoutesSource).not.toContain("update-action-start");
     expect(detoxScreenRoutesSource).toContain(
       'cohortActionResult: "hotupdaterexample://e2e/cohort-action-result"',
     );

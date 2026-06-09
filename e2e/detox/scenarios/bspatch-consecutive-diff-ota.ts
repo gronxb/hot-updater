@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
@@ -19,7 +18,10 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch diff bundle A app");
-    await installCurrentChannelUpdate(app, "install diff bundle A");
+    await app.tap(
+      "install diff bundle A",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle A metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -66,7 +68,10 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch diff bundle B app");
-    await installCurrentChannelUpdate(app, "install diff bundle B");
+    await app.tap(
+      "install diff bundle B",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle B metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -116,7 +121,10 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch diff bundle C app");
-    await installCurrentChannelUpdate(app, "install diff bundle C");
+    await app.tap(
+      "install diff bundle C",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle C metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -175,7 +183,10 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch diff bundle D app");
-    await installCurrentChannelUpdate(app, "install diff bundle D");
+    await app.tap(
+      "install diff bundle D",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle D metadata pending",
       "/e2e/jobs/wait-for-metadata",

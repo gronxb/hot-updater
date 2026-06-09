@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
@@ -34,7 +33,10 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         },
       );
       await app.launch("launch current bundle app");
-      await installCurrentChannelUpdate(app, "install current bundle");
+      await app.tap(
+        "install current bundle",
+        "action-install-current-channel-update",
+      );
       await app.control(
         "wait current bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",

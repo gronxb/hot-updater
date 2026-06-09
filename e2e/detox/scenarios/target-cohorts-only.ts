@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
@@ -28,7 +27,10 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
       "cohort-action-result",
       "set -> qa",
     );
-    await installCurrentChannelUpdate(app, "install target cohort update");
+    await app.tap(
+      "install target cohort update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait target cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",

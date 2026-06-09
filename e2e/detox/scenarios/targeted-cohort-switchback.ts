@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
@@ -60,7 +59,10 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "cohort-action-result",
       "set -> $numericIncludedCohort",
     );
-    await installCurrentChannelUpdate(app, "install numeric cohort update");
+    await app.tap(
+      "install numeric cohort update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait numeric cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -91,7 +93,10 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     );
     await app.typeText("enter qa cohort", "cohort-input", "qa");
     await app.tap("apply qa cohort", "action-apply-cohort-input");
-    await installCurrentChannelUpdate(app, "install qa cohort update");
+    await app.tap(
+      "install qa cohort update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait qa cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -126,7 +131,10 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "cohort-action-result",
       "set -> $numericIncludedCohort",
     );
-    await installCurrentChannelUpdate(app, "install numeric cohort rollback");
+    await app.tap(
+      "install numeric cohort rollback",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait numeric cohort rollback pending",
       "/e2e/jobs/wait-for-metadata",

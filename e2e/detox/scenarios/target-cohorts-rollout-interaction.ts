@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
@@ -64,7 +63,10 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "cohort-action-result",
         "set -> $excludedCohort",
       );
-      await installCurrentChannelUpdate(app, "install excluded cohort update");
+      await app.tap(
+        "install excluded cohort update",
+        "action-install-current-channel-update",
+      );
       await app.control(
         "assert excluded metadata reset",
         "/e2e/assert-metadata-reset",
@@ -87,7 +89,10 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "cohort-action-result",
         "set -> $includedCohort",
       );
-      await installCurrentChannelUpdate(app, "install included cohort update");
+      await app.tap(
+        "install included cohort update",
+        "action-install-current-channel-update",
+      );
       await app.control(
         "wait included cohort metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -131,9 +136,9 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "cohort-action-result",
         "set -> $excludedCohort",
       );
-      await installCurrentChannelUpdate(
-        app,
+      await app.tap(
         "install restored excluded cohort update",
+        "action-install-current-channel-update",
       );
       await app.control(
         "assert restored excluded metadata reset",
@@ -152,7 +157,10 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "cohort-action-result",
         "set -> qa",
       );
-      await installCurrentChannelUpdate(app, "install qa cohort update");
+      await app.tap(
+        "install qa cohort update",
+        "action-install-current-channel-update",
+      );
       await app.control(
         "wait qa cohort metadata pending",
         "/e2e/jobs/wait-for-metadata",

@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
@@ -20,7 +19,10 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch force update app");
-    await installCurrentChannelUpdate(app, "install force update");
+    await app.tap(
+      "install force update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait force update metadata pending",
       "/e2e/jobs/wait-for-metadata",

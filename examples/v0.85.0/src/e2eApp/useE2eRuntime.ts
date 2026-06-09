@@ -38,7 +38,6 @@ export type E2eRuntimeModel = {
   readonly scenarioMarker: string;
   readonly setCohortToQa: () => Promise<void>;
   readonly setRuntimeChannelInput: (nextChannel: string) => void;
-  readonly updateActionStart: string;
   readonly updateActionResult: string;
   readonly updateCohortInput: (nextCohort: string) => void;
   readonly updateStoreDownloadPathsText: string;
@@ -53,7 +52,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const cohortInputRef = useRef(initialCohort);
   const [channelActionResult, setChannelActionResult] = useState("idle");
   const [cohortActionResult, setCohortActionResult] = useState("idle");
-  const [updateActionStart, setUpdateActionStart] = useState("idle");
   const [updateActionResult, setUpdateActionResult] = useState("idle");
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(readRuntimeSnapshot);
 
@@ -89,7 +87,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     channel,
   }: InstallUpdateInput) => {
     try {
-      setUpdateActionStart(`${actionLabel} -> started`);
       setUpdateActionResult(`${actionLabel} -> checking`);
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
@@ -194,7 +191,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     scenarioMarker,
     setCohortToQa: () => applyCohortValue("qa"),
     setRuntimeChannelInput,
-    updateActionStart,
     updateActionResult,
     updateCohortInput,
     updateStoreDownloadPathsText: formatUpdateStoreDownloadPaths(

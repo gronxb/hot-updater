@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
@@ -52,7 +51,10 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       "cohort-action-result",
       "set -> $includedCohort",
     );
-    await installCurrentChannelUpdate(app, "install rollout update");
+    await app.tap(
+      "install rollout update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait rollout metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -92,7 +94,10 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       "cohort-action-result",
       "set -> $excludedCohort",
     );
-    await installCurrentChannelUpdate(app, "install excluded cohort update");
+    await app.tap(
+      "install excluded cohort update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "assert excluded metadata reset",
       "/e2e/assert-metadata-reset",

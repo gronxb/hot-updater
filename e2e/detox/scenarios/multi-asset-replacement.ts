@@ -1,4 +1,3 @@
-import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
@@ -20,7 +19,10 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch first multi-asset app");
-    await installCurrentChannelUpdate(app, "install first multi-asset update");
+    await app.tap(
+      "install first multi-asset update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait first multi-asset metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -67,7 +69,10 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch second multi-asset app");
-    await installCurrentChannelUpdate(app, "install second multi-asset update");
+    await app.tap(
+      "install second multi-asset update",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait second multi-asset metadata pending",
       "/e2e/jobs/wait-for-metadata",
