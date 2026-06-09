@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell, Section } from "../components";
+import { InfoRow, ScreenShell } from "../components";
 import { E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH } from "../runtime";
 import type { ScreenProps } from "./types";
 
@@ -11,13 +11,11 @@ export const RuntimeLargeAssetScreen = ({ model }: ScreenProps) => {
 
   return (
     <ScreenShell current="RuntimeLargeAsset">
-      <Section title="Runtime Large Asset">
-        <InfoRow
-          label="Large Asset"
-          value={hasLargeE2EAsset ? "present" : "missing"}
-          valueTestID="runtime-large-e2e-asset"
-        />
-      </Section>
+      <InfoRow
+        label="Large Asset"
+        value={hasLargeE2EAsset ? "present" : "missing"}
+        valueTestID="runtime-large-e2e-asset"
+      />
     </ScreenShell>
   );
 };

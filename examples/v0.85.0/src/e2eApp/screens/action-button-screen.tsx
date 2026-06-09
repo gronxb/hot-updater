@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, ScreenShell, Section } from "../components";
+import { Button, ScreenShell } from "../components";
 import type { ScreenName } from "../types";
 
 type ActionButtonScreenProps = {
@@ -17,8 +17,6 @@ export const ActionButtonScreen = ({
   title,
 }: ActionButtonScreenProps) => (
   <ScreenShell current={current}>
-    <Section title={title}>
-      <Button onPress={onPress} testID={testID} title={title} />
-    </Section>
+    <Button onPress={onPress} testID={testID} title={title} />
   </ScreenShell>
 );

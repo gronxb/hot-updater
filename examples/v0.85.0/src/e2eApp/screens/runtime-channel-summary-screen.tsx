@@ -1,7 +1,7 @@
 import React from "react";
 import { Text } from "react-native";
 
-import { ScreenShell, Section } from "../components";
+import { ScreenShell } from "../components";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
@@ -12,15 +12,13 @@ export const RuntimeChannelSummaryScreen = ({ model }: ScreenProps) => {
 
   return (
     <ScreenShell current="RuntimeChannelSummary">
-      <Section title="Runtime Channel Summary">
-        <Text
-          selectable
-          style={styles.resultText}
-          testID="current-channel-summary"
-        >
-          Current Channel Summary: {channelSummary}
-        </Text>
-      </Section>
+      <Text
+        selectable
+        style={styles.resultText}
+        testID="current-channel-summary"
+      >
+        Current Channel Summary: {channelSummary}
+      </Text>
     </ScreenShell>
   );
 };

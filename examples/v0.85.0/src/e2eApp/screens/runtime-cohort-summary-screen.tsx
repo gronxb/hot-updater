@@ -1,7 +1,7 @@
 import React from "react";
 import { Text } from "react-native";
 
-import { ScreenShell, Section } from "../components";
+import { ScreenShell } from "../components";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
@@ -10,15 +10,13 @@ export const RuntimeCohortSummaryScreen = ({ model }: ScreenProps) => {
 
   return (
     <ScreenShell current="RuntimeCohortSummary">
-      <Section title="Runtime Cohort Summary">
-        <Text
-          selectable
-          style={styles.resultText}
-          testID="current-cohort-summary"
-        >
-          Current Cohort Summary: {cohortSummary}
-        </Text>
-      </Section>
+      <Text
+        selectable
+        style={styles.resultText}
+        testID="current-cohort-summary"
+      >
+        Current Cohort Summary: {cohortSummary}
+      </Text>
     </ScreenShell>
   );
 };

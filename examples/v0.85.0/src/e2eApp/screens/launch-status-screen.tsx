@@ -1,16 +1,14 @@
 import React from "react";
 import { Text } from "react-native";
 
-import { ScreenShell, Section } from "../components";
+import { ScreenShell } from "../components";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
 export const LaunchStatusScreen = ({ model }: ScreenProps) => (
   <ScreenShell current="LaunchStatus">
-    <Section title="Launch Status">
-      <Text selectable style={styles.resultText} testID="launch-status-result">
-        {model.launchStatusText}
-      </Text>
-    </Section>
+    <Text selectable style={styles.resultText} testID="launch-status-result">
+      {model.launchStatusText}
+    </Text>
   </ScreenShell>
 );

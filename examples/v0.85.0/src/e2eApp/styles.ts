@@ -113,18 +113,6 @@ export const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     flex: 1,
   },
-  section: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    marginTop: 14,
-    padding: 16,
-  },
-  sectionTitle: {
-    color: "#111827",
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 6,
-  },
   title: {
     color: "#111827",
     fontSize: 30,

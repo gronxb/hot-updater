@@ -22,23 +22,6 @@ export const InfoRow = ({
   </View>
 );
 
-export const Section = ({
-  children,
-  title,
-  titleTestID,
-}: {
-  readonly children: ReactNode;
-  readonly title: string;
-  readonly titleTestID?: string;
-}) => (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle} testID={titleTestID}>
-      {title}
-    </Text>
-    {children}
-  </View>
-);
-
 export const Button = ({
   onPress,
   testID,

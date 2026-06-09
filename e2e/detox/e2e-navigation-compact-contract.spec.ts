@@ -154,6 +154,24 @@ describe("E2E navigation compact surface contract", () => {
     }
   });
 
+  it("keeps E2E route pages free of decorative section wrappers", async () => {
+    // Given: Detox opens each deep link to assert or tap one visible target.
+    const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
+      (fileName) => fileName.endsWith(".tsx"),
+    );
+
+    // When: route page files are inspected for extra layout surfaces.
+    // Then: each page renders the target directly instead of a titled section.
+    for (const fileName of screenFiles) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      expect(source, fileName).not.toContain("Section");
+      expect(source, fileName).not.toContain("section-");
+    }
+  });
+
   it("keeps each E2E route screen in its own file", async () => {
     const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
       (fileName) => fileName.endsWith(".tsx"),
