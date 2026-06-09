@@ -82,6 +82,12 @@ describe("Detox assertion parity", () => {
         "async function ensureAppForegroundForInteraction",
       ),
     );
+    const openDeepLinkScreenBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function openDeepLinkScreen"),
+      detoxPageSource.indexOf(
+        "async function ensureAppForegroundForInteraction",
+      ),
+    );
 
     expect(openScreenBody).toContain("withSynchronizationDisabledForPageOpen");
     expect(openScreenBody).toContain("openDeepLinkScreen");
@@ -100,6 +106,22 @@ describe("Detox assertion parity", () => {
     );
     expect(detoxPageSource).toContain(
       "await launchApp({ newInstance: false });",
+    );
+    expect(
+      openDeepLinkScreenBody.indexOf(
+        "await launchApp({ newInstance: false });",
+      ),
+    ).toBeLessThan(
+      openDeepLinkScreenBody.indexOf(
+        "await disableSynchronizationUntilLaunch();",
+      ),
+    );
+    expect(
+      openDeepLinkScreenBody.indexOf(
+        "await disableSynchronizationUntilLaunch();",
+      ),
+    ).toBeLessThan(
+      openDeepLinkScreenBody.indexOf("await device.openURL({ url });"),
     );
     expect(detoxPageSource).toContain("await device.openURL({ url });");
     expect(
