@@ -776,8 +776,17 @@ describe("Detox scenario contract", () => {
     );
 
     expect(exampleScreenSource).toContain('testID="update-action-result"');
-    expect(detoxPageSource).toContain('testID.endsWith("-result")');
     expect(detoxPageSource).toContain(
+      'channelActionResult: "hotupdaterexample://e2e/channel-action-result"',
+    );
+    expect(detoxPageSource).toContain(
+      'updateActionResult: "hotupdaterexample://e2e/update-action-result"',
+    );
+    expect(detoxPageSource).toContain(
+      'cohortActionResult: "hotupdaterexample://e2e/cohort-action-result"',
+    );
+    expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
+    expect(detoxPageSource).not.toContain(
       'actionResults: "hotupdaterexample://e2e/results"',
     );
     expect(detoxPageSource).toContain(".toBeVisible()");
@@ -873,24 +882,27 @@ describe("Detox scenario contract", () => {
     expect(clearIosBody).toContain("ios local bundle state reset");
   });
 
-  it("keeps launch status assertions on the top section instead of action results", async () => {
-    // Given: launch status lives in the Runtime Snapshot/Launch Status area.
+  it("keeps launch status assertions on dedicated screens", async () => {
+    // Given: launch status and crashed-bundle status live on short screens.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     // When: the navigation target resolver is inspected.
     const launchStatusIndex = detoxPageSource.indexOf(
       'testID === "launch-status-result"',
     );
-    const genericResultIndex = detoxPageSource.indexOf(
-      'testID.endsWith("-result")',
+    const crashedBundleIndex = detoxPageSource.indexOf(
+      'testID === "launch-crashed-bundle-result"',
     );
 
-    // Then: the top-section special case must win before the generic result tab.
+    // Then: both assertions avoid the generic action result route.
     expect(launchStatusIndex).toBeGreaterThan(-1);
-    expect(launchStatusIndex).toBeLessThan(genericResultIndex);
+    expect(crashedBundleIndex).toBeGreaterThan(-1);
+    expect(detoxPageSource).toContain('return "launchStatus"');
+    expect(detoxPageSource).toContain('return "launchCrashedBundle"');
+    expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
   });
 
-  it("routes action inputs to target-specific screens before generic runtime fields", async () => {
+  it("routes action inputs to target-specific screens before runtime assertions", async () => {
     // Given: input controls live on short action screens, not the runtime page.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
@@ -902,14 +914,16 @@ describe("Detox scenario contract", () => {
       'testID === "runtime-channel-input"',
     );
     const runtimeIndex = detoxPageSource.indexOf(
-      'testID.startsWith("runtime-")',
+      'testID === "runtime-bundle-id"',
     );
 
-    // Then: input fields must not be routed to the top section.
+    // Then: input fields must not fall through to runtime assertion screens.
     expect(cohortInputIndex).toBeGreaterThan(-1);
     expect(runtimeInputIndex).toBeGreaterThan(-1);
+    expect(runtimeIndex).toBeGreaterThan(-1);
     expect(cohortInputIndex).toBeLessThan(runtimeIndex);
     expect(runtimeInputIndex).toBeLessThan(runtimeIndex);
+    expect(detoxPageSource).not.toContain('testID.startsWith("runtime-")');
   });
 
   it("opens short target-specific screens instead of scrolling the app content", async () => {

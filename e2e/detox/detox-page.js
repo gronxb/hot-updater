@@ -3,28 +3,38 @@ const { by, device, element, waitFor } = require("detox");
 let synchronizationDisabledUntilLaunch = false;
 
 const E2E_SCREEN_URLS = {
-  actionResults: "hotupdaterexample://e2e/results",
+  channelActionResult: "hotupdaterexample://e2e/channel-action-result",
   cohortInputActions: "hotupdaterexample://e2e/cohort-input",
   cohortPresetActions: "hotupdaterexample://e2e/cohort-presets",
+  cohortActionResult: "hotupdaterexample://e2e/cohort-action-result",
   crashHistory: "hotupdaterexample://e2e/crash-history",
   installActions: "hotupdaterexample://e2e/install",
+  launchCrashedBundle: "hotupdaterexample://e2e/launch-crashed-bundle",
   launchStatus: "hotupdaterexample://e2e/launch-status",
   runtimeChannelActions: "hotupdaterexample://e2e/runtime-channel",
-  runtimeIdentity: "hotupdaterexample://e2e/runtime-identity",
+  runtimeBundle: "hotupdaterexample://e2e/runtime-bundle",
+  runtimeLargeAsset: "hotupdaterexample://e2e/runtime-large-asset",
+  runtimeMarker: "hotupdaterexample://e2e/runtime-marker",
   runtimeState: "hotupdaterexample://e2e/runtime-state",
+  updateActionResult: "hotupdaterexample://e2e/update-action-result",
   updateStore: "hotupdaterexample://e2e/update-store",
 };
 
 const E2E_SCREEN_CONTENT_TEST_IDS = {
-  actionResults: "e2e-screen-action-results",
+  channelActionResult: "e2e-screen-channel-action-result",
   cohortInputActions: "e2e-screen-cohort-input-actions",
   cohortPresetActions: "e2e-screen-cohort-preset-actions",
+  cohortActionResult: "e2e-screen-cohort-action-result",
   crashHistory: "e2e-screen-crash-history",
   installActions: "e2e-screen-install-actions",
+  launchCrashedBundle: "e2e-screen-launch-crashed-bundle",
   launchStatus: "e2e-screen-launch-status",
   runtimeChannelActions: "e2e-screen-runtime-channel-actions",
-  runtimeIdentity: "e2e-screen-runtime-identity",
+  runtimeBundle: "e2e-screen-runtime-bundle",
+  runtimeLargeAsset: "e2e-screen-runtime-large-asset",
+  runtimeMarker: "e2e-screen-runtime-marker",
   runtimeState: "e2e-screen-runtime-state",
+  updateActionResult: "e2e-screen-update-action-result",
   updateStore: "e2e-screen-update-store",
 };
 
@@ -127,11 +137,11 @@ function screenPathForTestID(testID) {
   if (testID.startsWith("action-")) {
     return "installActions";
   }
-  if (
-    testID === "launch-status-result" ||
-    testID === "launch-crashed-bundle-result"
-  ) {
+  if (testID === "launch-status-result") {
     return "launchStatus";
+  }
+  if (testID === "launch-crashed-bundle-result") {
+    return "launchCrashedBundle";
   }
   if (
     testID === "current-channel-summary" ||
@@ -148,18 +158,25 @@ function screenPathForTestID(testID) {
   if (testID === "crash-history-summary") {
     return "crashHistory";
   }
-  if (
-    testID === "runtime-bundle-id" ||
-    testID === "runtime-scenario-marker" ||
-    testID === "runtime-large-e2e-asset" ||
-    testID.startsWith("runtime-")
-  ) {
-    return "runtimeIdentity";
+  if (testID === "runtime-bundle-id") {
+    return "runtimeBundle";
   }
-  if (testID.endsWith("-result")) {
-    return "actionResults";
+  if (testID === "runtime-scenario-marker") {
+    return "runtimeMarker";
   }
-  return "runtimeIdentity";
+  if (testID === "runtime-large-e2e-asset") {
+    return "runtimeLargeAsset";
+  }
+  if (testID === "channel-action-result") {
+    return "channelActionResult";
+  }
+  if (testID === "update-action-result") {
+    return "updateActionResult";
+  }
+  if (testID === "cohort-action-result") {
+    return "cohortActionResult";
+  }
+  return "runtimeBundle";
 }
 
 async function waitForActiveScreen(screenContentTestID) {

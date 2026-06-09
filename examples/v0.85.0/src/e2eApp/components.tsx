@@ -5,15 +5,21 @@ import { styles } from "./styles";
 import type { ScreenName } from "./types";
 
 const screenContentTestIDs = {
-  ActionResults: "e2e-screen-action-results",
+  ChannelActionResult: "e2e-screen-channel-action-result",
   CohortInputActions: "e2e-screen-cohort-input-actions",
   CohortPresetActions: "e2e-screen-cohort-preset-actions",
+  CohortActionResult: "e2e-screen-cohort-action-result",
   CrashHistory: "e2e-screen-crash-history",
   InstallActions: "e2e-screen-install-actions",
+  LaunchCrashedBundle: "e2e-screen-launch-crashed-bundle",
   LaunchStatus: "e2e-screen-launch-status",
+  Ready: "e2e-screen-ready",
   RuntimeChannelActions: "e2e-screen-runtime-channel-actions",
-  RuntimeIdentity: "e2e-screen-runtime-identity",
+  RuntimeBundle: "e2e-screen-runtime-bundle",
+  RuntimeLargeAsset: "e2e-screen-runtime-large-asset",
+  RuntimeMarker: "e2e-screen-runtime-marker",
   RuntimeState: "e2e-screen-runtime-state",
+  UpdateActionResult: "e2e-screen-update-action-result",
   UpdateStore: "e2e-screen-update-store",
 } satisfies Record<ScreenName, string>;
 

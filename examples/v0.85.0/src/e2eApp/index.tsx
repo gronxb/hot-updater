@@ -8,15 +8,21 @@ import { SafeAreaView, Text } from "react-native";
 import { enableScreens } from "react-native-screens";
 
 import {
-  ActionResultsScreen,
+  ChannelActionResultScreen,
   CohortInputActionsScreen,
   CohortPresetActionsScreen,
+  CohortActionResultScreen,
   CrashHistoryScreen,
   InstallActionsScreen,
+  LaunchCrashedBundleScreen,
   LaunchStatusScreen,
+  ReadyScreen,
   RuntimeChannelActionsScreen,
-  RuntimeIdentityScreen,
+  RuntimeBundleScreen,
+  RuntimeLargeAssetScreen,
+  RuntimeMarkerScreen,
   RuntimeStateScreen,
+  UpdateActionResultScreen,
   UpdateStoreScreen,
 } from "./screens";
 import { styles } from "./styles";
@@ -30,15 +36,21 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const e2eLinking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
-      ActionResults: "e2e/results",
+      ChannelActionResult: "e2e/channel-action-result",
       CohortInputActions: "e2e/cohort-input",
       CohortPresetActions: "e2e/cohort-presets",
+      CohortActionResult: "e2e/cohort-action-result",
       CrashHistory: "e2e/crash-history",
       InstallActions: "e2e/install",
+      LaunchCrashedBundle: "e2e/launch-crashed-bundle",
       LaunchStatus: "e2e/launch-status",
+      Ready: "e2e/ready",
       RuntimeChannelActions: "e2e/runtime-channel",
-      RuntimeIdentity: "e2e/runtime-identity",
+      RuntimeBundle: "e2e/runtime-bundle",
+      RuntimeLargeAsset: "e2e/runtime-large-asset",
+      RuntimeMarker: "e2e/runtime-marker",
       RuntimeState: "e2e/runtime-state",
+      UpdateActionResult: "e2e/update-action-result",
       UpdateStore: "e2e/update-store",
     },
   },
@@ -64,14 +76,24 @@ export const E2eHotUpdaterApp = ({
       linking={e2eLinking}
     >
       <Stack.Navigator
-        initialRouteName="RuntimeIdentity"
+        initialRouteName="Ready"
         screenOptions={{ headerShown: false }}
       >
-        <Stack.Screen name="RuntimeIdentity">
-          {() => <RuntimeIdentityScreen model={model} />}
+        <Stack.Screen name="Ready" component={ReadyScreen} />
+        <Stack.Screen name="RuntimeBundle">
+          {() => <RuntimeBundleScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="RuntimeMarker">
+          {() => <RuntimeMarkerScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="RuntimeLargeAsset">
+          {() => <RuntimeLargeAssetScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="LaunchStatus">
           {() => <LaunchStatusScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="LaunchCrashedBundle">
+          {() => <LaunchCrashedBundleScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="RuntimeState">
           {() => <RuntimeStateScreen model={model} />}
@@ -94,8 +116,14 @@ export const E2eHotUpdaterApp = ({
         <Stack.Screen name="CohortPresetActions">
           {() => <CohortPresetActionsScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="ActionResults">
-          {() => <ActionResultsScreen model={model} />}
+        <Stack.Screen name="ChannelActionResult">
+          {() => <ChannelActionResultScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="UpdateActionResult">
+          {() => <UpdateActionResultScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="CohortActionResult">
+          {() => <CohortActionResultScreen model={model} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
