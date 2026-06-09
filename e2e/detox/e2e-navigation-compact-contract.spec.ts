@@ -87,10 +87,6 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppRoutePathsPath,
       "utf8",
     );
-    const e2eAppScreenTestIDsSource = await fs.readFile(
-      e2eAppScreenTestIDsPath,
-      "utf8",
-    );
 
     expect(e2eAppRoutePathsSource).toContain('Ready: "e2e/ready"');
     expect(e2eAppRoutePathsSource).toContain(
@@ -134,12 +130,35 @@ describe("E2E navigation compact surface contract", () => {
     );
     expect(e2eAppIndexSource).not.toContain("RuntimeIdentity");
     expect(e2eAppIndexSource).not.toContain("ActionResults");
-    expect(e2eAppScreenTestIDsSource).toContain('Ready: "e2e-screen-ready"');
-    expect(e2eAppScreenTestIDsSource).not.toContain("ScrollView");
+    await expect(fs.stat(e2eAppScreenTestIDsPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     await expect(fs.stat(e2eAppTopLevelScreensPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
     await expect(fs.stat(e2eAppScreensIndexPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("does not keep a central screen-content registry for assertions", async () => {
+    const e2eAppComponentsSource = await fs.readFile(
+      e2eAppComponentsPath,
+      "utf8",
+    );
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
+
+    expect(e2eAppComponentsSource).not.toContain("screenContentTestIDs");
+    expect(e2eAppComponentsSource).not.toContain("current: ScreenName");
+    expect(detoxPageSource).not.toContain("waitForActiveScreen");
+    expect(detoxScreenRoutesSource).not.toContain(
+      "E2E_SCREEN_CONTENT_TEST_IDS",
+    );
+    await expect(fs.stat(e2eAppScreenTestIDsPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
@@ -256,10 +275,6 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppRoutePathsPath,
       "utf8",
     );
-    const e2eAppScreenTestIDsSource = await fs.readFile(
-      e2eAppScreenTestIDsPath,
-      "utf8",
-    );
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxScreenRoutesSource = await fs.readFile(
       detoxScreenRoutesPath,
@@ -304,15 +319,11 @@ describe("E2E navigation compact surface contract", () => {
       expect(detoxScreenRoutesSource).toContain(`hotupdaterexample://${path}`);
     }
 
-    expect(e2eAppScreenTestIDsSource).toContain(
-      "RefreshRuntimeSnapshotAction:",
+    expect(detoxScreenRoutesSource).toContain(
+      '"action-refresh-runtime-snapshot": "refreshRuntimeSnapshotAction"',
     );
-    expect(e2eAppScreenTestIDsSource).toContain(
-      '"e2e-screen-action-refresh-runtime-snapshot"',
-    );
-    expect(e2eAppScreenTestIDsSource).toContain("UpdateStoreDownloadPaths:");
-    expect(e2eAppScreenTestIDsSource).toContain(
-      '"e2e-screen-update-store-download-paths"',
+    expect(detoxScreenRoutesSource).toContain(
+      '"update-store-download-paths": "updateStoreDownloadPaths"',
     );
     expect(detoxPageSource).not.toContain("installActions");
     expect(detoxPageSource).not.toContain("runtimeChannelActions");
@@ -448,7 +459,7 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppScreensSource.length,
     );
 
-    expect(readyScreenBody).toContain('<ScreenShell current="Ready">');
+    expect(readyScreenBody).toContain("<ScreenShell>");
     expect(readyScreenBody).toContain('testID="e2e-ready-status"');
     expect(readyScreenBody).not.toContain("RuntimeBundleScreen");
     expect(readyScreenBody).not.toContain("RuntimeMarkerScreen");
@@ -598,11 +609,12 @@ describe("E2E navigation compact surface contract", () => {
     const routeGroupFiles = (await fs.readdir(e2eAppRouteGroupDir)).filter(
       (fileName) => fileName.endsWith("-route-screen.tsx"),
     );
-    const screenTestIDSource = await fs.readFile(
-      e2eAppScreenTestIDsPath,
-      "utf8",
+    const routePathsSource = await fs.readFile(e2eAppRoutePathsPath, "utf8");
+    const routePathBody = routePathsSource.slice(
+      routePathsSource.indexOf("export const e2eScreenPaths = {"),
+      routePathsSource.indexOf("} satisfies Record<ScreenName, string>;"),
     );
-    const routeNames = [...screenTestIDSource.matchAll(/^  (\w+):/gm)]
+    const routeNames = [...routePathBody.matchAll(/^  (\w+):/gm)]
       .map((match) => match[1])
       .filter((routeName) => routeName !== "Ready");
 

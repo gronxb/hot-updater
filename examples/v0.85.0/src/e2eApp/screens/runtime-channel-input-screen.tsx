@@ -9,7 +9,7 @@ export const RuntimeChannelInputScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeChannelInput">
+    <ScreenShell>
       <TextInput
         accessibilityLabel="Runtime Channel Input"
         autoCapitalize="none"

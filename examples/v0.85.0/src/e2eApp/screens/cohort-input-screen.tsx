@@ -9,7 +9,7 @@ export const CohortInputScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="CohortInput">
+    <ScreenShell>
       <TextInput
         accessibilityLabel="Cohort Override Input"
         autoCapitalize="none"

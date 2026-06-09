@@ -9,7 +9,7 @@ export const UpdateActionResultScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="UpdateActionResult">
+    <ScreenShell>
       <Text selectable style={styles.resultText} testID="update-action-result">
         Update Action Result: {model.updateActionResult}
       </Text>

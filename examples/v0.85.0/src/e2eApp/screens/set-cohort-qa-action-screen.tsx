@@ -7,7 +7,7 @@ export const SetCohortQaActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="SetCohortQaAction">
+    <ScreenShell>
       <Button
         onPress={model.setCohortToQa}
         testID="action-set-cohort-qa"

@@ -7,7 +7,7 @@ export const ApplyCohortInputActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="ApplyCohortInputAction">
+    <ScreenShell>
       <Button
         onPress={model.applyCohortInput}
         testID="action-apply-cohort-input"

@@ -7,7 +7,7 @@ export const UpdateStoreDownloadedScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="UpdateStoreDownloaded">
+    <ScreenShell>
       <InfoRow
         label="Downloaded"
         value={String(model.isUpdateDownloaded)}

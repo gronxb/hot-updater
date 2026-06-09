@@ -7,7 +7,7 @@ export const InstallCurrentChannelUpdateActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="InstallCurrentChannelUpdateAction">
+    <ScreenShell>
       <Button
         onPress={() => model.installUpdate({ actionLabel: "current-channel" })}
         testID="action-install-current-channel-update"

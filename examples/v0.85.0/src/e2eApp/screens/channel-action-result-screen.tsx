@@ -9,7 +9,7 @@ export const ChannelActionResultScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="ChannelActionResult">
+    <ScreenShell>
       <Text selectable style={styles.resultText} testID="channel-action-result">
         Channel Action Result: {model.channelActionResult}
       </Text>

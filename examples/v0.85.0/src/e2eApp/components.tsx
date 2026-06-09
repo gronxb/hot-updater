@@ -1,9 +1,7 @@
 import React, { type ReactNode } from "react";
 import { Pressable, SafeAreaView, Text, View } from "react-native";
 
-import { screenContentTestIDs } from "./screen-test-ids";
 import { styles } from "./styles";
-import type { ScreenName } from "./types";
 
 export const InfoRow = ({
   label,
@@ -44,16 +42,8 @@ export const Button = ({
   </Pressable>
 );
 
-export const ScreenShell = ({
-  children,
-  current,
-}: {
-  readonly children: ReactNode;
-  readonly current: ScreenName;
-}) => (
+export const ScreenShell = ({ children }: { readonly children: ReactNode }) => (
   <SafeAreaView style={styles.safeArea}>
-    <View style={styles.content} testID={screenContentTestIDs[current]}>
-      {children}
-    </View>
+    <View style={styles.content}>{children}</View>
   </SafeAreaView>
 );

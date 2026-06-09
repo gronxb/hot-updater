@@ -7,7 +7,7 @@ export const RuntimeMarkerScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeMarker">
+    <ScreenShell>
       <InfoRow
         label="Marker"
         value={model.scenarioMarker}

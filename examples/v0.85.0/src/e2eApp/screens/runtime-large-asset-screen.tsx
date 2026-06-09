@@ -11,7 +11,7 @@ export const RuntimeLargeAssetScreen = () => {
   ).includes(E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH);
 
   return (
-    <ScreenShell current="RuntimeLargeAsset">
+    <ScreenShell>
       <InfoRow
         label="Large Asset"
         value={hasLargeE2EAsset ? "present" : "missing"}

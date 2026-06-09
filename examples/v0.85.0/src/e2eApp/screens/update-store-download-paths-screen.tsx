@@ -7,7 +7,7 @@ export const UpdateStoreDownloadPathsScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="UpdateStoreDownloadPaths">
+    <ScreenShell>
       <InfoRow
         label="Download Paths"
         value={model.updateStoreDownloadPathsText}

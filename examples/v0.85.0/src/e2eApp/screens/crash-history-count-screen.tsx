@@ -7,7 +7,7 @@ export const CrashHistoryCountScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="CrashHistoryCount">
+    <ScreenShell>
       <InfoRow
         label="Crash History Count"
         value={String(model.runtimeSnapshot.crashHistory.length)}

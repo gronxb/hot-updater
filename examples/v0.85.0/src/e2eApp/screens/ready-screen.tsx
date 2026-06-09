@@ -5,7 +5,7 @@ import { ScreenShell } from "../components";
 import { styles } from "../styles";
 
 export const ReadyScreen = () => (
-  <ScreenShell current="Ready">
+  <ScreenShell>
     <Text selectable style={styles.resultText} testID="e2e-ready-status">
       Ready
     </Text>

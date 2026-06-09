@@ -7,7 +7,7 @@ export const RuntimeChannelSwitchedScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeChannelSwitched">
+    <ScreenShell>
       <InfoRow
         label="Channel Switched"
         value={String(model.runtimeSnapshot.isChannelSwitched)}

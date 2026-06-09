@@ -7,7 +7,7 @@ export const RuntimeCurrentChannelScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeCurrentChannel">
+    <ScreenShell>
       <InfoRow
         label="Current Channel"
         value={model.runtimeSnapshot.channel}

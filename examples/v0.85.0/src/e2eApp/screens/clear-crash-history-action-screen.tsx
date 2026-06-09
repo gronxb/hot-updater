@@ -8,7 +8,6 @@ export const ClearCrashHistoryActionScreen = () => {
 
   return (
     <ActionButtonScreen
-      current="ClearCrashHistoryAction"
       onPress={model.clearCrashHistory}
       testID="action-clear-crash-history"
       title="Clear Crashes"

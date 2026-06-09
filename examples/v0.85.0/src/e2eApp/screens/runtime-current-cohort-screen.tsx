@@ -7,7 +7,7 @@ export const RuntimeCurrentCohortScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeCurrentCohort">
+    <ScreenShell>
       <InfoRow
         label="Current Cohort"
         value={model.runtimeSnapshot.cohort}

@@ -35,39 +35,6 @@ const E2E_SCREEN_URLS = {
     "hotupdaterexample://e2e/update-store-download-paths",
 };
 
-const E2E_SCREEN_CONTENT_TEST_IDS = {
-  applyCohortInputAction: "e2e-screen-action-apply-cohort-input",
-  channelActionResult: "e2e-screen-channel-action-result",
-  cohortActionResult: "e2e-screen-cohort-action-result",
-  cohortInput: "e2e-screen-input-cohort",
-  crashHistoryCount: "e2e-screen-crash-history-count",
-  clearCrashHistoryAction: "e2e-screen-action-clear-crash-history",
-  installCurrentChannelUpdateAction:
-    "e2e-screen-action-install-current-channel-update",
-  installRuntimeChannelUpdateAction:
-    "e2e-screen-action-install-runtime-channel-update",
-  launchCrashedBundle: "e2e-screen-launch-crashed-bundle",
-  launchStatus: "e2e-screen-launch-status",
-  runtimeBundle: "e2e-screen-runtime-bundle",
-  runtimeChannelInput: "e2e-screen-input-runtime-channel",
-  runtimeChannelSwitched: "e2e-screen-runtime-channel-switched",
-  runtimeCurrentChannel: "e2e-screen-runtime-current-channel",
-  runtimeCurrentCohort: "e2e-screen-runtime-current-cohort",
-  runtimeDefaultChannel: "e2e-screen-runtime-default-channel",
-  runtimeInitialCohort: "e2e-screen-runtime-initial-cohort",
-  runtimeLargeAsset: "e2e-screen-runtime-large-asset",
-  runtimeMarker: "e2e-screen-runtime-marker",
-  refreshRuntimeSnapshotAction:
-    "e2e-screen-action-refresh-runtime-snapshot",
-  reloadAppAction: "e2e-screen-action-reload-app",
-  resetRuntimeChannelAction: "e2e-screen-action-reset-runtime-channel",
-  restoreInitialCohortAction: "e2e-screen-action-restore-initial-cohort",
-  setCohortQaAction: "e2e-screen-action-set-cohort-qa",
-  updateActionResult: "e2e-screen-update-action-result",
-  updateStoreDownloaded: "e2e-screen-update-store-downloaded",
-  updateStoreDownloadPaths: "e2e-screen-update-store-download-paths",
-};
-
 const TEST_ID_SCREEN_PATHS = {
   "action-apply-cohort-input": "applyCohortInputAction",
   "action-clear-crash-history": "clearCrashHistoryAction",
@@ -105,7 +72,6 @@ function screenPathForTestID(testID) {
 }
 
 module.exports = {
-  E2E_SCREEN_CONTENT_TEST_IDS,
   E2E_SCREEN_URLS,
   screenPathForTestID,
 };

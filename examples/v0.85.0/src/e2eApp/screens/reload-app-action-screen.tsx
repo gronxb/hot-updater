@@ -8,7 +8,6 @@ export const ReloadAppActionScreen = () => {
 
   return (
     <ActionButtonScreen
-      current="ReloadAppAction"
       onPress={model.reloadApp}
       testID="action-reload-app"
       title="Reload"

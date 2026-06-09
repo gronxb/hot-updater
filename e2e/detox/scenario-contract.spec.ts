@@ -725,7 +725,9 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("async function waitForActiveScreen"),
+      detoxPageSource.indexOf(
+        "async function withSynchronizationDisabledForPageOpen",
+      ),
     );
 
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
@@ -753,7 +755,9 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("async function waitForActiveScreen"),
+      detoxPageSource.indexOf(
+        "async function withSynchronizationDisabledForPageOpen",
+      ),
     );
 
     expect(syncHelperBody).toContain(
@@ -1032,9 +1036,8 @@ describe("Detox scenario contract", () => {
       ),
     );
 
-    expect(exampleComponentSource).toContain(
-      "testID={screenContentTestIDs[current]}",
-    );
+    expect(exampleComponentSource).not.toContain("screenContentTestIDs");
+    expect(exampleComponentSource).not.toContain("current: ScreenName");
     expect(exampleComponentSource).not.toContain("ScrollView");
     expect(openScreenBody).not.toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain('scrollTo("top")');

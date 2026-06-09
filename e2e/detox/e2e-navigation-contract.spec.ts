@@ -128,9 +128,8 @@ describe("E2E navigation contract", () => {
     expect(e2eAppComponentsSource).not.toContain("ScrollView");
     expect(e2eAppComponentsSource).not.toContain("ScreenTabs");
     expect(e2eAppComponentsSource).not.toContain("e2e-nav-");
-    expect(e2eAppComponentsSource).toContain(
-      "testID={screenContentTestIDs[current]}",
-    );
+    expect(e2eAppComponentsSource).not.toContain("screenContentTestIDs");
+    expect(e2eAppComponentsSource).not.toContain("current: ScreenName");
     expect(e2eAppRoutePathsSource).toContain("hotupdaterexample://");
     await expect(fs.stat(e2eAppTopLevelScreensPath)).rejects.toMatchObject({
       code: "ENOENT",
@@ -266,12 +265,10 @@ describe("E2E navigation contract", () => {
     expect(
       detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
     ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));
-    expect(openScreenBody).toContain(
-      "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
-    );
+    expect(openScreenBody).not.toContain("waitForActiveScreen");
     expect(openScreenBody).not.toContain(".tap()");
     expect(detoxPageSource).not.toContain('by.id("e2e-active-screen")');
-    expect(detoxPageSource).toContain("E2E_SCREEN_CONTENT_TEST_IDS");
+    expect(detoxPageSource).not.toContain("E2E_SCREEN_CONTENT_TEST_IDS");
     expect(detoxPageSource).not.toContain('by.id("e2e-screen-content")');
     expect(detoxPageSource).not.toContain(".whileElement(");
     expect(detoxPageSource).not.toContain(".scroll(");

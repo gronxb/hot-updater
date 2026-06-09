@@ -9,7 +9,7 @@ export const LaunchStatusScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="LaunchStatus">
+    <ScreenShell>
       <Text selectable style={styles.resultText} testID="launch-status-result">
         {model.launchStatusText}
       </Text>

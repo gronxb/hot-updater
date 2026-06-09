@@ -94,9 +94,8 @@ describe("Detox assertion parity", () => {
     expect(openScreenBody).toContain(
       "openDeepLinkScreen(E2E_SCREEN_URLS[screenPath])",
     );
-    expect(openScreenBody).toContain(
-      "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
-    );
+    expect(openScreenBody).not.toContain("waitForActiveScreen");
+    expect(detoxPageSource).not.toContain("E2E_SCREEN_CONTENT_TEST_IDS");
     expect(openScreenBody).not.toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
     expect(detoxPageSource).toContain("async function openDeepLinkScreen");

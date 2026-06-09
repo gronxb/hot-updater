@@ -7,7 +7,7 @@ export const ResetRuntimeChannelActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="ResetRuntimeChannelAction">
+    <ScreenShell>
       <Button
         onPress={model.resetRuntimeChannel}
         testID="action-reset-runtime-channel"

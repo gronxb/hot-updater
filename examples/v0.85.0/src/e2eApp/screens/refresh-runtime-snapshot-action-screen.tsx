@@ -8,7 +8,6 @@ export const RefreshRuntimeSnapshotActionScreen = () => {
 
   return (
     <ActionButtonScreen
-      current="RefreshRuntimeSnapshotAction"
       onPress={model.refreshRuntimeSnapshot}
       testID="action-refresh-runtime-snapshot"
       title="Refresh"

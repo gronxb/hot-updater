@@ -7,7 +7,7 @@ export const RestoreInitialCohortActionScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RestoreInitialCohortAction">
+    <ScreenShell>
       <Button
         onPress={model.restoreInitialCohort}
         testID="action-restore-initial-cohort"

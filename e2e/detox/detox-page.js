@@ -1,6 +1,5 @@
 const { by, device, element, waitFor } = require("detox");
 const {
-  E2E_SCREEN_CONTENT_TEST_IDS,
   E2E_SCREEN_URLS,
   screenPathForTestID,
 } = require("./detox-screen-routes.js");
@@ -83,12 +82,6 @@ async function disableSynchronizationUntilLaunch() {
   synchronizationDisabledUntilLaunch = true;
 }
 
-async function waitForActiveScreen(screenContentTestID) {
-  await waitFor(element(by.id(screenContentTestID)))
-    .toBeVisible()
-    .withTimeout(30000);
-}
-
 async function withSynchronizationDisabledForPageOpen(operation) {
   await disableSynchronizationUntilLaunch();
   return operation();
@@ -97,14 +90,12 @@ async function withSynchronizationDisabledForPageOpen(operation) {
 async function openScreenForTestID(testID) {
   const screenPath = screenPathForTestID(testID);
   if (activeScreenPath === screenPath) {
-    await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     return;
   }
 
   await withSynchronizationDisabledForPageOpen(async () => {
     await openDeepLinkScreen(E2E_SCREEN_URLS[screenPath]);
     await disableSynchronizationUntilLaunch();
-    await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     activeScreenPath = screenPath;
   });
 }

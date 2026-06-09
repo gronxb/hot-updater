@@ -9,7 +9,7 @@ export const LaunchCrashedBundleScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="LaunchCrashedBundle">
+    <ScreenShell>
       <Text
         selectable
         style={styles.resultText}

@@ -7,7 +7,7 @@ export const RuntimeBundleScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell current="RuntimeBundle">
+    <ScreenShell>
       <InfoRow
         label="Bundle ID"
         value={model.runtimeSnapshot.bundleId}
