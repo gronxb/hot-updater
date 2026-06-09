@@ -96,10 +96,6 @@ function textFromAttributes(attributes) {
   return "";
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function shouldDisableSynchronizationForTap(testID) {
   return testID.startsWith("action-install-");
 }
@@ -189,10 +185,7 @@ async function withSynchronizationDisabledForPageOpen(operation) {
 
 async function openScreenForTestID(testID) {
   const screenPath = screenPathForTestID(testID);
-  await launchApp({
-    newInstance: false,
-    url: E2E_SCREEN_URLS[screenPath],
-  });
+  await device.openURL({ url: E2E_SCREEN_URLS[screenPath] });
   await withSynchronizationDisabledForPageOpen(async () => {
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     const screenContent = element(by.id("e2e-screen-content"));
@@ -204,14 +197,6 @@ async function ensureAppForegroundForInteraction() {
   if (isAndroidRun()) {
     await launchApp({ newInstance: false });
   }
-}
-
-async function waitForVisibleTestIDText(testID, expectedText) {
-  await waitFor(
-    element(by.id(testID).and(by.text(new RegExp(escapeRegExp(expectedText))))),
-  )
-    .toBeVisible()
-    .withTimeout(30000);
 }
 
 async function findVisibleTestID(controlClient, testID, options = {}) {
@@ -248,6 +233,5 @@ module.exports = {
   launchApp,
   shouldDisableSynchronizationForTap,
   textFromAttributes,
-  waitForVisibleTestIDText,
   withSynchronizationDisabledForAssertion,
 };

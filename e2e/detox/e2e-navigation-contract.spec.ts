@@ -95,6 +95,7 @@ describe("E2E navigation contract", () => {
 
     expect(detoxPageSource).toContain("screenPathForTestID");
     expect(detoxPageSource).toContain("openScreenForTestID");
+    expect(detoxPageSource).toContain("device.openURL({");
     expect(detoxPageSource).toContain('"runtimeIdentity"');
     expect(detoxPageSource).toContain('"cohortInputActions"');
     expect(detoxPageSource).toContain('"runtimeChannelActions"');
@@ -111,7 +112,9 @@ describe("E2E navigation contract", () => {
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/launch-status");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/crash-history");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/update-store");
+    expect(openScreenBody).toContain("device.openURL({");
     expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(openScreenBody).not.toContain("launchApp({");
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );

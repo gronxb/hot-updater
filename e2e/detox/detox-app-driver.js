@@ -6,7 +6,6 @@ const {
   launchApp,
   shouldDisableSynchronizationForTap,
   textFromAttributes,
-  waitForVisibleTestIDText,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
@@ -23,7 +22,6 @@ class DetoxAppDriver {
         const target = await findVisibleTestID(this.controlClient, testID, {
           ensureForeground: options.ensureForeground,
         });
-        await waitForVisibleTestIDText(testID, expectedText);
         const text = textFromAttributes(await target.getAttributes());
         if (!text.includes(expectedText)) {
           throw new Error(

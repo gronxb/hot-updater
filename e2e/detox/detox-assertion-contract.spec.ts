@@ -25,21 +25,16 @@ describe("Detox assertion parity", () => {
       detoxRuntimeSource.indexOf("async assertText(stage"),
       detoxRuntimeSource.indexOf("async control(stage"),
     );
-    const waitForTextBody = detoxPageSource.slice(
-      detoxPageSource.indexOf("async function waitForVisibleTestIDText"),
-      detoxPageSource.indexOf("async function findVisibleTestID"),
-    );
 
-    // Then: Detox must wait for the expected text to be present before reading
-    // the id-owned target. This preserves Maestro's bounded visible text
-    // assertion while still reading the final value from the target testID.
+    // Then: Detox reads the id-owned target directly. This preserves Maestro's
+    // copied-text contains assertion without adding a flaky text matcher.
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
-    expect(assertTextBody).toContain("waitForVisibleTestIDText");
+    expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
-    expect(waitForTextBody).toContain(".toBeVisible()");
-    expect(waitForTextBody).toContain(".withTimeout(30000)");
+    expect(detoxPageSource).not.toContain("waitForVisibleTestIDText");
+    expect(detoxPageSource).not.toContain("by.text(");
   });
 
   it("opens a target-specific screen before waiting for assertion text", async () => {
@@ -61,15 +56,9 @@ describe("Detox assertion parity", () => {
         "async function withSynchronizationDisabledForAssertion",
       ),
     );
-    const waitForTextBody = detoxPageSource.slice(
-      detoxPageSource.indexOf("async function waitForVisibleTestIDText"),
-      detoxPageSource.indexOf("async function findVisibleTestID"),
-    );
 
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
-    expect(assertTextBody).toContain(
-      "await waitForVisibleTestIDText(testID, expectedText)",
-    );
+    expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
     expect(assertTextBody).not.toContain("expectedText,");
     expect(findVisibleBody).toContain("await openScreenForTestID(testID)");
     expect(findVisibleBody).toContain("const target = element(by.id(testID))");
@@ -78,12 +67,8 @@ describe("Detox assertion parity", () => {
     expect(findVisibleBody).not.toContain(".whileElement(");
     expect(findVisibleBody).not.toContain(".scroll(");
     expect(findVisibleBody).not.toContain("expectedText");
-    expect(waitForTextBody).toContain("by.id(testID)");
-    expect(waitForTextBody).toContain("by.text(new RegExp");
-    expect(waitForTextBody).toContain("escapeRegExp(expectedText)");
-    expect(waitForTextBody).toContain(".withTimeout(30000)");
-    expect(waitForTextBody).not.toContain(".whileElement(");
-    expect(waitForTextBody).not.toContain(".scroll(");
+    expect(detoxPageSource).not.toContain("by.text(");
+    expect(detoxPageSource).not.toContain("escapeRegExp(expectedText)");
   });
 
   it("opens deep-linked target screens without waiting for Detox app idle", async () => {
@@ -99,15 +84,17 @@ describe("Detox assertion parity", () => {
     );
 
     expect(openScreenBody).toContain("withSynchronizationDisabledForPageOpen");
+    expect(openScreenBody).toContain("device.openURL({");
     expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );
     expect(openScreenBody).toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
-    expect(
-      openScreenBody.indexOf("withSynchronizationDisabledForPageOpen"),
-    ).toBeLessThan(openScreenBody.indexOf('by.id("e2e-screen-content")'));
+    expect(openScreenBody).not.toContain("launchApp({");
+    expect(openScreenBody.indexOf("device.openURL({")).toBeLessThan(
+      openScreenBody.indexOf('by.id("e2e-screen-content")'),
+    );
   });
 
   it("reads assertion text with Detox synchronization temporarily disabled", async () => {
