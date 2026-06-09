@@ -2,13 +2,11 @@ const { by, device, element, waitFor } = require("detox");
 const {
   E2E_SCREEN_CONTENT_TEST_IDS,
   E2E_SCREEN_URLS,
-  resultTestIDForActionTestID,
   screenPathForTestID,
 } = require("./detox-screen-routes.js");
 
 let synchronizationDisabledUntilLaunch = false;
 let activeScreenPath;
-const activeResultScreenPaths = {};
 
 function isAndroidRun() {
   return [
@@ -63,7 +61,6 @@ async function launchApp(options = {}) {
   synchronizationDisabledUntilLaunch = false;
   if (options.newInstance !== false) {
     activeScreenPath = undefined;
-    clearActiveResultScreenPaths();
     return;
   }
   if (typeof options.url === "string") activeScreenPath = undefined;
@@ -98,8 +95,7 @@ async function withSynchronizationDisabledForPageOpen(operation) {
 }
 
 async function openScreenForTestID(testID) {
-  const screenPath =
-    activeResultScreenPaths[testID] || screenPathForTestID(testID);
+  const screenPath = screenPathForTestID(testID);
   if (activeScreenPath === screenPath) {
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     return;
@@ -132,18 +128,6 @@ async function ensureAppForegroundForInteraction() {
   }
 }
 
-function clearActiveResultScreenPaths() {
-  for (const testID of Object.keys(activeResultScreenPaths)) {
-    delete activeResultScreenPaths[testID];
-  }
-}
-
-function rememberActionResultScreenPath(actionTestID) {
-  const resultTestID = resultTestIDForActionTestID(actionTestID);
-  if (!resultTestID) return;
-  activeResultScreenPaths[resultTestID] = screenPathForTestID(actionTestID);
-}
-
 async function findVisibleTestID(controlClient, testID, options = {}) {
   if (options.ensureForeground !== false) {
     await ensureAppForegroundForInteraction();
@@ -166,7 +150,6 @@ module.exports = {
   findVisibleTestID,
   isAndroidRun,
   launchApp,
-  rememberActionResultScreenPath,
   textFromAttributes,
   withSynchronizationDisabledForAssertion,
 };

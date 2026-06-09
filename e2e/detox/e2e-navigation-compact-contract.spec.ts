@@ -383,22 +383,60 @@ describe("E2E navigation compact surface contract", () => {
     expect(applyCohortActionScreenSource).toContain(
       'testID="action-apply-cohort-input"',
     );
-    expect(applyCohortActionScreenSource).toContain(
+    expect(applyCohortActionScreenSource).not.toContain(
       'testID="cohort-action-result"',
     );
+    expect(applyCohortActionScreenSource).not.toContain("Action Result:");
     expect(installRuntimeActionScreenSource).toContain(
       'testID="action-install-runtime-channel-update"',
     );
-    expect(installRuntimeActionScreenSource).toContain(
+    expect(installRuntimeActionScreenSource).not.toContain(
       'testID="channel-action-result"',
     );
-    expect(detoxScreenRoutesSource).toContain(
+    expect(installRuntimeActionScreenSource).not.toContain("Action Result:");
+    expect(detoxScreenRoutesSource).not.toContain(
       "function resultTestIDForActionTestID(testID)",
     );
     expect(detoxPageSource).toContain("activeScreenPath");
     expect(detoxPageSource).toContain("activeScreenPath === screenPath");
     expect(detoxPageSource).toContain("activeScreenPath = screenPath");
-    expect(detoxPageSource).toContain("activeResultScreenPaths");
+    expect(detoxPageSource).not.toContain("activeResultScreenPaths");
+  });
+
+  it("keeps action pages and result pages as distinct one-target routes", async () => {
+    const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
+      (fileName) => fileName.endsWith(".tsx"),
+    );
+
+    for (const fileName of screenFiles) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      const actionTestIDs = source.match(/testID="action-[^"]+"/g) ?? [];
+      const resultTestIDs = source.match(/testID="[^"]+-action-result"/g) ?? [];
+
+      expect(
+        actionTestIDs.length === 0 || resultTestIDs.length === 0,
+        fileName,
+      ).toBe(true);
+    }
+
+    const detoxAppDriverSource = await fs.readFile(
+      path.join(repoDir, "e2e/detox/detox-app-driver.js"),
+      "utf8",
+    );
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+    const detoxScreenRoutesSource = await fs.readFile(
+      detoxScreenRoutesPath,
+      "utf8",
+    );
+
+    expect(detoxAppDriverSource).not.toContain(
+      "rememberActionResultScreenPath",
+    );
+    expect(detoxPageSource).not.toContain("activeResultScreenPaths");
+    expect(detoxScreenRoutesSource).not.toContain("ACTION_RESULT_TEST_IDS");
   });
 
   it("keeps the ready route out of assertion and action surfaces", async () => {
