@@ -467,7 +467,7 @@ describe("E2E navigation compact surface contract", () => {
       "utf8",
     );
     const routeGroupFiles = (await fs.readdir(e2eAppRouteGroupDir)).filter(
-      (fileName) => fileName.endsWith("-route-screens.tsx"),
+      (fileName) => fileName.endsWith("-route-screen.tsx"),
     );
     const routeGroupSources = await Promise.all(
       routeGroupFiles.map((fileName) =>
@@ -496,37 +496,35 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutesSource).not.toContain("{() =>");
     expect(e2eAppRoutesSource).toContain("routeScreens");
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeBundleAssertionRouteScreens",
+      "runtimeBundleRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeChannelAssertionRouteScreens",
+      "runtimeCurrentChannelRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeCohortAssertionRouteScreens",
+      "runtimeCurrentCohortRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "launchStateAssertionRouteScreens",
+      "launchStatusRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "updateStoreAssertionRouteScreens",
+      "updateStoreDownloadedRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "resultAssertionRouteScreens",
+      "channelActionResultRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "installActionRouteScreens",
+      "installCurrentChannelUpdateActionRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeCommandRouteScreens",
+      "refreshRuntimeSnapshotActionRouteScreen",
     );
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeChannelActionRouteScreens",
+      "resetRuntimeChannelActionRouteScreen",
     );
+    expect(e2eAppRouteScreenRegistrySource).toContain("cohortInputRouteScreen");
     expect(e2eAppRouteScreenRegistrySource).toContain(
-      "cohortInputRouteScreens",
-    );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "cohortPresetRouteScreens",
+      "setCohortQaActionRouteScreen",
     );
     expect(e2eAppRoutesSource).not.toContain("assertionRouteScreens");
     expect(e2eAppRoutesSource).not.toContain("interactionRouteScreens");
@@ -552,7 +550,7 @@ describe("E2E navigation compact surface contract", () => {
     expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(18);
     expect(
       sourceCodeLineCount(e2eAppRouteScreenRegistrySource),
-    ).toBeLessThanOrEqual(40);
+    ).toBeLessThanOrEqual(70);
     for (const [index, source] of routeGroupSources.entries()) {
       expect(
         sourceCodeLineCount(source),
@@ -583,10 +581,17 @@ describe("E2E navigation compact surface contract", () => {
     });
   });
 
-  it("keeps route groups from becoming bundled assertion pages", async () => {
+  it("keeps every route registration in its own file", async () => {
     const routeGroupFiles = (await fs.readdir(e2eAppRouteGroupDir)).filter(
-      (fileName) => fileName.endsWith("-route-screens.tsx"),
+      (fileName) => fileName.endsWith("-route-screen.tsx"),
     );
+    const screenTestIDSource = await fs.readFile(
+      e2eAppScreenTestIDsPath,
+      "utf8",
+    );
+    const routeNames = [...screenTestIDSource.matchAll(/^  (\w+):/gm)]
+      .map((match) => match[1])
+      .filter((routeName) => routeName !== "Ready");
 
     for (const fileName of routeGroupFiles) {
       const source = await fs.readFile(
@@ -595,9 +600,11 @@ describe("E2E navigation compact surface contract", () => {
       );
       const stackScreens = source.match(/<Stack\.Screen/g) ?? [];
 
-      expect(stackScreens.length, fileName).toBeLessThanOrEqual(3);
-      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(34);
+      expect(stackScreens.length, fileName).toBe(1);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(14);
     }
+
+    expect(routeGroupFiles).toHaveLength(routeNames.length);
   });
 
   it("does not swallow E2E action button errors", async () => {
