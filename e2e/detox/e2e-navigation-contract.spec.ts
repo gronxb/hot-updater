@@ -21,6 +21,10 @@ const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
 );
+const e2eAppRouteStackPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/route-stack.ts",
+);
 const e2eAppScreensIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/index.ts",
@@ -61,6 +65,10 @@ describe("E2E navigation contract", () => {
     const appSource = await fs.readFile(appPath, "utf8");
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const e2eAppRouteStackSource = await fs.readFile(
+      e2eAppRouteStackPath,
+      "utf8",
+    );
     const e2eAppRoutePathsSource = await fs.readFile(
       e2eAppRoutePathsPath,
       "utf8",
@@ -94,7 +102,7 @@ describe("E2E navigation contract", () => {
     expect(e2eAppIndexSource).toContain("e2eLinking");
     expect(e2eAppIndexSource).not.toContain("createNativeStackNavigator");
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
-    expect(e2eAppRoutesSource).toContain("createNativeStackNavigator");
+    expect(e2eAppRouteStackSource).toContain("createNativeStackNavigator");
     expect(e2eAppRoutesSource).toContain('initialRouteName="Ready"');
     expect(e2eAppScreenFiles).toContain("ready-screen.tsx");
     expect(e2eAppScreenFiles).toContain("runtime-bundle-screen.tsx");

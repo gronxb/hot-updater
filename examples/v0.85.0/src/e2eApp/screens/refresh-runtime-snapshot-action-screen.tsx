@@ -1,13 +1,17 @@
 import React from "react";
 
+import { useE2eRuntimeModelContext } from "../runtime-model-context";
 import { ActionButtonScreen } from "./action-button-screen";
-import type { ScreenProps } from "./types";
 
-export const RefreshRuntimeSnapshotActionScreen = ({ model }: ScreenProps) => (
-  <ActionButtonScreen
-    current="RefreshRuntimeSnapshotAction"
-    onPress={model.refreshRuntimeSnapshot}
-    testID="action-refresh-runtime-snapshot"
-    title="Refresh"
-  />
-);
+export const RefreshRuntimeSnapshotActionScreen = () => {
+  const model = useE2eRuntimeModelContext();
+
+  return (
+    <ActionButtonScreen
+      current="RefreshRuntimeSnapshotAction"
+      onPress={model.refreshRuntimeSnapshot}
+      testID="action-refresh-runtime-snapshot"
+      title="Refresh"
+    />
+  );
+};

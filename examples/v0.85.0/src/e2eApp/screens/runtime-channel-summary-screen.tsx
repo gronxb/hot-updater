@@ -2,10 +2,11 @@ import React from "react";
 import { Text } from "react-native";
 
 import { ScreenShell } from "../components";
+import { useE2eRuntimeModelContext } from "../runtime-model-context";
 import { styles } from "../styles";
-import type { ScreenProps } from "./types";
 
-export const RuntimeChannelSummaryScreen = ({ model }: ScreenProps) => {
+export const RuntimeChannelSummaryScreen = () => {
+  const model = useE2eRuntimeModelContext();
   const channelSummary = `current=${model.runtimeSnapshot.channel} default=${
     model.runtimeSnapshot.defaultChannel
   } switched=${String(model.runtimeSnapshot.isChannelSwitched)}`;

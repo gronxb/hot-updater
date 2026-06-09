@@ -1,14 +1,18 @@
 import React from "react";
 
 import { InfoRow, ScreenShell } from "../components";
-import type { ScreenProps } from "./types";
+import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
-export const UpdateStoreDownloadedScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="UpdateStoreDownloaded">
-    <InfoRow
-      label="Downloaded"
-      value={String(model.isUpdateDownloaded)}
-      valueTestID="update-store-downloaded"
-    />
-  </ScreenShell>
-);
+export const UpdateStoreDownloadedScreen = () => {
+  const model = useE2eRuntimeModelContext();
+
+  return (
+    <ScreenShell current="UpdateStoreDownloaded">
+      <InfoRow
+        label="Downloaded"
+        value={String(model.isUpdateDownloaded)}
+        valueTestID="update-store-downloaded"
+      />
+    </ScreenShell>
+  );
+};

@@ -1,13 +1,17 @@
 import React from "react";
 
+import { useE2eRuntimeModelContext } from "../runtime-model-context";
 import { ActionButtonScreen } from "./action-button-screen";
-import type { ScreenProps } from "./types";
 
-export const ReloadAppActionScreen = ({ model }: ScreenProps) => (
-  <ActionButtonScreen
-    current="ReloadAppAction"
-    onPress={model.reloadApp}
-    testID="action-reload-app"
-    title="Reload"
-  />
-);
+export const ReloadAppActionScreen = () => {
+  const model = useE2eRuntimeModelContext();
+
+  return (
+    <ActionButtonScreen
+      current="ReloadAppAction"
+      onPress={model.reloadApp}
+      testID="action-reload-app"
+      title="Reload"
+    />
+  );
+};

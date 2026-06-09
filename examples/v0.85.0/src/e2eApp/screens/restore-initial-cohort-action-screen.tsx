@@ -1,13 +1,17 @@
 import React from "react";
 
+import { useE2eRuntimeModelContext } from "../runtime-model-context";
 import { ActionButtonScreen } from "./action-button-screen";
-import type { ScreenProps } from "./types";
 
-export const RestoreInitialCohortActionScreen = ({ model }: ScreenProps) => (
-  <ActionButtonScreen
-    current="RestoreInitialCohortAction"
-    onPress={model.restoreInitialCohort}
-    testID="action-restore-initial-cohort"
-    title="Restore Cohort"
-  />
-);
+export const RestoreInitialCohortActionScreen = () => {
+  const model = useE2eRuntimeModelContext();
+
+  return (
+    <ActionButtonScreen
+      current="RestoreInitialCohortAction"
+      onPress={model.restoreInitialCohort}
+      testID="action-restore-initial-cohort"
+      title="Restore Cohort"
+    />
+  );
+};

@@ -5,6 +5,7 @@ import { enableScreens } from "react-native-screens";
 
 import { e2eLinking } from "./route-paths";
 import { E2eStack } from "./routes";
+import { E2eRuntimeModelProvider } from "./runtime-model-context";
 import { styles } from "./styles";
 import { useE2eRuntimeModel } from "./useE2eRuntime";
 
@@ -18,17 +19,19 @@ export const E2eHotUpdaterApp = ({
   const model = useE2eRuntimeModel(scenarioMarker);
 
   return (
-    <NavigationContainer
-      fallback={
-        <SafeAreaView style={styles.safeArea}>
-          <Text style={styles.description} testID="e2e-navigation-loading">
-            Loading
-          </Text>
-        </SafeAreaView>
-      }
-      linking={e2eLinking}
-    >
-      <E2eStack model={model} />
-    </NavigationContainer>
+    <E2eRuntimeModelProvider model={model}>
+      <NavigationContainer
+        fallback={
+          <SafeAreaView style={styles.safeArea}>
+            <Text style={styles.description} testID="e2e-navigation-loading">
+              Loading
+            </Text>
+          </SafeAreaView>
+        }
+        linking={e2eLinking}
+      >
+        <E2eStack />
+      </NavigationContainer>
+    </E2eRuntimeModelProvider>
   );
 };
