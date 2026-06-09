@@ -1204,6 +1204,36 @@ describe("Detox scenario contract", () => {
     ).toBe(false);
   });
 
+  it("hashes Android bundle assets through a binary-safe run-as copy path", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const hashBody = controllerSource.slice(
+      controllerSource.indexOf("function readAndroidBundleAssetFileHash"),
+      controllerSource.indexOf("function readBundleAssetFileHash"),
+    );
+
+    expect(hashBody).toContain("readAndroidFileBuffer");
+    expect(hashBody).toContain(".update(fileBuffer)");
+    expect(hashBody).not.toContain('"sha256sum"');
+  });
+
+  it("rewrites the E2E scenario marker with a resilient declaration matcher", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+
+    expect(controllerSource).toContain("const MARKER_PATTERN =");
+    expect(controllerSource).toContain(
+      "/export\\s+const\\s+E2E_SCENARIO_MARKER",
+    );
+    expect(controllerSource).toContain("(?::\\s*string)?");
+    expect(controllerSource).toContain("[\"']");
+    expect(controllerSource).toContain("sourceSnippet");
+  });
+
   it("waits for consecutive bsdiff installs to become stable before asserting patch evidence", async () => {
     // Given: Android and iOS use different primary bundle asset names.
     const stages = await scenarioStages("bspatch-consecutive-diff-ota");

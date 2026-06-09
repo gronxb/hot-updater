@@ -232,7 +232,8 @@ const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
-const MARKER_PATTERN = /export const E2E_SCENARIO_MARKER = ".*?";/;
+const MARKER_PATTERN =
+  /export\s+const\s+E2E_SCENARIO_MARKER\s*(?::\s*string)?\s*=\s*["'][^"']*["'];/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
 const E2E_APP_VERSION = "1.0";
 const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
@@ -1009,7 +1010,13 @@ async function applyAppScenario({
   );
 
   if (!MARKER_PATTERN.test(source)) {
-    throw new Error("Failed to locate E2E scenario marker in patchSurface.ts");
+    throw createEndpointError(
+      "Failed to locate E2E scenario marker in patchSurface.ts",
+      {
+        sourceFile: path.relative(REPO_DIR, fixtureSession.appSourceFile),
+        sourceSnippet: sourceSnippet(source, "E2E_SCENARIO_MARKER"),
+      },
+    );
   }
   if (!CRASH_GUARD_PATTERN.test(source)) {
     throw new Error(
@@ -1976,9 +1983,8 @@ function resetAndroidPackageData() {
   );
 }
 
-function copyAndroidFile(remotePath: string, localPath: string) {
-  let result = spawnSync(
-    "adb",
+function readAndroidFileBuffer(remotePath: string) {
+  const readAttempts = [
     [
       "-s",
       deviceId as string,
@@ -1988,47 +1994,45 @@ function copyAndroidFile(remotePath: string, localPath: string) {
       "cat",
       remotePath,
     ],
-    {
-      encoding: "utf8",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "cat",
+      remotePath,
+    ],
+    ["-s", deviceId as string, "shell", "cat", remotePath],
+  ];
+  let readError = "";
+
+  for (const args of readAttempts) {
+    const result = spawnSync("adb", args, {
       stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+    });
+    if (result.status === 0) {
+      return { fileBuffer: result.stdout, readError: null };
+    }
 
-  if (result.status !== 0) {
-    result = spawnSync(
-      "adb",
-      [
-        "-s",
-        deviceId as string,
-        "shell",
-        "run-as",
-        fixtureSession.appId,
-        "cat",
-        remotePath,
-      ],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
+    readError =
+      result.stderr.toString().trim() ||
+      result.error?.message ||
+      `adb exited ${String(result.status)}`;
+  }
+
+  return { fileBuffer: null, readError };
+}
+
+function copyAndroidFile(remotePath: string, localPath: string) {
+  const result = readAndroidFileBuffer(remotePath);
+  if (!result.fileBuffer) {
+    throw new Error(
+      `Failed to read ${remotePath} from Android device: ${result.readError}`,
     );
   }
 
-  if (result.status !== 0) {
-    result = spawnSync(
-      "adb",
-      ["-s", deviceId as string, "shell", "cat", remotePath],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-  }
-
-  if (result.status !== 0) {
-    throw new Error(`Failed to read ${remotePath} from Android device`);
-  }
-
-  fs.writeFileSync(localPath, result.stdout);
+  fs.writeFileSync(localPath, result.fileBuffer);
 }
 
 function androidFileExists(remotePath: string) {
@@ -2157,6 +2161,15 @@ function assertCrashHistoryContains(filePath: string, bundleId: string) {
 
 function createEndpointError(message: string, details?: unknown) {
   return Object.assign(new Error(message), { details });
+}
+
+function sourceSnippet(source: string, token: string) {
+  const tokenIndex = source.indexOf(token);
+  const center = tokenIndex === -1 ? 0 : tokenIndex;
+  const start = Math.max(0, center - 160);
+  const end = Math.min(source.length, center + token.length + 240);
+
+  return source.slice(start, end);
 }
 
 function readOptionalJsonSnapshot(filePath: string): JsonSnapshot {
@@ -2566,46 +2579,21 @@ function readIosBundleAssetFileHash(bundleId: string, assetPath: string) {
 
 function readAndroidBundleAssetFileHash(bundleId: string, assetPath: string) {
   const remotePath = `${ensureStorePath()}/${bundleId}/${assetPath}`;
-  let result = spawnSync(
-    "adb",
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "sha256sum",
-      remotePath,
-    ],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-
-  if (result.status !== 0) {
-    result = spawnSync(
-      "adb",
-      ["-s", deviceId as string, "shell", "sha256sum", remotePath],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
-  }
-
-  if (result.status !== 0) {
+  const result = readAndroidFileBuffer(remotePath);
+  if (!result.fileBuffer) {
     return {
       exists: false,
       fileHash: null,
       path: remotePath,
-      readError: result.stderr.trim() || `sha256sum exited ${result.status}`,
+      readError: result.readError,
     };
   }
 
-  const fileHash = result.stdout.trim().split(/\s+/)[0] ?? null;
+  const fileBuffer = result.fileBuffer;
+  const fileHash = createHash("sha256").update(fileBuffer).digest("hex");
+
   return {
-    exists: typeof fileHash === "string" && fileHash.length > 0,
+    exists: true,
     fileHash,
     path: remotePath,
     readError: null,

@@ -15,11 +15,11 @@ export {
   CohortActionResultScreen,
   UpdateActionResultScreen,
 } from "./result-screens";
+export { ReadyScreen } from "./ready-screen";
 export {
   CrashHistoryScreen,
   LaunchCrashedBundleScreen,
   LaunchStatusScreen,
-  ReadyScreen,
   RuntimeBundleScreen,
   RuntimeChannelSummaryScreen,
   RuntimeCohortSummaryScreen,

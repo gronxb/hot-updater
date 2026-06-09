@@ -6,16 +6,6 @@ import { E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH } from "../runtime";
 import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
-export const ReadyScreen = () => (
-  <ScreenShell current="Ready">
-    <Section title="E2E Ready">
-      <Text selectable style={styles.resultText} testID="e2e-ready-status">
-        Ready
-      </Text>
-    </Section>
-  </ScreenShell>
-);
-
 export const RuntimeBundleScreen = ({ model }: ScreenProps) => (
   <ScreenShell current="RuntimeBundle">
     <Section title="Runtime Bundle">
