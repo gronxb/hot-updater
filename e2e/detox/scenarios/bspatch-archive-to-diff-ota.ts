@@ -26,6 +26,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       "assert archive base action result",
       "update-action-result",
       "current-channel -> installed $archiveBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait archive base metadata pending",
@@ -100,6 +101,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       "assert archive diff action result",
       "update-action-result",
       "current-channel -> installed $diffBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait archive diff metadata pending",

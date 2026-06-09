@@ -41,6 +41,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "assert current bundle action result",
         "update-action-result",
         "current-channel -> installed $currentBundleId",
+        { exactText: true },
       );
       await app.control(
         "wait current bundle metadata pending",
@@ -89,6 +90,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "assert rollback to built-in no update",
         "update-action-result",
         "current-channel -> no-update",
+        { exactText: true },
       );
       await app.control(
         "assert rollback metadata reset",

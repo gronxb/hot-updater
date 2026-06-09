@@ -71,6 +71,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "assert excluded cohort no update",
         "update-action-result",
         "current-channel -> no-update",
+        { exactText: true },
       );
       await app.control(
         "assert excluded metadata reset",
@@ -102,6 +103,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "assert included cohort action result",
         "update-action-result",
         "current-channel -> installed $bundleId",
+        { exactText: true },
       );
       await app.control(
         "wait included cohort metadata pending",
@@ -149,6 +151,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "assert restored excluded cohort no update",
         "update-action-result",
         "current-channel -> no-update",
+        { exactText: true },
       );
       await app.control(
         "assert restored excluded metadata reset",
@@ -175,6 +178,7 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "assert qa cohort action result",
         "update-action-result",
         "current-channel -> installed $bundleId",
+        { exactText: true },
       );
       await app.control(
         "wait qa cohort metadata pending",

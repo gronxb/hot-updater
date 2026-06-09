@@ -6,6 +6,7 @@ export type DetoxControlOptions = {
 };
 
 export type DetoxAssertTextOptions = {
+  readonly exactText?: boolean;
   readonly ensureForeground?: boolean;
 };
 

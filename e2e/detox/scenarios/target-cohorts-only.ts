@@ -35,6 +35,7 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
       "assert target cohort action result",
       "update-action-result",
       "current-channel -> installed $bundleId",
+      { exactText: true },
     );
     await app.control(
       "wait target cohort metadata pending",

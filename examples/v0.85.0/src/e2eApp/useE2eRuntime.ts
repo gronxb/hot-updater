@@ -102,7 +102,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
       const installed = await updateInfo.updateBundle();
       setUpdateActionResult(
         installed
-          ? `${actionLabel} -> installed ${updateInfo.id} (${updateInfo.status})`
+          ? `${actionLabel} -> installed ${updateInfo.id}`
           : `${actionLabel} -> skipped`,
       );
       await refresh();

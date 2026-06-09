@@ -26,6 +26,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       "assert manifest base action result",
       "update-action-result",
       "current-channel -> installed $previousBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait manifest base metadata pending",
@@ -92,6 +93,7 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       "assert manifest fallback action result",
       "update-action-result",
       "current-channel -> installed $bundleId",
+      { exactText: true },
     );
     await app.control(
       "wait manifest fallback metadata pending",

@@ -35,6 +35,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "assert stable action result",
       "update-action-result",
       "current-channel -> installed $stableBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait stable metadata pending",
@@ -82,6 +83,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "assert crash action result",
       "update-action-result",
       "current-channel -> installed $crashBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait crash metadata pending",

@@ -104,6 +104,7 @@ type RecordedScenarioCall =
   | {
       readonly contains: string;
       readonly kind: "assertText";
+      readonly options?: DetoxAssertTextOptions;
       readonly stage: string;
       readonly testID: string;
     }
@@ -131,8 +132,8 @@ async function recordScenarioCalls(
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
   const app: DetoxAppDriver = {
-    assertText: (stage, testID, contains) => {
-      calls.push({ contains, kind: "assertText", stage, testID });
+    assertText: (stage, testID, contains, options) => {
+      calls.push({ contains, kind: "assertText", options, stage, testID });
       return Promise.resolve();
     },
     control: (stage, pathName, body, options) => {
@@ -694,7 +695,8 @@ describe("Detox scenario contract", () => {
             .some(
               (entry) =>
                 entry.kind === "assertText" &&
-                entry.testID === "update-action-result",
+                entry.testID === "update-action-result" &&
+                entry.options?.exactText === true,
             ),
           stageLabel,
         ).toBe(true);
@@ -938,7 +940,9 @@ describe("Detox scenario contract", () => {
     expect(installRuntimeScreenSource).not.toContain(
       "ActionButtonWithStartCount",
     );
-    expect(detoxRuntimeSource).not.toContain("waitForCurrentTestIDText");
+    expect(detoxRuntimeSource).toContain(
+      "await waitForCurrentTestIDText(testID, expectedText)",
+    );
     expect(detoxRuntimeSource).not.toContain("Action Start Count:");
     expect(detoxRuntimeSource).not.toContain("openScreenForTestID(testID)");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);

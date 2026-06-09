@@ -27,6 +27,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       "assert first multi-asset action result",
       "update-action-result",
       "current-channel -> installed $firstBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait first multi-asset metadata pending",
@@ -82,6 +83,7 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       "assert second multi-asset action result",
       "update-action-result",
       "current-channel -> installed $secondBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait second multi-asset metadata pending",

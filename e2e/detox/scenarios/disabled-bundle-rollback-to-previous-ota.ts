@@ -41,6 +41,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "assert previous bundle action result",
         "update-action-result",
         "current-channel -> installed $previousBundleId",
+        { exactText: true },
       );
       await app.control(
         "wait previous bundle metadata pending",
@@ -100,6 +101,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "assert next bundle action result",
         "update-action-result",
         "current-channel -> installed $nextBundleId",
+        { exactText: true },
       );
       await app.control(
         "wait next bundle metadata pending",
@@ -148,6 +150,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "assert previous ota rollback action result",
         "update-action-result",
         "current-channel -> installed $previousBundleId",
+        { exactText: true },
       );
       await app.control(
         "wait previous rollback metadata pending",

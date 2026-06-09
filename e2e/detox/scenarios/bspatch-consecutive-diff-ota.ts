@@ -26,6 +26,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "assert diff bundle A action result",
       "update-action-result",
       "current-channel -> installed $bundleA",
+      { exactText: true },
     );
     await app.control(
       "wait diff bundle A metadata pending",
@@ -81,6 +82,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "assert diff bundle B action result",
       "update-action-result",
       "current-channel -> installed $bundleB",
+      { exactText: true },
     );
     await app.control(
       "wait diff bundle B metadata pending",
@@ -139,6 +141,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "assert diff bundle C action result",
       "update-action-result",
       "current-channel -> installed $bundleC",
+      { exactText: true },
     );
     await app.control(
       "wait diff bundle C metadata pending",
@@ -206,6 +209,7 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "assert diff bundle D action result",
       "update-action-result",
       "current-channel -> installed $bundleD",
+      { exactText: true },
     );
     await app.control(
       "wait diff bundle D metadata pending",

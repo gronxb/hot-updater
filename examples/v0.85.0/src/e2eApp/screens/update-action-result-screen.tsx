@@ -10,7 +10,7 @@ export const UpdateActionResultText = () => {
 
   return (
     <Text selectable style={styles.resultText} testID="update-action-result">
-      Update Action Result: {model.updateActionResult}
+      {model.updateActionResult}
     </Text>
   );
 };

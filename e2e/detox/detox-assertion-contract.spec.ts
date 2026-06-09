@@ -26,10 +26,11 @@ describe("Detox assertion parity", () => {
       detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    // Then: Detox reads the id-owned target directly. This preserves Maestro's
-    // copied-text contains assertion without adding a flaky text matcher.
+    // Then: Detox reads the id-owned target directly, while exact result
+    // assertions can wait on the same target without adding start-count UI.
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
-    expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
+    expect(assertTextBody).toContain("if (options.exactText === true)");
+    expect(assertTextBody).toContain("waitForCurrentTestIDText");
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
@@ -58,8 +59,10 @@ describe("Detox assertion parity", () => {
     );
 
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
-    expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
-    expect(assertTextBody).not.toContain("expectedText,");
+    expect(assertTextBody).toContain("waitForCurrentTestIDText");
+    expect(assertTextBody).toContain(
+      "await waitForCurrentTestIDText(testID, expectedText)",
+    );
     expect(findVisibleBody).toContain("await openScreenForTestID(testID)");
     expect(findVisibleBody).toContain("const target = element(by.id(testID))");
     expect(findVisibleBody).toContain("await waitFor(target)");

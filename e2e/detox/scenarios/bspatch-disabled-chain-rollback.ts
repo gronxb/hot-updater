@@ -44,6 +44,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain bundle A action result",
       "update-action-result",
       "current-channel -> installed $bundleA",
+      { exactText: true },
     );
     await app.control(
       "wait chain bundle A metadata pending",
@@ -109,6 +110,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain bundle B action result",
       "update-action-result",
       "current-channel -> installed $bundleB",
+      { exactText: true },
     );
     await app.control(
       "wait chain bundle B metadata pending",
@@ -177,6 +179,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain bundle C action result",
       "update-action-result",
       "current-channel -> installed $bundleC",
+      { exactText: true },
     );
     await app.control(
       "wait chain bundle C metadata pending",
@@ -248,6 +251,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain bundle B rollback action result",
       "update-action-result",
       "current-channel -> installed $bundleB",
+      { exactText: true },
     );
     await app.control(
       "wait chain bundle B rollback metadata pending",
@@ -307,6 +311,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain bundle A rollback action result",
       "update-action-result",
       "current-channel -> installed $bundleA",
+      { exactText: true },
     );
     await app.control(
       "wait chain bundle A rollback metadata pending",
@@ -366,6 +371,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain built-in rollback no update",
       "update-action-result",
       "current-channel -> no-update",
+      { exactText: true },
     );
     await app.control(
       "assert chain built-in metadata reset",

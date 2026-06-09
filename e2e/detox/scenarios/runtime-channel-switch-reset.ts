@@ -55,6 +55,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "assert runtime channel action result",
       "update-action-result",
       "runtime-channel:beta -> installed $runtimeBundleId",
+      { exactText: true },
     );
     await app.control(
       "wait runtime channel metadata pending",

@@ -59,6 +59,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       "assert rollout action result",
       "update-action-result",
       "current-channel -> installed $bundleId",
+      { exactText: true },
     );
     await app.control(
       "wait rollout metadata pending",
@@ -102,6 +103,7 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       "assert excluded cohort no update",
       "update-action-result",
       "current-channel -> no-update",
+      { exactText: true },
     );
     await app.control(
       "assert excluded metadata reset",

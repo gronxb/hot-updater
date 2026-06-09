@@ -5,6 +5,7 @@ const {
   isAndroidRun,
   launchApp,
   textFromAttributes,
+  waitForCurrentTestIDText,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
@@ -21,6 +22,10 @@ class DetoxAppDriver {
         const target = await findVisibleTestID(this.controlClient, testID, {
           ensureForeground: options.ensureForeground,
         });
+        if (options.exactText === true) {
+          await waitForCurrentTestIDText(testID, expectedText);
+          return;
+        }
         const text = textFromAttributes(await target.getAttributes());
         if (!text.includes(expectedText)) {
           throw new Error(
