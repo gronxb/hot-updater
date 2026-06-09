@@ -12,6 +12,7 @@ const E2E_SCREEN_URLS = {
     "hotupdaterexample://e2e/action/install-runtime-channel-update",
   launchCrashedBundle: "hotupdaterexample://e2e/launch-crashed-bundle",
   launchStatus: "hotupdaterexample://e2e/launch-status",
+  ready: "hotupdaterexample://e2e/ready",
   runtimeBundle: "hotupdaterexample://e2e/runtime-bundle",
   runtimeChannelInput: "hotupdaterexample://e2e/input/runtime-channel",
   runtimeChannelSwitched: "hotupdaterexample://e2e/runtime-channel-switched",
@@ -68,7 +69,7 @@ const TEST_ID_SCREEN_PATHS = {
 };
 
 function screenPathForTestID(testID) {
-  return TEST_ID_SCREEN_PATHS[testID] || "runtimeBundle";
+  return TEST_ID_SCREEN_PATHS[testID] || "ready";
 }
 
 module.exports = {

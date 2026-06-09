@@ -263,6 +263,13 @@ describe("E2E navigation compact surface contract", () => {
     expect(detoxScreenRoutesSource).toContain("const E2E_SCREEN_URLS =");
     expect(detoxScreenRoutesSource).toContain("screenPathForTestID");
     expect(detoxScreenRoutesSource).toContain(
+      'ready: "hotupdaterexample://e2e/ready"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      'return TEST_ID_SCREEN_PATHS[testID] || "ready";',
+    );
+    expect(detoxScreenRoutesSource).not.toContain('|| "runtimeBundle"');
+    expect(detoxScreenRoutesSource).toContain(
       "hotupdaterexample://e2e/runtime-marker",
     );
     expect(detoxScreenRoutesSource).toContain(
