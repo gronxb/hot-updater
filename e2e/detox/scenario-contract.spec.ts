@@ -970,6 +970,31 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("observes action start from press-in before async action work can block UI flush", async () => {
+    const componentsSource = await fs.readFile(
+      exampleE2eAppComponentsPath,
+      "utf8",
+    );
+    const buttonBody = componentsSource.slice(
+      componentsSource.indexOf("export const Button"),
+      componentsSource.indexOf("export const ActionButtonWithStartCount"),
+    );
+    const actionButtonBody = componentsSource.slice(
+      componentsSource.indexOf("export const ActionButtonWithStartCount"),
+      componentsSource.indexOf("export const ScreenShell"),
+    );
+
+    expect(buttonBody).toContain("readonly onPressIn?: () => void;");
+    expect(buttonBody).toContain("onPressIn={onPressIn}");
+    expect(actionButtonBody).toContain("onPressIn={() =>");
+    expect(actionButtonBody).toContain(
+      "setStartCount((current) => current + 1);",
+    );
+    expect(actionButtonBody.indexOf("onPressIn={() =>")).toBeLessThan(
+      actionButtonBody.indexOf("onPress={() =>"),
+    );
+  });
+
   it("keeps explicit reloads at the cold-start boundary", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,

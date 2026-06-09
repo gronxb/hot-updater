@@ -22,10 +22,12 @@ export const InfoRow = ({
 
 export const Button = ({
   onPress,
+  onPressIn,
   testID,
   title,
 }: {
   readonly onPress: () => Promise<void> | void;
+  readonly onPressIn?: () => void;
   readonly testID: string;
   readonly title: string;
 }) => (
@@ -35,6 +37,7 @@ export const Button = ({
     onPress={() => {
       void onPress();
     }}
+    onPressIn={onPressIn}
     style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
     testID={testID}
   >
@@ -56,8 +59,10 @@ export const ActionButtonWithStartCount = ({
   return (
     <>
       <Button
-        onPress={() => {
+        onPressIn={() => {
           setStartCount((current) => current + 1);
+        }}
+        onPress={() => {
           return onPress();
         }}
         testID={testID}
