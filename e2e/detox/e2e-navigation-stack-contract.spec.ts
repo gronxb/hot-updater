@@ -16,6 +16,10 @@ const e2eAppRouteGroupDir = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routeGroups",
 );
+const e2eAppRouteModulesDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routes",
+);
 const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
@@ -60,7 +64,7 @@ describe("E2E navigation stack contract", () => {
     expect(sourceCodeLineCount(readyScreenBody)).toBeLessThanOrEqual(14);
   });
 
-  it("keeps the app entrypoint from becoming a scenario screen registry", async () => {
+  it("keeps the app entrypoint and stack container from becoming scenario screen registries", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
     const e2eAppRuntimeModelContextSource = await fs.readFile(
@@ -78,42 +82,21 @@ describe("E2E navigation stack contract", () => {
     expect(e2eAppIndexSource).not.toContain("InstallCurrentChannelUpdate");
     expect(e2eAppRoutesSource).not.toContain("e2e/action/");
     expect(e2eAppRoutesSource).not.toContain("e2e/runtime-");
+    expect(e2eAppRoutesSource).not.toContain("RuntimeBundleScreen");
+    expect(e2eAppRoutesSource).not.toContain(
+      "InstallCurrentChannelUpdateActionScreen",
+    );
     expect(e2eAppRoutesSource).not.toContain("modelScreens");
     expect(e2eAppRoutesSource).not.toContain("screen.render(model)");
     expect(e2eAppRoutesSource).not.toContain("{() =>");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
-    expect(e2eAppRoutesSource).toContain("component={RuntimeBundleScreen}");
-    expect(e2eAppRoutesSource).toContain(
-      "component={RuntimeCurrentChannelScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain(
-      "component={RuntimeCurrentCohortScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain("component={LaunchStatusScreen}");
-    expect(e2eAppRoutesSource).toContain(
-      "component={UpdateStoreDownloadedScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain(
-      "component={ChannelActionResultScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain(
-      "component={InstallCurrentChannelUpdateActionScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain(
-      "component={RefreshRuntimeSnapshotActionScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain(
-      "component={ResetRuntimeChannelActionScreen}",
-    );
-    expect(e2eAppRoutesSource).toContain("component={CohortInputScreen}");
-    expect(e2eAppRoutesSource).toContain("component={SetCohortQaActionScreen}");
     expect(e2eAppRoutesSource).not.toContain("assertionRouteScreens");
     expect(e2eAppRoutesSource).not.toContain("interactionRouteScreens");
     expect(e2eAppRoutesSource).not.toContain("RuntimeChannelSummary");
     expect(e2eAppRoutesSource).not.toContain("RuntimeCohortSummary");
     expect(e2eAppRoutesSource).not.toContain("CrashHistoryScreen");
-    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(140);
+    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(35);
     expect(e2eAppRuntimeModelContextSource).toContain(
       "createContext<E2eRuntimeModel | null>",
     );
@@ -131,13 +114,35 @@ describe("E2E navigation stack contract", () => {
     });
   });
 
-  it("keeps stack routes direct instead of hiding them in route group layers", async () => {
+  it("keeps stack routes split into small React Navigation route modules", async () => {
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
-    const stackScreens = e2eAppRoutesSource.match(/<Stack\.Screen/g) ?? [];
+    const routeModuleFiles = (await fs.readdir(e2eAppRouteModulesDir))
+      .filter((fileName) => fileName.endsWith("-routes.tsx"))
+      .sort();
+    const routeModuleSources = await Promise.all(
+      routeModuleFiles.map((fileName) =>
+        fs.readFile(path.join(e2eAppRouteModulesDir, fileName), "utf8"),
+      ),
+    );
+    const stackScreens = routeModuleSources.flatMap(
+      (source) => source.match(/<Stack\.Screen/g) ?? [],
+    );
 
+    expect(routeModuleFiles).toEqual([
+      "action-routes.tsx",
+      "input-routes.tsx",
+      "ready-routes.tsx",
+      "runtime-routes.tsx",
+      "status-routes.tsx",
+    ]);
     expect(stackScreens).toHaveLength(28);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
+    for (const source of routeModuleSources) {
+      expect(source).not.toContain("ScrollView");
+      expect(source).not.toContain("Section");
+      expect(sourceCodeLineCount(source)).toBeLessThanOrEqual(80);
+    }
     await expect(fs.stat(e2eAppRouteGroupDir)).rejects.toMatchObject({
       code: "ENOENT",
     });
