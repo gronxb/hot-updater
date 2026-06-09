@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
+const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const e2eAppIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/index.tsx",
@@ -48,6 +49,20 @@ const sourceCodeLineCount = (source: string): number =>
   }).length;
 
 describe("E2E navigation stack contract", () => {
+  it("keeps the example App entrypoint as a thin E2E shell", async () => {
+    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+
+    expect(exampleAppSource).toContain("E2eHotUpdaterApp");
+    expect(exampleAppSource).toContain("E2E_SCENARIO_MARKER");
+    expect(exampleAppSource).not.toContain("ScrollView");
+    expect(exampleAppSource).not.toContain("Stack.Navigator");
+    expect(exampleAppSource).not.toContain("Stack.Screen");
+    expect(exampleAppSource).not.toContain("testID=");
+    expect(exampleAppSource).not.toContain("RuntimeBundleScreen");
+    expect(exampleAppSource).not.toContain("InstallCurrentChannelUpdate");
+    expect(sourceCodeLineCount(exampleAppSource)).toBeLessThanOrEqual(18);
+  });
+
   it("keeps the ready route out of assertion and action surfaces", async () => {
     const e2eAppScreensSource = await fs.readFile(
       e2eAppReadyScreenPath,

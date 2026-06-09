@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, ScreenShell } from "../components";
+import { ActionButtonWithStartCount, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const ResetRuntimeChannelActionScreen = () => {
@@ -8,7 +8,7 @@ export const ResetRuntimeChannelActionScreen = () => {
 
   return (
     <ScreenShell>
-      <Button
+      <ActionButtonWithStartCount
         onPress={model.resetRuntimeChannel}
         testID="action-reset-runtime-channel"
         title="Reset Channel"

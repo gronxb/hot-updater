@@ -129,6 +129,18 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
   return target;
 }
 
+async function findVisibleCurrentTestID(testID) {
+  const target = element(by.id(testID));
+  await waitFor(target).toBeVisible().withTimeout(30000);
+  return target;
+}
+
+async function waitForCurrentTestIDText(testID, text) {
+  const target = element(by.id(testID));
+  await waitFor(target).toHaveText(text).withTimeout(30000);
+  return target;
+}
+
 async function withSynchronizationDisabledForAssertion(operation) {
   await disableSynchronizationUntilLaunch();
   return operation();
@@ -138,9 +150,11 @@ module.exports = {
   androidReversePorts,
   controlBaseUrl,
   disableSynchronizationUntilLaunch,
+  findVisibleCurrentTestID,
   findVisibleTestID,
   isAndroidRun,
   launchApp,
   textFromAttributes,
+  waitForCurrentTestIDText,
   withSynchronizationDisabledForAssertion,
 };

@@ -54,6 +54,22 @@ const exampleE2eAppInstallRuntimeScreenPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
 );
+const exampleE2eAppApplyCohortInputScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/apply-cohort-input-action-screen.tsx",
+);
+const exampleE2eAppSetCohortQaScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/set-cohort-qa-action-screen.tsx",
+);
+const exampleE2eAppRestoreInitialCohortScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/restore-initial-cohort-action-screen.tsx",
+);
+const exampleE2eAppResetRuntimeChannelScreenPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/reset-runtime-channel-action-screen.tsx",
+);
 const exampleE2eAppUseRuntimePath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
@@ -600,7 +616,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("text.includes(expectedText)");
   });
 
-  it("observes install action start after install taps", async () => {
+  it("observes action start after action taps", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -611,8 +627,11 @@ describe("Detox scenario contract", () => {
     );
 
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("await this.waitForInstallActionResult(testID);");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult(");
+    expect(tapBody).toContain(
+      "await this.waitForActionStartCount(testID, startCount);",
+    );
+    expect(detoxRuntimeSource).toContain("async waitForActionStartCount(");
+    expect(detoxRuntimeSource).toContain("readActionStartCount(testID)");
     expect(detoxRuntimeSource).not.toContain("metadata.json");
     expect(tapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
@@ -728,8 +747,9 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
     expect(syncHelperBody).toContain("device.disableSynchronization()");
     expect(syncHelperBody).toContain("synchronizationDisabledUntilLaunch");
-    expect(installTapBody).toContain("waitForInstallActionResult(testID)");
-    expect(detoxRuntimeSource).toContain("{ ensureForeground: false }");
+    expect(installTapBody).toContain("waitForActionStartCount(testID");
+    expect(detoxRuntimeSource).toContain("findVisibleCurrentTestID");
+    expect(detoxRuntimeSource).not.toContain("{ ensureForeground: false }");
     expect(installTapBody).not.toContain("device.enableSynchronization()");
     expect(installTapBody).not.toContain("finally");
     expect(deviceActionBody).toContain(
@@ -780,8 +800,8 @@ describe("Detox scenario contract", () => {
     expect(installTapBody).not.toContain("isInstallAction");
     expect(installTapBody).not.toContain("reattachAfterInstallTap");
     expect(detoxRuntimeSource).not.toContain("async reattachAfterInstallTap");
-    expect(installTapBody).toContain("waitForInstallActionResult(testID)");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
+    expect(installTapBody).toContain("waitForActionStartCount(testID");
+    expect(detoxRuntimeSource).toContain("async waitForActionStartCount");
     expect(installTapBody).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -880,13 +900,72 @@ describe("Detox scenario contract", () => {
       'actionResults: "hotupdaterexample://e2e/results"',
     );
     expect(detoxPageSource).toContain(".toBeVisible()");
-    expect(detoxRuntimeSource).toContain("async waitForInstallActionResult");
+    expect(detoxRuntimeSource).toContain("async waitForActionStartCount");
     expect(assertTextBody).toContain("findVisibleTestID(");
     expect(assertTextBody).toContain("const target = await findVisibleTestID");
     expect(assertTextBody).toContain("await target.getAttributes()");
     expect(assertTextBody).toContain("textFromAttributes");
     expect(assertTextBody).toContain(".includes(expectedText)");
     expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
+    expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
+    expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
+  });
+
+  it("observes install action start on the active action screen", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const installCurrentScreenSource = await fs.readFile(
+      exampleE2eAppInstallCurrentScreenPath,
+      "utf8",
+    );
+    const installRuntimeScreenSource = await fs.readFile(
+      exampleE2eAppInstallRuntimeScreenPath,
+      "utf8",
+    );
+    const waitForActionStartCountBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async waitForActionStartCount"),
+      detoxRuntimeSource.indexOf(
+        "}\n}\n\nfunction shouldWaitForActionStartCount",
+      ),
+    );
+
+    expect(installCurrentScreenSource).toContain("ActionButtonWithStartCount");
+    expect(installRuntimeScreenSource).toContain("ActionButtonWithStartCount");
+    expect(waitForActionStartCountBody).toContain("waitForCurrentTestIDText");
+    expect(waitForActionStartCountBody).toContain("Action Start Count:");
+    expect(waitForActionStartCountBody).not.toContain(
+      'findVisibleTestID(\n      this.controlClient,\n      "update-action-result"',
+    );
+    expect(waitForActionStartCountBody).not.toContain("openScreenForTestID");
+    expect(waitForActionStartCountBody).not.toMatch(/\bretry\b/i);
+    expect(waitForActionStartCountBody).not.toMatch(/\bsetTimeout\b/i);
+  });
+
+  it("observes result-producing action starts on their active action screens", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const actionScreenSources = await Promise.all([
+      fs.readFile(exampleE2eAppApplyCohortInputScreenPath, "utf8"),
+      fs.readFile(exampleE2eAppSetCohortQaScreenPath, "utf8"),
+      fs.readFile(exampleE2eAppRestoreInitialCohortScreenPath, "utf8"),
+      fs.readFile(exampleE2eAppResetRuntimeChannelScreenPath, "utf8"),
+    ]);
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+
+    expect(actionScreenSources.join("\n")).toContain(
+      "ActionButtonWithStartCount",
+    );
+    expect(tapBody).toContain("waitForActionStartCount(testID");
+    expect(detoxRuntimeSource).toContain("shouldWaitForActionStartCount");
+    expect(detoxRuntimeSource).toContain('"action-reload-app"');
+    expect(detoxRuntimeSource).toContain("-start-count");
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
@@ -1157,7 +1236,7 @@ describe("Detox scenario contract", () => {
       "function waitForCurrentChannelDownload",
     );
     expect(tapBody).toContain("await target.tap()");
-    expect(tapBody).toContain("waitForInstallActionResult(testID)");
+    expect(tapBody).toContain("waitForActionStartCount(testID");
     expect(detoxRuntimeSource).not.toContain(
       "function waitForCurrentChannelDownload",
     );

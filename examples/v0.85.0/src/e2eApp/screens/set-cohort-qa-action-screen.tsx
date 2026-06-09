@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, ScreenShell } from "../components";
+import { ActionButtonWithStartCount, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const SetCohortQaActionScreen = () => {
@@ -8,7 +8,7 @@ export const SetCohortQaActionScreen = () => {
 
   return (
     <ScreenShell>
-      <Button
+      <ActionButtonWithStartCount
         onPress={model.setCohortToQa}
         testID="action-set-cohort-qa"
         title="Set QA"

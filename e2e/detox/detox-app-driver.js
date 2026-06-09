@@ -1,10 +1,12 @@
 const { device } = require("detox");
 const {
   disableSynchronizationUntilLaunch,
+  findVisibleCurrentTestID,
   findVisibleTestID,
   isAndroidRun,
   launchApp,
   textFromAttributes,
+  waitForCurrentTestIDText,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
@@ -93,9 +95,10 @@ class DetoxAppDriver {
       const isAppReloadAction = testID === "action-reload-app";
       await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
+      const startCount = await this.readActionStartCount(testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
-      await this.waitForInstallActionResult(testID);
+      await this.waitForActionStartCount(testID, startCount);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
@@ -191,32 +194,38 @@ class DetoxAppDriver {
     await launchApp({ newInstance: false });
   }
 
-  async waitForInstallActionResult(testID) {
-    const expectedPrefix = installActionResultPrefix(testID);
-    if (!expectedPrefix) return;
+  async readActionStartCount(testID) {
+    if (!shouldWaitForActionStartCount(testID)) return null;
 
-    const result = await findVisibleTestID(
-      this.controlClient,
-      "update-action-result",
-      { ensureForeground: false },
+    const result = await findVisibleCurrentTestID(
+      actionStartCountTestID(testID),
     );
     const text = textFromAttributes(await result.getAttributes());
-    if (!text.includes(expectedPrefix)) {
+    const match = /^Action Start Count: (\d+)$/.exec(text);
+    if (!match) {
       throw new Error(
-        `Install action ${testID} did not start. Expected update-action-result to contain "${expectedPrefix}", received "${text}"`,
+        `Action ${testID} start count was not readable. Received "${text}"`,
       );
     }
+    return Number.parseInt(match[1], 10);
+  }
+
+  async waitForActionStartCount(testID, previousCount) {
+    if (previousCount === null) return;
+
+    await waitForCurrentTestIDText(
+      actionStartCountTestID(testID),
+      `Action Start Count: ${previousCount + 1}`,
+    );
   }
 }
 
-function installActionResultPrefix(testID) {
-  if (testID === "action-install-current-channel-update") {
-    return "current-channel ->";
-  }
-  if (testID === "action-install-runtime-channel-update") {
-    return "runtime-channel:";
-  }
-  return null;
+function shouldWaitForActionStartCount(testID) {
+  return testID.startsWith("action-") && testID !== "action-reload-app";
+}
+
+function actionStartCountTestID(testID) {
+  return `${testID}-start-count`;
 }
 
 module.exports = { DetoxAppDriver };
