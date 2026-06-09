@@ -248,6 +248,10 @@ describe("E2E navigation action route contract", () => {
     expect(detoxAppDriverSource).toContain('"runtime-channel-input"');
     expect(e2eRuntimeConfigSource).toContain("readE2eScreenState");
     expect(e2eRuntimeConfigSource).toContain("patchE2eScreenState");
+    expect(e2eRuntimeConfigSource).not.toContain('new URL("screen-state"');
+    expect(e2eRuntimeConfigSource).toContain(
+      'replace(/\\/runtime-config$/, "/screen-state")',
+    );
     expect(e2eRuntimeHookSource).toContain("readE2eScreenState");
     expect(e2eRuntimeHookSource).toContain("patchE2eScreenState");
     expect(e2eRuntimeHookSource).toMatch(

@@ -46,10 +46,17 @@ const hotUpdaterRuntimeConfigURL =
   HOT_UPDATER_E2E_RUNTIME_CONFIG_URL ??
   DEFAULT_E2E_RUNTIME_CONFIG_URL;
 
-const hotUpdaterScreenStateURL = new URL(
-  "screen-state",
+const screenStateURLFromRuntimeConfigURL = (runtimeConfigURL: string) => {
+  if (runtimeConfigURL.endsWith("/runtime-config")) {
+    return runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state");
+  }
+
+  return `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;
+};
+
+const hotUpdaterScreenStateURL = screenStateURLFromRuntimeConfigURL(
   hotUpdaterRuntimeConfigURL,
-).toString();
+);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
