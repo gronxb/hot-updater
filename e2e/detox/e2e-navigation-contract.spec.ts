@@ -25,6 +25,10 @@ const e2eAppRouteStackPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/route-stack.ts",
 );
+const e2eAppNavigationControllerPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
+);
 const e2eAppScreensIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/index.ts",
@@ -99,7 +103,7 @@ describe("E2E navigation contract", () => {
     expect(appSource).toContain("patchSurface");
     expect(e2eAppIndexSource).toContain("NavigationContainer");
     expect(e2eAppIndexSource).toContain("E2eStack");
-    expect(e2eAppIndexSource).toContain("e2eLinking");
+    expect(e2eAppIndexSource).toContain("navigationRef");
     expect(e2eAppIndexSource).not.toContain("createNativeStackNavigator");
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
     expect(e2eAppRouteStackSource).toContain("createNativeStackNavigator");
@@ -137,6 +141,41 @@ describe("E2E navigation contract", () => {
     expect(e2eAppPatchSurfaceSource).toContain("E2E_DEPLOY_ASSET_GUARD_START");
     expect(appSource).not.toContain("sectionOffsets");
     expect(appSource).not.toContain("scrollToSection");
+  });
+
+  it("handles E2E deep links through an explicit navigation ref", async () => {
+    const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppRoutePathsSource = await fs.readFile(
+      e2eAppRoutePathsPath,
+      "utf8",
+    );
+    const e2eAppNavigationControllerSource = await fs.readFile(
+      e2eAppNavigationControllerPath,
+      "utf8",
+    );
+
+    expect(e2eAppIndexSource).toContain("navigationRef");
+    expect(e2eAppIndexSource).toContain("useE2eDeepLinks");
+    expect(e2eAppIndexSource).toContain("flushPendingE2eDeepLink");
+    expect(e2eAppIndexSource).toContain("ref={navigationRef}");
+    expect(e2eAppIndexSource).toContain("onReady={flushPendingE2eDeepLink}");
+    expect(e2eAppNavigationControllerSource).toContain(
+      "createNavigationContainerRef<RootStackParamList>()",
+    );
+    expect(e2eAppNavigationControllerSource).toContain(
+      "Linking.getInitialURL()",
+    );
+    expect(e2eAppNavigationControllerSource).toContain(
+      'Linking.addEventListener("url"',
+    );
+    expect(e2eAppNavigationControllerSource).toContain("screenNameFromE2eUrl");
+    expect(e2eAppNavigationControllerSource).toContain("pendingScreen");
+    expect(e2eAppRoutePathsSource).toContain("screenNameFromE2eUrl");
+    expect(e2eAppRoutePathsSource).toContain(
+      ".replace(/^hotupdaterexample:\\/\\//",
+    );
+    expect(e2eAppNavigationControllerSource).not.toContain("setTimeout");
+    expect(e2eAppNavigationControllerSource).not.toMatch(/\bretry\b/i);
   });
 
   it("opens the screen needed by a testID through direct deep linking", async () => {

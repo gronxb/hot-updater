@@ -3,7 +3,11 @@ import React from "react";
 import { SafeAreaView, Text } from "react-native";
 import { enableScreens } from "react-native-screens";
 
-import { e2eLinking } from "./route-paths";
+import {
+  flushPendingE2eDeepLink,
+  navigationRef,
+  useE2eDeepLinks,
+} from "./navigation-controller";
 import { E2eStack } from "./routes";
 import { E2eRuntimeModelProvider } from "./runtime-model-context";
 import { styles } from "./styles";
@@ -17,6 +21,7 @@ export const E2eHotUpdaterApp = ({
   readonly scenarioMarker: string;
 }): React.JSX.Element => {
   const model = useE2eRuntimeModel(scenarioMarker);
+  useE2eDeepLinks();
 
   return (
     <E2eRuntimeModelProvider model={model}>
@@ -28,7 +33,8 @@ export const E2eHotUpdaterApp = ({
             </Text>
           </SafeAreaView>
         }
-        linking={e2eLinking}
+        onReady={flushPendingE2eDeepLink}
+        ref={navigationRef}
       >
         <E2eStack />
       </NavigationContainer>
