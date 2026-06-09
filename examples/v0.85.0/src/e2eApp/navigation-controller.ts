@@ -18,7 +18,12 @@ export const navigateE2eScreen = (screen: ScreenName): void => {
     return;
   }
 
-  navigationRef.dispatch(CommonActions.navigate(screen));
+  navigationRef.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: screen }],
+    }),
+  );
 };
 
 export const handleE2eDeepLink = (url: string | null | undefined): void => {

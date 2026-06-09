@@ -9,6 +9,10 @@ const e2eAppIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/index.tsx",
 );
+const e2eAppNavigationControllerPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
+);
 const e2eAppReadyScreenPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/ready-screen.tsx",
@@ -152,6 +156,25 @@ describe("E2E navigation stack contract", () => {
       "Stack.Navigator",
     );
     expect(e2eAppRegisteredRouteElementsSource).not.toContain("ScrollView");
+  });
+
+  it("replaces the stack when opening a deep-linked test screen", async () => {
+    const e2eAppNavigationControllerSource = await fs.readFile(
+      e2eAppNavigationControllerPath,
+      "utf8",
+    );
+    const navigateE2eScreenBody = e2eAppNavigationControllerSource.slice(
+      e2eAppNavigationControllerSource.indexOf(
+        "export const navigateE2eScreen",
+      ),
+      e2eAppNavigationControllerSource.indexOf(
+        "export const handleE2eDeepLink",
+      ),
+    );
+
+    expect(navigateE2eScreenBody).toContain("CommonActions.reset");
+    expect(navigateE2eScreenBody).toContain("routes: [{ name: screen }]");
+    expect(navigateE2eScreenBody).not.toContain("CommonActions.navigate");
   });
 
   it("keeps stack routes split into small React Navigation route modules", async () => {
