@@ -24,6 +24,10 @@ const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
 );
+const e2eAppRegisteredRouteElementsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
+);
 const e2eAppStackScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
@@ -96,7 +100,8 @@ describe("E2E navigation stack contract", () => {
     expect(e2eAppRoutesSource).not.toContain("RuntimeChannelSummary");
     expect(e2eAppRoutesSource).not.toContain("RuntimeCohortSummary");
     expect(e2eAppRoutesSource).not.toContain("CrashHistoryScreen");
-    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(35);
+    expect(e2eAppRoutesSource).not.toContain("./routes/");
+    expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(20);
     expect(e2eAppRuntimeModelContextSource).toContain(
       "createContext<E2eRuntimeModel | null>",
     );
@@ -112,6 +117,26 @@ describe("E2E navigation stack contract", () => {
     await expect(fs.stat(e2eAppRouteGroupDir)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("keeps the route registrar outside the stack shell", async () => {
+    const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const e2eAppRegisteredRouteElementsSource = await fs.readFile(
+      e2eAppRegisteredRouteElementsPath,
+      "utf8",
+    );
+
+    expect(e2eAppRoutesSource).toContain("registeredRouteElements");
+    expect(e2eAppRoutesSource).not.toContain("appActionRoutes");
+    expect(e2eAppRoutesSource).not.toContain("cohortActionRoutes");
+    expect(e2eAppRoutesSource).not.toContain("runtimeBundleRoutes");
+    expect(e2eAppRoutesSource).not.toContain("statusResultRoutes");
+    expect(e2eAppRegisteredRouteElementsSource).toContain("readyRoutes");
+    expect(e2eAppRegisteredRouteElementsSource).toContain("appActionRoutes");
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain(
+      "Stack.Navigator",
+    );
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain("ScrollView");
   });
 
   it("keeps stack routes split into small React Navigation route modules", async () => {

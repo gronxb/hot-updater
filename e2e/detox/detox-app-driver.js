@@ -95,6 +95,7 @@ class DetoxAppDriver {
       const target = await findVisibleTestID(this.controlClient, testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
+      await this.waitForInstallActionResult(testID);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
@@ -189,6 +190,33 @@ class DetoxAppDriver {
     if (!isAppReloadAction) return;
     await launchApp({ newInstance: false });
   }
+
+  async waitForInstallActionResult(testID) {
+    const expectedPrefix = installActionResultPrefix(testID);
+    if (!expectedPrefix) return;
+
+    const result = await findVisibleTestID(
+      this.controlClient,
+      "update-action-result",
+      { ensureForeground: false },
+    );
+    const text = textFromAttributes(await result.getAttributes());
+    if (!text.includes(expectedPrefix)) {
+      throw new Error(
+        `Install action ${testID} did not start. Expected update-action-result to contain "${expectedPrefix}", received "${text}"`,
+      );
+    }
+  }
+}
+
+function installActionResultPrefix(testID) {
+  if (testID === "action-install-current-channel-update") {
+    return "current-channel ->";
+  }
+  if (testID === "action-install-runtime-channel-update") {
+    return "runtime-channel:";
+  }
+  return null;
 }
 
 module.exports = { DetoxAppDriver };
