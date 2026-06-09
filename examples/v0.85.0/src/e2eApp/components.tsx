@@ -1,4 +1,4 @@
-import React, { type ReactNode, useEffect, useRef, useState } from "react";
+import React, { type ReactNode } from "react";
 import { Pressable, SafeAreaView, Text, View } from "react-native";
 
 import { screenContentTestIDs } from "./screen-test-ids";
@@ -23,51 +23,26 @@ export const InfoRow = ({
 );
 
 export const Button = ({
-  deferPress = false,
   onPress,
   testID,
   title,
 }: {
-  readonly deferPress?: boolean;
   readonly onPress: () => Promise<void> | void;
   readonly testID: string;
   readonly title: string;
-}) => {
-  const onPressRef = useRef(onPress);
-  const [deferredPressCount, setDeferredPressCount] = useState(0);
-
-  useEffect(() => {
-    onPressRef.current = onPress;
-  }, [onPress]);
-
-  useEffect(() => {
-    if (deferredPressCount === 0) return;
-    void onPressRef.current();
-  }, [deferredPressCount]);
-
-  const runPress = () => {
-    if (deferPress) {
-      setDeferredPressCount((count) => count + 1);
-      return;
-    }
-
-    void onPress();
-  };
-
-  return (
-    <Pressable
-      accessibilityLabel={title}
-      accessibilityRole="button"
-      onPress={() => {
-        runPress();
-      }}
-      style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-      testID={testID}
-    >
-      <Text style={styles.buttonText}>{title}</Text>
-    </Pressable>
-  );
-};
+}) => (
+  <Pressable
+    accessibilityLabel={title}
+    accessibilityRole="button"
+    onPress={() => {
+      void onPress();
+    }}
+    style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+    testID={testID}
+  >
+    <Text style={styles.buttonText}>{title}</Text>
+  </Pressable>
+);
 
 export const ScreenShell = ({
   children,

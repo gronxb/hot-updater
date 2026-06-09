@@ -9,7 +9,6 @@ export const InstallCurrentChannelUpdateActionScreen = () => {
   return (
     <ActionButtonScreen
       current="InstallCurrentChannelUpdateAction"
-      deferPress
       onPress={() => model.installUpdate({ actionLabel: "current-channel" })}
       testID="action-install-current-channel-update"
       title="Install Current"

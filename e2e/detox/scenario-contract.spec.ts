@@ -782,7 +782,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("defers only install action button work past Detox tap dispatch", async () => {
+  it("starts install action button work during Detox tap dispatch", async () => {
     const componentsSource = await fs.readFile(
       exampleE2eAppComponentsPath,
       "utf8",
@@ -804,17 +804,17 @@ describe("Detox scenario contract", () => {
       componentsSource.indexOf("export const ScreenShell"),
     );
 
-    expect(buttonBody).toContain("readonly deferPress?: boolean");
-    expect(buttonBody).toContain("useEffect(() => {");
-    expect(buttonBody).toContain("setDeferredPressCount((count) => count + 1)");
-    expect(buttonBody).toContain("void onPressRef.current();");
+    expect(buttonBody).not.toContain("readonly deferPress?: boolean");
+    expect(buttonBody).not.toContain("deferredPressCount");
+    expect(buttonBody).not.toContain("setDeferredPressCount");
+    expect(buttonBody).toContain("void onPress();");
     expect(buttonBody).not.toContain("requestAnimationFrame");
     expect(buttonBody).not.toContain("setTimeout");
     expect(buttonBody).not.toContain("catch(() => undefined)");
-    expect(actionButtonScreenSource).toContain("readonly deferPress?: boolean");
-    expect(actionButtonScreenSource).toContain("deferPress={deferPress}");
-    expect(installCurrentScreenSource).toContain("deferPress");
-    expect(installRuntimeScreenSource).toContain("deferPress");
+    expect(actionButtonScreenSource).not.toContain("readonly deferPress");
+    expect(actionButtonScreenSource).not.toContain("deferPress=");
+    expect(installCurrentScreenSource).not.toContain("deferPress");
+    expect(installRuntimeScreenSource).not.toContain("deferPress");
   });
 
   it("publishes cohort action result before refreshing runtime state", async () => {
