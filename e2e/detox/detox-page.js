@@ -3,39 +3,68 @@ const { by, device, element, waitFor } = require("detox");
 let synchronizationDisabledUntilLaunch = false;
 
 const E2E_SCREEN_URLS = {
+  applyCohortInputAction: "hotupdaterexample://e2e/action/apply-cohort-input",
   channelActionResult: "hotupdaterexample://e2e/channel-action-result",
-  cohortInputActions: "hotupdaterexample://e2e/cohort-input",
-  cohortPresetActions: "hotupdaterexample://e2e/cohort-presets",
   cohortActionResult: "hotupdaterexample://e2e/cohort-action-result",
+  cohortInput: "hotupdaterexample://e2e/input/cohort",
   crashHistory: "hotupdaterexample://e2e/crash-history",
-  installActions: "hotupdaterexample://e2e/install",
+  clearCrashHistoryAction:
+    "hotupdaterexample://e2e/action/clear-crash-history",
+  installCurrentChannelUpdateAction:
+    "hotupdaterexample://e2e/action/install-current-channel-update",
+  installRuntimeChannelUpdateAction:
+    "hotupdaterexample://e2e/action/install-runtime-channel-update",
   launchCrashedBundle: "hotupdaterexample://e2e/launch-crashed-bundle",
   launchStatus: "hotupdaterexample://e2e/launch-status",
-  runtimeChannelActions: "hotupdaterexample://e2e/runtime-channel",
   runtimeBundle: "hotupdaterexample://e2e/runtime-bundle",
+  runtimeChannelInput: "hotupdaterexample://e2e/input/runtime-channel",
+  runtimeChannelSummary: "hotupdaterexample://e2e/runtime-channel-summary",
+  runtimeCohortSummary: "hotupdaterexample://e2e/runtime-cohort-summary",
   runtimeLargeAsset: "hotupdaterexample://e2e/runtime-large-asset",
   runtimeMarker: "hotupdaterexample://e2e/runtime-marker",
-  runtimeState: "hotupdaterexample://e2e/runtime-state",
+  refreshRuntimeSnapshotAction:
+    "hotupdaterexample://e2e/action/refresh-runtime-snapshot",
+  reloadAppAction: "hotupdaterexample://e2e/action/reload-app",
+  resetRuntimeChannelAction:
+    "hotupdaterexample://e2e/action/reset-runtime-channel",
+  restoreInitialCohortAction:
+    "hotupdaterexample://e2e/action/restore-initial-cohort",
+  setCohortQaAction: "hotupdaterexample://e2e/action/set-cohort-qa",
   updateActionResult: "hotupdaterexample://e2e/update-action-result",
-  updateStore: "hotupdaterexample://e2e/update-store",
+  updateStoreDownloaded: "hotupdaterexample://e2e/update-store-downloaded",
+  updateStoreDownloadPaths:
+    "hotupdaterexample://e2e/update-store-download-paths",
 };
 
 const E2E_SCREEN_CONTENT_TEST_IDS = {
+  applyCohortInputAction: "e2e-screen-action-apply-cohort-input",
   channelActionResult: "e2e-screen-channel-action-result",
-  cohortInputActions: "e2e-screen-cohort-input-actions",
-  cohortPresetActions: "e2e-screen-cohort-preset-actions",
   cohortActionResult: "e2e-screen-cohort-action-result",
+  cohortInput: "e2e-screen-input-cohort",
   crashHistory: "e2e-screen-crash-history",
-  installActions: "e2e-screen-install-actions",
+  clearCrashHistoryAction: "e2e-screen-action-clear-crash-history",
+  installCurrentChannelUpdateAction:
+    "e2e-screen-action-install-current-channel-update",
+  installRuntimeChannelUpdateAction:
+    "e2e-screen-action-install-runtime-channel-update",
   launchCrashedBundle: "e2e-screen-launch-crashed-bundle",
   launchStatus: "e2e-screen-launch-status",
-  runtimeChannelActions: "e2e-screen-runtime-channel-actions",
   runtimeBundle: "e2e-screen-runtime-bundle",
+  runtimeChannelInput: "e2e-screen-input-runtime-channel",
+  runtimeChannelSummary: "e2e-screen-runtime-channel-summary",
+  runtimeCohortSummary: "e2e-screen-runtime-cohort-summary",
   runtimeLargeAsset: "e2e-screen-runtime-large-asset",
   runtimeMarker: "e2e-screen-runtime-marker",
-  runtimeState: "e2e-screen-runtime-state",
+  refreshRuntimeSnapshotAction:
+    "e2e-screen-action-refresh-runtime-snapshot",
+  reloadAppAction: "e2e-screen-action-reload-app",
+  resetRuntimeChannelAction: "e2e-screen-action-reset-runtime-channel",
+  restoreInitialCohortAction:
+    "e2e-screen-action-restore-initial-cohort",
+  setCohortQaAction: "e2e-screen-action-set-cohort-qa",
   updateActionResult: "e2e-screen-update-action-result",
-  updateStore: "e2e-screen-update-store",
+  updateStoreDownloaded: "e2e-screen-update-store-downloaded",
+  updateStoreDownloadPaths: "e2e-screen-update-store-download-paths",
 };
 
 function isAndroidRun() {
@@ -86,13 +115,9 @@ function runtimeLaunchArgs() {
   return launchArgs;
 }
 
-function markSynchronizationRestoredByLaunch() {
-  synchronizationDisabledUntilLaunch = false;
-}
-
 async function launchApp(options = {}) {
   await device.launchApp({ ...options, launchArgs: runtimeLaunchArgs() });
-  markSynchronizationRestoredByLaunch();
+  synchronizationDisabledUntilLaunch = false;
 }
 
 function textFromAttributes(attributes) {
@@ -116,67 +141,37 @@ async function disableSynchronizationUntilLaunch() {
   synchronizationDisabledUntilLaunch = true;
 }
 
+const TEST_ID_SCREEN_PATHS = {
+  "action-apply-cohort-input": "applyCohortInputAction",
+  "action-clear-crash-history": "clearCrashHistoryAction",
+  "action-install-current-channel-update":
+    "installCurrentChannelUpdateAction",
+  "action-install-runtime-channel-update":
+    "installRuntimeChannelUpdateAction",
+  "action-refresh-runtime-snapshot": "refreshRuntimeSnapshotAction",
+  "action-reload-app": "reloadAppAction",
+  "action-reset-runtime-channel": "resetRuntimeChannelAction",
+  "action-restore-initial-cohort": "restoreInitialCohortAction",
+  "action-set-cohort-qa": "setCohortQaAction",
+  "channel-action-result": "channelActionResult",
+  "cohort-action-result": "cohortActionResult",
+  "cohort-input": "cohortInput",
+  "crash-history-summary": "crashHistory",
+  "current-channel-summary": "runtimeChannelSummary",
+  "current-cohort-summary": "runtimeCohortSummary",
+  "launch-crashed-bundle-result": "launchCrashedBundle",
+  "launch-status-result": "launchStatus",
+  "runtime-bundle-id": "runtimeBundle",
+  "runtime-large-e2e-asset": "runtimeLargeAsset",
+  "runtime-scenario-marker": "runtimeMarker",
+  "runtime-channel-input": "runtimeChannelInput",
+  "update-action-result": "updateActionResult",
+  "update-store-downloaded": "updateStoreDownloaded",
+  "update-store-download-paths": "updateStoreDownloadPaths",
+};
+
 function screenPathForTestID(testID) {
-  if (
-    testID.startsWith("action-set-") ||
-    testID === "action-restore-initial-cohort"
-  ) {
-    return "cohortPresetActions";
-  }
-  if (testID === "cohort-input" || testID === "action-apply-cohort-input") {
-    return "cohortInputActions";
-  }
-  if (
-    testID === "runtime-channel-input" ||
-    testID === "action-install-runtime-channel-update" ||
-    testID === "action-reset-runtime-channel" ||
-    testID === "action-reload-app"
-  ) {
-    return "runtimeChannelActions";
-  }
-  if (testID.startsWith("action-")) {
-    return "installActions";
-  }
-  if (testID === "launch-status-result") {
-    return "launchStatus";
-  }
-  if (testID === "launch-crashed-bundle-result") {
-    return "launchCrashedBundle";
-  }
-  if (
-    testID === "current-channel-summary" ||
-    testID === "current-cohort-summary"
-  ) {
-    return "runtimeState";
-  }
-  if (
-    testID === "update-store-downloaded" ||
-    testID === "update-store-download-paths"
-  ) {
-    return "updateStore";
-  }
-  if (testID === "crash-history-summary") {
-    return "crashHistory";
-  }
-  if (testID === "runtime-bundle-id") {
-    return "runtimeBundle";
-  }
-  if (testID === "runtime-scenario-marker") {
-    return "runtimeMarker";
-  }
-  if (testID === "runtime-large-e2e-asset") {
-    return "runtimeLargeAsset";
-  }
-  if (testID === "channel-action-result") {
-    return "channelActionResult";
-  }
-  if (testID === "update-action-result") {
-    return "updateActionResult";
-  }
-  if (testID === "cohort-action-result") {
-    return "cohortActionResult";
-  }
-  return "runtimeBundle";
+  return TEST_ID_SCREEN_PATHS[testID] || "runtimeBundle";
 }
 
 async function waitForActiveScreen(screenContentTestID) {

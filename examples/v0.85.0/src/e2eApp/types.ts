@@ -1,20 +1,29 @@
 export type RootStackParamList = {
+  readonly ApplyCohortInputAction: undefined;
   readonly ChannelActionResult: undefined;
-  readonly CohortInputActions: undefined;
-  readonly CohortPresetActions: undefined;
   readonly CohortActionResult: undefined;
+  readonly CohortInput: undefined;
   readonly CrashHistory: undefined;
-  readonly InstallActions: undefined;
+  readonly ClearCrashHistoryAction: undefined;
+  readonly InstallCurrentChannelUpdateAction: undefined;
+  readonly InstallRuntimeChannelUpdateAction: undefined;
   readonly LaunchCrashedBundle: undefined;
   readonly LaunchStatus: undefined;
   readonly Ready: undefined;
-  readonly RuntimeChannelActions: undefined;
   readonly RuntimeBundle: undefined;
+  readonly RuntimeChannelInput: undefined;
+  readonly RuntimeChannelSummary: undefined;
+  readonly RuntimeCohortSummary: undefined;
   readonly RuntimeLargeAsset: undefined;
   readonly RuntimeMarker: undefined;
-  readonly RuntimeState: undefined;
+  readonly RefreshRuntimeSnapshotAction: undefined;
+  readonly ReloadAppAction: undefined;
+  readonly ResetRuntimeChannelAction: undefined;
+  readonly RestoreInitialCohortAction: undefined;
+  readonly SetCohortQaAction: undefined;
   readonly UpdateActionResult: undefined;
-  readonly UpdateStore: undefined;
+  readonly UpdateStoreDownloaded: undefined;
+  readonly UpdateStoreDownloadPaths: undefined;
 };
 
 export type ScreenName = keyof RootStackParamList;

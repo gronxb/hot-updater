@@ -70,10 +70,12 @@ describe("E2E navigation contract", () => {
     expect(e2eAppScreensSource).toContain("RuntimeLargeAssetScreen");
     expect(e2eAppScreensSource).toContain("LaunchStatusScreen");
     expect(e2eAppScreensSource).toContain("LaunchCrashedBundleScreen");
-    expect(e2eAppScreensSource).toContain("InstallActionsScreen");
-    expect(e2eAppScreensSource).toContain("RuntimeChannelActionsScreen");
-    expect(e2eAppScreensSource).toContain("CohortInputActionsScreen");
-    expect(e2eAppScreensSource).toContain("CohortPresetActionsScreen");
+    expect(e2eAppScreensSource).toContain(
+      "InstallCurrentChannelUpdateActionScreen",
+    );
+    expect(e2eAppScreensSource).toContain("RuntimeChannelInputScreen");
+    expect(e2eAppScreensSource).toContain("CohortInputScreen");
+    expect(e2eAppScreensSource).toContain("SetCohortQaActionScreen");
     expect(e2eAppScreensSource).toContain("ChannelActionResultScreen");
     expect(e2eAppScreensSource).toContain("UpdateActionResultScreen");
     expect(e2eAppScreensSource).toContain("CohortActionResultScreen");
@@ -125,6 +127,64 @@ describe("E2E navigation contract", () => {
     expect(e2eAppComponentsSource).not.toContain("ScrollView");
   });
 
+  it("keeps action and multi-value assertions on one-target routes", async () => {
+    const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
+    const e2eAppComponentsSource = await fs.readFile(
+      e2eAppComponentsPath,
+      "utf8",
+    );
+    const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
+
+    expect(e2eAppIndexSource).not.toContain("InstallActions");
+    expect(e2eAppIndexSource).not.toContain("RuntimeChannelActions");
+    expect(e2eAppIndexSource).not.toContain("CohortInputActions");
+    expect(e2eAppIndexSource).not.toContain("CohortPresetActions");
+    expect(e2eAppIndexSource).not.toContain("RuntimeState");
+    expect(e2eAppIndexSource).not.toContain("UpdateStore:");
+    expect(e2eAppScreensSource).not.toContain("InstallActionsScreen");
+    expect(e2eAppScreensSource).not.toContain("RuntimeChannelActionsScreen");
+    expect(e2eAppScreensSource).not.toContain("CohortInputActionsScreen");
+    expect(e2eAppScreensSource).not.toContain("CohortPresetActionsScreen");
+    expect(e2eAppScreensSource).not.toContain("RuntimeStateScreen");
+    expect(e2eAppScreensSource).not.toContain("UpdateStoreScreen");
+
+    for (const path of [
+      "e2e/action/refresh-runtime-snapshot",
+      "e2e/action/reload-app",
+      "e2e/action/clear-crash-history",
+      "e2e/action/install-current-channel-update",
+      "e2e/input/runtime-channel",
+      "e2e/action/install-runtime-channel-update",
+      "e2e/action/reset-runtime-channel",
+      "e2e/input/cohort",
+      "e2e/action/apply-cohort-input",
+      "e2e/action/set-cohort-qa",
+      "e2e/action/restore-initial-cohort",
+      "e2e/runtime-channel-summary",
+      "e2e/runtime-cohort-summary",
+      "e2e/update-store-downloaded",
+      "e2e/update-store-download-paths",
+    ]) {
+      expect(e2eAppIndexSource).toContain(path);
+      expect(detoxPageSource).toContain(`hotupdaterexample://${path}`);
+    }
+
+    expect(e2eAppComponentsSource).toContain("RefreshRuntimeSnapshotAction:");
+    expect(e2eAppComponentsSource).toContain(
+      '"e2e-screen-action-refresh-runtime-snapshot"',
+    );
+    expect(e2eAppComponentsSource).toContain("UpdateStoreDownloadPaths:");
+    expect(e2eAppComponentsSource).toContain(
+      '"e2e-screen-update-store-download-paths"',
+    );
+    expect(detoxPageSource).not.toContain("installActions");
+    expect(detoxPageSource).not.toContain("runtimeChannelActions");
+    expect(detoxPageSource).not.toContain("cohortInputActions");
+    expect(detoxPageSource).not.toContain("runtimeState");
+    expect(detoxPageSource).not.toContain("updateStore:");
+  });
+
   it("opens the screen needed by a testID through direct deep linking", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const openScreenBody = detoxPageSource.slice(
@@ -140,14 +200,18 @@ describe("E2E navigation contract", () => {
     expect(detoxPageSource).toContain('"runtimeBundle"');
     expect(detoxPageSource).toContain('"runtimeMarker"');
     expect(detoxPageSource).toContain('"runtimeLargeAsset"');
-    expect(detoxPageSource).toContain('"cohortInputActions"');
-    expect(detoxPageSource).toContain('"runtimeChannelActions"');
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/install");
+    expect(detoxPageSource).toContain('"cohortInput"');
+    expect(detoxPageSource).toContain('"runtimeChannelInput"');
     expect(detoxPageSource).toContain(
-      "hotupdaterexample://e2e/runtime-channel",
+      "hotupdaterexample://e2e/action/install-current-channel-update",
     );
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/cohort-input");
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/cohort-presets");
+    expect(detoxPageSource).toContain(
+      "hotupdaterexample://e2e/input/runtime-channel",
+    );
+    expect(detoxPageSource).toContain("hotupdaterexample://e2e/input/cohort");
+    expect(detoxPageSource).toContain(
+      "hotupdaterexample://e2e/action/set-cohort-qa",
+    );
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/runtime-bundle");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/runtime-marker");
     expect(detoxPageSource).toContain(
@@ -158,7 +222,12 @@ describe("E2E navigation contract", () => {
       "hotupdaterexample://e2e/launch-crashed-bundle",
     );
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/crash-history");
-    expect(detoxPageSource).toContain("hotupdaterexample://e2e/update-store");
+    expect(detoxPageSource).toContain(
+      "hotupdaterexample://e2e/update-store-downloaded",
+    );
+    expect(detoxPageSource).toContain(
+      "hotupdaterexample://e2e/update-store-download-paths",
+    );
     expect(detoxPageSource).toContain(
       "hotupdaterexample://e2e/channel-action-result",
     );

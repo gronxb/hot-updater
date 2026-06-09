@@ -1,148 +1,118 @@
 import React from "react";
-import { Text, TextInput, View } from "react-native";
 
 import { Button, ScreenShell, Section } from "../components";
-import { styles } from "../styles";
 import type { ScreenProps } from "./types";
 
-export const InstallActionsScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="InstallActions">
-    <Section title="Install Actions" titleTestID="section-install-actions">
-      <View style={styles.buttonGrid}>
-        <Button
-          onPress={model.refreshRuntimeSnapshot}
-          testID="action-refresh-runtime-snapshot"
-          title="Refresh"
-        />
-        <Button
-          onPress={model.reloadApp}
-          testID="action-reload-app"
-          title="Reload"
-        />
-        <Button
-          onPress={model.clearCrashHistory}
-          testID="action-clear-crash-history"
-          title="Clear Crashes"
-        />
-        <Button
-          onPress={() =>
-            model.installUpdate({ actionLabel: "current-channel" })
-          }
-          testID="action-install-current-channel-update"
-          title="Install Current"
-        />
-      </View>
+type ActionButtonScreenProps = {
+  readonly current:
+    | "ApplyCohortInputAction"
+    | "ClearCrashHistoryAction"
+    | "InstallCurrentChannelUpdateAction"
+    | "InstallRuntimeChannelUpdateAction"
+    | "RefreshRuntimeSnapshotAction"
+    | "ReloadAppAction"
+    | "ResetRuntimeChannelAction"
+    | "RestoreInitialCohortAction"
+    | "SetCohortQaAction";
+  readonly onPress: () => Promise<void> | void;
+  readonly testID: string;
+  readonly title: string;
+};
+
+const ActionButtonScreen = ({
+  current,
+  onPress,
+  testID,
+  title,
+}: ActionButtonScreenProps) => (
+  <ScreenShell current={current}>
+    <Section title={title}>
+      <Button onPress={onPress} testID={testID} title={title} />
     </Section>
   </ScreenShell>
 );
 
-export const RuntimeChannelActionsScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="RuntimeChannelActions">
-    <Section title="Runtime Channel">
-      <TextInput
-        accessibilityLabel="Runtime Channel Input"
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={model.setRuntimeChannelInput}
-        placeholder="beta"
-        placeholderTextColor="#6b7280"
-        style={styles.input}
-        testID="runtime-channel-input"
-        value={model.runtimeChannelInput}
-      />
-      <View style={styles.buttonGrid}>
-        <Button
-          onPress={model.installRuntimeChannelUpdate}
-          testID="action-install-runtime-channel-update"
-          title="Install Runtime"
-        />
-        <Button
-          onPress={model.resetRuntimeChannel}
-          testID="action-reset-runtime-channel"
-          title="Reset Channel"
-        />
-        <Button
-          onPress={model.reloadApp}
-          testID="action-reload-app"
-          title="Reload"
-        />
-      </View>
-    </Section>
-  </ScreenShell>
+export const RefreshRuntimeSnapshotActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="RefreshRuntimeSnapshotAction"
+    onPress={model.refreshRuntimeSnapshot}
+    testID="action-refresh-runtime-snapshot"
+    title="Refresh"
+  />
 );
 
-export const CohortInputActionsScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="CohortInputActions">
-    <Section title="Cohort Input">
-      <TextInput
-        accessibilityLabel="Cohort Override Input"
-        autoCapitalize="none"
-        autoCorrect={false}
-        onChangeText={model.updateCohortInput}
-        onEndEditing={(event) =>
-          model.updateCohortInput(event.nativeEvent.text)
-        }
-        placeholder={model.initialCohort}
-        placeholderTextColor="#6b7280"
-        selectTextOnFocus={true}
-        style={styles.input}
-        testID="cohort-input"
-        value={model.cohortInput}
-      />
-      <Button
-        onPress={model.applyCohortInput}
-        testID="action-apply-cohort-input"
-        title="Apply Cohort"
-      />
-    </Section>
-  </ScreenShell>
+export const ReloadAppActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="ReloadAppAction"
+    onPress={model.reloadApp}
+    testID="action-reload-app"
+    title="Reload"
+  />
 );
 
-export const CohortPresetActionsScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="CohortPresetActions">
-    <Section title="Cohort Presets" titleTestID="section-cohort-actions">
-      <View style={styles.buttonGrid}>
-        <Button
-          onPress={model.setCohortToQa}
-          testID="action-set-cohort-qa"
-          title="Set qa"
-        />
-        <Button
-          onPress={model.restoreInitialCohort}
-          testID="action-restore-initial-cohort"
-          title="Restore Cohort"
-        />
-      </View>
-    </Section>
-  </ScreenShell>
+export const ClearCrashHistoryActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="ClearCrashHistoryAction"
+    onPress={model.clearCrashHistory}
+    testID="action-clear-crash-history"
+    title="Clear Crashes"
+  />
 );
 
-export const ChannelActionResultScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="ChannelActionResult">
-    <Section title="Channel Action Result" titleTestID="section-action-results">
-      <Text selectable style={styles.resultText} testID="channel-action-result">
-        Channel Action Result: {model.channelActionResult}
-      </Text>
-    </Section>
-  </ScreenShell>
+export const InstallCurrentChannelUpdateActionScreen = ({
+  model,
+}: ScreenProps) => (
+  <ActionButtonScreen
+    current="InstallCurrentChannelUpdateAction"
+    onPress={() => model.installUpdate({ actionLabel: "current-channel" })}
+    testID="action-install-current-channel-update"
+    title="Install Current"
+  />
 );
 
-export const UpdateActionResultScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="UpdateActionResult">
-    <Section title="Update Action Result" titleTestID="section-action-results">
-      <Text selectable style={styles.resultText} testID="update-action-result">
-        Update Action Result: {model.updateActionResult}
-      </Text>
-    </Section>
-  </ScreenShell>
+export const InstallRuntimeChannelUpdateActionScreen = ({
+  model,
+}: ScreenProps) => (
+  <ActionButtonScreen
+    current="InstallRuntimeChannelUpdateAction"
+    onPress={model.installRuntimeChannelUpdate}
+    testID="action-install-runtime-channel-update"
+    title="Install Runtime"
+  />
 );
 
-export const CohortActionResultScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="CohortActionResult">
-    <Section title="Cohort Action Result" titleTestID="section-action-results">
-      <Text selectable style={styles.resultText} testID="cohort-action-result">
-        Cohort Action Result: {model.cohortActionResult}
-      </Text>
-    </Section>
-  </ScreenShell>
+export const ResetRuntimeChannelActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="ResetRuntimeChannelAction"
+    onPress={model.resetRuntimeChannel}
+    testID="action-reset-runtime-channel"
+    title="Reset Channel"
+  />
+);
+
+export const ApplyCohortInputActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="ApplyCohortInputAction"
+    onPress={model.applyCohortInput}
+    testID="action-apply-cohort-input"
+    title="Apply Cohort"
+  />
+);
+
+export const SetCohortQaActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="SetCohortQaAction"
+    onPress={model.setCohortToQa}
+    testID="action-set-cohort-qa"
+    title="Set qa"
+  />
+);
+
+export const RestoreInitialCohortActionScreen = ({ model }: ScreenProps) => (
+  <ActionButtonScreen
+    current="RestoreInitialCohortAction"
+    onPress={model.restoreInitialCohort}
+    testID="action-restore-initial-cohort"
+    title="Restore Cohort"
+  />
 );

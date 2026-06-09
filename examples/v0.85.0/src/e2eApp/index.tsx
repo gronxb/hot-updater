@@ -8,22 +8,31 @@ import { SafeAreaView, Text } from "react-native";
 import { enableScreens } from "react-native-screens";
 
 import {
+  ApplyCohortInputActionScreen,
   ChannelActionResultScreen,
-  CohortInputActionsScreen,
-  CohortPresetActionsScreen,
   CohortActionResultScreen,
+  CohortInputScreen,
   CrashHistoryScreen,
-  InstallActionsScreen,
+  ClearCrashHistoryActionScreen,
+  InstallCurrentChannelUpdateActionScreen,
+  InstallRuntimeChannelUpdateActionScreen,
   LaunchCrashedBundleScreen,
   LaunchStatusScreen,
   ReadyScreen,
-  RuntimeChannelActionsScreen,
   RuntimeBundleScreen,
+  RuntimeChannelInputScreen,
+  RuntimeChannelSummaryScreen,
+  RuntimeCohortSummaryScreen,
   RuntimeLargeAssetScreen,
   RuntimeMarkerScreen,
-  RuntimeStateScreen,
+  RefreshRuntimeSnapshotActionScreen,
+  ReloadAppActionScreen,
+  ResetRuntimeChannelActionScreen,
+  RestoreInitialCohortActionScreen,
+  SetCohortQaActionScreen,
   UpdateActionResultScreen,
-  UpdateStoreScreen,
+  UpdateStoreDownloadedScreen,
+  UpdateStoreDownloadPathsScreen,
 } from "./screens";
 import { styles } from "./styles";
 import type { RootStackParamList } from "./types";
@@ -36,22 +45,33 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const e2eLinking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
+      ApplyCohortInputAction: "e2e/action/apply-cohort-input",
       ChannelActionResult: "e2e/channel-action-result",
-      CohortInputActions: "e2e/cohort-input",
-      CohortPresetActions: "e2e/cohort-presets",
       CohortActionResult: "e2e/cohort-action-result",
+      CohortInput: "e2e/input/cohort",
       CrashHistory: "e2e/crash-history",
-      InstallActions: "e2e/install",
+      ClearCrashHistoryAction: "e2e/action/clear-crash-history",
+      InstallCurrentChannelUpdateAction:
+        "e2e/action/install-current-channel-update",
+      InstallRuntimeChannelUpdateAction:
+        "e2e/action/install-runtime-channel-update",
       LaunchCrashedBundle: "e2e/launch-crashed-bundle",
       LaunchStatus: "e2e/launch-status",
       Ready: "e2e/ready",
-      RuntimeChannelActions: "e2e/runtime-channel",
       RuntimeBundle: "e2e/runtime-bundle",
+      RuntimeChannelInput: "e2e/input/runtime-channel",
+      RuntimeChannelSummary: "e2e/runtime-channel-summary",
+      RuntimeCohortSummary: "e2e/runtime-cohort-summary",
       RuntimeLargeAsset: "e2e/runtime-large-asset",
       RuntimeMarker: "e2e/runtime-marker",
-      RuntimeState: "e2e/runtime-state",
+      RefreshRuntimeSnapshotAction: "e2e/action/refresh-runtime-snapshot",
+      ReloadAppAction: "e2e/action/reload-app",
+      ResetRuntimeChannelAction: "e2e/action/reset-runtime-channel",
+      RestoreInitialCohortAction: "e2e/action/restore-initial-cohort",
+      SetCohortQaAction: "e2e/action/set-cohort-qa",
       UpdateActionResult: "e2e/update-action-result",
-      UpdateStore: "e2e/update-store",
+      UpdateStoreDownloaded: "e2e/update-store-downloaded",
+      UpdateStoreDownloadPaths: "e2e/update-store-download-paths",
     },
   },
   prefixes: ["hotupdaterexample://"],
@@ -95,26 +115,53 @@ export const E2eHotUpdaterApp = ({
         <Stack.Screen name="LaunchCrashedBundle">
           {() => <LaunchCrashedBundleScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="RuntimeState">
-          {() => <RuntimeStateScreen model={model} />}
+        <Stack.Screen name="RuntimeChannelSummary">
+          {() => <RuntimeChannelSummaryScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="UpdateStore">
-          {() => <UpdateStoreScreen model={model} />}
+        <Stack.Screen name="RuntimeCohortSummary">
+          {() => <RuntimeCohortSummaryScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="UpdateStoreDownloaded">
+          {() => <UpdateStoreDownloadedScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="UpdateStoreDownloadPaths">
+          {() => <UpdateStoreDownloadPathsScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="CrashHistory">
           {() => <CrashHistoryScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="InstallActions">
-          {() => <InstallActionsScreen model={model} />}
+        <Stack.Screen name="RefreshRuntimeSnapshotAction">
+          {() => <RefreshRuntimeSnapshotActionScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="RuntimeChannelActions">
-          {() => <RuntimeChannelActionsScreen model={model} />}
+        <Stack.Screen name="ReloadAppAction">
+          {() => <ReloadAppActionScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="CohortInputActions">
-          {() => <CohortInputActionsScreen model={model} />}
+        <Stack.Screen name="ClearCrashHistoryAction">
+          {() => <ClearCrashHistoryActionScreen model={model} />}
         </Stack.Screen>
-        <Stack.Screen name="CohortPresetActions">
-          {() => <CohortPresetActionsScreen model={model} />}
+        <Stack.Screen name="InstallCurrentChannelUpdateAction">
+          {() => <InstallCurrentChannelUpdateActionScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="RuntimeChannelInput">
+          {() => <RuntimeChannelInputScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="InstallRuntimeChannelUpdateAction">
+          {() => <InstallRuntimeChannelUpdateActionScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="ResetRuntimeChannelAction">
+          {() => <ResetRuntimeChannelActionScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="CohortInput">
+          {() => <CohortInputScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="ApplyCohortInputAction">
+          {() => <ApplyCohortInputActionScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="SetCohortQaAction">
+          {() => <SetCohortQaActionScreen model={model} />}
+        </Stack.Screen>
+        <Stack.Screen name="RestoreInitialCohortAction">
+          {() => <RestoreInitialCohortActionScreen model={model} />}
         </Stack.Screen>
         <Stack.Screen name="ChannelActionResult">
           {() => <ChannelActionResultScreen model={model} />}

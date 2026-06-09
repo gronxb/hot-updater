@@ -46,6 +46,10 @@ const exampleE2eAppActionScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/action-screens.tsx",
 );
+const exampleE2eAppResultScreensPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/result-screens.tsx",
+);
 const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
@@ -762,8 +766,8 @@ describe("Detox scenario contract", () => {
 
   it("uses action result elements only for explicit assertions", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const exampleScreenSource = await fs.readFile(
-      exampleE2eAppActionScreensPath,
+    const exampleResultScreenSource = await fs.readFile(
+      exampleE2eAppResultScreensPath,
       "utf8",
     );
     const detoxRuntimeSource = await fs.readFile(
@@ -775,7 +779,9 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    expect(exampleScreenSource).toContain('testID="update-action-result"');
+    expect(exampleResultScreenSource).toContain(
+      'testID="update-action-result"',
+    );
     expect(detoxPageSource).toContain(
       'channelActionResult: "hotupdaterexample://e2e/channel-action-result"',
     );
@@ -886,19 +892,11 @@ describe("Detox scenario contract", () => {
     // Given: launch status and crashed-bundle status live on short screens.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
-    // When: the navigation target resolver is inspected.
-    const launchStatusIndex = detoxPageSource.indexOf(
-      'testID === "launch-status-result"',
-    );
-    const crashedBundleIndex = detoxPageSource.indexOf(
-      'testID === "launch-crashed-bundle-result"',
-    );
-
     // Then: both assertions avoid the generic action result route.
-    expect(launchStatusIndex).toBeGreaterThan(-1);
-    expect(crashedBundleIndex).toBeGreaterThan(-1);
-    expect(detoxPageSource).toContain('return "launchStatus"');
-    expect(detoxPageSource).toContain('return "launchCrashedBundle"');
+    expect(detoxPageSource).toContain('"launch-status-result": "launchStatus"');
+    expect(detoxPageSource).toContain(
+      '"launch-crashed-bundle-result": "launchCrashedBundle"',
+    );
     expect(detoxPageSource).not.toContain('testID.endsWith("-result")');
   });
 
@@ -906,23 +904,12 @@ describe("Detox scenario contract", () => {
     // Given: input controls live on short action screens, not the runtime page.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
-    // When: the navigation target resolver is inspected.
-    const cohortInputIndex = detoxPageSource.indexOf(
-      'testID === "cohort-input"',
-    );
-    const runtimeInputIndex = detoxPageSource.indexOf(
-      'testID === "runtime-channel-input"',
-    );
-    const runtimeIndex = detoxPageSource.indexOf(
-      'testID === "runtime-bundle-id"',
-    );
-
     // Then: input fields must not fall through to runtime assertion screens.
-    expect(cohortInputIndex).toBeGreaterThan(-1);
-    expect(runtimeInputIndex).toBeGreaterThan(-1);
-    expect(runtimeIndex).toBeGreaterThan(-1);
-    expect(cohortInputIndex).toBeLessThan(runtimeIndex);
-    expect(runtimeInputIndex).toBeLessThan(runtimeIndex);
+    expect(detoxPageSource).toContain('"cohort-input": "cohortInput"');
+    expect(detoxPageSource).toContain(
+      '"runtime-channel-input": "runtimeChannelInput"',
+    );
+    expect(detoxPageSource).toContain('"runtime-bundle-id": "runtimeBundle"');
     expect(detoxPageSource).not.toContain('testID.startsWith("runtime-")');
   });
 

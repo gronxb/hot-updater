@@ -82,15 +82,14 @@ export const LaunchCrashedBundleScreen = ({ model }: ScreenProps) => (
   </ScreenShell>
 );
 
-export const RuntimeStateScreen = ({ model }: ScreenProps) => {
+export const RuntimeChannelSummaryScreen = ({ model }: ScreenProps) => {
   const channelSummary = `current=${model.runtimeSnapshot.channel} default=${
     model.runtimeSnapshot.defaultChannel
   } switched=${String(model.runtimeSnapshot.isChannelSwitched)}`;
-  const cohortSummary = `current=${model.runtimeSnapshot.cohort} initial=${model.initialCohort}`;
 
   return (
-    <ScreenShell current="RuntimeState">
-      <Section title="Runtime State">
+    <ScreenShell current="RuntimeChannelSummary">
+      <Section title="Runtime Channel Summary">
         <Text
           selectable
           style={styles.resultText}
@@ -98,6 +97,17 @@ export const RuntimeStateScreen = ({ model }: ScreenProps) => {
         >
           Current Channel Summary: {channelSummary}
         </Text>
+      </Section>
+    </ScreenShell>
+  );
+};
+
+export const RuntimeCohortSummaryScreen = ({ model }: ScreenProps) => {
+  const cohortSummary = `current=${model.runtimeSnapshot.cohort} initial=${model.initialCohort}`;
+
+  return (
+    <ScreenShell current="RuntimeCohortSummary">
+      <Section title="Runtime Cohort Summary">
         <Text
           selectable
           style={styles.resultText}
@@ -110,14 +120,21 @@ export const RuntimeStateScreen = ({ model }: ScreenProps) => {
   );
 };
 
-export const UpdateStoreScreen = ({ model }: ScreenProps) => (
-  <ScreenShell current="UpdateStore">
-    <Section title="Update Store">
+export const UpdateStoreDownloadedScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="UpdateStoreDownloaded">
+    <Section title="Update Downloaded">
       <InfoRow
         label="Downloaded"
         value={String(model.isUpdateDownloaded)}
         valueTestID="update-store-downloaded"
       />
+    </Section>
+  </ScreenShell>
+);
+
+export const UpdateStoreDownloadPathsScreen = ({ model }: ScreenProps) => (
+  <ScreenShell current="UpdateStoreDownloadPaths">
+    <Section title="Update Download Paths">
       <InfoRow
         label="Download Paths"
         value={model.updateStoreDownloadPathsText}
