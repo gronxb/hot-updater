@@ -4,7 +4,6 @@ const {
   findVisibleTestID,
   isAndroidRun,
   launchApp,
-  shouldDisableSynchronizationForTap,
   textFromAttributes,
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
@@ -91,17 +90,11 @@ class DetoxAppDriver {
 
   async tap(stage, testID) {
     await this.runStage(stage, async () => {
-      const shouldDisableSynchronization =
-        shouldDisableSynchronizationForTap(testID);
       const isInstallAction = testID.startsWith("action-install-");
       const isAppReloadAction = testID === "action-reload-app";
-      if (shouldDisableSynchronization) {
-        await disableSynchronizationUntilLaunch();
-      }
+      await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
-      if (shouldDisableSynchronization) {
-        await disableSynchronizationUntilLaunch();
-      }
+      await disableSynchronizationUntilLaunch();
       await target.tap();
       await this.reattachAfterInstallTap(isInstallAction);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
@@ -116,7 +109,9 @@ class DetoxAppDriver {
 
   async typeText(stage, testID, text) {
     await this.runStage(stage, async () => {
+      await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
+      await disableSynchronizationUntilLaunch();
       await target.replaceText(String(this.resolvePlaceholders(text)));
     });
   }

@@ -71,12 +71,6 @@ function textFromAttributes(attributes) {
   return "";
 }
 
-function shouldDisableSynchronizationForTap(testID) {
-  return (
-    testID.startsWith("action-install-") || testID === "action-reload-app"
-  );
-}
-
 async function disableSynchronizationUntilLaunch() {
   if (synchronizationDisabledUntilLaunch) return;
   await device.disableSynchronization();
@@ -90,24 +84,15 @@ async function waitForActiveScreen(screenContentTestID) {
 }
 
 async function withSynchronizationDisabledForPageOpen(operation) {
-  const shouldRestoreSynchronization = !synchronizationDisabledUntilLaunch;
-  if (shouldRestoreSynchronization) {
-    await device.disableSynchronization();
-  }
-
-  try {
-    return await operation();
-  } finally {
-    if (shouldRestoreSynchronization) {
-      await device.enableSynchronization();
-    }
-  }
+  await disableSynchronizationUntilLaunch();
+  return operation();
 }
 
 async function openScreenForTestID(testID) {
   const screenPath = screenPathForTestID(testID);
   await withSynchronizationDisabledForPageOpen(async () => {
     await openDeepLinkScreen(E2E_SCREEN_URLS[screenPath]);
+    await disableSynchronizationUntilLaunch();
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     const screenContent = element(by.id("e2e-screen-content"));
     await waitFor(screenContent).toBeVisible().withTimeout(30000);
@@ -141,18 +126,8 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
 }
 
 async function withSynchronizationDisabledForAssertion(operation) {
-  const shouldRestoreSynchronization = !synchronizationDisabledUntilLaunch;
-  if (shouldRestoreSynchronization) {
-    await device.disableSynchronization();
-  }
-
-  try {
-    return await operation();
-  } finally {
-    if (shouldRestoreSynchronization) {
-      await device.enableSynchronization();
-    }
-  }
+  await disableSynchronizationUntilLaunch();
+  return operation();
 }
 
 module.exports = {
@@ -162,7 +137,6 @@ module.exports = {
   findVisibleTestID,
   isAndroidRun,
   launchApp,
-  shouldDisableSynchronizationForTap,
   textFromAttributes,
   withSynchronizationDisabledForAssertion,
 };

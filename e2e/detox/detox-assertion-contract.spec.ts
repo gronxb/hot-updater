@@ -110,7 +110,7 @@ describe("Detox assertion parity", () => {
     );
   });
 
-  it("reads assertion text with Detox synchronization temporarily disabled", async () => {
+  it("reads assertion text with Detox synchronization disabled until launch", async () => {
     // Given: provider runs can leave the app busy after channel/cohort actions
     // even when the user-visible text is ready to inspect.
     const detoxRuntimeSource = await fs.readFile(
@@ -134,12 +134,11 @@ describe("Detox assertion parity", () => {
 
     // Then: assertions do not fail solely because Detox waits for a busy queue.
     expect(assertTextBody).toContain("withSynchronizationDisabledForAssertion");
-    expect(assertionSyncBody).toContain(
-      "const shouldRestoreSynchronization = !synchronizationDisabledUntilLaunch",
-    );
-    expect(assertionSyncBody).toContain("device.disableSynchronization()");
-    expect(assertionSyncBody).toContain("finally");
-    expect(assertionSyncBody).toContain("device.enableSynchronization()");
+    expect(assertionSyncBody).toContain("disableSynchronizationUntilLaunch()");
+    expect(detoxPageSource).toContain("device.disableSynchronization()");
+    expect(assertionSyncBody).not.toContain("shouldRestoreSynchronization");
+    expect(assertionSyncBody).not.toContain("finally");
+    expect(assertionSyncBody).not.toContain("device.enableSynchronization()");
     expect(assertionSyncBody).not.toMatch(/\bretry\b/i);
     expect(assertionSyncBody).not.toMatch(/\bsetTimeout\b/i);
   });

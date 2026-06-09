@@ -992,8 +992,8 @@ describe("Detox scenario contract", () => {
     expect(findVisibleBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("only disables Detox synchronization for external-launch action taps", async () => {
-    // Given: install and reload buttons can start native work that makes Detox busy.
+  it("keeps Detox synchronization disabled for every action tap", async () => {
+    // Given: any E2E screen action can run while the app has busy OTA work.
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
@@ -1002,10 +1002,8 @@ describe("Detox scenario contract", () => {
     const tapBody = `${detoxPageSource}\n${detoxRuntimeSource}`;
 
     // When: tap handling is inspected.
-    // Then: cohort/channel utility buttons keep normal synchronization.
-    expect(tapBody).toContain("shouldDisableSynchronizationForTap");
-    expect(tapBody).toContain('testID.startsWith("action-install-")');
-    expect(tapBody).toContain('testID === "action-reload-app"');
+    // Then: every target lookup and tap uses manual waits, not Detox idle.
+    expect(tapBody).not.toContain("shouldDisableSynchronizationForTap");
     expect(
       tapBody.indexOf("await disableSynchronizationUntilLaunch();"),
     ).toBeLessThan(
@@ -1013,12 +1011,10 @@ describe("Detox scenario contract", () => {
         "const target = await findVisibleTestID(this.controlClient, testID)",
       ),
     );
-    expect(tapBody).toContain(
-      "if (shouldDisableSynchronization) {\n        await disableSynchronizationUntilLaunch();\n      }\n      const target",
-    );
+    expect(tapBody).not.toContain("if (shouldDisableSynchronization)");
   });
 
-  it("re-disables Detox synchronization immediately before external-launch action taps", async () => {
+  it("re-disables Detox synchronization immediately before every action tap", async () => {
     // Given: opening a screen can relaunch the app and reset Detox sync state.
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
@@ -1036,12 +1032,41 @@ describe("Detox scenario contract", () => {
       ...tapBody.matchAll(/await disableSynchronizationUntilLaunch\(\);/g),
     ].map((match) => match.index ?? -1);
 
-    // When: an external-launch action is tapped.
+    // When: any action is tapped.
     // Then: sync is disabled before route lookup and again after lookup.
     expect(disableIndexes.length).toBeGreaterThanOrEqual(2);
     expect(disableIndexes[0]).toBeLessThan(targetLookupIndex);
     expect(disableIndexes[1]).toBeGreaterThan(targetLookupIndex);
     expect(disableIndexes[1]).toBeLessThan(tapIndex);
+  });
+
+  it("keeps Detox synchronization disabled for text entry actions", async () => {
+    // Given: cohort input screens can still be busy after OTA state changes.
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const typeTextBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async typeText(stage"),
+      detoxRuntimeSource.indexOf("readStageValue(key)"),
+    );
+
+    // When: text entry is inspected.
+    // Then: target lookup and replaceText run with sync disabled and explicit waits.
+    expect(typeTextBody).toContain(
+      "await disableSynchronizationUntilLaunch();",
+    );
+    expect(
+      typeTextBody.indexOf("await disableSynchronizationUntilLaunch()"),
+    ).toBeLessThan(
+      typeTextBody.indexOf(
+        "const target = await findVisibleTestID(this.controlClient, testID)",
+      ),
+    );
+    expect(typeTextBody).toContain("await target.replaceText(");
+    expect(typeTextBody).not.toContain("device.enableSynchronization()");
+    expect(typeTextBody).not.toMatch(/\bretry\b/i);
+    expect(typeTextBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
   it("keeps metadata jobs responsible for bundle-store verification after install completion", async () => {
