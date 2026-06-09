@@ -17,6 +17,22 @@ type InstallUpdateInput = {
   readonly channel?: string;
 };
 
+type E2eRuntimeMemory = {
+  channelActionResult: string;
+  cohortActionResult: string;
+  cohortInput: string | null;
+  runtimeChannelInput: string;
+  updateActionResult: string;
+};
+
+const e2eRuntimeMemory: E2eRuntimeMemory = {
+  channelActionResult: "idle",
+  cohortActionResult: "idle",
+  cohortInput: null,
+  runtimeChannelInput: "beta",
+  updateActionResult: "idle",
+};
+
 export type E2eRuntimeModel = {
   readonly applyCohortInput: () => Promise<void>;
   readonly channelActionResult: string;
@@ -47,13 +63,49 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const notifyState = useSnapshot(notify);
   const progressState = useHotUpdaterStore((state) => state);
   const [initialCohort] = useState(() => HotUpdater.getCohort());
-  const [runtimeChannelInput, setRuntimeChannelInput] = useState("beta");
-  const [cohortInput, setCohortInput] = useState(() => initialCohort);
-  const cohortInputRef = useRef(initialCohort);
-  const [channelActionResult, setChannelActionResult] = useState("idle");
-  const [cohortActionResult, setCohortActionResult] = useState("idle");
-  const [updateActionResult, setUpdateActionResult] = useState("idle");
+  const [runtimeChannelInput, setRuntimeChannelInputState] = useState(
+    () => e2eRuntimeMemory.runtimeChannelInput,
+  );
+  const [cohortInput, setCohortInputState] = useState(
+    () => e2eRuntimeMemory.cohortInput ?? initialCohort,
+  );
+  const cohortInputRef = useRef(cohortInput);
+  const [channelActionResult, setChannelActionResultState] = useState(
+    () => e2eRuntimeMemory.channelActionResult,
+  );
+  const [cohortActionResult, setCohortActionResultState] = useState(
+    () => e2eRuntimeMemory.cohortActionResult,
+  );
+  const [updateActionResult, setUpdateActionResultState] = useState(
+    () => e2eRuntimeMemory.updateActionResult,
+  );
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(readRuntimeSnapshot);
+
+  const setRuntimeChannelInput = (input: string) => {
+    e2eRuntimeMemory.runtimeChannelInput = input;
+    setRuntimeChannelInputState(input);
+  };
+
+  const setCohortInput = (input: string) => {
+    e2eRuntimeMemory.cohortInput = input;
+    cohortInputRef.current = input;
+    setCohortInputState(input);
+  };
+
+  const setChannelActionResult = (result: string) => {
+    e2eRuntimeMemory.channelActionResult = result;
+    setChannelActionResultState(result);
+  };
+
+  const setCohortActionResult = (result: string) => {
+    e2eRuntimeMemory.cohortActionResult = result;
+    setCohortActionResultState(result);
+  };
+
+  const setUpdateActionResult = (result: string) => {
+    e2eRuntimeMemory.updateActionResult = result;
+    setUpdateActionResultState(result);
+  };
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -142,7 +194,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const applyCohortValue = async (nextCohort: string) => {
     HotUpdater.setCohort(nextCohort);
     const appliedCohort = HotUpdater.getCohort();
-    cohortInputRef.current = appliedCohort;
     setCohortInput(appliedCohort);
     setCohortActionResult(`set -> ${appliedCohort}`);
     await refresh();
@@ -150,7 +201,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
 
   const updateCohortInput = (nextCohort: string) => {
     HotUpdater.setCohort(nextCohort);
-    cohortInputRef.current = nextCohort;
     setCohortInput(nextCohort);
   };
 

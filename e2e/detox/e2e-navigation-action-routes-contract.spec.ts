@@ -22,6 +22,10 @@ const detoxScreenRoutesPath = path.join(
   "e2e/detox/detox-screen-routes.js",
 );
 const detoxAppDriverPath = path.join(repoDir, "e2e/detox/detox-app-driver.js");
+const e2eRuntimeHookPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+);
 
 describe("E2E navigation action route contract", () => {
   it("keeps action and multi-value assertions on one-target routes", async () => {
@@ -191,5 +195,27 @@ describe("E2E navigation action route contract", () => {
     );
     expect(detoxPageSource).not.toContain("activeResultScreenPaths");
     expect(detoxScreenRoutesSource).not.toContain("ACTION_RESULT_TEST_IDS");
+  });
+
+  it("persists action route state across Android deep-link remounts", async () => {
+    const e2eRuntimeHookSource = await fs.readFile(e2eRuntimeHookPath, "utf8");
+
+    expect(e2eRuntimeHookSource).toContain("const e2eRuntimeMemory");
+    expect(e2eRuntimeHookSource).toMatch(
+      /useState\(\s*\(\) => e2eRuntimeMemory\.updateActionResult/s,
+    );
+    expect(e2eRuntimeHookSource).toMatch(
+      /useState\(\s*\(\) => e2eRuntimeMemory\.channelActionResult/s,
+    );
+    expect(e2eRuntimeHookSource).toMatch(
+      /useState\(\s*\(\) => e2eRuntimeMemory\.cohortActionResult/s,
+    );
+    expect(e2eRuntimeHookSource).toMatch(
+      /useState\(\s*\(\) => e2eRuntimeMemory\.runtimeChannelInput/s,
+    );
+    expect(e2eRuntimeHookSource).toContain("cohortInputRef.current = input");
+    expect(e2eRuntimeHookSource).toContain(
+      "e2eRuntimeMemory.updateActionResult = result",
+    );
   });
 });
