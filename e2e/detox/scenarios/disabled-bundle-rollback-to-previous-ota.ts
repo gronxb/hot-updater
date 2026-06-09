@@ -130,6 +130,19 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         bundleId: "$nextBundleId",
         enabled: false,
       });
+      await app.tap(
+        "install rollback to previous ota",
+        "action-install-current-channel-update",
+      );
+      await app.control(
+        "wait previous rollback metadata pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$previousBundleId",
+          relaunchLimit: 0,
+          verificationPending: true,
+        },
+      );
       await app.reload("reload rollback to previous app");
       await app.control(
         "wait previous rollback metadata stable",

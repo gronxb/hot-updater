@@ -76,11 +76,15 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         bundleId: "$currentBundleId",
         enabled: false,
       });
-      await app.reload("reload rollback to built-in app");
+      await app.tap(
+        "install rollback to built-in",
+        "action-install-current-channel-update",
+      );
       await app.control(
         "assert rollback metadata reset",
         "/e2e/assert-metadata-reset",
       );
+      await app.reload("reload rollback to built-in app");
       await app.assertText(
         "assert rollback built-in bundle",
         "runtime-bundle-id",
