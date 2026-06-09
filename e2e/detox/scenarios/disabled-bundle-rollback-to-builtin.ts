@@ -37,6 +37,11 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "install current bundle",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert current bundle action result",
+        "update-action-result",
+        "current-channel -> installed $currentBundleId",
+      );
       await app.control(
         "wait current bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -79,6 +84,11 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.tap(
         "install rollback to built-in",
         "action-install-current-channel-update",
+      );
+      await app.assertText(
+        "assert rollback to built-in no update",
+        "update-action-result",
+        "current-channel -> no-update",
       );
       await app.control(
         "assert rollback metadata reset",

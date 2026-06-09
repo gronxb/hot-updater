@@ -40,6 +40,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "install chain bundle A",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert chain bundle A action result",
+      "update-action-result",
+      "current-channel -> installed $bundleA",
+    );
     await app.control(
       "wait chain bundle A metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -99,6 +104,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install chain bundle B",
       "action-install-current-channel-update",
+    );
+    await app.assertText(
+      "assert chain bundle B action result",
+      "update-action-result",
+      "current-channel -> installed $bundleB",
     );
     await app.control(
       "wait chain bundle B metadata pending",
@@ -162,6 +172,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install chain bundle C",
       "action-install-current-channel-update",
+    );
+    await app.assertText(
+      "assert chain bundle C action result",
+      "update-action-result",
+      "current-channel -> installed $bundleC",
     );
     await app.control(
       "wait chain bundle C metadata pending",
@@ -229,6 +244,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "install rollback to chain bundle B",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert chain bundle B rollback action result",
+      "update-action-result",
+      "current-channel -> installed $bundleB",
+    );
     await app.control(
       "wait chain bundle B rollback metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -283,6 +303,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "install rollback to chain bundle A",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert chain bundle A rollback action result",
+      "update-action-result",
+      "current-channel -> installed $bundleA",
+    );
     await app.control(
       "wait chain bundle A rollback metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -336,6 +361,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install rollback to built-in chain",
       "action-install-current-channel-update",
+    );
+    await app.assertText(
+      "assert chain built-in rollback no update",
+      "update-action-result",
+      "current-channel -> no-update",
     );
     await app.control(
       "assert chain built-in metadata reset",

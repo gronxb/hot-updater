@@ -665,7 +665,7 @@ describe("Detox scenario contract", () => {
     expect(reattachBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("keeps install actions free of immediate UI assertions", async () => {
+  it("waits for install action results before metadata/reset control probes", async () => {
     for (const scenarioName of defaultDetoxScenarioNames) {
       const calls = await recordScenarioCalls(scenarioName);
       const installTapIndexes = calls
@@ -679,7 +679,6 @@ describe("Detox scenario contract", () => {
         const stageLabel = `${scenarioName}: ${
           calls[index]?.stage ?? "missing install tap"
         }`;
-        const nextCall = calls[index + 1];
         const nextControlIndex = calls.findIndex(
           (entry, nextIndex) =>
             nextIndex > index &&
@@ -688,17 +687,17 @@ describe("Detox scenario contract", () => {
               entry.pathName === "/e2e/assert-metadata-reset"),
         );
 
-        expect(
-          nextCall?.kind === "assertText" &&
-            nextCall.testID === "update-action-start",
-          stageLabel,
-        ).toBe(false);
-        expect(
-          nextCall?.stage.startsWith("assert ") &&
-            nextCall.stage.endsWith(" started"),
-          stageLabel,
-        ).toBe(false);
         expect(nextControlIndex, stageLabel).toBeGreaterThan(index);
+        expect(
+          calls
+            .slice(index + 1, nextControlIndex)
+            .some(
+              (entry) =>
+                entry.kind === "assertText" &&
+                entry.testID === "update-action-result",
+            ),
+          stageLabel,
+        ).toBe(true);
       }
     }
   });
@@ -1301,8 +1300,8 @@ describe("Detox scenario contract", () => {
       "apply qa cohort",
       "assert qa cohort applied",
       "install target cohort update",
-      "wait target cohort metadata pending",
       "assert target cohort action result",
+      "wait target cohort metadata pending",
       "reload target cohort update",
       "wait target cohort metadata stable",
       "assert target cohort launch",
@@ -1342,6 +1341,7 @@ describe("Detox scenario contract", () => {
       "deploy force update bundle",
       "launch force update app",
       "install force update",
+      "assert force update action result",
       "wait force update metadata pending",
       "reload force update",
       "wait force update metadata stable",
@@ -1374,6 +1374,7 @@ describe("Detox scenario contract", () => {
       "deploy archive base bundle",
       "launch archive base app",
       "install archive base update",
+      "assert archive base action result",
       "wait archive base metadata pending",
       "assert first ota uses archive",
       "reload archive base update",
@@ -1385,6 +1386,7 @@ describe("Detox scenario contract", () => {
       "assert archive diff bases",
       "launch archive diff app",
       "install archive diff update",
+      "assert archive diff action result",
       "wait archive diff metadata pending",
       "reload archive diff update",
       "wait archive diff metadata stable",
@@ -1412,6 +1414,7 @@ describe("Detox scenario contract", () => {
       "deploy first multi-asset bundle",
       "launch first multi-asset app",
       "install first multi-asset update",
+      "assert first multi-asset action result",
       "wait first multi-asset metadata pending",
       "reload first multi-asset update",
       "wait first multi-asset metadata stable",
@@ -1419,6 +1422,7 @@ describe("Detox scenario contract", () => {
       "deploy second multi-asset bundle",
       "launch second multi-asset app",
       "install second multi-asset update",
+      "assert second multi-asset action result",
       "wait second multi-asset metadata pending",
       "reload second multi-asset update",
       "wait second multi-asset metadata stable",
@@ -1511,6 +1515,7 @@ describe("Detox scenario contract", () => {
       "deploy diff bundle A",
       "launch diff bundle A app",
       "install diff bundle A",
+      "assert diff bundle A action result",
       "wait diff bundle A metadata pending",
       "assert diff bundle A uses archive",
       "reload diff bundle A",
@@ -1519,6 +1524,7 @@ describe("Detox scenario contract", () => {
       "deploy diff bundle B",
       "launch diff bundle B app",
       "install diff bundle B",
+      "assert diff bundle B action result",
       "wait diff bundle B metadata pending",
       "reload diff bundle B",
       "wait diff bundle B metadata stable",
@@ -1527,6 +1533,7 @@ describe("Detox scenario contract", () => {
       "assert diff bundle C bases",
       "launch diff bundle C app",
       "install diff bundle C",
+      "assert diff bundle C action result",
       "wait diff bundle C metadata pending",
       "reload diff bundle C",
       "wait diff bundle C metadata stable",
@@ -1536,6 +1543,7 @@ describe("Detox scenario contract", () => {
       "assert diff bundle D bases",
       "launch diff bundle D app",
       "install diff bundle D",
+      "assert diff bundle D action result",
       "wait diff bundle D metadata pending",
       "reload diff bundle D",
       "wait diff bundle D metadata stable",
@@ -1578,6 +1586,7 @@ describe("Detox scenario contract", () => {
       "deploy manifest base bundle",
       "launch manifest base app",
       "install manifest base update",
+      "assert manifest base action result",
       "wait manifest base metadata pending",
       "reload manifest base update",
       "wait manifest base metadata stable",
@@ -1586,6 +1595,7 @@ describe("Detox scenario contract", () => {
       "assert manifest fallback patch bases",
       "launch manifest fallback app",
       "install manifest fallback update",
+      "assert manifest fallback action result",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
@@ -1625,6 +1635,7 @@ describe("Detox scenario contract", () => {
       "deploy stable bundle",
       "launch stable update app",
       "install stable update",
+      "assert stable action result",
       "wait stable metadata pending",
       "reload stable bundle",
       "wait stable metadata active",
@@ -1632,8 +1643,8 @@ describe("Detox scenario contract", () => {
       "deploy crash bundle",
       "launch crash update app",
       "install crash update",
-      "wait crash metadata pending",
       "assert crash action result",
+      "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
       "assert recovery launch report",
@@ -1682,6 +1693,7 @@ describe("Detox scenario contract", () => {
       "apply excluded cohort",
       "assert excluded cohort applied",
       "install excluded cohort update",
+      "assert excluded cohort no update",
       "assert excluded metadata reset",
       "reload excluded cohort state",
       "assert excluded cohort built-in bundle",
@@ -1689,8 +1701,8 @@ describe("Detox scenario contract", () => {
       "apply included cohort",
       "assert included cohort applied",
       "install included cohort update",
-      "wait included cohort metadata pending",
       "assert included cohort action result",
+      "wait included cohort metadata pending",
       "reload included cohort update",
       "wait included cohort metadata stable",
       "assert included cohort bundle",
@@ -1698,14 +1710,15 @@ describe("Detox scenario contract", () => {
       "apply restored excluded cohort",
       "assert restored excluded cohort applied",
       "install restored excluded cohort update",
+      "assert restored excluded cohort no update",
       "assert restored excluded metadata reset",
       "reload restored excluded cohort state",
       "assert restored excluded built-in bundle",
       "apply qa cohort",
       "assert qa cohort applied",
       "install qa cohort update",
-      "wait qa cohort metadata pending",
       "assert qa cohort action result",
+      "wait qa cohort metadata pending",
       "reload qa cohort update",
       "wait qa cohort metadata stable",
       "assert qa cohort bundle",
@@ -1742,6 +1755,7 @@ describe("Detox scenario contract", () => {
       "deploy runtime channel bundle",
       "launch runtime channel app",
       "install runtime channel update",
+      "assert runtime channel action result",
       "wait runtime channel metadata pending",
       "assert runtime channel result",
       "reload runtime channel update",
@@ -1794,8 +1808,8 @@ describe("Detox scenario contract", () => {
       "apply included cohort",
       "assert included cohort applied",
       "install rollout update",
-      "wait rollout metadata pending",
       "assert rollout action result",
+      "wait rollout metadata pending",
       "reload rollout update",
       "wait rollout metadata stable",
       "assert rollout launch",
@@ -1803,6 +1817,7 @@ describe("Detox scenario contract", () => {
       "apply excluded cohort",
       "assert excluded cohort applied",
       "install excluded cohort update",
+      "assert excluded cohort no update",
       "assert excluded metadata reset",
       "reload excluded cohort state",
       "assert excluded cohort built-in bundle",
@@ -1876,14 +1891,15 @@ describe("Detox scenario contract", () => {
       "apply numeric cohort",
       "assert numeric cohort applied",
       "install numeric cohort update",
-      "wait numeric cohort metadata pending",
       "assert numeric cohort action result",
+      "wait numeric cohort metadata pending",
       "reload numeric cohort update",
       "wait numeric cohort metadata stable",
       "assert numeric cohort launch",
       "enter qa cohort",
       "apply qa cohort",
       "install qa cohort update",
+      "assert qa cohort action result",
       "wait qa cohort metadata pending",
       "reload qa cohort update",
       "wait qa cohort metadata stable",
@@ -1892,6 +1908,7 @@ describe("Detox scenario contract", () => {
       "apply restored numeric cohort",
       "assert numeric cohort restored",
       "install numeric cohort rollback",
+      "assert numeric cohort rollback action result",
       "wait numeric cohort rollback pending",
       "reload numeric cohort rollback",
       "wait numeric cohort rollback stable",
@@ -1917,6 +1934,7 @@ describe("Detox scenario contract", () => {
       "deploy current bundle",
       "launch current bundle app",
       "install current bundle",
+      "assert current bundle action result",
       "wait current bundle metadata pending",
       "reload current bundle",
       "wait current bundle metadata stable",
@@ -1925,6 +1943,7 @@ describe("Detox scenario contract", () => {
       "assert current bundle active",
       "disable current bundle",
       "install rollback to built-in",
+      "assert rollback to built-in no update",
       "assert rollback metadata reset",
       "reload rollback to built-in app",
       "assert rollback built-in bundle",
@@ -1948,6 +1967,7 @@ describe("Detox scenario contract", () => {
       "deploy previous bundle",
       "launch previous bundle app",
       "install previous bundle",
+      "assert previous bundle action result",
       "wait previous bundle metadata pending",
       "reload previous bundle",
       "wait previous bundle metadata stable",
@@ -1957,6 +1977,7 @@ describe("Detox scenario contract", () => {
       "deploy next bundle",
       "launch next bundle app",
       "install next bundle",
+      "assert next bundle action result",
       "wait next bundle metadata pending",
       "reload next bundle",
       "wait next bundle metadata stable",
@@ -1965,6 +1986,7 @@ describe("Detox scenario contract", () => {
       "assert next bundle active",
       "disable next bundle",
       "install rollback to previous ota",
+      "assert previous ota rollback action result",
       "wait previous rollback metadata pending",
       "reload rollback to previous app",
       "wait previous rollback metadata stable",
@@ -2016,6 +2038,7 @@ describe("Detox scenario contract", () => {
       "deploy chain bundle A",
       "launch chain bundle A app",
       "install chain bundle A",
+      "assert chain bundle A action result",
       "wait chain bundle A metadata pending",
       "assert chain bundle A uses archive",
       "reload chain bundle A",
@@ -2026,6 +2049,7 @@ describe("Detox scenario contract", () => {
       "deploy chain bundle B",
       "launch chain bundle B app",
       "install chain bundle B",
+      "assert chain bundle B action result",
       "wait chain bundle B metadata pending",
       "reload chain bundle B",
       "wait chain bundle B metadata stable",
@@ -2036,6 +2060,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle C bases",
       "launch chain bundle C app",
       "install chain bundle C",
+      "assert chain bundle C action result",
       "wait chain bundle C metadata pending",
       "reload chain bundle C",
       "wait chain bundle C metadata stable",
@@ -2048,6 +2073,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle C active",
       "disable chain bundle C",
       "install rollback to chain bundle B",
+      "assert chain bundle B rollback action result",
       "wait chain bundle B rollback metadata pending",
       "reload rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
@@ -2058,6 +2084,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback active",
       "disable chain bundle B",
       "install rollback to chain bundle A",
+      "assert chain bundle A rollback action result",
       "wait chain bundle A rollback metadata pending",
       "reload rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
@@ -2068,6 +2095,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback active",
       "disable chain bundle A",
       "install rollback to built-in chain",
+      "assert chain built-in rollback no update",
       "assert chain built-in metadata reset",
       "reload rollback to built-in chain",
       "assert chain built-in bundle",

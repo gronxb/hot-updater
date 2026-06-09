@@ -51,6 +51,11 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "install runtime channel update",
       "action-install-runtime-channel-update",
     );
+    await app.assertText(
+      "assert runtime channel action result",
+      "update-action-result",
+      "runtime-channel:beta -> installed $runtimeBundleId",
+    );
     await app.control(
       "wait runtime channel metadata pending",
       "/e2e/jobs/wait-for-metadata",

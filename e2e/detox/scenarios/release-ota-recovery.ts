@@ -31,6 +31,11 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "install stable update",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert stable action result",
+      "update-action-result",
+      "current-channel -> installed $stableBundleId",
+    );
     await app.control(
       "wait stable metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -73,6 +78,11 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       "install crash update",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert crash action result",
+      "update-action-result",
+      "current-channel -> installed $crashBundleId",
+    );
     await app.control(
       "wait crash metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -81,11 +91,6 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
         recoveredStableBundleId: "$stableBundleId",
         verificationPending: true,
       },
-    );
-    await app.assertText(
-      "assert crash action result",
-      "update-action-result",
-      "current-channel -> installed $crashBundleId (UPDATE)",
     );
     await app.launch("launch crash bundle");
     await app.control("wait crash recovery", "/e2e/wait-for-crash-recovery", {

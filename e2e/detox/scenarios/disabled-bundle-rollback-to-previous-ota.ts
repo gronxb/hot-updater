@@ -37,6 +37,11 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "install previous bundle",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert previous bundle action result",
+        "update-action-result",
+        "current-channel -> installed $previousBundleId",
+      );
       await app.control(
         "wait previous bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -91,6 +96,11 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "install next bundle",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert next bundle action result",
+        "update-action-result",
+        "current-channel -> installed $nextBundleId",
+      );
       await app.control(
         "wait next bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -133,6 +143,11 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.tap(
         "install rollback to previous ota",
         "action-install-current-channel-update",
+      );
+      await app.assertText(
+        "assert previous ota rollback action result",
+        "update-action-result",
+        "current-channel -> installed $previousBundleId",
       );
       await app.control(
         "wait previous rollback metadata pending",

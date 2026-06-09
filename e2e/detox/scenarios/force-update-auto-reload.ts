@@ -23,6 +23,11 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
       "install force update",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert force update action result",
+      "update-action-result",
+      "current-channel -> installed $forceBundleId",
+    );
     await app.control(
       "wait force update metadata pending",
       "/e2e/jobs/wait-for-metadata",

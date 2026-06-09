@@ -67,6 +67,11 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "install excluded cohort update",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert excluded cohort no update",
+        "update-action-result",
+        "current-channel -> no-update",
+      );
       await app.control(
         "assert excluded metadata reset",
         "/e2e/assert-metadata-reset",
@@ -93,6 +98,11 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "install included cohort update",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert included cohort action result",
+        "update-action-result",
+        "current-channel -> installed $bundleId",
+      );
       await app.control(
         "wait included cohort metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -101,11 +111,6 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           relaunchLimit: 0,
           verificationPending: true,
         },
-      );
-      await app.assertText(
-        "assert included cohort action result",
-        "update-action-result",
-        "current-channel -> installed $bundleId (UPDATE)",
       );
       await app.reload("reload included cohort update");
       await app.control(
@@ -140,6 +145,11 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "install restored excluded cohort update",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert restored excluded cohort no update",
+        "update-action-result",
+        "current-channel -> no-update",
+      );
       await app.control(
         "assert restored excluded metadata reset",
         "/e2e/assert-metadata-reset",
@@ -161,6 +171,11 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "install qa cohort update",
         "action-install-current-channel-update",
       );
+      await app.assertText(
+        "assert qa cohort action result",
+        "update-action-result",
+        "current-channel -> installed $bundleId",
+      );
       await app.control(
         "wait qa cohort metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -169,11 +184,6 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
           relaunchLimit: 0,
           verificationPending: true,
         },
-      );
-      await app.assertText(
-        "assert qa cohort action result",
-        "update-action-result",
-        "current-channel -> installed $bundleId (UPDATE)",
       );
       await app.reload("reload qa cohort update");
       await app.control(

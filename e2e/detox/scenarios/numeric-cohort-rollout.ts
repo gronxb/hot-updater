@@ -55,6 +55,11 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
       "install rollout update",
       "action-install-current-channel-update",
     );
+    await app.assertText(
+      "assert rollout action result",
+      "update-action-result",
+      "current-channel -> installed $bundleId",
+    );
     await app.control(
       "wait rollout metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -63,11 +68,6 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
         relaunchLimit: 0,
         verificationPending: true,
       },
-    );
-    await app.assertText(
-      "assert rollout action result",
-      "update-action-result",
-      "current-channel -> installed $bundleId (UPDATE)",
     );
     await app.reload("reload rollout update");
     await app.control(
@@ -97,6 +97,11 @@ export const numericCohortRolloutScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install excluded cohort update",
       "action-install-current-channel-update",
+    );
+    await app.assertText(
+      "assert excluded cohort no update",
+      "update-action-result",
+      "current-channel -> no-update",
     );
     await app.control(
       "assert excluded metadata reset",
