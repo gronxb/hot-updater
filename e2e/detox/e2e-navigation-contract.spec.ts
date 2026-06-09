@@ -170,6 +170,9 @@ describe("E2E navigation contract", () => {
     );
     expect(openScreenBody).toContain("device.openURL({");
     expect(openScreenBody).toContain("url: E2E_SCREEN_URLS[screenPath]");
+    expect(
+      openScreenBody.indexOf("withSynchronizationDisabledForPageOpen"),
+    ).toBeLessThan(openScreenBody.indexOf("device.openURL({"));
     expect(openScreenBody).not.toContain("launchApp({");
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",

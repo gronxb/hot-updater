@@ -202,8 +202,8 @@ async function withSynchronizationDisabledForPageOpen(operation) {
 
 async function openScreenForTestID(testID) {
   const screenPath = screenPathForTestID(testID);
-  await device.openURL({ url: E2E_SCREEN_URLS[screenPath] });
   await withSynchronizationDisabledForPageOpen(async () => {
+    await device.openURL({ url: E2E_SCREEN_URLS[screenPath] });
     await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath]);
     const screenContent = element(by.id("e2e-screen-content"));
     await waitFor(screenContent).toBeVisible().withTimeout(30000);
