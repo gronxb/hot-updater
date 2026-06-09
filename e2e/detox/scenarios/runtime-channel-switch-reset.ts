@@ -1,3 +1,4 @@
+import { installRuntimeChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
@@ -47,10 +48,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch runtime channel app");
-    await app.tap(
-      "install runtime channel update",
-      "action-install-runtime-channel-update",
-    );
+    await installRuntimeChannelUpdate(app, "install runtime channel update");
     await app.control(
       "wait runtime channel metadata pending",
       "/e2e/jobs/wait-for-metadata",

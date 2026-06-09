@@ -13,6 +13,9 @@ export const UpdateActionResultScreen = () => {
       <Text selectable style={styles.resultText} testID="update-action-result">
         Update Action Result: {model.updateActionResult}
       </Text>
+      <Text selectable style={styles.resultText} testID="update-action-start">
+        Update Action Start: {model.updateActionStart}
+      </Text>
     </ScreenShell>
   );
 };

@@ -1,3 +1,4 @@
+import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinition =
@@ -33,10 +34,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         },
       );
       await app.launch("launch previous bundle app");
-      await app.tap(
-        "install previous bundle",
-        "action-install-current-channel-update",
-      );
+      await installCurrentChannelUpdate(app, "install previous bundle");
       await app.control(
         "wait previous bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",
@@ -87,10 +85,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         },
       );
       await app.launch("launch next bundle app");
-      await app.tap(
-        "install next bundle",
-        "action-install-current-channel-update",
-      );
+      await installCurrentChannelUpdate(app, "install next bundle");
       await app.control(
         "wait next bundle metadata pending",
         "/e2e/jobs/wait-for-metadata",

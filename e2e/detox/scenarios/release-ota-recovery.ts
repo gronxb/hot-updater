@@ -1,3 +1,4 @@
+import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
@@ -27,10 +28,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch stable update app");
-    await app.tap(
-      "install stable update",
-      "action-install-current-channel-update",
-    );
+    await installCurrentChannelUpdate(app, "install stable update");
     await app.control(
       "wait stable metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -69,10 +67,7 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch crash update app");
-    await app.tap(
-      "install crash update",
-      "action-install-current-channel-update",
-    );
+    await installCurrentChannelUpdate(app, "install crash update");
     await app.control(
       "wait crash metadata pending",
       "/e2e/jobs/wait-for-metadata",

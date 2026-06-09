@@ -86,6 +86,7 @@ const defaultDetoxScenarioNames = [
 
 type RecordedScenarioCall =
   | {
+      readonly contains: string;
       readonly kind: "assertText";
       readonly stage: string;
       readonly testID: string;
@@ -114,8 +115,8 @@ async function recordScenarioCalls(
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
   const app: DetoxAppDriver = {
-    assertText: (stage, testID) => {
-      calls.push({ kind: "assertText", stage, testID });
+    assertText: (stage, testID, contains) => {
+      calls.push({ contains, kind: "assertText", stage, testID });
       return Promise.resolve();
     },
     control: (stage, pathName, body, options) => {
@@ -164,7 +165,12 @@ async function readDetoxRuntimeSource(): Promise<string> {
 async function scenarioStages(
   scenarioName: string,
 ): Promise<readonly string[]> {
-  return (await recordScenarioCalls(scenarioName)).map((call) => call.stage);
+  return (await recordScenarioCalls(scenarioName))
+    .filter(
+      (call) =>
+        !(call.kind === "assertText" && call.testID === "update-action-start"),
+    )
+    .map((call) => call.stage);
 }
 
 async function controlStepBody(
@@ -651,16 +657,8 @@ describe("Detox scenario contract", () => {
     expect(reattachBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("keeps install action result checks after metadata evidence", async () => {
-    const scenariosWithActionResultAssertions = [
-      "numeric-cohort-rollout",
-      "release-ota-recovery",
-      "target-cohorts-only",
-      "target-cohorts-rollout-interaction",
-      "targeted-cohort-switchback",
-    ] as const;
-
-    for (const scenarioName of scenariosWithActionResultAssertions) {
+  it("asserts install action start before metadata or reset controls", async () => {
+    for (const scenarioName of defaultDetoxScenarioNames) {
       const calls = await recordScenarioCalls(scenarioName);
       const installTapIndexes = calls
         .map((call, index) => ({ call, index }))
@@ -673,26 +671,28 @@ describe("Detox scenario contract", () => {
         const stageLabel = `${scenarioName}: ${
           calls[index]?.stage ?? "missing install tap"
         }`;
-        expect(
-          Object.hasOwn(calls[index] ?? {}, "expectedResultContains"),
-          stageLabel,
-        ).toBe(false);
-        const metadataIndex = calls.findIndex(
+        const installTap = calls[index];
+        const expectedStart =
+          installTap.kind === "tap" &&
+          installTap.testID === "action-install-runtime-channel-update"
+            ? "runtime-channel:beta -> started"
+            : "current-channel -> started";
+        const nextCall = calls[index + 1];
+        const nextControlIndex = calls.findIndex(
           (entry, nextIndex) =>
             nextIndex > index &&
             entry.kind === "control" &&
-            entry.pathName === "/e2e/jobs/wait-for-metadata",
+            (entry.pathName === "/e2e/jobs/wait-for-metadata" ||
+              entry.pathName === "/e2e/assert-metadata-reset"),
         );
-        const actionResultIndex = calls.findIndex(
-          (entry, nextIndex) =>
-            nextIndex > index &&
-            entry.kind === "assertText" &&
-            entry.testID === "update-action-result",
+
+        expect(nextCall?.kind, stageLabel).toBe("assertText");
+        expect(nextCall?.stage, stageLabel).toBe(
+          `assert ${installTap.stage} started`,
         );
-        if (actionResultIndex !== -1) {
-          expect(metadataIndex, stageLabel).toBeGreaterThan(index);
-          expect(actionResultIndex, stageLabel).toBeGreaterThan(metadataIndex);
-        }
+        expect(nextCall?.testID, stageLabel).toBe("update-action-start");
+        expect(nextCall?.contains, stageLabel).toBe(expectedStart);
+        expect(nextControlIndex, stageLabel).toBeGreaterThan(index + 1);
       }
     }
   });
@@ -860,11 +860,15 @@ describe("Detox scenario contract", () => {
     expect(exampleResultScreenSource).toContain(
       'testID="update-action-result"',
     );
+    expect(exampleResultScreenSource).toContain('testID="update-action-start"');
     expect(detoxScreenRoutesSource).toContain(
       'channelActionResult: "hotupdaterexample://e2e/channel-action-result"',
     );
     expect(detoxScreenRoutesSource).toContain(
       'updateActionResult: "hotupdaterexample://e2e/update-action-result"',
+    );
+    expect(detoxScreenRoutesSource).toContain(
+      '"update-action-start": "updateActionResult"',
     );
     expect(detoxScreenRoutesSource).toContain(
       'cohortActionResult: "hotupdaterexample://e2e/cohort-action-result"',

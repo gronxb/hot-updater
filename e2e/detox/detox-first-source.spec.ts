@@ -30,6 +30,7 @@ const expectedScenarioModuleFiles = [
   "disabled-bundle-rollback-to-builtin.ts",
   "disabled-bundle-rollback-to-previous-ota.ts",
   "force-update-auto-reload.ts",
+  "install-actions.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",

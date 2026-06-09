@@ -1,3 +1,4 @@
+import { installCurrentChannelUpdate } from "./install-actions.ts";
 import type { DetoxScenarioDefinition } from "./types.ts";
 
 export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
@@ -18,10 +19,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch archive base app");
-    await app.tap(
-      "install archive base update",
-      "action-install-current-channel-update",
-    );
+    await installCurrentChannelUpdate(app, "install archive base update");
     await app.control(
       "wait archive base metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -87,10 +85,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch archive diff app");
-    await app.tap(
-      "install archive diff update",
-      "action-install-current-channel-update",
-    );
+    await installCurrentChannelUpdate(app, "install archive diff update");
     await app.control(
       "wait archive diff metadata pending",
       "/e2e/jobs/wait-for-metadata",

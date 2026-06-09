@@ -111,6 +111,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/scenarios/disabled-bundle-rollback-to-builtin.ts",
       "e2e/detox/scenarios/disabled-bundle-rollback-to-previous-ota.ts",
       "e2e/detox/scenarios/force-update-auto-reload.ts",
+      "e2e/detox/scenarios/install-actions.ts",
       "e2e/detox/scenarios/multi-asset-replacement.ts",
       "e2e/detox/scenarios/numeric-cohort-rollout.ts",
       "e2e/detox/scenarios/release-ota-recovery.ts",

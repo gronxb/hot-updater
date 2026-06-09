@@ -96,6 +96,7 @@ const TEST_ID_SCREEN_PATHS = {
   "runtime-scenario-marker": "runtimeMarker",
   "runtime-channel-input": "runtimeChannelInput",
   "update-action-result": "updateActionResult",
+  "update-action-start": "updateActionResult",
   "update-store-downloaded": "updateStoreDownloaded",
   "update-store-download-paths": "updateStoreDownloadPaths",
 };
