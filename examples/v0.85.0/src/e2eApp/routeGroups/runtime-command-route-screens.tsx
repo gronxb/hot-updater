@@ -4,9 +4,8 @@ import { Stack } from "../route-stack";
 import { ClearCrashHistoryActionScreen } from "../screens/clear-crash-history-action-screen";
 import { RefreshRuntimeSnapshotActionScreen } from "../screens/refresh-runtime-snapshot-action-screen";
 import { ReloadAppActionScreen } from "../screens/reload-app-action-screen";
-import { ResetRuntimeChannelActionScreen } from "../screens/reset-runtime-channel-action-screen";
 
-export const runtimeActionRouteScreens = [
+export const runtimeCommandRouteScreens = [
   <Stack.Screen
     key="RefreshRuntimeSnapshotAction"
     name="RefreshRuntimeSnapshotAction"
@@ -21,10 +20,5 @@ export const runtimeActionRouteScreens = [
     key="ClearCrashHistoryAction"
     name="ClearCrashHistoryAction"
     component={ClearCrashHistoryActionScreen}
-  />,
-  <Stack.Screen
-    key="ResetRuntimeChannelAction"
-    name="ResetRuntimeChannelAction"
-    component={ResetRuntimeChannelActionScreen}
   />,
 ] as const;
