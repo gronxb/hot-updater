@@ -91,12 +91,12 @@ class DetoxAppDriver {
 
   async tap(stage, testID) {
     await this.runStage(stage, async () => {
-      const target = await findVisibleTestID(this.controlClient, testID);
       const isInstallAction = shouldDisableSynchronizationForTap(testID);
       const isAppReloadAction = testID === "action-reload-app";
       if (isInstallAction) {
         await disableSynchronizationUntilLaunch();
       }
+      const target = await findVisibleTestID(this.controlClient, testID);
       await target.tap();
       await this.reattachAfterInstallTap(isInstallAction);
       await this.reattachAfterAppReloadTap(isAppReloadAction);

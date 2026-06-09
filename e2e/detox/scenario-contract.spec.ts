@@ -46,10 +46,6 @@ const exampleE2eAppScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens.tsx",
 );
-const exampleE2eAppActionScreensPath = path.join(
-  repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/action-screens.tsx",
-);
 const exampleE2eAppResultScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/result-screens.tsx",
@@ -1003,8 +999,15 @@ describe("Detox scenario contract", () => {
     // Then: cohort/channel utility buttons keep normal synchronization.
     expect(tapBody).toContain("shouldDisableSynchronizationForTap");
     expect(tapBody).toContain('testID.startsWith("action-install-")');
-    expect(tapBody).not.toContain(
-      "await disableSynchronizationUntilLaunch();\n  await target.tap();",
+    expect(
+      tapBody.indexOf("await disableSynchronizationUntilLaunch();"),
+    ).toBeLessThan(
+      tapBody.indexOf(
+        "const target = await findVisibleTestID(this.controlClient, testID)",
+      ),
+    );
+    expect(tapBody).toContain(
+      "if (isInstallAction) {\n        await disableSynchronizationUntilLaunch();\n      }\n      const target",
     );
   });
 

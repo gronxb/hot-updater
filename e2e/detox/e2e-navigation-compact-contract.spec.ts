@@ -101,8 +101,9 @@ describe("E2E navigation compact surface contract", () => {
     const screenFiles = await fs.readdir(e2eAppScreensDir);
 
     // When: the implementation is inspected for bundled assertion surfaces.
-    const runtimeScreenFiles = screenFiles.filter((fileName) =>
-      fileName.startsWith("runtime-"),
+    const runtimeScreenFiles = screenFiles.filter(
+      (fileName) =>
+        fileName.startsWith("runtime-") && !fileName.includes("-action-"),
     );
 
     // Then: each assertion page lives in its own small file.
@@ -121,6 +122,25 @@ describe("E2E navigation compact surface contract", () => {
       "launch-screens.tsx",
       "update-store-screens.tsx",
     ]) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      expect(source).not.toContain("ScrollView");
+      expect(sourceCodeLineCount(source)).toBeLessThanOrEqual(70);
+    }
+  });
+
+  it("keeps every E2E route page in a small non-scrollable file", async () => {
+    // Given: Detox opens one route per assertion or action target.
+    const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
+      (fileName) => fileName.endsWith(".tsx"),
+    );
+
+    // When: the route page files are inspected for hidden bundled pages.
+    // Then: no screen file needs ScrollView lookup or a large registry body.
+    expect(screenFiles).not.toContain("action-screens.tsx");
+    for (const fileName of screenFiles) {
       const source = await fs.readFile(
         path.join(e2eAppScreensDir, fileName),
         "utf8",
@@ -236,6 +256,9 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutesSource).not.toContain("InstallCurrentChannelUpdate");
     expect(e2eAppRoutesSource.split("\n").length).toBeLessThanOrEqual(80);
     expect(e2eAppStackScreensSource).toContain("modelScreens");
+    expect(sourceCodeLineCount(e2eAppStackScreensSource)).toBeLessThanOrEqual(
+      70,
+    );
   });
 
   it("does not swallow E2E action button errors", async () => {
