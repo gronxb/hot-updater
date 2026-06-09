@@ -124,6 +124,19 @@ describe("Detox assertion parity", () => {
       openDeepLinkScreenBody.indexOf("await device.openURL({ url });"),
     );
     expect(detoxPageSource).toContain("await device.openURL({ url });");
+    const openUrlIndex = openDeepLinkScreenBody.indexOf(
+      "await device.openURL({ url });",
+    );
+    const postOpenUrlFlagResetIndex = openDeepLinkScreenBody.indexOf(
+      "synchronizationDisabledUntilLaunch = false;",
+      openUrlIndex,
+    );
+    const postOpenUrlDisableIndex = openDeepLinkScreenBody.indexOf(
+      "await disableSynchronizationUntilLaunch();",
+      openUrlIndex + 1,
+    );
+    expect(postOpenUrlFlagResetIndex).toBeGreaterThan(openUrlIndex);
+    expect(postOpenUrlDisableIndex).toBeGreaterThan(postOpenUrlFlagResetIndex);
     expect(
       detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
     ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));

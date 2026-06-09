@@ -108,6 +108,8 @@ async function openDeepLinkScreen(url) {
   await launchApp({ newInstance: false });
   await disableSynchronizationUntilLaunch();
   await device.openURL({ url });
+  synchronizationDisabledUntilLaunch = false;
+  await disableSynchronizationUntilLaunch();
 }
 
 async function ensureAppForegroundForInteraction() {
