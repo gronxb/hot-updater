@@ -183,7 +183,10 @@ const HOT_UPDATER_CLI_PATH = path.join(
 );
 const COMMAND_STDIO_DRAIN_GRACE_MS = 500;
 const EXAMPLE_DIR = path.join(REPO_DIR, "examples/v0.85.0");
-const APP_SOURCE_FILE = path.join(EXAMPLE_DIR, "App.tsx");
+const E2E_PATCH_SOURCE_FILE = path.join(
+  EXAMPLE_DIR,
+  "src/e2eApp/patchSurface.ts",
+);
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const BARE_BUILD_CACHE_VERSION = 1;
@@ -198,6 +201,8 @@ const BARE_BUILD_CACHE_INPUT_PATHS = [
   "examples/v0.85.0/package.json",
   "examples/v0.85.0/babel.config.js",
   "examples/v0.85.0/metro.config.js",
+  "examples/v0.85.0/src/e2eApp",
+  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
   "examples/v0.85.0/src/test",
   "plugins/bare",
   "packages/core",
@@ -227,7 +232,7 @@ const BARE_BUILD_INLINE_PATTERN =
   /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
-const MARKER_PATTERN = /const E2E_SCENARIO_MARKER = ".*?";/;
+const MARKER_PATTERN = /export const E2E_SCENARIO_MARKER = ".*?";/;
 const BUILT_IN_APP_MARKER = "targeted-qa-detox";
 const E2E_APP_VERSION = "1.0";
 const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
@@ -245,7 +250,7 @@ const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const LARGE_ARCHIVE_ASSET_RELATIVE_PATH =
   "src/test/_fixture-archive-300mb-random.bmp";
 const LARGE_ARCHIVE_ASSET_REQUIRE_PATH =
-  "./src/test/_fixture-archive-300mb-random.bmp";
+  "../test/_fixture-archive-300mb-random.bmp";
 const LARGE_ARCHIVE_BMP_WIDTH = 4096;
 const LARGE_ARCHIVE_BMP_HEIGHT = 25600;
 const LARGE_ARCHIVE_BMP_HEADER_SIZE = 54;
@@ -259,19 +264,19 @@ const MULTI_ASSET_FIXTURES = [
     androidManifestPath: "raw/src_test__fixturemultiasseta.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-a.bmp",
     relativePath: "src/test/_fixture-multi-asset-a.bmp",
-    requirePath: "./src/test/_fixture-multi-asset-a.bmp",
+    requirePath: "../test/_fixture-multi-asset-a.bmp",
   },
   {
     androidManifestPath: "raw/src_test__fixturemultiassetb.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-b.bmp",
     relativePath: "src/test/_fixture-multi-asset-b.bmp",
-    requirePath: "./src/test/_fixture-multi-asset-b.bmp",
+    requirePath: "../test/_fixture-multi-asset-b.bmp",
   },
   {
     androidManifestPath: "raw/src_test__fixturemultiassetc.bmp",
     manifestPath: "assets/src/test/_fixture-multi-asset-c.bmp",
     relativePath: "src/test/_fixture-multi-asset-c.bmp",
-    requirePath: "./src/test/_fixture-multi-asset-c.bmp",
+    requirePath: "../test/_fixture-multi-asset-c.bmp",
   },
 ] as const;
 const MULTI_ASSET_BMP_WIDTH = 64;
@@ -433,7 +438,7 @@ const fixtureSession: SessionState = {
     "http://localhost:3007/hot-updater",
   appBackupPath: null,
   appId,
-  appSourceFile: APP_SOURCE_FILE,
+  appSourceFile: E2E_PATCH_SOURCE_FILE,
   bootstrapResult: null,
   builtInBundleId: null,
   configBackupPath: null,
@@ -1004,14 +1009,16 @@ async function applyAppScenario({
   );
 
   if (!MARKER_PATTERN.test(source)) {
-    throw new Error("Failed to locate E2E scenario marker in App.tsx");
+    throw new Error("Failed to locate E2E scenario marker in patchSurface.ts");
   }
   if (!CRASH_GUARD_PATTERN.test(source)) {
-    throw new Error("Failed to locate E2E crash guard markers in App.tsx");
+    throw new Error(
+      "Failed to locate E2E crash guard markers in patchSurface.ts",
+    );
   }
   if (!DEPLOY_ASSET_GUARD_PATTERN.test(source)) {
     throw new Error(
-      "Failed to locate E2E deploy asset guard markers in App.tsx",
+      "Failed to locate E2E deploy asset guard markers in patchSurface.ts",
     );
   }
 
@@ -1058,7 +1065,7 @@ async function applyAppScenario({
   const nextSource = source
     .replace(
       MARKER_PATTERN,
-      `const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`,
+      `export const E2E_SCENARIO_MARKER = ${JSON.stringify(marker)};`,
     )
     .replace(CRASH_GUARD_PATTERN, crashGuardSource)
     .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);

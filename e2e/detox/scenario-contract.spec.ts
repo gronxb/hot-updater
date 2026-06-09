@@ -26,6 +26,22 @@ const detoxControlServerControllerPath = path.join(
 );
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
+const exampleE2eAppPatchSurfacePath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/patchSurface.ts",
+);
+const exampleE2eAppRuntimePath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/runtime.ts",
+);
+const exampleE2eAppComponentsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/components.tsx",
+);
+const exampleE2eAppScreensPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens.tsx",
+);
 const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
@@ -422,13 +438,16 @@ describe("Detox scenario contract", () => {
 
   it("uses the checked-in native built-in marker for bootstrap assertions", async () => {
     // Given: provider jobs reuse the native app built during shared setup.
-    const appSource = await fs.readFile(exampleAppPath, "utf8");
+    const patchSurfaceSource = await fs.readFile(
+      exampleE2eAppPatchSurfacePath,
+      "utf8",
+    );
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",
     );
-    const nativeMarker = appSource.match(
-      /const E2E_SCENARIO_MARKER = "([^"]+)";/,
+    const nativeMarker = patchSurfaceSource.match(
+      /export const E2E_SCENARIO_MARKER = "([^"]+)";/,
     )?.[1];
 
     // When: Detox seeds Maestro-compatible output.initialMarker.
@@ -499,6 +518,10 @@ describe("Detox scenario contract", () => {
     // Given: provider-specific URLs must remain runtime values so native builds
     // can be reused across profiles and shards without bloating App.tsx.
     const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+    const e2eRuntimeSource = await fs.readFile(
+      exampleE2eAppRuntimePath,
+      "utf8",
+    );
     const runtimeConfigSource = await fs.readFile(runtimeConfigPath, "utf8");
 
     // When: the example app wires HotUpdater.
@@ -511,7 +534,8 @@ describe("Detox scenario contract", () => {
       "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL",
     );
 
-    expect(exampleAppSource).toContain("./src/e2eRuntimeConfig");
+    expect(exampleAppSource).toContain("./src/e2eApp");
+    expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");
@@ -667,7 +691,7 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("function navTargetForTestID"),
+      detoxPageSource.indexOf("function screenPathForTestID"),
     );
 
     expect(installTapBody).toContain("disableSynchronizationUntilLaunch()");
@@ -695,7 +719,7 @@ describe("Detox scenario contract", () => {
       detoxPageSource.indexOf(
         "async function disableSynchronizationUntilLaunch",
       ),
-      detoxPageSource.indexOf("function navTargetForTestID"),
+      detoxPageSource.indexOf("function screenPathForTestID"),
     );
 
     expect(syncHelperBody).toContain(
@@ -734,7 +758,10 @@ describe("Detox scenario contract", () => {
 
   it("uses action result elements only for explicit assertions", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+    const exampleScreenSource = await fs.readFile(
+      exampleE2eAppScreensPath,
+      "utf8",
+    );
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -744,9 +771,11 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async control(stage"),
     );
 
-    expect(exampleAppSource).toContain('testID="update-action-result"');
+    expect(exampleScreenSource).toContain('testID="update-action-result"');
     expect(detoxPageSource).toContain('testID.endsWith("-result")');
-    expect(detoxPageSource).toContain("e2e-nav-action-results");
+    expect(detoxPageSource).toContain(
+      'results: "hotupdaterexample://e2e/results"',
+    );
     expect(detoxPageSource).toContain(".toBeVisible()");
     expect(detoxRuntimeSource).not.toContain(
       "async waitForInstallActionResult",
@@ -874,21 +903,24 @@ describe("Detox scenario contract", () => {
 
   it("scrolls inside the app content when Android layout offsets are not ready", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const exampleAppSource = await fs.readFile(exampleAppPath, "utf8");
+    const exampleComponentSource = await fs.readFile(
+      exampleE2eAppComponentsPath,
+      "utf8",
+    );
     const waitForTestIDBody = detoxPageSource.slice(
       detoxPageSource.indexOf("async function findVisibleTestID"),
       detoxPageSource.indexOf("module.exports"),
     );
-    const navigateBody = detoxPageSource.slice(
-      detoxPageSource.indexOf("async function navigateToTestID"),
+    const openScreenBody = detoxPageSource.slice(
+      detoxPageSource.indexOf("async function openScreenForTestID"),
       detoxPageSource.indexOf(
         "async function ensureAppForegroundForInteraction",
       ),
     );
 
-    expect(exampleAppSource).toContain('testID="e2e-scroll-content"');
+    expect(exampleComponentSource).toContain('testID="e2e-scroll-content"');
     expect(waitForTestIDBody).toContain('by.id("e2e-scroll-content")');
-    expect(navigateBody).toContain('scrollTo("top")');
+    expect(openScreenBody).toContain('scrollTo("top")');
     expect(waitForTestIDBody).toContain(".whileElement(");
     expect(waitForTestIDBody).toContain('.scroll(260, "down")');
     expect(waitForTestIDBody).not.toMatch(/\bretry\b/i);

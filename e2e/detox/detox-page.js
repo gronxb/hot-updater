@@ -2,6 +2,13 @@ const { by, device, element, waitFor } = require("detox");
 
 let synchronizationDisabledUntilLaunch = false;
 
+const E2E_SCREEN_URLS = {
+  actions: "hotupdaterexample://e2e/actions",
+  cohorts: "hotupdaterexample://e2e/cohorts",
+  results: "hotupdaterexample://e2e/results",
+  runtime: "hotupdaterexample://e2e/runtime",
+};
+
 function isAndroidRun() {
   return [
     process.env.DETOX_CONFIGURATION,
@@ -84,15 +91,15 @@ async function disableSynchronizationUntilLaunch() {
   synchronizationDisabledUntilLaunch = true;
 }
 
-function navTargetForTestID(testID) {
+function screenPathForTestID(testID) {
   if (
     testID.startsWith("action-set-") ||
     testID === "action-restore-initial-cohort"
   ) {
-    return "e2e-nav-cohort-actions";
+    return "cohorts";
   }
   if (testID.startsWith("action-") || testID.endsWith("-input")) {
-    return "e2e-nav-actions";
+    return "actions";
   }
   if (
     testID === "launch-status-result" ||
@@ -101,23 +108,23 @@ function navTargetForTestID(testID) {
     testID === "current-cohort-summary" ||
     testID === "update-store-downloaded" ||
     testID === "update-store-download-paths" ||
+    testID === "crash-history-summary" ||
     testID.startsWith("runtime-")
   ) {
-    return "e2e-nav-top";
+    return "runtime";
   }
   if (testID.endsWith("-result")) {
-    return "e2e-nav-action-results";
+    return "results";
   }
-  if (testID === "crash-history-summary") {
-    return "e2e-nav-crash-history";
-  }
-  return "e2e-nav-top";
+  return "runtime";
 }
 
-async function navigateToTestID(testID) {
-  const navTarget = navTargetForTestID(testID);
-  await waitFor(element(by.id(navTarget))).toBeVisible().withTimeout(30000);
-  await element(by.id(navTarget)).tap();
+async function openScreenForTestID(testID) {
+  const screenPath = screenPathForTestID(testID);
+  await launchApp({
+    newInstance: false,
+    url: E2E_SCREEN_URLS[screenPath],
+  });
   const scrollContent = element(by.id("e2e-scroll-content"));
   await waitFor(scrollContent).toBeVisible().withTimeout(30000);
   await scrollContent.scrollTo("top");
@@ -141,7 +148,7 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
   if (options.ensureForeground !== false) {
     await ensureAppForegroundForInteraction();
   }
-  await navigateToTestID(testID);
+  await openScreenForTestID(testID);
   const target = element(by.id(testID));
   await waitFor(target)
     .toBeVisible()
