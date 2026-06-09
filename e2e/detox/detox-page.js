@@ -113,7 +113,13 @@ async function openScreenForTestID(testID) {
 }
 
 async function openDeepLinkScreen(url) {
-  await launchApp({ newInstance: false, url });
+  if (isAndroidRun()) {
+    await launchApp({ newInstance: false, url });
+    return;
+  }
+
+  await launchApp({ newInstance: false });
+  await device.openURL({ url });
 }
 
 async function ensureAppForegroundForInteraction() {

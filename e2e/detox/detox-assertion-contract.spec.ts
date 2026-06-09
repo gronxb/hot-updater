@@ -94,8 +94,17 @@ describe("Detox assertion parity", () => {
     expect(openScreenBody).toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
     expect(detoxPageSource).toContain("async function openDeepLinkScreen");
-    expect(detoxPageSource).toContain("launchApp({ newInstance: false, url })");
-    expect(detoxPageSource).not.toContain("device.openURL({");
+    expect(detoxPageSource).toContain("if (isAndroidRun())");
+    expect(detoxPageSource).toContain(
+      "await launchApp({ newInstance: false, url });",
+    );
+    expect(detoxPageSource).toContain(
+      "await launchApp({ newInstance: false });",
+    );
+    expect(detoxPageSource).toContain("await device.openURL({ url });");
+    expect(
+      detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
+    ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));
     expect(openScreenBody.indexOf("openDeepLinkScreen")).toBeLessThan(
       openScreenBody.indexOf('by.id("e2e-screen-content")'),
     );

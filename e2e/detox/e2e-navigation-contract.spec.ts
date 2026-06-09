@@ -187,8 +187,17 @@ describe("E2E navigation contract", () => {
       openScreenBody.indexOf("withSynchronizationDisabledForPageOpen"),
     ).toBeLessThan(openScreenBody.indexOf("openDeepLinkScreen"));
     expect(detoxPageSource).toContain("async function openDeepLinkScreen");
-    expect(detoxPageSource).toContain("launchApp({ newInstance: false, url })");
-    expect(detoxPageSource).not.toContain("device.openURL({");
+    expect(detoxPageSource).toContain("if (isAndroidRun())");
+    expect(detoxPageSource).toContain(
+      "await launchApp({ newInstance: false, url });",
+    );
+    expect(detoxPageSource).toContain(
+      "await launchApp({ newInstance: false });",
+    );
+    expect(detoxPageSource).toContain("await device.openURL({ url });");
+    expect(
+      detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
+    ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));
     expect(openScreenBody).toContain(
       "await waitForActiveScreen(E2E_SCREEN_CONTENT_TEST_IDS[screenPath])",
     );

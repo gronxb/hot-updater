@@ -36,11 +36,21 @@ const e2eAppComponentsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/components.tsx",
 );
+const e2eAppScreensDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens",
+);
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScreenRoutesPath = path.join(
   repoDir,
   "e2e/detox/detox-screen-routes.js",
 );
+
+const sourceCodeLineCount = (source: string): number =>
+  source.split("\n").filter((line) => {
+    const trimmed = line.trim();
+    return trimmed.length > 0 && !trimmed.startsWith("//");
+  }).length;
 
 describe("E2E navigation compact surface contract", () => {
   it("keeps the default page and assertion routes compact", async () => {
@@ -84,6 +94,40 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppScreensSource).not.toContain("ActionResultsScreen");
     expect(e2eAppScreenTestIDsSource).toContain('Ready: "e2e-screen-ready"');
     expect(e2eAppScreenTestIDsSource).not.toContain("ScrollView");
+  });
+
+  it("keeps runtime assertion pages as screen-sized files", async () => {
+    // Given: runtime assertion pages are the highest-traffic Detox targets.
+    const screenFiles = await fs.readdir(e2eAppScreensDir);
+
+    // When: the implementation is inspected for bundled assertion surfaces.
+    const runtimeScreenFiles = screenFiles.filter((fileName) =>
+      fileName.startsWith("runtime-"),
+    );
+
+    // Then: each assertion page lives in its own small file.
+    expect(screenFiles).not.toContain("runtime-screens.tsx");
+    expect(runtimeScreenFiles).toEqual([
+      "runtime-bundle-screen.tsx",
+      "runtime-channel-summary-screen.tsx",
+      "runtime-cohort-summary-screen.tsx",
+      "runtime-large-asset-screen.tsx",
+      "runtime-marker-screen.tsx",
+    ]);
+
+    for (const fileName of [
+      ...runtimeScreenFiles,
+      "crash-history-screen.tsx",
+      "launch-screens.tsx",
+      "update-store-screens.tsx",
+    ]) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      expect(source).not.toContain("ScrollView");
+      expect(sourceCodeLineCount(source)).toBeLessThanOrEqual(70);
+    }
   });
 
   it("keeps action and multi-value assertions on one-target routes", async () => {
