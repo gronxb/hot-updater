@@ -13,6 +13,7 @@ const repoDir = path.resolve(
 const resultsRoot = path.join(repoDir, "e2e/results/detox");
 const iosAppId = "org.reactjs.native.example.HotUpdaterExample";
 const androidAppId = "com.hotupdaterexample";
+const androidRuntimeConfigDevicePort = "3107";
 
 function parsePositivePort(value: string | undefined, name: string): string {
   if (!value || !/^\d+$/.test(value)) {
@@ -107,11 +108,7 @@ function resolveRuntimeConfigUrl(
     return env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL;
   }
   if (platform === "android") {
-    const devicePort = parsePositivePort(
-      env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? controlPort,
-      "HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT",
-    );
-    return `http://localhost:${devicePort}/e2e/runtime-config`;
+    return `http://localhost:${androidRuntimeConfigDevicePort}/e2e/runtime-config`;
   }
   return `http://localhost:${controlPort}/e2e/runtime-config`;
 }
@@ -276,6 +273,12 @@ export function buildDetoxControlServerEnv(
   );
   return {
     ...env,
+    ...(platform === "android"
+      ? {
+          HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT:
+            androidRuntimeConfigDevicePort,
+        }
+      : {}),
     HOT_UPDATER_E2E_APP_BASE_URL: resolveAppBaseUrl(env),
     HOT_UPDATER_E2E_APP_ID: resolveAppId(platform, env),
     HOT_UPDATER_E2E_DEVICE_ID: resolveDeviceId(platform, env),
