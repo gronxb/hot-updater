@@ -87,7 +87,6 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppRoutePathsPath,
       "utf8",
     );
-    const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
     const e2eAppScreenTestIDsSource = await fs.readFile(
       e2eAppScreenTestIDsPath,
       "utf8",
@@ -495,37 +494,27 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutesSource).not.toContain("screen.render(model)");
     expect(e2eAppRoutesSource).not.toContain("{() =>");
     expect(e2eAppRoutesSource).toContain("routeScreens");
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeBundleRouteScreen",
-    );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
+    expect(e2eAppRouteGroupSource).toContain("runtimeBundleRouteScreen");
+    expect(e2eAppRouteGroupSource).toContain(
       "runtimeCurrentChannelRouteScreen",
     );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "runtimeCurrentCohortRouteScreen",
-    );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "launchStatusRouteScreen",
-    );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
+    expect(e2eAppRouteGroupSource).toContain("runtimeCurrentCohortRouteScreen");
+    expect(e2eAppRouteGroupSource).toContain("launchStatusRouteScreen");
+    expect(e2eAppRouteGroupSource).toContain(
       "updateStoreDownloadedRouteScreen",
     );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "channelActionResultRouteScreen",
-    );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
+    expect(e2eAppRouteGroupSource).toContain("channelActionResultRouteScreen");
+    expect(e2eAppRouteGroupSource).toContain(
       "installCurrentChannelUpdateActionRouteScreen",
     );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
+    expect(e2eAppRouteGroupSource).toContain(
       "refreshRuntimeSnapshotActionRouteScreen",
     );
-    expect(e2eAppRouteScreenRegistrySource).toContain(
+    expect(e2eAppRouteGroupSource).toContain(
       "resetRuntimeChannelActionRouteScreen",
     );
-    expect(e2eAppRouteScreenRegistrySource).toContain("cohortInputRouteScreen");
-    expect(e2eAppRouteScreenRegistrySource).toContain(
-      "setCohortQaActionRouteScreen",
-    );
+    expect(e2eAppRouteGroupSource).toContain("cohortInputRouteScreen");
+    expect(e2eAppRouteGroupSource).toContain("setCohortQaActionRouteScreen");
     expect(e2eAppRoutesSource).not.toContain("assertionRouteScreens");
     expect(e2eAppRoutesSource).not.toContain("interactionRouteScreens");
     expect(e2eAppRouteGroupSource).not.toContain("modelScreens");
@@ -550,7 +539,7 @@ describe("E2E navigation compact surface contract", () => {
     expect(sourceCodeLineCount(e2eAppRoutesSource)).toBeLessThanOrEqual(18);
     expect(
       sourceCodeLineCount(e2eAppRouteScreenRegistrySource),
-    ).toBeLessThanOrEqual(70);
+    ).toBeLessThanOrEqual(30);
     for (const [index, source] of routeGroupSources.entries()) {
       expect(
         sourceCodeLineCount(source),
@@ -579,6 +568,30 @@ describe("E2E navigation compact surface contract", () => {
     ).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("keeps the route registry as a compact dispatcher", async () => {
+    const e2eAppRouteScreenRegistrySource = await fs.readFile(
+      e2eAppRouteScreenRegistryPath,
+      "utf8",
+    );
+
+    expect(e2eAppRouteScreenRegistrySource).not.toContain(
+      'from "./runtime-bundle-route-screen"',
+    );
+    expect(e2eAppRouteScreenRegistrySource).not.toContain(
+      'from "./install-current-channel-update-action-route-screen"',
+    );
+    expect(e2eAppRouteScreenRegistrySource).not.toContain(
+      'from "./cohort-input-route-screen"',
+    );
+    expect(e2eAppRouteScreenRegistrySource).toContain("stateRouteScreens");
+    expect(e2eAppRouteScreenRegistrySource).toContain("resultRouteScreens");
+    expect(e2eAppRouteScreenRegistrySource).toContain("actionRouteScreens");
+    expect(e2eAppRouteScreenRegistrySource).toContain("inputRouteScreens");
+    expect(
+      sourceCodeLineCount(e2eAppRouteScreenRegistrySource),
+    ).toBeLessThanOrEqual(30);
   });
 
   it("keeps every route registration in its own file", async () => {
