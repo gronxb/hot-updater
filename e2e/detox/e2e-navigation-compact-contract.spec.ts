@@ -334,9 +334,8 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppScreensSource.length,
     );
 
+    expect(readyScreenBody).toContain('<ScreenShell current="Ready">');
     expect(readyScreenBody).toContain('testID="e2e-ready-status"');
-    expect(readyScreenBody).not.toContain("ScreenShell");
-    expect(readyScreenBody).not.toContain('current="Ready"');
     expect(readyScreenBody).not.toContain("RuntimeBundleScreen");
     expect(readyScreenBody).not.toContain("RuntimeMarkerScreen");
     expect(readyScreenBody).not.toContain("ActionScreen");
