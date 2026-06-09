@@ -21,9 +21,17 @@ const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
 );
-const e2eAppScreensPath = path.join(
+const e2eAppScreensIndexPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/index.ts",
+);
+const e2eAppTopLevelScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens.tsx",
+);
+const e2eAppScreensDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens",
 );
 const e2eAppComponentsPath = path.join(
   repoDir,
@@ -32,6 +40,10 @@ const e2eAppComponentsPath = path.join(
 const androidManifestPath = path.join(
   repoDir,
   "examples/v0.85.0/android/app/src/main/AndroidManifest.xml",
+);
+const iosAppDelegatePath = path.join(
+  repoDir,
+  "examples/v0.85.0/ios/HotUpdaterExample/AppDelegate.swift",
 );
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScreenRoutesPath = path.join(
@@ -57,11 +69,11 @@ describe("E2E navigation contract", () => {
       e2eAppPatchSurfacePath,
       "utf8",
     );
-    const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
     const e2eAppComponentsSource = await fs.readFile(
       e2eAppComponentsPath,
       "utf8",
     );
+    const e2eAppScreenFiles = await fs.readdir(e2eAppScreensDir);
     const examplePackage = JSON.parse(
       await fs.readFile(examplePackagePath, "utf8"),
     ) as { dependencies: Record<string, string> };
@@ -84,21 +96,21 @@ describe("E2E navigation contract", () => {
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
     expect(e2eAppRoutesSource).toContain("createNativeStackNavigator");
     expect(e2eAppRoutesSource).toContain('initialRouteName="Ready"');
-    expect(e2eAppScreensSource).toContain("ReadyScreen");
-    expect(e2eAppScreensSource).toContain("RuntimeBundleScreen");
-    expect(e2eAppScreensSource).toContain("RuntimeMarkerScreen");
-    expect(e2eAppScreensSource).toContain("RuntimeLargeAssetScreen");
-    expect(e2eAppScreensSource).toContain("LaunchStatusScreen");
-    expect(e2eAppScreensSource).toContain("LaunchCrashedBundleScreen");
-    expect(e2eAppScreensSource).toContain(
-      "InstallCurrentChannelUpdateActionScreen",
+    expect(e2eAppScreenFiles).toContain("ready-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("runtime-bundle-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("runtime-marker-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("runtime-large-asset-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("launch-status-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("launch-crashed-bundle-screen.tsx");
+    expect(e2eAppScreenFiles).toContain(
+      "install-current-channel-update-action-screen.tsx",
     );
-    expect(e2eAppScreensSource).toContain("RuntimeChannelInputScreen");
-    expect(e2eAppScreensSource).toContain("CohortInputScreen");
-    expect(e2eAppScreensSource).toContain("SetCohortQaActionScreen");
-    expect(e2eAppScreensSource).toContain("ChannelActionResultScreen");
-    expect(e2eAppScreensSource).toContain("UpdateActionResultScreen");
-    expect(e2eAppScreensSource).toContain("CohortActionResultScreen");
+    expect(e2eAppScreenFiles).toContain("runtime-channel-input-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("cohort-input-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("set-cohort-qa-action-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("channel-action-result-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("update-action-result-screen.tsx");
+    expect(e2eAppScreenFiles).toContain("cohort-action-result-screen.tsx");
     expect(e2eAppComponentsSource).not.toContain("ScrollView");
     expect(e2eAppComponentsSource).not.toContain("ScreenTabs");
     expect(e2eAppComponentsSource).not.toContain("e2e-nav-");
@@ -106,6 +118,12 @@ describe("E2E navigation contract", () => {
       "testID={screenContentTestIDs[current]}",
     );
     expect(e2eAppRoutePathsSource).toContain("hotupdaterexample://");
+    await expect(fs.stat(e2eAppTopLevelScreensPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.stat(e2eAppScreensIndexPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     expect(e2eAppPatchSurfaceSource).toContain("E2E_SCENARIO_MARKER");
     expect(e2eAppPatchSurfaceSource).toContain("E2E_CRASH_GUARD_START");
     expect(e2eAppPatchSurfaceSource).toContain("E2E_DEPLOY_ASSET_GUARD_START");
@@ -211,6 +229,7 @@ describe("E2E navigation contract", () => {
 
   it("registers native deep link schemes for Detox launch URLs", async () => {
     const androidManifest = await fs.readFile(androidManifestPath, "utf8");
+    const iosAppDelegate = await fs.readFile(iosAppDelegatePath, "utf8");
     const iosInfoPlist = await fs.readFile(iosInfoPlistPath, "utf8");
 
     expect(androidManifest).toContain(
@@ -222,5 +241,14 @@ describe("E2E navigation contract", () => {
     expect(androidManifest).toContain('android:scheme="hotupdaterexample"');
     expect(iosInfoPlist).toContain("<key>CFBundleURLTypes</key>");
     expect(iosInfoPlist).toContain("<string>hotupdaterexample</string>");
+    expect(iosAppDelegate).toContain("func application(");
+    expect(iosAppDelegate).toContain("_ app: UIApplication");
+    expect(iosAppDelegate).toContain("open url: URL");
+    expect(iosAppDelegate).toContain(
+      "options: [UIApplication.OpenURLOptionsKey: Any]",
+    );
+    expect(iosAppDelegate).toContain(
+      "RCTLinkingManager.application(app, open: url, options: options)",
+    );
   });
 });

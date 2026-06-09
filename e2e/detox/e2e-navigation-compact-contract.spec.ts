@@ -24,7 +24,11 @@ const e2eAppStackScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
 );
-const e2eAppScreensPath = path.join(
+const e2eAppScreensIndexPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screens/index.ts",
+);
+const e2eAppTopLevelScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens.tsx",
 );
@@ -60,7 +64,6 @@ describe("E2E navigation compact surface contract", () => {
       "utf8",
     );
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
-    const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
     const e2eAppScreenTestIDsSource = await fs.readFile(
       e2eAppScreenTestIDsPath,
       "utf8",
@@ -90,10 +93,14 @@ describe("E2E navigation compact surface contract", () => {
     );
     expect(e2eAppIndexSource).not.toContain("RuntimeIdentity");
     expect(e2eAppIndexSource).not.toContain("ActionResults");
-    expect(e2eAppScreensSource).not.toContain("RuntimeIdentityScreen");
-    expect(e2eAppScreensSource).not.toContain("ActionResultsScreen");
     expect(e2eAppScreenTestIDsSource).toContain('Ready: "e2e-screen-ready"');
     expect(e2eAppScreenTestIDsSource).not.toContain("ScrollView");
+    await expect(fs.stat(e2eAppTopLevelScreensPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(fs.stat(e2eAppScreensIndexPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("keeps runtime assertion pages as screen-sized files", async () => {
@@ -205,7 +212,6 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppRoutePathsPath,
       "utf8",
     );
-    const e2eAppScreensSource = await fs.readFile(e2eAppScreensPath, "utf8");
     const e2eAppScreenTestIDsSource = await fs.readFile(
       e2eAppScreenTestIDsPath,
       "utf8",
@@ -222,12 +228,9 @@ describe("E2E navigation compact surface contract", () => {
     expect(e2eAppRoutePathsSource).not.toContain("CohortPresetActions");
     expect(e2eAppRoutePathsSource).not.toContain("RuntimeState");
     expect(e2eAppRoutePathsSource).not.toContain("UpdateStore:");
-    expect(e2eAppScreensSource).not.toContain("InstallActionsScreen");
-    expect(e2eAppScreensSource).not.toContain("RuntimeChannelActionsScreen");
-    expect(e2eAppScreensSource).not.toContain("CohortInputActionsScreen");
-    expect(e2eAppScreensSource).not.toContain("CohortPresetActionsScreen");
-    expect(e2eAppScreensSource).not.toContain("RuntimeStateScreen");
-    expect(e2eAppScreensSource).not.toContain("UpdateStoreScreen");
+    await expect(fs.stat(e2eAppScreensIndexPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
 
     for (const path of [
       "e2e/action/refresh-runtime-snapshot",

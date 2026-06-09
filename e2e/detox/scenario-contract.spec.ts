@@ -42,10 +42,6 @@ const exampleE2eAppComponentsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/components.tsx",
 );
-const exampleE2eAppScreensPath = path.join(
-  repoDir,
-  "examples/v0.85.0/src/e2eApp/screens.tsx",
-);
 const exampleE2eAppResultScreenPaths = [
   "examples/v0.85.0/src/e2eApp/screens/channel-action-result-screen.tsx",
   "examples/v0.85.0/src/e2eApp/screens/update-action-result-screen.tsx",

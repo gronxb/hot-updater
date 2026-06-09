@@ -1,7 +1,7 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 
-import { ReadyScreen } from "./screens";
+import { ReadyScreen } from "./screens/ready-screen";
 import { modelScreens } from "./stack-screens";
 import type { RootStackParamList } from "./types";
 import type { E2eRuntimeModel } from "./useE2eRuntime";
