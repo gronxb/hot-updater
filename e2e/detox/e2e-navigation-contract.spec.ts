@@ -103,7 +103,9 @@ describe("E2E navigation contract", () => {
     expect(appSource).toContain("patchSurface");
     expect(e2eAppIndexSource).toContain("NavigationContainer");
     expect(e2eAppIndexSource).toContain("E2eStack");
+    expect(e2eAppIndexSource).toContain("e2eLinking");
     expect(e2eAppIndexSource).toContain("navigationRef");
+    expect(e2eAppIndexSource).toContain("linking={e2eLinking}");
     expect(e2eAppIndexSource).not.toContain("createNativeStackNavigator");
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
     expect(e2eAppRouteStackSource).toContain("createNativeStackNavigator");
@@ -155,6 +157,7 @@ describe("E2E navigation contract", () => {
     );
 
     expect(e2eAppIndexSource).toContain("navigationRef");
+    expect(e2eAppIndexSource).toContain("linking={e2eLinking}");
     expect(e2eAppIndexSource).toContain("useE2eDeepLinks");
     expect(e2eAppIndexSource).toContain("flushPendingE2eDeepLink");
     expect(e2eAppIndexSource).toContain("ref={navigationRef}");

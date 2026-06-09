@@ -8,6 +8,7 @@ import {
   navigationRef,
   useE2eDeepLinks,
 } from "./navigation-controller";
+import { e2eLinking } from "./route-paths";
 import { E2eStack } from "./routes";
 import { E2eRuntimeModelProvider } from "./runtime-model-context";
 import { styles } from "./styles";
@@ -33,6 +34,7 @@ export const E2eHotUpdaterApp = ({
             </Text>
           </SafeAreaView>
         }
+        linking={e2eLinking}
         onReady={flushPendingE2eDeepLink}
         ref={navigationRef}
       >
