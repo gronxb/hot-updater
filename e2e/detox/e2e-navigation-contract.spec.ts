@@ -67,19 +67,20 @@ describe("E2E navigation contract", () => {
     expect(appSource).not.toContain("scrollToSection");
   });
 
-  it("opens the screen needed by a testID through deep linking", async () => {
+  it("opens the screen needed by a testID through deep linking and visible navigation", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
 
     expect(detoxPageSource).toContain("screenPathForTestID");
     expect(detoxPageSource).toContain("openScreenForTestID");
+    expect(detoxPageSource).toContain("navTargetForScreenPath");
+    expect(detoxPageSource).toContain('waitForActiveScreen("Actions")');
+    expect(detoxPageSource).toContain('waitForActiveScreen("CohortActions")');
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/actions");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/cohorts");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/results");
     expect(detoxPageSource).toContain("hotupdaterexample://e2e/runtime");
-    expect(detoxPageSource).not.toContain("navTargetForTestID");
-    expect(detoxPageSource).not.toContain(
-      "await element(by.id(navTarget)).tap()",
-    );
+    expect(detoxPageSource).toContain("await element(by.id(navTarget)).tap()");
+    expect(detoxPageSource).toContain('by.id("e2e-active-screen")');
   });
 
   it("registers native deep link schemes for Detox launch URLs", async () => {

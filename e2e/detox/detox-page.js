@@ -9,6 +9,20 @@ const E2E_SCREEN_URLS = {
   runtime: "hotupdaterexample://e2e/runtime",
 };
 
+const E2E_SCREEN_NAMES = {
+  actions: "Actions",
+  cohorts: "CohortActions",
+  results: "Results",
+  runtime: "Runtime",
+};
+
+const E2E_SCREEN_NAV_TARGETS = {
+  actions: "e2e-nav-actions",
+  cohorts: "e2e-nav-cohort-actions",
+  results: "e2e-nav-action-results",
+  runtime: "e2e-nav-top",
+};
+
 function isAndroidRun() {
   return [
     process.env.DETOX_CONFIGURATION,
@@ -119,6 +133,30 @@ function screenPathForTestID(testID) {
   return "runtime";
 }
 
+function navTargetForScreenPath(screenPath) {
+  return E2E_SCREEN_NAV_TARGETS[screenPath];
+}
+
+async function waitForActiveScreen(screenName) {
+  await waitFor(element(by.id("e2e-active-screen").and(by.text(screenName))))
+    .toBeVisible()
+    .withTimeout(30000);
+}
+
+async function activateScreenPath(screenPath) {
+  const navTarget = navTargetForScreenPath(screenPath);
+  await element(by.id(navTarget)).tap();
+  if (screenPath === "actions") {
+    await waitForActiveScreen("Actions");
+    return;
+  }
+  if (screenPath === "cohorts") {
+    await waitForActiveScreen("CohortActions");
+    return;
+  }
+  await waitForActiveScreen(E2E_SCREEN_NAMES[screenPath]);
+}
+
 async function openScreenForTestID(testID) {
   const screenPath = screenPathForTestID(testID);
   await launchApp({
@@ -127,6 +165,7 @@ async function openScreenForTestID(testID) {
   });
   const scrollContent = element(by.id("e2e-scroll-content"));
   await waitFor(scrollContent).toBeVisible().withTimeout(30000);
+  await activateScreenPath(screenPath);
   await scrollContent.scrollTo("top");
 }
 
