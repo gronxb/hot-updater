@@ -4409,6 +4409,15 @@ function bareBuildCacheEnv({
   };
 }
 
+function isProcessRunning(pid: number) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function acquireBareBuildCacheLock(
   env: NodeJS.ProcessEnv | undefined,
   signal?: AbortSignal,
@@ -4443,12 +4452,7 @@ async function acquireBareBuildCacheLock(
       return true;
     }
 
-    try {
-      process.kill(owner.pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
+    return isProcessRunning(owner.pid);
   };
 
   while (true) {
