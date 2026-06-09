@@ -5,6 +5,11 @@ import BootSplash from "react-native-bootsplash";
 import { useSnapshot } from "valtio";
 
 import {
+  patchE2eScreenState,
+  readE2eScreenState,
+  type E2eScreenState,
+} from "../e2eRuntimeConfig";
+import {
   formatUpdateStoreDownloadPaths,
   notify,
   readRuntimeSnapshot,
@@ -17,21 +22,8 @@ type InstallUpdateInput = {
   readonly channel?: string;
 };
 
-type E2eRuntimeMemory = {
-  channelActionResult: string;
-  cohortActionResult: string;
-  cohortInput: string | null;
-  runtimeChannelInput: string;
-  updateActionResult: string;
-};
-
-const e2eRuntimeMemory: E2eRuntimeMemory = {
-  channelActionResult: "idle",
-  cohortActionResult: "idle",
-  cohortInput: null,
-  runtimeChannelInput: "beta",
-  updateActionResult: "idle",
-};
+const DEFAULT_ACTION_RESULT = "idle";
+const DEFAULT_RUNTIME_CHANNEL_INPUT = "beta";
 
 export type E2eRuntimeModel = {
   readonly applyCohortInput: () => Promise<void>;
@@ -64,48 +56,94 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const progressState = useHotUpdaterStore((state) => state);
   const [initialCohort] = useState(() => HotUpdater.getCohort());
   const [runtimeChannelInput, setRuntimeChannelInputState] = useState(
-    () => e2eRuntimeMemory.runtimeChannelInput,
+    DEFAULT_RUNTIME_CHANNEL_INPUT,
   );
-  const [cohortInput, setCohortInputState] = useState(
-    () => e2eRuntimeMemory.cohortInput ?? initialCohort,
-  );
+  const [cohortInput, setCohortInputState] = useState(initialCohort);
   const cohortInputRef = useRef(cohortInput);
   const [channelActionResult, setChannelActionResultState] = useState(
-    () => e2eRuntimeMemory.channelActionResult,
+    DEFAULT_ACTION_RESULT,
   );
   const [cohortActionResult, setCohortActionResultState] = useState(
-    () => e2eRuntimeMemory.cohortActionResult,
+    DEFAULT_ACTION_RESULT,
   );
   const [updateActionResult, setUpdateActionResultState] = useState(
-    () => e2eRuntimeMemory.updateActionResult,
+    DEFAULT_ACTION_RESULT,
   );
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(readRuntimeSnapshot);
 
-  const setRuntimeChannelInput = (input: string) => {
-    e2eRuntimeMemory.runtimeChannelInput = input;
-    setRuntimeChannelInputState(input);
+  const logScreenStateError = (label: string, error: unknown) => {
+    const message =
+      error instanceof Error ? error.message : "Unknown E2E screen state error";
+    console.warn(`${label}: ${message}`);
   };
 
-  const setCohortInput = (input: string) => {
-    e2eRuntimeMemory.cohortInput = input;
+  const readPersistedScreenState = async () => {
+    try {
+      return await readE2eScreenState();
+    } catch (error) {
+      logScreenStateError("Failed to read E2E screen state", error);
+      return null;
+    }
+  };
+
+  const persistScreenState = async (patch: Partial<E2eScreenState>) => {
+    try {
+      await patchE2eScreenState(patch);
+    } catch (error) {
+      logScreenStateError("Failed to patch E2E screen state", error);
+    }
+  };
+
+  const applyScreenState = (screenState: E2eScreenState) => {
+    setRuntimeChannelInputState(screenState.runtimeChannelInput);
+    const nextCohortInput = screenState.cohortInput ?? initialCohort;
+    cohortInputRef.current = nextCohortInput;
+    setCohortInputState(nextCohortInput);
+    setChannelActionResultState(screenState.channelActionResult);
+    setCohortActionResultState(screenState.cohortActionResult);
+    setUpdateActionResultState(screenState.updateActionResult);
+  };
+
+  const setRuntimeChannelInput = (input: string) => {
+    setRuntimeChannelInputState(input);
+    void persistScreenState({ runtimeChannelInput: input });
+  };
+
+  const setCohortInputStateAndRef = (input: string) => {
     cohortInputRef.current = input;
     setCohortInputState(input);
   };
 
-  const setChannelActionResult = (result: string) => {
-    e2eRuntimeMemory.channelActionResult = result;
+  const setCohortInput = async (input: string) => {
+    setCohortInputStateAndRef(input);
+    await persistScreenState({ cohortInput: input });
+  };
+
+  const setChannelActionResult = async (result: string) => {
     setChannelActionResultState(result);
+    await persistScreenState({ channelActionResult: result });
   };
 
-  const setCohortActionResult = (result: string) => {
-    e2eRuntimeMemory.cohortActionResult = result;
+  const setCohortActionResult = async (result: string) => {
     setCohortActionResultState(result);
+    await persistScreenState({ cohortActionResult: result });
   };
 
-  const setUpdateActionResult = (result: string) => {
-    e2eRuntimeMemory.updateActionResult = result;
+  const setUpdateActionResult = async (result: string) => {
     setUpdateActionResultState(result);
+    await persistScreenState({ updateActionResult: result });
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    readPersistedScreenState().then((screenState) => {
+      if (!isMounted || !screenState) return;
+      applyScreenState(screenState);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [initialCohort]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -139,20 +177,20 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     channel,
   }: InstallUpdateInput) => {
     try {
-      setUpdateActionResult(`${actionLabel} -> checking`);
+      await setUpdateActionResult(`${actionLabel} -> checking`);
       const updateInfo = await HotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
         ...(channel ? { channel } : {}),
       });
 
       if (!updateInfo) {
-        setUpdateActionResult(`${actionLabel} -> no-update`);
+        await setUpdateActionResult(`${actionLabel} -> no-update`);
         await refresh();
         return;
       }
 
       const installed = await updateInfo.updateBundle();
-      setUpdateActionResult(
+      await setUpdateActionResult(
         installed
           ? `${actionLabel} -> installed ${updateInfo.id}`
           : `${actionLabel} -> skipped`,
@@ -161,18 +199,23 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to install update";
-      setUpdateActionResult(`${actionLabel} -> error ${message}`);
+      await setUpdateActionResult(`${actionLabel} -> error ${message}`);
     }
   };
 
   const installRuntimeChannelUpdate = async () => {
-    const normalizedChannel = runtimeChannelInput.trim().toLowerCase();
+    const persistedScreenState = await readPersistedScreenState();
+    const normalizedChannel = (
+      persistedScreenState?.runtimeChannelInput ?? runtimeChannelInput
+    )
+      .trim()
+      .toLowerCase();
     if (!normalizedChannel) {
-      setChannelActionResult("runtime-channel -> invalid");
+      await setChannelActionResult("runtime-channel -> invalid");
       return;
     }
 
-    setChannelActionResult(`runtime-channel -> ${normalizedChannel}`);
+    await setChannelActionResult(`runtime-channel -> ${normalizedChannel}`);
     await installUpdate({
       actionLabel: `runtime-channel:${normalizedChannel}`,
       channel: normalizedChannel,
@@ -183,40 +226,44 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     try {
       const didReset = await HotUpdater.resetChannel();
       await refresh();
-      setChannelActionResult(`reset -> ${String(didReset)}`);
+      await setChannelActionResult(`reset -> ${String(didReset)}`);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to reset channel";
-      setChannelActionResult(`reset -> error ${message}`);
+      await setChannelActionResult(`reset -> error ${message}`);
     }
   };
 
   const applyCohortValue = async (nextCohort: string) => {
     HotUpdater.setCohort(nextCohort);
     const appliedCohort = HotUpdater.getCohort();
-    setCohortInput(appliedCohort);
-    setCohortActionResult(`set -> ${appliedCohort}`);
+    await setCohortInput(appliedCohort);
+    await setCohortActionResult(`set -> ${appliedCohort}`);
     await refresh();
   };
 
   const updateCohortInput = (nextCohort: string) => {
     HotUpdater.setCohort(nextCohort);
-    setCohortInput(nextCohort);
+    setCohortInputStateAndRef(nextCohort);
+    void persistScreenState({ cohortInput: nextCohort });
   };
 
   const applyCohortInput = async () => {
     try {
-      await applyCohortValue(cohortInputRef.current);
+      const persistedScreenState = await readPersistedScreenState();
+      await applyCohortValue(
+        persistedScreenState?.cohortInput ?? cohortInputRef.current,
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to set cohort";
-      setCohortActionResult(`set -> error ${message}`);
+      await setCohortActionResult(`set -> error ${message}`);
     }
   };
 
   const restoreInitialCohort = async () => {
     await applyCohortValue(initialCohort);
-    setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
+    await setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
   };
 
   return {

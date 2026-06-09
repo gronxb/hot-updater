@@ -23,6 +23,10 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import {
+  readE2eScreenStateSnapshot,
+  resetE2eScreenState,
+} from "./screen-state.ts";
 import { resolveUpdateCheckRequestBundleId } from "./update-check-request-bundle-id.ts";
 import { shouldProbeUpdateCheckVisibility } from "./update-check-visibility.ts";
 
@@ -3117,6 +3121,7 @@ export function handleRuntimeConfig() {
   return {
     baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
     channelNamespace,
+    screenState: readE2eScreenStateSnapshot(),
     updateServerBaseURL: fixtureSession.appBaseUrl,
   };
 }
@@ -5493,6 +5498,7 @@ async function resetRemoteBundles() {
 }
 
 async function resetLocalAppState() {
+  resetE2eScreenState();
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {

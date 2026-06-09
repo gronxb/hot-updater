@@ -32,6 +32,7 @@ import {
   startResetRemoteBundlesJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
+import { handlePatchE2eScreenState } from "./screen-state.ts";
 
 const app = new Hono();
 
@@ -64,6 +65,10 @@ app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
 
 app.get("/e2e/runtime-config", (c) => {
   return c.json(handleRuntimeConfig());
+});
+
+app.post("/e2e/screen-state", async (c) => {
+  return c.json(handlePatchE2eScreenState(await c.req.json()));
 });
 
 app.all("/hot-updater/*", async (c) => {

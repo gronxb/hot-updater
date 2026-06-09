@@ -9,6 +9,11 @@ const {
   withSynchronizationDisabledForAssertion,
 } = require("./detox-page.js");
 
+const SCREEN_STATE_TEXT_INPUTS = {
+  "cohort-input": "cohortInput",
+  "runtime-channel-input": "runtimeChannelInput",
+};
+
 class DetoxAppDriver {
   constructor(client, initialValues = {}) {
     this.controlClient = client;
@@ -112,10 +117,12 @@ class DetoxAppDriver {
 
   async typeText(stage, testID, text) {
     await this.runStage(stage, async () => {
+      const resolvedText = String(this.resolvePlaceholders(text));
       await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
       await disableSynchronizationUntilLaunch();
-      await target.replaceText(String(this.resolvePlaceholders(text)));
+      await target.replaceText(resolvedText);
+      await this.patchScreenStateForTextInput(stage, testID, resolvedText);
     });
   }
 
@@ -195,6 +202,15 @@ class DetoxAppDriver {
     await launchApp({ newInstance: false });
   }
 
+  async patchScreenStateForTextInput(stage, testID, text) {
+    const screenStateKey = SCREEN_STATE_TEXT_INPUTS[testID];
+    if (!screenStateKey) return;
+    await this.controlClient.postJson(
+      `${stage}: patch ${screenStateKey}`,
+      "/e2e/screen-state",
+      { [screenStateKey]: text },
+    );
+  }
 }
 
 module.exports = { DetoxAppDriver };

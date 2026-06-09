@@ -22,6 +22,22 @@ const detoxScreenRoutesPath = path.join(
   "e2e/detox/detox-screen-routes.js",
 );
 const detoxAppDriverPath = path.join(repoDir, "e2e/detox/detox-app-driver.js");
+const controlServerControllerPath = path.join(
+  repoDir,
+  "e2e/detox/control-server/controller.ts",
+);
+const controlServerRoutesPath = path.join(
+  repoDir,
+  "e2e/detox/control-server/routes.ts",
+);
+const controlServerScreenStatePath = path.join(
+  repoDir,
+  "e2e/detox/control-server/screen-state.ts",
+);
+const e2eRuntimeConfigPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
+);
 const e2eRuntimeHookPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
@@ -198,24 +214,50 @@ describe("E2E navigation action route contract", () => {
   });
 
   it("persists action route state across Android deep-link remounts", async () => {
+    const controlServerControllerSource = await fs.readFile(
+      controlServerControllerPath,
+      "utf8",
+    );
+    const controlServerRoutesSource = await fs.readFile(
+      controlServerRoutesPath,
+      "utf8",
+    );
+    const controlServerScreenStateSource = await fs.readFile(
+      controlServerScreenStatePath,
+      "utf8",
+    );
+    const detoxAppDriverSource = await fs.readFile(detoxAppDriverPath, "utf8");
+    const e2eRuntimeConfigSource = await fs.readFile(
+      e2eRuntimeConfigPath,
+      "utf8",
+    );
     const e2eRuntimeHookSource = await fs.readFile(e2eRuntimeHookPath, "utf8");
 
-    expect(e2eRuntimeHookSource).toContain("const e2eRuntimeMemory");
+    expect(e2eRuntimeHookSource).not.toContain("const e2eRuntimeMemory");
+    expect(controlServerControllerSource).toContain("screenState");
+    expect(controlServerControllerSource).toContain("resetE2eScreenState");
+    expect(controlServerScreenStateSource).toContain("screenState");
+    expect(controlServerScreenStateSource).toContain(
+      "handlePatchE2eScreenState",
+    );
+    expect(controlServerScreenStateSource).toContain("resetE2eScreenState");
+    expect(controlServerRoutesSource).toContain("/e2e/screen-state");
+    expect(controlServerRoutesSource).toContain("handlePatchE2eScreenState");
+    expect(detoxAppDriverSource).toContain("patchScreenStateForTextInput");
+    expect(detoxAppDriverSource).toContain('"cohort-input"');
+    expect(detoxAppDriverSource).toContain('"runtime-channel-input"');
+    expect(e2eRuntimeConfigSource).toContain("readE2eScreenState");
+    expect(e2eRuntimeConfigSource).toContain("patchE2eScreenState");
+    expect(e2eRuntimeHookSource).toContain("readE2eScreenState");
+    expect(e2eRuntimeHookSource).toContain("patchE2eScreenState");
     expect(e2eRuntimeHookSource).toMatch(
-      /useState\(\s*\(\) => e2eRuntimeMemory\.updateActionResult/s,
+      /await\s+setUpdateActionResult\(\s*`\$\{actionLabel\} -> checking`/s,
     );
     expect(e2eRuntimeHookSource).toMatch(
-      /useState\(\s*\(\) => e2eRuntimeMemory\.channelActionResult/s,
+      /await\s+setChannelActionResult\(\s*`runtime-channel -> \$\{normalizedChannel\}`/s,
     );
     expect(e2eRuntimeHookSource).toMatch(
-      /useState\(\s*\(\) => e2eRuntimeMemory\.cohortActionResult/s,
-    );
-    expect(e2eRuntimeHookSource).toMatch(
-      /useState\(\s*\(\) => e2eRuntimeMemory\.runtimeChannelInput/s,
-    );
-    expect(e2eRuntimeHookSource).toContain("cohortInputRef.current = input");
-    expect(e2eRuntimeHookSource).toContain(
-      "e2eRuntimeMemory.updateActionResult = result",
+      /await\s+setCohortActionResult\(\s*`set -> \$\{appliedCohort\}`/s,
     );
   });
 });
