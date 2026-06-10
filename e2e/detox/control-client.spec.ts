@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ControlEndpointError,
   ControlJobError,
+  ControlProtocolError,
   createControlClient,
 } from "./control-client.ts";
 import type {
@@ -158,6 +159,99 @@ describe("Detox control client", () => {
         url: "http://127.0.0.1:3010/e2e/jobs/bootstrap-job",
       },
     ]);
+  });
+
+  it("waits for screen state fields without rerunning the action", async () => {
+    // Given: Android action taps continue asynchronously after Detox returns from tap().
+    const calls: string[] = [];
+    let now = 0;
+    const fetch: ControlFetch = (url) => {
+      calls.push(url);
+      const updateActionResult =
+        calls.length < 3
+          ? calls.length === 1
+            ? "idle"
+            : "current-channel -> checking"
+          : "current-channel -> installed bundle-1";
+      return Promise.resolve(
+        jsonResponse(200, {
+          screenState: { updateActionResult },
+        }),
+      );
+    };
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      nowMs: () => now,
+      pollDelayMs: (durationMs) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+    });
+
+    // When: the driver waits for the result field to leave transient values.
+    const result = await client.waitForScreenStateField(
+      "wait install result",
+      "updateActionResult",
+      {
+        rejectSubstrings: [" -> checking"],
+        rejectValues: ["idle"],
+      },
+    );
+
+    // Then: it polls existing runtime state and does not restart the action.
+    expect(result).toEqual({
+      updateActionResult: "current-channel -> installed bundle-1",
+    });
+    expect(calls).toEqual([
+      "http://127.0.0.1:3010/e2e/runtime-config",
+      "http://127.0.0.1:3010/e2e/runtime-config",
+      "http://127.0.0.1:3010/e2e/runtime-config",
+    ]);
+  });
+
+  it("times out when screen state never reaches a stable action result", async () => {
+    // Given: the app never publishes a non-transient action result.
+    let now = 0;
+    const fetch: ControlFetch = () =>
+      Promise.resolve(
+        jsonResponse(200, {
+          screenState: { updateActionResult: "current-channel -> checking" },
+        }),
+      );
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      nowMs: () => now,
+      pollDelayMs: (durationMs) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+      screenStateTimeoutMs: 2000,
+    });
+
+    // When: the stable result never appears.
+    let caught: unknown;
+    try {
+      await client.waitForScreenStateField(
+        "wait install result",
+        "updateActionResult",
+        {
+          rejectSubstrings: [" -> checking"],
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then: the failure is bounded below the scenario timeout.
+    expect(caught).toBeInstanceOf(ControlProtocolError);
+    if (caught instanceof ControlProtocolError) {
+      expect(caught.message).toContain(
+        "wait install result timed out waiting for updateActionResult",
+      );
+    }
+    expect(now).toBe(2000);
   });
 
   it("fails a failed control job once with the server error", async () => {

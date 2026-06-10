@@ -22,6 +22,7 @@ const detoxScreenRoutesPath = path.join(
   "e2e/detox/detox-screen-routes.js",
 );
 const detoxAppDriverPath = path.join(repoDir, "e2e/detox/detox-app-driver.js");
+const controlClientPath = path.join(repoDir, "e2e/detox/control-client.ts");
 const controlServerControllerPath = path.join(
   repoDir,
   "e2e/detox/control-server/controller.ts",
@@ -263,5 +264,33 @@ describe("E2E navigation action route contract", () => {
     expect(e2eRuntimeHookSource).toMatch(
       /await\s+setCohortActionResult\(\s*`set -> \$\{appliedCohort\}`/s,
     );
+  });
+
+  it("waits for published action results before result-route assertions", async () => {
+    const detoxAppDriverSource = await fs.readFile(detoxAppDriverPath, "utf8");
+    const controlClientSource = await fs.readFile(controlClientPath, "utf8");
+
+    expect(detoxAppDriverSource).toContain("ACTION_RESULT_FIELDS");
+    expect(detoxAppDriverSource).toContain(
+      '"action-install-current-channel-update": "updateActionResult"',
+    );
+    expect(detoxAppDriverSource).toContain(
+      '"action-install-runtime-channel-update": "updateActionResult"',
+    );
+    expect(detoxAppDriverSource).toContain(
+      '"action-reset-runtime-channel": "channelActionResult"',
+    );
+    expect(detoxAppDriverSource).toContain(
+      '"action-apply-cohort-input": "cohortActionResult"',
+    );
+    expect(detoxAppDriverSource).toContain(
+      "await this.waitForActionResultAfterTap(stage, testID);",
+    );
+    expect(detoxAppDriverSource).toContain("waitForScreenStateField");
+    expect(controlClientSource).toContain("waitForScreenStateField");
+    expect(controlClientSource).toContain("/e2e/runtime-config");
+    expect(controlClientSource).not.toMatch(/\bretry\b/i);
+    expect(detoxAppDriverSource).not.toMatch(/\bretry\b/i);
+    expect(detoxAppDriverSource).not.toMatch(/\bsetTimeout\b/i);
   });
 });

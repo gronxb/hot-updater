@@ -14,6 +14,15 @@ const SCREEN_STATE_TEXT_INPUTS = {
   "runtime-channel-input": "runtimeChannelInput",
 };
 
+const ACTION_RESULT_FIELDS = {
+  "action-apply-cohort-input": "cohortActionResult",
+  "action-install-current-channel-update": "updateActionResult",
+  "action-install-runtime-channel-update": "updateActionResult",
+  "action-reset-runtime-channel": "channelActionResult",
+  "action-restore-initial-cohort": "cohortActionResult",
+  "action-set-cohort-qa": "cohortActionResult",
+};
+
 class DetoxAppDriver {
   constructor(client, initialValues = {}) {
     this.controlClient = client;
@@ -105,6 +114,7 @@ class DetoxAppDriver {
       const target = await findVisibleTestID(this.controlClient, testID);
       await disableSynchronizationUntilLaunch();
       await target.tap();
+      await this.waitForActionResultAfterTap(stage, testID);
       await this.reattachAfterAppReloadTap(isAppReloadAction);
     });
   }
@@ -200,6 +210,19 @@ class DetoxAppDriver {
     if (!isAndroidRun()) return;
     if (!isAppReloadAction) return;
     await launchApp({ newInstance: false });
+  }
+
+  async waitForActionResultAfterTap(stage, testID) {
+    const fieldName = ACTION_RESULT_FIELDS[testID];
+    if (!fieldName) return;
+    await this.controlClient.waitForScreenStateField(
+      `${stage}: wait ${fieldName}`,
+      fieldName,
+      {
+        rejectSubstrings: [" -> checking"],
+        rejectValues: ["idle"],
+      },
+    );
   }
 
   async patchScreenStateForTextInput(stage, testID, text) {

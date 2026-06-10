@@ -4,6 +4,7 @@ import {
   ControlEndpointError,
   ControlJobError,
   ControlProtocolError,
+  isJsonObject,
   readJobState,
   readJsonObject,
   readStringField,
@@ -34,12 +35,20 @@ type ControlClientOptions = {
   readonly onStageTiming?: (timing: StageTiming) => void;
   readonly pollDelayMs?: (durationMs: number) => Promise<void>;
   readonly pollIntervalMs?: number;
+  readonly screenStateTimeoutMs?: number;
+};
+
+type ScreenStateWaitOptions = {
+  readonly rejectSubstrings?: readonly string[];
+  readonly rejectValues?: readonly string[];
+  readonly timeoutMs?: number;
 };
 
 const defaultHttpTimeoutMs = 120 * 1000;
 const defaultJobTimeoutMs = Number(
   process.env.HOT_UPDATER_E2E_CONTROL_JOB_TIMEOUT_MS || 10 * 60 * 1000,
 );
+const defaultScreenStateTimeoutMs = 60 * 1000;
 const defaultPollIntervalMs = 1000;
 const closeConnectionHeader = { connection: "close" } as const;
 
@@ -64,6 +73,7 @@ export class ControlClient {
   private readonly onStageTiming?: (timing: StageTiming) => void;
   private readonly pollDelayMs: (durationMs: number) => Promise<void>;
   private readonly pollIntervalMs: number;
+  private readonly screenStateTimeoutMs: number;
 
   constructor(options: ControlClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -74,6 +84,8 @@ export class ControlClient {
     this.onStageTiming = options.onStageTiming;
     this.pollDelayMs = options.pollDelayMs ?? sleep;
     this.pollIntervalMs = options.pollIntervalMs ?? defaultPollIntervalMs;
+    this.screenStateTimeoutMs =
+      options.screenStateTimeoutMs ?? defaultScreenStateTimeoutMs;
   }
 
   async postJson(
@@ -99,6 +111,16 @@ export class ControlClient {
       }
       return this.waitForJobUntraced(stage, jobId);
     });
+  }
+
+  async waitForScreenStateField(
+    stage: string,
+    fieldName: string,
+    options: ScreenStateWaitOptions = {},
+  ): Promise<JsonObject> {
+    return this.runStage(stage, () =>
+      this.waitForScreenStateFieldUntraced(stage, fieldName, options),
+    );
   }
 
   private async runStage<T>(
@@ -182,6 +204,34 @@ export class ControlClient {
     }
   }
 
+  private async waitForScreenStateFieldUntraced(
+    stage: string,
+    fieldName: string,
+    options: ScreenStateWaitOptions,
+  ): Promise<JsonObject> {
+    const timeoutMs = options.timeoutMs ?? this.screenStateTimeoutMs;
+    const deadlineMs = this.nowMs() + timeoutMs;
+    for (;;) {
+      const runtimeConfig = await this.getJsonUntraced("/e2e/runtime-config");
+      const screenState = runtimeConfig.screenState;
+      if (!isJsonObject(screenState)) {
+        throw new ControlProtocolError(
+          "/e2e/runtime-config returned non-object screenState",
+        );
+      }
+      const value = readStringField(screenState, fieldName);
+      if (value !== undefined && isAcceptedScreenStateValue(value, options)) {
+        return { [fieldName]: value };
+      }
+      if (this.nowMs() >= deadlineMs) {
+        throw new ControlProtocolError(
+          `${stage} timed out waiting for ${fieldName} after ${timeoutMs}ms`,
+        );
+      }
+      await this.pollDelayMs(this.pollIntervalMs);
+    }
+  }
+
   private async cancelJobUntraced(
     stage: string,
     jobId: string,
@@ -207,6 +257,16 @@ export class ControlClient {
     });
     return readResponseJson(response, pathName, pathName);
   }
+}
+
+function isAcceptedScreenStateValue(
+  value: string,
+  options: ScreenStateWaitOptions,
+): boolean {
+  if (options.rejectValues?.includes(value)) return false;
+  return !options.rejectSubstrings?.some((substring) =>
+    value.includes(substring),
+  );
 }
 
 async function readResponseJson(
