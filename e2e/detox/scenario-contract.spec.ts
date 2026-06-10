@@ -977,18 +977,32 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("does not add press-in instrumentation to action buttons", async () => {
+  it("starts result-producing actions from press-in without action-count UI", async () => {
     const componentsSource = await fs.readFile(
       exampleE2eAppComponentsPath,
       "utf8",
     );
-    const buttonBody = componentsSource.slice(
-      componentsSource.indexOf("export const Button"),
+    const pressInActionBody = componentsSource.slice(
+      componentsSource.indexOf("export const PressInActionButton"),
       componentsSource.indexOf("export const ScreenShell"),
     );
+    const resultActionScreenSources = (
+      await Promise.all([
+        fs.readFile(exampleE2eAppApplyCohortInputScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppSetCohortQaScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppRestoreInitialCohortScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppResetRuntimeChannelScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppInstallCurrentScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppInstallRuntimeScreenPath, "utf8"),
+      ])
+    ).join("\n");
 
-    expect(buttonBody).not.toContain("readonly onPressIn?: () => void;");
-    expect(buttonBody).not.toContain("onPressIn={onPressIn}");
+    expect(pressInActionBody).toContain("onPressIn={runOnce}");
+    expect(pressInActionBody).toContain("didRun.current = true;");
+    expect(resultActionScreenSources).toContain("PressInActionButton");
+    expect(resultActionScreenSources).not.toContain(
+      "ActionButtonWithStartCount",
+    );
     expect(componentsSource).not.toContain("ActionButtonWithStartCount");
     expect(componentsSource).not.toContain("setStartCount");
     expect(componentsSource).not.toContain("Action Start Count:");

@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, ScreenShell } from "../components";
+import { PressInActionButton, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const ApplyCohortInputActionScreen = () => {
@@ -8,7 +8,7 @@ export const ApplyCohortInputActionScreen = () => {
 
   return (
     <ScreenShell>
-      <Button
+      <PressInActionButton
         onPress={model.applyCohortInput}
         testID="action-apply-cohort-input"
         title="Apply Cohort"
