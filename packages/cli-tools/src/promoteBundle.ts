@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
+import { pipeline } from "node:stream/promises";
+import { createBrotliCompress, brotliDecompressSync } from "node:zlib";
 
 import {
   getManifestFileHash,
@@ -81,6 +83,26 @@ const getRelativeStorageDir = (relativePath: string) => {
 const isBrotliManifestBundleAsset = (relativePath: string) =>
   /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
 
+function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
+  const normalizedAssetPath = assetPath.replaceAll("\\", "/");
+  const outputPath = path.resolve(
+    rootDir,
+    "upload-artifacts",
+    `${normalizedAssetPath}.br`,
+  );
+  const relativePath = path.relative(rootDir, outputPath);
+
+  if (
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath) ||
+    normalizedAssetPath.startsWith("/")
+  ) {
+    throw new Error(`Invalid manifest asset path: ${assetPath}`);
+  }
+
+  return outputPath;
+}
+
 async function prepareManifestAssetUploadFile({
   assetPath,
   sourcePath,
@@ -94,10 +116,12 @@ async function prepareManifestAssetUploadFile({
     return sourcePath;
   }
 
-  const uploadPath = path.join(workDir, `${path.basename(assetPath)}.br`);
-  await fs.writeFile(
-    uploadPath,
-    brotliCompressSync(await fs.readFile(sourcePath)),
+  const uploadPath = resolvePreparedUploadPath(workDir, assetPath);
+  await fs.mkdir(path.dirname(uploadPath), { recursive: true });
+  await pipeline(
+    createReadStream(sourcePath),
+    createBrotliCompress(),
+    createWriteStream(uploadPath),
   );
   return uploadPath;
 }
