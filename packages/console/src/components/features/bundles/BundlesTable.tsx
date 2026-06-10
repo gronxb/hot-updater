@@ -14,7 +14,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Fragment, useState } from "react";
-import { toast } from "sonner";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ChannelBadge } from "@/components/ChannelBadge";
@@ -23,16 +22,6 @@ import { HashValueDisplay } from "@/components/HashValueDisplay";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
 import { TimestampDisplay } from "@/components/TimestampDisplay";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -44,16 +33,13 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useFilterParams } from "@/hooks/useFilterParams";
-import {
-  useBundleChildCountsQuery,
-  useBundleChildrenQuery,
-  useDeleteBundleMutation,
-} from "@/lib/api";
+import { useBundleChildCountsQuery, useBundleChildrenQuery } from "@/lib/api";
 import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { BundleChildrenPanel } from "./BundleChildrenPanel";
 import { createBundleColumns } from "./BundleTableColumns";
+import { SelectedBundlesDeleteDialog } from "./SelectedBundlesDeleteDialog";
 
 interface BundlesTableProps {
   bundles: Bundle[];
@@ -118,7 +104,6 @@ export function BundlesTable({
   const isMobile = useIsMobile();
   const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const cursorPagination = pagination as CursorPaginationInfo | undefined;
   const bundleIds = bundles.map((bundle) => bundle.id);
   const selectedBundles = bundles.filter((bundle) =>
@@ -130,8 +115,6 @@ export function BundlesTable({
     useBundleChildCountsQuery(bundleIds);
   const { data: childBundles = [], isLoading: isChildBundlesLoading } =
     useBundleChildrenQuery(expandedBundleId ?? "");
-  const deleteBundleMutation = useDeleteBundleMutation();
-  const isDeleting = deleteBundleMutation.isPending || isDeletingSelected;
 
   const bundleColumns = createBundleColumns({
     expandedBundleId,
@@ -187,35 +170,6 @@ export function BundlesTable({
 
   const handleToggleAllBundles = () => {
     setSelectedBundleIds(allBundlesSelected ? [] : bundleIds);
-  };
-
-  const handleDeleteSelected = async () => {
-    if (isDeleting || selectedBundles.length === 0) {
-      return;
-    }
-
-    setIsDeletingSelected(true);
-    try {
-      for (const bundle of selectedBundles) {
-        await deleteBundleMutation.mutateAsync({ bundleId: bundle.id });
-      }
-      toast.success(`${selectedBundles.length} bundles deleted successfully`);
-      setSelectedBundleIds([]);
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      toast.error("Failed to delete selected bundles");
-      console.error(error);
-    } finally {
-      setIsDeletingSelected(false);
-    }
-  };
-
-  const handleDeleteDialogOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen && isDeleting) {
-      return;
-    }
-
-    setDeleteDialogOpen(nextOpen);
   };
 
   const startEntry =
@@ -596,40 +550,14 @@ export function BundlesTable({
         </div>
       </div>
 
-      <AlertDialog
+      <SelectedBundlesDeleteDialog
+        bundles={selectedBundles}
         open={deleteDialogOpen}
-        onOpenChange={handleDeleteDialogOpenChange}
-      >
-        <AlertDialogContent
-          onEscapeKeyDown={(event) => {
-            if (isDeleting) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete selected bundles?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete{" "}
-              {selectedBundles.length} bundles and remove them from storage.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void handleDeleteSelected();
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={isDeleting}
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onOpenChange={setDeleteDialogOpen}
+        onComplete={({ failedBundleIds }) => {
+          setSelectedBundleIds([...failedBundleIds]);
+        }}
+      />
     </div>
   );
 }
