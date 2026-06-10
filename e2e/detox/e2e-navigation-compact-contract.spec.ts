@@ -188,6 +188,25 @@ describe("E2E navigation compact surface contract", () => {
     }
   });
 
+  it("keeps every concrete E2E route screen to one Detox target", async () => {
+    // Given: each deep link should render only the target Detox needs.
+    const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
+      (fileName) =>
+        fileName.endsWith("-screen.tsx") &&
+        fileName !== "action-button-screen.tsx",
+    );
+
+    // When: the individual route screen files are inspected.
+    // Then: every concrete screen exposes exactly one testID target.
+    for (const fileName of screenFiles) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      expect(source.match(/testID=/g) ?? [], fileName).toHaveLength(1);
+    }
+  });
+
   it("keeps E2E route pages free of decorative section wrappers", async () => {
     // Given: Detox opens each deep link to assert or tap one visible target.
     const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(

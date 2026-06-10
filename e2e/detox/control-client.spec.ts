@@ -210,6 +210,59 @@ describe("Detox control client", () => {
     ]);
   });
 
+  it("waits for an exact screen state field instead of accepting any terminal result", async () => {
+    // Given: the app first publishes a terminal value for an older update.
+    const values = [
+      "idle",
+      "current-channel -> checking",
+      "current-channel -> installed bundle-old",
+      "current-channel -> installed bundle-new",
+    ];
+    const calls: string[] = [];
+    let now = 0;
+    const fetch: ControlFetch = (url) => {
+      calls.push(url);
+      return Promise.resolve(
+        jsonResponse(200, {
+          screenState: {
+            updateActionResult: values.at(calls.length - 1),
+          },
+        }),
+      );
+    };
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      nowMs: () => now,
+      pollDelayMs: (durationMs) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+    });
+
+    // When: the scenario waits for the exact expected action result.
+    const result = await client.waitForScreenStateField(
+      "assert install result",
+      "updateActionResult",
+      {
+        expectedValue: "current-channel -> installed bundle-new",
+        rejectSubstrings: [" -> checking"],
+        rejectValues: ["idle"],
+      },
+    );
+
+    // Then: the stale terminal value is ignored rather than treated as success.
+    expect(result).toEqual({
+      updateActionResult: "current-channel -> installed bundle-new",
+    });
+    expect(calls).toEqual([
+      "http://127.0.0.1:3010/e2e/runtime-config",
+      "http://127.0.0.1:3010/e2e/runtime-config",
+      "http://127.0.0.1:3010/e2e/runtime-config",
+      "http://127.0.0.1:3010/e2e/runtime-config",
+    ]);
+  });
+
   it("times out when screen state never reaches a stable action result", async () => {
     // Given: the app never publishes a non-transient action result.
     let now = 0;

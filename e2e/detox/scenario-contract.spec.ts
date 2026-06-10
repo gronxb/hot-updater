@@ -1248,7 +1248,10 @@ describe("Detox scenario contract", () => {
 
     expect(assertTextBody).toContain("expectedText");
     expect(assertTextBody).not.toContain("waitForVisibleTestIDText");
-    expect(assertTextBody).not.toContain("expectedText,");
+    expect(assertTextBody).toContain("waitForExpectedActionResultText(");
+    expect(assertTextBody).not.toContain(
+      "findVisibleTestID(this.controlClient, testID, expectedText)",
+    );
     expect(findVisibleBody).toContain("const target = element(by.id(testID))");
     expect(findVisibleBody).toContain("await waitFor(target)");
     expect(findVisibleBody).not.toContain("expectedText");

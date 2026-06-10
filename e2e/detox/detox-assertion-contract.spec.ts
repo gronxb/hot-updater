@@ -75,6 +75,27 @@ describe("Detox assertion parity", () => {
     expect(detoxPageSource).not.toContain("escapeRegExp(expectedText)");
   });
 
+  it("waits for exact action-result screen state before matching UI text", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const assertTextBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async assertText(stage"),
+      detoxRuntimeSource.indexOf("async control(stage"),
+    );
+
+    expect(detoxRuntimeSource).toContain("ACTION_RESULT_TEXT_FIELDS");
+    expect(detoxRuntimeSource).toContain(
+      '"update-action-result": "updateActionResult"',
+    );
+    expect(assertTextBody).toContain(
+      "waitForExpectedActionResultText(\n            stage,\n            testID,\n            expectedText,\n          )",
+    );
+    expect(detoxRuntimeSource).toContain("expectedValue: expectedText");
+    expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
+  });
+
   it("opens deep-linked target screens without waiting for Detox app idle", async () => {
     const detoxPageSource = await fs.readFile(
       path.join(repoDir, "e2e/detox/detox-page.js"),

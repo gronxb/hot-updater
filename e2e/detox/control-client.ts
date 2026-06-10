@@ -39,6 +39,7 @@ type ControlClientOptions = {
 };
 
 type ScreenStateWaitOptions = {
+  readonly expectedValue?: string;
   readonly rejectSubstrings?: readonly string[];
   readonly rejectValues?: readonly string[];
   readonly timeoutMs?: number;
@@ -263,6 +264,9 @@ function isAcceptedScreenStateValue(
   value: string,
   options: ScreenStateWaitOptions,
 ): boolean {
+  if (options.expectedValue !== undefined && value !== options.expectedValue) {
+    return false;
+  }
   if (options.rejectValues?.includes(value)) return false;
   return !options.rejectSubstrings?.some((substring) =>
     value.includes(substring),

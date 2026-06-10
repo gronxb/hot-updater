@@ -23,6 +23,12 @@ const ACTION_RESULT_FIELDS = {
   "action-set-cohort-qa": "cohortActionResult",
 };
 
+const ACTION_RESULT_TEXT_FIELDS = {
+  "channel-action-result": "channelActionResult",
+  "cohort-action-result": "cohortActionResult",
+  "update-action-result": "updateActionResult",
+};
+
 class DetoxAppDriver {
   constructor(client, initialValues = {}) {
     this.controlClient = client;
@@ -37,6 +43,11 @@ class DetoxAppDriver {
           ensureForeground: options.ensureForeground,
         });
         if (options.exactText === true) {
+          await this.waitForExpectedActionResultText(
+            stage,
+            testID,
+            expectedText,
+          );
           await waitForCurrentTestIDText(testID, expectedText);
           return;
         }
@@ -232,11 +243,29 @@ class DetoxAppDriver {
     return ACTION_RESULT_FIELDS[testID];
   }
 
+  actionResultTextFieldForTestID(testID) {
+    return ACTION_RESULT_TEXT_FIELDS[testID];
+  }
+
   async waitForActionResultField(stage, fieldName) {
     await this.controlClient.waitForScreenStateField(
       `${stage}: wait ${fieldName}`,
       fieldName,
       {
+        rejectSubstrings: [" -> checking"],
+        rejectValues: ["idle"],
+      },
+    );
+  }
+
+  async waitForExpectedActionResultText(stage, testID, expectedText) {
+    const fieldName = this.actionResultTextFieldForTestID(testID);
+    if (!fieldName) return;
+    await this.controlClient.waitForScreenStateField(
+      `${stage}: wait ${fieldName} exact`,
+      fieldName,
+      {
+        expectedValue: expectedText,
         rejectSubstrings: [" -> checking"],
         rejectValues: ["idle"],
       },
