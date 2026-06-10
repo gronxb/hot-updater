@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeCurrentCohortScreen = () => {
@@ -8,10 +8,9 @@ export const RuntimeCurrentCohortScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Current Cohort"
+      <ValueText
+        testID="runtime-current-cohort"
         value={model.runtimeSnapshot.cohort}
-        valueTestID="runtime-current-cohort"
       />
     </ScreenShell>
   );

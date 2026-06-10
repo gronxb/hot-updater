@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeInitialCohortScreen = () => {
@@ -8,11 +8,7 @@ export const RuntimeInitialCohortScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Initial Cohort"
-        value={model.initialCohort}
-        valueTestID="runtime-initial-cohort"
-      />
+      <ValueText testID="runtime-initial-cohort" value={model.initialCohort} />
     </ScreenShell>
   );
 };

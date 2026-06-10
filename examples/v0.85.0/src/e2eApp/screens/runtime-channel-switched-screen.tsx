@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeChannelSwitchedScreen = () => {
@@ -8,10 +8,9 @@ export const RuntimeChannelSwitchedScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Channel Switched"
+      <ValueText
+        testID="runtime-channel-switched"
         value={String(model.runtimeSnapshot.isChannelSwitched)}
-        valueTestID="runtime-channel-switched"
       />
     </ScreenShell>
   );

@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeMarkerScreen = () => {
@@ -8,10 +8,9 @@ export const RuntimeMarkerScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Marker"
+      <ValueText
+        testID="runtime-scenario-marker"
         value={model.scenarioMarker}
-        valueTestID="runtime-scenario-marker"
       />
     </ScreenShell>
   );

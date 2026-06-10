@@ -70,23 +70,6 @@ export const styles = StyleSheet.create({
     marginTop: 8,
     padding: 18,
   },
-  infoLabel: {
-    color: "#64748b",
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 4,
-    textTransform: "uppercase",
-  },
-  infoRow: {
-    borderBottomColor: "#e5e7eb",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 9,
-  },
-  infoValue: {
-    color: "#111827",
-    fontSize: 14,
-    lineHeight: 20,
-  },
   input: {
     backgroundColor: "#f8fafc",
     borderColor: "#cbd5e1",

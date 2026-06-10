@@ -206,6 +206,31 @@ describe("E2E navigation compact surface contract", () => {
     }
   });
 
+  it("keeps assertion route pages target-only instead of label/value rows", async () => {
+    const assertionScreenFiles = [
+      "crash-history-count-screen.tsx",
+      "runtime-bundle-screen.tsx",
+      "runtime-channel-switched-screen.tsx",
+      "runtime-current-channel-screen.tsx",
+      "runtime-current-cohort-screen.tsx",
+      "runtime-default-channel-screen.tsx",
+      "runtime-initial-cohort-screen.tsx",
+      "runtime-large-asset-screen.tsx",
+      "runtime-marker-screen.tsx",
+      "update-store-downloaded-screen.tsx",
+      "update-store-download-paths-screen.tsx",
+    ];
+
+    for (const fileName of assertionScreenFiles) {
+      const source = await fs.readFile(
+        path.join(e2eAppScreensDir, fileName),
+        "utf8",
+      );
+      expect(source, fileName).not.toContain("InfoRow");
+      expect(source, fileName).toContain("ValueText");
+    }
+  });
+
   it("keeps each E2E route screen in its own file", async () => {
     const screenFiles = (await fs.readdir(e2eAppScreensDir)).filter(
       (fileName) => fileName.endsWith(".tsx"),

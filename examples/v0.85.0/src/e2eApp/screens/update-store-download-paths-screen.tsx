@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const UpdateStoreDownloadPathsScreen = () => {
@@ -8,10 +8,9 @@ export const UpdateStoreDownloadPathsScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Download Paths"
+      <ValueText
+        testID="update-store-download-paths"
         value={model.updateStoreDownloadPathsText}
-        valueTestID="update-store-download-paths"
       />
     </ScreenShell>
   );

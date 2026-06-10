@@ -3,21 +3,16 @@ import { Pressable, SafeAreaView, Text, View } from "react-native";
 
 import { styles } from "./styles";
 
-export const InfoRow = ({
-  label,
+export const ValueText = ({
+  testID,
   value,
-  valueTestID,
 }: {
-  readonly label: string;
+  readonly testID: string;
   readonly value: string;
-  readonly valueTestID?: string;
 }) => (
-  <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text selectable style={styles.infoValue} testID={valueTestID}>
-      {value}
-    </Text>
-  </View>
+  <Text selectable style={styles.resultText} testID={testID}>
+    {value}
+  </Text>
 );
 
 export const Button = ({

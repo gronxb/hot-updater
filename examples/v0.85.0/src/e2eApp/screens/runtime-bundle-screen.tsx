@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeBundleScreen = () => {
@@ -8,10 +8,9 @@ export const RuntimeBundleScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Bundle ID"
+      <ValueText
+        testID="runtime-bundle-id"
         value={model.runtimeSnapshot.bundleId}
-        valueTestID="runtime-bundle-id"
       />
     </ScreenShell>
   );

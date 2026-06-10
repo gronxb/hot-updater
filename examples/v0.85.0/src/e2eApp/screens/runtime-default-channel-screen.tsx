@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeDefaultChannelScreen = () => {
@@ -8,10 +8,9 @@ export const RuntimeDefaultChannelScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Default Channel"
+      <ValueText
+        testID="runtime-default-channel"
         value={model.runtimeSnapshot.defaultChannel}
-        valueTestID="runtime-default-channel"
       />
     </ScreenShell>
   );

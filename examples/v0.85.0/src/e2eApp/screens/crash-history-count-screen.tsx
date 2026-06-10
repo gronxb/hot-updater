@@ -1,6 +1,6 @@
 import React from "react";
 
-import { InfoRow, ScreenShell } from "../components";
+import { ScreenShell, ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const CrashHistoryCountScreen = () => {
@@ -8,10 +8,9 @@ export const CrashHistoryCountScreen = () => {
 
   return (
     <ScreenShell>
-      <InfoRow
-        label="Crash History Count"
+      <ValueText
+        testID="crash-history-count"
         value={String(model.runtimeSnapshot.crashHistory.length)}
-        valueTestID="crash-history-count"
       />
     </ScreenShell>
   );
