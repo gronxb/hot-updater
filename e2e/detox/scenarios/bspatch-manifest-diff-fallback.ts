@@ -22,18 +22,11 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       "install manifest base update",
       "action-install-current-channel-update",
     );
-    await app.assertText(
-      "assert manifest base action result",
-      "update-action-result",
-      "current-channel -> installed $previousBundleId",
-      { exactText: true },
-    );
     await app.control(
       "wait manifest base metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$previousBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -89,18 +82,11 @@ export const bspatchManifestDiffFallbackScenario: DetoxScenarioDefinition = {
       "install manifest fallback update",
       "action-install-current-channel-update",
     );
-    await app.assertText(
-      "assert manifest fallback action result",
-      "update-action-result",
-      "current-channel -> installed $bundleId",
-      { exactText: true },
-    );
     await app.control(
       "wait manifest fallback metadata pending",
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

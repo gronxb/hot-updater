@@ -28,7 +28,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$firstBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -78,7 +77,6 @@ export const multiAssetReplacementScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$secondBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

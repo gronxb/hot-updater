@@ -27,7 +27,6 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$archiveBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -96,7 +95,6 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$diffBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

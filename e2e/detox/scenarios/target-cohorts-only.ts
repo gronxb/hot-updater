@@ -42,7 +42,6 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

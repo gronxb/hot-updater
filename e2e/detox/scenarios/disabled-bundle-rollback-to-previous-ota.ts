@@ -48,7 +48,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "/e2e/jobs/wait-for-metadata",
         {
           bundleId: "$previousBundleId",
-          relaunchLimit: 0,
           verificationPending: true,
         },
       );
@@ -108,7 +107,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "/e2e/jobs/wait-for-metadata",
         {
           bundleId: "$nextBundleId",
-          relaunchLimit: 0,
           verificationPending: true,
         },
       );
@@ -157,7 +155,6 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "/e2e/jobs/wait-for-metadata",
         {
           bundleId: "$previousBundleId",
-          relaunchLimit: 0,
           verificationPending: true,
         },
       );

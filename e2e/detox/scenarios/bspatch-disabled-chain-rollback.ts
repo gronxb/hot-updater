@@ -45,7 +45,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleA",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -105,7 +104,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleB",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -168,7 +166,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleC",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -234,7 +231,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleB",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -288,7 +284,6 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleA",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

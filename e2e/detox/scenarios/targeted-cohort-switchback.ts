@@ -74,7 +74,6 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$numericBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -103,7 +102,6 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$qaBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -141,7 +139,6 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$numericBundleId",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );

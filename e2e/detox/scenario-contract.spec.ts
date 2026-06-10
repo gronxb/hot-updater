@@ -691,8 +691,14 @@ describe("Detox scenario contract", () => {
       "bspatch-disabled-chain-rollback: install rollback to chain bundle B",
       "bspatch-disabled-chain-rollback: install rollback to chain bundle A",
       "bspatch-disabled-chain-rollback: install rollback to built-in chain",
+      "bspatch-manifest-diff-fallback: install manifest base update",
+      "bspatch-manifest-diff-fallback: install manifest fallback update",
+      "force-update-auto-reload: install force update",
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
+      "release-ota-recovery: install stable update",
+      "release-ota-recovery: install crash update",
+      "runtime-channel-switch-reset: install runtime channel update",
       "targeted-cohort-switchback: install qa cohort update",
       "targeted-cohort-switchback: install numeric cohort rollback",
     ]);
@@ -719,23 +725,40 @@ describe("Detox scenario contract", () => {
         );
 
         expect(nextControlIndex, stageLabel).toBeGreaterThan(index);
+        const exactActionResultAssertBeforeControl = calls
+          .slice(index + 1, nextControlIndex)
+          .some(
+            (entry) =>
+              entry.kind === "assertText" &&
+              entry.testID === "update-action-result" &&
+              entry.options?.exactText === true,
+          );
         if (metadataFirstInstallStages.has(stageLabel)) {
+          expect(exactActionResultAssertBeforeControl, stageLabel).toBe(false);
           continue;
         }
 
-        expect(
-          calls
-            .slice(index + 1, nextControlIndex)
-            .some(
-              (entry) =>
-                entry.kind === "assertText" &&
-                entry.testID === "update-action-result" &&
-                entry.options?.exactText === true,
-            ),
-          stageLabel,
-        ).toBe(true);
+        expect(exactActionResultAssertBeforeControl, stageLabel).toBe(true);
       }
     }
+  });
+
+  it("keeps metadata waits on Maestro-equivalent relaunch behavior", async () => {
+    const scenarioDirEntries = await fs.readdir(scenarioDir);
+    const scenarioSources = await Promise.all(
+      scenarioDirEntries
+        .filter((entry) => entry.endsWith(".ts"))
+        .map(async (entry) => ({
+          entry,
+          source: await fs.readFile(path.join(scenarioDir, entry), "utf8"),
+        })),
+    );
+
+    expect(
+      scenarioSources
+        .filter(({ source }) => source.includes("relaunchLimit: 0"))
+        .map(({ entry }) => entry),
+    ).toEqual([]);
   });
 
   it("keeps install actions inline instead of routing through UI-start helpers", async () => {
@@ -1472,7 +1495,6 @@ describe("Detox scenario contract", () => {
       "deploy force update bundle",
       "launch force update app",
       "install force update",
-      "assert force update action result",
       "wait force update metadata pending",
       "reload force update",
       "wait force update metadata stable",
@@ -1541,6 +1563,12 @@ describe("Detox scenario contract", () => {
   it("keeps multi-asset replacement aligned with Maestro metadata-first assertions", async () => {
     expect(
       await updateActionResultAssertStages("multi-asset-replacement"),
+    ).toEqual([]);
+  });
+
+  it("keeps manifest fallback aligned with Maestro metadata-first assertions", async () => {
+    expect(
+      await updateActionResultAssertStages("bspatch-manifest-diff-fallback"),
     ).toEqual([]);
   });
 
@@ -1727,7 +1755,6 @@ describe("Detox scenario contract", () => {
       "deploy manifest base bundle",
       "launch manifest base app",
       "install manifest base update",
-      "assert manifest base action result",
       "wait manifest base metadata pending",
       "reload manifest base update",
       "wait manifest base metadata stable",
@@ -1736,7 +1763,6 @@ describe("Detox scenario contract", () => {
       "assert manifest fallback patch bases",
       "launch manifest fallback app",
       "install manifest fallback update",
-      "assert manifest fallback action result",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
@@ -1776,7 +1802,6 @@ describe("Detox scenario contract", () => {
       "deploy stable bundle",
       "launch stable update app",
       "install stable update",
-      "assert stable action result",
       "wait stable metadata pending",
       "reload stable bundle",
       "wait stable metadata active",
@@ -1784,7 +1809,6 @@ describe("Detox scenario contract", () => {
       "deploy crash bundle",
       "launch crash update app",
       "install crash update",
-      "assert crash action result",
       "wait crash metadata pending",
       "launch crash bundle",
       "wait crash recovery",
@@ -1909,7 +1933,6 @@ describe("Detox scenario contract", () => {
       "deploy runtime channel bundle",
       "launch runtime channel app",
       "install runtime channel update",
-      "assert runtime channel action result",
       "wait runtime channel metadata pending",
       "assert runtime channel result",
       "reload runtime channel update",

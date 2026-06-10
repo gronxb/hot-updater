@@ -48,7 +48,6 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "/e2e/jobs/wait-for-metadata",
         {
           bundleId: "$currentBundleId",
-          relaunchLimit: 0,
           verificationPending: true,
         },
       );

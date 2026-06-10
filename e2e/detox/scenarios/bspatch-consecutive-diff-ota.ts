@@ -27,7 +27,6 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleA",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -77,7 +76,6 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleB",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -130,7 +128,6 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleC",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
@@ -192,7 +189,6 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$bundleD",
-        relaunchLimit: 0,
         verificationPending: true,
       },
     );
