@@ -1844,7 +1844,8 @@ describe("Detox scenario contract", () => {
             "assert restored excluded cohort rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> skipped",
+      contains:
+        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -1999,7 +2000,8 @@ describe("Detox scenario contract", () => {
           call.stage === "assert excluded cohort rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> skipped",
+      contains:
+        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2095,7 +2097,8 @@ describe("Detox scenario contract", () => {
           call.stage === "assert rollback to built-in action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> skipped",
+      contains:
+        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2252,7 +2255,8 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain built-in rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> skipped",
+      contains:
+        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
       options: { exactText: true },
       testID: "update-action-result",
     });
