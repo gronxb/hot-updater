@@ -58,15 +58,24 @@ const iosAppDelegatePath = path.join(
   "examples/v0.85.0/ios/HotUpdaterExample/AppDelegate.swift",
 );
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
-const detoxScreenRoutesPath = path.join(
-  repoDir,
-  "e2e/detox/detox-screen-routes.js",
-);
+const detoxScreenRoutesDir = path.join(repoDir, "e2e/detox/screen-routes");
 const examplePackagePath = path.join(repoDir, "examples/v0.85.0/package.json");
 const iosInfoPlistPath = path.join(
   repoDir,
   "examples/v0.85.0/ios/HotUpdaterExample/Info.plist",
 );
+
+const readDetoxScreenRoutesSource = async (): Promise<string> => {
+  const fileNames = (await fs.readdir(detoxScreenRoutesDir)).filter(
+    (fileName) => fileName.endsWith(".js"),
+  );
+  const sources = await Promise.all(
+    fileNames.map((fileName) =>
+      fs.readFile(path.join(detoxScreenRoutesDir, fileName), "utf8"),
+    ),
+  );
+  return sources.join("\n");
+};
 
 describe("E2E navigation contract", () => {
   it("uses React Navigation screens instead of one scroll-heavy E2E surface", async () => {
@@ -190,10 +199,7 @@ describe("E2E navigation contract", () => {
 
   it("opens the screen needed by a testID through direct deep linking", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const detoxScreenRoutesSource = await fs.readFile(
-      detoxScreenRoutesPath,
-      "utf8",
-    );
+    const detoxScreenRoutesSource = await readDetoxScreenRoutesSource();
     const openScreenBody = detoxPageSource.slice(
       detoxPageSource.indexOf("async function openScreenForTestID"),
       detoxPageSource.indexOf(

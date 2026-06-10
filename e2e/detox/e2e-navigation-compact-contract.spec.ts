@@ -62,6 +62,7 @@ const detoxScreenRoutesPath = path.join(
   repoDir,
   "e2e/detox/detox-screen-routes.js",
 );
+const detoxScreenRoutesDir = path.join(repoDir, "e2e/detox/screen-routes");
 
 const sourceCodeLineCount = (source: string): number =>
   source.split("\n").filter((line) => {
@@ -455,22 +456,46 @@ describe("E2E navigation compact surface contract", () => {
       "const E2E_SCREEN_CONTENT_TEST_IDS =",
     );
     expect(detoxPageSource).not.toContain("const E2E_SCREEN_URLS =");
-    expect(detoxScreenRoutesSource).toContain("const E2E_SCREEN_URLS =");
-    expect(detoxScreenRoutesSource).toContain("screenPathForTestID");
-    expect(detoxScreenRoutesSource).toContain(
-      'ready: "hotupdaterexample://e2e/ready"',
+    expect(detoxScreenRoutesSource).toContain('require("./screen-routes")');
+    expect(detoxScreenRoutesSource).not.toContain("const E2E_SCREEN_URLS =");
+    expect(detoxScreenRoutesSource).not.toContain(
+      "hotupdaterexample://e2e/runtime-marker",
     );
+    expect(detoxScreenRoutesSource).not.toContain(
+      "hotupdaterexample://e2e/runtime-current-channel",
+    );
+    expect(sourceCodeLineCount(detoxScreenRoutesSource)).toBeLessThanOrEqual(
+      10,
+    );
+    expect(detoxScreenRoutesSource).toContain("screenPathForTestID");
     expect(detoxScreenRoutesSource).toContain(
       'return TEST_ID_SCREEN_PATHS[testID] || "ready";',
     );
     expect(detoxScreenRoutesSource).not.toContain('|| "runtimeBundle"');
-    expect(detoxScreenRoutesSource).toContain(
-      "hotupdaterexample://e2e/runtime-marker",
-    );
-    expect(detoxScreenRoutesSource).toContain(
-      "hotupdaterexample://e2e/runtime-current-channel",
-    );
     expect(detoxScreenRoutesSource).not.toContain("runtime-channel-summary");
     expect(detoxScreenRoutesSource).not.toContain("current-channel-summary");
+  });
+
+  it("keeps Detox deep-link route maps split by target category", async () => {
+    const routeFiles = (await fs.readdir(detoxScreenRoutesDir)).sort();
+
+    expect(routeFiles).toEqual([
+      "action-screen-routes.js",
+      "index.js",
+      "input-screen-routes.js",
+      "ready-screen-routes.js",
+      "result-screen-routes.js",
+      "runtime-screen-routes.js",
+      "status-screen-routes.js",
+    ]);
+
+    for (const fileName of routeFiles) {
+      const source = await fs.readFile(
+        path.join(detoxScreenRoutesDir, fileName),
+        "utf8",
+      );
+      expect(source, fileName).not.toContain("ScrollView");
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(42);
+    }
   });
 });

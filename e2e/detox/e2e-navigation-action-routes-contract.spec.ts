@@ -25,6 +25,7 @@ const detoxScreenRoutesPath = path.join(
   repoDir,
   "e2e/detox/detox-screen-routes.js",
 );
+const detoxScreenRoutesDir = path.join(repoDir, "e2e/detox/screen-routes");
 const detoxAppDriverPath = path.join(repoDir, "e2e/detox/detox-app-driver.js");
 const controlClientPath = path.join(repoDir, "e2e/detox/control-client.ts");
 const controlServerControllerPath = path.join(
@@ -52,13 +53,16 @@ const e2eScreenStatePersistencePath = path.join(
   "examples/v0.85.0/src/e2eApp/screen-state-persistence.ts",
 );
 
-const collectSourceFiles = async (dir: string): Promise<readonly string[]> => {
+const collectSourceFiles = async (
+  dir: string,
+  extensions: readonly string[] = [".ts", ".tsx"],
+): Promise<readonly string[]> => {
   const entries = await fs.readdir(dir, { withFileTypes: true });
   const files = await Promise.all(
     entries.map(async (entry) => {
       const entryPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) return collectSourceFiles(entryPath);
-      if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+      if (entry.isDirectory()) return collectSourceFiles(entryPath, extensions);
+      if (extensions.includes(path.extname(entry.name))) {
         return [entryPath];
       }
       return [];
@@ -67,8 +71,11 @@ const collectSourceFiles = async (dir: string): Promise<readonly string[]> => {
   return files.flat();
 };
 
-const readSourceTree = async (dir: string): Promise<string> => {
-  const sourceFiles = await collectSourceFiles(dir);
+const readSourceTree = async (
+  dir: string,
+  extensions?: readonly string[],
+): Promise<string> => {
+  const sourceFiles = await collectSourceFiles(dir, extensions);
   const sources = await Promise.all(
     sourceFiles.map((filePath) => fs.readFile(filePath, "utf8")),
   );
@@ -83,10 +90,9 @@ describe("E2E navigation action route contract", () => {
     );
     const e2eAppScreenPathsSource = await readSourceTree(e2eAppScreenPathsDir);
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const detoxScreenRoutesSource = await fs.readFile(
-      detoxScreenRoutesPath,
-      "utf8",
-    );
+    const detoxScreenRoutesSource = await readSourceTree(detoxScreenRoutesDir, [
+      ".js",
+    ]);
 
     expect(e2eAppRoutePathsSource).not.toContain("InstallActions");
     expect(e2eAppRoutePathsSource).not.toContain("RuntimeChannelActions");
@@ -143,10 +149,9 @@ describe("E2E navigation action route contract", () => {
 
   it("keeps stateful workflow inputs separate from compact action result routes", async () => {
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
-    const detoxScreenRoutesSource = await fs.readFile(
-      detoxScreenRoutesPath,
-      "utf8",
-    );
+    const detoxScreenRoutesSource = await readSourceTree(detoxScreenRoutesDir, [
+      ".js",
+    ]);
     const cohortInputScreenSource = await fs.readFile(
       path.join(e2eAppScreensDir, "cohort-input-screen.tsx"),
       "utf8",
