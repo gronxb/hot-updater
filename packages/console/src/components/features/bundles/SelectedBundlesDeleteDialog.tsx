@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import type { LucideIcon } from "lucide-react";
 import {
   CheckCircle2,
   CircleDashed,
@@ -10,9 +11,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -30,6 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useDeleteBundleMutation } from "@/lib/api";
 
 interface SelectedBundlesDeleteDialogProps {
@@ -69,30 +73,42 @@ const createDeleteItems = (bundles: readonly Bundle[]): DeleteItem[] =>
     status: "queued",
   }));
 
-function DeleteStatusIcon({ status }: { readonly status: DeleteItemStatus }) {
+function getStatusIcon(status: DeleteItemStatus): {
+  readonly className: string;
+  readonly Icon: LucideIcon;
+} {
   switch (status) {
-    case "queued":
-      return <CircleDashed className="text-muted-foreground" />;
-    case "deleting":
-      return <LoaderCircle className="animate-spin text-primary" />;
-    case "deleted":
-      return <CheckCircle2 className="text-primary" />;
     case "failed":
-      return <XCircle className="text-destructive" />;
+      return { className: "size-3.5 text-destructive", Icon: XCircle };
+    case "queued":
+      return {
+        className: "size-3.5 text-muted-foreground",
+        Icon: CircleDashed,
+      };
+    case "deleting":
+      return {
+        className: "size-3.5 animate-spin text-primary",
+        Icon: LoaderCircle,
+      };
+    case "deleted":
+      return { className: "size-3.5 text-primary", Icon: CheckCircle2 };
   }
 }
 
-function DeleteStatusBadge({ status }: { readonly status: DeleteItemStatus }) {
-  switch (status) {
-    case "failed":
-      return <Badge variant="destructive">{statusLabels[status]}</Badge>;
-    case "queued":
-      return <Badge variant="outline">{statusLabels[status]}</Badge>;
-    case "deleting":
-      return <Badge>{statusLabels[status]}</Badge>;
-    case "deleted":
-      return <Badge variant="secondary">{statusLabels[status]}</Badge>;
-  }
+function DeleteStatusIcon({ status }: { readonly status: DeleteItemStatus }) {
+  const label = statusLabels[status];
+  const { className, Icon } = getStatusIcon(status);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span aria-label={label} role="img">
+          <Icon className={className} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function SelectedBundlesDeleteDialog({
@@ -246,23 +262,11 @@ export function SelectedBundlesDeleteDialog({
         </DialogHeader>
 
         <Card>
-          <CardHeader className="flex-row items-center justify-between gap-3 p-3">
-            <CardTitle className="flex items-center gap-2 text-xs">
-              <Trash2 className="text-muted-foreground" />
-              Delete log
-            </CardTitle>
-            {phase === "complete" ? (
-              <Badge variant={hasFailures ? "destructive" : "secondary"}>
-                {hasFailures ? `${failedCount} failed` : "Complete"}
-              </Badge>
-            ) : null}
-          </CardHeader>
-          <Separator />
-          <CardContent className="max-h-[42vh] overflow-y-auto p-0">
+          <CardContent className="max-h-[50vh] overflow-y-auto p-0">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-card">
                 <TableRow>
-                  <TableHead className="w-36">Status</TableHead>
+                  <TableHead className="w-12">Status</TableHead>
                   <TableHead>Bundle</TableHead>
                 </TableRow>
               </TableHeader>
@@ -270,14 +274,11 @@ export function SelectedBundlesDeleteDialog({
                 {items.map((item) => (
                   <TableRow key={item.bundle.id}>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <DeleteStatusIcon status={item.status} />
-                        <DeleteStatusBadge status={item.status} />
-                      </div>
+                      <DeleteStatusIcon status={item.status} />
                     </TableCell>
                     <TableCell className="whitespace-normal">
                       <div className="min-w-0">
-                        <div className="break-all font-mono text-xs text-foreground">
+                        <div className="break-all font-mono text-[11px] text-foreground">
                           {item.bundle.id}
                         </div>
                         <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">

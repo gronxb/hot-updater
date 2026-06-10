@@ -145,7 +145,7 @@ describe("SelectedBundlesDeleteDialog", () => {
       />,
     );
 
-    expect(screen.getAllByText("Queued")).toHaveLength(2);
+    expect(screen.getAllByRole("img", { name: "Queued" })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
@@ -167,8 +167,8 @@ describe("SelectedBundlesDeleteDialog", () => {
     });
 
     expect(screen.getByText("1 of 2 delete requests finished.")).toBeTruthy();
-    expect(screen.getByText("Deleted")).toBeTruthy();
-    expect(screen.getByText("Deleting")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Deleted" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Deleting" })).toBeTruthy();
 
     secondDelete.resolve(undefined);
 
