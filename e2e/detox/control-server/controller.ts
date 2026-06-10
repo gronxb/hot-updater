@@ -3328,11 +3328,16 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   logDetoxFixture("proxied remote asset request", {
     method: request.method,
     source: requestUrl.pathname,
+    status: response.status,
     target: targetUrl.toString(),
   });
 
+  const headersToApp = new Headers(response.headers);
+  headersToApp.delete("content-encoding");
+  headersToApp.delete("content-length");
+
   return new Response(response.body, {
-    headers: response.headers,
+    headers: headersToApp,
     status: response.status,
     statusText: response.statusText,
   });

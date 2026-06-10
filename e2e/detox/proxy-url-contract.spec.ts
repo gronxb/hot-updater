@@ -57,7 +57,14 @@ describe("Detox remote asset proxy URLs", () => {
       }
 
       if (url === signedBundleUrl) {
-        return new Response("bundle-bytes", { status: 200 });
+        return new Response("bundle-bytes", {
+          headers: {
+            "content-encoding": "br",
+            "content-length": "999",
+            "content-type": "application/zip",
+          },
+          status: 200,
+        });
       }
 
       return new Response("unexpected fetch target", { status: 500 });
@@ -108,6 +115,9 @@ describe("Detox remote asset proxy URLs", () => {
       );
 
       expect(assetResponse.status).toBe(200);
+      expect(assetResponse.headers.get("content-encoding")).toBeNull();
+      expect(assetResponse.headers.get("content-length")).toBeNull();
+      expect(assetResponse.headers.get("content-type")).toBe("application/zip");
       expect(await assetResponse.text()).toBe("bundle-bytes");
       expect(fetchTargets).toContain(signedBundleUrl);
     } finally {
