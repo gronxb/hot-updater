@@ -20,6 +20,10 @@ const e2eAppRegisteredRouteElementsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
 );
+const e2eAppRouteElementsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routes/route-elements.tsx",
+);
 const e2eAppScreensIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/index.ts",
@@ -35,6 +39,10 @@ const e2eAppScreenTestIDsPath = path.join(
 const e2eAppComponentsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/components.tsx",
+);
+const e2eAppStylesPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/styles.ts",
 );
 const e2eAppScreensDir = path.join(
   repoDir,
@@ -157,6 +165,10 @@ describe("E2E navigation compact surface contract", () => {
       e2eAppRegisteredRouteElementsPath,
       "utf8",
     );
+    const routeElementsSource = await fs.readFile(
+      e2eAppRouteElementsPath,
+      "utf8",
+    );
     const readyScreenSource = await fs.readFile(
       path.join(e2eAppScreensDir, "ready-screen.tsx"),
       "utf8",
@@ -170,6 +182,9 @@ describe("E2E navigation compact surface contract", () => {
     expect(registeredRouteElementsSource).not.toContain("testID=");
     expect(registeredRouteElementsSource).not.toContain("ScrollView");
     expect(registeredRouteElementsSource).not.toContain("ScreenShell");
+    expect(routeElementsSource).not.toContain('-route"');
+    expect(routeElementsSource).not.toContain("-route';");
+    expect(sourceCodeLineCount(routeElementsSource)).toBeLessThanOrEqual(14);
     expect(readyScreenSource.match(/testID=/g) ?? []).toHaveLength(1);
     expect(readyScreenSource).toContain('testID="e2e-ready-status"');
     expect(readyScreenSource).toContain('value="Ready"');
@@ -304,6 +319,28 @@ describe("E2E navigation compact surface contract", () => {
       );
       expect(source, fileName).not.toContain("Section");
       expect(source, fileName).not.toContain("section-");
+    }
+  });
+
+  it("removes old long-page styles from the E2E app surface", async () => {
+    const e2eAppStylesSource = await fs.readFile(e2eAppStylesPath, "utf8");
+
+    for (const obsoleteStyleName of [
+      "assetCard",
+      "assetHash",
+      "assetName",
+      "buttonGrid",
+      "crashList",
+      "crashItem",
+      "description",
+      "imageFrame",
+      "previewImage",
+      "safeArea",
+      "title",
+    ]) {
+      expect(e2eAppStylesSource, obsoleteStyleName).not.toContain(
+        `${obsoleteStyleName}:`,
+      );
     }
   });
 

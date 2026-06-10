@@ -205,8 +205,10 @@ describe("E2E navigation stack contract", () => {
     expect(
       sourceCodeLineCount(e2eAppRegisteredRouteElementsSource),
     ).toBeLessThanOrEqual(5);
-    expect(e2eAppRouteElementsSource).toContain("readyRoute");
-    expect(e2eAppRouteElementsSource).toContain("reloadAppActionRoute");
+    expect(e2eAppRouteElementsSource).toContain("readyRouteElements");
+    expect(e2eAppRouteElementsSource).toContain("actionRouteElements");
+    expect(e2eAppRouteElementsSource).not.toContain("readyRoute,");
+    expect(e2eAppRouteElementsSource).not.toContain("reloadAppActionRoute");
     expect(e2eAppRegisteredRouteElementsSource).not.toContain("readyRoutes");
     expect(e2eAppRegisteredRouteElementsSource).not.toContain(
       "appActionRoutes",

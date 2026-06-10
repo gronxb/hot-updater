@@ -1,24 +1,6 @@
-import { Platform, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
-  assetCard: {
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    marginTop: 10,
-    padding: 12,
-  },
-  assetHash: {
-    color: "#111827",
-    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  assetName: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
   button: {
     alignItems: "center",
     backgroundColor: "#155e75",
@@ -28,10 +10,6 @@ export const styles = StyleSheet.create({
     minHeight: 40,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  buttonGrid: {
-    gap: 8,
-    marginTop: 12,
   },
   buttonPressed: {
     backgroundColor: "#0e7490",
@@ -46,30 +24,6 @@ export const styles = StyleSheet.create({
     flex: 1,
     padding: 18,
   },
-  crashList: {
-    marginTop: 4,
-  },
-  crashItem: {
-    backgroundColor: "#fff7ed",
-    borderRadius: 8,
-    color: "#9a3412",
-    fontSize: 13,
-    marginTop: 8,
-    padding: 10,
-  },
-  description: {
-    color: "#475569",
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 6,
-  },
-  imageFrame: {
-    alignItems: "center",
-    backgroundColor: "#ecfeff",
-    borderRadius: 8,
-    marginTop: 8,
-    padding: 18,
-  },
   input: {
     backgroundColor: "#f8fafc",
     borderColor: "#cbd5e1",
@@ -82,24 +36,11 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  previewImage: {
-    height: 120,
-    width: 120,
-  },
   resultText: {
     color: "#1f2937",
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 19,
     marginTop: 8,
-  },
-  safeArea: {
-    backgroundColor: "#f8fafc",
-    flex: 1,
-  },
-  title: {
-    color: "#111827",
-    fontSize: 30,
-    fontWeight: "800",
   },
 });
