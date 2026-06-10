@@ -370,7 +370,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert chain built-in rollback action result",
       "update-action-result",
-      "current-channel -> installed $builtInBundleId",
+      "current-channel -> skipped",
       { exactText: true },
     );
     await app.control(

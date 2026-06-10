@@ -89,7 +89,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert rollback to built-in action result",
         "update-action-result",
-        "current-channel -> installed $builtInBundleId",
+        "current-channel -> skipped",
         { exactText: true },
       );
       await app.control(

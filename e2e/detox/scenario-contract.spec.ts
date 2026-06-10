@@ -1834,6 +1834,20 @@ describe("Detox scenario contract", () => {
         )
       ).verificationPending,
     ).toBe(false);
+    expect(
+      (
+        await recordScenarioCalls("target-cohorts-rollout-interaction")
+      ).find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage ===
+            "assert restored excluded cohort rollback action result",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> skipped",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
   });
 
   it("models runtime channel switching as an OTA state transition", async () => {
@@ -1985,7 +1999,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert excluded cohort rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> installed $builtInBundleId",
+      contains: "current-channel -> skipped",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2081,7 +2095,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert rollback to built-in action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> installed $builtInBundleId",
+      contains: "current-channel -> skipped",
       options: { exactText: true },
       testID: "update-action-result",
     });
@@ -2238,7 +2252,7 @@ describe("Detox scenario contract", () => {
           call.stage === "assert chain built-in rollback action result",
       ),
     ).toMatchObject({
-      contains: "current-channel -> installed $builtInBundleId",
+      contains: "current-channel -> skipped",
       options: { exactText: true },
       testID: "update-action-result",
     });
