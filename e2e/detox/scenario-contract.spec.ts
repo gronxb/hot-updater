@@ -919,7 +919,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("keeps install action screens to the single action button", async () => {
+  it("keeps install action screens to the single focused action route", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -932,8 +932,10 @@ describe("Detox scenario contract", () => {
       exampleE2eAppInstallRuntimeScreenPath,
       "utf8",
     );
-    expect(installCurrentScreenSource).toContain("Button");
-    expect(installRuntimeScreenSource).toContain("Button");
+    expect(installCurrentScreenSource).toContain("FocusedActionRoute");
+    expect(installRuntimeScreenSource).toContain("FocusedActionRoute");
+    expect(installCurrentScreenSource).not.toContain("Button");
+    expect(installRuntimeScreenSource).not.toContain("Button");
     expect(installCurrentScreenSource).not.toContain(
       "ActionButtonWithStartCount",
     );
@@ -949,7 +951,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("keeps result-producing action screens to the single action button", async () => {
+  it("keeps result-producing action screens to the single focused action route", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
@@ -965,7 +967,8 @@ describe("Detox scenario contract", () => {
       detoxRuntimeSource.indexOf("async terminate(stage"),
     );
 
-    expect(actionScreenSources.join("\n")).toContain("Button");
+    expect(actionScreenSources.join("\n")).toContain("FocusedActionRoute");
+    expect(actionScreenSources.join("\n")).not.toContain("Button");
     expect(actionScreenSources.join("\n")).not.toContain(
       "ActionButtonWithStartCount",
     );
@@ -977,13 +980,13 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
-  it("starts result-producing actions from press-in without action-count UI", async () => {
+  it("starts result-producing actions from route focus without action-count UI", async () => {
     const componentsSource = await fs.readFile(
       exampleE2eAppComponentsPath,
       "utf8",
     );
-    const pressInActionBody = componentsSource.slice(
-      componentsSource.indexOf("export const PressInActionButton"),
+    const focusedActionBody = componentsSource.slice(
+      componentsSource.indexOf("export const FocusedActionRoute"),
       componentsSource.indexOf("export const ScreenShell"),
     );
     const resultActionScreenSources = (
@@ -997,15 +1000,63 @@ describe("Detox scenario contract", () => {
       ])
     ).join("\n");
 
-    expect(pressInActionBody).toContain("onPressIn={runOnce}");
-    expect(pressInActionBody).toContain("didRun.current = true;");
-    expect(resultActionScreenSources).toContain("PressInActionButton");
+    expect(focusedActionBody).toContain("useFocusEffect");
+    expect(focusedActionBody).toContain("didRun.current = true;");
+    expect(focusedActionBody).toContain("void onFocus();");
+    expect(resultActionScreenSources).toContain("FocusedActionRoute");
+    expect(resultActionScreenSources).not.toContain("PressInActionButton");
     expect(resultActionScreenSources).not.toContain(
       "ActionButtonWithStartCount",
     );
+    expect(componentsSource).not.toContain("PressInActionButton");
     expect(componentsSource).not.toContain("ActionButtonWithStartCount");
     expect(componentsSource).not.toContain("setStartCount");
     expect(componentsSource).not.toContain("Action Start Count:");
+  });
+
+  it("runs result-producing actions from focused routes without Detox tapping Pressable", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const componentsSource = await fs.readFile(
+      exampleE2eAppComponentsPath,
+      "utf8",
+    );
+    const resultActionScreenSources = (
+      await Promise.all([
+        fs.readFile(exampleE2eAppApplyCohortInputScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppSetCohortQaScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppRestoreInitialCohortScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppResetRuntimeChannelScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppInstallCurrentScreenPath, "utf8"),
+        fs.readFile(exampleE2eAppInstallRuntimeScreenPath, "utf8"),
+      ])
+    ).join("\n");
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+    const routeActionBranch = tapBody.slice(
+      tapBody.indexOf("const actionResultField"),
+      tapBody.indexOf("const isAppReloadAction"),
+    );
+
+    expect(componentsSource).toContain("export const FocusedActionRoute");
+    expect(componentsSource).not.toContain("PressInActionButton");
+    expect(resultActionScreenSources).toContain("FocusedActionRoute");
+    expect(resultActionScreenSources).not.toContain("PressInActionButton");
+    expect(routeActionBranch).toContain(
+      "await findVisibleTestID(this.controlClient, testID, {",
+    );
+    expect(routeActionBranch).toContain("alwaysOpen: true");
+    expect(routeActionBranch).toContain(
+      "await this.waitForActionResultField(stage, actionResultField);",
+    );
+    expect(routeActionBranch).not.toContain("target.tap()");
+    expect(detoxRuntimeSource).not.toContain("PressInActionButton");
+    expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
+    expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
   it("keeps explicit reloads at the cold-start boundary", async () => {

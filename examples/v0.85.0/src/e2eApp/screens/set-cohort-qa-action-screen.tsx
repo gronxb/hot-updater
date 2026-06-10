@@ -1,6 +1,6 @@
 import React from "react";
 
-import { PressInActionButton, ScreenShell } from "../components";
+import { FocusedActionRoute, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const SetCohortQaActionScreen = () => {
@@ -8,8 +8,8 @@ export const SetCohortQaActionScreen = () => {
 
   return (
     <ScreenShell>
-      <PressInActionButton
-        onPress={model.setCohortToQa}
+      <FocusedActionRoute
+        onFocus={model.setCohortToQa}
         testID="action-set-cohort-qa"
         title="Set QA"
       />

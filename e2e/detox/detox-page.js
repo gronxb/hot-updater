@@ -87,9 +87,9 @@ async function withSynchronizationDisabledForPageOpen(operation) {
   return operation();
 }
 
-async function openScreenForTestID(testID) {
+async function openScreenForTestID(testID, options = {}) {
   const screenPath = screenPathForTestID(testID);
-  if (activeScreenPath === screenPath) {
+  if (activeScreenPath === screenPath && options.alwaysOpen !== true) {
     return;
   }
 
@@ -123,7 +123,7 @@ async function findVisibleTestID(controlClient, testID, options = {}) {
   if (options.ensureForeground !== false) {
     await ensureAppForegroundForInteraction();
   }
-  await openScreenForTestID(testID);
+  await openScreenForTestID(testID, { alwaysOpen: options.alwaysOpen });
   const target = element(by.id(testID));
   await waitFor(target).toBeVisible().withTimeout(30000);
   return target;

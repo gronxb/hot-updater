@@ -1,6 +1,6 @@
 import React from "react";
 
-import { PressInActionButton, ScreenShell } from "../components";
+import { FocusedActionRoute, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const ApplyCohortInputActionScreen = () => {
@@ -8,8 +8,8 @@ export const ApplyCohortInputActionScreen = () => {
 
   return (
     <ScreenShell>
-      <PressInActionButton
-        onPress={model.applyCohortInput}
+      <FocusedActionRoute
+        onFocus={model.applyCohortInput}
         testID="action-apply-cohort-input"
         title="Apply Cohort"
       />

@@ -1,6 +1,6 @@
 import React from "react";
 
-import { PressInActionButton, ScreenShell } from "../components";
+import { FocusedActionRoute, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const InstallCurrentChannelUpdateActionScreen = () => {
@@ -8,8 +8,8 @@ export const InstallCurrentChannelUpdateActionScreen = () => {
 
   return (
     <ScreenShell>
-      <PressInActionButton
-        onPress={() => model.installUpdate({ actionLabel: "current-channel" })}
+      <FocusedActionRoute
+        onFocus={() => model.installUpdate({ actionLabel: "current-channel" })}
         testID="action-install-current-channel-update"
         title="Install Current"
       />

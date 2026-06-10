@@ -1,6 +1,6 @@
 import React from "react";
 
-import { PressInActionButton, ScreenShell } from "../components";
+import { FocusedActionRoute, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RestoreInitialCohortActionScreen = () => {
@@ -8,8 +8,8 @@ export const RestoreInitialCohortActionScreen = () => {
 
   return (
     <ScreenShell>
-      <PressInActionButton
-        onPress={model.restoreInitialCohort}
+      <FocusedActionRoute
+        onFocus={model.restoreInitialCohort}
         testID="action-restore-initial-cohort"
         title="Restore Cohort"
       />

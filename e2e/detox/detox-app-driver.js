@@ -109,6 +109,15 @@ class DetoxAppDriver {
 
   async tap(stage, testID) {
     await this.runStage(stage, async () => {
+      const actionResultField = this.actionResultFieldForTestID(testID);
+      if (actionResultField) {
+        await findVisibleTestID(this.controlClient, testID, {
+          alwaysOpen: true,
+        });
+        await this.waitForActionResultField(stage, actionResultField);
+        return;
+      }
+
       const isAppReloadAction = testID === "action-reload-app";
       await disableSynchronizationUntilLaunch();
       const target = await findVisibleTestID(this.controlClient, testID);
@@ -213,8 +222,16 @@ class DetoxAppDriver {
   }
 
   async waitForActionResultAfterTap(stage, testID) {
-    const fieldName = ACTION_RESULT_FIELDS[testID];
+    const fieldName = this.actionResultFieldForTestID(testID);
     if (!fieldName) return;
+    await this.waitForActionResultField(stage, fieldName);
+  }
+
+  actionResultFieldForTestID(testID) {
+    return ACTION_RESULT_FIELDS[testID];
+  }
+
+  async waitForActionResultField(stage, fieldName) {
     await this.controlClient.waitForScreenStateField(
       `${stage}: wait ${fieldName}`,
       fieldName,

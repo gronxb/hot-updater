@@ -1,6 +1,6 @@
 import React from "react";
 
-import { PressInActionButton, ScreenShell } from "../components";
+import { FocusedActionRoute, ScreenShell } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const ResetRuntimeChannelActionScreen = () => {
@@ -8,8 +8,8 @@ export const ResetRuntimeChannelActionScreen = () => {
 
   return (
     <ScreenShell>
-      <PressInActionButton
-        onPress={model.resetRuntimeChannel}
+      <FocusedActionRoute
+        onFocus={model.resetRuntimeChannel}
         testID="action-reset-runtime-channel"
         title="Reset Channel"
       />

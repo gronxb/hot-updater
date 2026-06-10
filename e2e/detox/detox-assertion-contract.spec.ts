@@ -63,7 +63,8 @@ describe("Detox assertion parity", () => {
     expect(assertTextBody).toContain(
       "await waitForCurrentTestIDText(testID, expectedText)",
     );
-    expect(findVisibleBody).toContain("await openScreenForTestID(testID)");
+    expect(findVisibleBody).toContain("await openScreenForTestID(testID, {");
+    expect(findVisibleBody).toContain("alwaysOpen: options.alwaysOpen");
     expect(findVisibleBody).toContain("const target = element(by.id(testID))");
     expect(findVisibleBody).toContain("await waitFor(target)");
     expect(findVisibleBody).toContain(".withTimeout(30000)");
