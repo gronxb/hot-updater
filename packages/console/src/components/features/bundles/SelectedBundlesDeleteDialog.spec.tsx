@@ -178,6 +178,9 @@ describe("SelectedBundlesDeleteDialog", () => {
       expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+
     expect(mockOnComplete).toHaveBeenCalledWith({
       deletedBundleIds: [firstBundle.id, secondBundle.id],
       failedBundleIds: [],
