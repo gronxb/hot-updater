@@ -4,52 +4,21 @@ import { Alert } from "react-native";
 import BootSplash from "react-native-bootsplash";
 import { useSnapshot } from "valtio";
 
-import {
-  patchE2eScreenState,
-  readE2eScreenState,
-  type E2eScreenState,
-} from "../e2eRuntimeConfig";
+import type { E2eScreenState } from "../e2eRuntimeConfig";
 import {
   formatUpdateStoreDownloadPaths,
   notify,
   readRuntimeSnapshot,
   refreshRuntimeSnapshot,
-  type RuntimeSnapshot,
 } from "./runtime";
-
-type InstallUpdateInput = {
-  readonly actionLabel: string;
-  readonly channel?: string;
-};
+import type { E2eRuntimeModel, InstallUpdateInput } from "./runtime-model";
+import {
+  persistScreenState,
+  readPersistedScreenState,
+} from "./screen-state-persistence";
 
 const DEFAULT_ACTION_RESULT = "idle";
 const DEFAULT_RUNTIME_CHANNEL_INPUT = "beta";
-
-export type E2eRuntimeModel = {
-  readonly applyCohortInput: () => Promise<void>;
-  readonly channelActionResult: string;
-  readonly clearCrashHistory: () => Promise<void>;
-  readonly cohortActionResult: string;
-  readonly cohortInput: string;
-  readonly crashedBundleText: string;
-  readonly initialCohort: string;
-  readonly installRuntimeChannelUpdate: () => Promise<void>;
-  readonly installUpdate: (input: InstallUpdateInput) => Promise<void>;
-  readonly isUpdateDownloaded: boolean;
-  readonly launchStatusText: string;
-  readonly reloadApp: () => Promise<void>;
-  readonly resetRuntimeChannel: () => Promise<void>;
-  readonly restoreInitialCohort: () => Promise<void>;
-  readonly runtimeChannelInput: string;
-  readonly runtimeSnapshot: RuntimeSnapshot;
-  readonly refreshRuntimeSnapshot: () => Promise<void>;
-  readonly scenarioMarker: string;
-  readonly setCohortToQa: () => Promise<void>;
-  readonly setRuntimeChannelInput: (nextChannel: string) => void;
-  readonly updateActionResult: string;
-  readonly updateCohortInput: (nextCohort: string) => void;
-  readonly updateStoreDownloadPathsText: string;
-};
 
 export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const notifyState = useSnapshot(notify);
@@ -70,29 +39,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     DEFAULT_ACTION_RESULT,
   );
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(readRuntimeSnapshot);
-
-  const logScreenStateError = (label: string, error: unknown) => {
-    const message =
-      error instanceof Error ? error.message : "Unknown E2E screen state error";
-    console.warn(`${label}: ${message}`);
-  };
-
-  const readPersistedScreenState = async () => {
-    try {
-      return await readE2eScreenState();
-    } catch (error) {
-      logScreenStateError("Failed to read E2E screen state", error);
-      return null;
-    }
-  };
-
-  const persistScreenState = async (patch: Partial<E2eScreenState>) => {
-    try {
-      await patchE2eScreenState(patch);
-    } catch (error) {
-      logScreenStateError("Failed to patch E2E screen state", error);
-    }
-  };
 
   const applyScreenState = (screenState: E2eScreenState) => {
     setRuntimeChannelInputState(screenState.runtimeChannelInput);

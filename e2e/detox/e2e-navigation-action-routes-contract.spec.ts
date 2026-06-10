@@ -43,6 +43,10 @@ const e2eRuntimeHookPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
 );
+const e2eScreenStatePersistencePath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screen-state-persistence.ts",
+);
 
 describe("E2E navigation action route contract", () => {
   it("keeps action and multi-value assertions on one-target routes", async () => {
@@ -233,6 +237,10 @@ describe("E2E navigation action route contract", () => {
       "utf8",
     );
     const e2eRuntimeHookSource = await fs.readFile(e2eRuntimeHookPath, "utf8");
+    const e2eScreenStatePersistenceSource = await fs.readFile(
+      e2eScreenStatePersistencePath,
+      "utf8",
+    );
 
     expect(e2eRuntimeHookSource).not.toContain("const e2eRuntimeMemory");
     expect(controlServerControllerSource).toContain("screenState");
@@ -253,8 +261,10 @@ describe("E2E navigation action route contract", () => {
     expect(e2eRuntimeConfigSource).toContain(
       'replace(/\\/runtime-config$/, "/screen-state")',
     );
-    expect(e2eRuntimeHookSource).toContain("readE2eScreenState");
-    expect(e2eRuntimeHookSource).toContain("patchE2eScreenState");
+    expect(e2eRuntimeHookSource).toContain("readPersistedScreenState");
+    expect(e2eRuntimeHookSource).toContain("persistScreenState");
+    expect(e2eScreenStatePersistenceSource).toContain("readE2eScreenState");
+    expect(e2eScreenStatePersistenceSource).toContain("patchE2eScreenState");
     expect(e2eRuntimeHookSource).toMatch(
       /await\s+setUpdateActionResult\(\s*`\$\{actionLabel\} -> checking`/s,
     );

@@ -1,6 +1,6 @@
 import React, { createContext, type ReactNode, useContext } from "react";
 
-import type { E2eRuntimeModel } from "./useE2eRuntime";
+import type { E2eRuntimeModel } from "./runtime-model";
 
 const E2eRuntimeModelContext = createContext<E2eRuntimeModel | null>(null);
 

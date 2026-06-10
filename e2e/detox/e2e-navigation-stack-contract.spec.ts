@@ -45,6 +45,7 @@ const e2eAppRuntimeModelContextPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/runtime-model-context.tsx",
 );
+const e2eAppSourceDir = path.join(repoDir, "examples/v0.85.0/src/e2eApp");
 
 const sourceCodeLineCount = (source: string): number =>
   source.split("\n").filter((line) => {
@@ -222,5 +223,38 @@ describe("E2E navigation stack contract", () => {
     await expect(fs.stat(e2eAppRouteGroupDir)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("keeps E2E app source modules below the page-sized LOC ceiling", async () => {
+    const collectSourceFiles = async (dir: string): Promise<string[]> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const files = await Promise.all(
+        entries.map(async (entry) => {
+          const entryPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) return collectSourceFiles(entryPath);
+          if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+            return [entryPath];
+          }
+          return [];
+        }),
+      );
+      return files.flat();
+    };
+    const sourceFiles = await collectSourceFiles(e2eAppSourceDir);
+    const lineCounts = await Promise.all(
+      sourceFiles.map(async (filePath) => {
+        const source = await fs.readFile(filePath, "utf8");
+        return {
+          filePath: path.relative(repoDir, filePath),
+          lines: sourceCodeLineCount(source),
+        };
+      }),
+    );
+
+    expect(
+      lineCounts
+        .filter(({ lines }) => lines > 250)
+        .map(({ filePath, lines }) => `${filePath}: ${lines}`),
+    ).toEqual([]);
   });
 });
