@@ -691,6 +691,8 @@ describe("Detox scenario contract", () => {
       "bspatch-disabled-chain-rollback: install rollback to chain bundle B",
       "bspatch-disabled-chain-rollback: install rollback to chain bundle A",
       "bspatch-disabled-chain-rollback: install rollback to built-in chain",
+      "multi-asset-replacement: install first multi-asset update",
+      "multi-asset-replacement: install second multi-asset update",
       "targeted-cohort-switchback: install qa cohort update",
       "targeted-cohort-switchback: install numeric cohort rollback",
     ]);
@@ -1536,6 +1538,12 @@ describe("Detox scenario contract", () => {
     ).toEqual([]);
   });
 
+  it("keeps multi-asset replacement aligned with Maestro metadata-first assertions", async () => {
+    expect(
+      await updateActionResultAssertStages("multi-asset-replacement"),
+    ).toEqual([]);
+  });
+
   it("keeps archive-to-diff on the Detox default bundle profile", async () => {
     const deployBody = await controlStepBody(
       "bspatch-archive-to-diff-ota",
@@ -1553,7 +1561,6 @@ describe("Detox scenario contract", () => {
       "deploy first multi-asset bundle",
       "launch first multi-asset app",
       "install first multi-asset update",
-      "assert first multi-asset action result",
       "wait first multi-asset metadata pending",
       "reload first multi-asset update",
       "wait first multi-asset metadata stable",
@@ -1561,7 +1568,6 @@ describe("Detox scenario contract", () => {
       "deploy second multi-asset bundle",
       "launch second multi-asset app",
       "install second multi-asset update",
-      "assert second multi-asset action result",
       "wait second multi-asset metadata pending",
       "reload second multi-asset update",
       "wait second multi-asset metadata stable",
