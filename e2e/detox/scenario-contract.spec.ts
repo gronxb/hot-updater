@@ -1578,7 +1578,11 @@ describe("Detox scenario contract", () => {
     ).toEqual([]);
     expect(
       await updateActionResultAssertStages("bspatch-disabled-chain-rollback"),
-    ).toEqual([]);
+    ).toEqual([
+      "assert chain bundle B rollback action result",
+      "assert chain bundle A rollback action result",
+      "assert chain built-in rollback action result",
+    ]);
   });
 
   it("keeps multi-asset replacement aligned with Maestro metadata-first assertions", async () => {
@@ -2311,7 +2315,10 @@ describe("Detox scenario contract", () => {
       "capture chain bundle C state",
       "assert chain bundle C active",
       "disable chain bundle C",
-      "restart rollback to chain bundle B",
+      "install rollback to chain bundle B",
+      "assert chain bundle B rollback action result",
+      "wait chain bundle B rollback metadata pending",
+      "reload rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
       "reload chain bundle B rollback",
       "assert chain bundle B rollback marker",
@@ -2320,7 +2327,10 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback crashed bundle",
       "assert chain bundle B rollback active",
       "disable chain bundle B",
-      "restart rollback to chain bundle A",
+      "install rollback to chain bundle A",
+      "assert chain bundle A rollback action result",
+      "wait chain bundle A rollback metadata pending",
+      "reload rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
       "reload chain bundle A rollback",
       "assert chain bundle A rollback marker",
@@ -2329,7 +2339,8 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback crashed bundle",
       "assert chain bundle A rollback active",
       "disable chain bundle A",
-      "restart rollback to built-in chain",
+      "install rollback to built-in chain",
+      "assert chain built-in rollback action result",
       "assert chain built-in metadata reset",
       "reload built-in chain rollback",
       "assert chain built-in bundle",
@@ -2342,7 +2353,11 @@ describe("Detox scenario contract", () => {
     ]);
     expect(
       await updateActionResultAssertStages("bspatch-disabled-chain-rollback"),
-    ).toEqual([]);
+    ).toEqual([
+      "assert chain bundle B rollback action result",
+      "assert chain bundle A rollback action result",
+      "assert chain built-in rollback action result",
+    ]);
   });
 
   it("accepts Android bsdiff patch evidence through manifest-backed store state", async () => {
