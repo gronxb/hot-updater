@@ -1804,7 +1804,7 @@ describe("Detox scenario contract", () => {
       "apply restored excluded cohort",
       "assert restored excluded cohort applied",
       "install restored excluded cohort update",
-      "assert restored excluded cohort no update",
+      "assert restored excluded cohort rollback action result",
       "assert restored excluded metadata reset",
       "reload restored excluded cohort state",
       "assert restored excluded built-in bundle",
@@ -1885,9 +1885,18 @@ describe("Detox scenario contract", () => {
     ).toBe(false);
     expect(
       (await recordScenarioCalls("runtime-channel-switch-reset")).filter(
-        (call) => call.kind === "tap" && call.testID === "action-reload-app",
+        (call) =>
+          call.kind === "reload" &&
+          ["reload runtime channel update", "reload default channel"].includes(
+            call.stage,
+          ),
       ),
     ).toHaveLength(2);
+    expect(
+      (await recordScenarioCalls("runtime-channel-switch-reset")).some(
+        (call) => call.kind === "tap" && call.testID === "action-reload-app",
+      ),
+    ).toBe(false);
   });
 
   it("models numeric cohort rollout through an included rollout sample", async () => {
@@ -1911,7 +1920,7 @@ describe("Detox scenario contract", () => {
       "apply excluded cohort",
       "assert excluded cohort applied",
       "install excluded cohort update",
-      "assert excluded cohort no update",
+      "assert excluded cohort rollback action result",
       "assert excluded metadata reset",
       "reload excluded cohort state",
       "assert excluded cohort built-in bundle",
@@ -1969,6 +1978,17 @@ describe("Detox scenario contract", () => {
         "expectedResultContains",
       ),
     ).toBe(false);
+    expect(
+      (await recordScenarioCalls("numeric-cohort-rollout")).find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert excluded cohort rollback action result",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> installed $builtInBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
   });
 
   it("models targeted cohort switchback as bundle state, not restore text", async () => {
@@ -2037,7 +2057,7 @@ describe("Detox scenario contract", () => {
       "assert current bundle active",
       "disable current bundle",
       "install rollback to built-in",
-      "assert rollback to built-in no update",
+      "assert rollback to built-in action result",
       "assert rollback metadata reset",
       "reload rollback to built-in app",
       "assert rollback built-in bundle",
@@ -2054,6 +2074,17 @@ describe("Detox scenario contract", () => {
     );
     expect(rollbackMetadataStep.pathName).toBe("/e2e/assert-metadata-reset");
     expect(rollbackMetadataStep.body).toBeUndefined();
+    expect(
+      (await recordScenarioCalls("disabled-bundle-rollback-to-builtin")).find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert rollback to built-in action result",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> installed $builtInBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
     expect(previousStages).toEqual([
       "capture built-in bundle",
       "launch built-in previous rollback app",
@@ -2189,7 +2220,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback active",
       "disable chain bundle A",
       "install rollback to built-in chain",
-      "assert chain built-in rollback no update",
+      "assert chain built-in rollback action result",
       "assert chain built-in metadata reset",
       "reload rollback to built-in chain",
       "assert chain built-in bundle",
@@ -2200,6 +2231,17 @@ describe("Detox scenario contract", () => {
       "capture chain built-in rollback state",
       "assert chain built-in metadata reset again",
     ]);
+    expect(
+      (await recordScenarioCalls("bspatch-disabled-chain-rollback")).find(
+        (call) =>
+          call.kind === "assertText" &&
+          call.stage === "assert chain built-in rollback action result",
+      ),
+    ).toMatchObject({
+      contains: "current-channel -> installed $builtInBundleId",
+      options: { exactText: true },
+      testID: "update-action-result",
+    });
   });
 
   it("accepts Android bsdiff patch evidence through manifest-backed store state", async () => {

@@ -368,9 +368,9 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "action-install-current-channel-update",
     );
     await app.assertText(
-      "assert chain built-in rollback no update",
+      "assert chain built-in rollback action result",
       "update-action-result",
-      "current-channel -> no-update",
+      "current-channel -> installed $builtInBundleId",
       { exactText: true },
     );
     await app.control(

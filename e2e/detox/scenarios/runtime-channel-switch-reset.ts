@@ -71,7 +71,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "channel-action-result",
       "runtime-channel -> beta",
     );
-    await app.tap("reload runtime channel update", "action-reload-app");
+    await app.reload("reload runtime channel update");
     await app.assertText(
       "assert runtime channel bundle",
       "runtime-bundle-id",
@@ -108,7 +108,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "channel-action-result",
       "reset -> true",
     );
-    await app.tap("reload default channel", "action-reload-app");
+    await app.reload("reload default channel");
     await app.assertText(
       "assert reset built-in bundle",
       "runtime-bundle-id",

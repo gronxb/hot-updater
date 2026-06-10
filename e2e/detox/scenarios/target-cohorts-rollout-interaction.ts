@@ -148,9 +148,9 @@ export const targetCohortsRolloutInteractionScenario: DetoxScenarioDefinition =
         "action-install-current-channel-update",
       );
       await app.assertText(
-        "assert restored excluded cohort no update",
+        "assert restored excluded cohort rollback action result",
         "update-action-result",
-        "current-channel -> no-update",
+        "current-channel -> installed $builtInBundleId",
         { exactText: true },
       );
       await app.control(
