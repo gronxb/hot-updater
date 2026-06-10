@@ -145,7 +145,7 @@ describe("SelectedBundlesDeleteDialog", () => {
       />,
     );
 
-    expect(screen.getAllByRole("img", { name: "Queued" })).toHaveLength(2);
+    expect(screen.queryByRole("columnheader", { name: "Status" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
@@ -166,6 +166,8 @@ describe("SelectedBundlesDeleteDialog", () => {
       });
     });
 
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Queued" })).toBeNull();
     expect(screen.getByText("1 of 2 delete requests finished.")).toBeTruthy();
     expect(screen.getByRole("img", { name: "Deleted" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "Deleting" })).toBeTruthy();
