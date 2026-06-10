@@ -381,14 +381,14 @@ describe("createCopiedBundleArchive", () => {
   it("uploads copied Hermes bundle assets with the brotli artifact name", async () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "assets/logo.png": "logo",
-      "index.ios.bundle": "hermes bytecode",
+      "main.ios.bundle": "hermes bytecode",
       "manifest.json": JSON.stringify({
         bundleId: baseBundle.id,
         assets: {
           "assets/logo.png": {
             fileHash: "logo-hash",
           },
-          "index.ios.bundle": {
+          "main.ios.bundle": {
             fileHash: "bundle-hash",
           },
         },
@@ -451,15 +451,15 @@ describe("createCopiedBundleArchive", () => {
       expect(uploadedStorageUris).toEqual(
         expect.arrayContaining([
           "s3://bucket/bundle-copy-id/files/assets/logo.png",
-          "s3://bucket/bundle-copy-id/files/index.ios.bundle.br",
+          "s3://bucket/bundle-copy-id/files/main.ios.bundle.br",
         ]),
       );
       expect(uploadedStorageUris).not.toContain(
-        "s3://bucket/bundle-copy-id/files/index.ios.bundle",
+        "s3://bucket/bundle-copy-id/files/main.ios.bundle",
       );
 
       const uploadedBundlePath = uploadedFiles.get(
-        "bundle-copy-id/files/index.ios.bundle.br",
+        "bundle-copy-id/files/main.ios.bundle.br",
       );
       expect(uploadedBundlePath).toBeDefined();
       expect(

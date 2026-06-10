@@ -80,8 +80,8 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
-const isBrotliManifestBundleAsset = (relativePath: string) =>
-  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+const isBundleAsset = (relativePath: string) =>
+  /(^|\/)[^/]+\.(ios|android)\.bundle$/.test(relativePath.replace(/\\/g, "/"));
 
 function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
   const normalizedAssetPath = assetPath.replaceAll("\\", "/");
@@ -112,7 +112,7 @@ async function prepareManifestAssetUploadFile({
   sourcePath: string;
   workDir: string;
 }) {
-  if (!isBrotliManifestBundleAsset(assetPath)) {
+  if (!isBundleAsset(assetPath)) {
     return sourcePath;
   }
 
