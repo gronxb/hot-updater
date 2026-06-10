@@ -1,13 +1,7 @@
-import { channelActionResultRoute } from "../channel-action-result-route";
-import { cohortActionResultRoute } from "../cohort-action-result-route";
-import { updateActionResultRoute } from "../update-action-result-route";
-import { updateStoreDownloadPathsRoute } from "../update-store-download-paths-route";
-import { updateStoreDownloadedRoute } from "../update-store-downloaded-route";
+import { resultActionRouteElements } from "./result-action-route-elements";
+import { resultStoreRouteElements } from "./result-store-route-elements";
 
 export const resultRouteElements = [
-  channelActionResultRoute,
-  cohortActionResultRoute,
-  updateActionResultRoute,
-  updateStoreDownloadedRoute,
-  updateStoreDownloadPathsRoute,
+  ...resultActionRouteElements,
+  ...resultStoreRouteElements,
 ] as const;

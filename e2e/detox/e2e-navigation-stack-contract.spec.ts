@@ -45,6 +45,10 @@ const e2eAppRouteElementsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes/route-elements.tsx",
 );
+const e2eAppRouteRegistryDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routes/registry",
+);
 const e2eAppStackScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
@@ -226,6 +230,25 @@ describe("E2E navigation stack contract", () => {
       "Stack.Navigator",
     );
     expect(e2eAppRegisteredRouteElementsSource).not.toContain("ScrollView");
+  });
+
+  it("keeps route registry files from becoming bundled main pages", async () => {
+    const routeRegistryFiles = (await fs.readdir(e2eAppRouteRegistryDir))
+      .filter((fileName) => fileName.endsWith(".tsx"))
+      .sort();
+
+    for (const fileName of routeRegistryFiles) {
+      const source = await fs.readFile(
+        path.join(e2eAppRouteRegistryDir, fileName),
+        "utf8",
+      );
+      const concreteRouteImports = source.match(/from "\.\.\/.+-route"/g) ?? [];
+
+      expect(source, fileName).not.toContain("Stack.Screen");
+      expect(source, fileName).not.toContain("ScrollView");
+      expect(concreteRouteImports.length, fileName).toBeLessThanOrEqual(3);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(10);
+    }
   });
 
   it("replaces the stack when opening a deep-linked test screen", async () => {
