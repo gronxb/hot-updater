@@ -91,8 +91,17 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "runtime-bundle-id",
       "$numericBundleId",
     );
-    await app.typeText("enter qa cohort", "cohort-input", "qa");
-    await app.tap("apply qa cohort", "action-apply-cohort-input");
+    await app.tap("set qa cohort", "action-set-cohort-qa");
+    await app.assertText(
+      "assert qa cohort applied",
+      "cohort-action-result",
+      "set -> qa",
+    );
+    await app.assertText(
+      "assert qa cohort current",
+      "runtime-current-cohort",
+      "current=qa",
+    );
     await app.tap(
       "install qa cohort update",
       "action-install-current-channel-update",

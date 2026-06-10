@@ -367,8 +367,8 @@ describe("Detox scenario contract", () => {
           call.kind === "control" &&
           call.pathName === "/e2e/jobs/deploy-bundle",
       );
-      const firstLaunchIndex = calls.findIndex(
-        (call) => call.kind === "launch",
+      const firstAppOpenIndex = calls.findIndex(
+        (call) => call.kind === "launch" || call.kind === "reload",
       );
       const firstUiIndex = calls.findIndex(
         (call) =>
@@ -379,7 +379,11 @@ describe("Detox scenario contract", () => {
 
       expect(firstDeployIndex, scenarioName).toBeGreaterThan(-1);
       if (firstUiIndex === -1) {
-        expect(firstLaunchIndex, scenarioName).toBe(-1);
+        if (firstAppOpenIndex !== -1) {
+          expect(firstAppOpenIndex, scenarioName).toBeGreaterThan(
+            firstDeployIndex,
+          );
+        }
         continue;
       }
       if (baselineBeforeDeployScenarios.has(scenarioName)) {
@@ -401,8 +405,8 @@ describe("Detox scenario contract", () => {
         ).toBe(true);
         continue;
       }
-      expect(firstLaunchIndex, scenarioName).toBeGreaterThan(firstDeployIndex);
-      expect(firstUiIndex, scenarioName).toBeGreaterThan(firstLaunchIndex);
+      expect(firstAppOpenIndex, scenarioName).toBeGreaterThan(firstDeployIndex);
+      expect(firstUiIndex, scenarioName).toBeGreaterThan(firstAppOpenIndex);
     }
   });
 
@@ -679,20 +683,6 @@ describe("Detox scenario contract", () => {
 
   it("waits for install action results before metadata/reset control probes", async () => {
     const metadataFirstInstallStages = new Set([
-      "bspatch-archive-to-diff-ota: install archive base update",
-      "bspatch-archive-to-diff-ota: install archive diff update",
-      "bspatch-consecutive-diff-ota: install diff bundle A",
-      "bspatch-consecutive-diff-ota: install diff bundle B",
-      "bspatch-consecutive-diff-ota: install diff bundle C",
-      "bspatch-consecutive-diff-ota: install diff bundle D",
-      "bspatch-disabled-chain-rollback: install chain bundle A",
-      "bspatch-disabled-chain-rollback: install chain bundle B",
-      "bspatch-disabled-chain-rollback: install chain bundle C",
-      "bspatch-disabled-chain-rollback: install rollback to chain bundle B",
-      "bspatch-disabled-chain-rollback: install rollback to chain bundle A",
-      "bspatch-disabled-chain-rollback: install rollback to built-in chain",
-      "bspatch-manifest-diff-fallback: install manifest base update",
-      "bspatch-manifest-diff-fallback: install manifest fallback update",
       "force-update-auto-reload: install force update",
       "multi-asset-replacement: install first multi-asset update",
       "multi-asset-replacement: install second multi-asset update",
@@ -740,6 +730,32 @@ describe("Detox scenario contract", () => {
 
         expect(exactActionResultAssertBeforeControl, stageLabel).toBe(true);
       }
+    }
+  });
+
+  it("keeps bsdiff and manifest flows on Maestro restart-driven updates", async () => {
+    const restartDrivenScenarios = [
+      "bspatch-archive-to-diff-ota",
+      "bspatch-consecutive-diff-ota",
+      "bspatch-disabled-chain-rollback",
+      "bspatch-manifest-diff-fallback",
+    ];
+
+    for (const scenarioName of restartDrivenScenarios) {
+      const calls = await recordScenarioCalls(scenarioName);
+      expect(
+        calls.filter(
+          (call) =>
+            call.kind === "tap" &&
+            call.testID === "action-install-current-channel-update",
+        ),
+      ).toEqual([]);
+      expect(
+        calls
+          .filter((call) => call.kind === "reload")
+          .map((call) => call.stage)
+          .filter((stage) => stage.startsWith("restart ")),
+      ).not.toEqual([]);
     }
   });
 
@@ -1525,8 +1541,7 @@ describe("Detox scenario contract", () => {
     // Then: both archive and diff phases include install, pending, reload, and stable checks.
     expect(stages).toEqual([
       "deploy archive base bundle",
-      "launch archive base app",
-      "install archive base update",
+      "restart archive base app",
       "wait archive base metadata pending",
       "assert first ota uses archive",
       "reload archive base update",
@@ -1536,8 +1551,7 @@ describe("Detox scenario contract", () => {
       "assert archive base stable launch",
       "deploy diff bundle",
       "assert archive diff bases",
-      "launch archive diff app",
-      "install archive diff update",
+      "restart archive diff app",
       "wait archive diff metadata pending",
       "reload archive diff update",
       "wait archive diff metadata stable",
@@ -1686,24 +1700,21 @@ describe("Detox scenario contract", () => {
     // Then: C and D are both installed as bsdiff updates against stable bases.
     expect(stages).toEqual([
       "deploy diff bundle A",
-      "launch diff bundle A app",
-      "install diff bundle A",
+      "restart diff bundle A app",
       "wait diff bundle A metadata pending",
       "assert diff bundle A uses archive",
       "reload diff bundle A",
       "wait diff bundle A metadata stable",
       "assert diff bundle A launch",
       "deploy diff bundle B",
-      "launch diff bundle B app",
-      "install diff bundle B",
+      "restart diff bundle B app",
       "wait diff bundle B metadata pending",
       "reload diff bundle B",
       "wait diff bundle B metadata stable",
       "assert diff bundle B launch",
       "deploy diff bundle C",
       "assert diff bundle C bases",
-      "launch diff bundle C app",
-      "install diff bundle C",
+      "restart diff bundle C app",
       "wait diff bundle C metadata pending",
       "reload diff bundle C",
       "wait diff bundle C metadata stable",
@@ -1711,8 +1722,7 @@ describe("Detox scenario contract", () => {
       "assert diff bundle C launch",
       "deploy diff bundle D",
       "assert diff bundle D bases",
-      "launch diff bundle D app",
-      "install diff bundle D",
+      "restart diff bundle D app",
       "wait diff bundle D metadata pending",
       "reload diff bundle D",
       "wait diff bundle D metadata stable",
@@ -1753,16 +1763,14 @@ describe("Detox scenario contract", () => {
     // Then: previous OTA state exists in the bundle store before fallback.
     expect(stages).toEqual([
       "deploy manifest base bundle",
-      "launch manifest base app",
-      "install manifest base update",
+      "restart manifest base app",
       "wait manifest base metadata pending",
       "reload manifest base update",
       "wait manifest base metadata stable",
       "deploy manifest intermediate bundle",
       "deploy manifest fallback bundle",
       "assert manifest fallback patch bases",
-      "launch manifest fallback app",
-      "install manifest fallback update",
+      "restart manifest fallback app",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
@@ -2094,8 +2102,9 @@ describe("Detox scenario contract", () => {
       "reload numeric cohort update",
       "wait numeric cohort metadata stable",
       "assert numeric cohort launch",
-      "enter qa cohort",
-      "apply qa cohort",
+      "set qa cohort",
+      "assert qa cohort applied",
+      "assert qa cohort current",
       "install qa cohort update",
       "wait qa cohort metadata pending",
       "reload qa cohort update",
@@ -2247,8 +2256,7 @@ describe("Detox scenario contract", () => {
       "assert chain built-in marker",
       "reset chain local app state",
       "deploy chain bundle A",
-      "launch chain bundle A app",
-      "install chain bundle A",
+      "restart chain bundle A app",
       "wait chain bundle A metadata pending",
       "assert chain bundle A uses archive",
       "reload chain bundle A",
@@ -2257,8 +2265,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A launch",
       "assert chain bundle A launch status",
       "deploy chain bundle B",
-      "launch chain bundle B app",
-      "install chain bundle B",
+      "restart chain bundle B app",
       "wait chain bundle B metadata pending",
       "reload chain bundle B",
       "wait chain bundle B metadata stable",
@@ -2267,8 +2274,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B launch status",
       "deploy chain bundle C",
       "assert chain bundle C bases",
-      "launch chain bundle C app",
-      "install chain bundle C",
+      "restart chain bundle C app",
       "wait chain bundle C metadata pending",
       "reload chain bundle C",
       "wait chain bundle C metadata stable",
@@ -2280,9 +2286,7 @@ describe("Detox scenario contract", () => {
       "capture chain bundle C state",
       "assert chain bundle C active",
       "disable chain bundle C",
-      "install rollback to chain bundle B",
-      "wait chain bundle B rollback metadata pending",
-      "reload rollback to chain bundle B",
+      "restart rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
       "assert chain bundle B rollback marker",
       "assert chain bundle B rollback launch",
@@ -2290,9 +2294,7 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback crashed bundle",
       "assert chain bundle B rollback active",
       "disable chain bundle B",
-      "install rollback to chain bundle A",
-      "wait chain bundle A rollback metadata pending",
-      "reload rollback to chain bundle A",
+      "restart rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
       "assert chain bundle A rollback marker",
       "assert chain bundle A rollback launch",
@@ -2300,9 +2302,8 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback crashed bundle",
       "assert chain bundle A rollback active",
       "disable chain bundle A",
-      "install rollback to built-in chain",
+      "restart rollback to built-in chain",
       "assert chain built-in metadata reset",
-      "reload rollback to built-in chain",
       "assert chain built-in bundle",
       "assert chain built-in marker after rollback",
       "assert chain built-in launch status",
