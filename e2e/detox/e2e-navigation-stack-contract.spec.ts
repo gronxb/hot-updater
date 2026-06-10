@@ -41,6 +41,10 @@ const e2eAppRegisteredRouteElementsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
 );
+const e2eAppRouteElementsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routes/route-elements.tsx",
+);
 const e2eAppStackScreensPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/stack-screens.tsx",
@@ -187,14 +191,35 @@ describe("E2E navigation stack contract", () => {
       e2eAppRegisteredRouteElementsPath,
       "utf8",
     );
+    const e2eAppRouteElementsSource = await fs.readFile(
+      e2eAppRouteElementsPath,
+      "utf8",
+    );
 
     expect(e2eAppRoutesSource).toContain("registeredRouteElements");
     expect(e2eAppRoutesSource).not.toContain("appActionRoutes");
     expect(e2eAppRoutesSource).not.toContain("cohortActionRoutes");
     expect(e2eAppRoutesSource).not.toContain("runtimeBundleRoutes");
     expect(e2eAppRoutesSource).not.toContain("statusResultRoutes");
-    expect(e2eAppRegisteredRouteElementsSource).toContain("readyRoutes");
-    expect(e2eAppRegisteredRouteElementsSource).toContain("appActionRoutes");
+    expect(e2eAppRegisteredRouteElementsSource).toContain("routeElements");
+    expect(
+      sourceCodeLineCount(e2eAppRegisteredRouteElementsSource),
+    ).toBeLessThanOrEqual(5);
+    expect(e2eAppRouteElementsSource).toContain("readyRoute");
+    expect(e2eAppRouteElementsSource).toContain("reloadAppActionRoute");
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain("readyRoutes");
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain(
+      "appActionRoutes",
+    );
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain(
+      "cohortActionRoutes",
+    );
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain(
+      "runtimeBundleRoutes",
+    );
+    expect(e2eAppRegisteredRouteElementsSource).not.toContain(
+      "statusResultRoutes",
+    );
     expect(e2eAppRegisteredRouteElementsSource).not.toContain(
       "Stack.Navigator",
     );
@@ -222,27 +247,47 @@ describe("E2E navigation stack contract", () => {
 
   it("keeps stack routes split into small React Navigation route modules", async () => {
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
-    const routeModuleFiles = (await fs.readdir(e2eAppRouteModulesDir))
+    const groupedRouteModuleFiles = (await fs.readdir(e2eAppRouteModulesDir))
       .filter((fileName) => fileName.endsWith("-routes.tsx"))
+      .sort();
+    const routeModuleFiles = (await fs.readdir(e2eAppRouteModulesDir))
+      .filter((fileName) => fileName.endsWith("-route.tsx"))
       .sort();
     const routeModuleSources = await Promise.all(
       routeModuleFiles.map((fileName) =>
         fs.readFile(path.join(e2eAppRouteModulesDir, fileName), "utf8"),
       ),
     );
+    expect(groupedRouteModuleFiles).toEqual([]);
     expect(routeModuleFiles).toEqual([
-      "app-action-routes.tsx",
-      "cohort-action-routes.tsx",
-      "input-routes.tsx",
-      "install-action-routes.tsx",
-      "ready-routes.tsx",
-      "runtime-action-routes.tsx",
-      "runtime-bundle-routes.tsx",
-      "runtime-channel-routes.tsx",
-      "runtime-cohort-routes.tsx",
-      "status-launch-routes.tsx",
-      "status-result-routes.tsx",
-      "status-update-store-routes.tsx",
+      "apply-cohort-input-action-route.tsx",
+      "channel-action-result-route.tsx",
+      "clear-crash-history-action-route.tsx",
+      "cohort-action-result-route.tsx",
+      "cohort-input-route.tsx",
+      "crash-history-count-route.tsx",
+      "install-current-channel-update-action-route.tsx",
+      "install-runtime-channel-update-action-route.tsx",
+      "launch-crashed-bundle-route.tsx",
+      "launch-status-route.tsx",
+      "ready-route.tsx",
+      "refresh-runtime-snapshot-action-route.tsx",
+      "reload-app-action-route.tsx",
+      "reset-runtime-channel-action-route.tsx",
+      "restore-initial-cohort-action-route.tsx",
+      "runtime-bundle-route.tsx",
+      "runtime-channel-input-route.tsx",
+      "runtime-channel-switched-route.tsx",
+      "runtime-current-channel-route.tsx",
+      "runtime-current-cohort-route.tsx",
+      "runtime-default-channel-route.tsx",
+      "runtime-initial-cohort-route.tsx",
+      "runtime-large-asset-route.tsx",
+      "runtime-marker-route.tsx",
+      "set-cohort-qa-action-route.tsx",
+      "update-action-result-route.tsx",
+      "update-store-download-paths-route.tsx",
+      "update-store-downloaded-route.tsx",
     ]);
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
@@ -253,10 +298,10 @@ describe("E2E navigation stack contract", () => {
     for (const [index, source] of routeModuleSources.entries()) {
       const fileName = routeModuleFiles[index];
       const routeScreenCount = source.match(/<Stack\.Screen/g) ?? [];
-      expect(routeScreenCount.length, fileName).toBeLessThanOrEqual(4);
+      expect(routeScreenCount.length, fileName).toBe(1);
       expect(source).not.toContain("ScrollView");
       expect(source).not.toContain("Section");
-      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(80);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(12);
     }
     await expect(fs.stat(e2eAppRouteGroupDir)).rejects.toMatchObject({
       code: "ENOENT",
