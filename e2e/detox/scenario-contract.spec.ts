@@ -2241,7 +2241,7 @@ describe("Detox scenario contract", () => {
     ]);
   });
 
-  it("treats a rollback stable bundle as active metadata", async () => {
+  it("does not treat a rollback stable base as the active metadata bundle", async () => {
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",
@@ -2262,10 +2262,10 @@ describe("Detox scenario contract", () => {
       "metadataState.stableBundleId === bundleId",
     );
     expect(expectedStateBody).toContain(
-      "isMetadataActiveBundle(metadataState, bundleId)",
+      "metadataState.stagingBundleId !== bundleId",
     );
     expect(expectedStateBody).not.toContain(
-      "metadataState.stagingBundleId !== bundleId",
+      "isMetadataActiveBundle(metadataState, bundleId)",
     );
   });
 

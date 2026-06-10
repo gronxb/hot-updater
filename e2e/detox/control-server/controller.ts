@@ -136,20 +136,19 @@ async function mapWithConcurrency<T, TResult>(
   mapper: (item: T, index: number) => Promise<TResult>,
 ): Promise<TResult[]> {
   const results: TResult[] = [];
-  let nextIndex = 0;
+  const iterator = items.entries();
   const workerCount = Math.min(concurrency, items.length);
 
   await Promise.all(
     Array.from({ length: workerCount }, async () => {
       while (true) {
-        const index = nextIndex;
-        nextIndex += 1;
-
-        if (index >= items.length) {
+        const next = iterator.next();
+        if (next.done) {
           break;
         }
 
-        results[index] = await mapper(items[index]!, index);
+        const [index, item] = next.value;
+        results[index] = await mapper(item, index);
       }
     }),
   );
@@ -2304,7 +2303,7 @@ function isExpectedMetadataStateReached(
   bundleId: string,
   verificationPending: boolean,
 ) {
-  if (!isMetadataActiveBundle(metadataState, bundleId)) {
+  if (metadataState.stagingBundleId !== bundleId) {
     return false;
   }
 
@@ -2917,6 +2916,9 @@ async function waitForLocalProviderReady() {
           break;
         }
       } catch (error) {
+        if (!(error instanceof Error)) {
+          throw error;
+        }
         ready = false;
         lastError = `${url} ${formatErrorMessage(error)}`;
         break;
@@ -5618,7 +5620,11 @@ async function assertMetadataResetState() {
       try {
         assertMetadataReset(diagnostics.metadata.value);
         return {};
-      } catch {}
+      } catch (error) {
+        if (!(error instanceof Error)) {
+          throw error;
+        }
+      }
     }
 
     await sleep(E2E_POLL_INTERVAL_MS);
