@@ -1,13 +1,9 @@
 import React from "react";
-import { Text } from "react-native";
 
-import { ScreenShell } from "../components";
-import { styles } from "../styles";
+import { ScreenShell, ValueText } from "../components";
 
 export const ReadyScreen = () => (
   <ScreenShell>
-    <Text selectable style={styles.resultText} testID="e2e-ready-status">
-      Ready
-    </Text>
+    <ValueText testID="e2e-ready-status" value="Ready" />
   </ScreenShell>
 );

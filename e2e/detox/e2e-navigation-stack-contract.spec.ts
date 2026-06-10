@@ -78,12 +78,16 @@ describe("E2E navigation stack contract", () => {
     );
 
     expect(readyScreenBody).toContain("<ScreenShell>");
+    expect(readyScreenBody).toContain("<ValueText");
     expect(readyScreenBody).toContain('testID="e2e-ready-status"');
+    expect(readyScreenBody.match(/testID=/g) ?? []).toHaveLength(1);
     expect(readyScreenBody).not.toContain("RuntimeBundleScreen");
     expect(readyScreenBody).not.toContain("RuntimeMarkerScreen");
     expect(readyScreenBody).not.toContain("ActionScreen");
     expect(readyScreenBody).not.toContain("InfoRow");
     expect(readyScreenBody).not.toContain("Button");
+    expect(readyScreenBody).not.toContain("<Text");
+    expect(readyScreenBody).not.toContain("styles.");
     expect(sourceCodeLineCount(readyScreenBody)).toBeLessThanOrEqual(14);
   });
 
