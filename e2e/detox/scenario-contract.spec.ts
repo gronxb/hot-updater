@@ -1059,6 +1059,31 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("resets focused action results before opening a repeatable action route", async () => {
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const tapBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async tap(stage"),
+      detoxRuntimeSource.indexOf("async terminate(stage"),
+    );
+    const routeActionBranch = tapBody.slice(
+      tapBody.indexOf("const actionResultField"),
+      tapBody.indexOf("const isAppReloadAction"),
+    );
+
+    expect(routeActionBranch).toContain(
+      "await this.resetActionResultField(stage, actionResultField);",
+    );
+    expect(routeActionBranch.indexOf("resetActionResultField")).toBeLessThan(
+      routeActionBranch.indexOf("findVisibleTestID"),
+    );
+    expect(detoxRuntimeSource).toContain("await this.controlClient.postJson(");
+    expect(detoxRuntimeSource).toContain('"/e2e/screen-state"');
+    expect(detoxRuntimeSource).toContain('[fieldName]: "idle"');
+  });
+
   it("keeps explicit reloads at the cold-start boundary", async () => {
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
@@ -2175,5 +2200,25 @@ describe("Detox scenario contract", () => {
       "capture chain built-in rollback state",
       "assert chain built-in metadata reset again",
     ]);
+  });
+
+  it("accepts Android bsdiff patch evidence through manifest-backed store state", async () => {
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const bsdiffEvidenceBody = controllerSource.slice(
+      controllerSource.indexOf("function readBsdiffPatchStoreEvidence"),
+      controllerSource.indexOf("function getPrimaryBundleAssetPath"),
+    );
+
+    expect(bsdiffEvidenceBody).toContain(
+      "const bundleFile = readBundleFileSnapshot(record.bundleId);",
+    );
+    expect(bsdiffEvidenceBody).toContain("hasManifestBackedBundleEvidence({");
+    expect(bsdiffEvidenceBody).toContain("bundleFile,");
+    expect(bsdiffEvidenceBody).toContain("assetFile,");
+    expect(bsdiffEvidenceBody).toContain("expectedHash,");
+    expect(bsdiffEvidenceBody).toContain("manifest,");
   });
 });

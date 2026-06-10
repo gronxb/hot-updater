@@ -5071,6 +5071,7 @@ function readBsdiffPatchStoreEvidence(args: {
 
   const diagnostics = readWaitForMetadataDiagnostics();
   const metadataState = getMetadataState(diagnostics.metadata.value);
+  const bundleFile = readBundleFileSnapshot(record.bundleId);
   const manifest = readBundleManifestSnapshot(record.bundleId);
   const expectedHash = getManifestAssetFileHash(manifest, args.assetPath);
   const assetFile = readBundleAssetFileHash(record.bundleId, args.assetPath);
@@ -5078,15 +5079,16 @@ function readBsdiffPatchStoreEvidence(args: {
     metadataState.stableBundleId === args.baseBundleId &&
     metadataState.stagingBundleId === record.bundleId &&
     metadataState.verificationPending === false &&
-    manifest.exists &&
-    manifest.readError === null &&
-    expectedHash !== null &&
-    assetFile.exists &&
-    assetFile.readError === null &&
-    assetFile.fileHash === expectedHash;
+    hasManifestBackedBundleEvidence({
+      assetFile,
+      bundleFile,
+      expectedHash,
+      manifest,
+    });
 
   return {
     assetFile,
+    bundleFile,
     diagnostics,
     expectedHash,
     manifest,

@@ -111,6 +111,7 @@ class DetoxAppDriver {
     await this.runStage(stage, async () => {
       const actionResultField = this.actionResultFieldForTestID(testID);
       if (actionResultField) {
+        await this.resetActionResultField(stage, actionResultField);
         await findVisibleTestID(this.controlClient, testID, {
           alwaysOpen: true,
         });
@@ -238,6 +239,16 @@ class DetoxAppDriver {
       {
         rejectSubstrings: [" -> checking"],
         rejectValues: ["idle"],
+      },
+    );
+  }
+
+  async resetActionResultField(stage, fieldName) {
+    await this.controlClient.postJson(
+      `${stage}: reset ${fieldName}`,
+      "/e2e/screen-state",
+      {
+        [fieldName]: "idle",
       },
     );
   }
