@@ -78,7 +78,8 @@ describe("E2E navigation stack contract", () => {
       e2eAppScreensSource.length,
     );
 
-    expect(readyScreenBody).toContain("<ScreenShell>");
+    expect(readyScreenBody).toContain("<SafeAreaView");
+    expect(readyScreenBody).not.toContain("<ScreenShell>");
     expect(readyScreenBody).toContain("<ValueText");
     expect(readyScreenBody).toContain('testID="e2e-ready-status"');
     expect(readyScreenBody.match(/testID=/g) ?? []).toHaveLength(1);

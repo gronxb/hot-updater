@@ -1,9 +1,10 @@
 import React from "react";
+import { SafeAreaView } from "react-native";
 
-import { ScreenShell, ValueText } from "../components";
+import { ValueText } from "../components";
 
 export const ReadyScreen = () => (
-  <ScreenShell>
+  <SafeAreaView style={{ flex: 1 }}>
     <ValueText testID="e2e-ready-status" value="Ready" />
-  </ScreenShell>
+  </SafeAreaView>
 );

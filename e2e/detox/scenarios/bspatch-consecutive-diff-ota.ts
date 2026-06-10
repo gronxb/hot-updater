@@ -17,7 +17,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleA",
       },
     );
-    await app.reload("restart diff bundle A app");
+    await app.launch("launch diff bundle A app");
+    await app.tap(
+      "install diff bundle A",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle A metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -62,7 +66,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleB",
       },
     );
-    await app.reload("restart diff bundle B app");
+    await app.launch("launch diff bundle B app");
+    await app.tap(
+      "install diff bundle B",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle B metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -110,7 +118,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         expectedBaseBundleIds: ["$bundleB", "$bundleA"],
       },
     );
-    await app.reload("restart diff bundle C app");
+    await app.launch("launch diff bundle C app");
+    await app.tap(
+      "install diff bundle C",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle C metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -167,7 +179,11 @@ export const bspatchConsecutiveDiffOtaScenario: DetoxScenarioDefinition = {
         expectedBaseBundleIds: ["$bundleC", "$bundleB"],
       },
     );
-    await app.reload("restart diff bundle D app");
+    await app.launch("launch diff bundle D app");
+    await app.tap(
+      "install diff bundle D",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait diff bundle D metadata pending",
       "/e2e/jobs/wait-for-metadata",

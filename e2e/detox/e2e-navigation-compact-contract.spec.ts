@@ -40,6 +40,7 @@ const e2eAppScreensDir = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens",
 );
+const e2eAppSourceDir = path.join(repoDir, "examples/v0.85.0/src/e2eApp");
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScreenRoutesPath = path.join(
   repoDir,
@@ -51,6 +52,21 @@ const sourceCodeLineCount = (source: string): number =>
     const trimmed = line.trim();
     return trimmed.length > 0 && !trimmed.startsWith("//");
   }).length;
+
+const collectSourceFiles = async (dir: string): Promise<readonly string[]> => {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) return collectSourceFiles(entryPath);
+      if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+        return [entryPath];
+      }
+      return [];
+    }),
+  );
+  return files.flat();
+};
 
 describe("E2E navigation compact surface contract", () => {
   it("keeps the default page and assertion routes compact", async () => {
@@ -156,6 +172,22 @@ describe("E2E navigation compact surface contract", () => {
     expect(readyScreenSource.match(/testID=/g) ?? []).toHaveLength(1);
     expect(readyScreenSource).toContain('testID="e2e-ready-status"');
     expect(readyScreenSource).toContain('value="Ready"');
+    expect(readyScreenSource).not.toContain("ScreenShell");
+    expect(sourceCodeLineCount(readyScreenSource)).toBeLessThanOrEqual(10);
+  });
+
+  it("keeps the full E2E app surface free of scroll containers", async () => {
+    const sourceFiles = await collectSourceFiles(e2eAppSourceDir);
+    const scrollContainerFindings: string[] = [];
+
+    for (const filePath of sourceFiles) {
+      const source = await fs.readFile(filePath, "utf8");
+      if (/\b(ScrollView|FlatList|SectionList)\b/.test(source)) {
+        scrollContainerFindings.push(path.relative(repoDir, filePath));
+      }
+    }
+
+    expect(scrollContainerFindings).toEqual([]);
   });
 
   it("keeps runtime assertion pages as screen-sized files", async () => {

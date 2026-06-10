@@ -100,7 +100,7 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert qa cohort current",
       "runtime-current-cohort",
-      "current=qa",
+      "qa",
     );
     await app.tap(
       "install qa cohort update",

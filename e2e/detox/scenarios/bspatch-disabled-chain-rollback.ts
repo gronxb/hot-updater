@@ -35,7 +35,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleA",
       },
     );
-    await app.reload("restart chain bundle A app");
+    await app.launch("launch chain bundle A app");
+    await app.tap(
+      "install chain bundle A",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait chain bundle A metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -90,7 +94,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         saveResultAs: "bundleB",
       },
     );
-    await app.reload("restart chain bundle B app");
+    await app.launch("launch chain bundle B app");
+    await app.tap(
+      "install chain bundle B",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait chain bundle B metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -148,7 +156,11 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         expectedBaseBundleIds: ["$bundleB", "$bundleA"],
       },
     );
-    await app.reload("restart chain bundle C app");
+    await app.launch("launch chain bundle C app");
+    await app.tap(
+      "install chain bundle C",
+      "action-install-current-channel-update",
+    );
     await app.control(
       "wait chain bundle C metadata pending",
       "/e2e/jobs/wait-for-metadata",
