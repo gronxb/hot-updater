@@ -307,6 +307,56 @@ describe("Detox control client", () => {
     expect(now).toBe(2000);
   });
 
+  it("includes the last observed screen state when an exact wait times out", async () => {
+    // Given: an exact result wait sees a stable but wrong terminal value.
+    let now = 0;
+    const fetch: ControlFetch = () =>
+      Promise.resolve(
+        jsonResponse(200, {
+          screenState: {
+            updateActionResult: "current-channel -> skipped",
+          },
+        }),
+      );
+    const client = createControlClient({
+      baseUrl: "http://127.0.0.1:3010",
+      fetch,
+      nowMs: () => now,
+      pollDelayMs: (durationMs) => {
+        now += durationMs;
+        return Promise.resolve();
+      },
+      screenStateTimeoutMs: 2000,
+    });
+
+    // When: the expected action result is never published.
+    let caught: unknown;
+    try {
+      await client.waitForScreenStateField(
+        "assert install result",
+        "updateActionResult",
+        {
+          expectedValue: "current-channel -> installed bundle-new",
+          rejectSubstrings: [" -> checking"],
+          rejectValues: ["idle"],
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    // Then: the diagnostic includes the stale value needed for root cause.
+    expect(caught).toBeInstanceOf(ControlProtocolError);
+    if (caught instanceof ControlProtocolError) {
+      expect(caught.message).toContain(
+        'expected "current-channel -> installed bundle-new"',
+      );
+      expect(caught.message).toContain(
+        'last observed "current-channel -> skipped"',
+      );
+    }
+  });
+
   it("fails a failed control job once with the server error", async () => {
     // Given: the control server reports a failed metadata job.
     const calls: string[] = [];

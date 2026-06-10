@@ -12,6 +12,14 @@ const e2eAppRoutePathsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/route-paths.ts",
 );
+const e2eAppRoutesPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/routes.tsx",
+);
+const e2eAppRegisteredRouteElementsPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/registered-route-elements.tsx",
+);
 const e2eAppScreensIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/index.ts",
@@ -125,6 +133,29 @@ describe("E2E navigation compact surface contract", () => {
     await expect(fs.stat(e2eAppScreenTestIDsPath)).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  it("keeps the default E2E page as a ready-only route", async () => {
+    const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
+    const registeredRouteElementsSource = await fs.readFile(
+      e2eAppRegisteredRouteElementsPath,
+      "utf8",
+    );
+    const readyScreenSource = await fs.readFile(
+      path.join(e2eAppScreensDir, "ready-screen.tsx"),
+      "utf8",
+    );
+
+    expect(e2eAppRoutesSource).toContain('initialRouteName="Ready"');
+    expect(e2eAppRoutesSource).not.toContain("testID=");
+    expect(e2eAppRoutesSource).not.toContain("ScrollView");
+    expect(e2eAppRoutesSource).not.toContain("ScreenShell");
+    expect(registeredRouteElementsSource).not.toContain("testID=");
+    expect(registeredRouteElementsSource).not.toContain("ScrollView");
+    expect(registeredRouteElementsSource).not.toContain("ScreenShell");
+    expect(readyScreenSource.match(/testID=/g) ?? []).toHaveLength(1);
+    expect(readyScreenSource).toContain('testID="e2e-ready-status"');
+    expect(readyScreenSource).toContain('value="Ready"');
   });
 
   it("keeps runtime assertion pages as screen-sized files", async () => {

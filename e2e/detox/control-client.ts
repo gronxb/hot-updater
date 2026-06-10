@@ -212,6 +212,7 @@ export class ControlClient {
   ): Promise<JsonObject> {
     const timeoutMs = options.timeoutMs ?? this.screenStateTimeoutMs;
     const deadlineMs = this.nowMs() + timeoutMs;
+    let lastObserved: string | undefined;
     for (;;) {
       const runtimeConfig = await this.getJsonUntraced("/e2e/runtime-config");
       const screenState = runtimeConfig.screenState;
@@ -221,12 +222,19 @@ export class ControlClient {
         );
       }
       const value = readStringField(screenState, fieldName);
+      lastObserved = value;
       if (value !== undefined && isAcceptedScreenStateValue(value, options)) {
         return { [fieldName]: value };
       }
       if (this.nowMs() >= deadlineMs) {
         throw new ControlProtocolError(
-          `${stage} timed out waiting for ${fieldName} after ${timeoutMs}ms`,
+          formatScreenStateTimeoutMessage({
+            expectedValue: options.expectedValue,
+            fieldName,
+            lastObserved,
+            stage,
+            timeoutMs,
+          }),
         );
       }
       await this.pollDelayMs(this.pollIntervalMs);
@@ -258,6 +266,24 @@ export class ControlClient {
     });
     return readResponseJson(response, pathName, pathName);
   }
+}
+
+function formatScreenStateTimeoutMessage(options: {
+  readonly expectedValue?: string;
+  readonly fieldName: string;
+  readonly lastObserved: string | undefined;
+  readonly stage: string;
+  readonly timeoutMs: number;
+}): string {
+  const expectedSuffix =
+    options.expectedValue === undefined
+      ? ""
+      : `; expected "${options.expectedValue}"`;
+  const observedSuffix =
+    options.lastObserved === undefined
+      ? "; last observed <missing>"
+      : `; last observed "${options.lastObserved}"`;
+  return `${options.stage} timed out waiting for ${options.fieldName} after ${options.timeoutMs}ms${expectedSuffix}${observedSuffix}`;
 }
 
 function isAcceptedScreenStateValue(

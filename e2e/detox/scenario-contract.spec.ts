@@ -185,6 +185,17 @@ async function scenarioStages(
   return (await recordScenarioCalls(scenarioName)).map((call) => call.stage);
 }
 
+async function updateActionResultAssertStages(
+  scenarioName: string,
+): Promise<readonly string[]> {
+  return (await recordScenarioCalls(scenarioName))
+    .filter(
+      (call) =>
+        call.kind === "assertText" && call.testID === "update-action-result",
+    )
+    .map((call) => call.stage);
+}
+
 async function controlStepBody(
   scenarioName: string,
   stage: string,
@@ -667,6 +678,23 @@ describe("Detox scenario contract", () => {
   });
 
   it("waits for install action results before metadata/reset control probes", async () => {
+    const metadataFirstInstallStages = new Set([
+      "bspatch-archive-to-diff-ota: install archive base update",
+      "bspatch-archive-to-diff-ota: install archive diff update",
+      "bspatch-consecutive-diff-ota: install diff bundle A",
+      "bspatch-consecutive-diff-ota: install diff bundle B",
+      "bspatch-consecutive-diff-ota: install diff bundle C",
+      "bspatch-consecutive-diff-ota: install diff bundle D",
+      "bspatch-disabled-chain-rollback: install chain bundle A",
+      "bspatch-disabled-chain-rollback: install chain bundle B",
+      "bspatch-disabled-chain-rollback: install chain bundle C",
+      "bspatch-disabled-chain-rollback: install rollback to chain bundle B",
+      "bspatch-disabled-chain-rollback: install rollback to chain bundle A",
+      "bspatch-disabled-chain-rollback: install rollback to built-in chain",
+      "targeted-cohort-switchback: install qa cohort update",
+      "targeted-cohort-switchback: install numeric cohort rollback",
+    ]);
+
     for (const scenarioName of defaultDetoxScenarioNames) {
       const calls = await recordScenarioCalls(scenarioName);
       const installTapIndexes = calls
@@ -689,6 +717,10 @@ describe("Detox scenario contract", () => {
         );
 
         expect(nextControlIndex, stageLabel).toBeGreaterThan(index);
+        if (metadataFirstInstallStages.has(stageLabel)) {
+          continue;
+        }
+
         expect(
           calls
             .slice(index + 1, nextControlIndex)
@@ -1471,7 +1503,6 @@ describe("Detox scenario contract", () => {
       "deploy archive base bundle",
       "launch archive base app",
       "install archive base update",
-      "assert archive base action result",
       "wait archive base metadata pending",
       "assert first ota uses archive",
       "reload archive base update",
@@ -1483,7 +1514,6 @@ describe("Detox scenario contract", () => {
       "assert archive diff bases",
       "launch archive diff app",
       "install archive diff update",
-      "assert archive diff action result",
       "wait archive diff metadata pending",
       "reload archive diff update",
       "wait archive diff metadata stable",
@@ -1492,6 +1522,18 @@ describe("Detox scenario contract", () => {
       "assert archive diff marker",
       "assert archive diff stable launch",
     ]);
+  });
+
+  it("keeps bsdiff scenarios aligned with Maestro metadata-first assertions", async () => {
+    expect(
+      await updateActionResultAssertStages("bspatch-archive-to-diff-ota"),
+    ).toEqual([]);
+    expect(
+      await updateActionResultAssertStages("bspatch-consecutive-diff-ota"),
+    ).toEqual([]);
+    expect(
+      await updateActionResultAssertStages("bspatch-disabled-chain-rollback"),
+    ).toEqual([]);
   });
 
   it("keeps archive-to-diff on the Detox default bundle profile", async () => {
@@ -1612,7 +1654,6 @@ describe("Detox scenario contract", () => {
       "deploy diff bundle A",
       "launch diff bundle A app",
       "install diff bundle A",
-      "assert diff bundle A action result",
       "wait diff bundle A metadata pending",
       "assert diff bundle A uses archive",
       "reload diff bundle A",
@@ -1621,7 +1662,6 @@ describe("Detox scenario contract", () => {
       "deploy diff bundle B",
       "launch diff bundle B app",
       "install diff bundle B",
-      "assert diff bundle B action result",
       "wait diff bundle B metadata pending",
       "reload diff bundle B",
       "wait diff bundle B metadata stable",
@@ -1630,7 +1670,6 @@ describe("Detox scenario contract", () => {
       "assert diff bundle C bases",
       "launch diff bundle C app",
       "install diff bundle C",
-      "assert diff bundle C action result",
       "wait diff bundle C metadata pending",
       "reload diff bundle C",
       "wait diff bundle C metadata stable",
@@ -1640,7 +1679,6 @@ describe("Detox scenario contract", () => {
       "assert diff bundle D bases",
       "launch diff bundle D app",
       "install diff bundle D",
-      "assert diff bundle D action result",
       "wait diff bundle D metadata pending",
       "reload diff bundle D",
       "wait diff bundle D metadata stable",
@@ -1838,9 +1876,7 @@ describe("Detox scenario contract", () => {
       ).verificationPending,
     ).toBe(false);
     expect(
-      (
-        await recordScenarioCalls("target-cohorts-rollout-interaction")
-      ).find(
+      (await recordScenarioCalls("target-cohorts-rollout-interaction")).find(
         (call) =>
           call.kind === "assertText" &&
           call.stage ===
@@ -2032,7 +2068,6 @@ describe("Detox scenario contract", () => {
       "enter qa cohort",
       "apply qa cohort",
       "install qa cohort update",
-      "assert qa cohort action result",
       "wait qa cohort metadata pending",
       "reload qa cohort update",
       "wait qa cohort metadata stable",
@@ -2041,12 +2076,14 @@ describe("Detox scenario contract", () => {
       "apply restored numeric cohort",
       "assert numeric cohort restored",
       "install numeric cohort rollback",
-      "assert numeric cohort rollback action result",
       "wait numeric cohort rollback pending",
       "reload numeric cohort rollback",
       "wait numeric cohort rollback stable",
       "assert numeric cohort rollback launch",
     ]);
+    expect(
+      await updateActionResultAssertStages("targeted-cohort-switchback"),
+    ).toEqual(["assert numeric cohort action result"]);
   });
 
   it("models disabled rollback scenarios through active OTA metadata before disabling", async () => {
@@ -2183,7 +2220,6 @@ describe("Detox scenario contract", () => {
       "deploy chain bundle A",
       "launch chain bundle A app",
       "install chain bundle A",
-      "assert chain bundle A action result",
       "wait chain bundle A metadata pending",
       "assert chain bundle A uses archive",
       "reload chain bundle A",
@@ -2194,7 +2230,6 @@ describe("Detox scenario contract", () => {
       "deploy chain bundle B",
       "launch chain bundle B app",
       "install chain bundle B",
-      "assert chain bundle B action result",
       "wait chain bundle B metadata pending",
       "reload chain bundle B",
       "wait chain bundle B metadata stable",
@@ -2205,7 +2240,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle C bases",
       "launch chain bundle C app",
       "install chain bundle C",
-      "assert chain bundle C action result",
       "wait chain bundle C metadata pending",
       "reload chain bundle C",
       "wait chain bundle C metadata stable",
@@ -2218,7 +2252,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle C active",
       "disable chain bundle C",
       "install rollback to chain bundle B",
-      "assert chain bundle B rollback action result",
       "wait chain bundle B rollback metadata pending",
       "reload rollback to chain bundle B",
       "wait chain bundle B rollback metadata stable",
@@ -2229,7 +2262,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle B rollback active",
       "disable chain bundle B",
       "install rollback to chain bundle A",
-      "assert chain bundle A rollback action result",
       "wait chain bundle A rollback metadata pending",
       "reload rollback to chain bundle A",
       "wait chain bundle A rollback metadata stable",
@@ -2240,7 +2272,6 @@ describe("Detox scenario contract", () => {
       "assert chain bundle A rollback active",
       "disable chain bundle A",
       "install rollback to built-in chain",
-      "assert chain built-in rollback action result",
       "assert chain built-in metadata reset",
       "reload rollback to built-in chain",
       "assert chain built-in bundle",
@@ -2252,17 +2283,8 @@ describe("Detox scenario contract", () => {
       "assert chain built-in metadata reset again",
     ]);
     expect(
-      (await recordScenarioCalls("bspatch-disabled-chain-rollback")).find(
-        (call) =>
-          call.kind === "assertText" &&
-          call.stage === "assert chain built-in rollback action result",
-      ),
-    ).toMatchObject({
-      contains:
-        "current-channel -> installed 00000000-0000-0000-0000-000000000000",
-      options: { exactText: true },
-      testID: "update-action-result",
-    });
+      await updateActionResultAssertStages("bspatch-disabled-chain-rollback"),
+    ).toEqual([]);
   });
 
   it("accepts Android bsdiff patch evidence through manifest-backed store state", async () => {

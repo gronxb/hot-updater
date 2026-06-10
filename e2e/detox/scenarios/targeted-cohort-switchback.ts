@@ -98,12 +98,6 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
       "install qa cohort update",
       "action-install-current-channel-update",
     );
-    await app.assertText(
-      "assert qa cohort action result",
-      "update-action-result",
-      "current-channel -> installed $qaBundleId",
-      { exactText: true },
-    );
     await app.control(
       "wait qa cohort metadata pending",
       "/e2e/jobs/wait-for-metadata",
@@ -141,12 +135,6 @@ export const targetedCohortSwitchbackScenario: DetoxScenarioDefinition = {
     await app.tap(
       "install numeric cohort rollback",
       "action-install-current-channel-update",
-    );
-    await app.assertText(
-      "assert numeric cohort rollback action result",
-      "update-action-result",
-      "current-channel -> installed $numericBundleId",
-      { exactText: true },
     );
     await app.control(
       "wait numeric cohort rollback pending",
