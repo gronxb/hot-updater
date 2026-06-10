@@ -3,6 +3,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { brotliDecompressSync } from "node:zlib";
 
 import type {
   Bundle,
@@ -372,6 +373,100 @@ describe("createCopiedBundleArchive", () => {
           targetChannel: "beta",
         }),
       ).rejects.toThrow(LEGACY_BUNDLE_ERROR);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("uploads copied Hermes bundle assets with the brotli artifact name", async () => {
+    const { archivePath, cleanup } = await createSourceArchive("zip", {
+      "assets/logo.png": "logo",
+      "index.ios.bundle": "hermes bytecode",
+      "manifest.json": JSON.stringify({
+        bundleId: baseBundle.id,
+        assets: {
+          "assets/logo.png": {
+            fileHash: "logo-hash",
+          },
+          "index.ios.bundle": {
+            fileHash: "bundle-hash",
+          },
+        },
+      }),
+    });
+    const uploadedFiles = new Map<string, string>();
+    const storagePlugin: NodeStoragePlugin = {
+      name: "mockStorage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(async (_storageUri, filePath) => {
+            await fs.copyFile(archivePath, filePath);
+          }),
+          exists: vi.fn(async () => false),
+          upload: vi.fn(async (key, filePath) => {
+            const uploadPath = path.join(
+              path.dirname(archivePath),
+              "uploads",
+              key,
+            );
+            const finalPath = path.join(uploadPath, path.basename(filePath));
+            await fs.mkdir(path.dirname(finalPath), { recursive: true });
+            await fs.copyFile(filePath, finalPath);
+            uploadedFiles.set(
+              path.posix.join(key, path.basename(filePath)),
+              finalPath,
+            );
+            return {
+              storageUri: `s3://bucket/${path
+                .relative(
+                  path.join(path.dirname(archivePath), "uploads"),
+                  finalPath,
+                )
+                .split(path.sep)
+                .join("/")}`,
+            };
+          }),
+        },
+      },
+    };
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(await fs.readFile(archivePath));
+      }),
+    );
+
+    try {
+      const { uploadedStorageUris } = await createCopiedBundleArchive({
+        bundle: baseBundle,
+        config,
+        nextBundleId: "bundle-copy-id",
+        storagePlugin,
+        targetChannel: "beta",
+      });
+
+      expect(uploadedStorageUris).toEqual(
+        expect.arrayContaining([
+          "s3://bucket/bundle-copy-id/files/assets/logo.png",
+          "s3://bucket/bundle-copy-id/files/index.ios.bundle.br",
+        ]),
+      );
+      expect(uploadedStorageUris).not.toContain(
+        "s3://bucket/bundle-copy-id/files/index.ios.bundle",
+      );
+
+      const uploadedBundlePath = uploadedFiles.get(
+        "bundle-copy-id/files/index.ios.bundle.br",
+      );
+      expect(uploadedBundlePath).toBeDefined();
+      expect(
+        brotliDecompressSync(
+          await fs.readFile(uploadedBundlePath as string),
+        ).toString("utf8"),
+      ).toBe("hermes bytecode");
     } finally {
       await cleanup();
     }

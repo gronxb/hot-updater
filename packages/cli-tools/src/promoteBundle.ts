@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { brotliDecompressSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 
 import {
   getManifestFileHash,
@@ -77,6 +77,30 @@ const getRelativeStorageDir = (relativePath: string) => {
   const dirname = path.posix.dirname(normalized);
   return dirname === "." ? "" : dirname;
 };
+
+const isBrotliManifestBundleAsset = (relativePath: string) =>
+  /(^|\/)index\.[^/]+\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+
+async function prepareManifestAssetUploadFile({
+  assetPath,
+  sourcePath,
+  workDir,
+}: {
+  assetPath: string;
+  sourcePath: string;
+  workDir: string;
+}) {
+  if (!isBrotliManifestBundleAsset(assetPath)) {
+    return sourcePath;
+  }
+
+  const uploadPath = path.join(workDir, `${path.basename(assetPath)}.br`);
+  await fs.writeFile(
+    uploadPath,
+    brotliCompressSync(await fs.readFile(sourcePath)),
+  );
+  return uploadPath;
+}
 
 const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
   const storageUrl = new URL(storageUri);
@@ -352,9 +376,15 @@ export async function createCopiedBundleArchive({
       const uploadKey = [nextBundleId, "files", relativeDir]
         .filter(Boolean)
         .join("/");
+      const sourcePath = path.join(extractDir, assetPath);
+      const uploadPath = await prepareManifestAssetUploadFile({
+        assetPath,
+        sourcePath,
+        workDir,
+      });
       const assetUpload = await storagePlugin.profiles.node.upload(
         uploadKey,
-        path.join(extractDir, assetPath),
+        uploadPath,
       );
       uploadedStorageUris.push(assetUpload.storageUri);
     }
