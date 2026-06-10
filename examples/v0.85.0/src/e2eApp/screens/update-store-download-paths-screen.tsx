@@ -1,17 +1,15 @@
 import React from "react";
 
-import { ScreenShell, ValueText } from "../components";
+import { ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const UpdateStoreDownloadPathsScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell>
-      <ValueText
-        testID="update-store-download-paths"
-        value={model.updateStoreDownloadPathsText}
-      />
-    </ScreenShell>
+    <ValueText
+      testID="update-store-download-paths"
+      value={model.updateStoreDownloadPathsText}
+    />
   );
 };

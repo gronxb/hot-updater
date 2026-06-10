@@ -13,6 +13,10 @@ const e2eAppNavigationControllerPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
 );
+const e2eAppNavigationFallbackPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/navigation-fallback.tsx",
+);
 const e2eAppReadyScreenPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/ready-screen.tsx",
@@ -78,7 +82,7 @@ describe("E2E navigation stack contract", () => {
       e2eAppScreensSource.length,
     );
 
-    expect(readyScreenBody).toContain("<SafeAreaView");
+    expect(readyScreenBody).not.toContain("<SafeAreaView");
     expect(readyScreenBody).not.toContain("<ScreenShell>");
     expect(readyScreenBody).toContain("<ValueText");
     expect(readyScreenBody).toContain('testID="e2e-ready-status"');
@@ -90,7 +94,7 @@ describe("E2E navigation stack contract", () => {
     expect(readyScreenBody).not.toContain("Button");
     expect(readyScreenBody).not.toContain("<Text");
     expect(readyScreenBody).not.toContain("styles.");
-    expect(sourceCodeLineCount(readyScreenBody)).toBeLessThanOrEqual(14);
+    expect(sourceCodeLineCount(readyScreenBody)).toBeLessThanOrEqual(6);
   });
 
   it("keeps the app entrypoint and stack container from becoming scenario screen registries", async () => {
@@ -109,6 +113,22 @@ describe("E2E navigation stack contract", () => {
     expect(e2eAppIndexSource).not.toContain("e2e/runtime-");
     expect(e2eAppIndexSource).not.toContain("RuntimeBundleScreen");
     expect(e2eAppIndexSource).not.toContain("InstallCurrentChannelUpdate");
+    expect(e2eAppIndexSource).not.toContain("SafeAreaView");
+    expect(e2eAppIndexSource).not.toContain("Text");
+    expect(e2eAppIndexSource).not.toContain("styles.");
+    expect(e2eAppIndexSource).not.toContain("testID=");
+    expect(sourceCodeLineCount(e2eAppIndexSource)).toBeLessThanOrEqual(38);
+    const e2eAppNavigationFallbackSource = await fs.readFile(
+      e2eAppNavigationFallbackPath,
+      "utf8",
+    );
+    expect(e2eAppNavigationFallbackSource).toContain(
+      'testID="e2e-navigation-loading"',
+    );
+    expect(
+      sourceCodeLineCount(e2eAppNavigationFallbackSource),
+    ).toBeLessThanOrEqual(12);
+    expect(e2eAppRoutesSource).toContain("contentStyle: styles.content");
     expect(e2eAppRoutesSource).not.toContain("e2e/action/");
     expect(e2eAppRoutesSource).not.toContain("e2e/runtime-");
     expect(e2eAppRoutesSource).not.toContain("RuntimeBundleScreen");

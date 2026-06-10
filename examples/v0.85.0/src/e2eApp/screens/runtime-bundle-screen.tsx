@@ -1,17 +1,15 @@
 import React from "react";
 
-import { ScreenShell, ValueText } from "../components";
+import { ValueText } from "../components";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
 export const RuntimeBundleScreen = () => {
   const model = useE2eRuntimeModelContext();
 
   return (
-    <ScreenShell>
-      <ValueText
-        testID="runtime-bundle-id"
-        value={model.runtimeSnapshot.bundleId}
-      />
-    </ScreenShell>
+    <ValueText
+      testID="runtime-bundle-id"
+      value={model.runtimeSnapshot.bundleId}
+    />
   );
 };

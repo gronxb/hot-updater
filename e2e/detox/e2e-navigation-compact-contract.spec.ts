@@ -163,6 +163,7 @@ describe("E2E navigation compact surface contract", () => {
     );
 
     expect(e2eAppRoutesSource).toContain('initialRouteName="Ready"');
+    expect(e2eAppRoutesSource).toContain("contentStyle: styles.content");
     expect(e2eAppRoutesSource).not.toContain("testID=");
     expect(e2eAppRoutesSource).not.toContain("ScrollView");
     expect(e2eAppRoutesSource).not.toContain("ScreenShell");
@@ -173,7 +174,8 @@ describe("E2E navigation compact surface contract", () => {
     expect(readyScreenSource).toContain('testID="e2e-ready-status"');
     expect(readyScreenSource).toContain('value="Ready"');
     expect(readyScreenSource).not.toContain("ScreenShell");
-    expect(sourceCodeLineCount(readyScreenSource)).toBeLessThanOrEqual(10);
+    expect(readyScreenSource).not.toContain("SafeAreaView");
+    expect(sourceCodeLineCount(readyScreenSource)).toBeLessThanOrEqual(6);
   });
 
   it("keeps the full E2E app surface free of scroll containers", async () => {
@@ -188,6 +190,23 @@ describe("E2E navigation compact surface contract", () => {
     }
 
     expect(scrollContainerFindings).toEqual([]);
+  });
+
+  it("keeps E2E route pages free of a shared screen shell", async () => {
+    // Given: route-level pages should not render through one long shared page.
+    const sourceFiles = await collectSourceFiles(e2eAppSourceDir);
+    const screenShellFindings: string[] = [];
+
+    // When: all E2E app sources are inspected for the old shell abstraction.
+    for (const filePath of sourceFiles) {
+      const source = await fs.readFile(filePath, "utf8");
+      if (/\bScreenShell\b/.test(source)) {
+        screenShellFindings.push(path.relative(repoDir, filePath));
+      }
+    }
+
+    // Then: styling is owned by the navigator, and each screen owns one target.
+    expect(screenShellFindings).toEqual([]);
   });
 
   it("keeps runtime assertion pages as screen-sized files", async () => {
@@ -348,7 +367,7 @@ describe("E2E navigation compact surface contract", () => {
     );
     const buttonBody = e2eAppComponentsSource.slice(
       e2eAppComponentsSource.indexOf("export const Button"),
-      e2eAppComponentsSource.indexOf("export const ScreenShell"),
+      e2eAppComponentsSource.indexOf("export const FocusedActionRoute"),
     );
 
     expect(buttonBody).toContain("void onPress()");

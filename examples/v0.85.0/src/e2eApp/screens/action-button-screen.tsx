@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button, ScreenShell } from "../components";
+import { Button } from "../components";
 
 type ActionButtonScreenProps = {
   readonly onPress: () => Promise<void> | void;
@@ -13,7 +13,5 @@ export const ActionButtonScreen = ({
   testID,
   title,
 }: ActionButtonScreenProps) => (
-  <ScreenShell>
-    <Button onPress={onPress} testID={testID} title={title} />
-  </ScreenShell>
+  <Button onPress={onPress} testID={testID} title={title} />
 );

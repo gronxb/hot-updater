@@ -1,6 +1,6 @@
 import React from "react";
 
-import { ScreenShell, ValueText } from "../components";
+import { ValueText } from "../components";
 import { E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH } from "../runtime";
 import { useE2eRuntimeModelContext } from "../runtime-model-context";
 
@@ -11,11 +11,9 @@ export const RuntimeLargeAssetScreen = () => {
   ).includes(E2E_LARGE_ARCHIVE_ASSET_MANIFEST_PATH);
 
   return (
-    <ScreenShell>
-      <ValueText
-        testID="runtime-large-e2e-asset"
-        value={hasLargeE2EAsset ? "present" : "missing"}
-      />
-    </ScreenShell>
+    <ValueText
+      testID="runtime-large-e2e-asset"
+      value={hasLargeE2EAsset ? "present" : "missing"}
+    />
   );
 };

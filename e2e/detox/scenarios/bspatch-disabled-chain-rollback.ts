@@ -231,6 +231,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
+    await app.reload("reload chain bundle B rollback");
     await app.assertText(
       "assert chain bundle B rollback marker",
       "runtime-scenario-marker",
@@ -272,6 +273,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
+    await app.reload("reload chain bundle A rollback");
     await app.assertText(
       "assert chain bundle A rollback marker",
       "runtime-scenario-marker",
@@ -309,6 +311,7 @@ export const bspatchDisabledChainRollbackScenario: DetoxScenarioDefinition = {
       "assert chain built-in metadata reset",
       "/e2e/assert-metadata-reset",
     );
+    await app.reload("reload built-in chain rollback");
     await app.assertText(
       "assert chain built-in bundle",
       "runtime-bundle-id",

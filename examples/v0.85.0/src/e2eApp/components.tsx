@@ -1,6 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
-import React, { type ReactNode, useCallback, useRef } from "react";
-import { Pressable, SafeAreaView, Text, View } from "react-native";
+import React, { useCallback, useRef } from "react";
+import { Pressable, Text } from "react-native";
 
 import { styles } from "./styles";
 
@@ -62,9 +62,3 @@ export const FocusedActionRoute = ({
 
   return <ValueText testID={testID} value={title} />;
 };
-
-export const ScreenShell = ({ children }: { readonly children: ReactNode }) => (
-  <SafeAreaView style={styles.safeArea}>
-    <View style={styles.content}>{children}</View>
-  </SafeAreaView>
-);
