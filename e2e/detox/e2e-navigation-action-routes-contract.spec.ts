@@ -8,6 +8,10 @@ const e2eAppRoutePathsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/route-paths.ts",
 );
+const e2eAppScreenPathsDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screen-paths",
+);
 const e2eAppScreensIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/screens/index.ts",
@@ -48,12 +52,36 @@ const e2eScreenStatePersistencePath = path.join(
   "examples/v0.85.0/src/e2eApp/screen-state-persistence.ts",
 );
 
+const collectSourceFiles = async (dir: string): Promise<readonly string[]> => {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) return collectSourceFiles(entryPath);
+      if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
+        return [entryPath];
+      }
+      return [];
+    }),
+  );
+  return files.flat();
+};
+
+const readSourceTree = async (dir: string): Promise<string> => {
+  const sourceFiles = await collectSourceFiles(dir);
+  const sources = await Promise.all(
+    sourceFiles.map((filePath) => fs.readFile(filePath, "utf8")),
+  );
+  return sources.join("\n");
+};
+
 describe("E2E navigation action route contract", () => {
   it("keeps action and multi-value assertions on one-target routes", async () => {
     const e2eAppRoutePathsSource = await fs.readFile(
       e2eAppRoutePathsPath,
       "utf8",
     );
+    const e2eAppScreenPathsSource = await readSourceTree(e2eAppScreenPathsDir);
     const detoxPageSource = await fs.readFile(detoxPagePath, "utf8");
     const detoxScreenRoutesSource = await fs.readFile(
       detoxScreenRoutesPath,
@@ -94,7 +122,7 @@ describe("E2E navigation action route contract", () => {
       "e2e/update-store-downloaded",
       "e2e/update-store-download-paths",
     ]) {
-      expect(e2eAppRoutePathsSource).toContain(path);
+      expect(e2eAppScreenPathsSource).toContain(path);
       expect(detoxScreenRoutesSource).toContain(`hotupdaterexample://${path}`);
     }
 

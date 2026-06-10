@@ -1,32 +1,9 @@
+import type { e2eScreenPaths } from "./route-paths";
+
+type RootStackScreenName = keyof typeof e2eScreenPaths;
+
 export type RootStackParamList = {
-  readonly ApplyCohortInputAction: undefined;
-  readonly ChannelActionResult: undefined;
-  readonly CohortActionResult: undefined;
-  readonly CohortInput: undefined;
-  readonly CrashHistoryCount: undefined;
-  readonly ClearCrashHistoryAction: undefined;
-  readonly InstallCurrentChannelUpdateAction: undefined;
-  readonly InstallRuntimeChannelUpdateAction: undefined;
-  readonly LaunchCrashedBundle: undefined;
-  readonly LaunchStatus: undefined;
-  readonly Ready: undefined;
-  readonly RuntimeBundle: undefined;
-  readonly RuntimeChannelInput: undefined;
-  readonly RuntimeChannelSwitched: undefined;
-  readonly RuntimeCurrentChannel: undefined;
-  readonly RuntimeCurrentCohort: undefined;
-  readonly RuntimeDefaultChannel: undefined;
-  readonly RuntimeInitialCohort: undefined;
-  readonly RuntimeLargeAsset: undefined;
-  readonly RuntimeMarker: undefined;
-  readonly RefreshRuntimeSnapshotAction: undefined;
-  readonly ReloadAppAction: undefined;
-  readonly ResetRuntimeChannelAction: undefined;
-  readonly RestoreInitialCohortAction: undefined;
-  readonly SetCohortQaAction: undefined;
-  readonly UpdateActionResult: undefined;
-  readonly UpdateStoreDownloaded: undefined;
-  readonly UpdateStoreDownloadPaths: undefined;
+  readonly [Screen in RootStackScreenName]: undefined;
 };
 
-export type ScreenName = keyof RootStackParamList;
+export type ScreenName = RootStackScreenName;

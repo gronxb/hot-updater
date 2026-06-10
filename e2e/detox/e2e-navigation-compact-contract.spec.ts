@@ -12,6 +12,14 @@ const e2eAppRoutePathsPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/route-paths.ts",
 );
+const e2eAppTypesPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/types.ts",
+);
+const e2eAppScreenPathsDir = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/screen-paths",
+);
 const e2eAppRoutesPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/routes.tsx",
@@ -76,52 +84,57 @@ const collectSourceFiles = async (dir: string): Promise<readonly string[]> => {
   return files.flat();
 };
 
+const readSourceTree = async (dir: string): Promise<string> => {
+  const sourceFiles = await collectSourceFiles(dir);
+  const sources = await Promise.all(
+    sourceFiles.map((filePath) => fs.readFile(filePath, "utf8")),
+  );
+  return sources.join("\n");
+};
+
 describe("E2E navigation compact surface contract", () => {
   it("keeps the default page and assertion routes compact", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
-    const e2eAppRoutePathsSource = await fs.readFile(
-      e2eAppRoutePathsPath,
-      "utf8",
-    );
+    const e2eAppScreenPathsSource = await readSourceTree(e2eAppScreenPathsDir);
 
-    expect(e2eAppRoutePathsSource).toContain('Ready: "e2e/ready"');
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain('Ready: "e2e/ready"');
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeBundle: "e2e/runtime-bundle"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeMarker: "e2e/runtime-marker"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeLargeAsset: "e2e/runtime-large-asset"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeCurrentChannel: "e2e/runtime-current-channel"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeDefaultChannel: "e2e/runtime-default-channel"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeChannelSwitched: "e2e/runtime-channel-switched"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeCurrentCohort: "e2e/runtime-current-cohort"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'RuntimeInitialCohort: "e2e/runtime-initial-cohort"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'CrashHistoryCount: "e2e/crash-history-count"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'LaunchCrashedBundle: "e2e/launch-crashed-bundle"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'ChannelActionResult: "e2e/channel-action-result"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'UpdateActionResult: "e2e/update-action-result"',
     );
-    expect(e2eAppRoutePathsSource).toContain(
+    expect(e2eAppScreenPathsSource).toContain(
       'CohortActionResult: "e2e/cohort-action-result"',
     );
     expect(e2eAppIndexSource).not.toContain("RuntimeIdentity");
@@ -191,6 +204,25 @@ describe("E2E navigation compact surface contract", () => {
     expect(readyScreenSource).not.toContain("ScreenShell");
     expect(readyScreenSource).not.toContain("SafeAreaView");
     expect(sourceCodeLineCount(readyScreenSource)).toBeLessThanOrEqual(6);
+  });
+
+  it("keeps route path and type registries out of the main page surface", async () => {
+    const e2eAppRoutePathsSource = await fs.readFile(
+      e2eAppRoutePathsPath,
+      "utf8",
+    );
+    const e2eAppTypesSource = await fs.readFile(e2eAppTypesPath, "utf8");
+
+    expect(e2eAppRoutePathsSource).toContain("e2eScreenPaths");
+    expect(e2eAppRoutePathsSource).toContain("readyScreenPaths");
+    expect(e2eAppRoutePathsSource).not.toContain("RuntimeBundle:");
+    expect(e2eAppRoutePathsSource).not.toContain("InstallCurrentChannel");
+    expect(sourceCodeLineCount(e2eAppRoutePathsSource)).toBeLessThanOrEqual(26);
+    expect(e2eAppTypesSource).toContain(
+      "type RootStackScreenName = keyof typeof e2eScreenPaths",
+    );
+    expect(e2eAppTypesSource).not.toContain("readonly RuntimeBundle");
+    expect(sourceCodeLineCount(e2eAppTypesSource)).toBeLessThanOrEqual(8);
   });
 
   it("keeps the full E2E app surface free of scroll containers", async () => {
