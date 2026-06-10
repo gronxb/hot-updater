@@ -9,6 +9,10 @@ const e2eAppIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/index.tsx",
 );
+const e2eAppShellPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/app-shell.tsx",
+);
 const e2eAppNavigationControllerPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
@@ -99,14 +103,19 @@ describe("E2E navigation stack contract", () => {
 
   it("keeps the app entrypoint and stack container from becoming scenario screen registries", async () => {
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppShellSource = await fs.readFile(e2eAppShellPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
     const e2eAppRuntimeModelContextSource = await fs.readFile(
       e2eAppRuntimeModelContextPath,
       "utf8",
     );
 
-    expect(e2eAppIndexSource).toContain("E2eStack");
-    expect(e2eAppIndexSource).toContain("E2eRuntimeModelProvider");
+    expect(e2eAppIndexSource).toBe(
+      'export { E2eHotUpdaterApp } from "./app-shell";\n',
+    );
+    expect(e2eAppIndexSource).not.toContain("NavigationContainer");
+    expect(e2eAppIndexSource).not.toContain("useE2eRuntimeModel");
+    expect(e2eAppIndexSource).not.toContain("useE2eDeepLinks");
     expect(e2eAppIndexSource).not.toContain("Stack.Navigator");
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
     expect(e2eAppIndexSource).not.toContain("e2e/action/");
@@ -117,7 +126,15 @@ describe("E2E navigation stack contract", () => {
     expect(e2eAppIndexSource).not.toContain("Text");
     expect(e2eAppIndexSource).not.toContain("styles.");
     expect(e2eAppIndexSource).not.toContain("testID=");
-    expect(sourceCodeLineCount(e2eAppIndexSource)).toBeLessThanOrEqual(38);
+    expect(sourceCodeLineCount(e2eAppIndexSource)).toBeLessThanOrEqual(3);
+    expect(e2eAppShellSource).toContain("E2eStack");
+    expect(e2eAppShellSource).toContain("E2eRuntimeModelProvider");
+    expect(e2eAppShellSource).toContain("NavigationContainer");
+    expect(e2eAppShellSource).toContain("useE2eRuntimeModel");
+    expect(e2eAppShellSource).toContain("useE2eDeepLinks");
+    expect(e2eAppShellSource).not.toContain("Stack.Screen");
+    expect(e2eAppShellSource).not.toContain("testID=");
+    expect(sourceCodeLineCount(e2eAppShellSource)).toBeLessThanOrEqual(40);
     const e2eAppNavigationFallbackSource = await fs.readFile(
       e2eAppNavigationFallbackPath,
       "utf8",

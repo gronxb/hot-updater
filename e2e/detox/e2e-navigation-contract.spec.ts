@@ -9,6 +9,10 @@ const e2eAppIndexPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/index.tsx",
 );
+const e2eAppShellPath = path.join(
+  repoDir,
+  "examples/v0.85.0/src/e2eApp/app-shell.tsx",
+);
 const e2eAppPatchSurfacePath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eApp/patchSurface.ts",
@@ -68,6 +72,7 @@ describe("E2E navigation contract", () => {
   it("uses React Navigation screens instead of one scroll-heavy E2E surface", async () => {
     const appSource = await fs.readFile(appPath, "utf8");
     const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppShellSource = await fs.readFile(e2eAppShellPath, "utf8");
     const e2eAppRoutesSource = await fs.readFile(e2eAppRoutesPath, "utf8");
     const e2eAppRouteStackSource = await fs.readFile(
       e2eAppRouteStackPath,
@@ -101,11 +106,14 @@ describe("E2E navigation contract", () => {
     );
     expect(appSource).toContain("E2eHotUpdaterApp");
     expect(appSource).toContain("patchSurface");
-    expect(e2eAppIndexSource).toContain("NavigationContainer");
-    expect(e2eAppIndexSource).toContain("E2eStack");
-    expect(e2eAppIndexSource).toContain("e2eLinking");
-    expect(e2eAppIndexSource).toContain("navigationRef");
-    expect(e2eAppIndexSource).toContain("linking={e2eLinking}");
+    expect(e2eAppIndexSource).toBe(
+      'export { E2eHotUpdaterApp } from "./app-shell";\n',
+    );
+    expect(e2eAppShellSource).toContain("NavigationContainer");
+    expect(e2eAppShellSource).toContain("E2eStack");
+    expect(e2eAppShellSource).toContain("e2eLinking");
+    expect(e2eAppShellSource).toContain("navigationRef");
+    expect(e2eAppShellSource).toContain("linking={e2eLinking}");
     expect(e2eAppIndexSource).not.toContain("createNativeStackNavigator");
     expect(e2eAppIndexSource).not.toContain("Stack.Screen");
     expect(e2eAppRouteStackSource).toContain("createNativeStackNavigator");
@@ -145,7 +153,7 @@ describe("E2E navigation contract", () => {
   });
 
   it("handles E2E deep links through an explicit navigation ref", async () => {
-    const e2eAppIndexSource = await fs.readFile(e2eAppIndexPath, "utf8");
+    const e2eAppShellSource = await fs.readFile(e2eAppShellPath, "utf8");
     const e2eAppRoutePathsSource = await fs.readFile(
       e2eAppRoutePathsPath,
       "utf8",
@@ -155,12 +163,12 @@ describe("E2E navigation contract", () => {
       "utf8",
     );
 
-    expect(e2eAppIndexSource).toContain("navigationRef");
-    expect(e2eAppIndexSource).toContain("linking={e2eLinking}");
-    expect(e2eAppIndexSource).toContain("useE2eDeepLinks");
-    expect(e2eAppIndexSource).toContain("flushPendingE2eDeepLink");
-    expect(e2eAppIndexSource).toContain("ref={navigationRef}");
-    expect(e2eAppIndexSource).toContain("onReady={flushPendingE2eDeepLink}");
+    expect(e2eAppShellSource).toContain("navigationRef");
+    expect(e2eAppShellSource).toContain("linking={e2eLinking}");
+    expect(e2eAppShellSource).toContain("useE2eDeepLinks");
+    expect(e2eAppShellSource).toContain("flushPendingE2eDeepLink");
+    expect(e2eAppShellSource).toContain("ref={navigationRef}");
+    expect(e2eAppShellSource).toContain("onReady={flushPendingE2eDeepLink}");
     expect(e2eAppNavigationControllerSource).toContain(
       "createNavigationContainerRef<RootStackParamList>()",
     );
