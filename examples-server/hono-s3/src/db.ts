@@ -1,15 +1,12 @@
 import path from "path";
-import { fileURLToPath } from "url";
 
 import { s3Database, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { config } from "dotenv";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 // Load optional .env.hotupdater file for local development
-config({ path: path.join(__dirname, ".env.hotupdater") });
+config({ path: path.resolve(process.cwd(), ".env.hotupdater") });
 
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 
@@ -17,15 +14,14 @@ const options =
   process.env.NODE_ENV === "test"
     ? {
         region: process.env.AWS_REGION || "us-east-1",
-        endpoint: process.env.AWS_S3_ENDPOINT || "http://localhost:4566",
+        endpoint: process.env.AWS_S3_ENDPOINT || "http://localhost:9000",
         credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
         },
         bucketName:
           process.env.AWS_S3_METADATA_BUCKET || "hot-updater-metadata",
         basePath: providerNamespace,
-        // localstack s3
         forcePathStyle: true,
       }
     : {

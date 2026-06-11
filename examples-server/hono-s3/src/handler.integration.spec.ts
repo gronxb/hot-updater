@@ -30,10 +30,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
-const LOCALSTACK_ENDPOINT = "http://localhost:4566";
+const MINIO_ENDPOINT = "http://localhost:9000";
 const REGION = "us-east-1";
-const ACCESS_KEY_ID = "test";
-const SECRET_ACCESS_KEY = "test";
+const ACCESS_KEY_ID = "minioadmin";
+const SECRET_ACCESS_KEY = "minioadmin";
 const METADATA_BUCKET = "hot-updater-metadata";
 
 const sleep = async (ms: number) => {
@@ -47,7 +47,7 @@ assertDockerComposeAvailable(
 async function ensureBucketExists(bucketName: string) {
   const client = new S3Client({
     region: REGION,
-    endpoint: LOCALSTACK_ENDPOINT,
+    endpoint: MINIO_ENDPOINT,
     credentials: {
       accessKeyId: ACCESS_KEY_ID,
       secretAccessKey: SECRET_ACCESS_KEY,
@@ -90,8 +90,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
 
     baseUrl = `http://localhost:${port}`;
 
-    // Ensure Localstack (S3) is running
-    await execa("docker", ["compose", "up", "-d"], {
+    await execa("docker", ["compose", "up", "-d", "--remove-orphans"], {
       cwd: projectRoot,
     });
 
@@ -102,7 +101,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     process.env.AWS_REGION = REGION;
     process.env.AWS_ACCESS_KEY_ID = ACCESS_KEY_ID;
     process.env.AWS_SECRET_ACCESS_KEY = SECRET_ACCESS_KEY;
-    process.env.AWS_S3_ENDPOINT = LOCALSTACK_ENDPOINT;
+    process.env.AWS_S3_ENDPOINT = MINIO_ENDPOINT;
     process.env.AWS_S3_METADATA_BUCKET = METADATA_BUCKET;
 
     // Start server
@@ -116,7 +115,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
         AWS_REGION: REGION,
         AWS_ACCESS_KEY_ID: ACCESS_KEY_ID,
         AWS_SECRET_ACCESS_KEY: SECRET_ACCESS_KEY,
-        AWS_S3_ENDPOINT: LOCALSTACK_ENDPOINT,
+        AWS_S3_ENDPOINT: MINIO_ENDPOINT,
         AWS_S3_METADATA_BUCKET: METADATA_BUCKET,
       },
     });
@@ -131,7 +130,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
     await cleanupServer(baseUrl, serverProcess, "");
 
     // Stop and remove Docker containers
-    await execa("docker", ["compose", "down", "-v"], {
+    await execa("docker", ["compose", "down", "-v", "--remove-orphans"], {
       cwd: projectRoot,
     });
   }, 60000);

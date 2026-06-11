@@ -8,8 +8,8 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:type": "tsc --noEmit",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down -v"
+    "docker:up": "docker compose up -d --remove-orphans",
+    "docker:down": "docker compose down -v --remove-orphans"
   },
   "dependencies": {
     "@hono/node-server": "catalog:hono",

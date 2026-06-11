@@ -1,3 +1,5 @@
+/* global jest */
+
 const defaultState = {
   artifactType: null,
   details: null,
@@ -22,6 +24,7 @@ jest.mock("@hot-updater/react-native", () => ({
       assets: {},
       bundleId: "00000000-0000-0000-0000-000000000000",
     })),
+    init: jest.fn(),
     getMinBundleId: jest.fn(() => "00000000-0000-0000-0000-000000000000"),
     isChannelSwitched: jest.fn(() => false),
     isUpdateDownloaded: jest.fn(() => false),

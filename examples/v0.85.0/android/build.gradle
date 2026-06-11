@@ -19,3 +19,30 @@ buildscript {
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    repositories {
+        google()
+        maven {
+            url("$rootDir/../../../node_modules/detox/Detox-android")
+            content {
+                includeGroup("com.wix")
+            }
+        }
+        mavenCentral {
+            content {
+                excludeGroup("com.wix")
+            }
+        }
+    }
+    repositories.configureEach { repository ->
+        if (
+            repository instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
+            !repository.url.toString().contains("/node_modules/detox/Detox-android")
+        ) {
+            repository.content {
+                excludeGroup("com.wix")
+            }
+        }
+    }
+}

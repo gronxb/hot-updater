@@ -1,20 +1,18 @@
-version: "3.8"
-
 services:
-  localstack:
-    image: localstack/localstack:3
-    container_name: hono-s3-localstack
+  minio:
+    image: minio/minio:latest
+    container_name: "hono-s3-minio-${PORT:-3007}"
     restart: unless-stopped
+    command: server /data --console-address ":9001"
     ports:
-      - "4566:4566"
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      - SERVICES=s3
-      - DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
-      - localstack_data:/var/lib/localstack
+      - minio_data:/data
 
 volumes:
-  localstack_data:
-
+  minio_data:
+    name: "hono-s3-minio-data-${PORT:-3007}"

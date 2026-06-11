@@ -15,6 +15,7 @@ const unitInclude = [
   "examples-server/**/*.spec.ts",
   "examples-server/**/*.test.ts",
 ];
+const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
 const integrationInclude = [
   "packages/**/*.integration.spec.ts",
   "plugins/**/*.integration.spec.ts",
@@ -37,6 +38,16 @@ export default defineConfig({
             "packages/console/**",
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
+          environment: "node",
+          hookTimeout: 60000,
+          testTimeout: 60000,
+        },
+      }),
+      defineProject({
+        test: {
+          name: "unit:e2e",
+          include: e2eUnitInclude,
+          exclude: [...rootExclude, "e2e/results/**"],
           environment: "node",
           hookTimeout: 60000,
           testTimeout: 60000,
