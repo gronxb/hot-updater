@@ -83,12 +83,14 @@ export const createDatabasePluginGetUpdateInfo = <TContext = unknown>({
             )
           : [];
 
-      return getManifestUpdateInfo(bundles, normalizedArgs);
+      const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+      return info;
     }
 
     const normalizedArgs = normalizeFingerprintArgs(args);
     const bundles = await getBundlesByFingerprint(normalizedArgs, context);
 
-    return getManifestUpdateInfo(bundles, normalizedArgs);
+    const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+    return info;
   };
 };

@@ -69,6 +69,20 @@ function replaceBundleInQueryData(
   };
 }
 
+function removeBundleFromQueryData(
+  data: BundlesQueryData | undefined,
+  bundleId: string,
+) {
+  if (!data) {
+    return data;
+  }
+
+  return {
+    ...data,
+    data: data.data.filter((bundle) => bundle.id !== bundleId),
+  };
+}
+
 const hasOwn = (value: object, key: PropertyKey) =>
   Object.prototype.hasOwnProperty.call(value, key);
 
@@ -236,6 +250,11 @@ export function useDeleteBundleMutation() {
       deleteBundleApi({ data: params }),
     onSuccess: async (_, vars) => {
       queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.bundles.all },
+        (data: BundlesQueryData | undefined) =>
+          removeBundleFromQueryData(data, vars.bundleId),
+      );
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),

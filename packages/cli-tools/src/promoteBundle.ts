@@ -1,8 +1,10 @@
 import crypto from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { brotliDecompressSync } from "node:zlib";
+import { pipeline } from "node:stream/promises";
+import { createBrotliCompress, brotliDecompressSync } from "node:zlib";
 
 import {
   getManifestFileHash,
@@ -77,6 +79,52 @@ const getRelativeStorageDir = (relativePath: string) => {
   const dirname = path.posix.dirname(normalized);
   return dirname === "." ? "" : dirname;
 };
+
+const isBundleAsset = (relativePath: string) =>
+  /(^|\/)[^/]+\.(ios|android)\.bundle$/.test(relativePath.replace(/\\/g, "/"));
+
+function resolvePreparedUploadPath(rootDir: string, assetPath: string) {
+  const normalizedAssetPath = assetPath.replaceAll("\\", "/");
+  const outputPath = path.resolve(
+    rootDir,
+    "upload-artifacts",
+    `${normalizedAssetPath}.br`,
+  );
+  const relativePath = path.relative(rootDir, outputPath);
+
+  if (
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath) ||
+    normalizedAssetPath.startsWith("/")
+  ) {
+    throw new Error(`Invalid manifest asset path: ${assetPath}`);
+  }
+
+  return outputPath;
+}
+
+async function prepareManifestAssetUploadFile({
+  assetPath,
+  sourcePath,
+  workDir,
+}: {
+  assetPath: string;
+  sourcePath: string;
+  workDir: string;
+}) {
+  if (!isBundleAsset(assetPath)) {
+    return sourcePath;
+  }
+
+  const uploadPath = resolvePreparedUploadPath(workDir, assetPath);
+  await fs.mkdir(path.dirname(uploadPath), { recursive: true });
+  await pipeline(
+    createReadStream(sourcePath),
+    createBrotliCompress(),
+    createWriteStream(uploadPath),
+  );
+  return uploadPath;
+}
 
 const replaceStorageUriLeaf = (storageUri: string, nextLeaf: string) => {
   const storageUrl = new URL(storageUri);
@@ -352,9 +400,15 @@ export async function createCopiedBundleArchive({
       const uploadKey = [nextBundleId, "files", relativeDir]
         .filter(Boolean)
         .join("/");
+      const sourcePath = path.join(extractDir, assetPath);
+      const uploadPath = await prepareManifestAssetUploadFile({
+        assetPath,
+        sourcePath,
+        workDir,
+      });
       const assetUpload = await storagePlugin.profiles.node.upload(
         uploadKey,
-        path.join(extractDir, assetPath),
+        uploadPath,
       );
       uploadedStorageUris.push(assetUpload.storageUri);
     }

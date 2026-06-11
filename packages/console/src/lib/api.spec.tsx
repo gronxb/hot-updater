@@ -4,8 +4,15 @@ import { act, renderHook } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { queryKeys, useUpdateBundleMutation } from "./api";
-import { updateBundle as updateBundleApi } from "./api-rpc";
+import {
+  queryKeys,
+  useDeleteBundleMutation,
+  useUpdateBundleMutation,
+} from "./api";
+import {
+  deleteBundle as deleteBundleApi,
+  updateBundle as updateBundleApi,
+} from "./api-rpc";
 
 vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
@@ -34,6 +41,12 @@ const bundle: Bundle = {
   storageUri: "s3://bucket/bundle.zip",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
+};
+
+const otherBundle: Bundle = {
+  ...bundle,
+  id: "bundle-002",
+  fileHash: "other-hash",
 };
 
 const timeout = (ms: number) =>
@@ -114,6 +127,85 @@ describe("useUpdateBundleMutation", () => {
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.bundles.all,
+    });
+  });
+});
+
+describe("useDeleteBundleMutation", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: {
+          retry: false,
+        },
+        queries: {
+          retry: false,
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  it("removes a deleted bundle from cached bundle lists", async () => {
+    vi.mocked(deleteBundleApi).mockResolvedValue({
+      success: true,
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+
+    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+    queryClient.setQueryData(queryKeys.bundles.list({}), {
+      data: [bundle, otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useDeleteBundleMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        bundleId: bundle.id,
+      });
+    });
+
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
+    ).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
+      data: [otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundles.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.bundleChildren.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.channels,
     });
   });
 });

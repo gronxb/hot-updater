@@ -75,7 +75,7 @@ function BundlesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="flex h-svh flex-col">
         <FilterToolbar />
         <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
           <Skeleton className="h-12 w-full" />
@@ -88,9 +88,9 @@ function BundlesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-svh min-h-0 flex-col">
       <FilterToolbar />
-      <div className="flex flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 bg-muted/5 p-3 sm:p-6">
         <BundlesTable
           bundles={bundles}
           pagination={pagination}
