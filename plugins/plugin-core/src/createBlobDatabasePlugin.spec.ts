@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
-import { getRequestUpdateBundleSeeds } from "./requestUpdateBundleState";
 import type { Bundle } from "./types";
 
 const DEFAULT_BUNDLE: Omit<
@@ -366,45 +365,6 @@ describe("blobDatabase plugin", () => {
       "production/ios/target-app-versions.json",
       "production/ios/*/update.json",
     ]);
-  });
-
-  it("seeds request bundles from direct app-version update checks", async () => {
-    const latestBundle = createBundleJson(
-      "production",
-      "ios",
-      "*",
-      "00000000-0000-0000-0000-000000000002",
-    );
-    const previousBundle = createBundleJson(
-      "production",
-      "ios",
-      "*",
-      "00000000-0000-0000-0000-000000000001",
-    );
-    const context = {
-      request: new Request("https://updates.example.com"),
-    };
-
-    seedUpdateManifests([previousBundle, latestBundle]);
-
-    await expect(
-      plugin.getUpdateInfo?.(
-        {
-          _updateStrategy: "appVersion",
-          appVersion: "1.0.0",
-          bundleId: previousBundle.id,
-          platform: "ios",
-        },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      id: latestBundle.id,
-      status: "UPDATE",
-    });
-
-    expect(
-      getRequestUpdateBundleSeeds(context).map((bundle) => bundle.id),
-    ).toEqual([latestBundle.id, previousBundle.id]);
   });
 
   it("uses fingerprint manifests directly for update checks", async () => {
