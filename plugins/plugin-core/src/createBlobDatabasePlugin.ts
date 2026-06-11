@@ -1,3 +1,4 @@
+import { NIL_UUID } from "@hot-updater/core";
 import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 import { orderBy } from "es-toolkit";
 import semver from "semver";
@@ -7,6 +8,7 @@ import { createDatabasePlugin } from "./createDatabasePlugin";
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
 import { paginateBundles } from "./paginateBundles";
 import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
+import { seedRequestUpdateBundles } from "./requestUpdateBundleState";
 import type {
   AppVersionGetBundlesArgs,
   Bundle,
@@ -16,6 +18,7 @@ import type {
   DatabasePluginHooks,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
+  HotUpdaterContext,
   UpdateInfo,
 } from "./types";
 
@@ -25,6 +28,30 @@ interface BundleWithUpdateJsonKey extends Bundle {
 }
 
 const STORAGE_OPERATION_CONCURRENCY = 8;
+
+const findSeedBundle = (bundles: readonly Bundle[], bundleId: string) =>
+  bundles.find((bundle) => bundle.id === bundleId);
+
+const seedSelectedBundles = ({
+  bundles,
+  bundleId,
+  context,
+  info,
+}: {
+  readonly bundles: readonly Bundle[];
+  readonly bundleId: string;
+  readonly context?: HotUpdaterContext;
+  readonly info: UpdateInfo | null;
+}) => {
+  if (!info) {
+    return;
+  }
+
+  seedRequestUpdateBundles(context, [
+    findSeedBundle(bundles, info.id),
+    bundleId === NIL_UUID ? null : findSeedBundle(bundles, bundleId),
+  ]);
+};
 
 async function mapWithConcurrency<T, TResult>(
   items: readonly T[],
@@ -1159,14 +1186,17 @@ export const createBlobDatabasePlugin = <TConfig>({
       }
     }
 
-    const getAppVersionUpdateInfo = async ({
-      appVersion,
-      bundleId,
-      channel = "production",
-      cohort,
-      minBundleId,
-      platform,
-    }: AppVersionGetBundlesArgs): Promise<UpdateInfo | null> => {
+    const getAppVersionUpdateInfo = async (
+      {
+        appVersion,
+        bundleId,
+        channel = "production",
+        cohort,
+        minBundleId,
+        platform,
+      }: AppVersionGetBundlesArgs,
+      context?: HotUpdaterContext,
+    ): Promise<UpdateInfo | null> => {
       const targetVersionsKey = `${channel}/${platform}/target-app-versions.json`;
       const targetAppVersions =
         (await loadOptionalObject<string[]>(targetVersionsKey)) ?? [];
@@ -1201,17 +1231,26 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
+      seedSelectedBundles({
+        bundles,
+        bundleId,
+        context,
+        info,
+      });
       return info;
     };
 
-    const getFingerprintUpdateInfo = async ({
-      bundleId,
-      channel = "production",
-      cohort,
-      fingerprintHash,
-      minBundleId,
-      platform,
-    }: FingerprintGetBundlesArgs): Promise<UpdateInfo | null> => {
+    const getFingerprintUpdateInfo = async (
+      {
+        bundleId,
+        channel = "production",
+        cohort,
+        fingerprintHash,
+        minBundleId,
+        platform,
+      }: FingerprintGetBundlesArgs,
+      context?: HotUpdaterContext,
+    ): Promise<UpdateInfo | null> => {
       const bundles =
         (await loadOptionalObject<Bundle[]>(
           `${channel}/${platform}/${fingerprintHash}/update.json`,
@@ -1225,6 +1264,12 @@ export const createBlobDatabasePlugin = <TConfig>({
         fingerprintHash,
         minBundleId,
         platform,
+      });
+      seedSelectedBundles({
+        bundles,
+        bundleId,
+        context,
+        info,
       });
       return info;
     };
@@ -1390,12 +1435,12 @@ export const createBlobDatabasePlugin = <TConfig>({
           return removeBundleInternalKeys(matchedBundle);
         },
 
-        async getUpdateInfo(args: GetBundlesArgs) {
+        async getUpdateInfo(args: GetBundlesArgs, context?: HotUpdaterContext) {
           if (args._updateStrategy === "appVersion") {
-            return getAppVersionUpdateInfo(args);
+            return getAppVersionUpdateInfo(args, context);
           }
 
-          return getFingerprintUpdateInfo(args);
+          return getFingerprintUpdateInfo(args, context);
         },
 
         async getBundles(options) {

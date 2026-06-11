@@ -428,6 +428,107 @@ describe("createPluginDatabaseCore", () => {
     expect(getBundleById).not.toHaveBeenCalled();
   });
 
+  it("does not reread providers for current bundles outside direct update lookup results", async () => {
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000003",
+      fileHash: "hash-3",
+      manifestStorageUri: "s3://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "s3://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-bundle-hash",
+            },
+            "image.png": {
+              fileHash: "target-image-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async () => {
+        throw new Error("unexpected provider current bundle reread");
+      },
+    );
+    const getUpdateInfo = createDatabasePluginGetUpdateInfo<TestContext>({
+      getBundlesByFingerprint: async () => [],
+      getBundlesByTargetAppVersions: async () => [targetBundle],
+      listTargetAppVersions: async () => ["1.0.0"],
+    });
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "seeded-current-miss-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      getBundleById,
+      async getBundles() {
+        throw new Error("unexpected provider scan");
+      },
+      getUpdateInfo,
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+    const context: TestContext = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const updateInfo = await core.api.getAppUpdateInfo(
+      {
+        ...updateArgs,
+        bundleId: "00000000-0000-0000-0000-0000000000aa",
+      },
+      context,
+    );
+
+    expect(updateInfo).toMatchObject({
+      changedAssets: {
+        "image.png": {
+          file: {
+            url: "https://assets.example.com/bucket/target/files/image.png",
+          },
+          fileHash: "target-image-hash",
+        },
+        "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
+          },
+          fileHash: "target-bundle-hash",
+        },
+      },
+      id: targetBundle.id,
+      manifestFileHash: "sig:target-manifest",
+      manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
+    });
+    expect(getBundleById).not.toHaveBeenCalled();
+  });
+
   it("resolves manifest changed assets from deterministic content-addressed storage", async () => {
     const currentBundle = {
       ...baseBundle,
