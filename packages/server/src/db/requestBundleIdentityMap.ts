@@ -54,5 +54,8 @@ export const createRequestBundleIdentityMap = <TContext = unknown>({
     return lookup;
   };
 
-  return { get };
+  const peek = (bundleId: string): Bundle | null =>
+    bundles.get(bundleId) ?? null;
+
+  return { get, peek };
 };
