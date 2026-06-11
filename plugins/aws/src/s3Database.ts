@@ -12,13 +12,17 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  type BlobDatabasePluginConfig,
+  createBlobDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import mime from "mime";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import { streamToString } from "./utils/streamToString";
 
-export interface S3DatabaseConfig extends S3ClientConfig {
+export interface S3DatabaseConfig
+  extends S3ClientConfig, BlobDatabasePluginConfig {
   bucketName: string;
   /**
    * Base path where database objects will be stored in the bucket.
@@ -79,7 +83,7 @@ const createArchivedS3ObjectError = ({
   const storageClass =
     getS3ErrorProperty(error, "StorageClass") ?? "archived storage";
   const nextError = new Error(
-    `S3 object "${key}" in bucket "${bucket}" is archived (${storageClass}) and cannot be read. Restore the object in S3 or exclude Hot Updater metadata from lifecycle archival: "**/target-app-versions.json" and "**/update.json".`,
+    `S3 object "${key}" in bucket "${bucket}" is archived (${storageClass}) and cannot be read. Restore the object in S3 or exclude Hot Updater metadata from lifecycle archival: "_index/**", "**/target-app-versions.json", and "**/update.json".`,
     { cause: error },
   );
   nextError.name = "S3ArchivedObjectError";

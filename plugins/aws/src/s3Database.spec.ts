@@ -60,6 +60,13 @@ const createBundleJsonFingerprint = (
 });
 
 const MANAGEMENT_INDEX_PREFIX = "_index";
+const MANAGEMENT_INDEX_VERSION = 1;
+const MANAGEMENT_INDEX_PAGE_SIZE = 64;
+
+type ManagementScope = {
+  channel?: string;
+  platform?: "ios" | "android";
+};
 
 // fakeStore simulates files stored in S3
 let fakeStore: Record<string, string> = {};
@@ -231,13 +238,18 @@ describe("s3Database plugin", () => {
       bucketName,
       ...s3Config,
       cloudfrontDistributionId: "test-distribution-id",
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
       ...config,
     })();
 
-  let plugin = createPlugin();
+  let plugin = createPlugin({
+    managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+  });
 
   beforeEach(async () => {
-    plugin = createPlugin();
+    plugin = createPlugin({
+      managementIndexPageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+    });
   });
 
   const seedUpdateManifests = (bundles: Bundle[]) => {
@@ -275,18 +287,97 @@ describe("s3Database plugin", () => {
     }
   };
 
-  const seedStaleManagementIndex = (bundles: Bundle[]) => {
-    fakeStore[`${MANAGEMENT_INDEX_PREFIX}/all/pages/0000.json`] =
-      JSON.stringify(bundles);
-    fakeStore[`${MANAGEMENT_INDEX_PREFIX}/all/root.json`] = JSON.stringify({
-      total: bundles.length,
-      pages: [
-        {
-          key: `${MANAGEMENT_INDEX_PREFIX}/all/pages/0000.json`,
-          count: bundles.length,
-        },
-      ],
-    });
+  const getManagementScopePrefix = ({ channel, platform }: ManagementScope) => {
+    if (channel && platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}/platform/${platform}`;
+    }
+
+    if (channel) {
+      return `${MANAGEMENT_INDEX_PREFIX}/channel/${encodeURIComponent(channel)}`;
+    }
+
+    if (platform) {
+      return `${MANAGEMENT_INDEX_PREFIX}/platform/${platform}`;
+    }
+
+    return `${MANAGEMENT_INDEX_PREFIX}/all`;
+  };
+
+  const getManagementRootKey = (scope: ManagementScope) =>
+    `${getManagementScopePrefix(scope)}/root.json`;
+
+  const getManagementPageKey = (scope: ManagementScope, pageIndex: number) =>
+    `${getManagementScopePrefix(scope)}/pages/${String(pageIndex).padStart(4, "0")}.json`;
+
+  const sortManagementBundles = (bundles: Bundle[]) =>
+    bundles.slice().sort((left, right) => right.id.localeCompare(left.id));
+
+  const seedPagedBundlesIndex = (bundles: Bundle[]) => {
+    const sortedBundles = sortManagementBundles(bundles);
+    const channels = [
+      ...new Set(sortedBundles.map((bundle) => bundle.channel)),
+    ].sort();
+
+    const addScope = (
+      scope: ManagementScope,
+      scopedBundles: Bundle[],
+      options?: { includeChannels?: boolean },
+    ) => {
+      if (!options?.includeChannels && scopedBundles.length === 0) {
+        return;
+      }
+
+      const pages = [];
+      for (
+        let pageIndex = 0;
+        pageIndex * MANAGEMENT_INDEX_PAGE_SIZE < scopedBundles.length;
+        pageIndex++
+      ) {
+        const page = scopedBundles.slice(
+          pageIndex * MANAGEMENT_INDEX_PAGE_SIZE,
+          (pageIndex + 1) * MANAGEMENT_INDEX_PAGE_SIZE,
+        );
+        const key = getManagementPageKey(scope, pageIndex);
+        fakeStore[key] = JSON.stringify(page);
+        pages.push({
+          key,
+          count: page.length,
+          firstId: page[0]!.id,
+          lastId: page.at(-1)!.id,
+        });
+      }
+
+      fakeStore[getManagementRootKey(scope)] = JSON.stringify({
+        version: MANAGEMENT_INDEX_VERSION,
+        pageSize: MANAGEMENT_INDEX_PAGE_SIZE,
+        total: scopedBundles.length,
+        pages,
+        ...(options?.includeChannels ? { channels } : {}),
+      });
+    };
+
+    addScope({}, sortedBundles, { includeChannels: true });
+
+    for (const channel of channels) {
+      const channelBundles = sortedBundles.filter(
+        (bundle) => bundle.channel === channel,
+      );
+      addScope({ channel }, channelBundles);
+
+      for (const platform of ["ios", "android"] as const) {
+        addScope(
+          { channel, platform },
+          channelBundles.filter((bundle) => bundle.platform === platform),
+        );
+      }
+    }
+
+    for (const platform of ["ios", "android"] as const) {
+      addScope(
+        { platform },
+        sortedBundles.filter((bundle) => bundle.platform === platform),
+      );
+    }
   };
 
   const createScopedBundles = ({
@@ -407,60 +498,198 @@ describe("s3Database plugin", () => {
     ]);
   });
 
-  it("ignores stale management indexes to avoid missing canonical bundles", async () => {
-    const indexedBundle = createBundleJson(
-      "production",
-      "ios",
-      "1.0.0",
-      "default-index-A",
-    );
-    const missingBundle = createBundleJson(
-      "production",
-      "ios",
-      "1.0.0",
-      "default-index-B",
-    );
-    seedUpdateManifests([indexedBundle, missingBundle]);
-    seedStaleManagementIndex([indexedBundle]);
-
-    plugin = createPlugin();
+  it("reads the first all-bundles page from one root and one leaf page", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
 
     const result = await plugin.getBundles({ limit: 20 });
 
-    expect(result.data.map((bundle) => bundle.id)).toEqual([
-      missingBundle.id,
-      indexedBundle.id,
-    ]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
-  });
-
-  it("does not write management index artifacts during commits", async () => {
-    const newBundle = createBundleJson(
-      "production",
-      "ios",
-      "1.0.0",
-      "default-index-commit",
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      bundles.slice(0, 20).map((bundle) => bundle.id),
     );
-
-    await plugin.appendBundle(newBundle);
-    await plugin.commitBundle();
-
-    expect(
-      Object.keys(fakeStore).filter((key) =>
-        key.startsWith(`${MANAGEMENT_INDEX_PREFIX}/`),
-      ),
-    ).toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
   });
 
-  it("reads channels from canonical manifests", async () => {
-    seedUpdateManifests([
-      createBundleJson("production", "ios", "1.0.0", "production-ios-100"),
-      createBundleJson("production", "ios", "1.0.1", "production-ios-101"),
-      createBundleJson("staging", "android", "1.0.0", "staging-android-100"),
-      createBundleJson("staging", "android", "1.0.1", "staging-android-101"),
+  it("uses a custom management index page size from s3Database config", async () => {
+    const bundles = createScopedBundles({ count: 5 });
+    seedUpdateManifests(bundles);
+
+    plugin = createPlugin({ managementIndexPageSize: 2 });
+
+    await plugin.getBundles({ limit: 5 });
+
+    expect(JSON.parse(fakeStore[getManagementRootKey({})]!)).toMatchObject({
+      pageSize: 2,
+    });
+    expect(fakeStore[getManagementPageKey({}, 2)]).toBeDefined();
+  });
+
+  it.each([
+    {
+      label: "channel scope",
+      where: { channel: "production" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production" }),
+        getManagementPageKey({ channel: "production" }, 0),
+      ],
+    },
+    {
+      label: "platform scope",
+      where: { platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ platform: "ios" }),
+        getManagementPageKey({ platform: "ios" }, 0),
+      ],
+    },
+    {
+      label: "channel + platform scope",
+      where: { channel: "production", platform: "ios" } as const,
+      expectedKeys: [
+        getManagementRootKey({ channel: "production", platform: "ios" }),
+        getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      ],
+    },
+  ])(
+    "reads warm filtered bundles with minimal S3 objects for $label",
+    async ({ where, expectedKeys }) => {
+      const bundles = [
+        ...createScopedBundles({
+          count: 70,
+          channel: "production",
+          platform: "ios",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "production",
+          platform: "android",
+        }),
+        ...createScopedBundles({
+          count: 10,
+          channel: "staging",
+          platform: "ios",
+        }),
+      ];
+      seedPagedBundlesIndex(bundles);
+      listedObjectPrefixes = [];
+      loadedObjectKeys = [];
+
+      await plugin.getBundles({
+        where,
+        limit: 20,
+        cursor: {
+          after: "bundle-999",
+        },
+      });
+
+      expect(listedObjectPrefixes).toEqual([]);
+      expect(loadedObjectKeys).toEqual(expectedKeys);
+    },
+  );
+
+  it("reads at most two leaf pages when an after cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        after: "bundle-021",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(20 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+    ]);
+  });
+
+  it("reads at most two leaf pages when a before cursor crosses a page boundary", async () => {
+    const bundles = createScopedBundles({ count: 70 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      cursor: {
+        before: "bundle-005",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(25 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 1),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("keeps page-aligned results stable when a stale cursor is combined with page=2", async () => {
+    const bundles = createScopedBundles({ count: 121 });
+    seedPagedBundlesIndex(bundles);
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    const result = await plugin.getBundles({
+      where: { channel: "production", platform: "ios" },
+      limit: 20,
+      page: 2,
+      cursor: {
+        after: "bundle-110",
+      },
+    });
+
+    expect(result.data.map((bundle) => bundle.id)).toEqual(
+      Array.from(
+        { length: 20 },
+        (_, index) => `bundle-${String(101 - index).padStart(3, "0")}`,
+      ),
+    );
+    expect(result.pagination.currentPage).toBe(2);
+    expect(result.pagination.previousCursor).toBe("bundle-101");
+    expect(result.pagination.nextCursor).toBe("bundle-082");
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
+  });
+
+  it("reads channels from the all-bundles root only", async () => {
+    seedPagedBundlesIndex([
+      ...createScopedBundles({
+        count: 2,
+        channel: "production",
+        platform: "ios",
+      }),
+      ...createScopedBundles({
+        count: 2,
+        channel: "staging",
+        platform: "android",
+      }),
     ]);
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -470,20 +699,13 @@ describe("s3Database plugin", () => {
       "staging",
     ]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys.slice().sort()).toEqual(
-      [
-        "production/ios/1.0.0/update.json",
-        "production/ios/1.0.1/update.json",
-        "staging/android/1.0.0/update.json",
-        "staging/android/1.0.1/update.json",
-      ].sort(),
-    );
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
   });
 
-  it("reads bundle detail from canonical manifests", async () => {
+  it("reads bundle detail from the all-bundles root and one leaf page", async () => {
     const bundles = createScopedBundles({ count: 70 });
-    seedUpdateManifests(bundles);
+    seedPagedBundlesIndex(bundles);
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
 
@@ -491,11 +713,14 @@ describe("s3Database plugin", () => {
       id: "bundle-005",
     });
 
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toContain("production/ios/1.0.0/update.json");
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 1),
+    ]);
   });
 
-  it("serves console-style reads from canonical manifests after updating bundle metadata", async () => {
+  it("serves console-style reads from rebuilt paged indexes after updating bundle metadata", async () => {
     const targetBundle = createBundleJson(
       "beta",
       "ios",
@@ -539,8 +764,11 @@ describe("s3Database plugin", () => {
       },
       siblingBundle,
     ]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
 
     plugin = createPlugin();
 
@@ -554,6 +782,12 @@ describe("s3Database plugin", () => {
       message: "Updated from console",
     });
 
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      getManagementPageKey({}, 0),
+    ]);
+
     plugin = createPlugin();
 
     listedObjectPrefixes = [];
@@ -561,11 +795,11 @@ describe("s3Database plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
   });
 
-  it("serves console-style reads from canonical manifests after deleting bundles", async () => {
+  it("serves console-style reads from rebuilt paged indexes after deleting bundles", async () => {
     const deletedBundle = createBundleJson(
       "staging",
       "ios",
@@ -597,8 +831,11 @@ describe("s3Database plugin", () => {
     });
 
     expect(productionBundles.data).toEqual([survivingBundle]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "production", platform: "ios" }),
+      getManagementPageKey({ channel: "production", platform: "ios" }, 0),
+    ]);
 
     plugin = createPlugin();
 
@@ -607,8 +844,8 @@ describe("s3Database plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
 
     plugin = createPlugin();
 
@@ -621,11 +858,17 @@ describe("s3Database plugin", () => {
     });
 
     expect(removedScopeBundles.data).toEqual([]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys.every((key) => key.endsWith("/root.json"))).toBe(
+      true,
+    );
+    expect(loadedObjectKeys).toContain(
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+    );
+    expect(loadedObjectKeys).toContain(getManagementRootKey({}));
   });
 
-  it("reads canonical manifests when another S3 plugin instance updates bundles", async () => {
+  it("revalidates cached management roots when another S3 plugin instance updates bundles", async () => {
     const targetBundle = createBundleJson(
       "staging",
       "ios",
@@ -672,11 +915,14 @@ describe("s3Database plugin", () => {
       },
       siblingBundle,
     ]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["staging/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({ channel: "staging", platform: "ios" }),
+      getManagementPageKey({ channel: "staging", platform: "ios" }, 0),
+    ]);
   });
 
-  it("reads canonical manifests when another S3 plugin instance changes channels", async () => {
+  it("revalidates cached management roots when another S3 plugin instance changes channels", async () => {
     const stagingBundle = createBundleJson(
       "staging",
       "ios",
@@ -700,8 +946,8 @@ describe("s3Database plugin", () => {
     loadedObjectKeys = [];
 
     await expect(plugin.getChannels()).resolves.toEqual([]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual([]);
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(loadedObjectKeys).toEqual([getManagementRootKey({})]);
   });
 
   it("should append a new bundle and commit to S3", async () => {
@@ -1429,7 +1675,12 @@ describe("s3Database plugin", () => {
     const bundles = await plugin.getBundles({ limit: 20 });
 
     expect(bundles.data).toEqual([activeBundle]);
-    expect(loadedObjectKeys).toEqual([archivedUpdateKey, activeUpdateKey]);
+    expect(loadedObjectKeys).toEqual([
+      getManagementRootKey({}),
+      archivedUpdateKey,
+      activeUpdateKey,
+      getManagementPageKey({}, 0),
+    ]);
   });
 
   it("skips archived app-version manifests during update checks", async () => {
