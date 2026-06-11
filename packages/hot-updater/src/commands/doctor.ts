@@ -788,9 +788,7 @@ export async function doctor(
         details.infrastructure.error !== undefined ||
         details.infrastructure.needsUpdate === true
       ) {
-        details.infrastructure.remediation = createInfrastructureRemediation(
-          details.infrastructure.requirement,
-        );
+        details.infrastructure.remediation = createInfrastructureRemediation();
       }
     }
 
@@ -954,11 +952,9 @@ export const handleDoctor = async ({
     p.log.message(ui.block("Infrastructure", lines));
 
     if (infrastructure.needsUpdate) {
-      const updateLabel =
-        infrastructure.requirement === "server"
-          ? "Server redeploy required"
-          : "Infrastructure update required";
-      p.log.error(`${updateLabel}: ${infrastructure.requiredVersion}+`);
+      p.log.error(
+        `Infrastructure update required: ${infrastructure.requiredVersion}+`,
+      );
       if (infrastructure.updateReason) {
         p.log.info(`Reason: ${infrastructure.updateReason}`);
       }

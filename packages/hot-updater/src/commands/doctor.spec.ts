@@ -166,13 +166,13 @@ describe("infrastructure version helpers", () => {
     expect(getRequiredInfrastructureVersion("0.31.0")).toBe("0.31.0");
     expect(getRequiredInfrastructureVersion("0.31.9")).toBe("0.31.0");
     expect(getRequiredInfrastructureVersion("0.32.0")).toBe("0.32.0");
-    expect(getRequiredInfrastructureVersion("0.32.1")).toBe("0.32.0");
+    expect(getRequiredInfrastructureVersion("0.33.0")).toBe("0.33.0");
   });
 
   it("resolves the latest server runtime target required by a package version", () => {
     expect(getRequiredServerVersion("0.32.0")).toBe("0.32.0");
-    expect(getRequiredServerVersion("0.32.1")).toBe("0.32.1");
-    expect(getRequiredServerVersion("0.32.9")).toBe("0.32.1");
+    expect(getRequiredServerVersion("0.33.0")).toBe("0.33.0");
+    expect(getRequiredServerVersion("0.32.9")).toBe("0.32.0");
   });
 
   it("does not require an update just because the server package version is newer", () => {
@@ -902,11 +902,11 @@ describe("doctor", () => {
     });
   });
 
-  it("should require a server redeploy when the server runtime is below the required target", async () => {
+  it("should require an infrastructure update when the server runtime is below the required target", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "hot-updater": "0.32.1",
+          "hot-updater": "0.33.0",
         },
       },
       path: "/mock/cwd/package.json",
@@ -926,16 +926,19 @@ describe("doctor", () => {
     expect(result).toMatchObject({
       success: false,
       details: {
-        hotUpdaterVersion: "0.32.1",
+        hotUpdaterVersion: "0.33.0",
         infrastructure: {
           serverVersion: "0.32.0",
-          requiredVersion: "0.32.1",
+          requiredVersion: "0.33.0",
           needsUpdate: true,
-          updateReason:
-            "Server redeploy required: provider update checks reuse selected bundles",
+          updateReason: "provider update checks reuse selected bundles",
           remediation: {
             fixability: "blocked",
-            commands: ["redeploy update-check server"],
+            commands: [
+              "hot-updater init",
+              "hot-updater db migrate",
+              "hot-updater db generate",
+            ],
           },
         },
       },

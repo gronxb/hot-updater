@@ -1,7 +1,6 @@
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
-  type InfrastructureRequirement,
   type RequiredUpdateTarget,
 } from "./doctorInfrastructureTargets";
 
@@ -17,7 +16,6 @@ export interface InfrastructureStatus {
   versionEndpoint: string;
   serverVersion?: string;
   requiredVersion: string;
-  requirement?: InfrastructureRequirement;
   needsUpdate?: boolean;
   updateReason?: string;
   error?: string;
@@ -40,8 +38,6 @@ const INFRASTRUCTURE_RECOVERY_COMMANDS = [
   "hot-updater db generate",
 ] as const;
 
-const SERVER_RECOVERY_COMMANDS = ["redeploy update-check server"] as const;
-
 export function resolveVersionEndpoint(serverBaseUrl: string): string {
   const url = new URL(serverBaseUrl.trim());
   const pathname = url.pathname.replace(/\/+$/, "");
@@ -52,25 +48,15 @@ export function resolveVersionEndpoint(serverBaseUrl: string): string {
   return url.toString();
 }
 
-export const createInfrastructureRemediation = (
-  requirement: InfrastructureRequirement = "infrastructure",
-): InfrastructureRemediation => {
-  if (requirement === "server") {
+export const createInfrastructureRemediation =
+  (): InfrastructureRemediation => {
     return {
       fixability: "blocked",
       reason:
-        "Server runtime changes need provider credentials, environment variables, and redeploy access.",
-      commands: [...SERVER_RECOVERY_COMMANDS],
+        "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
+      commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
     };
-  }
-
-  return {
-    fixability: "blocked",
-    reason:
-      "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
-    commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
   };
-};
 
 export async function checkInfrastructureStatus({
   serverBaseUrl,
@@ -98,7 +84,6 @@ export async function checkInfrastructureStatus({
           baseUrl,
           versionEndpoint,
           requiredVersion,
-          requirement: "infrastructure",
           needsUpdate: true,
           updateReason: "Version endpoint not found",
         };
@@ -132,12 +117,8 @@ export async function checkInfrastructureStatus({
       versionEndpoint,
       serverVersion: data.version,
       requiredVersion,
-      requirement: needsUpdate ? requiredTarget.kind : undefined,
       needsUpdate,
-      updateReason:
-        needsUpdate && requiredTarget.kind === "server"
-          ? `Server redeploy required: ${requiredTarget.note}`
-          : undefined,
+      updateReason: needsUpdate ? requiredTarget.note : undefined,
     };
   } catch (error) {
     return {
