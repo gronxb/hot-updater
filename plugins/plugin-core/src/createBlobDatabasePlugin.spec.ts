@@ -1105,7 +1105,7 @@ describe("blobDatabase plugin", () => {
       },
       siblingBundle,
     ]);
-    expect(listObjectCalls).toEqual([""]);
+    expect(listObjectCalls).toEqual(["production/ios/"]);
     expect(loadObjectCalls).toEqual(["production/ios/1.0.0/update.json"]);
 
     plugin = createPlugin();
@@ -1161,7 +1161,7 @@ describe("blobDatabase plugin", () => {
     });
 
     expect(productionBundles.data).toEqual([survivingBundle]);
-    expect(listObjectCalls).toEqual([""]);
+    expect(listObjectCalls).toEqual(["production/ios/"]);
     expect(loadObjectCalls).toEqual(["production/ios/1.0.0/update.json"]);
 
     plugin = createPlugin();

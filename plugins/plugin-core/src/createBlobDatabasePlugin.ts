@@ -9,6 +9,7 @@ import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   AppVersionGetBundlesArgs,
   Bundle,
+  DatabaseBundleQueryWhere,
   DatabaseBundleQueryOrder,
   DatabasePluginHooks,
   FingerprintGetBundlesArgs,
@@ -177,6 +178,20 @@ function addTargetVersionScope(
   scopes.set(targetVersionScopeKey(scope), scope);
 }
 
+function getManagementListPrefixes(
+  where: DatabaseBundleQueryWhere | undefined,
+): string[] {
+  if (where?.channel && where.platform) {
+    return [`${where.channel}/${where.platform}/`];
+  }
+
+  if (where?.channel) {
+    return [`${where.channel}/`];
+  }
+
+  return [""];
+}
+
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
 function sortManagedBundles(
@@ -236,21 +251,31 @@ export const createBlobDatabasePlugin = <TConfig>({
       }
     };
 
-    const loadAllBundlesForManagementFallback = async (): Promise<Bundle[]> => {
+    const loadAllBundlesForManagementFallback = async (
+      where?: DatabaseBundleQueryWhere,
+    ): Promise<Bundle[]> => {
       return sortManagedBundles(
-        (await reloadBundles()).map((bundle) =>
+        (await reloadBundles(getManagementListPrefixes(where))).map((bundle) =>
           removeBundleInternalKeys(bundle),
         ),
       );
     };
 
     // Reload all bundle data from S3.
-    async function reloadBundles() {
+    async function reloadBundles(prefixes: readonly string[] = [""]) {
       bundlesMap.clear();
 
-      const updateJsonKeys = (await listObjects("")).filter((key) =>
-        /^[^/]+\/(?:ios|android)\/[^/]+\/update\.json$/.test(key),
-      );
+      const updateJsonKeys = (
+        await mapWithConcurrency(
+          prefixes,
+          STORAGE_OPERATION_CONCURRENCY,
+          (prefix) => listObjects(prefix),
+        )
+      )
+        .flat()
+        .filter((key) =>
+          /^[^/]+\/(?:ios|android)\/[^/]+\/update\.json$/.test(key),
+        );
       const allBundles = (
         await mapWithConcurrency(
           updateJsonKeys,
@@ -486,7 +511,7 @@ export const createBlobDatabasePlugin = <TConfig>({
 
         async getBundles(options) {
           const { where, limit, offset, orderBy, cursor } = options;
-          let allBundles = await loadAllBundlesForManagementFallback();
+          let allBundles = await loadAllBundlesForManagementFallback(where);
           if (where) {
             allBundles = allBundles.filter((bundle) =>
               bundleMatchesQueryWhere(bundle, where),

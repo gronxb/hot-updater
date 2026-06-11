@@ -593,7 +593,7 @@ describe("s3Database plugin", () => {
       },
       siblingBundle,
     ]);
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toEqual(["production/ios/"]);
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
 
     plugin = createPlugin();
@@ -651,7 +651,7 @@ describe("s3Database plugin", () => {
     });
 
     expect(productionBundles.data).toEqual([survivingBundle]);
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toEqual(["production/ios/"]);
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
 
     plugin = createPlugin();
@@ -675,8 +675,8 @@ describe("s3Database plugin", () => {
     });
 
     expect(removedScopeBundles.data).toEqual([]);
-    expect(listedObjectPrefixes).toEqual([""]);
-    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+    expect(listedObjectPrefixes).toEqual(["staging/ios/"]);
+    expect(loadedObjectKeys).toEqual([]);
   });
 
   it("reads canonical manifests when another S3 plugin instance updates bundles", async () => {
@@ -726,7 +726,7 @@ describe("s3Database plugin", () => {
       },
       siblingBundle,
     ]);
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toEqual(["staging/ios/"]);
     expect(loadedObjectKeys).toEqual(["staging/ios/1.0.0/update.json"]);
   });
 
