@@ -1,5 +1,13 @@
 # @hot-updater/standalone
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies [e914f56]
+  - @hot-updater/plugin-core@0.33.0
+  - @hot-updater/core@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes

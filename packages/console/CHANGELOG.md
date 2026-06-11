@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 0.33.0
+
+### Patch Changes
+
+- 2b9944a: Add batch bundle deletion to the console bundle table and keep table scrolling within the table area.
+- Updated dependencies [e914f56]
+  - @hot-updater/server@0.33.0
+  - @hot-updater/bsdiff@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes

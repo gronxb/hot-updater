@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.33.0
+
+### Patch Changes
+
+- e914f56: Avoid redundant provider bundle reads during update checks and teach doctor to flag server runtime redeploy requirements.
+  - @hot-updater/core@0.33.0
+  - @hot-updater/js@0.33.0
+
 ## 0.32.0
 
 ### Minor Changes

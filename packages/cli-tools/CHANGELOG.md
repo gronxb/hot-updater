@@ -1,5 +1,14 @@
 # @hot-updater/cli-tools
 
+## 0.33.0
+
+### Patch Changes
+
+- 070a86f: Fix copied bundle promotion to upload Brotli Hermes bundle assets expected by manifest-driven update checks.
+- Updated dependencies [e914f56]
+  - @hot-updater/plugin-core@0.33.0
+  - @hot-updater/core@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
