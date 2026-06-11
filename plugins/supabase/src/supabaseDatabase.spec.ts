@@ -528,14 +528,16 @@ describe("supabaseDatabase plugin", () => {
     await plugin.appendBundle(targetBundle);
     await plugin.commitBundle();
 
-    const updateInfo = await plugin.getUpdateInfo?.({
+    const args: GetBundlesArgs = {
       _updateStrategy: "fingerprint",
       bundleId: currentBundle.id,
       channel: "production",
       fingerprintHash: "fingerprint-hash",
       minBundleId: "00000000-0000-0000-0000-000000000000",
       platform: "ios",
-    });
+    };
+
+    const updateInfo = await plugin.getUpdateInfo?.(args);
 
     expect(updateInfo).toEqual({
       fileHash: "target-file-hash",
@@ -545,13 +547,12 @@ describe("supabaseDatabase plugin", () => {
       status: "UPDATE",
       storageUri: "storage://app/target.zip",
     });
-    expect(Object.getOwnPropertyNames(updateInfo ?? {})).toEqual(
-      expect.arrayContaining([
-        "__hotUpdaterBundle",
-        "__hotUpdaterCurrentBundle",
-      ]),
+    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
+      "__hotUpdaterBundle",
     );
-    expect(Object.keys(updateInfo ?? {})).not.toContain("__hotUpdaterBundle");
+    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
+      "__hotUpdaterCurrentBundle",
+    );
     expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdater");
   });
 });

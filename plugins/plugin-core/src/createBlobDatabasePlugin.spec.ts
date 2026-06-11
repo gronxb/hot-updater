@@ -347,10 +347,10 @@ describe("blobDatabase plugin", () => {
     if (!updateInfo) {
       throw new Error("expected update info");
     }
-    expect(Object.getOwnPropertyNames(updateInfo)).toContain(
+    expect(Object.getOwnPropertyNames(updateInfo)).not.toContain(
       "__hotUpdaterBundle",
     );
-    expect(Object.getOwnPropertyNames(updateInfo)).toContain(
+    expect(Object.getOwnPropertyNames(updateInfo)).not.toContain(
       "__hotUpdaterCurrentBundle",
     );
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");

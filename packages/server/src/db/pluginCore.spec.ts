@@ -33,22 +33,6 @@ type TestContext = RequestEnvContext<{
   assetHost: string;
 }>;
 
-const attachBundleForTest = (
-  info: UpdateInfo,
-  bundle: Bundle,
-  currentBundle: Bundle | null,
-): UpdateInfo => {
-  Object.defineProperty(info, "__hotUpdaterBundle", {
-    enumerable: false,
-    value: bundle,
-  });
-  Object.defineProperty(info, "__hotUpdaterCurrentBundle", {
-    enumerable: false,
-    value: currentBundle,
-  });
-  return info;
-};
-
 describe("createPluginDatabaseCore", () => {
   it("prefers plugin getUpdateInfo fast-path when provided", async () => {
     const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>();
@@ -211,7 +195,7 @@ describe("createPluginDatabaseCore", () => {
     });
   });
 
-  it("uses attached update bundles for manifest artifacts without bundle lookups", async () => {
+  it("uses request bundle identity map for manifest artifact lookups", async () => {
     const currentBundle = {
       ...baseBundle,
       id: "00000000-0000-0000-0000-000000000001",
@@ -259,28 +243,24 @@ describe("createPluginDatabaseCore", () => {
     ]);
     const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
       async (bundleId) => {
-        throw new Error(`unexpected bundle lookup: ${bundleId}`);
+        if (bundleId === currentBundle.id) return currentBundle;
+        if (bundleId === targetBundle.id) return targetBundle;
+        return null;
       },
     );
     const getUpdateInfo = vi.fn<
       NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
-    >(async () =>
-      attachBundleForTest(
-        {
-          fileHash: targetBundle.fileHash,
-          id: targetBundle.id,
-          message: targetBundle.message,
-          shouldForceUpdate: targetBundle.shouldForceUpdate,
-          status: "UPDATE",
-          storageUri: targetBundle.storageUri,
-        },
-        targetBundle,
-        currentBundle,
-      ),
-    );
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
 
     const plugin: DatabasePlugin<TestContext> = {
-      name: "attached-bundle-plugin",
+      name: "identity-map-plugin",
       async appendBundle() {},
       async commitBundle() {},
       async deleteBundle() {},
@@ -340,7 +320,10 @@ describe("createPluginDatabaseCore", () => {
       manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
     });
     expect(updateInfo.changedAssets).not.toHaveProperty("shared.png");
-    expect(getBundleById).not.toHaveBeenCalled();
+    expect(getUpdateInfo).toHaveBeenCalledOnce();
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
+    expect(getBundleById).toHaveBeenCalledWith(currentBundle.id, undefined);
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterCurrentBundle");
     expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");

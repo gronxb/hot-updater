@@ -1,9 +1,5 @@
 import { NIL_UUID, type UpdateInfo } from "@hot-updater/core";
-import type {
-  Bundle,
-  GetBundlesArgs,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { GetBundlesArgs, Platform } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
@@ -36,11 +32,6 @@ type SupabaseUpdateInfoRow = {
 
 type SupabaseTargetAppVersionRow = {
   target_app_version: string | null;
-};
-
-type UpdateInfoWithAttachedBundle = UpdateInfo & {
-  readonly __hotUpdaterCurrentBundle?: Bundle | null;
-  readonly __hotUpdaterBundle?: Bundle;
 };
 
 const createSupabaseError = (error: unknown) => {
@@ -82,33 +73,6 @@ const mapUpdateInfoRow = (row: SupabaseUpdateInfoRow): UpdateInfo => ({
   fileHash: row.file_hash,
 });
 
-const attachBundleProperty = (
-  info: UpdateInfoWithAttachedBundle,
-  propertyName: "__hotUpdaterBundle" | "__hotUpdaterCurrentBundle",
-  bundle: Bundle | null,
-) => {
-  Object.defineProperty(info, propertyName, {
-    configurable: true,
-    enumerable: false,
-    value: bundle,
-  });
-};
-
-const attachBundlesToUpdateInfo = ({
-  currentBundle,
-  info,
-  targetBundle,
-}: {
-  readonly currentBundle: Bundle | null;
-  readonly info: UpdateInfo;
-  readonly targetBundle: Bundle;
-}): UpdateInfo => {
-  const updateInfo: UpdateInfoWithAttachedBundle = info;
-  attachBundleProperty(updateInfo, "__hotUpdaterBundle", targetBundle);
-  attachBundleProperty(updateInfo, "__hotUpdaterCurrentBundle", currentBundle);
-  return updateInfo;
-};
-
 export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
   name: "supabaseDatabase",
   factory: (config) => {
@@ -140,58 +104,6 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
       }
 
       return patchMap;
-    };
-
-    const fetchBundlesByIds = async (bundleIds: readonly string[]) => {
-      const uniqueBundleIds = Array.from(
-        new Set(bundleIds.filter((bundleId) => bundleId !== NIL_UUID)),
-      );
-      const bundles = new Map<string, Bundle>();
-
-      if (uniqueBundleIds.length === 0) {
-        return bundles;
-      }
-
-      const [{ data, error }, patchMap] = await Promise.all([
-        supabase
-          .from("bundles")
-          .select(BUNDLE_SELECT_COLUMNS)
-          .in("id", uniqueBundleIds),
-        fetchPatchMap(uniqueBundleIds),
-      ]);
-
-      if (error) {
-        throw createSupabaseError(error);
-      }
-
-      for (const row of data ?? []) {
-        bundles.set(row.id, mapRowToBundle(row, patchMap.get(row.id) ?? []));
-      }
-
-      return bundles;
-    };
-
-    const attachMatchingBundles = async (
-      updateInfoRow: SupabaseUpdateInfoRow | null,
-      currentBundleId: string,
-    ) => {
-      if (!updateInfoRow) {
-        return null;
-      }
-
-      const info = mapUpdateInfoRow(updateInfoRow);
-      const bundles = await fetchBundlesByIds([info.id, currentBundleId]);
-      const targetBundle = bundles.get(info.id);
-
-      if (!targetBundle) {
-        return info;
-      }
-
-      return attachBundlesToUpdateInfo({
-        currentBundle: bundles.get(currentBundleId) ?? null,
-        info,
-        targetBundle,
-      });
     };
 
     return {
@@ -236,7 +148,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
           const updateInfo = (data?.[0] ??
             null) as SupabaseUpdateInfoRow | null;
-          return attachMatchingBundles(updateInfo, args.bundleId);
+          return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
         }
 
         const { data, error } = await supabase.rpc(
@@ -256,7 +168,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
         }
 
         const updateInfo = (data?.[0] ?? null) as SupabaseUpdateInfoRow | null;
-        return attachMatchingBundles(updateInfo, args.bundleId);
+        return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
       },
 
       async getBundleById(bundleId) {

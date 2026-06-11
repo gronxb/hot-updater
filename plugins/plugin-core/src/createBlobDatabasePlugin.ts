@@ -5,7 +5,6 @@ import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
-import { attachMatchingBundlesToUpdateInfo } from "./internalUpdateInfoBundle";
 import { paginateBundles } from "./paginateBundles";
 import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
 import type {
@@ -1202,7 +1201,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
-      return attachMatchingBundlesToUpdateInfo(info, bundles, bundleId);
+      return info;
     };
 
     const getFingerprintUpdateInfo = async ({
@@ -1227,7 +1226,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
-      return attachMatchingBundlesToUpdateInfo(info, bundles, bundleId);
+      return info;
     };
 
     const addAppVersionInvalidationPaths = (
