@@ -26,13 +26,15 @@ The CLI always infers the PR number from the current git branch with
 Use `hot-updater-agent` as the E2E verification control loop for AI:
 
 1. Run `verify` for the common queue-wait-reason flow.
-2. Use `e2e`, `status`, `wait`, and `reason` separately when the task id needs
-   to be handled step by step.
+2. Use `e2e`, `status`, `wait`, `reason`, and `timeline` separately when the
+   task id needs to be handled step by step.
 3. Print the failure reason by task id.
-4. Diagnose the likely repo cause.
-5. Patch this repo.
-6. Re-run the same queued E2E command.
-7. Repeat until the dashboard job succeeds or the blocker is outside repo code.
+4. Pull the timeline when provider or stage bottlenecks may explain the failure
+   or runtime regression.
+5. Diagnose the likely repo cause.
+6. Patch this repo.
+7. Re-run the same queued E2E command.
+8. Repeat until the dashboard job succeeds or the blocker is outside repo code.
 
 The agent should keep iterating autonomously when the user asks for E2E
 verification or an E2E fix loop. Stop only when the task is green, the failure is
@@ -91,6 +93,18 @@ Read the raw log tail for a task id:
 hot-updater-agent log <task-id> -tail 240
 ```
 
+Print the trace timeline and provider bottlenecks for a task id:
+
+```bash
+hot-updater-agent timeline <task-id> -limit 10
+```
+
+Get the timeline in machine-readable form for AI context:
+
+```bash
+hot-updater-agent -json timeline <task-id> -limit 10
+```
+
 ## Queue E2E
 
 Default full-platform dashboard run for PR `911`:
@@ -147,6 +161,18 @@ Print a failure summary for a completed failed task:
 hot-updater-agent reason <task-id> -tail 240
 ```
 
+Print provider-level bottlenecks and the slowest trace spans:
+
+```bash
+hot-updater-agent timeline <task-id> -limit 10
+```
+
+Use `timeline` whenever the AI needs to understand where time is being spent
+across providers, platforms, scenarios, and stages. The human-readable output
+groups `Provider bottlenecks` and `Global bottlenecks`; the `-json` form exposes
+`traceSpans`, `bottlenecks`, and `providerBottlenecks` for direct model context.
+Prefer `-json timeline` when feeding the result into another AI diagnosis step.
+
 For running jobs, `wait` polls until terminal status. For already failed jobs,
 `wait` immediately prints the failure summary and exits non-zero. `reason` is
 the explicit diagnostic command: it prints the failure summary for a terminal
@@ -162,6 +188,11 @@ failed task and exits successfully so the AI can read and act on the output.
   must use that exact id.
 - Treat the failure summary as triage. Open referenced source files and logs
   before patching.
+- Use `timeline <task-id>` before provider-specific performance or flake
+  diagnosis. Compare `providerBottlenecks[*].totalMs`,
+  `providerBottlenecks[*].slowestStage`, and global `bottlenecks` to decide
+  whether the likely issue is setup, deploy, service boot, app reload, or E2E
+  command execution.
 - Keep patches small and focused on the observed failure.
 - Re-run the exact same E2E command after each plausible fix.
 - If logs show an infrastructure/device issue such as simulator driver
@@ -176,6 +207,7 @@ Use this pattern when asked to fix E2E through the dashboard:
 ```bash
 hot-updater-agent status -limit 3
 hot-updater-agent verify -platform full -profile standalone-s3 -env-target examples/v0.85.0/.env.hotupdater -tail 240
+hot-updater-agent -json timeline <task-id> -limit 10
 ```
 
 Then patch the repo, run the smallest relevant local check, and repeat `verify`
