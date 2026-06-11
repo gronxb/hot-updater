@@ -49,10 +49,6 @@ export const attachMatchingBundlesToUpdateInfo = (
     info,
     targetBundle,
   });
-  attachBundleProperty(
-    updateInfo,
-    "__hotUpdaterCurrentBundle",
-    currentBundle,
-  );
+  attachBundleProperty(updateInfo, "__hotUpdaterCurrentBundle", currentBundle);
   return updateInfo;
 };

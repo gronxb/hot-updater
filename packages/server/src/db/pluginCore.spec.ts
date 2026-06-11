@@ -257,11 +257,11 @@ describe("createPluginDatabaseCore", () => {
         }),
       ],
     ]);
-    const getBundleById = vi.fn<
-      DatabasePlugin<TestContext>["getBundleById"]
-    >(async (bundleId) => {
-      throw new Error(`unexpected bundle lookup: ${bundleId}`);
-    });
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async (bundleId) => {
+        throw new Error(`unexpected bundle lookup: ${bundleId}`);
+      },
+    );
     const getUpdateInfo = vi.fn<
       NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
     >(async () =>
@@ -342,9 +342,7 @@ describe("createPluginDatabaseCore", () => {
     expect(updateInfo.changedAssets).not.toHaveProperty("shared.png");
     expect(getBundleById).not.toHaveBeenCalled();
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
-    expect(Object.keys(updateInfo)).not.toContain(
-      "__hotUpdaterCurrentBundle",
-    );
+    expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterCurrentBundle");
     expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");
     expect(JSON.stringify(updateInfo)).not.toContain(
       "__hotUpdaterCurrentBundle",

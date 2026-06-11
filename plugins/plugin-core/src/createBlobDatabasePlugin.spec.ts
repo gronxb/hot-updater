@@ -354,9 +354,7 @@ describe("blobDatabase plugin", () => {
       "__hotUpdaterCurrentBundle",
     );
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
-    expect(Object.keys(updateInfo)).not.toContain(
-      "__hotUpdaterCurrentBundle",
-    );
+    expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterCurrentBundle");
     expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");
     expect(JSON.stringify(updateInfo)).not.toContain(
       "__hotUpdaterCurrentBundle",

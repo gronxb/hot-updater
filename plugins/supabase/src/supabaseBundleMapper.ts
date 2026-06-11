@@ -105,9 +105,7 @@ export const bundleToRow = (bundle: Bundle): SupabaseBundleRow => ({
   target_cohorts: bundle.targetCohorts ?? null,
 });
 
-export const bundleToPatchRows = (
-  bundle: Bundle,
-): SupabaseBundlePatchRow[] =>
+export const bundleToPatchRows = (bundle: Bundle): SupabaseBundlePatchRow[] =>
   getBundlePatches(bundle).map((patch, index) => ({
     id: buildBundlePatchId(bundle.id, patch.baseBundleId),
     bundle_id: bundle.id,

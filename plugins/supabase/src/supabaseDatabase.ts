@@ -12,15 +12,15 @@ import {
 import { createClient } from "@supabase/supabase-js";
 
 import {
-  resolveSupabaseServiceRoleKey,
-  type SupabaseServiceRoleConfig,
-} from "./supabaseConfig";
-import {
   BUNDLE_SELECT_COLUMNS,
   bundleToPatchRows,
   bundleToRow,
   mapRowToBundle,
 } from "./supabaseBundleMapper";
+import {
+  resolveSupabaseServiceRoleKey,
+  type SupabaseServiceRoleConfig,
+} from "./supabaseConfig";
 import type { SupabaseBundlePatchRow } from "./types";
 
 export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
@@ -105,11 +105,7 @@ const attachBundlesToUpdateInfo = ({
 }): UpdateInfo => {
   const updateInfo: UpdateInfoWithAttachedBundle = info;
   attachBundleProperty(updateInfo, "__hotUpdaterBundle", targetBundle);
-  attachBundleProperty(
-    updateInfo,
-    "__hotUpdaterCurrentBundle",
-    currentBundle,
-  );
+  attachBundleProperty(updateInfo, "__hotUpdaterCurrentBundle", currentBundle);
   return updateInfo;
 };
 
