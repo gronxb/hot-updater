@@ -44,6 +44,7 @@ export interface S3DatabaseConfig extends S3ClientConfig {
 
 const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
+const S3_DIRECTORY_DELIMITER = "/";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -105,6 +106,46 @@ function createDatabaseKeyBuilder(basePath?: string) {
   return { fromStorageKey, toStorageKey };
 }
 
+function normalizeDirectoryPrefix(prefix: string) {
+  if (!prefix) {
+    return "";
+  }
+
+  return prefix.endsWith(S3_DIRECTORY_DELIMITER)
+    ? prefix
+    : `${prefix}${S3_DIRECTORY_DELIMITER}`;
+}
+
+function getRelativeDirectoryPrefix(prefix: string, rootPrefix: string) {
+  if (!rootPrefix) {
+    return prefix;
+  }
+
+  return prefix.startsWith(rootPrefix)
+    ? prefix.slice(rootPrefix.length)
+    : prefix;
+}
+
+function getDirectoryDepth(prefix: string, rootPrefix: string) {
+  return getRelativeDirectoryPrefix(prefix, rootPrefix)
+    .split(S3_DIRECTORY_DELIMITER)
+    .filter(Boolean).length;
+}
+
+function getLastDirectorySegment(prefix: string) {
+  const segments = prefix.split(S3_DIRECTORY_DELIMITER).filter(Boolean);
+  return segments.at(-1);
+}
+
+function isPlatformDirectoryPrefix(prefix: string) {
+  const lastSegment = getLastDirectorySegment(prefix);
+  return lastSegment === "ios" || lastSegment === "android";
+}
+
+function isUpdateJsonKey(key: string) {
+  return key.endsWith(`${S3_DIRECTORY_DELIMITER}update.json`);
+}
+
 /**
  * Loads JSON data from S3.
  * Returns null if NoSuchKey error occurs.
@@ -156,25 +197,69 @@ async function listObjectsInS3(
   client: S3Client,
   bucketName: string,
   prefix: string,
+  rootPrefix = "",
 ) {
-  let continuationToken: string | undefined;
-  const keys: string[] = [];
+  const normalizedRootPrefix = normalizeDirectoryPrefix(rootPrefix);
 
-  do {
-    const response = await client.send(
-      new ListObjectsV2Command({
-        Bucket: bucketName,
-        Prefix: prefix,
-        ContinuationToken: continuationToken,
-      }),
+  const listPrefix = async (currentPrefix: string) => {
+    let continuationToken: string | undefined;
+    const keys: string[] = [];
+    const commonPrefixes = new Set<string>();
+
+    do {
+      const response = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucketName,
+          Prefix: currentPrefix,
+          Delimiter: S3_DIRECTORY_DELIMITER,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      const found = (response.Contents ?? [])
+        .map((item) => item.Key)
+        .filter((key): key is string => !!key);
+      keys.push(...found);
+
+      for (const commonPrefix of response.CommonPrefixes ?? []) {
+        if (commonPrefix.Prefix) {
+          commonPrefixes.add(commonPrefix.Prefix);
+        }
+      }
+
+      continuationToken = response.NextContinuationToken;
+    } while (continuationToken);
+
+    return {
+      commonPrefixes: Array.from(commonPrefixes),
+      keys,
+    };
+  };
+
+  const collectUpdateJsonKeys = async (
+    currentPrefix: string,
+  ): Promise<string[]> => {
+    const { commonPrefixes, keys } = await listPrefix(currentPrefix);
+    const depth = getDirectoryDepth(currentPrefix, normalizedRootPrefix);
+
+    if (depth >= 2) {
+      return [
+        ...keys.filter(isUpdateJsonKey),
+        ...commonPrefixes.map((commonPrefix) => `${commonPrefix}update.json`),
+      ];
+    }
+
+    const nextPrefixes =
+      depth === 1
+        ? commonPrefixes.filter(isPlatformDirectoryPrefix)
+        : commonPrefixes;
+    const nestedKeys = await Promise.all(
+      nextPrefixes.map((nextPrefix) => collectUpdateJsonKeys(nextPrefix)),
     );
-    const found = (response.Contents ?? [])
-      .map((item) => item.Key)
-      .filter((key): key is string => !!key);
-    keys.push(...found);
-    continuationToken = response.NextContinuationToken;
-  } while (continuationToken);
-  return keys;
+    return nestedKeys.flat();
+  };
+
+  const normalizedPrefix = normalizeDirectoryPrefix(prefix);
+  return Array.from(new Set(await collectUpdateJsonKeys(normalizedPrefix)));
 }
 
 async function deleteObjectInS3(
@@ -288,6 +373,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
 
     const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
     const { fromStorageKey, toStorageKey } = createDatabaseKeyBuilder(basePath);
+    const rootPrefix = toStorageKey("");
     const cloudfrontClient = cloudfrontDistributionId
       ? new CloudFrontClient({
           credentials: s3Config.credentials,
@@ -298,9 +384,12 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
     return {
       apiBasePath,
       listObjects: (prefix: string) =>
-        listObjectsInS3(client, bucketName, toStorageKey(prefix)).then((keys) =>
-          keys.map(fromStorageKey),
-        ),
+        listObjectsInS3(
+          client,
+          bucketName,
+          toStorageKey(prefix),
+          rootPrefix,
+        ).then((keys) => keys.map(fromStorageKey)),
       loadObject: (key: string) =>
         loadJsonFromS3(client, bucketName, toStorageKey(key)),
       uploadObject: (key: string, data) =>

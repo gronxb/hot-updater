@@ -72,6 +72,10 @@ let cloudfrontInvalidationCounter = 0;
 let nextCloudfrontInvalidationStatuses: string[] | null = null;
 let cloudfrontInvalidationStatuses = new Map<string, string[]>();
 let listedObjectPrefixes: string[] = [];
+let listedObjectRequests: {
+  readonly delimiter?: string;
+  readonly prefix: string;
+}[] = [];
 let loadedObjectKeys: string[] = [];
 let archivedObjectKeys = new Map<string, string>();
 let putObjectKeys: string[] = [];
@@ -169,6 +173,7 @@ beforeEach(() => {
   nextCloudfrontInvalidationStatuses = null;
   cloudfrontInvalidationStatuses = new Map();
   listedObjectPrefixes = [];
+  listedObjectRequests = [];
   loadedObjectKeys = [];
   archivedObjectKeys = new Map();
   putObjectKeys = [];
@@ -177,10 +182,42 @@ beforeEach(() => {
       await delay(5);
       if (command instanceof ListObjectsV2Command) {
         const prefix = command.input.Prefix ?? "";
+        const delimiter = command.input.Delimiter;
         listedObjectPrefixes.push(prefix);
+        listedObjectRequests.push(
+          typeof delimiter === "string" ? { delimiter, prefix } : { prefix },
+        );
         const keys = Object.keys(fakeStore).filter((key) =>
           key.startsWith(prefix),
         );
+
+        if (typeof delimiter === "string") {
+          const directKeys: string[] = [];
+          const commonPrefixes = new Set<string>();
+
+          for (const key of keys) {
+            const rest = key.slice(prefix.length);
+            const delimiterIndex = rest.indexOf(delimiter);
+
+            if (delimiterIndex === -1) {
+              directKeys.push(key);
+              continue;
+            }
+
+            commonPrefixes.add(
+              `${prefix}${rest.slice(0, delimiterIndex + delimiter.length)}`,
+            );
+          }
+
+          return {
+            CommonPrefixes: Array.from(commonPrefixes).map((Prefix) => ({
+              Prefix,
+            })),
+            Contents: directKeys.map((Key) => ({ Key })),
+            NextContinuationToken: undefined,
+          };
+        }
+
         return {
           Contents: keys.map((key) => ({ Key: key })),
           NextContinuationToken: undefined,
@@ -340,6 +377,7 @@ describe("s3Database plugin", () => {
   beforeEach(() => {
     fakeStore = {};
     listedObjectPrefixes = [];
+    listedObjectRequests = [];
     loadedObjectKeys = [];
     putObjectKeys = [];
     plugin = createPlugin();
@@ -446,7 +484,48 @@ describe("s3Database plugin", () => {
       missingBundle.id,
       indexedBundle.id,
     ]);
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
+    expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+  });
+
+  it("lists canonical manifests with S3 delimiters instead of broad object scans", async () => {
+    const bundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "delimiter-scan-bundle",
+    );
+
+    seedUpdateManifests([bundle]);
+    fakeStore["production/ios/1.0.0/assets/main.js"] = "asset";
+    fakeStore["production/ios/1.0.0/assets/nested/logo.png"] = "asset";
+    fakeStore["uploads/delimiter-scan-bundle/bundle.zip"] = "zip";
+
+    plugin = createPlugin();
+    listedObjectPrefixes = [];
+    listedObjectRequests = [];
+    loadedObjectKeys = [];
+
+    await expect(plugin.getBundleById(bundle.id)).resolves.toStrictEqual(
+      bundle,
+    );
+
+    expect(listedObjectRequests).toContainEqual({
+      delimiter: "/",
+      prefix: "",
+    });
+    expect(listedObjectRequests).toContainEqual({
+      delimiter: "/",
+      prefix: "production/",
+    });
+    expect(listedObjectRequests).toContainEqual({
+      delimiter: "/",
+      prefix: "production/ios/",
+    });
+    expect(listedObjectRequests).not.toContainEqual({
+      delimiter: "/",
+      prefix: "production/ios/1.0.0/assets/",
+    });
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
   });
 
@@ -507,8 +586,9 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(listedObjectPrefixes).toEqual([]);
-    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
-      .toStrictEqual(["1.0.0"]);
+    expect(
+      JSON.parse(fakeStore["production/ios/target-app-versions.json"]),
+    ).toStrictEqual(["1.0.0"]);
   });
 
   it("updates target app versions for both channels when an app-version bundle moves channels", async () => {
@@ -533,10 +613,12 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(listedObjectPrefixes).toEqual([]);
-    expect(JSON.parse(fakeStore["beta/ios/target-app-versions.json"]))
-      .toStrictEqual([]);
-    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
-      .toStrictEqual(["1.0.0"]);
+    expect(
+      JSON.parse(fakeStore["beta/ios/target-app-versions.json"]),
+    ).toStrictEqual([]);
+    expect(
+      JSON.parse(fakeStore["production/ios/target-app-versions.json"]),
+    ).toStrictEqual(["1.0.0"]);
   });
 
   it("removes target app versions without listing S3 during commit", async () => {
@@ -561,8 +643,9 @@ describe("s3Database plugin", () => {
     await plugin.commitBundle();
 
     expect(listedObjectPrefixes).toEqual([]);
-    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
-      .toStrictEqual([]);
+    expect(
+      JSON.parse(fakeStore["production/ios/target-app-versions.json"]),
+    ).toStrictEqual([]);
   });
 
   it("reads channels from canonical manifests", async () => {
@@ -580,7 +663,7 @@ describe("s3Database plugin", () => {
       "staging",
     ]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
     expect(loadedObjectKeys.slice().sort()).toEqual(
       [
         "production/ios/1.0.0/update.json",
@@ -601,7 +684,7 @@ describe("s3Database plugin", () => {
       id: "bundle-005",
     });
 
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
     expect(loadedObjectKeys).toContain("production/ios/1.0.0/update.json");
   });
 
@@ -671,7 +754,7 @@ describe("s3Database plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
   });
 
@@ -717,7 +800,7 @@ describe("s3Database plugin", () => {
 
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
 
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
 
     plugin = createPlugin();
@@ -810,7 +893,7 @@ describe("s3Database plugin", () => {
     loadedObjectKeys = [];
 
     await expect(plugin.getChannels()).resolves.toEqual([]);
-    expect(listedObjectPrefixes).toEqual([""]);
+    expect(listedObjectPrefixes).toContain("");
     expect(loadedObjectKeys).toEqual([]);
   });
 
