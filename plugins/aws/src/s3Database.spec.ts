@@ -455,6 +455,60 @@ describe("s3Database plugin", () => {
     ).toEqual([]);
   });
 
+  it("updates target app versions by listing only the affected S3 prefix", async () => {
+    fakeStore["staging/android/2.0.0/update.json"] = JSON.stringify([
+      createBundleJson("staging", "android", "2.0.0", "unrelated-android"),
+    ]);
+    fakeStore["production/android/9.0.0/update.json"] = JSON.stringify([
+      createBundleJson("production", "android", "9.0.0", "unrelated-platform"),
+    ]);
+
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "scoped-target-version-insert",
+    );
+
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    expect(listedObjectPrefixes).toEqual(["production/ios/"]);
+    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
+      .toStrictEqual(["1.0.0"]);
+  });
+
+  it("updates target app versions for both channels when an app-version bundle moves channels", async () => {
+    const movedBundle = createBundleJson(
+      "beta",
+      "ios",
+      "1.0.0",
+      "scoped-target-version-move",
+    );
+    fakeStore["beta/ios/1.0.0/update.json"] = JSON.stringify([movedBundle]);
+    fakeStore["beta/ios/target-app-versions.json"] = JSON.stringify(["1.0.0"]);
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([]);
+    fakeStore["staging/ios/9.9.9/update.json"] = JSON.stringify([
+      createBundleJson("staging", "ios", "9.9.9", "unrelated-channel"),
+    ]);
+
+    await plugin.getBundles({ limit: 20 });
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await plugin.updateBundle(movedBundle.id, { channel: "production" });
+    await plugin.commitBundle();
+
+    expect(listedObjectPrefixes).toEqual(["beta/ios/", "production/ios/"]);
+    expect(JSON.parse(fakeStore["beta/ios/target-app-versions.json"]))
+      .toStrictEqual([]);
+    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
+      .toStrictEqual(["1.0.0"]);
+  });
+
   it("reads channels from canonical manifests", async () => {
     seedUpdateManifests([
       createBundleJson("production", "ios", "1.0.0", "production-ios-100"),

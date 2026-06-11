@@ -22,6 +22,11 @@ interface BundleWithUpdateJsonKey extends Bundle {
   _oldUpdateJsonKey?: string;
 }
 
+type TargetVersionScope = {
+  readonly channel: string;
+  readonly platform: string;
+};
+
 const STORAGE_OPERATION_CONCURRENCY = 8;
 
 async function mapWithConcurrency<T, TResult>(
@@ -156,6 +161,22 @@ function resolveStorageTarget({
   return target;
 }
 
+function targetVersionScopeKey(scope: TargetVersionScope): string {
+  return `${scope.channel}/${scope.platform}`;
+}
+
+function addTargetVersionScope(
+  scopes: Map<string, TargetVersionScope>,
+  bundle: Pick<Bundle, "channel" | "platform" | "targetAppVersion">,
+): void {
+  if (bundle.targetAppVersion == null) {
+    return;
+  }
+
+  const scope = { channel: bundle.channel, platform: bundle.platform };
+  scopes.set(targetVersionScopeKey(scope), scope);
+}
+
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
 function sortManagedBundles(
@@ -261,70 +282,37 @@ export const createBlobDatabasePlugin = <TConfig>({
       return sortedBundles;
     }
 
-    /**
-     * Updates target-app-versions.json for each channel on the given platform.
-     * Returns true if the file was updated, false if no changes were made.
-     */
-    async function updateTargetVersionsForPlatform(
-      platform: string,
+    async function updateTargetVersionsForScope(
+      { channel, platform }: TargetVersionScope,
     ): Promise<void> {
-      // Retrieve all update.json files for the platform across channels.
-      const updateJsonPattern = new RegExp(
-        `^[^/]+/${platform}/[^/]+/update\\.json$`,
-      );
-      const targetVersionsPattern = new RegExp(
-        `^[^/]+/${platform}/target-app-versions\\.json$`,
-      );
+      const targetKey = `${channel}/${platform}/target-app-versions.json`;
+      const keyPrefix = `${channel}/${platform}/`;
+      const updateJsonKeys = (await listObjects(keyPrefix)).filter((key) => {
+        const parts = key.split("/");
+        return (
+          parts.length === 4 &&
+          parts[0] === channel &&
+          parts[1] === platform &&
+          parts[3] === "update.json"
+        );
+      });
 
-      const allKeys = await listObjects("");
-      const updateJsonKeys = allKeys.filter((key) =>
-        updateJsonPattern.test(key),
+      const currentVersions = updateJsonKeys
+        .map((key) => key.split("/")[2])
+        .filter((version): version is string => version !== undefined);
+      const oldTargetVersions =
+        (await loadOptionalObject<string[]>(targetKey)) ?? [];
+      const newTargetVersions = oldTargetVersions.filter((v) =>
+        currentVersions.includes(v),
       );
-      const targetVersionsKeys = allKeys.filter((key) =>
-        targetVersionsPattern.test(key),
-      );
-
-      // Group update.json keys by channel (channel is the first part of the key)
-      const keysByChannel = updateJsonKeys.reduce(
-        (acc, key) => {
-          const parts = key.split("/");
-          const channel = parts[0];
-          acc[channel] = acc[channel] || [];
-          acc[channel].push(key);
-          return acc;
-        },
-        {} as Record<string, string[]>,
-      );
-
-      // Also include channels that still have target-app-versions.json
-      // even when all update.json files were moved out.
-      for (const key of targetVersionsKeys) {
-        const channel = key.split("/")[0];
-        if (!keysByChannel[channel]) {
-          keysByChannel[channel] = [];
-        }
+      for (const v of currentVersions) {
+        if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
       }
 
-      for (const channel of Object.keys(keysByChannel)) {
-        const updateKeys = keysByChannel[channel];
-        const targetKey = `${channel}/${platform}/target-app-versions.json`;
-        // Extract targetAppVersion from each update.json file key.
-        const currentVersions = updateKeys.map((key) => key.split("/")[2]);
-        const oldTargetVersions =
-          (await loadOptionalObject<string[]>(targetKey)) ?? [];
-        const newTargetVersions = oldTargetVersions.filter((v) =>
-          currentVersions.includes(v),
-        );
-        for (const v of currentVersions) {
-          if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
-        }
-
-        if (
-          JSON.stringify(oldTargetVersions) !==
-          JSON.stringify(newTargetVersions)
-        ) {
-          await uploadObject(targetKey, newTargetVersions);
-        }
+      if (
+        JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
+      ) {
+        await uploadObject(targetKey, newTargetVersions);
       }
     }
 
@@ -530,7 +518,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};
           const pathsToInvalidate: Set<string> = new Set();
-          const targetVersionPlatforms = new Set<string>();
+          const targetVersionScopes = new Map<string, TargetVersionScope>();
 
           for (const { operation, data } of changedSets) {
             // Insert operation.
@@ -550,9 +538,7 @@ export const createBlobDatabasePlugin = <TConfig>({
                 removeBundleInternalKeys(bundleWithKey),
               );
 
-              if (data.targetAppVersion !== undefined) {
-                targetVersionPlatforms.add(data.platform);
-              }
+              addTargetVersionScope(targetVersionScopes, data);
               addLookupInvalidationPaths(pathsToInvalidate, data);
               continue;
             }
@@ -576,9 +562,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               removalsByKey[key] = removalsByKey[key] || [];
               removalsByKey[key].push(bundle.id);
 
-              if (bundle.targetAppVersion !== undefined) {
-                targetVersionPlatforms.add(bundle.platform);
-              }
+              addTargetVersionScope(targetVersionScopes, bundle);
               addLookupInvalidationPaths(pathsToInvalidate, bundle);
               continue;
             }
@@ -626,13 +610,8 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
 
-                if (
-                  bundle.targetAppVersion !== undefined ||
-                  updatedBundle.targetAppVersion !== undefined
-                ) {
-                  targetVersionPlatforms.add(bundle.platform);
-                  targetVersionPlatforms.add(updatedBundle.platform);
-                }
+                addTargetVersionScope(targetVersionScopes, bundle);
+                addTargetVersionScope(targetVersionScopes, updatedBundle);
                 addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
                 if (
                   bundle.targetAppVersion &&
@@ -707,10 +686,10 @@ export const createBlobDatabasePlugin = <TConfig>({
             },
           );
 
-          if (targetVersionPlatforms.size > 0) {
+          if (targetVersionScopes.size > 0) {
             await Promise.all(
-              Array.from(targetVersionPlatforms).map((platform) =>
-                updateTargetVersionsForPlatform(platform),
+              Array.from(targetVersionScopes.values()).map((scope) =>
+                updateTargetVersionsForScope(scope),
               ),
             );
           }
