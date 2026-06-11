@@ -8,6 +8,7 @@ import {
 import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+import { attachMatchingBundlesToUpdateInfo } from "./internalUpdateInfoBundle";
 import type { Bundle, HotUpdaterContext } from "./types";
 
 type AppVersionLookupArgs = {
@@ -83,12 +84,22 @@ export const createDatabasePluginGetUpdateInfo = <TContext = unknown>({
             )
           : [];
 
-      return getManifestUpdateInfo(bundles, normalizedArgs);
+      const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+      return attachMatchingBundlesToUpdateInfo(
+        info,
+        bundles,
+        normalizedArgs.bundleId,
+      );
     }
 
     const normalizedArgs = normalizeFingerprintArgs(args);
     const bundles = await getBundlesByFingerprint(normalizedArgs, context);
 
-    return getManifestUpdateInfo(bundles, normalizedArgs);
+    const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+    return attachMatchingBundlesToUpdateInfo(
+      info,
+      bundles,
+      normalizedArgs.bundleId,
+    );
   };
 };

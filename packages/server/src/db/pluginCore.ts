@@ -83,14 +83,27 @@ const sortBundles = (
 const makeResponse = (
   bundle: Bundle,
   status: "UPDATE" | "ROLLBACK",
-): UpdateInfo => ({
-  id: bundle.id,
-  message: bundle.message,
-  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
-  status,
-  storageUri: bundle.storageUri,
-  fileHash: bundle.fileHash,
-});
+): UpdateInfo => {
+  const info: UpdateInfo = {
+    id: bundle.id,
+    message: bundle.message,
+    shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
+    status,
+    storageUri: bundle.storageUri,
+    fileHash: bundle.fileHash,
+  };
+  Object.defineProperty(info, "__hotUpdaterBundle", {
+    configurable: true,
+    enumerable: false,
+    value: bundle,
+  });
+  return info;
+};
+
+type UpdateInfoWithAttachedBundle = UpdateInfo & {
+  readonly __hotUpdaterCurrentBundle?: Bundle | null;
+  readonly __hotUpdaterBundle?: Bundle;
+};
 
 const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
   message: null,
@@ -347,9 +360,17 @@ export function createPluginDatabaseCore<TContext = unknown>(
       if (!info) {
         return null;
       }
-      const { storageUri, ...rest } = info as UpdateInfo & {
-        storageUri: string | null;
-      };
+      const infoWithAttachedBundle: UpdateInfoWithAttachedBundle = info;
+      const {
+        __hotUpdaterCurrentBundle: attachedCurrentBundle,
+        __hotUpdaterBundle: attachedTargetBundle,
+        storageUri,
+        ...rest
+      } = infoWithAttachedBundle;
+      const hasAttachedCurrentBundle = Object.prototype.hasOwnProperty.call(
+        infoWithAttachedBundle,
+        "__hotUpdaterCurrentBundle",
+      );
 
       const readStorageText = options?.readStorageText;
       if (info.id === NIL_UUID || !readStorageText) {
@@ -360,10 +381,14 @@ export function createPluginDatabaseCore<TContext = unknown>(
 
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
-        getPlugin().getBundleById(info.id, context),
-        args.bundleId !== NIL_UUID
-          ? getPlugin().getBundleById(args.bundleId, context)
-          : null,
+        attachedTargetBundle
+          ? Promise.resolve(attachedTargetBundle)
+          : getPlugin().getBundleById(info.id, context),
+        args.bundleId === NIL_UUID
+          ? null
+          : hasAttachedCurrentBundle
+            ? Promise.resolve(attachedCurrentBundle ?? null)
+            : getPlugin().getBundleById(args.bundleId, context),
       ]);
       const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
       const manifestArtifacts = await resolveManifestArtifacts({

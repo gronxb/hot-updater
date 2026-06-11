@@ -5,6 +5,7 @@ import semver from "semver";
 import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+import { attachMatchingBundlesToUpdateInfo } from "./internalUpdateInfoBundle";
 import { paginateBundles } from "./paginateBundles";
 import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
 import type {
@@ -1192,7 +1193,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         )
       ).flat();
 
-      return getManifestUpdateInfo(bundles, {
+      const info = await getManifestUpdateInfo(bundles, {
         _updateStrategy: "appVersion",
         appVersion,
         bundleId,
@@ -1201,6 +1202,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
+      return attachMatchingBundlesToUpdateInfo(info, bundles, bundleId);
     };
 
     const getFingerprintUpdateInfo = async ({
@@ -1216,7 +1218,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           `${channel}/${platform}/${fingerprintHash}/update.json`,
         )) ?? [];
 
-      return getManifestUpdateInfo(bundles, {
+      const info = await getManifestUpdateInfo(bundles, {
         _updateStrategy: "fingerprint",
         bundleId,
         channel,
@@ -1225,6 +1227,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
+      return attachMatchingBundlesToUpdateInfo(info, bundles, bundleId);
     };
 
     const addAppVersionInvalidationPaths = (

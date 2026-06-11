@@ -329,14 +329,13 @@ describe("blobDatabase plugin", () => {
 
     seedUpdateManifests([previousBundle, latestBundle]);
 
-    await expect(
-      plugin.getUpdateInfo?.({
-        _updateStrategy: "appVersion",
-        appVersion: "1.0.0",
-        bundleId: "00000000-0000-0000-0000-000000000000",
-        platform: "ios",
-      }),
-    ).resolves.toEqual({
+    const updateInfo = await plugin.getUpdateInfo?.({
+      _updateStrategy: "appVersion",
+      appVersion: "1.0.0",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+    });
+    expect(updateInfo).toEqual({
       fileHash: latestBundle.fileHash,
       id: latestBundle.id,
       message: latestBundle.message,
@@ -344,6 +343,24 @@ describe("blobDatabase plugin", () => {
       status: "UPDATE",
       storageUri: latestBundle.storageUri,
     });
+    expect(updateInfo).not.toBeNull();
+    if (!updateInfo) {
+      throw new Error("expected update info");
+    }
+    expect(Object.getOwnPropertyNames(updateInfo)).toContain(
+      "__hotUpdaterBundle",
+    );
+    expect(Object.getOwnPropertyNames(updateInfo)).toContain(
+      "__hotUpdaterCurrentBundle",
+    );
+    expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
+    expect(Object.keys(updateInfo)).not.toContain(
+      "__hotUpdaterCurrentBundle",
+    );
+    expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");
+    expect(JSON.stringify(updateInfo)).not.toContain(
+      "__hotUpdaterCurrentBundle",
+    );
 
     expect(listObjectCalls).toEqual([]);
     expect(loadObjectCalls).toEqual([
