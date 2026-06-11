@@ -8,10 +8,10 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
   NoSuchKey,
+  PutObjectCommand,
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import mime from "mime";
 
@@ -141,17 +141,15 @@ async function uploadJsonToS3<T>(
 ) {
   const Body = JSON.stringify(data);
   const ContentType = mime.getType(key) ?? "application/json";
-  const upload = new Upload({
-    client,
-    params: {
+  await client.send(
+    new PutObjectCommand({
       Bucket: bucket,
       Key: key,
       Body,
       ContentType,
       CacheControl: "max-age=31536000",
-    },
-  });
-  await upload.done();
+    }),
+  );
 }
 
 async function listObjectsInS3(

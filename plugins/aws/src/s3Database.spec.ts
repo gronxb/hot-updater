@@ -9,6 +9,7 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
   NoSuchKey,
+  PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/plugin-core";
@@ -73,6 +74,7 @@ let cloudfrontInvalidationStatuses = new Map<string, string[]>();
 let listedObjectPrefixes: string[] = [];
 let loadedObjectKeys: string[] = [];
 let archivedObjectKeys = new Map<string, string>();
+let putObjectKeys: string[] = [];
 
 vi.mock("@aws-sdk/lib-storage", () => {
   return {
@@ -169,6 +171,7 @@ beforeEach(() => {
   listedObjectPrefixes = [];
   loadedObjectKeys = [];
   archivedObjectKeys = new Map();
+  putObjectKeys = [];
   vi.spyOn(S3Client.prototype, "send").mockImplementation(
     async (command: any) => {
       await delay(5);
@@ -206,6 +209,15 @@ beforeEach(() => {
         const error = new Error("NoSuchKey");
         Object.setPrototypeOf(error, NoSuchKey.prototype);
         throw error;
+      }
+      if (command instanceof PutObjectCommand) {
+        const key = command.input.Key;
+        if (key) {
+          putObjectKeys.push(key);
+          await delay(10);
+          fakeStore[key] = String(command.input.Body ?? "");
+        }
+        return {};
       }
       if (command.constructor.name === "DeleteObjectCommand") {
         const key = command.input.Key;
@@ -329,6 +341,7 @@ describe("s3Database plugin", () => {
     fakeStore = {};
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
+    putObjectKeys = [];
     plugin = createPlugin();
   });
 
@@ -453,6 +466,23 @@ describe("s3Database plugin", () => {
         key.startsWith(`${MANAGEMENT_INDEX_PREFIX}/`),
       ),
     ).toEqual([]);
+  });
+
+  it("uploads database metadata with S3 PutObject instead of multipart upload", async () => {
+    const newBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "put-object-metadata",
+    );
+
+    await plugin.appendBundle(newBundle);
+    await plugin.commitBundle();
+
+    expect(putObjectKeys).toEqual([
+      "production/ios/1.0.0/update.json",
+      "production/ios/target-app-versions.json",
+    ]);
   });
 
   it("updates target app versions without listing S3 during commit", async () => {
