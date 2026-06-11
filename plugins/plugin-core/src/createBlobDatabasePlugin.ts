@@ -23,9 +23,11 @@ interface BundleWithUpdateJsonKey extends Bundle {
   _oldUpdateJsonKey?: string;
 }
 
-type TargetVersionScope = {
+type TargetVersionMutation = {
   readonly channel: string;
   readonly platform: string;
+  readonly additions: Set<string>;
+  readonly removals: Set<string>;
 };
 
 const STORAGE_OPERATION_CONCURRENCY = 8;
@@ -162,20 +164,54 @@ function resolveStorageTarget({
   return target;
 }
 
-function targetVersionScopeKey(scope: TargetVersionScope): string {
-  return `${scope.channel}/${scope.platform}`;
+function targetVersionMutationKey(
+  bundle: Pick<Bundle, "channel" | "platform">,
+): string {
+  return `${bundle.channel}/${bundle.platform}`;
 }
 
-function addTargetVersionScope(
-  scopes: Map<string, TargetVersionScope>,
+function getTargetVersionMutation(
+  mutations: Map<string, TargetVersionMutation>,
+  bundle: Pick<Bundle, "channel" | "platform">,
+): TargetVersionMutation {
+  const key = targetVersionMutationKey(bundle);
+  const existingMutation = mutations.get(key);
+  if (existingMutation) {
+    return existingMutation;
+  }
+
+  const mutation: TargetVersionMutation = {
+    additions: new Set(),
+    channel: bundle.channel,
+    platform: bundle.platform,
+    removals: new Set(),
+  };
+  mutations.set(key, mutation);
+  return mutation;
+}
+
+function addTargetVersionAddition(
+  mutations: Map<string, TargetVersionMutation>,
   bundle: Pick<Bundle, "channel" | "platform" | "targetAppVersion">,
 ): void {
-  if (bundle.targetAppVersion == null) {
+  const targetAppVersion = normalizeTargetAppVersion(bundle.targetAppVersion);
+  if (targetAppVersion == null) {
     return;
   }
 
-  const scope = { channel: bundle.channel, platform: bundle.platform };
-  scopes.set(targetVersionScopeKey(scope), scope);
+  getTargetVersionMutation(mutations, bundle).additions.add(targetAppVersion);
+}
+
+function addTargetVersionRemoval(
+  mutations: Map<string, TargetVersionMutation>,
+  bundle: Pick<Bundle, "channel" | "platform" | "targetAppVersion">,
+): void {
+  const targetAppVersion = normalizeTargetAppVersion(bundle.targetAppVersion);
+  if (targetAppVersion == null) {
+    return;
+  }
+
+  getTargetVersionMutation(mutations, bundle).removals.add(targetAppVersion);
 }
 
 function getManagementListPrefixes(
@@ -307,38 +343,34 @@ export const createBlobDatabasePlugin = <TConfig>({
       return sortedBundles;
     }
 
-    async function updateTargetVersionsForScope(
-      { channel, platform }: TargetVersionScope,
+    async function applyTargetVersionMutations(
+      mutations: ReadonlyMap<string, TargetVersionMutation>,
     ): Promise<void> {
-      const targetKey = `${channel}/${platform}/target-app-versions.json`;
-      const keyPrefix = `${channel}/${platform}/`;
-      const updateJsonKeys = (await listObjects(keyPrefix)).filter((key) => {
-        const parts = key.split("/");
-        return (
-          parts.length === 4 &&
-          parts[0] === channel &&
-          parts[1] === platform &&
-          parts[3] === "update.json"
-        );
-      });
+      await Promise.all(
+        Array.from(mutations.values()).map(
+          async ({ additions, channel, platform, removals }) => {
+            const targetKey = `${channel}/${platform}/target-app-versions.json`;
+            const oldTargetVersions =
+              (await loadOptionalObject<string[]>(targetKey)) ?? [];
+            const newTargetVersions = oldTargetVersions.filter(
+              (version) => !removals.has(version) || additions.has(version),
+            );
 
-      const currentVersions = updateJsonKeys
-        .map((key) => key.split("/")[2])
-        .filter((version): version is string => version !== undefined);
-      const oldTargetVersions =
-        (await loadOptionalObject<string[]>(targetKey)) ?? [];
-      const newTargetVersions = oldTargetVersions.filter((v) =>
-        currentVersions.includes(v),
+            for (const version of additions) {
+              if (!newTargetVersions.includes(version)) {
+                newTargetVersions.push(version);
+              }
+            }
+
+            if (
+              JSON.stringify(oldTargetVersions) !==
+              JSON.stringify(newTargetVersions)
+            ) {
+              await uploadObject(targetKey, newTargetVersions);
+            }
+          },
+        ),
       );
-      for (const v of currentVersions) {
-        if (!newTargetVersions.includes(v)) newTargetVersions.push(v);
-      }
-
-      if (
-        JSON.stringify(oldTargetVersions) !== JSON.stringify(newTargetVersions)
-      ) {
-        await uploadObject(targetKey, newTargetVersions);
-      }
     }
 
     const getAppVersionUpdateInfo = async (
@@ -542,8 +574,15 @@ export const createBlobDatabasePlugin = <TConfig>({
 
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};
+          const targetVersionRemovalsByKey: Record<
+            string,
+            BundleWithUpdateJsonKey[]
+          > = {};
           const pathsToInvalidate: Set<string> = new Set();
-          const targetVersionScopes = new Map<string, TargetVersionScope>();
+          const targetVersionMutations = new Map<
+            string,
+            TargetVersionMutation
+          >();
 
           for (const { operation, data } of changedSets) {
             // Insert operation.
@@ -563,7 +602,7 @@ export const createBlobDatabasePlugin = <TConfig>({
                 removeBundleInternalKeys(bundleWithKey),
               );
 
-              addTargetVersionScope(targetVersionScopes, data);
+              addTargetVersionAddition(targetVersionMutations, data);
               addLookupInvalidationPaths(pathsToInvalidate, data);
               continue;
             }
@@ -586,8 +625,10 @@ export const createBlobDatabasePlugin = <TConfig>({
               const key = bundle._updateJsonKey;
               removalsByKey[key] = removalsByKey[key] || [];
               removalsByKey[key].push(bundle.id);
+              targetVersionRemovalsByKey[key] =
+                targetVersionRemovalsByKey[key] || [];
+              targetVersionRemovalsByKey[key].push(bundle);
 
-              addTargetVersionScope(targetVersionScopes, bundle);
               addLookupInvalidationPaths(pathsToInvalidate, bundle);
               continue;
             }
@@ -610,6 +651,9 @@ export const createBlobDatabasePlugin = <TConfig>({
                 const oldKey = bundle._updateJsonKey;
                 removalsByKey[oldKey] = removalsByKey[oldKey] || [];
                 removalsByKey[oldKey].push(bundle.id);
+                targetVersionRemovalsByKey[oldKey] =
+                  targetVersionRemovalsByKey[oldKey] || [];
+                targetVersionRemovalsByKey[oldKey].push(bundle);
 
                 changedBundlesByKey[newKey] = changedBundlesByKey[newKey] || [];
 
@@ -635,8 +679,10 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
 
-                addTargetVersionScope(targetVersionScopes, bundle);
-                addTargetVersionScope(targetVersionScopes, updatedBundle);
+                addTargetVersionAddition(
+                  targetVersionMutations,
+                  updatedBundle,
+                );
                 addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
                 if (
                   bundle.targetAppVersion &&
@@ -658,6 +704,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               );
 
               addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
+              addTargetVersionAddition(targetVersionMutations, updatedBundle);
               if (
                 bundle.targetAppVersion &&
                 bundle.targetAppVersion !== updatedBundle.targetAppVersion
@@ -680,6 +727,14 @@ export const createBlobDatabasePlugin = <TConfig>({
               updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
               if (updatedBundles.length === 0) {
                 await deleteObject(oldKey);
+                for (const removedBundle of targetVersionRemovalsByKey[
+                  oldKey
+                ] ?? []) {
+                  addTargetVersionRemoval(
+                    targetVersionMutations,
+                    removedBundle,
+                  );
+                }
               } else {
                 await uploadObject(oldKey, updatedBundles);
               }
@@ -711,12 +766,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             },
           );
 
-          if (targetVersionScopes.size > 0) {
-            await Promise.all(
-              Array.from(targetVersionScopes.values()).map((scope) =>
-                updateTargetVersionsForScope(scope),
-              ),
-            );
+          if (targetVersionMutations.size > 0) {
+            await applyTargetVersionMutations(targetVersionMutations);
           }
 
           // Enconded paths for invalidation (in case of special characters)

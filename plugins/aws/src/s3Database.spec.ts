@@ -455,7 +455,7 @@ describe("s3Database plugin", () => {
     ).toEqual([]);
   });
 
-  it("updates target app versions by listing only the affected S3 prefix", async () => {
+  it("updates target app versions without listing S3 during commit", async () => {
     fakeStore["staging/android/2.0.0/update.json"] = JSON.stringify([
       createBundleJson("staging", "android", "2.0.0", "unrelated-android"),
     ]);
@@ -476,7 +476,7 @@ describe("s3Database plugin", () => {
     await plugin.appendBundle(newBundle);
     await plugin.commitBundle();
 
-    expect(listedObjectPrefixes).toEqual(["production/ios/"]);
+    expect(listedObjectPrefixes).toEqual([]);
     expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
       .toStrictEqual(["1.0.0"]);
   });
@@ -502,11 +502,37 @@ describe("s3Database plugin", () => {
     await plugin.updateBundle(movedBundle.id, { channel: "production" });
     await plugin.commitBundle();
 
-    expect(listedObjectPrefixes).toEqual(["beta/ios/", "production/ios/"]);
+    expect(listedObjectPrefixes).toEqual([]);
     expect(JSON.parse(fakeStore["beta/ios/target-app-versions.json"]))
       .toStrictEqual([]);
     expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
       .toStrictEqual(["1.0.0"]);
+  });
+
+  it("removes target app versions without listing S3 during commit", async () => {
+    const removedBundle = createBundleJson(
+      "production",
+      "ios",
+      "1.0.0",
+      "target-version-remove",
+    );
+    fakeStore["production/ios/1.0.0/update.json"] = JSON.stringify([
+      removedBundle,
+    ]);
+    fakeStore["production/ios/target-app-versions.json"] = JSON.stringify([
+      "1.0.0",
+    ]);
+
+    await plugin.getBundles({ limit: 20 });
+    listedObjectPrefixes = [];
+    loadedObjectKeys = [];
+
+    await plugin.deleteBundle(removedBundle);
+    await plugin.commitBundle();
+
+    expect(listedObjectPrefixes).toEqual([]);
+    expect(JSON.parse(fakeStore["production/ios/target-app-versions.json"]))
+      .toStrictEqual([]);
   });
 
   it("reads channels from canonical manifests", async () => {
