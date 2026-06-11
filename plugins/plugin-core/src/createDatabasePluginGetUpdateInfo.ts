@@ -5,9 +5,9 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type { Bundle, HotUpdaterContext } from "./types";
 
 type AppVersionLookupArgs = {
@@ -83,14 +83,20 @@ export const createDatabasePluginGetUpdateInfo = <TContext = unknown>({
             )
           : [];
 
-      const info = await getManifestUpdateInfo(bundles, normalizedArgs);
-      return info;
+      return resolveUpdateInfoFromBundles({
+        args: normalizedArgs,
+        bundles,
+        context,
+      });
     }
 
     const normalizedArgs = normalizeFingerprintArgs(args);
     const bundles = await getBundlesByFingerprint(normalizedArgs, context);
 
-    const info = await getManifestUpdateInfo(bundles, normalizedArgs);
-    return info;
+    return resolveUpdateInfoFromBundles({
+      args: normalizedArgs,
+      bundles,
+      context,
+    });
   };
 };

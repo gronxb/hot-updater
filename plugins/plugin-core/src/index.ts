@@ -12,6 +12,8 @@ export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";
+export { getRequestUpdateBundleSeeds } from "./requestUpdateBundleState";
+export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
 export * from "./storageProfile";
 export * from "./types";

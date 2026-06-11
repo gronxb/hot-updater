@@ -13,6 +13,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
+  getRequestUpdateBundleSeeds,
   type HotUpdaterContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
@@ -357,16 +358,29 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return baseResponse;
       }
 
+      const requestBundleSeeds = getRequestUpdateBundleSeeds(context);
       const requestBundles = createRequestBundleIdentityMap({
         context,
         loadBundleById: (bundleId, requestContext) =>
           getPlugin().getBundleById(bundleId, requestContext),
-        seeds: [],
+        seeds: requestBundleSeeds,
       });
+      const getCurrentBundle = () => {
+        if (args.bundleId === NIL_UUID) {
+          return null;
+        }
+
+        const seededCurrentBundle = requestBundles.peek(args.bundleId);
+        if (seededCurrentBundle || requestBundleSeeds.length > 0) {
+          return seededCurrentBundle;
+        }
+
+        return requestBundles.get(args.bundleId);
+      };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
         requestBundles.get(info.id),
-        args.bundleId === NIL_UUID ? null : requestBundles.get(args.bundleId),
+        getCurrentBundle(),
       ]);
       const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
       const manifestArtifacts = await resolveManifestArtifacts({
