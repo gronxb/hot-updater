@@ -1,5 +1,17 @@
 # @hot-updater/react-native
 
+## 0.33.0
+
+### Patch Changes
+
+- 4f7c0c4: Relocate the bundled Android Brotli decoder to avoid duplicate classes with apps that depend on `org.brotli:dec`.
+- Updated dependencies [070a86f]
+- Updated dependencies [e914f56]
+  - @hot-updater/cli-tools@0.33.0
+  - @hot-updater/plugin-core@0.33.0
+  - @hot-updater/core@0.33.0
+  - @hot-updater/js@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes

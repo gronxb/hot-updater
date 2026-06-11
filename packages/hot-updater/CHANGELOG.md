@@ -1,5 +1,25 @@
 # hot-updater
 
+## 0.33.0
+
+### Minor Changes
+
+- 0eb4639: Unify doctor infrastructure update targets so runtime and migration requirements share one version target source.
+
+### Patch Changes
+
+- e914f56: Avoid redundant provider bundle reads during update checks and teach doctor to flag server runtime redeploy requirements.
+- Updated dependencies [070a86f]
+- Updated dependencies [e914f56]
+- Updated dependencies [2b9944a]
+  - @hot-updater/cli-tools@0.33.0
+  - @hot-updater/server@0.33.0
+  - @hot-updater/plugin-core@0.33.0
+  - @hot-updater/console@0.33.0
+  - @hot-updater/android-helper@0.33.0
+  - @hot-updater/apple-helper@0.33.0
+  - @hot-updater/core@0.33.0
+
 ## 0.32.0
 
 ### Patch Changes
