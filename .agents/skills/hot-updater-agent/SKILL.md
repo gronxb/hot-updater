@@ -75,6 +75,18 @@ Check the current branch PR queue:
 hot-updater-agent status -limit 5
 ```
 
+Show the most recent successful E2E job for each profile:
+
+```bash
+hot-updater-agent status -latest-success-by-profile -limit 20
+```
+
+Use the JSON form when feeding successful profile baselines into another AI step:
+
+```bash
+hot-updater-agent -json status -latest-success-by-profile -limit 20
+```
+
 Wait for a task id to finish:
 
 ```bash
@@ -141,10 +153,22 @@ List the latest job only:
 hot-updater-agent status -limit 1
 ```
 
+List the latest successful baseline per profile:
+
+```bash
+hot-updater-agent status -latest-success-by-profile -limit 20
+```
+
+This mode intentionally does not infer the current PR. It returns recent
+successful E2E jobs across the repository, grouped by profile, so an agent can
+compare a failing profile against the latest known-good run. Add `-ref <ref>`
+only when the baseline must be constrained to a branch/ref.
+
 Get machine-readable output:
 
 ```bash
 hot-updater-agent -json status -limit 5
+hot-updater-agent -json status -latest-success-by-profile -limit 20
 ```
 
 ## Diagnose Failure
@@ -182,6 +206,8 @@ failed task and exits successfully so the AI can read and act on the output.
 
 - Start with `hot-updater-agent status -limit 3` if a task may already exist for
   the current branch PR.
+- Use `hot-updater-agent status -latest-success-by-profile -limit 20` when the
+  diagnosis needs recent successful baselines by profile.
 - If there is a recent failed task, inspect it with `reason <task-id>` before
   enqueueing another run.
 - After queueing, record the printed task id. All later wait/log/reason commands
@@ -206,6 +232,7 @@ Use this pattern when asked to fix E2E through the dashboard:
 
 ```bash
 hot-updater-agent status -limit 3
+hot-updater-agent -json status -latest-success-by-profile -limit 20
 hot-updater-agent verify -platform full -profile standalone-s3 -env-target examples/v0.85.0/.env.hotupdater -tail 240
 hot-updater-agent -json timeline <task-id> -limit 10
 ```
