@@ -23,6 +23,19 @@ import {
   type SigningConfigIssue,
   validateSigningConfig,
 } from "../utils/signing/validateSigningConfig";
+import {
+  checkInfrastructureStatus,
+  createInfrastructureRemediation,
+  getRequiredUpdateTarget,
+  type InfrastructureStatus,
+} from "./doctorInfrastructure";
+
+export {
+  getRequiredInfrastructureVersion,
+  getRequiredServerVersion,
+  isInfrastructureUpdateRequired,
+  resolveVersionEndpoint,
+} from "./doctorInfrastructure";
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -33,17 +46,6 @@ interface VersionMismatch {
   packageName: string;
   currentVersion: string;
   expectedVersion: string;
-}
-
-interface InfrastructureStatus {
-  baseUrl: string;
-  versionEndpoint: string;
-  serverVersion?: string;
-  requiredVersion: string;
-  needsUpdate?: boolean;
-  updateReason?: string;
-  error?: string;
-  remediation?: InfrastructureRemediation;
 }
 
 type DoctorFixability = "auto" | "command" | "blocked";
@@ -137,27 +139,6 @@ interface HandleDoctorOptions {
   fix?: boolean;
 }
 
-interface ServerVersionResponse {
-  version?: unknown;
-}
-
-interface InfrastructureUpdateTarget {
-  version: string;
-  note: string;
-}
-
-interface InfrastructureRemediation {
-  fixability: DoctorFixability;
-  reason: string;
-  commands: string[];
-}
-
-const INFRASTRUCTURE_RECOVERY_COMMANDS = [
-  "hot-updater init",
-  "hot-updater db migrate",
-  "hot-updater db generate",
-] as const;
-
 const FINGERPRINT_RECOVERY_COMMANDS = [
   "npx hot-updater fingerprint create",
 ] as const;
@@ -167,51 +148,6 @@ const EXPORT_PUBLIC_KEY_COMMANDS = [
 ] as const;
 
 const REMOVE_PUBLIC_KEY_COMMANDS = ["npx hot-updater keys remove"] as const;
-
-// Only versions that require deployed server/infrastructure changes belong here.
-// Regular package releases must not be added unless existing infrastructure needs
-// to be redeployed or migrated for compatibility.
-export const INFRASTRUCTURE_UPDATE_TARGETS = [
-  {
-    version: "0.13.0",
-    note: "Initial provider infrastructure migrations",
-  },
-  {
-    version: "0.18.0",
-    note: "Provider infrastructure migration",
-  },
-  {
-    version: "0.21.0",
-    note: "ORM schema version target",
-  },
-  {
-    version: "0.29.0",
-    note: "Rollout infrastructure fields",
-  },
-  {
-    version: "0.30.0",
-    note: "Target cohort rollout behavior",
-  },
-  {
-    version: "0.31.0",
-    note: "Bundle artifact storage fields",
-  },
-  {
-    version: "0.32.0",
-    note: "Content-addressed manifest asset routing",
-  },
-] as const satisfies readonly [
-  InfrastructureUpdateTarget,
-  ...InfrastructureUpdateTarget[],
-];
-
-const getInfrastructureTargetVersionAt = (index: number): string => {
-  const target = INFRASTRUCTURE_UPDATE_TARGETS.at(index);
-  if (!target) {
-    throw new Error("INFRASTRUCTURE_UPDATE_TARGETS must not be empty");
-  }
-  return target.version;
-};
 
 /**
  * Checks if two versions (or version and range) are compatible.
@@ -267,60 +203,6 @@ export function areVersionsCompatible(
 
   return false;
 }
-
-export function getRequiredInfrastructureVersion(
-  hotUpdaterVersion: string = getInfrastructureTargetVersionAt(-1),
-): string {
-  const current = semver.coerce(hotUpdaterVersion)?.version;
-
-  if (!current) {
-    return getInfrastructureTargetVersionAt(-1);
-  }
-
-  let requiredVersion = getInfrastructureTargetVersionAt(0);
-
-  for (const target of INFRASTRUCTURE_UPDATE_TARGETS) {
-    if (semver.lte(target.version, current)) {
-      requiredVersion = target.version;
-    }
-  }
-
-  return requiredVersion;
-}
-
-export function isInfrastructureUpdateRequired({
-  serverVersion,
-  requiredVersion = getRequiredInfrastructureVersion(),
-}: {
-  serverVersion: string;
-  requiredVersion?: string;
-}): boolean {
-  const normalizedServerVersion = semver.valid(serverVersion);
-  const normalizedRequiredVersion = semver.valid(requiredVersion);
-
-  if (!normalizedServerVersion || !normalizedRequiredVersion) {
-    throw new Error("Invalid infrastructure version");
-  }
-
-  return semver.lt(normalizedServerVersion, normalizedRequiredVersion);
-}
-
-export function resolveVersionEndpoint(serverBaseUrl: string): string {
-  const url = new URL(serverBaseUrl.trim());
-  const pathname = url.pathname.replace(/\/+$/, "");
-
-  url.hash = "";
-  url.search = "";
-  url.pathname = `${pathname}/version`;
-  return url.toString();
-}
-
-const createInfrastructureRemediation = (): InfrastructureRemediation => ({
-  fixability: "blocked",
-  reason:
-    "Server infrastructure changes usually need provider credentials, environment variables, and redeploy access.",
-  commands: [...INFRASTRUCTURE_RECOVERY_COMMANDS],
-});
 
 const toRelativePath = (cwd: string, filePath: string) =>
   path.relative(cwd, filePath);
@@ -744,76 +626,6 @@ async function checkNativeStatus({
   };
 }
 
-async function checkInfrastructureStatus({
-  serverBaseUrl,
-  fetchImpl = fetch,
-  requiredVersion = getRequiredInfrastructureVersion(),
-}: {
-  serverBaseUrl: string;
-  fetchImpl?: typeof fetch;
-  requiredVersion?: string;
-}): Promise<InfrastructureStatus> {
-  const versionEndpoint = resolveVersionEndpoint(serverBaseUrl);
-  const baseUrl = serverBaseUrl.trim();
-
-  try {
-    const response = await fetchImpl(versionEndpoint, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        return {
-          baseUrl,
-          versionEndpoint,
-          requiredVersion,
-          needsUpdate: true,
-          updateReason: "Version endpoint not found",
-        };
-      }
-
-      return {
-        baseUrl,
-        versionEndpoint,
-        requiredVersion,
-        error: `Version endpoint returned ${response.status}`,
-      };
-    }
-
-    const data = (await response.json()) as ServerVersionResponse;
-    if (typeof data.version !== "string") {
-      return {
-        baseUrl,
-        versionEndpoint,
-        requiredVersion,
-        error: "Version endpoint response must include a string version",
-      };
-    }
-
-    const needsUpdate = isInfrastructureUpdateRequired({
-      serverVersion: data.version,
-      requiredVersion,
-    });
-
-    return {
-      baseUrl,
-      versionEndpoint,
-      serverVersion: data.version,
-      requiredVersion,
-      needsUpdate,
-    };
-  } catch (error) {
-    return {
-      baseUrl,
-      versionEndpoint,
-      requiredVersion,
-      error: (error as Error).message,
-    };
-  }
-}
-
 async function checkBundleIndexStatus({
   fix,
 }: {
@@ -965,17 +777,20 @@ export async function doctor(
     };
 
     if (serverBaseUrl) {
+      const requiredTarget = getRequiredUpdateTarget(hotUpdaterVersion);
       details.infrastructure = await checkInfrastructureStatus({
         serverBaseUrl,
         fetchImpl,
-        requiredVersion: getRequiredInfrastructureVersion(hotUpdaterVersion),
+        requiredTarget,
       });
 
       if (
         details.infrastructure.error !== undefined ||
         details.infrastructure.needsUpdate === true
       ) {
-        details.infrastructure.remediation = createInfrastructureRemediation();
+        details.infrastructure.remediation = createInfrastructureRemediation(
+          details.infrastructure.requirement,
+        );
       }
     }
 
@@ -1139,9 +954,11 @@ export const handleDoctor = async ({
     p.log.message(ui.block("Infrastructure", lines));
 
     if (infrastructure.needsUpdate) {
-      p.log.error(
-        `Infrastructure update required: ${infrastructure.requiredVersion}+`,
-      );
+      const updateLabel =
+        infrastructure.requirement === "server"
+          ? "Server redeploy required"
+          : "Infrastructure update required";
+      p.log.error(`${updateLabel}: ${infrastructure.requiredVersion}+`);
       if (infrastructure.updateReason) {
         p.log.info(`Reason: ${infrastructure.updateReason}`);
       }
@@ -1152,20 +969,14 @@ export const handleDoctor = async ({
     }
 
     if (infrastructure.remediation) {
-      p.log.message(
-        ui.block("Recovery", [
-          ui.kv("Managed", ui.command("hot-updater init")),
+      const recoveryLines = infrastructure.remediation.commands.map(
+        (command, index) =>
           ui.kv(
-            "@hot-updater/server (self-hosted)",
-            ui.line([
-              ui.command("hot-updater db generate"),
-              "or",
-              ui.command("hot-updater db migrate"),
-              "then redeploy server",
-            ]),
+            index === 0 ? "Command" : `Command ${index + 1}`,
+            ui.command(command),
           ),
-        ]),
       );
+      p.log.message(ui.block("Recovery", recoveryLines));
     }
   }
 

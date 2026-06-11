@@ -1192,7 +1192,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         )
       ).flat();
 
-      return getManifestUpdateInfo(bundles, {
+      const info = await getManifestUpdateInfo(bundles, {
         _updateStrategy: "appVersion",
         appVersion,
         bundleId,
@@ -1201,6 +1201,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
+      return info;
     };
 
     const getFingerprintUpdateInfo = async ({
@@ -1216,7 +1217,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           `${channel}/${platform}/${fingerprintHash}/update.json`,
         )) ?? [];
 
-      return getManifestUpdateInfo(bundles, {
+      const info = await getManifestUpdateInfo(bundles, {
         _updateStrategy: "fingerprint",
         bundleId,
         channel,
@@ -1225,6 +1226,7 @@ export const createBlobDatabasePlugin = <TConfig>({
         minBundleId,
         platform,
       });
+      return info;
     };
 
     const addAppVersionInvalidationPaths = (

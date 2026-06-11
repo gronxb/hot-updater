@@ -1,11 +1,11 @@
-import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
-import { beforeEach, describe, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
 
@@ -498,5 +498,61 @@ describe("supabaseDatabase plugin", () => {
 
       return plugin.getUpdateInfo?.(args) ?? null;
     },
+  });
+
+  it("attaches update bundles without exposing internal fields", async () => {
+    const currentBundle: Bundle = {
+      channel: "production",
+      enabled: true,
+      fileHash: "current-file-hash",
+      fingerprintHash: "fingerprint-hash",
+      gitCommitHash: "current-git-hash",
+      id: "018f0000-0000-7000-8000-000000000001",
+      message: "current",
+      metadata: {},
+      platform: "ios",
+      shouldForceUpdate: false,
+      storageUri: "storage://app/current.zip",
+      targetAppVersion: "1.0.0",
+    };
+    const targetBundle: Bundle = {
+      ...currentBundle,
+      fileHash: "target-file-hash",
+      gitCommitHash: "target-git-hash",
+      id: "018f0000-0000-7000-8000-000000000002",
+      message: "target",
+      storageUri: "storage://app/target.zip",
+    };
+
+    await plugin.appendBundle(currentBundle);
+    await plugin.appendBundle(targetBundle);
+    await plugin.commitBundle();
+
+    const args: GetBundlesArgs = {
+      _updateStrategy: "fingerprint",
+      bundleId: currentBundle.id,
+      channel: "production",
+      fingerprintHash: "fingerprint-hash",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+    };
+
+    const updateInfo = await plugin.getUpdateInfo?.(args);
+
+    expect(updateInfo).toEqual({
+      fileHash: "target-file-hash",
+      id: targetBundle.id,
+      message: "target",
+      shouldForceUpdate: false,
+      status: "UPDATE",
+      storageUri: "storage://app/target.zip",
+    });
+    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
+      "__hotUpdaterBundle",
+    );
+    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
+      "__hotUpdaterCurrentBundle",
+    );
+    expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdater");
   });
 });

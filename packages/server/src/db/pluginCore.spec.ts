@@ -195,6 +195,143 @@ describe("createPluginDatabaseCore", () => {
     });
   });
 
+  it("uses request bundle identity map for manifest artifact lookups", async () => {
+    const currentBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000001",
+      manifestStorageUri: "r2://bucket/current/manifest.json",
+      manifestFileHash: "sig:current-manifest",
+      assetBaseStorageUri: "r2://bucket/current/files",
+    };
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      fileHash: "hash-2",
+      manifestStorageUri: "r2://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "r2://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        currentBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: currentBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "old-bundle-hash",
+            },
+            "shared.png": {
+              fileHash: "same-image-hash",
+            },
+          },
+        }),
+      ],
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-bundle-hash",
+            },
+            "shared.png": {
+              fileHash: "same-image-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async (bundleId) => {
+        if (bundleId === currentBundle.id) return currentBundle;
+        if (bundleId === targetBundle.id) return targetBundle;
+        return null;
+      },
+    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "identity-map-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      getBundleById,
+      getUpdateInfo,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+
+    const updateInfo = await core.api.getAppUpdateInfo({
+      ...updateArgs,
+      bundleId: currentBundle.id,
+    });
+    expect(updateInfo).not.toBeNull();
+    if (!updateInfo) {
+      throw new Error("expected app update info");
+    }
+
+    expect(updateInfo).toMatchObject({
+      changedAssets: {
+        "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
+          },
+          fileHash: "target-bundle-hash",
+        },
+      },
+      manifestFileHash: "sig:target-manifest",
+      manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
+    });
+    expect(updateInfo.changedAssets).not.toHaveProperty("shared.png");
+    expect(getUpdateInfo).toHaveBeenCalledOnce();
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
+    expect(getBundleById).toHaveBeenCalledWith(currentBundle.id, undefined);
+    expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
+    expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterCurrentBundle");
+    expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");
+    expect(JSON.stringify(updateInfo)).not.toContain(
+      "__hotUpdaterCurrentBundle",
+    );
+  });
+
   it("resolves manifest changed assets from deterministic content-addressed storage", async () => {
     const currentBundle = {
       ...baseBundle,

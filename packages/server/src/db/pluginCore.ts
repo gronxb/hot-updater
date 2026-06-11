@@ -17,6 +17,7 @@ import {
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 
+import { createRequestBundleIdentityMap } from "./requestBundleIdentityMap";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
@@ -347,9 +348,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       if (!info) {
         return null;
       }
-      const { storageUri, ...rest } = info as UpdateInfo & {
-        storageUri: string | null;
-      };
+      const { storageUri, ...rest } = info;
 
       const readStorageText = options?.readStorageText;
       if (info.id === NIL_UUID || !readStorageText) {
@@ -358,12 +357,16 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return baseResponse;
       }
 
+      const requestBundles = createRequestBundleIdentityMap({
+        context,
+        loadBundleById: (bundleId, requestContext) =>
+          getPlugin().getBundleById(bundleId, requestContext),
+        seeds: [],
+      });
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
-        getPlugin().getBundleById(info.id, context),
-        args.bundleId !== NIL_UUID
-          ? getPlugin().getBundleById(args.bundleId, context)
-          : null,
+        requestBundles.get(info.id),
+        args.bundleId === NIL_UUID ? null : requestBundles.get(args.bundleId),
       ]);
       const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
       const manifestArtifacts = await resolveManifestArtifacts({
