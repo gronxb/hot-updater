@@ -13,6 +13,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
+  getRequestUpdateBundleSeeds,
   type HotUpdaterContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
@@ -361,7 +362,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
         context,
         loadBundleById: (bundleId, requestContext) =>
           getPlugin().getBundleById(bundleId, requestContext),
-        seeds: [],
+        seeds: getRequestUpdateBundleSeeds(context),
       });
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),

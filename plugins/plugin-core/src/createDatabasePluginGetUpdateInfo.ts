@@ -8,6 +8,7 @@ import {
 import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
+import { seedRequestUpdateBundles } from "./requestUpdateBundleState";
 import type { Bundle, HotUpdaterContext } from "./types";
 
 type AppVersionLookupArgs = {
@@ -38,6 +39,30 @@ export interface CreateDatabasePluginGetUpdateInfoOptions<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string[]>;
 }
+
+const findSeedBundle = (bundles: readonly Bundle[], bundleId: string) =>
+  bundles.find((bundle) => bundle.id === bundleId);
+
+const seedSelectedBundles = <TContext = unknown>({
+  bundles,
+  bundleId,
+  context,
+  info,
+}: {
+  readonly bundles: readonly Bundle[];
+  readonly bundleId: string;
+  readonly context?: HotUpdaterContext<TContext>;
+  readonly info: UpdateInfo | null;
+}) => {
+  if (!info) {
+    return;
+  }
+
+  seedRequestUpdateBundles(context, [
+    findSeedBundle(bundles, info.id),
+    bundleId === NIL_UUID ? null : findSeedBundle(bundles, bundleId),
+  ]);
+};
 
 const normalizeAppVersionArgs = (
   args: AppVersionGetBundlesArgs,
@@ -84,6 +109,12 @@ export const createDatabasePluginGetUpdateInfo = <TContext = unknown>({
           : [];
 
       const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+      seedSelectedBundles({
+        bundles,
+        bundleId: normalizedArgs.bundleId,
+        context,
+        info,
+      });
       return info;
     }
 
@@ -91,6 +122,12 @@ export const createDatabasePluginGetUpdateInfo = <TContext = unknown>({
     const bundles = await getBundlesByFingerprint(normalizedArgs, context);
 
     const info = await getManifestUpdateInfo(bundles, normalizedArgs);
+    seedSelectedBundles({
+      bundles,
+      bundleId: normalizedArgs.bundleId,
+      context,
+      info,
+    });
     return info;
   };
 };

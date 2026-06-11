@@ -4,6 +4,7 @@ import type {
   DatabasePlugin,
   RequestEnvContext,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginGetUpdateInfo } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPluginDatabaseCore } from "./pluginCore";
@@ -330,6 +331,101 @@ describe("createPluginDatabaseCore", () => {
     expect(JSON.stringify(updateInfo)).not.toContain(
       "__hotUpdaterCurrentBundle",
     );
+  });
+
+  it("seeds request bundle identity map from provider update lookups", async () => {
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      fileHash: "hash-2",
+      manifestStorageUri: "s3://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "s3://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-bundle-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async () => {
+        throw new Error("unexpected provider bundle reread");
+      },
+    );
+    const getUpdateInfo = createDatabasePluginGetUpdateInfo<TestContext>({
+      getBundlesByFingerprint: async () => [],
+      getBundlesByTargetAppVersions: async () => [targetBundle],
+      listTargetAppVersions: async () => ["1.0.0"],
+    });
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "seeded-fast-path-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      getBundleById,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      getUpdateInfo,
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+    const context: TestContext = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const updateInfo = await core.api.getAppUpdateInfo(updateArgs, context);
+
+    expect(updateInfo).toMatchObject({
+      changedAssets: {
+        "index.ios.bundle": {
+          file: {
+            compression: "br",
+            url: "https://assets.example.com/bucket/target/files/index.ios.bundle.br",
+          },
+          fileHash: "target-bundle-hash",
+        },
+      },
+      id: targetBundle.id,
+      manifestFileHash: "sig:target-manifest",
+      manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
+    });
+    expect(getBundleById).not.toHaveBeenCalled();
   });
 
   it("resolves manifest changed assets from deterministic content-addressed storage", async () => {

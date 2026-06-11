@@ -12,6 +12,7 @@ export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";
+export * from "./requestUpdateBundleState";
 export * from "./semverSatisfies";
 export * from "./storageProfile";
 export * from "./types";
