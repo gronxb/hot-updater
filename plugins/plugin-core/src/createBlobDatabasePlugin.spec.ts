@@ -1500,6 +1500,19 @@ describe("blobDatabase plugin", () => {
     expect(otherBundle).toBeTruthy();
   });
 
+  it("should not reload storage when reading a bundle deleted by the same plugin instance", async () => {
+    await plugin.appendBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    await plugin.deleteBundle(bundlesData[0]);
+    await plugin.commitBundle();
+
+    listObjectCalls = [];
+
+    await expect(plugin.getBundleById("bundleX")).resolves.toBeNull();
+    expect(listObjectCalls).toEqual([]);
+  });
+
   it("should delete entire update.json file when no bundles remain", async () => {
     // Setup
     await plugin.appendBundle(bundlesData[0]);

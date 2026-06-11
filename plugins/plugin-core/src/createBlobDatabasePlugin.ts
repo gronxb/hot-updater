@@ -275,6 +275,7 @@ export const createBlobDatabasePlugin = <TConfig>({
     const bundlesMap = new Map<string, BundleWithUpdateJsonKey>();
     // Temporary store for newly added or modified bundles.
     const pendingBundlesMap = new Map<string, BundleWithUpdateJsonKey>();
+    const locallyDeletedBundleIds = new Set<string>();
 
     const loadOptionalObject = async <T>(key: string): Promise<T | null> => {
       try {
@@ -300,6 +301,7 @@ export const createBlobDatabasePlugin = <TConfig>({
     // Reload all bundle data from S3.
     async function reloadBundles(prefixes: readonly string[] = [""]) {
       bundlesMap.clear();
+      locallyDeletedBundleIds.clear();
 
       const updateJsonKeys = (
         await mapWithConcurrency(
@@ -515,6 +517,10 @@ export const createBlobDatabasePlugin = <TConfig>({
       factory: () => ({
         supportsCursorPagination: true,
         async getBundleById(bundleId: string) {
+          if (locallyDeletedBundleIds.has(bundleId)) {
+            return null;
+          }
+
           const pendingBundle = pendingBundlesMap.get(bundleId);
           if (pendingBundle) {
             return removeBundleInternalKeys(pendingBundle);
@@ -594,6 +600,7 @@ export const createBlobDatabasePlugin = <TConfig>({
                 _updateJsonKey: key,
               };
 
+              locallyDeletedBundleIds.delete(data.id);
               bundlesMap.set(data.id, bundleWithKey);
               pendingBundlesMap.set(data.id, bundleWithKey);
 
@@ -620,6 +627,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               // Remove from memory maps
               bundlesMap.delete(data.id);
               pendingBundlesMap.delete(data.id);
+              locallyDeletedBundleIds.add(data.id);
 
               // Mark for removal from update.json
               const key = bundle._updateJsonKey;
@@ -662,6 +670,7 @@ export const createBlobDatabasePlugin = <TConfig>({
 
                 bundlesMap.set(data.id, updatedBundle);
                 pendingBundlesMap.set(data.id, updatedBundle);
+                locallyDeletedBundleIds.delete(data.id);
 
                 changedBundlesByKey[newKey].push(
                   removeBundleInternalKeys(updatedBundle),
@@ -679,10 +688,7 @@ export const createBlobDatabasePlugin = <TConfig>({
                   }
                 }
 
-                addTargetVersionAddition(
-                  targetVersionMutations,
-                  updatedBundle,
-                );
+                addTargetVersionAddition(targetVersionMutations, updatedBundle);
                 addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
                 if (
                   bundle.targetAppVersion &&
@@ -697,6 +703,7 @@ export const createBlobDatabasePlugin = <TConfig>({
               const currentKey = bundle._updateJsonKey;
               bundlesMap.set(data.id, updatedBundle);
               pendingBundlesMap.set(data.id, updatedBundle);
+              locallyDeletedBundleIds.delete(data.id);
               changedBundlesByKey[currentKey] =
                 changedBundlesByKey[currentKey] || [];
               changedBundlesByKey[currentKey].push(

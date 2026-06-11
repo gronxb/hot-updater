@@ -9,3 +9,5 @@ Target app version manifests are updated from commit changes without listing S3.
 AWS database metadata now uses single PutObject writes instead of multipart upload.
 AWS canonical manifest scans now use S3 delimiters to avoid reading asset object
 lists during console-style bundle lookups.
+Blob database instances now remember locally committed deletions so immediate
+delete verification does not reload canonical manifests.
