@@ -1,19 +1,13 @@
 import * as semver from "semver";
 
-export type InfrastructureRequirement = "infrastructure" | "server";
-
-interface InfrastructureUpdateTarget {
-  version: string;
-  note: string;
+export interface UpdateTarget {
+  readonly version: string;
+  readonly note: string;
 }
 
-export interface RequiredUpdateTarget {
-  version: string;
-  kind: InfrastructureRequirement;
-  note: string;
-}
+export type RequiredUpdateTarget = UpdateTarget;
 
-export const INFRASTRUCTURE_UPDATE_TARGETS = [
+export const UPDATE_TARGETS = [
   {
     version: "0.13.0",
     note: "Initial provider infrastructure migrations",
@@ -42,62 +36,42 @@ export const INFRASTRUCTURE_UPDATE_TARGETS = [
     version: "0.32.0",
     note: "Content-addressed manifest asset routing",
   },
-] as const satisfies readonly [
-  InfrastructureUpdateTarget,
-  ...InfrastructureUpdateTarget[],
-];
-
-export const SERVER_UPDATE_TARGETS = [
   {
-    version: "0.32.1",
+    version: "0.33.0",
     note: "provider update checks reuse selected bundles",
   },
-] as const satisfies readonly [
-  InfrastructureUpdateTarget,
-  ...InfrastructureUpdateTarget[],
-];
+] as const satisfies readonly [UpdateTarget, ...UpdateTarget[]];
 
-const getTargetVersionAt = ({
+const getTargetAt = ({
   index,
   label,
   targets,
 }: {
   index: number;
   label: string;
-  targets: readonly InfrastructureUpdateTarget[];
-}): string => {
+  targets: readonly UpdateTarget[];
+}): UpdateTarget => {
   const target = targets.at(index);
   if (!target) {
     throw new Error(`${label} must not be empty`);
   }
-  return target.version;
+  return target;
 };
 
 const getLatestKnownTargetVersion = () => {
-  const infrastructureVersion = getTargetVersionAt({
+  return getTargetAt({
     index: -1,
-    label: "INFRASTRUCTURE_UPDATE_TARGETS",
-    targets: INFRASTRUCTURE_UPDATE_TARGETS,
-  });
-  const serverVersion = getTargetVersionAt({
-    index: -1,
-    label: "SERVER_UPDATE_TARGETS",
-    targets: SERVER_UPDATE_TARGETS,
-  });
-
-  return semver.gte(serverVersion, infrastructureVersion)
-    ? serverVersion
-    : infrastructureVersion;
+    label: "UPDATE_TARGETS",
+    targets: UPDATE_TARGETS,
+  }).version;
 };
 
 const getRequiredTarget = ({
-  fallbackVersion,
   hotUpdaterVersion,
   targets,
 }: {
-  fallbackVersion: string;
   hotUpdaterVersion: string;
-  targets: readonly InfrastructureUpdateTarget[];
+  targets: readonly UpdateTarget[];
 }) => {
   const current = semver.coerce(hotUpdaterVersion)?.version;
 
@@ -105,7 +79,7 @@ const getRequiredTarget = ({
     return null;
   }
 
-  let requiredTarget: InfrastructureUpdateTarget | null = null;
+  let requiredTarget: UpdateTarget | null = null;
 
   for (const target of targets) {
     if (semver.lte(target.version, current)) {
@@ -113,51 +87,24 @@ const getRequiredTarget = ({
     }
   }
 
-  return requiredTarget ?? { version: fallbackVersion, note: "" };
-};
-
-const getRequiredInfrastructureTarget = (
-  hotUpdaterVersion: string,
-): InfrastructureUpdateTarget => {
-  const fallbackVersion = getTargetVersionAt({
-    index: 0,
-    label: "INFRASTRUCTURE_UPDATE_TARGETS",
-    targets: INFRASTRUCTURE_UPDATE_TARGETS,
-  });
-
   return (
-    getRequiredTarget({
-      fallbackVersion,
-      hotUpdaterVersion,
-      targets: INFRASTRUCTURE_UPDATE_TARGETS,
-    }) ?? {
-      version: getTargetVersionAt({
-        index: -1,
-        label: "INFRASTRUCTURE_UPDATE_TARGETS",
-        targets: INFRASTRUCTURE_UPDATE_TARGETS,
-      }),
-      note: "",
-    }
+    requiredTarget ??
+    getTargetAt({
+      index: 0,
+      label: "UPDATE_TARGETS",
+      targets,
+    })
   );
 };
 
-const getRequiredServerTarget = (
-  hotUpdaterVersion: string,
-): InfrastructureUpdateTarget | null =>
-  getRequiredTarget({
-    fallbackVersion: getRequiredInfrastructureVersion(hotUpdaterVersion),
-    hotUpdaterVersion,
-    targets: SERVER_UPDATE_TARGETS,
-  });
-
 export function getRequiredInfrastructureVersion(
-  hotUpdaterVersion: string = getTargetVersionAt({
+  hotUpdaterVersion: string = getTargetAt({
     index: -1,
-    label: "INFRASTRUCTURE_UPDATE_TARGETS",
-    targets: INFRASTRUCTURE_UPDATE_TARGETS,
-  }),
+    label: "UPDATE_TARGETS",
+    targets: UPDATE_TARGETS,
+  }).version,
 ): string {
-  return getRequiredInfrastructureTarget(hotUpdaterVersion).version;
+  return getRequiredUpdateTarget(hotUpdaterVersion).version;
 }
 
 export function getRequiredServerVersion(
@@ -169,26 +116,17 @@ export function getRequiredServerVersion(
 export function getRequiredUpdateTarget(
   hotUpdaterVersion: string = getLatestKnownTargetVersion(),
 ): RequiredUpdateTarget {
-  const infrastructureTarget =
-    getRequiredInfrastructureTarget(hotUpdaterVersion);
-  const serverTarget = getRequiredServerTarget(hotUpdaterVersion);
-
-  if (
-    serverTarget &&
-    semver.gt(serverTarget.version, infrastructureTarget.version)
-  ) {
-    return {
-      version: serverTarget.version,
-      kind: "server",
-      note: serverTarget.note,
-    };
-  }
-
-  return {
-    version: infrastructureTarget.version,
-    kind: "infrastructure",
-    note: infrastructureTarget.note,
-  };
+  return (
+    getRequiredTarget({
+      hotUpdaterVersion,
+      targets: UPDATE_TARGETS,
+    }) ??
+    getTargetAt({
+      index: -1,
+      label: "UPDATE_TARGETS",
+      targets: UPDATE_TARGETS,
+    })
+  );
 }
 
 export function isInfrastructureUpdateRequired({
