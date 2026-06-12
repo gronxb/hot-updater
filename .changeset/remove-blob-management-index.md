@@ -11,3 +11,6 @@ AWS canonical manifest scans now use S3 delimiters to avoid reading asset object
 lists during console-style bundle lookups.
 Blob database instances now remember locally committed deletions so immediate
 delete verification does not reload canonical manifests.
+Blob database reads now reuse bundles already loaded in the same plugin instance,
+reducing repeated canonical manifest scans for management mutations and
+update-check follow-up lookups.

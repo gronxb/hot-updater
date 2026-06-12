@@ -298,6 +298,28 @@ export const createBlobDatabasePlugin = <TConfig>({
       );
     };
 
+    const cacheBundlesFromObject = (key: string, bundles: Bundle[]) => {
+      for (const bundle of bundles) {
+        if (
+          locallyDeletedBundleIds.has(bundle.id) ||
+          pendingBundlesMap.has(bundle.id)
+        ) {
+          continue;
+        }
+
+        bundlesMap.set(bundle.id, {
+          ...bundle,
+          _updateJsonKey: key,
+        });
+      }
+    };
+
+    const loadBundleObject = async (key: string): Promise<Bundle[]> => {
+      const bundles = (await loadOptionalObject<Bundle[]>(key)) ?? [];
+      cacheBundlesFromObject(key, bundles);
+      return bundles;
+    };
+
     // Reload all bundle data from S3.
     async function reloadBundles(prefixes: readonly string[] = [""]) {
       bundlesMap.clear();
@@ -319,7 +341,7 @@ export const createBlobDatabasePlugin = <TConfig>({
           updateJsonKeys,
           STORAGE_OPERATION_CONCURRENCY,
           async (key) => {
-            const bundlesData = (await loadOptionalObject<Bundle[]>(key)) ?? [];
+            const bundlesData = await loadBundleObject(key);
             return bundlesData.map((bundle) => ({
               ...bundle,
               _updateJsonKey: key,
@@ -402,10 +424,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             const normalizedVersion =
               normalizeTargetAppVersion(targetAppVersion) ?? targetAppVersion;
 
-            return (
-              (await loadOptionalObject<Bundle[]>(
-                `${channel}/${platform}/${normalizedVersion}/update.json`,
-              )) ?? []
+            return loadBundleObject(
+              `${channel}/${platform}/${normalizedVersion}/update.json`,
             );
           },
         )
@@ -437,10 +457,9 @@ export const createBlobDatabasePlugin = <TConfig>({
       }: FingerprintGetBundlesArgs,
       context?: HotUpdaterContext,
     ): Promise<UpdateInfo | null> => {
-      const bundles =
-        (await loadOptionalObject<Bundle[]>(
-          `${channel}/${platform}/${fingerprintHash}/update.json`,
-        )) ?? [];
+      const bundles = await loadBundleObject(
+        `${channel}/${platform}/${fingerprintHash}/update.json`,
+      );
 
       return resolveUpdateInfoFromBundles({
         args: {

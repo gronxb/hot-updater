@@ -1500,6 +1500,30 @@ describe("blobDatabase plugin", () => {
     expect(otherBundle).toBeTruthy();
   });
 
+  it("should reuse manifest bundles loaded through getUpdateInfo for getBundleById", async () => {
+    seedUpdateManifests([bundlesData[0]]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.1.1",
+        channel: "production",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: "bundleX",
+    });
+
+    listObjectCalls = [];
+    loadObjectCalls = [];
+
+    await expect(plugin.getBundleById("bundleX")).resolves.toMatchObject({
+      id: "bundleX",
+    });
+    expect(listObjectCalls).toEqual([]);
+    expect(loadObjectCalls).toEqual([]);
+  });
+
   it("should not reload storage when reading a bundle deleted by the same plugin instance", async () => {
     await plugin.appendBundle(bundlesData[0]);
     await plugin.commitBundle();

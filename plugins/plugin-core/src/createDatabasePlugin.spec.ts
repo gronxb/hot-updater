@@ -161,6 +161,53 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("reuses a bundle read before updateBundle in the same plugin instance", async () => {
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === baseBundle.id ? baseBundle : null,
+    );
+    const commitBundle = vi.fn();
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle,
+      }),
+    })({})();
+
+    await expect(plugin.getBundleById(baseBundle.id)).resolves.toStrictEqual(
+      baseBundle,
+    );
+    await plugin.updateBundle(baseBundle.id, {
+      enabled: false,
+    });
+    await plugin.commitBundle();
+
+    expect(getBundleById).toHaveBeenCalledTimes(1);
+    expect(commitBundle).toHaveBeenCalledWith({
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ],
+    });
+  });
+
   it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
     const expected = {
       fileHash: baseBundle.fileHash,

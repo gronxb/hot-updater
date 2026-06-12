@@ -244,6 +244,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           data: Bundle;
         }
       >();
+      const readBundlesMap = new Map<string, Bundle | null>();
 
       const markChanged = (
         operation: "insert" | "update" | "delete",
@@ -355,11 +356,12 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         name: options.name,
 
         async getBundleById(bundleId: string, context) {
-          if (context === undefined) {
-            return getMethods().getBundleById(bundleId);
-          }
-
-          return getMethods().getBundleById(bundleId, context);
+          const bundle =
+            context === undefined
+              ? await getMethods().getBundleById(bundleId)
+              : await getMethods().getBundleById(bundleId, context);
+          readBundlesMap.set(bundleId, bundle);
+          return bundle;
         },
 
         async getBundles(options, context) {
@@ -458,6 +460,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           }
 
           changedMap.clear();
+          readBundlesMap.clear();
           await hooks?.onDatabaseUpdated?.();
         },
 
@@ -479,8 +482,9 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return;
           }
 
-          const currentBundle =
-            context === undefined
+          const currentBundle = readBundlesMap.has(targetBundleId)
+            ? readBundlesMap.get(targetBundleId)
+            : context === undefined
               ? await getMethods().getBundleById(targetBundleId)
               : await getMethods().getBundleById(targetBundleId, context);
           if (!currentBundle) {
