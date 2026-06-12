@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.33.1
+
+### Patch Changes
+
+- Updated dependencies [a5c4467]
+  - @hot-updater/console@0.33.1
+  - @hot-updater/plugin-core@0.33.1
+  - @hot-updater/server@0.33.1
+  - @hot-updater/android-helper@0.33.1
+  - @hot-updater/apple-helper@0.33.1
+  - @hot-updater/cli-tools@0.33.1
+  - @hot-updater/core@0.33.1
+
 ## 0.33.0
 
 ### Minor Changes
