@@ -26,9 +26,10 @@
     "geist": "^1.5.1",
     "lucide-react": "^0.552.0",
     "lucide-static": "^0.548.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "react-server-dom-webpack": "19.2.6",
+    "next": "16.2.6",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-server-dom-webpack": "19.2.7",
     "tailwind-merge": "^2.5.4",
     "waku": "1.0.0-beta.1"
   },

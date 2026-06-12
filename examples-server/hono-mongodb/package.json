@@ -11,7 +11,7 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"
   },
-  "dependencies": {
+  "devDependencies": {
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
@@ -20,16 +20,14 @@
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
-    "dotenv": "^16.6.1",
-    "firebase-admin": "catalog:firebase",
-    "hono": "catalog:hono",
-    "mongodb": "catalog:db"
-  },
-  "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
+    "dotenv": "^16.6.1",
     "execa": "catalog:tools",
+    "firebase-admin": "catalog:firebase",
+    "hono": "catalog:hono",
     "hot-updater": "workspace:*",
+    "mongodb": "catalog:db",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2"
   }

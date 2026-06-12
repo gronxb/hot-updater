@@ -78,7 +78,7 @@
   "inlinedDependencies": {
     "@noble/hashes": "1.8.0",
     "@paralleldrive/cuid2": "2.3.1",
-    "drizzle-orm": "0.44.7",
-    "fumadb": "0.2.2"
+    "drizzle-orm": "0.45.2",
+    "fumadb": "0.4.0"
   }
 }

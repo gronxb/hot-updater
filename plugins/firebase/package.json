@@ -44,7 +44,6 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "firebase": "^11.3.1",
     "hono": "catalog:hono"
   },
   "publishConfig": {
@@ -58,8 +57,8 @@
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "firebase-admin": "catalog:firebase",
-    "firebase-functions": "^6.3.2",
-    "firebase-functions-test": "^3.4.0",
+    "firebase-functions": "^7.2.5",
+    "firebase-functions-test": "^3.5.0",
     "firebase-tools": "^13.32.0",
     "fkill": "^9.0.0",
     "mime": "^4.0.4"

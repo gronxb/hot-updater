@@ -19,15 +19,15 @@ catalogs:
   db:
     "@electric-sql/pglite": 0.2.17
     "@libsql/client": 0.15.15
-    "@prisma/client": 6.18.0
-    drizzle-orm: 0.44.7
-    fumadb: 0.2.2
-    kysely: 0.28.16
+    "@prisma/client": 7.8.0
+    drizzle-orm: 0.45.2
+    fumadb: 0.4.0
+    kysely: 0.28.17
     kysely-pglite-dialect: 1.2.0
     mongodb: 6.20.0
     mysql2: 3.19.1
     pg: 8.13.1
-    prisma: 6.18.0
+    prisma: 7.8.0
   firebase:
     firebase-admin: 13.6.0
   supabase:
