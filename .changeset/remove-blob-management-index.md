@@ -1,5 +1,6 @@
 ---
 "@hot-updater/aws": minor
+"@hot-updater/console": patch
 "@hot-updater/plugin-core": minor
 "@hot-updater/server": patch
 ---
@@ -26,3 +27,6 @@ Server update-info artifact resolution reuses the request identity map instead
 of adding duplicate bundle reads for manifest artifact lookup.
 Canonical blob reloads now clear provider-local pending state so another plugin
 instance's committed manifest update is visible through the canonical path.
+Console bundle deletion now closes the detail panel immediately after cached
+state is updated, while broader bundle, child, and channel invalidations continue
+in the background.
