@@ -23,7 +23,10 @@ import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,
 } from "./utils/adapter-strategies";
-import { loadHotUpdater } from "./utils/load-hot-updater";
+import {
+  type LoadHotUpdaterResult,
+  loadHotUpdater,
+} from "./utils/load-hot-updater";
 import { mergePrismaSchema } from "./utils/prisma-schema-merger";
 
 // Supported database providers
@@ -54,13 +57,16 @@ export async function generate(options: GenerateOptions) {
     });
   }
 
+  let loadedConfig: LoadHotUpdaterResult | undefined;
+
   try {
     // Start spinner early to show progress during config loading
     const s = p.spinner();
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
+    loadedConfig = await loadHotUpdater(configPath);
+    const { hotUpdater, adapterName } = loadedConfig;
 
     // Set default outputDir based on adapter type
     const defaultOutputDir =
@@ -110,6 +116,8 @@ export async function generate(options: GenerateOptions) {
       }
     }
     process.exit(1);
+  } finally {
+    await loadedConfig?.dispose();
   }
 }
 

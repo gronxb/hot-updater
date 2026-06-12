@@ -212,6 +212,7 @@ export function BundlesTable({
 
                     <button
                       type="button"
+                      aria-label={`Open bundle ${bundle.id}`}
                       className="flex w-full flex-col gap-4 p-4 text-left"
                       onClick={() => onDetailClick(bundle)}
                     >

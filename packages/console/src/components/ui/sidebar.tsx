@@ -237,8 +237,8 @@ function Sidebar({
           className="absolute inset-0 bg-sidebar/55 supports-backdrop-filter:backdrop-blur-sm"
           onClick={() => setOpenMobile(false)}
         />
-        <div
-          role="dialog"
+        <dialog
+          open
           aria-modal="true"
           aria-label="Sidebar"
           className={cn(
@@ -255,7 +255,7 @@ function Sidebar({
           <div className="flex h-full w-full flex-col overflow-y-auto bg-sidebar">
             {children}
           </div>
-        </div>
+        </dialog>
       </div>
     );
   }

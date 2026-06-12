@@ -6,7 +6,6 @@ interface PlatformIconProps {
 function AppleIcon({ className }: { className?: string }) {
   return (
     <svg
-      role="img"
       aria-label="iOS"
       viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
@@ -21,7 +20,6 @@ function AppleIcon({ className }: { className?: string }) {
 function AndroidIcon({ className }: { className?: string }) {
   return (
     <svg
-      role="img"
       aria-label="Android"
       viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"

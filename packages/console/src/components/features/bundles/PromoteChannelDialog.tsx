@@ -223,6 +223,7 @@ export function PromoteChannelDialog({
                     type="button"
                     variant="outline"
                     size="xs"
+                    aria-label={`Use ${channel} as target channel`}
                     onClick={() => setTargetChannel(channel)}
                     disabled={isPromoting}
                   >

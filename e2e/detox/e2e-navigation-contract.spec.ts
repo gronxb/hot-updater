@@ -102,17 +102,22 @@ describe("E2E navigation contract", () => {
     const e2eAppScreenFiles = await fs.readdir(e2eAppScreensDir);
     const examplePackage = JSON.parse(
       await fs.readFile(examplePackagePath, "utf8"),
-    ) as { dependencies: Record<string, string> };
+    ) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const exampleDependencies = {
+      ...examplePackage.dependencies,
+      ...examplePackage.devDependencies,
+    };
 
-    expect(examplePackage.dependencies["@react-navigation/native"]).toBeTypeOf(
+    expect(exampleDependencies["@react-navigation/native"]).toBeTypeOf(
       "string",
     );
-    expect(
-      examplePackage.dependencies["@react-navigation/native-stack"],
-    ).toBeTypeOf("string");
-    expect(examplePackage.dependencies["react-native-screens"]).toBeTypeOf(
+    expect(exampleDependencies["@react-navigation/native-stack"]).toBeTypeOf(
       "string",
     );
+    expect(exampleDependencies["react-native-screens"]).toBeTypeOf("string");
     expect(appSource).toContain("E2eHotUpdaterApp");
     expect(appSource).toContain("patchSurface");
     expect(e2eAppIndexSource).toBe(
