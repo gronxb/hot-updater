@@ -1,7 +1,7 @@
 ---
-"@hot-updater/aws": minor
+"@hot-updater/aws": patch
 "@hot-updater/console": patch
-"@hot-updater/plugin-core": minor
+"@hot-updater/plugin-core": patch
 "@hot-updater/server": patch
 ---
 
