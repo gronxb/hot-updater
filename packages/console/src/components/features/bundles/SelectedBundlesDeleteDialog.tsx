@@ -100,7 +100,7 @@ function DeleteStatusIcon({ status }: { readonly status: DeleteItemStatus }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span aria-label={label} role="img">
+        <span aria-label={label}>
           <Icon className={className} />
         </span>
       </TooltipTrigger>

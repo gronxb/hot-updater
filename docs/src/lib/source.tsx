@@ -16,7 +16,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   supabase: () => (
     <svg
       data-brand="supabase"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -32,7 +31,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   expo: () => (
     <svg
       data-brand="expo"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -48,7 +46,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   cloudflare: () => (
     <svg
       data-brand="cloudflare"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -64,7 +61,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   firebase: () => (
     <svg
       data-brand="firebase"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -80,7 +76,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   sentry: () => (
     <svg
       data-brand="sentry"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -96,7 +91,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   react: () => (
     <svg
       data-brand="react"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -112,7 +106,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   datadog: () => (
     <svg
       data-brand="datadog"
-      role="img"
       viewBox="0 0 24 24"
       width="1em"
       height="1em"
@@ -128,7 +121,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   aws: () => (
     <svg
       data-brand="aws"
-      role="img"
       viewBox="0 0 640 512"
       width="1em"
       height="1em"
@@ -142,7 +134,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   hono: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Hono</title>
       <path
         fill="currentColor"
@@ -152,7 +144,6 @@ const brandIcons: Record<string, () => ReactElement> = {
   ),
   elysia: () => (
     <svg
-      role="img"
       xmlns="http://www.w3.org/2000/svg"
       width="1em"
       height="1em"
@@ -202,7 +193,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   express: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Express</title>
       <path
         fill="currentColor"
@@ -211,7 +202,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   drizzle: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Drizzle</title>
       <path
         fill="currentColor"
@@ -220,7 +211,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   prisma: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Prisma</title>
       <path
         fill="currentColor"
@@ -229,7 +220,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   mongodb: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>MongoDB</title>
       <path
         fill="currentColor"
@@ -238,7 +229,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   kysely: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Kysely</title>
       <path
         fill="currentColor"
@@ -247,7 +238,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   docker: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Docker</title>
       <path
         fill="currentColor"
@@ -256,7 +247,7 @@ const brandIcons: Record<string, () => ReactElement> = {
     </svg>
   ),
   vercel: () => (
-    <svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
       <title>Vercel</title>
       <path fill="currentColor" d="m12 1.608 12 20.784H0Z"></path>
     </svg>

@@ -1,7 +1,5 @@
 import type {
-  AppVersionGetBundlesArgs,
   Bundle,
-  FingerprintGetBundlesArgs,
   GetBundlesArgs,
   Platform,
   UpdateInfo,

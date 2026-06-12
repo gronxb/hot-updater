@@ -42,10 +42,10 @@ vi.mock("@/components/ui/dialog", () => ({
     readonly children: ReactNode;
   }) =>
     open ? (
-      <div role="dialog">
+      <dialog open>
         <button onClick={() => onOpenChange?.(false)}>Dismiss dialog</button>
         {children}
-      </div>
+      </dialog>
     ) : null,
   DialogContent: ({ children }: { readonly children: ReactNode }) => (
     <div>{children}</div>

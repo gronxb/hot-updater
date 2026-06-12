@@ -34,9 +34,6 @@
   "publishConfig": {
     "access": "public"
   },
-  "dependencies": {
-    "workspace-tools": "^0.41.7"
-  },
   "peerDependencies": {
     "@hot-updater/core": "*",
     "execa": "*",
@@ -47,6 +44,37 @@
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "typescript": "6.0.2",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "workspace-tools": "^0.41.7"
+  },
+  "inlinedDependencies": {
+    "@nodelib/fs.scandir": "2.1.5",
+    "@nodelib/fs.stat": "2.0.5",
+    "@nodelib/fs.walk": "1.2.8",
+    "@yarnpkg/lockfile": "1.1.0",
+    "braces": "3.0.3",
+    "fast-glob": "3.3.3",
+    "fastq": "1.20.1",
+    "fill-range": "7.1.1",
+    "git-up": "8.1.1",
+    "git-url-parse": "16.1.0",
+    "glob-parent": "5.1.2",
+    "is-extglob": "2.1.1",
+    "is-glob": "4.0.3",
+    "is-number": "7.0.0",
+    "is-ssh": "1.4.1",
+    "jju": "1.4.0",
+    "js-yaml": "4.2.0",
+    "merge2": "1.4.1",
+    "micromatch": "4.0.8",
+    "parse-path": "7.1.0",
+    "parse-url": "9.2.0",
+    "picomatch": "2.3.2",
+    "protocols": "2.0.2",
+    "queue-microtask": "1.2.3",
+    "reusify": "1.1.0",
+    "run-parallel": "1.2.0",
+    "to-regex-range": "5.0.1",
+    "workspace-tools": "0.41.7"
   }
 }

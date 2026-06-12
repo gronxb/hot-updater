@@ -5,33 +5,52 @@ packages:
   - examples/*
   - examples-server/*
 
+allowBuilds:
+  '@firebase/util': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@sentry/cli': true
+  aws-sdk: true
+  bun: true
+  deno-bin: true
+  detox: true
+  dtrace-provider: true
+  esbuild: true
+  msw: true
+  nx: true
+  prisma: true
+  protobufjs: true
+  re2: true
+  sharp: true
+  workerd: true
+
 catalog:
   "@types/node": ^20
   vitest: 4.1.4
 catalogs:
-  tools:
-    tsdown: 0.21.6
-    "@clack/prompts": 1.0.1
-    "execa": 9.5.2
-  hono:
-    hono: 4.12.9
-    "@hono/node-server": 1.19.11
   db:
-    "@electric-sql/pglite": 0.2.17
+    "@electric-sql/pglite": 0.4.1
     "@libsql/client": 0.15.15
-    "@prisma/client": 7.8.0
+    "@prisma/client": 6.19.3
     drizzle-orm: 0.45.2
-    fumadb: 0.4.0
+    fumadb: 0.2.2
     kysely: 0.28.17
     kysely-pglite-dialect: 1.2.0
     mongodb: 6.20.0
     mysql2: 3.19.1
     pg: 8.13.1
-    prisma: 7.8.0
+    prisma: 6.19.3
   firebase:
     firebase-admin: 13.6.0
+  hono:
+    "@hono/node-server": 1.19.11
+    hono: 4.12.9
   supabase:
     "@supabase/supabase-js": 2.76.1
+  tools:
+    "@clack/prompts": 1.0.1
+    "execa": 9.5.2
+    tsdown: 0.21.6
 
 onlyBuiltDependencies:
   - "@prisma/client"
@@ -46,6 +65,8 @@ onlyBuiltDependencies:
   - core-js-pure
   - cpu-features
   - deno-bin
+  - detox
+  - dtrace-provider
   - esbuild
   - msw
   - nx

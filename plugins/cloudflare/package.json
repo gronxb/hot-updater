@@ -53,7 +53,7 @@
     "dev": "wrangler dev worker/src/index.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1067.0",
+    "@aws-sdk/client-s3": "3.1066.0",
     "@aws-sdk/lib-storage": "3.1008.0",
     "@aws-sdk/s3-request-presigner": "3.1008.0",
     "@hot-updater/cli-tools": "workspace:*",

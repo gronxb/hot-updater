@@ -127,43 +127,55 @@ type RuntimeCommand = {
 async function assertEndpointRuntime(
   commandSpec: RuntimeCommand,
 ): Promise<void> {
-  const port = await findOpenPort();
-  const args = [...commandSpec.args, "--port", String(port)];
+  let lastError: unknown;
 
-  const processResult = spawnRuntime({
-    command: commandSpec.command,
-    args,
-    env: commandSpec.env,
-  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const port = await findOpenPort();
+    const args = [...commandSpec.args, "--port", String(port)];
 
-  try {
-    await waitForHealthy(
-      `http://127.0.0.1:${port}/healthz`,
-      processResult.child,
-      processResult.logs,
-    );
+    const processResult = spawnRuntime({
+      command: commandSpec.command,
+      args,
+      env: commandSpec.env,
+    });
 
-    const response = await fetch(`http://127.0.0.1:${port}/demo/patch`);
-    expect(
-      response.status,
-      formatLogs(commandSpec.runtime, processResult.logs),
-    ).toBe(200);
+    try {
+      await waitForHealthy(
+        `http://127.0.0.1:${port}/healthz`,
+        processResult.child,
+        processResult.logs,
+      );
 
-    const patch = new Uint8Array(await response.arrayBuffer());
-    expect(
-      Buffer.from(patch),
-      formatLogs(commandSpec.runtime, processResult.logs),
-    ).toEqual(Buffer.from(expected.patch));
+      const response = await fetch(`http://127.0.0.1:${port}/demo/patch`);
+      expect(
+        response.status,
+        formatLogs(commandSpec.runtime, processResult.logs),
+      ).toBe(200);
 
-    expect(response.headers.get("x-hdiff-patch-bytes")).toBe(
-      String(expected.patchSize),
-    );
-    expect(response.headers.get("x-hdiff-patch-sha256")).toBe(
-      expected.patchSha256,
-    );
-  } finally {
-    await stopRuntime(processResult.child);
+      const patch = new Uint8Array(await response.arrayBuffer());
+      expect(
+        Buffer.from(patch),
+        formatLogs(commandSpec.runtime, processResult.logs),
+      ).toEqual(Buffer.from(expected.patch));
+
+      expect(response.headers.get("x-hdiff-patch-bytes")).toBe(
+        String(expected.patchSize),
+      );
+      expect(response.headers.get("x-hdiff-patch-sha256")).toBe(
+        expected.patchSha256,
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isAddressInUseError(processResult.logs)) {
+        throw error;
+      }
+    } finally {
+      await stopRuntime(processResult.child);
+    }
   }
+
+  throw lastError;
 }
 
 function spawnRuntime(input: {
@@ -336,6 +348,15 @@ function formatLogs(
     `[${runtime}] stderr:`,
     logs.stderr.join("").trim() || "(empty)",
   ].join("\n");
+}
+
+function isAddressInUseError(logs: {
+  stdout: string[];
+  stderr: string[];
+}): boolean {
+  return [...logs.stdout, ...logs.stderr].some((entry) =>
+    entry.includes("Address already in use"),
+  );
 }
 
 function sleep(ms: number): Promise<void> {

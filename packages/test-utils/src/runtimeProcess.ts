@@ -187,7 +187,9 @@ export const waitForHttpOk = async ({
     }
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(1_000),
+      });
       if (response.ok) {
         return;
       }
