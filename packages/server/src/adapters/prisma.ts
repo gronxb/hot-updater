@@ -32,7 +32,7 @@ type PrismaDelegate = {
 };
 
 export interface PrismaConfig {
-  readonly prisma: Record<string, unknown>;
+  readonly prisma: object;
   readonly provider: ORMProvider;
   readonly relationMode?: PrismaRelationMode;
   readonly db?: unknown;
@@ -107,8 +107,9 @@ const prismaWhere = (where: DatabaseBundleQueryWhere | undefined) => {
 const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
   name: "prisma",
   factory: (config) => {
-    const bundles = getDelegate(config.prisma, "bundles");
-    const patches = getDelegate(config.prisma, "bundle_patches");
+    const prisma = config.prisma as Record<string, unknown>;
+    const bundles = getDelegate(prisma, "bundles");
+    const patches = getDelegate(prisma, "bundle_patches");
     const fetchPatchMap = async (bundleIds: readonly string[]) => {
       const patchMap = new Map<string, BundlePatchRow[]>();
       if (bundleIds.length === 0) return patchMap;
