@@ -22,6 +22,7 @@ export interface LoadHotUpdaterResult {
   hotUpdater: HotUpdaterInstance;
   adapterName: string;
   absoluteConfigPath: string;
+  dispose: () => Promise<void>;
 }
 
 const SUPPORTED_CONFIG_EXTENSIONS = [
@@ -197,5 +198,11 @@ export async function loadHotUpdater(
     hotUpdater,
     adapterName,
     absoluteConfigPath,
+    dispose: async () => {
+      const closeDatabase = moduleExports["closeDatabase"];
+      if (typeof closeDatabase === "function") {
+        await closeDatabase();
+      }
+    },
   };
 }

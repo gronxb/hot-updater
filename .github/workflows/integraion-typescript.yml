@@ -10,16 +10,16 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
         with:
           node-version-file: .node-version
           cache: "pnpm"
       - name: Setup mise
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925
         with:
           install_args: "bun deno"
       - run: pnpm install

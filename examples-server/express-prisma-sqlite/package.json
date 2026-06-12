@@ -11,22 +11,20 @@
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx prisma db push"
   },
-  "dependencies": {
+  "devDependencies": {
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "@prisma/client": "catalog:db",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.21.2"
-  },
-  "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
+    "@prisma/client": "catalog:db",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^20.11.17",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
     "execa": "catalog:tools",
+    "express": "^4.22.2",
     "hot-updater": "workspace:*",
     "prisma": "catalog:db",
     "tsx": "^4.20.6",

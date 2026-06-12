@@ -11,24 +11,22 @@
     "db:generate": "npx hot-updater db generate src/db.ts --yes",
     "db:push": "npx drizzle-kit push"
   },
-  "dependencies": {
-    "@elysiajs/node": "^1.0.3",
+  "devDependencies": {
+    "@elysiajs/node": "^1.4.5",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
+    "@hot-updater/test-utils": "workspace:*",
     "@libsql/client": "catalog:db",
+    "@types/node": "^20.11.17",
     "dotenv": "^16.6.1",
     "drizzle-orm": "catalog:db",
-    "elysia": "^1.2.17",
-    "memoirist": "^0.4.0"
-  },
-  "devDependencies": {
-    "@hot-updater/test-utils": "workspace:*",
-    "@types/node": "^20.11.17",
     "drizzle-kit": "^0.31.6",
+    "elysia": "^1.4.28",
     "execa": "catalog:tools",
     "hot-updater": "workspace:*",
+    "memoirist": "^0.4.0",
     "prisma": "catalog:db",
     "tsx": "^4.20.6",
     "typescript": "^6.0.2"

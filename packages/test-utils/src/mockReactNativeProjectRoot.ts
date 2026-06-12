@@ -3,7 +3,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import { findPackageRoot, getPnpmWorkspaces } from "workspace-tools";
+import { findPackageRoot, getWorkspaceInfos } from "workspace-tools";
 
 const HOT_UPDATE_DIR_NAME = ".hot-updater";
 
@@ -16,7 +16,7 @@ export interface MockedReactNativeProjectRoot {
 type Example = "rn-77";
 
 const resolveWorkspaceInfoFromExample = (example: Example) => {
-  const workspaces = getPnpmWorkspaces(getCwd());
+  const workspaces = getWorkspaceInfos(getCwd()) ?? [];
   switch (example) {
     case "rn-77":
       return workspaces.find((ws) => ws.name === "@examples/react-native-v77")!;

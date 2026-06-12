@@ -67,13 +67,13 @@
       "3.1.1",
       "4.0.0"
     ],
-    "pretty-ms": "9.2.0",
+    "pretty-ms": "9.3.0",
     "shebang-command": "2.0.0",
     "shebang-regex": "3.0.0",
     "signal-exit": "4.1.0",
     "strip-final-newline": "4.0.0",
     "unicorn-magic": "0.3.0",
     "which": "2.0.2",
-    "yoctocolors": "2.1.1"
+    "yoctocolors": "2.1.2"
   }
 }
