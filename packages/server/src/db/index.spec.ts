@@ -888,17 +888,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
         async commitBundle() {},
       }));
-      const hotUpdater = createHotUpdater({
+      createHotUpdater({
         database: createDatabasePlugin({
           name: "lazyPlugin",
           factory,
         })({}),
       });
 
-      expect(factory).not.toHaveBeenCalled();
-      expect(hotUpdater.diagnostics).toBeUndefined();
-      expect(factory).not.toHaveBeenCalled();
-      expect(hotUpdater.diagnostics).toBeUndefined();
       expect(factory).not.toHaveBeenCalled();
     });
 

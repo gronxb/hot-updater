@@ -1098,10 +1098,6 @@ describe("blobDatabase plugin", () => {
     expect(loadObjectCalls).toEqual(["production/ios/1.0.0/update.json"]);
   });
 
-  it("does not expose bundle index diagnostics after index removal", () => {
-    expect(plugin.diagnostics?.bundleIndex).toBeUndefined();
-  });
-
   it("serves console-style reads from canonical manifests after updating bundle metadata", async () => {
     const targetBundle = createBundleJson(
       "beta",

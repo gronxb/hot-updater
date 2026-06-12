@@ -449,45 +449,6 @@ export function createPluginDatabaseCore<TContext = unknown>(
     },
   };
 
-  Object.defineProperty(api, "diagnostics", {
-    configurable: true,
-    enumerable: true,
-    get(this: DatabaseAPI<TContext>) {
-      const diagnostics = getPlugin().diagnostics;
-      if (!diagnostics) {
-        Object.defineProperty(this, "diagnostics", {
-          configurable: true,
-          enumerable: true,
-          value: undefined,
-        });
-        return undefined;
-      }
-
-      const wrappedDiagnostics: NonNullable<
-        DatabaseAPI<TContext>["diagnostics"]
-      > = {};
-      if (diagnostics.bundleIndex) {
-        wrappedDiagnostics.bundleIndex = {
-          check: (context?: HotUpdaterContext<TContext>) =>
-            getPlugin().diagnostics!.bundleIndex!.check(context),
-          ...(diagnostics.bundleIndex.repair
-            ? {
-                repair: (context?: HotUpdaterContext<TContext>) =>
-                  getPlugin().diagnostics!.bundleIndex!.repair!(context),
-              }
-            : {}),
-        };
-      }
-
-      Object.defineProperty(this, "diagnostics", {
-        configurable: true,
-        enumerable: true,
-        value: wrappedDiagnostics,
-      });
-      return wrappedDiagnostics;
-    },
-  });
-
   return {
     api,
     adapterName: getPlugin().name,
