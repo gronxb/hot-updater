@@ -3,12 +3,15 @@ import { MongoServerError, type MongoClient } from "mongodb";
 
 import {
   createTableSql,
+  createV029AlterSql,
+  createV031AlterSql,
   getSettingsInsertSql,
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
   hotUpdaterCreateTableOperations,
 } from "./hotUpdaterSchema";
 import type {
+  MigrateOptions,
   MigrationOperation,
   MigrationResult,
   Migrator,
@@ -52,8 +55,9 @@ const ignoreExistingCollection = (error: unknown): undefined => {
 };
 
 const getSqlCreateOperations = (
-  settingsOperation: MigrationOperation,
+  provider: ORMSQLProvider,
   relationMode: RelationMode,
+  settingsOperation?: MigrationOperation,
 ): MigrationOperation[] => [
   ...hotUpdaterCreateTableOperations,
   {
@@ -68,18 +72,26 @@ const getSqlCreateOperations = (
     type: "custom",
     sql: "create index bundles_channel_idx on bundles(channel)",
   },
-  {
-    type: "custom",
-    sql: "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
-  },
+  ...(provider === "sqlite"
+    ? []
+    : [
+        {
+          type: "custom" as const,
+          sql: "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
+        },
+      ]),
   {
     type: "custom",
     sql: "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
   },
-  {
-    type: "custom",
-    sql: "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
-  },
+  ...(provider === "sqlite"
+    ? []
+    : [
+        {
+          type: "custom" as const,
+          sql: "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
+        },
+      ]),
   {
     type: "custom",
     sql: "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
@@ -88,7 +100,7 @@ const getSqlCreateOperations = (
     type: "custom",
     sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
   },
-  ...(relationMode === "foreign-keys"
+  ...(relationMode === "foreign-keys" && provider !== "sqlite"
     ? [
         {
           type: "custom" as const,
@@ -100,7 +112,20 @@ const getSqlCreateOperations = (
         },
       ]
     : []),
-  settingsOperation,
+  ...(settingsOperation ? [settingsOperation] : []),
+];
+
+const toCustomOperations = (
+  statements: readonly string[],
+  settingsOperation?: MigrationOperation,
+): MigrationOperation[] => [
+  ...statements.map(
+    (statement): MigrationOperation => ({
+      type: "custom",
+      sql: statement,
+    }),
+  ),
+  ...(settingsOperation ? [settingsOperation] : []),
 ];
 
 export const createKyselyMigrator = ({
@@ -126,22 +151,56 @@ export const createKyselyMigrator = ({
     }
   };
 
-  const makeResult = async (): Promise<MigrationResult> => {
-    if ((await getVersion()) === HOT_UPDATER_SCHEMA_VERSION) {
+  const makeResult = async (
+    options: MigrateOptions = {},
+  ): Promise<MigrationResult> => {
+    const currentVersion = await getVersion();
+    if (currentVersion === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
 
-    const statements = [
-      ...createTableSql(provider, relationMode),
-      getSettingsInsertSql(provider),
-    ];
-    const operations = getSqlCreateOperations(
-      {
-        type: "custom",
-        sql: getSettingsInsertSql(provider),
-      },
-      relationMode,
-    );
+    const settingsStatement = getSettingsInsertSql(provider);
+    const settingsOperation =
+      options.updateSettings === false
+        ? undefined
+        : ({
+            type: "custom",
+            sql: settingsStatement,
+          } satisfies MigrationOperation);
+    const updateStatements =
+      options.updateSettings === false ? [] : [settingsStatement];
+    const statements =
+      currentVersion === undefined
+        ? [...createTableSql(provider, relationMode), ...updateStatements]
+        : [
+            ...(currentVersion === "0.21.0"
+              ? createV029AlterSql(provider)
+              : []),
+            ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
+              ? createV031AlterSql(provider, relationMode)
+              : []),
+            ...updateStatements,
+          ];
+    const operations =
+      currentVersion === undefined
+        ? getSqlCreateOperations(provider, relationMode, settingsOperation)
+        : toCustomOperations(
+            [
+              ...(currentVersion === "0.21.0"
+                ? createV029AlterSql(provider)
+                : []),
+              ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
+                ? createV031AlterSql(provider, relationMode)
+                : []),
+            ],
+            settingsOperation,
+          );
+
+    if (statements.length === 0) {
+      throw new Error(
+        `Unsupported Hot Updater schema version: ${currentVersion}`,
+      );
+    }
 
     return {
       operations,
@@ -166,11 +225,11 @@ export const createKyselyMigrator = ({
     down: async () => {
       throw new Error("No previous schema to migrate to.");
     },
-    migrateTo: async (version) => {
+    migrateTo: async (version, options) => {
       if (version !== HOT_UPDATER_SCHEMA_VERSION) {
         throw new Error(`Invalid version ${version}`);
       }
-      return makeResult();
+      return makeResult(options);
     },
     migrateToLatest: makeResult,
   };
@@ -184,7 +243,9 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     const row = await settings.findOne({ key: "version" });
     return typeof row?.value === "string" ? row.value : undefined;
   };
-  const makeResult = async (): Promise<MigrationResult> => {
+  const makeResult = async (
+    options: MigrateOptions = {},
+  ): Promise<MigrationResult> => {
     if ((await getVersion()) === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
@@ -220,11 +281,15 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
           type: "custom",
           sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
         },
-        {
-          type: "custom",
-          key: "version",
-          value: HOT_UPDATER_SCHEMA_VERSION,
-        },
+        ...(options.updateSettings === false
+          ? []
+          : [
+              {
+                type: "custom" as const,
+                key: "version",
+                value: HOT_UPDATER_SCHEMA_VERSION,
+              },
+            ]),
       ],
       execute: async () => {
         const db = client.db();
@@ -280,11 +345,13 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             name: "bundle_patches_base_bundle_id_idx",
           },
         );
-        await settings.updateOne(
-          { key: "version" },
-          { $set: { value: HOT_UPDATER_SCHEMA_VERSION } },
-          { upsert: true },
-        );
+        if (options.updateSettings !== false) {
+          await settings.updateOne(
+            { key: "version" },
+            { $set: { value: HOT_UPDATER_SCHEMA_VERSION } },
+            { upsert: true },
+          );
+        }
       },
     };
   };
@@ -301,11 +368,11 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     down: async () => {
       throw new Error("No previous schema to migrate to.");
     },
-    migrateTo: async (version) => {
+    migrateTo: async (version, options) => {
       if (version !== HOT_UPDATER_SCHEMA_VERSION) {
         throw new Error(`Invalid version ${version}`);
       }
-      return makeResult();
+      return makeResult(options);
     },
     migrateToLatest: makeResult,
   };

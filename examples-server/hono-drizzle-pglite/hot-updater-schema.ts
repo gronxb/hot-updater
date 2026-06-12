@@ -63,6 +63,6 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 }));
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
-  id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.31.0")
+  key: text("key").primaryKey().notNull(),
+  value: varchar("value", { length: 255 }).notNull().default("0.31.0")
 })

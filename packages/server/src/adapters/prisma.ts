@@ -61,35 +61,48 @@ const getDelegate = (
   return delegate as PrismaDelegate;
 };
 
-const prismaWhere = (where: DatabaseBundleQueryWhere | undefined) => ({
-  ...(where?.channel !== undefined ? { channel: where.channel } : {}),
-  ...(where?.platform !== undefined ? { platform: where.platform } : {}),
-  ...(where?.enabled !== undefined ? { enabled: where.enabled } : {}),
-  ...(where?.fingerprintHash !== undefined
-    ? { fingerprint_hash: where.fingerprintHash }
-    : {}),
-  ...(where?.targetAppVersion !== undefined
-    ? { target_app_version: where.targetAppVersion }
-    : {}),
-  ...(where?.targetAppVersionIn
-    ? { target_app_version: { in: where.targetAppVersionIn } }
-    : {}),
-  ...(where?.targetAppVersionNotNull
-    ? { target_app_version: { not: null } }
-    : {}),
-  ...(where?.id
-    ? {
-        id: {
-          ...(where.id.eq !== undefined ? { equals: where.id.eq } : {}),
-          ...(where.id.gt !== undefined ? { gt: where.id.gt } : {}),
-          ...(where.id.gte !== undefined ? { gte: where.id.gte } : {}),
-          ...(where.id.lt !== undefined ? { lt: where.id.lt } : {}),
-          ...(where.id.lte !== undefined ? { lte: where.id.lte } : {}),
-          ...(where.id.in !== undefined ? { in: where.id.in } : {}),
-        },
-      }
-    : {}),
-});
+const prismaWhere = (where: DatabaseBundleQueryWhere | undefined) => {
+  const targetAppVersionFilters = [];
+  if (where?.targetAppVersion !== undefined) {
+    targetAppVersionFilters.push({
+      target_app_version: where.targetAppVersion,
+    });
+  }
+  if (where?.targetAppVersionIn) {
+    targetAppVersionFilters.push({
+      target_app_version: { in: where.targetAppVersionIn },
+    });
+  }
+  if (where?.targetAppVersionNotNull) {
+    targetAppVersionFilters.push({
+      target_app_version: { not: null },
+    });
+  }
+
+  return {
+    ...(where?.channel !== undefined ? { channel: where.channel } : {}),
+    ...(where?.platform !== undefined ? { platform: where.platform } : {}),
+    ...(where?.enabled !== undefined ? { enabled: where.enabled } : {}),
+    ...(where?.fingerprintHash !== undefined
+      ? { fingerprint_hash: where.fingerprintHash }
+      : {}),
+    ...(where?.id
+      ? {
+          id: {
+            ...(where.id.eq !== undefined ? { equals: where.id.eq } : {}),
+            ...(where.id.gt !== undefined ? { gt: where.id.gt } : {}),
+            ...(where.id.gte !== undefined ? { gte: where.id.gte } : {}),
+            ...(where.id.lt !== undefined ? { lt: where.id.lt } : {}),
+            ...(where.id.lte !== undefined ? { lte: where.id.lte } : {}),
+            ...(where.id.in !== undefined ? { in: where.id.in } : {}),
+          },
+        }
+      : {}),
+    ...(targetAppVersionFilters.length > 0
+      ? { AND: targetAppVersionFilters }
+      : {}),
+  };
+};
 
 const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
   name: "prisma",

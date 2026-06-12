@@ -180,7 +180,7 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 }));
 
 export const private_hot_updater_settings = ${tableFn}("${"private_hot_updater_settings"}", {
-  id: ${types.varchar}.primaryKey().notNull(),
-  version: ${provider === "sqlite" ? "text" : "varchar"}("version", { length: 255 }).notNull().default("0.31.0")
+  key: ${provider === "mysql" ? 'varchar("key", { length: 255 })' : 'text("key")'}.primaryKey().notNull(),
+  value: ${provider === "sqlite" ? "text" : "varchar"}("value", { length: 255 }).notNull().default("0.31.0")
 })`;
 };

@@ -85,7 +85,7 @@ const createForeignKeySql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode,
 ): readonly string[] => {
-  if (relationMode === "fumadb") return [];
+  if (relationMode !== "foreign-keys") return [];
   if (provider === "sqlite") return [];
 
   return [
@@ -93,6 +93,47 @@ const createForeignKeySql = (
     "alter table bundle_patches add constraint bundle_patches_base_bundle_id_fk foreign key (base_bundle_id) references bundles(id) on update restrict on delete cascade",
   ];
 };
+
+const getInlineBundleConstraints = (provider: ORMSQLProvider): string =>
+  provider === "sqlite"
+    ? `,
+constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null)),
+constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)`
+    : "";
+
+export const createV029AlterSql = (
+  provider: ORMSQLProvider,
+): readonly string[] => [
+  `alter table bundles add column rollout_cohort_count ${getSqlType("integer", provider)} not null default 1000`,
+  `alter table bundles add column target_cohorts ${getSqlType("json", provider)}`,
+  "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
+  ...(provider === "sqlite"
+    ? []
+    : [
+        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
+      ]),
+];
+
+export const createV031AlterSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] => [
+  `alter table bundles add column manifest_storage_uri ${getSqlType("string", provider)}`,
+  `alter table bundles add column manifest_file_hash ${getSqlType("string", provider)}`,
+  `alter table bundles add column asset_base_storage_uri ${getSqlType("string", provider)}`,
+  `create table if not exists bundle_patches (
+id ${getSqlType("varchar(255)", provider)} primary key,
+bundle_id ${getSqlType("uuid", provider)} not null,
+base_bundle_id ${getSqlType("uuid", provider)} not null,
+base_file_hash ${getSqlType("string", provider)} not null,
+patch_file_hash ${getSqlType("string", provider)} not null,
+patch_storage_uri ${getSqlType("string", provider)} not null,
+order_index ${getSqlType("integer", provider)} not null default 0
+)`,
+  "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
+  "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
+  ...createForeignKeySql(provider, relationMode),
+];
 
 export const createTableSql = (
   provider: ORMSQLProvider,
@@ -112,11 +153,11 @@ target_app_version ${getSqlType("string", provider)},
 fingerprint_hash ${getSqlType("string", provider)},
 metadata ${getSqlType("json", provider)} not null default ${sqlDefaultJson(provider)},
 manifest_storage_uri ${getSqlType("string", provider)},
-manifest_file_hash ${getSqlType("string", provider)},
-asset_base_storage_uri ${getSqlType("string", provider)},
-rollout_cohort_count ${getSqlType("integer", provider)} not null default 1000,
-target_cohorts ${getSqlType("json", provider)}
-)`,
+	manifest_file_hash ${getSqlType("string", provider)},
+	asset_base_storage_uri ${getSqlType("string", provider)},
+	rollout_cohort_count ${getSqlType("integer", provider)} not null default 1000,
+	target_cohorts ${getSqlType("json", provider)}${getInlineBundleConstraints(provider)}
+	)`,
   `create table if not exists bundle_patches (
 id ${getSqlType("varchar(255)", provider)} primary key,
 bundle_id ${getSqlType("uuid", provider)} not null,
@@ -139,9 +180,17 @@ value ${getSqlType("string", provider)} not null
   provider === "mysql"
     ? "create index bundles_channel_idx on bundles(channel(255))"
     : "create index bundles_channel_idx on bundles(channel)",
-  "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
+  ...(provider === "sqlite"
+    ? []
+    : [
+        "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
+      ]),
   "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-  "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
+  ...(provider === "sqlite"
+    ? []
+    : [
+        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
+      ]),
   "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
   "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
   ...createForeignKeySql(provider, relationMode),

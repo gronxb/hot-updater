@@ -25,39 +25,56 @@ export interface MongoDBConfig {
 
 const mongoWhere = (
   where: DatabaseBundleQueryWhere | undefined,
-): Filter<BundleRow> => ({
-  ...(where?.channel !== undefined ? { channel: where.channel } : {}),
-  ...(where?.platform !== undefined ? { platform: where.platform } : {}),
-  ...(where?.enabled !== undefined ? { enabled: where.enabled } : {}),
-  ...(where?.fingerprintHash !== undefined
-    ? where.fingerprintHash === null
-      ? { fingerprint_hash: { $in: [null, ""] } }
-      : { fingerprint_hash: where.fingerprintHash }
-    : {}),
-  ...(where?.targetAppVersion !== undefined
-    ? where.targetAppVersion === null
-      ? { target_app_version: { $in: [null, ""] } }
-      : { target_app_version: where.targetAppVersion }
-    : {}),
-  ...(where?.targetAppVersionIn
-    ? { target_app_version: { $in: where.targetAppVersionIn } }
-    : {}),
-  ...(where?.targetAppVersionNotNull
-    ? { target_app_version: { $exists: true, $nin: [null, ""] } }
-    : {}),
-  ...(where?.id
-    ? {
-        id: {
-          ...(where.id.eq !== undefined ? { $eq: where.id.eq } : {}),
-          ...(where.id.gt !== undefined ? { $gt: where.id.gt } : {}),
-          ...(where.id.gte !== undefined ? { $gte: where.id.gte } : {}),
-          ...(where.id.lt !== undefined ? { $lt: where.id.lt } : {}),
-          ...(where.id.lte !== undefined ? { $lte: where.id.lte } : {}),
-          ...(where.id.in !== undefined ? { $in: where.id.in } : {}),
-        },
-      }
-    : {}),
-});
+): Filter<BundleRow> => {
+  const baseFilter: Filter<BundleRow> = {
+    ...(where?.channel !== undefined ? { channel: where.channel } : {}),
+    ...(where?.platform !== undefined ? { platform: where.platform } : {}),
+    ...(where?.enabled !== undefined ? { enabled: where.enabled } : {}),
+    ...(where?.fingerprintHash !== undefined
+      ? where.fingerprintHash === null
+        ? { fingerprint_hash: { $in: [null, ""] } }
+        : { fingerprint_hash: where.fingerprintHash }
+      : {}),
+    ...(where?.id
+      ? {
+          id: {
+            ...(where.id.eq !== undefined ? { $eq: where.id.eq } : {}),
+            ...(where.id.gt !== undefined ? { $gt: where.id.gt } : {}),
+            ...(where.id.gte !== undefined ? { $gte: where.id.gte } : {}),
+            ...(where.id.lt !== undefined ? { $lt: where.id.lt } : {}),
+            ...(where.id.lte !== undefined ? { $lte: where.id.lte } : {}),
+            ...(where.id.in !== undefined ? { $in: where.id.in } : {}),
+          },
+        }
+      : {}),
+  };
+  const targetAppVersionFilters: Filter<BundleRow>[] = [];
+  if (where?.targetAppVersion !== undefined) {
+    targetAppVersionFilters.push(
+      where.targetAppVersion === null
+        ? { target_app_version: { $in: [null, ""] } }
+        : { target_app_version: where.targetAppVersion },
+    );
+  }
+  if (where?.targetAppVersionIn) {
+    targetAppVersionFilters.push({
+      target_app_version: { $in: where.targetAppVersionIn },
+    });
+  }
+  if (where?.targetAppVersionNotNull) {
+    targetAppVersionFilters.push({
+      target_app_version: { $exists: true, $nin: [null, ""] },
+    });
+  }
+
+  const filters = [
+    ...(Object.keys(baseFilter).length > 0 ? [baseFilter] : []),
+    ...targetAppVersionFilters,
+  ];
+  if (filters.length === 0) return {};
+  if (filters.length === 1) return filters[0] ?? {};
+  return { $and: filters };
+};
 
 const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
   name: "mongodb",
