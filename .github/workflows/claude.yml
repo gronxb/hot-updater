@@ -22,17 +22,18 @@ jobs:
       contents: read
       pull-requests: read
       issues: read
-      id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@beta
+        # Pinned from anthropics/claude-code-action@beta to avoid mutable
+        # action code receiving the Claude OAuth token.
+        uses: anthropics/claude-code-action@de8e0b9c42c6cb58e904c857f164aa072244c1ac
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -61,4 +62,3 @@ jobs:
           # Optional: Custom environment variables for Claude
           # claude_env: |
           #   NODE_ENV: test
-

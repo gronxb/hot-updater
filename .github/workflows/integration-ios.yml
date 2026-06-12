@@ -15,15 +15,15 @@ jobs:
     runs-on: macos-15
     name: Build iOS (New Architecture)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
         with:
           ruby-version: "3.2"
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
         with:
           node-version-file: .node-version
           cache: "pnpm"
@@ -53,15 +53,15 @@ jobs:
     runs-on: macos-15
     name: Build iOS (Old Architecture)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
       - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@89f90524b88a01fe6e0b732220432cc6142926af
         with:
           ruby-version: "3.2"
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
         with:
           node-version-file: .node-version
           cache: "pnpm"

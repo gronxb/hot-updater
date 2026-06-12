@@ -18,13 +18,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
           cache: "pnpm"
@@ -39,7 +39,9 @@ jobs:
           pnpm build
 
       - name: Create and publish versions
-        uses: changesets/action@v1
+        # Pinned from changesets/action@v1 to avoid mutable release action
+        # code running with repository write access.
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d
         with:
           commit: "chore: update versions"
           title: "chore: update versions"
