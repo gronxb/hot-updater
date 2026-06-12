@@ -1507,6 +1507,7 @@ describe("blobDatabase plugin", () => {
       plugin.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         appVersion: "1.1.1",
+        bundleId: "current-bundle",
         channel: "production",
         platform: "ios",
       }),
