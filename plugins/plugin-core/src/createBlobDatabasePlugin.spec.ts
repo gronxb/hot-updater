@@ -462,6 +462,47 @@ describe("blobDatabase plugin", () => {
     });
   });
 
+  it("returns built-in rollback after disabling a directly-read current bundle", async () => {
+    const currentBundle = createBundleJson(
+      "production",
+      "android",
+      "1.0.x",
+      "00000000-0000-0000-0000-000000000031",
+    );
+
+    seedUpdateManifests([currentBundle]);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: currentBundle.id,
+        minBundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "android",
+      }),
+    ).resolves.toBeNull();
+
+    await plugin.updateBundle(currentBundle.id, { enabled: false });
+    await plugin.commitBundle();
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: currentBundle.id,
+        minBundleId: "00000000-0000-0000-0000-000000000000",
+        platform: "android",
+      }),
+    ).resolves.toEqual({
+      fileHash: null,
+      id: "00000000-0000-0000-0000-000000000000",
+      message: null,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      storageUri: null,
+    });
+  });
+
   it("respects minBundleId when no direct-manifest candidates are available", async () => {
     await expect(
       plugin.getUpdateInfo?.({
