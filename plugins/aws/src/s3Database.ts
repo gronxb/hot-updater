@@ -44,6 +44,7 @@ export interface S3DatabaseConfig extends S3ClientConfig {
 
 const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
 const DEFAULT_INVALIDATION_TIMEOUT_MS = 5 * 60 * 1_000;
+const S3_LIST_OBJECTS_CONCURRENCY = 4;
 const S3_DIRECTORY_DELIMITER = "/";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -144,6 +145,34 @@ function isPlatformDirectoryPrefix(prefix: string) {
 
 function isUpdateJsonKey(key: string) {
   return key.endsWith(`${S3_DIRECTORY_DELIMITER}update.json`);
+}
+
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<TResult>,
+) {
+  const results: Array<TResult | undefined> = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+
+        const item = items[index];
+        if (item === undefined) {
+          break;
+        }
+
+        results[index] = await mapper(item, index);
+      }
+    }),
+  );
+
+  return results.filter((result): result is TResult => result !== undefined);
 }
 
 /**
@@ -252,8 +281,10 @@ async function listObjectsInS3(
       depth === 1
         ? commonPrefixes.filter(isPlatformDirectoryPrefix)
         : commonPrefixes;
-    const nestedKeys = await Promise.all(
-      nextPrefixes.map((nextPrefix) => collectUpdateJsonKeys(nextPrefix)),
+    const nestedKeys = await mapWithConcurrency(
+      nextPrefixes,
+      S3_LIST_OBJECTS_CONCURRENCY,
+      (nextPrefix) => collectUpdateJsonKeys(nextPrefix),
     );
     return nestedKeys.flat();
   };

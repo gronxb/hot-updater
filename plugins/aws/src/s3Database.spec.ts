@@ -76,6 +76,8 @@ let listedObjectRequests: {
   readonly delimiter?: string;
   readonly prefix: string;
 }[] = [];
+let activeListObjectRequests = 0;
+let maxActiveListObjectRequests = 0;
 let loadedObjectKeys: string[] = [];
 let archivedObjectKeys = new Map<string, string>();
 let putObjectKeys: string[] = [];
@@ -174,6 +176,8 @@ beforeEach(() => {
   cloudfrontInvalidationStatuses = new Map();
   listedObjectPrefixes = [];
   listedObjectRequests = [];
+  activeListObjectRequests = 0;
+  maxActiveListObjectRequests = 0;
   loadedObjectKeys = [];
   archivedObjectKeys = new Map();
   putObjectKeys = [];
@@ -181,6 +185,12 @@ beforeEach(() => {
     async (command: any) => {
       await delay(5);
       if (command instanceof ListObjectsV2Command) {
+        activeListObjectRequests += 1;
+        maxActiveListObjectRequests = Math.max(
+          maxActiveListObjectRequests,
+          activeListObjectRequests,
+        );
+        await delay(5);
         const prefix = command.input.Prefix ?? "";
         const delimiter = command.input.Delimiter;
         listedObjectPrefixes.push(prefix);
@@ -195,33 +205,41 @@ beforeEach(() => {
           const directKeys: string[] = [];
           const commonPrefixes = new Set<string>();
 
-          for (const key of keys) {
-            const rest = key.slice(prefix.length);
-            const delimiterIndex = rest.indexOf(delimiter);
+          try {
+            for (const key of keys) {
+              const rest = key.slice(prefix.length);
+              const delimiterIndex = rest.indexOf(delimiter);
 
-            if (delimiterIndex === -1) {
-              directKeys.push(key);
-              continue;
+              if (delimiterIndex === -1) {
+                directKeys.push(key);
+                continue;
+              }
+
+              commonPrefixes.add(
+                `${prefix}${rest.slice(0, delimiterIndex + delimiter.length)}`,
+              );
             }
 
-            commonPrefixes.add(
-              `${prefix}${rest.slice(0, delimiterIndex + delimiter.length)}`,
-            );
+            return {
+              CommonPrefixes: Array.from(commonPrefixes).map((Prefix) => ({
+                Prefix,
+              })),
+              Contents: directKeys.map((Key) => ({ Key })),
+              NextContinuationToken: undefined,
+            };
+          } finally {
+            activeListObjectRequests -= 1;
           }
-
-          return {
-            CommonPrefixes: Array.from(commonPrefixes).map((Prefix) => ({
-              Prefix,
-            })),
-            Contents: directKeys.map((Key) => ({ Key })),
-            NextContinuationToken: undefined,
-          };
         }
 
-        return {
-          Contents: keys.map((key) => ({ Key: key })),
-          NextContinuationToken: undefined,
-        };
+        try {
+          return {
+            Contents: keys.map((key) => ({ Key: key })),
+            NextContinuationToken: undefined,
+          };
+        } finally {
+          activeListObjectRequests -= 1;
+        }
       }
       if (command instanceof GetObjectCommand) {
         const key = command.input.Key;
@@ -378,6 +396,8 @@ describe("s3Database plugin", () => {
     fakeStore = {};
     listedObjectPrefixes = [];
     listedObjectRequests = [];
+    activeListObjectRequests = 0;
+    maxActiveListObjectRequests = 0;
     loadedObjectKeys = [];
     putObjectKeys = [];
     plugin = createPlugin();
@@ -527,6 +547,30 @@ describe("s3Database plugin", () => {
       prefix: "production/ios/1.0.0/assets/",
     });
     expect(loadedObjectKeys).toEqual(["production/ios/1.0.0/update.json"]);
+  });
+
+  it("limits recursive S3 manifest listing concurrency", async () => {
+    const channelCount = 12;
+    const bundles = Array.from({ length: channelCount }, (_, index) =>
+      createBundleJson(
+        `channel-${String(index).padStart(2, "0")}`,
+        "ios",
+        "1.0.0",
+        `concurrency-bundle-${String(index).padStart(2, "0")}`,
+      ),
+    );
+
+    seedUpdateManifests(bundles);
+    plugin = createPlugin();
+    listedObjectPrefixes = [];
+    activeListObjectRequests = 0;
+    maxActiveListObjectRequests = 0;
+
+    const result = await plugin.getBundles({ limit: channelCount });
+
+    expect(result.data).toHaveLength(channelCount);
+    expect(listedObjectPrefixes).toContain("");
+    expect(maxActiveListObjectRequests).toBeLessThanOrEqual(4);
   });
 
   it("does not write management index artifacts during commits", async () => {
