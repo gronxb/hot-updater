@@ -733,15 +733,11 @@ describe("runtime createHotUpdater", () => {
       factory,
     })({});
 
-    const hotUpdater = createHotUpdater({
+    createHotUpdater({
       database,
       basePath: "/api/check-update",
     });
 
-    expect(factory).not.toHaveBeenCalled();
-    expect(hotUpdater.diagnostics).toBeUndefined();
-    expect(factory).not.toHaveBeenCalled();
-    expect(hotUpdater.diagnostics).toBeUndefined();
     expect(factory).not.toHaveBeenCalled();
   });
 

@@ -248,7 +248,7 @@ export function useDeleteBundleMutation() {
   return useMutation({
     mutationFn: (params: { bundleId: string }) =>
       deleteBundleApi({ data: params }),
-    onSuccess: async (_, vars) => {
+    onSuccess: (_, vars) => {
       queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
       queryClient.setQueriesData(
         { queryKey: queryKeys.bundles.all },
@@ -256,13 +256,9 @@ export function useDeleteBundleMutation() {
           removeBundleFromQueryData(data, vars.bundleId),
       );
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.bundleChildren.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
-      ]);
+      invalidateInBackground(queryClient, queryKeys.bundles.all);
+      invalidateInBackground(queryClient, queryKeys.bundleChildren.all);
+      invalidateInBackground(queryClient, queryKeys.channels);
     },
   });
 }

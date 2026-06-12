@@ -33,18 +33,6 @@ npx hot-updater doctor --json
 `--json` does not prompt for the server URL. Pass `--server-base-url` when you
 want the infrastructure check included.
 
-To repair safe local metadata issues, run:
-
-```package-install
-npx hot-updater doctor --fix
-```
-
-`--fix` loads your Hot Updater config and runs diagnostics hooks exposed by the
-active database adapter. For blob-style adapters, this can rebuild the
-management bundle index from canonical `update.json` manifests. The command
-checks the index again after repair and reports a failure if the index is still
-out of sync.
-
 ## Check Native Setup
 
 When `@hot-updater/react-native` is installed and native iOS or Android
@@ -153,5 +141,4 @@ How to fix it depends on how you run Hot Updater:
 | Option                    | Description                                             |
 | ------------------------- | ------------------------------------------------------- |
 | `--server-base-url <url>` | Check deployed infrastructure at `<url>/version`.       |
-| `--fix`                   | Run safe adapter maintenance repairs, then recheck.     |
 | `--json`                  | Print a machine-readable result for agents and scripts. |

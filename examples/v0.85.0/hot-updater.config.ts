@@ -7,7 +7,9 @@ import {
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-config({ path: ".env.hotupdater" });
+config({
+  path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
+});
 
 const standaloneStorageBaseUrl =
   process.env.HOT_UPDATER_STANDALONE_STORAGE_BASE_URL;

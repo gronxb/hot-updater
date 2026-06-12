@@ -1,6 +1,8 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { mergeWith } from "es-toolkit";
 
+import { BundleUnitOfWork } from "./bundleUnitOfWork";
+import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
 import type {
   DatabaseBundleCursor,
@@ -11,6 +13,7 @@ import type {
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
+  PaginationInfo,
   Paginated,
 } from "./types";
 
@@ -68,17 +71,21 @@ function normalizePage(value: number | undefined): number | undefined {
 }
 
 function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
-  return mergeWith(baseBundle, patch, (_targetValue, sourceValue, key) => {
-    if (
-      REPLACE_ON_UPDATE_KEYS.includes(
-        key as (typeof REPLACE_ON_UPDATE_KEYS)[number],
-      )
-    ) {
-      return sourceValue;
-    }
+  return mergeWith(
+    { ...baseBundle },
+    patch,
+    (_targetValue, sourceValue, key) => {
+      if (
+        REPLACE_ON_UPDATE_KEYS.includes(
+          key as (typeof REPLACE_ON_UPDATE_KEYS)[number],
+        )
+      ) {
+        return sourceValue;
+      }
 
-    return undefined;
-  });
+      return undefined;
+    },
+  );
 }
 
 function mergeIdFilter(
@@ -179,6 +186,44 @@ function createPaginatedResult(
   };
 }
 
+function expandLimitForUnitOfWork(
+  options: DatabaseBundleQueryOptions,
+  unitOfWork: BundleUnitOfWork,
+): DatabaseBundleQueryOptions {
+  const extraLimit = unitOfWork.listFetchExtraCount();
+  if (extraLimit === 0) {
+    return options;
+  }
+
+  return {
+    ...options,
+    limit: options.limit + extraLimit,
+  };
+}
+
+function adjustPaginationTotal(
+  pagination: PaginationInfo,
+  options: {
+    readonly limit: number;
+    readonly totalDelta: number;
+  },
+): PaginationInfo {
+  if (options.totalDelta === 0) {
+    return pagination;
+  }
+
+  const total = Math.max(0, pagination.total + options.totalDelta);
+  const hasPreviousPage = pagination.currentPage > 1;
+  const hasNextPage = pagination.currentPage * options.limit < total;
+  return {
+    ...pagination,
+    total,
+    hasNextPage,
+    hasPreviousPage,
+    totalPages: total === 0 ? 0 : Math.ceil(total / options.limit),
+  };
+}
+
 /**
  * Configuration options for creating a database plugin
  */
@@ -237,19 +282,12 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
     };
 
     return (): DatabasePlugin<TContext> => {
-      const changedMap = new Map<
-        string,
-        {
-          operation: "insert" | "update" | "delete";
-          data: Bundle;
-        }
-      >();
-
-      const markChanged = (
-        operation: "insert" | "update" | "delete",
-        data: Bundle,
-      ) => {
-        changedMap.set(data.id, { operation, data });
+      const instanceMutationUnitOfWork = new BundleUnitOfWork();
+      const getRequestUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
+        return getRequestBundleUnitOfWork(context);
+      };
+      const getMutationUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
+        return getRequestUnitOfWork(context) ?? instanceMutationUnitOfWork;
       };
 
       const runGetBundles = async (
@@ -355,11 +393,20 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         name: options.name,
 
         async getBundleById(bundleId: string, context) {
-          if (context === undefined) {
-            return getMethods().getBundleById(bundleId);
+          const requestUnitOfWork = getRequestUnitOfWork(context);
+          if (requestUnitOfWork) {
+            return requestUnitOfWork.getById(bundleId, () =>
+              getMethods().getBundleById(bundleId, context),
+            );
           }
 
-          return getMethods().getBundleById(bundleId, context);
+          const pendingMutation =
+            instanceMutationUnitOfWork.peekChanged(bundleId);
+          if (pendingMutation.found) {
+            return pendingMutation.value;
+          }
+
+          return getMethods().getBundleById(bundleId);
         },
 
         async getBundles(options, context) {
@@ -375,18 +422,41 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           }
 
           const methods = getMethods();
+          const requestUnitOfWork = getRequestUnitOfWork(context);
+          const unitOfWork = requestUnitOfWork ?? instanceMutationUnitOfWork;
+          const shouldOverlay =
+            requestUnitOfWork !== null ||
+            instanceMutationUnitOfWork.hasChanges();
           const normalizedOptions = {
             ...options,
             page: normalizePage(options.page),
             orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
           };
+          const overlayResult = <TData extends Paginated<Bundle[]>>(
+            result: TData,
+          ): TData => ({
+            ...result,
+            data: unitOfWork.overlayList(result.data, {
+              limit: normalizedOptions.limit,
+              orderBy: normalizedOptions.orderBy,
+              where: normalizedOptions.where,
+            }),
+            pagination: adjustPaginationTotal(result.pagination, {
+              limit: normalizedOptions.limit,
+              totalDelta: unitOfWork.totalDelta(normalizedOptions.where),
+            }),
+          });
 
           if (normalizedOptions.page !== undefined) {
             const { page, ...pageOptions } = normalizedOptions;
             const requestedOffset = (page - 1) * normalizedOptions.limit;
+            const fetchPageOptions = expandLimitForUnitOfWork(
+              pageOptions,
+              unitOfWork,
+            );
             let pageResult = await runGetBundles(
               {
-                ...pageOptions,
+                ...fetchPageOptions,
                 offset: requestedOffset,
               },
               context,
@@ -404,30 +474,43 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             if (resolvedOffset !== requestedOffset) {
               pageResult = await runGetBundles(
                 {
-                  ...pageOptions,
+                  ...fetchPageOptions,
                   offset: resolvedOffset,
                 },
                 context,
               );
             }
 
-            return createPaginatedResult(
-              total,
-              normalizedOptions.limit,
-              resolvedOffset,
-              pageResult.data,
-            );
+            const result = {
+              ...createPaginatedResult(
+                total,
+                normalizedOptions.limit,
+                resolvedOffset,
+                pageResult.data,
+              ),
+            };
+            return shouldOverlay ? overlayResult(result) : result;
           }
 
           if (methods.supportsCursorPagination) {
-            if (context === undefined) {
-              return methods.getBundles(normalizedOptions);
-            }
-
-            return methods.getBundles(normalizedOptions, context);
+            const fetchOptions = expandLimitForUnitOfWork(
+              normalizedOptions,
+              unitOfWork,
+            );
+            const result =
+              context === undefined
+                ? await methods.getBundles(fetchOptions)
+                : await methods.getBundles(fetchOptions, context);
+            return shouldOverlay ? overlayResult(result) : result;
           }
 
-          return getBundlesWithLegacyCursorFallback(normalizedOptions, context);
+          const result = await getBundlesWithLegacyCursorFallback(
+            shouldOverlay
+              ? expandLimitForUnitOfWork(normalizedOptions, unitOfWork)
+              : normalizedOptions,
+            context,
+          );
+          return shouldOverlay ? overlayResult(result) : result;
         },
 
         async getChannels(context) {
@@ -447,8 +530,9 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
 
         async commitBundle(context) {
           const methods = getMethods();
+          const unitOfWork = getMutationUnitOfWork(context);
           const params = {
-            changedSets: Array.from(changedMap.values()),
+            changedSets: unitOfWork.changedSets(),
           };
 
           if (context === undefined) {
@@ -457,7 +541,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             await methods.commitBundle(params, context);
           }
 
-          changedMap.clear();
+          unitOfWork.clear();
           await hooks?.onDatabaseUpdated?.();
         },
 
@@ -466,37 +550,26 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           newBundle: Partial<Bundle>,
           context,
         ) {
-          const pendingChange = changedMap.get(targetBundleId);
-          if (pendingChange) {
-            const updatedData = mergeBundleUpdate(
-              pendingChange.data,
-              newBundle,
-            );
-            changedMap.set(targetBundleId, {
-              operation: pendingChange.operation,
-              data: updatedData,
-            });
-            return;
-          }
-
-          const currentBundle =
+          const unitOfWork = getMutationUnitOfWork(context);
+          const currentBundle = await unitOfWork.getById(targetBundleId, () =>
             context === undefined
-              ? await getMethods().getBundleById(targetBundleId)
-              : await getMethods().getBundleById(targetBundleId, context);
+              ? getMethods().getBundleById(targetBundleId)
+              : getMethods().getBundleById(targetBundleId, context),
+          );
           if (!currentBundle) {
             throw new Error("targetBundleId not found");
           }
 
           const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
-          markChanged("update", updatedBundle);
+          unitOfWork.markUpdate(updatedBundle);
         },
 
-        async appendBundle(inputBundle: Bundle) {
-          markChanged("insert", inputBundle);
+        async appendBundle(inputBundle: Bundle, context) {
+          getMutationUnitOfWork(context).markInsert(inputBundle);
         },
 
-        async deleteBundle(deleteBundle: Bundle): Promise<void> {
-          markChanged("delete", deleteBundle);
+        async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
+          getMutationUnitOfWork(context).markDelete(deleteBundle);
         },
       };
 

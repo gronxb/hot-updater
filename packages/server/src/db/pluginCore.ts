@@ -13,12 +13,11 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
-  getRequestUpdateBundleSeeds,
+  createRequestUpdateBundleResolver,
   type HotUpdaterContext,
   semverSatisfies,
 } from "@hot-updater/plugin-core";
 
-import { createRequestBundleIdentityMap } from "./requestBundleIdentityMap";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
@@ -358,28 +357,26 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return baseResponse;
       }
 
-      const requestBundleSeeds = getRequestUpdateBundleSeeds(context);
-      const requestBundles = createRequestBundleIdentityMap({
-        context,
-        loadBundleById: (bundleId, requestContext) =>
-          getPlugin().getBundleById(bundleId, requestContext),
-        seeds: requestBundleSeeds,
-      });
+      const requestBundles = createRequestUpdateBundleResolver(context);
       const getCurrentBundle = () => {
         if (args.bundleId === NIL_UUID) {
           return null;
         }
 
         const seededCurrentBundle = requestBundles.peek(args.bundleId);
-        if (seededCurrentBundle || requestBundleSeeds.length > 0) {
+        if (seededCurrentBundle || requestBundles.hasSeededBundles()) {
           return seededCurrentBundle;
         }
 
-        return requestBundles.get(args.bundleId);
+        return requestBundles.getById(args.bundleId, () =>
+          getPlugin().getBundleById(args.bundleId, context),
+        );
       };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
-        requestBundles.get(info.id),
+        requestBundles.getById(info.id, () =>
+          getPlugin().getBundleById(info.id, context),
+        ),
         getCurrentBundle(),
       ]);
       const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
@@ -451,45 +448,6 @@ export function createPluginDatabaseCore<TContext = unknown>(
       });
     },
   };
-
-  Object.defineProperty(api, "diagnostics", {
-    configurable: true,
-    enumerable: true,
-    get(this: DatabaseAPI<TContext>) {
-      const diagnostics = getPlugin().diagnostics;
-      if (!diagnostics) {
-        Object.defineProperty(this, "diagnostics", {
-          configurable: true,
-          enumerable: true,
-          value: undefined,
-        });
-        return undefined;
-      }
-
-      const wrappedDiagnostics: NonNullable<
-        DatabaseAPI<TContext>["diagnostics"]
-      > = {};
-      if (diagnostics.bundleIndex) {
-        wrappedDiagnostics.bundleIndex = {
-          check: (context?: HotUpdaterContext<TContext>) =>
-            getPlugin().diagnostics!.bundleIndex!.check(context),
-          ...(diagnostics.bundleIndex.repair
-            ? {
-                repair: (context?: HotUpdaterContext<TContext>) =>
-                  getPlugin().diagnostics!.bundleIndex!.repair!(context),
-              }
-            : {}),
-        };
-      }
-
-      Object.defineProperty(this, "diagnostics", {
-        configurable: true,
-        enumerable: true,
-        value: wrappedDiagnostics,
-      });
-      return wrappedDiagnostics;
-    },
-  });
 
   return {
     api,

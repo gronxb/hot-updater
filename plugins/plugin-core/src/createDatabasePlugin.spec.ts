@@ -161,6 +161,461 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("stages no-context updates without keeping read-only cache entries", async () => {
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === baseBundle.id ? baseBundle : null,
+    );
+    const commitBundle = vi.fn();
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle,
+      }),
+    })({})();
+
+    await expect(plugin.getBundleById(baseBundle.id)).resolves.toStrictEqual(
+      baseBundle,
+    );
+    await plugin.updateBundle(baseBundle.id, {
+      enabled: false,
+    });
+    await plugin.commitBundle();
+
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(commitBundle).toHaveBeenCalledWith({
+      changedSets: [
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ],
+    });
+  });
+
+  it("reads pending updates before commit in the same request context", async () => {
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === baseBundle.id ? baseBundle : null,
+    );
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
+      baseBundle,
+    );
+    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
+
+    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
+      {
+        ...baseBundle,
+        enabled: false,
+      },
+    );
+    expect(getBundleById).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache no-context bundle reads across logical calls", async () => {
+    const nextBundle = {
+      ...baseBundle,
+      message: "Provider changed",
+    };
+    const getBundleById = vi
+      .fn()
+      .mockResolvedValueOnce(baseBundle)
+      .mockResolvedValueOnce(nextBundle);
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [nextBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
+      baseBundle,
+    );
+    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
+      nextBundle,
+    );
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+  });
+
+  it("overlays pending updates and deletes onto bundle lists before commit", async () => {
+    const deleteBundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-123456789abd",
+      message: "Delete me",
+    };
+    const getBundleById = vi.fn(async (bundleId: string) => {
+      if (bundleId === baseBundle.id) return baseBundle;
+      if (bundleId === deleteBundle.id) return deleteBundle;
+      return null;
+    });
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle, deleteBundle],
+          pagination: {
+            total: 2,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, { enabled: false });
+    await plugin.deleteBundle(deleteBundle);
+
+    await expect(
+      plugin.getBundles({
+        limit: 10,
+        orderBy: { field: "id", direction: "asc" },
+      }),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          ...baseBundle,
+          enabled: false,
+        },
+      ],
+    });
+  });
+
+  it("removes pending updates that no longer match bundle list filters", async () => {
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundleId === baseBundle.id ? baseBundle : null,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
+
+    await expect(
+      plugin.getBundles(
+        {
+          limit: 10,
+          where: { enabled: true },
+        },
+        context,
+      ),
+    ).resolves.toMatchObject({
+      data: [],
+      pagination: {
+        total: 0,
+        totalPages: 0,
+      },
+    });
+  });
+
+  it("adds pending updates that now match bundle list filters", async () => {
+    const disabledBundle = {
+      ...baseBundle,
+      enabled: false,
+    };
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundleId === disabledBundle.id ? disabledBundle : null,
+        getBundles: async () => ({
+          data: [],
+          pagination: {
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 0,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.updateBundle(disabledBundle.id, { enabled: true }, context);
+
+    await expect(
+      plugin.getBundles(
+        {
+          limit: 10,
+          where: { enabled: true },
+        },
+        context,
+      ),
+    ).resolves.toMatchObject({
+      data: [baseBundle],
+      pagination: {
+        total: 1,
+        totalPages: 1,
+      },
+    });
+  });
+
+  it("backfills bundle lists after pending deletes on a page boundary", async () => {
+    const deletedBundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-123456789abd",
+      message: "Delete me",
+    };
+    const nextBundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-123456789abe",
+      message: "Backfill me",
+    };
+    const bundles = [baseBundle, deletedBundle, nextBundle];
+    const getBundles = vi.fn(async (options) => ({
+      data: bundles.slice(0, options.limit),
+      pagination: {
+        total: bundles.length,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    }));
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundles.find((bundle) => bundle.id === bundleId) ?? null,
+        getBundles,
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.deleteBundle(deletedBundle);
+
+    await expect(
+      plugin.getBundles({
+        limit: 2,
+        orderBy: { field: "id", direction: "asc" },
+      }),
+    ).resolves.toMatchObject({
+      data: [baseBundle, nextBundle],
+      pagination: {
+        total: 2,
+        totalPages: 1,
+      },
+    });
+    expect(getBundles).toHaveBeenLastCalledWith({
+      limit: 3,
+      offset: 0,
+      orderBy: { field: "id", direction: "asc" },
+      where: undefined,
+    });
+  });
+
+  it("keeps pending inserts visible by id but out of provider-paginated lists", async () => {
+    const insertBundle = {
+      ...baseBundle,
+      id: "0195a408-8f13-7d9b-8df4-123456789abe",
+      message: "Inserted",
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById: async (bundleId) =>
+          bundleId === baseBundle.id ? baseBundle : null,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.appendBundle(insertBundle);
+
+    await expect(plugin.getBundleById(insertBundle.id)).resolves.toEqual(
+      insertBundle,
+    );
+    await expect(plugin.getBundles({ limit: 10 })).resolves.toMatchObject({
+      data: [baseBundle],
+    });
+  });
+
+  it("clears pending unit-of-work state after a successful commit", async () => {
+    const persistedBundle = { ...baseBundle, enabled: false };
+    const getBundleById = vi
+      .fn()
+      .mockResolvedValueOnce(baseBundle)
+      .mockResolvedValueOnce(persistedBundle);
+    const commitBundle = vi.fn();
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, { enabled: false });
+    await plugin.commitBundle();
+
+    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
+      persistedBundle,
+    );
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps unit-of-work state isolated between request contexts", async () => {
+    const contextA: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets-a.example.com",
+      },
+      request: new Request("https://updates-a.example.com"),
+    };
+    const contextB: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets-b.example.com",
+      },
+      request: new Request("https://updates-b.example.com"),
+    };
+    const getBundleById = vi.fn(async (bundleId: string) =>
+      bundleId === baseBundle.id ? baseBundle : null,
+    );
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        getBundleById,
+        getBundles: async () => ({
+          data: [baseBundle],
+          pagination: {
+            total: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        }),
+        getChannels: async () => ["production"],
+        commitBundle: async () => undefined,
+      }),
+    })({})();
+
+    await plugin.updateBundle(baseBundle.id, { enabled: false }, contextA);
+
+    await expect(
+      plugin.getBundleById(baseBundle.id, contextA),
+    ).resolves.toEqual({
+      ...baseBundle,
+      enabled: false,
+    });
+    await expect(
+      plugin.getBundleById(baseBundle.id, contextB),
+    ).resolves.toEqual(baseBundle);
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+  });
+
   it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
     const expected = {
       fileHash: baseBundle.fileHash,

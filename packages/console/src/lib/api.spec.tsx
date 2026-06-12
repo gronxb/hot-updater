@@ -208,4 +208,58 @@ describe("useDeleteBundleMutation", () => {
       queryKey: queryKeys.channels,
     });
   });
+
+  it("does not wait for background invalidations after deleting cached bundle data", async () => {
+    vi.mocked(deleteBundleApi).mockResolvedValue({
+      success: true,
+    });
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockImplementation(() => new Promise<never>(() => {}));
+
+    queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
+    queryClient.setQueryData(queryKeys.bundles.list({}), {
+      data: [bundle, otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useDeleteBundleMutation(), {
+      wrapper,
+    });
+
+    let mutation: Promise<unknown> | undefined;
+    act(() => {
+      mutation = result.current.mutateAsync({
+        bundleId: bundle.id,
+      });
+    });
+
+    await expect(
+      Promise.race([mutation!.then(() => "resolved"), timeout(20)]),
+    ).resolves.toBe("resolved");
+
+    expect(
+      queryClient.getQueryData(queryKeys.bundle(bundle.id)),
+    ).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.bundles.list({}))).toEqual({
+      data: [otherBundle],
+      pagination: {
+        total: 2,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+      },
+    });
+    expect(invalidateQueries).toHaveBeenCalledTimes(3);
+  });
 });
