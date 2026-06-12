@@ -9,22 +9,19 @@ export * from "./createBundleDiff";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import { createStorageAccess } from "../storageAccess";
-import {
-  createOrmDatabaseCore,
-  type HotUpdaterClient,
-  type Migrator,
-} from "./ormCore";
 import { createPluginDatabaseCore } from "./pluginCore";
+import { enhanceGeneratedSchema } from "./schemaEnhancements";
 import {
+  type DatabaseAdapterCapabilities,
   type DatabaseAdapter,
   type DatabaseAPI,
-  isDatabasePlugin,
+  type Migrator,
+  type SchemaGenerator,
   isDatabasePluginFactory,
   type StoragePluginFactory,
 } from "./types";
 
-export type { HotUpdaterClient, Migrator } from "./ormCore";
-export { HotUpdaterDB } from "./ormCore";
+export type { Migrator, SchemaGenerator } from "./types";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
@@ -35,7 +32,7 @@ export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   ) => Promise<Response>;
   adapterName: string;
   createMigrator: () => Migrator;
-  generateSchema: HotUpdaterClient["generateSchema"];
+  generateSchema: SchemaGenerator;
 };
 
 export interface CreateHotUpdaterOptions<TContext = unknown> {
@@ -77,37 +74,37 @@ export function createHotUpdater<TContext = unknown>(
 
   const database = options.database;
 
-  const core =
-    isDatabasePluginFactory(database) || isDatabasePlugin(database)
-      ? (() => {
-          const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(
-            database,
-          )
-            ? database()
-            : database;
-
-          return createPluginDatabaseCore<TContext>(
-            () => plugin,
-            resolveFileUrl,
-            isDatabasePluginFactory(database)
-              ? {
-                  createMutationPlugin: () => database(),
-                  readStorageText,
-                }
-              : { readStorageText },
-          );
-        })()
-      : createOrmDatabaseCore<TContext>({
-          database,
+  const capabilities = database as DatabaseAdapterCapabilities;
+  const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
+    ? database()
+    : database;
+  const core = createPluginDatabaseCore<TContext>(
+    () => plugin,
+    resolveFileUrl,
+    isDatabasePluginFactory(database)
+      ? {
+          createMutationPlugin: () => database(),
           readStorageText,
-          resolveFileUrl,
-        });
+        }
+      : { readStorageText },
+  );
 
+  const generateSchema = capabilities.generateSchema ?? core.generateSchema;
   const api = {
     basePath,
-    adapterName: core.adapterName,
-    createMigrator: core.createMigrator,
-    generateSchema: core.generateSchema,
+    adapterName: capabilities.adapterName ?? core.adapterName,
+    createMigrator: capabilities.createMigrator ?? core.createMigrator,
+    generateSchema: (...args: Parameters<SchemaGenerator>) => {
+      const result = generateSchema(...args);
+      return {
+        ...result,
+        code: enhanceGeneratedSchema(
+          api.adapterName,
+          result.code,
+          capabilities.provider,
+        ),
+      };
+    },
     handler: createHandler(core.api, {
       basePath,
       routes: options.routes,

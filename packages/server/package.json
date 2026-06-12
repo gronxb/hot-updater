@@ -58,7 +58,7 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "fumadb": "catalog:db",
+    "drizzle-orm": "catalog:db",
     "kysely": "catalog:db",
     "mongodb": "catalog:db",
     "rou3": "0.7.9",
@@ -74,11 +74,5 @@
     "kysely-pglite-dialect": "catalog:db",
     "msw": "^2.7.0",
     "uuidv7": "^1.0.2"
-  },
-  "inlinedDependencies": {
-    "@noble/hashes": "1.8.0",
-    "@paralleldrive/cuid2": "2.3.1",
-    "drizzle-orm": "0.45.2",
-    "fumadb": "0.2.2"
   }
 }

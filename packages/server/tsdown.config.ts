@@ -15,10 +15,9 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     deps: {
-      alwaysBundle: (id) =>
-        id.startsWith("fumadb") && !id.startsWith("fumadb/adapters/mongodb"),
       neverBundle: [
         /^bson(?:\/.*)?$/,
+        /^drizzle-orm(?:\/.*)?$/,
         /^kysely(?:\/.*)?$/,
         /^mongodb(?:\/.*)?$/,
       ],

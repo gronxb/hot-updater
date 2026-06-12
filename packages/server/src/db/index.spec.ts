@@ -12,6 +12,7 @@ import {
 } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
+import type { MongoClient } from "mongodb";
 import {
   afterAll,
   afterEach,
@@ -24,8 +25,9 @@ import {
 } from "vitest";
 
 import { kyselyAdapter } from "../adapters/kysely";
+import { mongoAdapter } from "../adapters/mongodb";
 import { createHotUpdater } from "./index";
-import type { ORMDatabaseAdapter, ORMProvider } from "./types";
+import type { DatabasePluginFactory, ORMProvider } from "./types";
 
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id
@@ -168,23 +170,41 @@ function createSchemaOnlyAdapter({
   name: string;
   provider: ORMProvider;
   path: string;
-}): ORMDatabaseAdapter {
-  return {
+}): DatabasePluginFactory {
+  const factory: DatabasePluginFactory = () => ({
     name,
-    provider,
-    createORM() {
-      throw new Error("Schema-only adapter cannot create ORM");
+    async getBundleById() {
+      return null;
     },
-    async getSchemaVersion() {
-      return undefined;
-    },
-    generateSchema(_schema, schemaName) {
+    async getBundles() {
       return {
-        code,
-        path: path || schemaName,
+        data: [],
+        pagination: {
+          currentPage: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          total: 0,
+          totalPages: 0,
+        },
       };
     },
+    async getChannels() {
+      return [];
+    },
+    async appendBundle() {},
+    async updateBundle() {},
+    async deleteBundle() {},
+    async commitBundle() {},
+  });
+  factory.adapterName = name;
+  factory.provider = provider;
+  factory.generateSchema = (_version, schemaName = name) => {
+    return {
+      code,
+      path: path || schemaName,
+    };
   };
+  return factory;
 }
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
@@ -402,12 +422,82 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           "add constraint check_version_or_fingerprint check",
         );
         expect(sql).toContain(
+          "add constraint bundle_patches_bundle_id_fk foreign key",
+        );
+        expect(sql).toContain(
           "create index bundle_patches_bundle_id_idx on bundle_patches",
         );
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();
       }
+    });
+
+    it("honors fumadb relation mode by omitting SQL foreign keys", async () => {
+      const migrationDb = new PGlite();
+      const migrationKysely = new Kysely({
+        dialect: new PGliteDialect(migrationDb),
+      });
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({
+          db: migrationKysely,
+          provider: "postgresql",
+          relationMode: "fumadb",
+        }),
+      });
+
+      try {
+        const migrator = migrationHotUpdater.createMigrator();
+        const result = await migrator.migrateToLatest({
+          mode: "from-schema",
+          updateSettings: false,
+        });
+        const sql = result.getSQL?.() ?? "";
+
+        expect(sql).not.toContain("add constraint bundle_patches_bundle_id_fk");
+        expect(result.operations).not.toContainEqual(
+          expect.objectContaining({
+            sql: expect.stringContaining("bundle_patches_bundle_id_fk"),
+          }),
+        );
+      } finally {
+        await migrationKysely.destroy();
+        await migrationDb.close();
+      }
+    });
+
+    it("creates MongoDB indexes for runtime query fields", async () => {
+      const collection = {
+        findOne: vi.fn(async () => null),
+      };
+      const client = {
+        db: () => ({
+          collection: () => collection,
+        }),
+      } as unknown as MongoClient;
+      const mongoHotUpdater = createHotUpdater({
+        database: mongoAdapter({ client }),
+      });
+      const result = await mongoHotUpdater
+        .createMigrator()
+        .migrateToLatest({ mode: "from-schema" });
+
+      expect(result.operations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sql: "create index bundles_id_idx on bundles(id)",
+          }),
+          expect.objectContaining({
+            sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
+          }),
+          expect.objectContaining({
+            sql: "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
+          }),
+          expect.objectContaining({
+            sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
+          }),
+        ]),
+      );
     });
   });
 
