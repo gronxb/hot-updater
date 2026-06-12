@@ -333,6 +333,95 @@ describe("createPluginDatabaseCore", () => {
     );
   });
 
+  it("dedupes manifest artifact bundle lookups without request context", async () => {
+    const targetBundle = {
+      ...baseBundle,
+      id: "00000000-0000-0000-0000-000000000002",
+      fileHash: "hash-2",
+      manifestStorageUri: "s3://bucket/target/manifest.json",
+      manifestFileHash: "sig:target-manifest",
+      assetBaseStorageUri: "s3://bucket/target/files",
+    };
+    const manifests = new Map([
+      [
+        targetBundle.manifestStorageUri,
+        JSON.stringify({
+          bundleId: targetBundle.id,
+          assets: {
+            "index.ios.bundle": {
+              fileHash: "target-bundle-hash",
+            },
+          },
+        }),
+      ],
+    ]);
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["getBundleById"]>(
+      async (bundleId) => (bundleId === targetBundle.id ? targetBundle : null),
+    );
+    const getUpdateInfo = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+    >(async () => ({
+      fileHash: targetBundle.fileHash,
+      id: targetBundle.id,
+      message: targetBundle.message,
+      shouldForceUpdate: targetBundle.shouldForceUpdate,
+      status: "UPDATE",
+      storageUri: targetBundle.storageUri,
+    }));
+
+    const plugin: DatabasePlugin<TestContext> = {
+      name: "undefined-context-identity-map-plugin",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      getBundleById,
+      getUpdateInfo,
+      async getBundles() {
+        return {
+          data: [targetBundle],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 1,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      async updateBundle() {},
+    };
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async (storageUri) => {
+        if (!storageUri) return null;
+        const url = new URL(storageUri);
+        return `https://assets.example.com/${url.host}${url.pathname}`;
+      },
+      {
+        readStorageText: async (storageUri) =>
+          manifests.get(storageUri) ?? null,
+      },
+    );
+
+    const updateInfo = await core.api.getAppUpdateInfo({
+      ...updateArgs,
+      bundleId: targetBundle.id,
+    });
+
+    expect(updateInfo).toMatchObject({
+      changedAssets: {},
+      id: targetBundle.id,
+      manifestFileHash: "sig:target-manifest",
+      manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
+    });
+    expect(getBundleById).toHaveBeenCalledOnce();
+    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
+  });
+
   it("seeds request bundle identity map from provider update lookups", async () => {
     const targetBundle = {
       ...baseBundle,

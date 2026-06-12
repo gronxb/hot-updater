@@ -323,6 +323,7 @@ export const createBlobDatabasePlugin = <TConfig>({
     // Reload all bundle data from S3.
     async function reloadBundles(prefixes: readonly string[] = [""]) {
       bundlesMap.clear();
+      pendingBundlesMap.clear();
       locallyDeletedBundleIds.clear();
 
       const updateJsonKeys = (

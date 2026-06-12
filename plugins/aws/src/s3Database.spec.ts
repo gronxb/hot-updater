@@ -892,6 +892,16 @@ describe("s3Database plugin", () => {
       message: "Updated from another instance",
     });
     await secondPlugin.commitBundle();
+    expect(
+      JSON.parse(fakeStore["staging/ios/1.0.0/update.json"] ?? "[]"),
+    ).toEqual([
+      {
+        ...targetBundle,
+        enabled: false,
+        message: "Updated from another instance",
+      },
+      siblingBundle,
+    ]);
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -901,6 +911,7 @@ describe("s3Database plugin", () => {
       limit: 20,
     });
 
+    expect(loadedObjectKeys).toEqual(["staging/ios/1.0.0/update.json"]);
     expect(refreshedBundles.data).toEqual([
       {
         ...targetBundle,

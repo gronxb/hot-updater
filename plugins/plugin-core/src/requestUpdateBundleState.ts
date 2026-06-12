@@ -1,9 +1,15 @@
+import { BundleUnitOfWork } from "./bundleUnitOfWork";
+import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import type { Bundle, HotUpdaterContext } from "./types";
 
-const requestUpdateBundleSeeds = new WeakMap<object, readonly Bundle[]>();
-
-const isWeakMapKey = (value: unknown): value is object =>
-  (typeof value === "object" && value !== null) || typeof value === "function";
+export interface RequestUpdateBundleResolver {
+  readonly hasSeededBundles: () => boolean;
+  readonly peek: (bundleId: string) => Bundle | null;
+  readonly getById: (
+    bundleId: string,
+    loadBundleById: () => Promise<Bundle | null>,
+  ) => Promise<Bundle | null>;
+}
 
 const toBundleSeeds = (
   seeds: readonly (Bundle | null | undefined)[],
@@ -13,7 +19,8 @@ export const seedRequestUpdateBundles = <TContext = unknown>(
   context: HotUpdaterContext<TContext> | undefined,
   seeds: readonly (Bundle | null | undefined)[],
 ) => {
-  if (!isWeakMapKey(context)) {
+  const unitOfWork = getRequestBundleUnitOfWork(context);
+  if (!unitOfWork) {
     return;
   }
 
@@ -22,23 +29,25 @@ export const seedRequestUpdateBundles = <TContext = unknown>(
     return;
   }
 
-  const bundlesById = new Map<string, Bundle>();
-  for (const seed of requestUpdateBundleSeeds.get(context) ?? []) {
-    bundlesById.set(seed.id, seed);
-  }
-  for (const seed of nextSeeds) {
-    bundlesById.set(seed.id, seed);
-  }
-
-  requestUpdateBundleSeeds.set(context, [...bundlesById.values()]);
+  unitOfWork.seed(nextSeeds);
 };
 
 export const getRequestUpdateBundleSeeds = <TContext = unknown>(
   context: HotUpdaterContext<TContext> | undefined,
 ): readonly Bundle[] => {
-  if (!isWeakMapKey(context)) {
-    return [];
-  }
+  return getRequestBundleUnitOfWork(context)?.seededBundles() ?? [];
+};
 
-  return requestUpdateBundleSeeds.get(context) ?? [];
+export const createRequestUpdateBundleResolver = <TContext = unknown>(
+  context: HotUpdaterContext<TContext> | undefined,
+): RequestUpdateBundleResolver => {
+  const unitOfWork =
+    getRequestBundleUnitOfWork(context) ?? new BundleUnitOfWork();
+
+  return {
+    hasSeededBundles: () => unitOfWork.hasSeeds(),
+    peek: (bundleId) => unitOfWork.peek(bundleId),
+    getById: (bundleId, loadBundleById) =>
+      unitOfWork.getById(bundleId, loadBundleById),
+  };
 };
