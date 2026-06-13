@@ -1,3 +1,11 @@
+import {
+  HOT_UPDATER_SETTINGS_TABLE,
+  type HotUpdaterCheckSchema,
+  type HotUpdaterColumnSchema,
+  type HotUpdaterColumnType,
+  type HotUpdaterForeignKeySchema,
+  type HotUpdaterTableSchema,
+} from "../../schema/types";
 import type {
   MigrationOperation,
   ORMSQLProvider,
@@ -9,14 +17,6 @@ import {
   hotUpdaterSchema,
   schemaIndexAppliesToProvider,
 } from "./registry";
-import {
-  HOT_UPDATER_SETTINGS_TABLE,
-  type HotUpdaterCheckSchema,
-  type HotUpdaterColumnSchema,
-  type HotUpdaterColumnType,
-  type HotUpdaterForeignKeySchema,
-  type HotUpdaterTableSchema,
-} from "./types";
 
 export const hotUpdaterCreateTableOperations: MigrationOperation[] =
   hotUpdaterDataTables.map((table) => ({

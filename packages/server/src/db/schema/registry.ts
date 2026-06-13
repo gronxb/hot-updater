@@ -1,13 +1,13 @@
-import type { ORMProvider } from "../types";
-import { hotUpdaterSchemaVersions } from "./definitions";
+import { hotUpdaterSchemaVersions } from "../../schema";
 import type {
   HotUpdaterColumnSchema,
   HotUpdaterIndexSchema,
   HotUpdaterTableSchema,
   HotUpdaterVersionedSchema,
-} from "./types";
+} from "../../schema/types";
+import type { ORMProvider } from "../types";
 
-export { hotUpdaterSchemaVersions } from "./definitions";
+export { hotUpdaterSchemaVersions } from "../../schema";
 
 export const hotUpdaterSchema =
   hotUpdaterSchemaVersions[hotUpdaterSchemaVersions.length - 1]!;

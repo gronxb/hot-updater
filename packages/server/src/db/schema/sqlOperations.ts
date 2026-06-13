@@ -1,3 +1,7 @@
+import {
+  HOT_UPDATER_SCHEMA_VERSION,
+  HOT_UPDATER_SETTINGS_TABLE,
+} from "../../schema/types";
 import type {
   MigrationOperation,
   ORMSQLProvider,
@@ -10,10 +14,6 @@ import {
   createIndexSql,
   hotUpdaterCreateTableOperations,
 } from "./sql";
-import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
-} from "./types";
 
 export const getSettingsInsertSql = (provider: ORMSQLProvider) => {
   if (provider === "mysql") {

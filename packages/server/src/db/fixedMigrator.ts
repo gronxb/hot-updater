@@ -1,6 +1,10 @@
 import { sql, type Kysely } from "kysely";
 import { MongoServerError, type MongoClient } from "mongodb";
 
+import {
+  HOT_UPDATER_SCHEMA_VERSION,
+  HOT_UPDATER_SETTINGS_TABLE,
+} from "../schema/types";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
   hotUpdaterSchema,
@@ -12,10 +16,6 @@ import {
   createSqlCreateOperations,
   getSettingsInsertSql,
 } from "./schema/sqlOperations";
-import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
-} from "./schema/types";
 import type {
   MigrateOptions,
   MigrationOperation,

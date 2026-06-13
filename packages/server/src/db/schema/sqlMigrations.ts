@@ -1,7 +1,12 @@
+import { hotUpdaterSchemaVersions } from "../../schema";
+import type {
+  HotUpdaterCheckSchema,
+  HotUpdaterForeignKeySchema,
+  HotUpdaterTableSchema,
+} from "../../schema/types";
 import type { ORMSQLProvider, RelationMode } from "../types";
 import {
   getSchemaVersionIndex,
-  hotUpdaterSchemaVersions,
   schemaIndexAppliesToProvider,
 } from "./registry";
 import {
@@ -9,11 +14,6 @@ import {
   createTableStatement,
   sqlColumnDefinition,
 } from "./sql";
-import type {
-  HotUpdaterCheckSchema,
-  HotUpdaterForeignKeySchema,
-  HotUpdaterTableSchema,
-} from "./types";
 
 const nameMap = <T extends { readonly name: string }>(
   items: readonly T[] | undefined,
