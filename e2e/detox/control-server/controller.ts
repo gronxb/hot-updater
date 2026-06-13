@@ -4035,8 +4035,8 @@ function getAndroidAnrPackage(windowOutput: string) {
 }
 
 function androidAnrStopPackages(anrPackage: string) {
-  if (anrPackage === "system") {
-    return ["com.android.systemui"];
+  if (anrPackage === "system" || anrPackage === "com.android.systemui") {
+    return [];
   }
   return [anrPackage];
 }
