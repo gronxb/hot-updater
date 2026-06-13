@@ -2,13 +2,16 @@ import { sql, type Kysely } from "kysely";
 import { MongoServerError, type MongoClient } from "mongodb";
 
 import {
+  createMongoMigrationOperations,
+  createSqlCreateOperations,
   createTableSql,
   createV029AlterSql,
   createV031AlterSql,
   getSettingsInsertSql,
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
-  hotUpdaterCreateTableOperations,
+  hotUpdaterSchema,
+  schemaIndexAppliesToProvider,
 } from "./hotUpdaterSchema";
 import type {
   MigrateOptions,
@@ -53,67 +56,6 @@ const ignoreExistingCollection = (error: unknown): undefined => {
   }
   throw error;
 };
-
-const getSqlCreateOperations = (
-  provider: ORMSQLProvider,
-  relationMode: RelationMode,
-  settingsOperation?: MigrationOperation,
-): MigrationOperation[] => [
-  ...hotUpdaterCreateTableOperations,
-  {
-    type: "custom",
-    sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
-  },
-  {
-    type: "custom",
-    sql: "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
-  },
-  {
-    type: "custom",
-    sql: "create index bundles_channel_idx on bundles(channel)",
-  },
-  ...(provider === "sqlite"
-    ? []
-    : [
-        {
-          type: "custom" as const,
-          sql: "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
-        },
-      ]),
-  {
-    type: "custom",
-    sql: "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-  },
-  ...(provider === "sqlite"
-    ? []
-    : [
-        {
-          type: "custom" as const,
-          sql: "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
-        },
-      ]),
-  {
-    type: "custom",
-    sql: "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
-  },
-  {
-    type: "custom",
-    sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-  },
-  ...(relationMode === "foreign-keys" && provider !== "sqlite"
-    ? [
-        {
-          type: "custom" as const,
-          sql: "alter table bundle_patches add constraint bundle_patches_bundle_id_fk foreign key (bundle_id) references bundles(id) on update restrict on delete cascade",
-        },
-        {
-          type: "custom" as const,
-          sql: "alter table bundle_patches add constraint bundle_patches_base_bundle_id_fk foreign key (base_bundle_id) references bundles(id) on update restrict on delete cascade",
-        },
-      ]
-    : []),
-  ...(settingsOperation ? [settingsOperation] : []),
-];
 
 const toCustomOperations = (
   statements: readonly string[],
@@ -183,7 +125,7 @@ export const createKyselyMigrator = ({
           ];
     const operations =
       currentVersion === undefined
-        ? getSqlCreateOperations(provider, relationMode, settingsOperation)
+        ? createSqlCreateOperations(provider, relationMode, settingsOperation)
         : toCustomOperations(
             [
               ...(currentVersion === "0.21.0"
@@ -249,102 +191,43 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     if ((await getVersion()) === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
+    const settingsOperation =
+      options.updateSettings === false
+        ? undefined
+        : ({
+            type: "custom",
+            key: "version",
+            value: HOT_UPDATER_SCHEMA_VERSION,
+          } satisfies MigrationOperation);
     return {
-      operations: [
-        ...hotUpdaterCreateTableOperations,
-        { type: "custom", sql: "create index bundles_id_idx on bundles(id)" },
-        {
-          type: "custom",
-          sql: "create index bundles_channel_idx on bundles(channel)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundles_platform_idx on bundles(platform)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
-        },
-        {
-          type: "custom",
-          sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-        },
-        ...(options.updateSettings === false
-          ? []
-          : [
-              {
-                type: "custom" as const,
-                key: "version",
-                value: HOT_UPDATER_SCHEMA_VERSION,
-              },
-            ]),
-      ],
+      operations: createMongoMigrationOperations(settingsOperation),
       execute: async () => {
         const db = client.db();
-        await db.createCollection("bundles").catch(ignoreExistingCollection);
-        await db
-          .createCollection("bundle_patches")
-          .catch(ignoreExistingCollection);
+        for (const table of hotUpdaterSchema.tables) {
+          if (table.internal) continue;
+          await db
+            .createCollection(table.ormName)
+            .catch(ignoreExistingCollection);
+        }
         await db.collection("bundles").createIndex(
           { id: 1 },
           {
             name: "bundles_id_idx",
           },
         );
-        await db.collection("bundles").createIndex(
-          { channel: 1 },
-          {
-            name: "bundles_channel_idx",
-          },
-        );
-        await db.collection("bundles").createIndex(
-          { platform: 1 },
-          {
-            name: "bundles_platform_idx",
-          },
-        );
-        await db.collection("bundles").createIndex(
-          { target_app_version: 1 },
-          {
-            name: "bundles_target_app_version_idx",
-          },
-        );
-        await db.collection("bundles").createIndex(
-          { fingerprint_hash: 1 },
-          {
-            name: "bundles_fingerprint_hash_idx",
-          },
-        );
-        await db.collection("bundles").createIndex(
-          { rollout_cohort_count: 1 },
-          {
-            name: "bundles_rollout_idx",
-          },
-        );
-        await db.collection("bundle_patches").createIndex(
-          { bundle_id: 1 },
-          {
-            name: "bundle_patches_bundle_id_idx",
-          },
-        );
-        await db.collection("bundle_patches").createIndex(
-          { base_bundle_id: 1 },
-          {
-            name: "bundle_patches_base_bundle_id_idx",
-          },
-        );
+        for (const table of hotUpdaterSchema.tables) {
+          if (table.internal) continue;
+          for (const index of (table.indexes ?? []).filter((item) =>
+            schemaIndexAppliesToProvider(item, "mongodb"),
+          )) {
+            await db
+              .collection(table.ormName)
+              .createIndex(
+                Object.fromEntries(index.columns.map((column) => [column, 1])),
+                { name: index.name },
+              );
+          }
+        }
         if (options.updateSettings !== false) {
           await settings.updateOne(
             { key: "version" },

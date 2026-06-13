@@ -1,62 +1,135 @@
-import { enhanceGeneratedSchema } from "./schemaEnhancements";
-import type { ORMProvider, ORMSQLProvider } from "./types";
+import {
+  getHotUpdaterSchemaVersion,
+  hotUpdaterSchema,
+  schemaIndexAppliesToProvider,
+  type HotUpdaterColumnSchema,
+  type HotUpdaterColumnType,
+  type HotUpdaterDefault,
+  type HotUpdaterRelationSchema,
+  type HotUpdaterTableSchema,
+  type HotUpdaterVersionedSchema,
+} from "./hotUpdaterSchema";
+import type { ORMProvider, ORMSQLProvider, SchemaGenerator } from "./types";
+import { getSQLProvider } from "./types";
 
-const prismaDb = (type: string, provider: ORMProvider) => {
+const literal = (value: string): string => JSON.stringify(value);
+
+const toPascalCase = (value: string): string =>
+  value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join("");
+
+const prismaDb = (type: HotUpdaterColumnType, provider: ORMProvider) => {
   if (provider === "postgresql") {
     if (type === "uuid") return " @db.Uuid";
-    if (type === "varchar") return " @db.VarChar(255)";
+    if (type.startsWith("varchar")) return " @db.VarChar(255)";
   }
   if (provider === "mysql") {
     if (type === "uuid") return " @db.Char(36)";
-    if (type === "varchar") return " @db.VarChar(255)";
+    if (type.startsWith("varchar")) return " @db.VarChar(255)";
   }
   return "";
 };
 
-export const generatePrismaSchema = (provider: ORMProvider) => {
-  const uuid = prismaDb("uuid", provider);
-  const varchar = prismaDb("varchar", provider);
-  const metadataDefault =
-    provider === "sqlite" ? "metadata Json" : 'metadata Json @default("{}")';
-  return enhanceGeneratedSchema(
-    "prisma",
-    `model bundles {
-  id String${uuid} @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String @default("production")
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  ${metadataDefault}
-  manifest_storage_uri String?
-  manifest_file_hash String?
-  asset_base_storage_uri String?
-  rollout_cohort_count Int @default(1000)
-  target_cohorts Json?
-}
-model bundle_patches {
-  id String${varchar} @id
-  bundle_id String${uuid}
-  base_bundle_id String${uuid}
-  base_file_hash String
-  patch_file_hash String
-  patch_storage_uri String
-  order_index Int @default(0)
-  bundle bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-  baseBundle bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
-}
-model private_hot_updater_settings {
-  key String${varchar} @id
-  value String @default("0.31.0")
-}`,
+const prismaType = (
+  column: HotUpdaterColumnSchema,
+  provider: ORMProvider,
+): string => {
+  const base = (() => {
+    if (column.type === "bool") return "Boolean";
+    if (column.type === "integer") return "Int";
+    if (column.type === "json") return "Json";
+    return "String";
+  })();
+  return `${base}${column.nullable ? "?" : ""}${prismaDb(
+    column.type,
     provider,
-  );
+  )}`;
 };
+
+const prismaDefault = (
+  column: HotUpdaterColumnSchema,
+  provider: ORMProvider,
+): string => {
+  if (!column.default) return "";
+  if (provider === "sqlite" && column.type === "json") return "";
+  if (column.default.type === "json") {
+    return ` @default(${literal(JSON.stringify(column.default.value))})`;
+  }
+  return ` @default(${JSON.stringify(column.default.value)})`;
+};
+
+const prismaField = (
+  column: HotUpdaterColumnSchema,
+  provider: ORMProvider,
+): string =>
+  [
+    column.ormName,
+    prismaType(column, provider),
+    column.primaryKey ? "@id" : undefined,
+    prismaDefault(column, provider).trim() || undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+const relationTargetFields = (
+  table: HotUpdaterTableSchema,
+  schema: HotUpdaterVersionedSchema,
+): readonly HotUpdaterRelationSchema[] =>
+  schema.tables.flatMap((sourceTable) =>
+    (sourceTable.relations ?? []).filter(
+      (relation) => relation.referencedTable === table.ormName,
+    ),
+  );
+
+const prismaRelationFields = (
+  table: HotUpdaterTableSchema,
+  schema: HotUpdaterVersionedSchema,
+): string[] => {
+  const lines = relationTargetFields(table, schema).map(
+    (relation) =>
+      `${relation.fieldName} ${relation.referencedTable === table.ormName ? "bundle_patches" : relation.referencedTable}[] @relation(${literal(relation.relationName)})`,
+  );
+
+  for (const relation of table.relations ?? []) {
+    const targetType = toPascalCase(relation.referencedTable);
+    lines.push(
+      `${relation.targetFieldName} ${targetType === "Bundles" ? "bundles" : relation.referencedTable} @relation(${literal(relation.relationName)}, fields: [${relation.columns.join(", ")}], references: [${relation.referencedColumns.join(", ")}], onUpdate: Restrict, onDelete: Cascade)`,
+    );
+  }
+
+  return lines;
+};
+
+const prismaIndexes = (
+  table: HotUpdaterTableSchema,
+  provider: ORMProvider,
+): string[] =>
+  (table.indexes ?? [])
+    .filter((index) => schemaIndexAppliesToProvider(index, provider))
+    .map(
+      (index) =>
+        `@@index([${index.columns.join(", ")}], map: ${literal(index.name)})`,
+    );
+
+export const generatePrismaSchema = (
+  provider: ORMProvider,
+  schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
+) =>
+  schema.tables
+    .map((table) => {
+      const lines = [
+        ...table.columns.map((column) => prismaField(column, provider)),
+        ...prismaRelationFields(table, schema),
+        ...prismaIndexes(table, provider),
+      ];
+      return `model ${table.ormName} {\n${lines
+        .map((line) => `  ${line}`)
+        .join("\n")}\n}`;
+    })
+    .join("\n\n");
 
 const drizzleImportSource = (provider: ORMSQLProvider) =>
   provider === "sqlite"
@@ -72,119 +145,214 @@ const drizzleTableFn = (provider: ORMSQLProvider) =>
       ? "mysqlTable"
       : "pgTable";
 
-const drizzleTypes = (provider: ORMSQLProvider) => {
+const drizzleColumnFn = (
+  column: HotUpdaterColumnSchema,
+  provider: ORMSQLProvider,
+): { code: string; imports: readonly string[] } => {
   if (provider === "sqlite") {
-    return {
-      id: 'text("id")',
-      uuid: "text",
-      bool: 'integer("should_force_update", { mode: "boolean" })',
-      enabled: 'integer("enabled", { mode: "boolean" })',
-      json: 'blob("metadata", { mode: "json" })',
-      cohorts: 'blob("target_cohorts", { mode: "json" })',
-      varchar: 'text("id", { length: 255 })',
-      imports: "sqliteTable, text, integer, blob, foreignKey, index",
-    };
+    if (column.type === "bool") {
+      return {
+        code: `integer(${literal(column.ormName)}, { mode: "boolean" })`,
+        imports: ["integer"],
+      };
+    }
+    if (column.type === "integer") {
+      return {
+        code: `integer(${literal(column.ormName)})`,
+        imports: ["integer"],
+      };
+    }
+    if (column.type === "json") {
+      return {
+        code: `blob(${literal(column.ormName)}, { mode: "json" })`,
+        imports: ["blob"],
+      };
+    }
+    return { code: `text(${literal(column.ormName)})`, imports: ["text"] };
   }
+
   if (provider === "mysql") {
+    if (column.type === "uuid") {
+      return {
+        code: `char(${literal(column.ormName)}, { length: 36 })`,
+        imports: ["char"],
+      };
+    }
+    if (column.type === "bool") {
+      return {
+        code: `boolean(${literal(column.ormName)})`,
+        imports: ["boolean"],
+      };
+    }
+    if (column.type === "integer") {
+      return { code: `int(${literal(column.ormName)})`, imports: ["int"] };
+    }
+    if (column.type === "json") {
+      return { code: `json(${literal(column.ormName)})`, imports: ["json"] };
+    }
+    if (column.type.startsWith("varchar")) {
+      return {
+        code: `varchar(${literal(column.ormName)}, { length: 255 })`,
+        imports: ["varchar"],
+      };
+    }
+    return { code: `text(${literal(column.ormName)})`, imports: ["text"] };
+  }
+
+  if (column.type === "uuid") {
+    return { code: `uuid(${literal(column.ormName)})`, imports: ["uuid"] };
+  }
+  if (column.type === "bool") {
     return {
-      id: 'char("id", { length: 36 })',
-      uuid: "char",
-      bool: 'boolean("should_force_update")',
-      enabled: 'boolean("enabled")',
-      json: 'json("metadata")',
-      cohorts: 'json("target_cohorts")',
-      varchar: 'varchar("id", { length: 255 })',
-      imports:
-        "mysqlTable, char, text, boolean, json, int, varchar, foreignKey, index",
+      code: `boolean(${literal(column.ormName)})`,
+      imports: ["boolean"],
     };
   }
-  return {
-    id: 'uuid("id")',
-    uuid: "uuid",
-    bool: 'boolean("should_force_update")',
-    enabled: 'boolean("enabled")',
-    json: 'json("metadata")',
-    cohorts: 'json("target_cohorts")',
-    varchar: 'varchar("id", { length: 255 })',
-    imports:
-      "pgTable, uuid, text, boolean, json, integer, varchar, foreignKey, index",
-  };
+  if (column.type === "integer") {
+    return {
+      code: `integer(${literal(column.ormName)})`,
+      imports: ["integer"],
+    };
+  }
+  if (column.type === "json") {
+    return { code: `json(${literal(column.ormName)})`, imports: ["json"] };
+  }
+  if (column.type.startsWith("varchar")) {
+    return {
+      code: `varchar(${literal(column.ormName)}, { length: 255 })`,
+      imports: ["varchar"],
+    };
+  }
+  return { code: `text(${literal(column.ormName)})`, imports: ["text"] };
 };
 
-export const generateDrizzleSchema = (provider: ORMSQLProvider) => {
-  const tableFn = drizzleTableFn(provider);
-  const types = drizzleTypes(provider);
-  const int = provider === "mysql" ? "int" : "integer";
-  const settingsVersion =
-    provider === "sqlite"
-      ? 'text("version", { length: 255 })'
-      : 'varchar("version", { length: 255 })';
-  return `import { ${types.imports} } from "${drizzleImportSource(provider)}"
-import { relations } from "drizzle-orm"
+const drizzleDefault = (value: HotUpdaterDefault | undefined): string => {
+  if (!value) return "";
+  if (value.type === "json") return ".default({})";
+  return `.default(${JSON.stringify(value.value)})`;
+};
 
-export const bundles = ${tableFn}("bundles", {
-  id: ${types.id}.primaryKey().notNull(),
-  platform: text("platform").notNull(),
-  should_force_update: ${types.bool}.notNull(),
-  enabled: ${types.enabled}.notNull(),
-  file_hash: text("file_hash").notNull(),
-  git_commit_hash: text("git_commit_hash"),
-  message: text("message"),
-  channel: text("channel").notNull().default("production"),
-  storage_uri: text("storage_uri").notNull(),
-  target_app_version: text("target_app_version"),
-  fingerprint_hash: text("fingerprint_hash"),
-  metadata: ${types.json}.notNull().default({}),
-  manifest_storage_uri: text("manifest_storage_uri"),
-  manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri"),
-  rollout_cohort_count: ${int}("rollout_cohort_count").notNull().default(1000),
-  target_cohorts: ${types.cohorts}
-}, (table) => [
-  index("bundles_target_app_version_idx").on(table.target_app_version),
-  index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
-  index("bundles_channel_idx").on(table.channel),
-  index("bundles_rollout_idx").on(table.rollout_cohort_count),
-])
+const drizzleTable = (
+  table: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+  imports: Set<string>,
+): string => {
+  const columns = table.columns.map((column) => {
+    const type = drizzleColumnFn(column, provider);
+    for (const item of type.imports) imports.add(item);
+    const chain = [
+      type.code,
+      column.primaryKey ? "primaryKey()" : undefined,
+      column.nullable ? undefined : "notNull()",
+      drizzleDefault(column.default).slice(1) || undefined,
+    ].filter(Boolean);
+    return `  ${column.ormName}: ${chain.join(".")}`;
+  });
 
-export const bundle_patches = ${tableFn}("bundle_patches", {
-  id: ${types.varchar}.primaryKey().notNull(),
-  bundle_id: ${types.uuid}("bundle_id").notNull(),
-  base_bundle_id: ${types.uuid}("base_bundle_id").notNull(),
-  base_file_hash: text("base_file_hash").notNull(),
-  patch_file_hash: text("patch_file_hash").notNull(),
-  patch_storage_uri: text("patch_storage_uri").notNull(),
-  order_index: ${int}("order_index").notNull().default(0)
-}, (table) => [
-  foreignKey({
-    columns: [table.bundle_id],
-    foreignColumns: [bundles.id],
-    name: "bundle_patches_bundle_id_fk"
-  }).onUpdate("restrict").onDelete("cascade"),
-  foreignKey({
-    columns: [table.base_bundle_id],
-    foreignColumns: [bundles.id],
-    name: "bundle_patches_base_bundle_id_fk"
-  }).onUpdate("restrict").onDelete("cascade"),
-  index("bundle_patches_bundle_id_idx").on(table.bundle_id),
-  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id),
-])
+  const callbacks: string[] = [];
+  for (const foreignKey of table.foreignKeys ?? []) {
+    imports.add("foreignKey");
+    callbacks.push(`foreignKey({
+    columns: [table.${foreignKey.columns.join(", table.")}],
+    foreignColumns: [${foreignKey.referencedTable}.${foreignKey.referencedColumns.join(
+      `, ${foreignKey.referencedTable}.`,
+    )}],
+    name: ${literal(foreignKey.name)}
+  }).onUpdate(${literal(foreignKey.onUpdate)}).onDelete(${literal(
+    foreignKey.onDelete,
+  )})`);
+  }
+  for (const index of (table.indexes ?? []).filter((item) =>
+    schemaIndexAppliesToProvider(item, provider),
+  )) {
+    imports.add("index");
+    callbacks.push(
+      `index(${literal(index.name)}).on(${index.columns
+        .map((column) => `table.${column}`)
+        .join(", ")})`,
+    );
+  }
 
-export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
-  bundle: one(bundles, {
-    relationName: "bundle_patches_bundles_patches",
-    fields: [bundle_patches.bundle_id],
-    references: [bundles.id]
-  }),
-  baseBundle: one(bundles, {
-    relationName: "bundle_patches_bundles_baseForPatches",
-    fields: [bundle_patches.base_bundle_id],
-    references: [bundles.id]
-  })
-}));
+  const args = [
+    literal(table.ormName),
+    `{\n${columns.join(",\n")}\n}`,
+    callbacks.length > 0
+      ? `(table) => [\n${callbacks.map((line) => `  ${line}`).join(",\n")}\n]`
+      : undefined,
+  ].filter(Boolean);
 
-export const private_hot_updater_settings = ${tableFn}("${"private_hot_updater_settings"}", {
-  id: ${types.varchar}.primaryKey().notNull(),
-  version: ${settingsVersion}.notNull().default("0.31.0")
-})`;
+  return `export const ${table.ormName} = ${drizzleTableFn(provider)}(${args.join(
+    ", ",
+  )})`;
+};
+
+const drizzleRelations = (table: HotUpdaterTableSchema): string | undefined => {
+  if (!table.relations || table.relations.length === 0) return undefined;
+  const lines = table.relations.map(
+    (
+      relation,
+    ) => `  ${relation.targetFieldName}: one(${relation.referencedTable}, {
+    relationName: ${literal(relation.relationName)},
+    fields: [${relation.columns.map((column) => `${table.ormName}.${column}`).join(", ")}],
+    references: [${relation.referencedColumns
+      .map((column) => `${relation.referencedTable}.${column}`)
+      .join(", ")}]
+  })`,
+  );
+  return `export const ${table.ormName}Relations = relations(${table.ormName}, ({ one }) => ({
+${lines.join(",\n")}
+}))`;
+};
+
+export const generateDrizzleSchema = (
+  provider: ORMSQLProvider,
+  schema: HotUpdaterVersionedSchema = hotUpdaterSchema,
+) => {
+  const imports = new Set<string>([drizzleTableFn(provider)]);
+  const body: string[] = [];
+
+  for (const table of schema.tables) {
+    body.push(drizzleTable(table, provider, imports));
+    const relations = drizzleRelations(table);
+    if (relations) body.push(relations);
+  }
+
+  if (body.some((block) => block.includes("relations("))) {
+    body.unshift('import { relations } from "drizzle-orm"');
+  }
+
+  const importLine = `import { ${Array.from(imports)
+    .sort()
+    .join(", ")} } from "${drizzleImportSource(provider)}"`;
+
+  return [importLine, ...body].join("\n\n");
+};
+
+export const generateSchemaFromHotUpdaterSchema = (
+  adapterName: string,
+  provider: ORMProvider | undefined,
+  version: string | "latest",
+  fallback: ReturnType<SchemaGenerator>,
+): ReturnType<SchemaGenerator> => {
+  const schema =
+    version === "latest"
+      ? hotUpdaterSchema
+      : getHotUpdaterSchemaVersion(version);
+
+  if (adapterName === "prisma" && provider) {
+    return {
+      ...fallback,
+      code: generatePrismaSchema(provider, schema),
+    };
+  }
+
+  const sqlProvider = getSQLProvider(provider);
+  if (adapterName === "drizzle" && sqlProvider) {
+    return {
+      ...fallback,
+      code: generateDrizzleSchema(sqlProvider, schema),
+    };
+  }
+
+  return fallback;
 };

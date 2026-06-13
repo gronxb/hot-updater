@@ -29,11 +29,16 @@ import {
   type BundleRow,
   rowToBundle,
 } from "../db/bundleRows";
+import {
+  getHotUpdaterSchemaVersion,
+  hotUpdaterSchema,
+} from "../db/hotUpdaterSchema";
 import { generateDrizzleSchema } from "../db/schemaGenerators";
 import type {
   DatabasePluginFactory,
   ORMProvider,
   ORMSQLProvider,
+  SchemaGenerator,
 } from "../db/types";
 
 export interface DrizzleConfig {
@@ -265,8 +270,13 @@ export const drizzleAdapter = (
   return Object.assign(createDrizzlePlugin(config), {
     adapterName: "drizzle",
     provider: config.provider,
-    generateSchema: () => ({
-      code: generateDrizzleSchema(config.provider as ORMSQLProvider),
+    generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({
+      code: generateDrizzleSchema(
+        config.provider as ORMSQLProvider,
+        version === "latest"
+          ? hotUpdaterSchema
+          : getHotUpdaterSchemaVersion(version),
+      ),
       path: "./db/hot_updater.ts",
     }),
   });

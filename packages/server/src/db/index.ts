@@ -10,7 +10,7 @@ import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
 import { createStorageAccess } from "../storageAccess";
 import { createPluginDatabaseCore } from "./pluginCore";
-import { enhanceGeneratedSchema } from "./schemaEnhancements";
+import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import {
   type DatabaseAdapterCapabilities,
   type DatabaseAdapter,
@@ -94,17 +94,13 @@ export function createHotUpdater<TContext = unknown>(
     basePath,
     adapterName: capabilities.adapterName ?? core.adapterName,
     createMigrator: capabilities.createMigrator ?? core.createMigrator,
-    generateSchema: (...args: Parameters<SchemaGenerator>) => {
-      const result = generateSchema(...args);
-      return {
-        ...result,
-        code: enhanceGeneratedSchema(
-          api.adapterName,
-          result.code,
-          capabilities.provider,
-        ),
-      };
-    },
+    generateSchema: (...args: Parameters<SchemaGenerator>) =>
+      generateSchemaFromHotUpdaterSchema(
+        api.adapterName,
+        capabilities.provider,
+        args[0],
+        generateSchema(...args),
+      ),
     handler: createHandler(core.api, {
       basePath,
       routes: options.routes,

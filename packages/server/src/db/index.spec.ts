@@ -27,7 +27,11 @@ import {
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
-import { createTableSql } from "./hotUpdaterSchema";
+import {
+  createSchemaMigrationSql,
+  createTableSql,
+  hotUpdaterSchemaVersions,
+} from "./hotUpdaterSchema";
 import { createHotUpdater } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePluginFactory, ORMProvider } from "./types";
@@ -339,6 +343,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
+      expect(code).toContain('value String @default("0.31.0")');
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
       );
@@ -352,6 +357,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'baseBundle bundles @relation("bundle_patches_bundles_baseForPatches"',
       );
       expect(code).toContain('@@index([channel], map: "bundles_channel_idx")');
+      expect(code).not.toContain("bundles_platform_idx");
       expect(code).toContain(
         '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
       );
@@ -362,6 +368,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(code).toContain("metadata Json");
       expect(code).not.toContain('metadata Json @default("{}")');
+    });
+
+    it("generates ORM schema from the requested version snapshot", () => {
+      const code = prismaSchemaHotUpdater.generateSchema("0.21.0").code;
+
+      expect(code).toContain('value String @default("0.21.0")');
+      expect(code).not.toContain("rollout_cohort_count");
+      expect(code).not.toContain("bundle_patches");
     });
 
     it("includes foreign keys and indexes in Drizzle output", () => {
@@ -384,6 +398,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(bundlesBlock).toContain(
         'index("bundles_channel_idx").on(table.channel)',
       );
+      expect(bundlesBlock).not.toContain("bundles_platform_idx");
       expect(bundlesBlock).toContain(
         'index("bundles_target_app_version_idx").on(table.target_app_version)',
       );
@@ -401,12 +416,46 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.31.0")',
+        'key: varchar("key", { length: 255 }).primaryKey().notNull()',
+      );
+      expect(generatedCode).toContain(
+        'value: text("value").notNull().default("0.31.0")',
       );
     });
   });
 
   describe("migrator enhancements", () => {
+    it("derives incremental migrations from versioned schemas", () => {
+      expect(hotUpdaterSchemaVersions.map((schema) => schema.version)).toEqual([
+        "0.21.0",
+        "0.29.0",
+        "0.31.0",
+      ]);
+
+      const v029Sql = createSchemaMigrationSql(
+        "0.21.0",
+        "0.29.0",
+        "postgresql",
+      ).join("\n");
+      const v031Sql = createSchemaMigrationSql(
+        "0.29.0",
+        "0.31.0",
+        "postgresql",
+      ).join("\n");
+
+      expect(v029Sql).toContain(
+        "alter table bundles add column rollout_cohort_count",
+      );
+      expect(v029Sql).not.toContain("bundle_patches");
+      expect(v031Sql).toContain(
+        "alter table bundles add column manifest_storage_uri",
+      );
+      expect(v031Sql).toContain("create table if not exists bundle_patches");
+      expect(v031Sql).toContain(
+        "add constraint bundle_patches_bundle_id_fk foreign key",
+      );
+    });
+
     it("omits MySQL defaults for text and JSON columns", () => {
       const sql = createTableSql("mysql").join("\n");
 
@@ -416,6 +465,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(sql).not.toContain("metadata json not null default");
       expect(sql).toContain("`key` varchar(255) primary key");
       expect(sql).not.toContain("\nkey varchar(255) primary key");
+      expect(sql).toContain(
+        "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
+      );
+      expect(sql).not.toContain("bundle_id(255)");
     });
 
     it("adds custom indexes and constraints to generated SQL", async () => {
@@ -615,6 +668,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           }),
           expect.objectContaining({
             sql: "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
+          }),
+          expect.objectContaining({
+            sql: "create index bundles_platform_idx on bundles(platform)",
           }),
           expect.objectContaining({
             sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",

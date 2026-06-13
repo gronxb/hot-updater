@@ -15,8 +15,16 @@ import {
   type BundleRow,
   rowToBundle,
 } from "../db/bundleRows";
+import {
+  getHotUpdaterSchemaVersion,
+  hotUpdaterSchema,
+} from "../db/hotUpdaterSchema";
 import { generatePrismaSchema } from "../db/schemaGenerators";
-import type { DatabasePluginFactory, ORMProvider } from "../db/types";
+import type {
+  DatabasePluginFactory,
+  ORMProvider,
+  SchemaGenerator,
+} from "../db/types";
 
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
@@ -206,8 +214,13 @@ export const prismaAdapter = (config: PrismaConfig): DatabasePluginFactory => {
   return Object.assign(createPrismaPlugin(config), {
     adapterName: "prisma",
     provider: config.provider,
-    generateSchema: () => ({
-      code: generatePrismaSchema(config.provider),
+    generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({
+      code: generatePrismaSchema(
+        config.provider,
+        version === "latest"
+          ? hotUpdaterSchema
+          : getHotUpdaterSchemaVersion(version),
+      ),
       path: "./prisma/schema/hot_updater.prisma",
     }),
   });

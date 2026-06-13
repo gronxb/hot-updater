@@ -1,61 +1,325 @@
-import type { ORMProvider, ORMSQLProvider, RelationMode } from "./types";
+import type {
+  ORMProvider,
+  ORMSQLProvider,
+  RelationMode,
+  MigrationOperation,
+} from "./types";
 
 export const HOT_UPDATER_SCHEMA_VERSION = "0.31.0";
 export const HOT_UPDATER_SETTINGS_TABLE = "private_hot_updater_settings";
 
-export const hotUpdaterCreateTableOperations = [
-  {
-    type: "create-table",
-    value: {
-      ormName: "bundles",
-      columns: {
-        id: { ormName: "id", type: "uuid" },
-        platform: { ormName: "platform", type: "string" },
-        should_force_update: { ormName: "should_force_update", type: "bool" },
-        enabled: { ormName: "enabled", type: "bool" },
-        file_hash: { ormName: "file_hash", type: "string" },
-        git_commit_hash: { ormName: "git_commit_hash", type: "string" },
-        message: { ormName: "message", type: "string" },
-        channel: { ormName: "channel", type: "string" },
-        storage_uri: { ormName: "storage_uri", type: "string" },
-        target_app_version: { ormName: "target_app_version", type: "string" },
-        fingerprint_hash: { ormName: "fingerprint_hash", type: "string" },
-        metadata: { ormName: "metadata", type: "json" },
-        manifest_storage_uri: {
-          ormName: "manifest_storage_uri",
-          type: "string",
-        },
-        manifest_file_hash: { ormName: "manifest_file_hash", type: "string" },
-        asset_base_storage_uri: {
-          ormName: "asset_base_storage_uri",
-          type: "string",
-        },
-        rollout_cohort_count: {
-          ormName: "rollout_cohort_count",
-          type: "integer",
-        },
-        target_cohorts: { ormName: "target_cohorts", type: "json" },
-      },
-    },
-  },
-  {
-    type: "create-table",
-    value: {
-      ormName: "bundle_patches",
-      columns: {
-        id: { ormName: "id", type: "varchar(255)" },
-        bundle_id: { ormName: "bundle_id", type: "uuid" },
-        base_bundle_id: { ormName: "base_bundle_id", type: "uuid" },
-        base_file_hash: { ormName: "base_file_hash", type: "string" },
-        patch_file_hash: { ormName: "patch_file_hash", type: "string" },
-        patch_storage_uri: { ormName: "patch_storage_uri", type: "string" },
-        order_index: { ormName: "order_index", type: "integer" },
-      },
-    },
-  },
-] as const;
+export type HotUpdaterColumnType =
+  | "bool"
+  | "integer"
+  | "json"
+  | "string"
+  | "uuid"
+  | `varchar(${number})`;
 
-export const getSqlType = (type: string, provider: ORMSQLProvider): string => {
+export type HotUpdaterDefault =
+  | { type: "literal"; value: boolean | number | string }
+  | { type: "json"; value: unknown };
+
+export interface HotUpdaterColumnSchema {
+  readonly ormName: string;
+  readonly type: HotUpdaterColumnType;
+  readonly nullable?: boolean;
+  readonly primaryKey?: boolean;
+  readonly default?: HotUpdaterDefault;
+}
+
+export interface HotUpdaterIndexSchema {
+  readonly name: string;
+  readonly columns: readonly string[];
+  readonly providers?: readonly ORMProvider[];
+}
+
+export interface HotUpdaterCheckSchema {
+  readonly name: string;
+  readonly expression: string;
+  readonly sqliteInline?: boolean;
+}
+
+export interface HotUpdaterForeignKeySchema {
+  readonly name: string;
+  readonly columns: readonly string[];
+  readonly referencedTable: string;
+  readonly referencedColumns: readonly string[];
+  readonly onUpdate: "restrict";
+  readonly onDelete: "cascade";
+}
+
+export interface HotUpdaterRelationSchema {
+  readonly name: string;
+  readonly fieldName: string;
+  readonly targetFieldName: string;
+  readonly relationName: string;
+  readonly columns: readonly string[];
+  readonly referencedTable: string;
+  readonly referencedColumns: readonly string[];
+}
+
+export interface HotUpdaterTableSchema {
+  readonly ormName: string;
+  readonly columns: readonly HotUpdaterColumnSchema[];
+  readonly indexes?: readonly HotUpdaterIndexSchema[];
+  readonly checks?: readonly HotUpdaterCheckSchema[];
+  readonly foreignKeys?: readonly HotUpdaterForeignKeySchema[];
+  readonly relations?: readonly HotUpdaterRelationSchema[];
+  readonly internal?: boolean;
+}
+
+export interface HotUpdaterVersionedSchema {
+  version: string;
+  settingsTable: string;
+  tables: readonly HotUpdaterTableSchema[];
+}
+
+export type HotUpdaterSchemaVersion = "0.21.0" | "0.29.0" | "0.31.0";
+
+const bundlesV021 = {
+  ormName: "bundles",
+  columns: [
+    { ormName: "id", type: "uuid", primaryKey: true },
+    { ormName: "platform", type: "string" },
+    { ormName: "should_force_update", type: "bool" },
+    { ormName: "enabled", type: "bool" },
+    { ormName: "file_hash", type: "string" },
+    { ormName: "git_commit_hash", type: "string", nullable: true },
+    { ormName: "message", type: "string", nullable: true },
+    {
+      ormName: "channel",
+      type: "string",
+      default: { type: "literal", value: "production" },
+    },
+    { ormName: "storage_uri", type: "string" },
+    { ormName: "target_app_version", type: "string", nullable: true },
+    { ormName: "fingerprint_hash", type: "string", nullable: true },
+    {
+      ormName: "metadata",
+      type: "json",
+      default: { type: "json", value: {} },
+    },
+  ],
+  indexes: [
+    {
+      name: "bundles_target_app_version_idx",
+      columns: ["target_app_version"],
+    },
+    {
+      name: "bundles_fingerprint_hash_idx",
+      columns: ["fingerprint_hash"],
+    },
+    { name: "bundles_channel_idx", columns: ["channel"] },
+    {
+      name: "bundles_platform_idx",
+      columns: ["platform"],
+      providers: ["mongodb"],
+    },
+  ],
+  checks: [
+    {
+      name: "check_version_or_fingerprint",
+      expression:
+        "(target_app_version is not null) or (fingerprint_hash is not null)",
+      sqliteInline: true,
+    },
+  ],
+} as const satisfies HotUpdaterTableSchema;
+
+const bundlesV029 = {
+  ...bundlesV021,
+  columns: [
+    ...bundlesV021.columns,
+    {
+      ormName: "rollout_cohort_count",
+      type: "integer",
+      default: { type: "literal", value: 1000 },
+    },
+    { ormName: "target_cohorts", type: "json", nullable: true },
+  ],
+  indexes: [
+    ...bundlesV021.indexes,
+    { name: "bundles_rollout_idx", columns: ["rollout_cohort_count"] },
+  ],
+  checks: [
+    ...bundlesV021.checks,
+    {
+      name: "bundles_rollout_cohort_count_check",
+      expression: "rollout_cohort_count >= 0 and rollout_cohort_count <= 1000",
+      sqliteInline: true,
+    },
+  ],
+} as const satisfies HotUpdaterTableSchema;
+
+const bundlesV031 = {
+  ...bundlesV029,
+  columns: [
+    ...bundlesV029.columns,
+    { ormName: "manifest_storage_uri", type: "string", nullable: true },
+    { ormName: "manifest_file_hash", type: "string", nullable: true },
+    { ormName: "asset_base_storage_uri", type: "string", nullable: true },
+  ],
+} as const satisfies HotUpdaterTableSchema;
+
+const bundlePatchesV031 = {
+  ormName: "bundle_patches",
+  columns: [
+    { ormName: "id", type: "varchar(255)", primaryKey: true },
+    { ormName: "bundle_id", type: "uuid" },
+    { ormName: "base_bundle_id", type: "uuid" },
+    { ormName: "base_file_hash", type: "string" },
+    { ormName: "patch_file_hash", type: "string" },
+    { ormName: "patch_storage_uri", type: "string" },
+    {
+      ormName: "order_index",
+      type: "integer",
+      default: { type: "literal", value: 0 },
+    },
+  ],
+  indexes: [
+    { name: "bundle_patches_bundle_id_idx", columns: ["bundle_id"] },
+    {
+      name: "bundle_patches_base_bundle_id_idx",
+      columns: ["base_bundle_id"],
+    },
+  ],
+  foreignKeys: [
+    {
+      name: "bundle_patches_bundle_id_fk",
+      columns: ["bundle_id"],
+      referencedTable: "bundles",
+      referencedColumns: ["id"],
+      onUpdate: "restrict",
+      onDelete: "cascade",
+    },
+    {
+      name: "bundle_patches_base_bundle_id_fk",
+      columns: ["base_bundle_id"],
+      referencedTable: "bundles",
+      referencedColumns: ["id"],
+      onUpdate: "restrict",
+      onDelete: "cascade",
+    },
+  ],
+  relations: [
+    {
+      name: "bundle",
+      fieldName: "patches",
+      targetFieldName: "bundle",
+      relationName: "bundle_patches_bundles_patches",
+      columns: ["bundle_id"],
+      referencedTable: "bundles",
+      referencedColumns: ["id"],
+    },
+    {
+      name: "baseBundle",
+      fieldName: "baseForPatches",
+      targetFieldName: "baseBundle",
+      relationName: "bundle_patches_bundles_baseForPatches",
+      columns: ["base_bundle_id"],
+      referencedTable: "bundles",
+      referencedColumns: ["id"],
+    },
+  ],
+} as const satisfies HotUpdaterTableSchema;
+
+const createSettingsTable = (
+  version: HotUpdaterSchemaVersion,
+): HotUpdaterTableSchema => ({
+  ormName: HOT_UPDATER_SETTINGS_TABLE,
+  internal: true,
+  columns: [
+    { ormName: "key", type: "varchar(255)", primaryKey: true },
+    {
+      ormName: "value",
+      type: "string",
+      default: { type: "literal", value: version },
+    },
+  ],
+});
+
+export const hotUpdaterSchemaVersions: readonly HotUpdaterVersionedSchema[] = [
+  {
+    version: "0.21.0",
+    settingsTable: HOT_UPDATER_SETTINGS_TABLE,
+    tables: [bundlesV021, createSettingsTable("0.21.0")],
+  },
+  {
+    version: "0.29.0",
+    settingsTable: HOT_UPDATER_SETTINGS_TABLE,
+    tables: [bundlesV029, createSettingsTable("0.29.0")],
+  },
+  {
+    version: "0.31.0",
+    settingsTable: HOT_UPDATER_SETTINGS_TABLE,
+    tables: [bundlesV031, bundlePatchesV031, createSettingsTable("0.31.0")],
+  },
+];
+
+export const hotUpdaterSchema =
+  hotUpdaterSchemaVersions[hotUpdaterSchemaVersions.length - 1]!;
+
+const getSchemaVersionIndex = (version: string): number =>
+  hotUpdaterSchemaVersions.findIndex((schema) => schema.version === version);
+
+export const getHotUpdaterSchemaVersion = (
+  version: string,
+): HotUpdaterVersionedSchema => {
+  const schema = hotUpdaterSchemaVersions.find(
+    (item) => item.version === version,
+  );
+  if (!schema)
+    throw new Error(`Unsupported Hot Updater schema version: ${version}`);
+  return schema;
+};
+
+export const getSchemaTable = (name: string): HotUpdaterTableSchema => {
+  const table = hotUpdaterSchema.tables.find((item) => item.ormName === name);
+  if (!table) throw new Error(`Unknown Hot Updater schema table: ${name}`);
+  return table;
+};
+
+export const getSchemaColumn = (
+  table: HotUpdaterTableSchema,
+  name: string,
+): HotUpdaterColumnSchema => {
+  const column = table.columns.find((item) => item.ormName === name);
+  if (!column) {
+    throw new Error(
+      `Unknown Hot Updater schema column: ${table.ormName}.${name}`,
+    );
+  }
+  return column;
+};
+
+export const hotUpdaterDataTables = hotUpdaterSchema.tables.filter(
+  (table) => !table.internal,
+);
+
+export const schemaIndexAppliesToProvider = (
+  index: HotUpdaterIndexSchema,
+  provider: ORMProvider,
+): boolean => !index.providers || index.providers.includes(provider);
+
+export const hotUpdaterCreateTableOperations: MigrationOperation[] =
+  hotUpdaterDataTables.map((table) => ({
+    type: "create-table",
+    value: {
+      ormName: table.ormName,
+      columns: Object.fromEntries(
+        table.columns.map((column) => [
+          column.ormName,
+          { ormName: column.ormName, type: column.type },
+        ]),
+      ),
+    },
+  }));
+
+export const getSqlType = (
+  type: HotUpdaterColumnType,
+  provider: ORMSQLProvider,
+): string => {
   if (provider === "sqlite") {
     if (type === "bool" || type === "integer") return "integer";
     return "text";
@@ -76,134 +340,346 @@ export const getSqlType = (type: string, provider: ORMSQLProvider): string => {
   return "text";
 };
 
-const sqlDefaultJson = (provider: ORMSQLProvider) =>
-  provider === "postgresql" || provider === "cockroachdb"
-    ? "'{}'::json"
-    : "'{}'";
+const sqlStringLiteral = (value: string): string =>
+  `'${value.replaceAll("'", "''")}'`;
 
-const sqlDefaultChannelClause = (provider: ORMSQLProvider): string =>
-  provider === "mysql" ? "" : " default 'production'";
-
-const sqlDefaultMetadataClause = (provider: ORMSQLProvider): string =>
-  provider === "mysql" ? "" : ` default ${sqlDefaultJson(provider)}`;
-
-const sqlSettingsKeyColumn = (provider: ORMSQLProvider): string =>
-  provider === "mysql" ? "`key`" : "key";
-
-const createForeignKeySql = (
+const sqlDefaultClause = (
+  column: HotUpdaterColumnSchema,
   provider: ORMSQLProvider,
-  relationMode: RelationMode,
-): readonly string[] => {
-  if (relationMode !== "foreign-keys") return [];
-  if (provider === "sqlite") return [];
-
-  return [
-    "alter table bundle_patches add constraint bundle_patches_bundle_id_fk foreign key (bundle_id) references bundles(id) on update restrict on delete cascade",
-    "alter table bundle_patches add constraint bundle_patches_base_bundle_id_fk foreign key (base_bundle_id) references bundles(id) on update restrict on delete cascade",
-  ];
+): string => {
+  const value = column.default;
+  if (!value) return "";
+  if (
+    provider === "mysql" &&
+    (column.type === "json" || column.type === "string")
+  ) {
+    return "";
+  }
+  if (value.type === "json") {
+    const json = sqlStringLiteral(JSON.stringify(value.value));
+    return provider === "postgresql" || provider === "cockroachdb"
+      ? ` default ${json}::json`
+      : ` default ${json}`;
+  }
+  if (typeof value.value === "string") {
+    return ` default ${sqlStringLiteral(value.value)}`;
+  }
+  return ` default ${String(value.value)}`;
 };
 
-const getInlineBundleConstraints = (provider: ORMSQLProvider): string =>
-  provider === "sqlite"
-    ? `,
-constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null)),
-constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)`
-    : "";
-
-export const createV029AlterSql = (
+const sqlColumnName = (
+  table: HotUpdaterTableSchema,
+  column: HotUpdaterColumnSchema,
   provider: ORMSQLProvider,
-): readonly string[] => [
-  `alter table bundles add column rollout_cohort_count ${getSqlType("integer", provider)} not null default 1000`,
-  `alter table bundles add column target_cohorts ${getSqlType("json", provider)}`,
-  "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-  ...(provider === "sqlite"
-    ? []
-    : [
-        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
-      ]),
-];
+): string =>
+  table.ormName === HOT_UPDATER_SETTINGS_TABLE &&
+  column.ormName === "key" &&
+  provider === "mysql"
+    ? "`key`"
+    : column.ormName;
 
-export const createV031AlterSql = (
+const sqlColumnDefinition = (
+  table: HotUpdaterTableSchema,
+  column: HotUpdaterColumnSchema,
+  provider: ORMSQLProvider,
+): string => {
+  const constraints = [
+    column.primaryKey ? "primary key" : undefined,
+    column.nullable ? undefined : "not null",
+  ].filter(Boolean);
+  return (
+    [
+      sqlColumnName(table, column, provider),
+      getSqlType(column.type, provider),
+      ...constraints,
+    ].join(" ") + sqlDefaultClause(column, provider)
+  );
+};
+
+const sqlIndexColumn = (
+  table: HotUpdaterTableSchema,
+  columnName: string,
+  provider: ORMSQLProvider,
+): string => {
+  const column = getSchemaColumn(table, columnName);
+  return provider === "mysql" && column.type === "string"
+    ? `${columnName}(255)`
+    : columnName;
+};
+
+export const createIndexSql = (
+  table: HotUpdaterTableSchema,
+  index: HotUpdaterIndexSchema,
+  provider: ORMSQLProvider,
+): string =>
+  `create index ${index.name} on ${table.ormName}(${index.columns
+    .map((column) => sqlIndexColumn(table, column, provider))
+    .join(", ")})`;
+
+const createForeignKeySql = (
+  table: HotUpdaterTableSchema,
+  foreignKey: HotUpdaterForeignKeySchema,
+): string =>
+  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`;
+
+const createCheckSql = (
+  table: HotUpdaterTableSchema,
+  check: HotUpdaterCheckSchema,
+): string =>
+  `alter table ${table.ormName} add constraint ${check.name} check (${check.expression})`;
+
+const inlineSqlChecks = (
+  table: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+): string[] =>
+  provider === "sqlite"
+    ? (table.checks ?? [])
+        .filter((check) => check.sqliteInline)
+        .map((check) => `constraint ${check.name} check (${check.expression})`)
+    : [];
+
+const createTableStatement = (
+  table: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+): string => {
+  const lines = [
+    ...table.columns.map((column) =>
+      sqlColumnDefinition(table, column, provider),
+    ),
+    ...inlineSqlChecks(table, provider),
+  ];
+  return `create table if not exists ${table.ormName} (\n${lines.join(",\n")}\n)`;
+};
+
+export const createForeignKeySqlStatements = (
   provider: ORMSQLProvider,
   relationMode: RelationMode = "foreign-keys",
-): readonly string[] => [
-  `alter table bundles add column manifest_storage_uri ${getSqlType("string", provider)}`,
-  `alter table bundles add column manifest_file_hash ${getSqlType("string", provider)}`,
-  `alter table bundles add column asset_base_storage_uri ${getSqlType("string", provider)}`,
-  `create table if not exists bundle_patches (
-id ${getSqlType("varchar(255)", provider)} primary key,
-bundle_id ${getSqlType("uuid", provider)} not null,
-base_bundle_id ${getSqlType("uuid", provider)} not null,
-base_file_hash ${getSqlType("string", provider)} not null,
-patch_file_hash ${getSqlType("string", provider)} not null,
-patch_storage_uri ${getSqlType("string", provider)} not null,
-order_index ${getSqlType("integer", provider)} not null default 0
-)`,
-  "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
-  "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-  ...createForeignKeySql(provider, relationMode),
-];
+): readonly string[] => {
+  if (relationMode !== "foreign-keys" || provider === "sqlite") return [];
+  return hotUpdaterSchema.tables.flatMap((table) =>
+    (table.foreignKeys ?? []).map((foreignKey) =>
+      createForeignKeySql(table, foreignKey),
+    ),
+  );
+};
 
 export const createTableSql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] => [
-  `create table if not exists bundles (
-id ${getSqlType("uuid", provider)} primary key,
-platform ${getSqlType("string", provider)} not null,
-should_force_update ${getSqlType("bool", provider)} not null,
-enabled ${getSqlType("bool", provider)} not null,
-file_hash ${getSqlType("string", provider)} not null,
-git_commit_hash ${getSqlType("string", provider)},
-message ${getSqlType("string", provider)},
-channel ${getSqlType("string", provider)} not null${sqlDefaultChannelClause(provider)},
-storage_uri ${getSqlType("string", provider)} not null,
-target_app_version ${getSqlType("string", provider)},
-fingerprint_hash ${getSqlType("string", provider)},
-metadata ${getSqlType("json", provider)} not null${sqlDefaultMetadataClause(provider)},
-manifest_storage_uri ${getSqlType("string", provider)},
-	manifest_file_hash ${getSqlType("string", provider)},
-	asset_base_storage_uri ${getSqlType("string", provider)},
-	rollout_cohort_count ${getSqlType("integer", provider)} not null default 1000,
-	target_cohorts ${getSqlType("json", provider)}${getInlineBundleConstraints(provider)}
-	)`,
-  `create table if not exists bundle_patches (
-id ${getSqlType("varchar(255)", provider)} primary key,
-bundle_id ${getSqlType("uuid", provider)} not null,
-base_bundle_id ${getSqlType("uuid", provider)} not null,
-base_file_hash ${getSqlType("string", provider)} not null,
-patch_file_hash ${getSqlType("string", provider)} not null,
-patch_storage_uri ${getSqlType("string", provider)} not null,
-order_index ${getSqlType("integer", provider)} not null default 0
-)`,
-  `create table if not exists ${HOT_UPDATER_SETTINGS_TABLE} (
-${sqlSettingsKeyColumn(provider)} ${getSqlType("varchar(255)", provider)} primary key,
-value ${getSqlType("string", provider)} not null
-)`,
-  provider === "mysql"
-    ? "create index bundles_target_app_version_idx on bundles(target_app_version(255))"
-    : "create index bundles_target_app_version_idx on bundles(target_app_version)",
-  provider === "mysql"
-    ? "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash(255))"
-    : "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
-  provider === "mysql"
-    ? "create index bundles_channel_idx on bundles(channel(255))"
-    : "create index bundles_channel_idx on bundles(channel)",
+  ...hotUpdaterSchema.tables.map((table) =>
+    createTableStatement(table, provider),
+  ),
+  ...hotUpdaterSchema.tables.flatMap((table) =>
+    (table.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, provider))
+      .map((index) => createIndexSql(table, index, provider)),
+  ),
   ...(provider === "sqlite"
     ? []
-    : [
-        "alter table bundles add constraint check_version_or_fingerprint check ((target_app_version is not null) or (fingerprint_hash is not null))",
-      ]),
-  "create index bundles_rollout_idx on bundles(rollout_cohort_count)",
-  ...(provider === "sqlite"
-    ? []
-    : [
-        "alter table bundles add constraint bundles_rollout_cohort_count_check check (rollout_cohort_count >= 0 and rollout_cohort_count <= 1000)",
-      ]),
-  "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
-  "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
-  ...createForeignKeySql(provider, relationMode),
+    : hotUpdaterSchema.tables.flatMap((table) =>
+        (table.checks ?? []).map((check) => createCheckSql(table, check)),
+      )),
+  ...createForeignKeySqlStatements(provider, relationMode),
 ];
+
+const tableMap = (
+  schema: HotUpdaterVersionedSchema,
+): Map<string, HotUpdaterTableSchema> =>
+  new Map(schema.tables.map((table) => [table.ormName, table]));
+
+const nameMap = <T extends { readonly name: string }>(
+  items: readonly T[] | undefined,
+): Map<string, T> => new Map((items ?? []).map((item) => [item.name, item]));
+
+const columnMap = (
+  table: HotUpdaterTableSchema,
+): Map<string, HotUpdaterColumnSchema> =>
+  new Map(table.columns.map((column) => [column.ormName, column]));
+
+const stableStringify = (value: unknown): string => JSON.stringify(value);
+
+const assertSameSchemaValue = (
+  location: string,
+  left: unknown,
+  right: unknown,
+) => {
+  if (stableStringify(left) !== stableStringify(right)) {
+    throw new Error(
+      `Unsupported Hot Updater schema change at ${location}. Add an explicit migration step before changing existing schema metadata.`,
+    );
+  }
+};
+
+const assertNoUnsupportedTableChanges = (
+  previous: HotUpdaterTableSchema,
+  next: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+) => {
+  const nextColumns = columnMap(next);
+  for (const previousColumn of previous.columns) {
+    const nextColumn = nextColumns.get(previousColumn.ormName);
+    if (!nextColumn) {
+      throw new Error(
+        `Unsupported Hot Updater schema change at ${previous.ormName}.${previousColumn.ormName}. Dropping columns requires an explicit migration step.`,
+      );
+    }
+    assertSameSchemaValue(
+      `${previous.ormName}.${previousColumn.ormName}`,
+      previousColumn,
+      nextColumn,
+    );
+  }
+
+  const compareNamedItems = <T extends { readonly name: string }>(
+    location: string,
+    previousItems: readonly T[] | undefined,
+    nextItems: readonly T[] | undefined,
+  ) => {
+    const nextItemsByName = nameMap(nextItems);
+    for (const previousItem of previousItems ?? []) {
+      const nextItem = nextItemsByName.get(previousItem.name);
+      if (!nextItem) {
+        throw new Error(
+          `Unsupported Hot Updater schema change at ${location}.${previousItem.name}. Removing schema metadata requires an explicit migration step.`,
+        );
+      }
+      assertSameSchemaValue(
+        `${location}.${previousItem.name}`,
+        previousItem,
+        nextItem,
+      );
+    }
+  };
+
+  compareNamedItems(
+    `${previous.ormName}.indexes`,
+    previous.indexes?.filter((index) =>
+      schemaIndexAppliesToProvider(index, provider),
+    ),
+    next.indexes?.filter((index) =>
+      schemaIndexAppliesToProvider(index, provider),
+    ),
+  );
+  compareNamedItems(`${previous.ormName}.checks`, previous.checks, next.checks);
+  compareNamedItems(
+    `${previous.ormName}.foreignKeys`,
+    previous.foreignKeys,
+    next.foreignKeys,
+  );
+};
+
+const createAddedTableSql = (
+  table: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+): readonly string[] => [
+  createTableStatement(table, provider),
+  ...(table.indexes ?? [])
+    .filter((index) => schemaIndexAppliesToProvider(index, provider))
+    .map((index) => createIndexSql(table, index, provider)),
+  ...(provider === "sqlite"
+    ? []
+    : (table.checks ?? []).map((check) => createCheckSql(table, check))),
+  ...(relationMode === "foreign-keys" && provider !== "sqlite"
+    ? (table.foreignKeys ?? []).map((foreignKey) =>
+        createForeignKeySql(table, foreignKey),
+      )
+    : []),
+];
+
+const createChangedTableSql = (
+  previous: HotUpdaterTableSchema,
+  next: HotUpdaterTableSchema,
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+): readonly string[] => {
+  assertNoUnsupportedTableChanges(previous, next, provider);
+
+  const previousColumns = columnMap(previous);
+  const previousIndexes = nameMap(
+    previous.indexes?.filter((index) =>
+      schemaIndexAppliesToProvider(index, provider),
+    ),
+  );
+  const previousChecks = nameMap(previous.checks);
+  const previousForeignKeys = nameMap(previous.foreignKeys);
+
+  return [
+    ...next.columns
+      .filter((column) => !previousColumns.has(column.ormName))
+      .map(
+        (column) =>
+          `alter table ${next.ormName} add column ${sqlColumnDefinition(
+            next,
+            column,
+            provider,
+          )}`,
+      ),
+    ...(next.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, provider))
+      .filter((index) => !previousIndexes.has(index.name))
+      .map((index) => createIndexSql(next, index, provider)),
+    ...(provider === "sqlite"
+      ? []
+      : (next.checks ?? [])
+          .filter((check) => !previousChecks.has(check.name))
+          .map((check) => createCheckSql(next, check))),
+    ...(relationMode === "foreign-keys" && provider !== "sqlite"
+      ? (next.foreignKeys ?? [])
+          .filter((foreignKey) => !previousForeignKeys.has(foreignKey.name))
+          .map((foreignKey) => createForeignKeySql(next, foreignKey))
+      : []),
+  ];
+};
+
+export const createSchemaMigrationSql = (
+  fromVersion: string,
+  toVersion: string,
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] => {
+  const fromIndex = getSchemaVersionIndex(fromVersion);
+  const toIndex = getSchemaVersionIndex(toVersion);
+  if (fromIndex === -1) {
+    throw new Error(`Unsupported Hot Updater schema version: ${fromVersion}`);
+  }
+  if (toIndex === -1) {
+    throw new Error(`Unsupported Hot Updater schema version: ${toVersion}`);
+  }
+  if (fromIndex > toIndex) {
+    throw new Error(`Cannot migrate Hot Updater schema down to ${toVersion}.`);
+  }
+
+  const statements: string[] = [];
+  for (let index = fromIndex + 1; index <= toIndex; index += 1) {
+    const previous = hotUpdaterSchemaVersions[index - 1]!;
+    const next = hotUpdaterSchemaVersions[index]!;
+    const previousTables = tableMap(previous);
+
+    for (const table of next.tables) {
+      if (table.internal) continue;
+      const previousTable = previousTables.get(table.ormName);
+      statements.push(
+        ...(previousTable
+          ? createChangedTableSql(previousTable, table, provider, relationMode)
+          : createAddedTableSql(table, provider, relationMode)),
+      );
+    }
+  }
+
+  return statements;
+};
+
+export const createV029AlterSql = (
+  provider: ORMSQLProvider,
+): readonly string[] => createSchemaMigrationSql("0.21.0", "0.29.0", provider);
+
+export const createV031AlterSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] =>
+  createSchemaMigrationSql("0.29.0", "0.31.0", provider, relationMode);
 
 export const getSettingsInsertSql = (provider: ORMProvider) => {
   if (provider === "mysql") {
@@ -211,3 +687,65 @@ export const getSettingsInsertSql = (provider: ORMProvider) => {
   }
   return `insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value) values ('version', '${HOT_UPDATER_SCHEMA_VERSION}') on conflict (key) do update set value = '${HOT_UPDATER_SCHEMA_VERSION}'`;
 };
+
+export const createSqlCreateOperations = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+  settingsOperation?: MigrationOperation,
+): MigrationOperation[] => [
+  ...hotUpdaterCreateTableOperations,
+  ...hotUpdaterSchema.tables.flatMap((table) =>
+    (table.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, provider))
+      .map(
+        (index): MigrationOperation => ({
+          type: "custom",
+          sql: createIndexSql(table, index, provider),
+        }),
+      ),
+  ),
+  ...(provider === "sqlite"
+    ? []
+    : hotUpdaterSchema.tables.flatMap((table) =>
+        (table.checks ?? []).map(
+          (check): MigrationOperation => ({
+            type: "custom",
+            sql: createCheckSql(table, check),
+          }),
+        ),
+      )),
+  ...(relationMode === "foreign-keys" && provider !== "sqlite"
+    ? hotUpdaterSchema.tables.flatMap((table) =>
+        (table.foreignKeys ?? []).map(
+          (foreignKey): MigrationOperation => ({
+            type: "custom",
+            sql: createForeignKeySql(table, foreignKey),
+          }),
+        ),
+      )
+    : []),
+  ...(settingsOperation ? [settingsOperation] : []),
+];
+
+export const createMongoMigrationOperations = (
+  settingsOperation?: MigrationOperation,
+): MigrationOperation[] => [
+  ...hotUpdaterCreateTableOperations,
+  {
+    type: "custom",
+    sql: "create index bundles_id_idx on bundles(id)",
+  },
+  ...hotUpdaterSchema.tables.flatMap((table) =>
+    (table.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, "mongodb"))
+      .map(
+        (index): MigrationOperation => ({
+          type: "custom",
+          sql: `create index ${index.name} on ${table.ormName}(${index.columns.join(
+            ", ",
+          )})`,
+        }),
+      ),
+  ),
+  ...(settingsOperation ? [settingsOperation] : []),
+];
