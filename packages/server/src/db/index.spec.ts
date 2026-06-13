@@ -398,10 +398,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       );
       const generatedCode = generateDrizzleSchema("postgresql");
       expect(generatedCode).toContain(
-        'key: text("key").primaryKey().notNull()',
+        'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'value: varchar("value", { length: 255 }).notNull().default("0.31.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("0.31.0")',
       );
     });
   });

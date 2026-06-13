@@ -115,6 +115,10 @@ export const generateDrizzleSchema = (provider: ORMSQLProvider) => {
   const tableFn = drizzleTableFn(provider);
   const types = drizzleTypes(provider);
   const int = provider === "mysql" ? "int" : "integer";
+  const settingsVersion =
+    provider === "sqlite"
+      ? 'text("version", { length: 255 })'
+      : 'varchar("version", { length: 255 })';
   return `import { ${types.imports} } from "${drizzleImportSource(provider)}"
 import { relations } from "drizzle-orm"
 
@@ -180,7 +184,7 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 }));
 
 export const private_hot_updater_settings = ${tableFn}("${"private_hot_updater_settings"}", {
-  key: ${provider === "mysql" ? 'varchar("key", { length: 255 })' : 'text("key")'}.primaryKey().notNull(),
-  value: ${provider === "sqlite" ? "text" : "varchar"}("value", { length: 255 }).notNull().default("0.31.0")
+  id: ${types.varchar}.primaryKey().notNull(),
+  version: ${settingsVersion}.notNull().default("0.31.0")
 })`;
 };
