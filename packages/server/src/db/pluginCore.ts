@@ -454,12 +454,12 @@ export function createPluginDatabaseCore<TContext = unknown>(
     adapterName: getPlugin().name,
     createMigrator: () => {
       throw new Error(
-        "createMigrator is only available for Kysely/Prisma/Drizzle database adapters.",
+        "createMigrator is only available for Kysely/MongoDB database adapters.",
       );
     },
     generateSchema: () => {
       throw new Error(
-        "generateSchema is only available for Kysely/Prisma/Drizzle database adapters.",
+        "generateSchema is only available for Drizzle/Prisma database adapters.",
       );
     },
   };
