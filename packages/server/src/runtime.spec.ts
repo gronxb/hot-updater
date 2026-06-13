@@ -53,33 +53,34 @@ const createSchemaManagedDatabase = (
 ): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities => ({
   name: `${adapterName}Database`,
   adapterName,
-  createMigrator: () => ({
-    async getVersion() {
-      return version;
-    },
-    async getNameVariants() {
-      return {};
-    },
-    async next() {
-      return undefined;
-    },
-    async previous() {
-      return undefined;
-    },
-    async up() {
-      throw new Error("not implemented");
-    },
-    async down() {
-      throw new Error("not implemented");
-    },
-    async migrateTo() {
-      throw new Error("not implemented");
-    },
-    async migrateToLatest() {
-      throw new Error("not implemented");
-    },
-    async migrate() {},
-  }) as Migrator,
+  createMigrator: () =>
+    ({
+      async getVersion() {
+        return version;
+      },
+      async getNameVariants() {
+        return {};
+      },
+      async next() {
+        return undefined;
+      },
+      async previous() {
+        return undefined;
+      },
+      async up() {
+        throw new Error("not implemented");
+      },
+      async down() {
+        throw new Error("not implemented");
+      },
+      async migrateTo() {
+        throw new Error("not implemented");
+      },
+      async migrateToLatest() {
+        throw new Error("not implemented");
+      },
+      async migrate() {},
+    }) as Migrator,
   async appendBundle() {},
   async commitBundle() {},
   async deleteBundle() {},
