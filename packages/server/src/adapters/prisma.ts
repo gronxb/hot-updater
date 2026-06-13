@@ -18,7 +18,7 @@ import {
 import {
   getHotUpdaterSchemaVersion,
   hotUpdaterSchema,
-} from "../db/hotUpdaterSchema";
+} from "../db/schema/registry";
 import { generatePrismaSchema } from "../db/schemaGenerators";
 import type {
   DatabasePluginFactory,

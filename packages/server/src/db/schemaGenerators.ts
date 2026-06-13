@@ -2,13 +2,15 @@ import {
   getHotUpdaterSchemaVersion,
   hotUpdaterSchema,
   schemaIndexAppliesToProvider,
-  type HotUpdaterColumnSchema,
-  type HotUpdaterColumnType,
-  type HotUpdaterDefault,
-  type HotUpdaterRelationSchema,
-  type HotUpdaterTableSchema,
-  type HotUpdaterVersionedSchema,
-} from "./hotUpdaterSchema";
+} from "./schema/registry";
+import type {
+  HotUpdaterColumnSchema,
+  HotUpdaterColumnType,
+  HotUpdaterDefault,
+  HotUpdaterRelationSchema,
+  HotUpdaterTableSchema,
+  HotUpdaterVersionedSchema,
+} from "./schema/types";
 import type { ORMProvider, ORMSQLProvider, SchemaGenerator } from "./types";
 import { getSQLProvider } from "./types";
 

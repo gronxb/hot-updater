@@ -1,18 +1,21 @@
 import { sql, type Kysely } from "kysely";
 import { MongoServerError, type MongoClient } from "mongodb";
 
+import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
-  createMongoMigrationOperations,
-  createSqlCreateOperations,
-  createTableSql,
-  createV029AlterSql,
-  createV031AlterSql,
-  getSettingsInsertSql,
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
   hotUpdaterSchema,
   schemaIndexAppliesToProvider,
-} from "./hotUpdaterSchema";
+} from "./schema/registry";
+import { createTableSql } from "./schema/sql";
+import { createV029AlterSql, createV031AlterSql } from "./schema/sqlMigrations";
+import {
+  createSqlCreateOperations,
+  getSettingsInsertSql,
+} from "./schema/sqlOperations";
+import {
+  HOT_UPDATER_SCHEMA_VERSION,
+  HOT_UPDATER_SETTINGS_TABLE,
+} from "./schema/types";
 import type {
   MigrateOptions,
   MigrationOperation,
