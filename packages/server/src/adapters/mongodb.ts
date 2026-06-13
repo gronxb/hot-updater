@@ -7,7 +7,7 @@ import {
   calculatePagination,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
-import type { Collection, Filter, MongoClient } from "mongodb";
+import type { ClientSession, Collection, Filter, MongoClient } from "mongodb";
 
 import {
   bundleToPatchRows,
@@ -96,23 +96,58 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
       }
       return patchMap;
     };
-    const replaceBundle = async (bundle: Bundle) => {
+    const isTransactionUnsupported = (error: unknown): boolean =>
+      error instanceof Error &&
+      /Transaction numbers are only allowed|replica set member or mongos|Transaction API error/i.test(
+        error.message,
+      );
+    const runInTransaction = async <T>(
+      operation: (session: ClientSession | undefined) => Promise<T>,
+    ) => {
+      if (typeof client.startSession !== "function") {
+        return operation(undefined);
+      }
+      const session = client.startSession();
+      try {
+        if (typeof session.withTransaction !== "function") {
+          return await operation(session);
+        }
+        let result: T | undefined;
+        await session.withTransaction(async () => {
+          result = await operation(session);
+        });
+        return result as T;
+      } catch (error) {
+        if (isTransactionUnsupported(error)) {
+          return operation(undefined);
+        }
+        throw error;
+      } finally {
+        await session.endSession();
+      }
+    };
+    const replaceBundle = async (
+      bundle: Bundle,
+      session: ClientSession | undefined,
+    ) => {
       const row = bundleToRow(bundle);
       await bundles.updateOne(
         { id: bundle.id },
         { $set: row },
-        { upsert: true },
+        { session, upsert: true },
       );
-      await patches.deleteMany({ bundle_id: bundle.id });
+      await patches.deleteMany({ bundle_id: bundle.id }, { session });
       const patchRows = bundleToPatchRows(bundle);
-      if (patchRows.length > 0) await patches.insertMany(patchRows);
+      if (patchRows.length > 0)
+        await patches.insertMany(patchRows, { session });
     };
     const deleteByBundleId = async (
       collection: Collection<BundlePatchRow>,
       field: "bundle_id" | "base_bundle_id",
       bundleId: string,
+      session: ClientSession | undefined,
     ) => {
-      await collection.deleteMany({ [field]: bundleId });
+      await collection.deleteMany({ [field]: bundleId }, { session });
     };
     return {
       async getBundleById(bundleId) {
@@ -152,15 +187,27 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
           .sort((left, right) => left.localeCompare(right));
       },
       async commitBundle({ changedSets }) {
-        for (const change of changedSets) {
-          if (change.operation === "delete") {
-            await deleteByBundleId(patches, "bundle_id", change.data.id);
-            await deleteByBundleId(patches, "base_bundle_id", change.data.id);
-            await bundles.deleteMany({ id: change.data.id });
-            continue;
+        await runInTransaction(async (session) => {
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await deleteByBundleId(
+                patches,
+                "bundle_id",
+                change.data.id,
+                session,
+              );
+              await deleteByBundleId(
+                patches,
+                "base_bundle_id",
+                change.data.id,
+                session,
+              );
+              await bundles.deleteMany({ id: change.data.id }, { session });
+              continue;
+            }
+            await replaceBundle(change.data, session);
           }
-          await replaceBundle(change.data);
-        }
+        });
       },
     };
   },

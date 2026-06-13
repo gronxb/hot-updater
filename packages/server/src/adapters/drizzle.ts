@@ -82,6 +82,9 @@ type DrizzleDb = {
       where: (condition: unknown) => Promise<unknown>;
     };
   };
+  readonly transaction?: <T>(
+    operation: (tx: DrizzleDb) => Promise<T>,
+  ) => Promise<T>;
 };
 
 const asDb = (db: unknown): DrizzleDb => {
@@ -151,6 +154,12 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
     const db = asDb(config.db);
     const bundles = getTable(db, "bundles");
     const patches = getTable(db, "bundle_patches");
+    const runInTransaction = async <T>(
+      operation: (activeDb: DrizzleDb) => Promise<T>,
+    ) => {
+      if (typeof db.transaction !== "function") return operation(db);
+      return db.transaction(operation);
+    };
     const fetchPatchMap = async (bundleIds: readonly string[]) => {
       const patchMap = new Map<string, BundlePatchRow[]>();
       if (bundleIds.length === 0) return patchMap;
@@ -166,27 +175,27 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
       }
       return patchMap;
     };
-    const upsertBundle = async (bundle: Bundle) => {
+    const upsertBundle = async (activeDb: DrizzleDb, bundle: Bundle) => {
       const row = bundleToRow(bundle);
-      const current = await db.query["bundles"]?.findFirst({
+      const current = await activeDb.query["bundles"]?.findFirst({
         where: eq(column(bundles, "id"), bundle.id),
       });
       if (current) {
-        await db
+        await activeDb
           .update(bundles)
           .set(row)
           .where(eq(column(bundles, "id"), bundle.id));
       } else {
-        const inserted = db.insert(bundles).values(row);
+        const inserted = activeDb.insert(bundles).values(row);
         if (inserted.execute) await inserted.execute();
         else await inserted;
       }
-      await db
+      await activeDb
         .delete(patches)
         .where(eq(column(patches, "bundle_id"), bundle.id));
       const patchRows = bundleToPatchRows(bundle);
       if (patchRows.length > 0) {
-        const inserted = db.insert(patches).values(patchRows);
+        const inserted = activeDb.insert(patches).values(patchRows);
         if (inserted.execute) await inserted.execute();
         else await inserted;
       }
@@ -244,21 +253,23 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
         );
       },
       async commitBundle({ changedSets }) {
-        for (const change of changedSets) {
-          if (change.operation === "delete") {
-            await db
-              .delete(patches)
-              .where(eq(column(patches, "bundle_id"), change.data.id));
-            await db
-              .delete(patches)
-              .where(eq(column(patches, "base_bundle_id"), change.data.id));
-            await db
-              .delete(bundles)
-              .where(eq(column(bundles, "id"), change.data.id));
-            continue;
+        await runInTransaction(async (activeDb) => {
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await activeDb
+                .delete(patches)
+                .where(eq(column(patches, "bundle_id"), change.data.id));
+              await activeDb
+                .delete(patches)
+                .where(eq(column(patches, "base_bundle_id"), change.data.id));
+              await activeDb
+                .delete(bundles)
+                .where(eq(column(bundles, "id"), change.data.id));
+              continue;
+            }
+            await upsertBundle(activeDb, change.data);
           }
-          await upsertBundle(change.data);
-        }
+        });
       },
     };
   },

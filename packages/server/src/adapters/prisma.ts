@@ -39,6 +39,12 @@ type PrismaDelegate = {
   readonly upsert: (args: unknown) => Promise<unknown>;
 };
 
+type PrismaClient = Record<string, unknown> & {
+  readonly $transaction?: <T>(
+    operation: (tx: Record<string, unknown>) => Promise<T>,
+  ) => Promise<T>;
+};
+
 export interface PrismaConfig {
   readonly prisma: object;
   readonly provider: ORMProvider;
@@ -115,10 +121,17 @@ const prismaWhere = (where: DatabaseBundleQueryWhere | undefined) => {
 const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
   name: "prisma",
   factory: (config) => {
-    const prisma = config.prisma as Record<string, unknown>;
-    const bundles = getDelegate(prisma, "bundles");
-    const patches = getDelegate(prisma, "bundle_patches");
+    const prisma = config.prisma as PrismaClient;
+    const runInTransaction = async <T>(
+      operation: (client: Record<string, unknown>) => Promise<T>,
+    ) => {
+      if (typeof prisma.$transaction !== "function") {
+        return operation(prisma);
+      }
+      return prisma.$transaction(operation);
+    };
     const fetchPatchMap = async (bundleIds: readonly string[]) => {
+      const patches = getDelegate(prisma, "bundle_patches");
       const patchMap = new Map<string, BundlePatchRow[]>();
       if (bundleIds.length === 0) return patchMap;
       const rows = await patches.findMany({
@@ -133,7 +146,12 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
       }
       return patchMap;
     };
-    const upsertBundle = async (bundle: Bundle) => {
+    const upsertBundle = async (
+      client: Record<string, unknown>,
+      bundle: Bundle,
+    ) => {
+      const bundles = getDelegate(client, "bundles");
+      const patches = getDelegate(client, "bundle_patches");
       const row = bundleToRow(bundle);
       const { id, ...update } = row;
       await bundles.upsert({
@@ -149,6 +167,7 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
     };
     return {
       async getBundleById(bundleId) {
+        const bundles = getDelegate(prisma, "bundles");
         const row = await bundles.findFirst({ where: { id: bundleId } });
         if (!row) return null;
         const patchMap = await fetchPatchMap([bundleId]);
@@ -157,6 +176,7 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
       async getBundles(
         options: DatabaseBundleQueryOptions & { offset?: number },
       ) {
+        const bundles = getDelegate(prisma, "bundles");
         const offset = options.offset ?? 0;
         const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
         const where = prismaWhere(options.where);
@@ -186,6 +206,7 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
         };
       },
       async getChannels() {
+        const bundles = getDelegate(prisma, "bundles");
         const rows = await bundles.findMany({
           select: { channel: true },
           orderBy: { channel: "asc" },
@@ -193,17 +214,23 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
         return Array.from(new Set(rows.map((row) => String(row["channel"]))));
       },
       async commitBundle({ changedSets }) {
-        for (const change of changedSets) {
-          if (change.operation === "delete") {
-            await patches.deleteMany({ where: { bundle_id: change.data.id } });
-            await patches.deleteMany({
-              where: { base_bundle_id: change.data.id },
-            });
-            await bundles.deleteMany({ where: { id: change.data.id } });
-            continue;
+        await runInTransaction(async (client) => {
+          const bundles = getDelegate(client, "bundles");
+          const patches = getDelegate(client, "bundle_patches");
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await patches.deleteMany({
+                where: { bundle_id: change.data.id },
+              });
+              await patches.deleteMany({
+                where: { base_bundle_id: change.data.id },
+              });
+              await bundles.deleteMany({ where: { id: change.data.id } });
+              continue;
+            }
+            await upsertBundle(client, change.data);
           }
-          await upsertBundle(change.data);
-        }
+        });
       },
     };
   },

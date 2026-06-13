@@ -9,6 +9,7 @@ import type {
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
+import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 import { createHotUpdater } from "./runtime";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
@@ -44,6 +45,54 @@ const createRuntimeStorage = (
       readText,
     },
   },
+});
+
+const createSchemaManagedDatabase = (
+  adapterName: string,
+  version: string | undefined,
+): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities => ({
+  name: `${adapterName}Database`,
+  adapterName,
+  createMigrator: () => ({
+    async getVersion() {
+      return version;
+    },
+    async getNameVariants() {
+      return {};
+    },
+    async next() {
+      return undefined;
+    },
+    async previous() {
+      return undefined;
+    },
+    async up() {
+      throw new Error("not implemented");
+    },
+    async down() {
+      throw new Error("not implemented");
+    },
+    async migrateTo() {
+      throw new Error("not implemented");
+    },
+    async migrateToLatest() {
+      throw new Error("not implemented");
+    },
+    async migrate() {},
+  }) as Migrator,
+  async appendBundle() {},
+  async commitBundle() {},
+  async deleteBundle() {},
+  async getBundleById() {
+    throw new Error("runtime database should not be queried");
+  },
+  async getBundles() {
+    throw new Error("runtime database should not be queried");
+  },
+  async getChannels() {
+    throw new Error("runtime database should not be queried");
+  },
+  async updateBundle() {},
 });
 
 describe("runtime createHotUpdater", () => {
@@ -95,6 +144,26 @@ describe("runtime createHotUpdater", () => {
       }),
     ).toThrow(
       'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
+    );
+  });
+
+  it("rejects runtime access when a Kysely schema is not initialized", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createSchemaManagedDatabase("kysely", undefined),
+    });
+
+    await expect(hotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
+      "Hot Updater database schema is not initialized for kysely.",
+    );
+  });
+
+  it("rejects runtime access when a MongoDB schema is stale", async () => {
+    const hotUpdater = createHotUpdater({
+      database: createSchemaManagedDatabase("mongodb", "0.21.0"),
+    });
+
+    await expect(hotUpdater.getChannels()).rejects.toThrow(
+      "Hot Updater database schema version 0.21.0 is not supported by mongodb.",
     );
   });
 

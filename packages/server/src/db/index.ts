@@ -8,10 +8,10 @@ import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 export * from "./createBundleDiff";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
-import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { createStorageAccess } from "../storageAccess";
 import { createPluginDatabaseCore } from "./pluginCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
+import { createSchemaReadinessChecker } from "./schemaReadiness";
 import {
   type DatabaseAdapterCapabilities,
   type DatabaseAdapter,
@@ -23,6 +23,7 @@ import {
 } from "./types";
 
 export type { Migrator, SchemaGenerator } from "./types";
+export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
 export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
@@ -56,37 +57,6 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
   cwd?: string;
   routes?: HandlerRoutes;
 }
-
-export class HotUpdaterSchemaMigrationRequiredError extends Error {
-  constructor(
-    readonly adapterName: string,
-    readonly currentVersion: string | undefined,
-  ) {
-    super(
-      currentVersion === undefined
-        ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
-        : `Hot Updater database schema version ${currentVersion} is not supported by ${adapterName}. Run \`hot-updater db migrate\` to upgrade to ${HOT_UPDATER_SCHEMA_VERSION}.`,
-    );
-    this.name = "HotUpdaterSchemaMigrationRequiredError";
-  }
-}
-
-const createSchemaReadinessChecker = (
-  adapterName: string,
-  createMigrator: (() => Migrator) | undefined,
-): (() => Promise<void>) => {
-  if (!createMigrator) return async () => {};
-
-  let ready = false;
-  return async () => {
-    if (ready) return;
-    const version = await createMigrator().getVersion();
-    if (version !== HOT_UPDATER_SCHEMA_VERSION) {
-      throw new HotUpdaterSchemaMigrationRequiredError(adapterName, version);
-    }
-    ready = true;
-  };
-};
 
 export function createHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,

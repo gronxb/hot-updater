@@ -24,6 +24,7 @@ import {
   vi,
 } from "vitest";
 
+import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
@@ -213,6 +214,20 @@ function createSchemaOnlyAdapter({
   };
   return factory;
 }
+
+const transactionBundle: Bundle = {
+  id: "00000000-0000-0000-0000-000000000777",
+  platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: "transaction-hash",
+  gitCommitHash: null,
+  message: "transaction bundle",
+  channel: "production",
+  storageUri: "s3://test-bucket/transaction.zip",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+};
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
@@ -890,6 +905,163 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           { target_app_version: { $exists: true, $nin: [null, ""] } },
         ],
       });
+    });
+
+    it("commits Prisma bundle changes inside a transaction when available", async () => {
+      const rootBundles = {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        upsert: vi.fn(),
+      };
+      const rootPatches = {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        upsert: vi.fn(),
+      };
+      const txBundles = {
+        ...rootBundles,
+        upsert: vi.fn(async () => undefined),
+      };
+      const txPatches = {
+        ...rootPatches,
+        deleteMany: vi.fn(async () => undefined),
+      };
+      const $transaction = vi.fn(
+        async (operation: (tx: Record<string, unknown>) => Promise<unknown>) =>
+          operation({
+            bundle_patches: txPatches,
+            bundles: txBundles,
+          }),
+      );
+      const plugin = prismaAdapter({
+        prisma: {
+          $transaction,
+          bundle_patches: rootPatches,
+          bundles: rootBundles,
+        },
+        provider: "postgresql",
+      })();
+
+      await plugin.appendBundle(transactionBundle);
+      await plugin.commitBundle();
+
+      expect($transaction).toHaveBeenCalledTimes(1);
+      expect(txBundles.upsert).toHaveBeenCalledTimes(1);
+      expect(rootBundles.upsert).not.toHaveBeenCalled();
+    });
+
+    it("commits Drizzle bundle changes inside a transaction when available", async () => {
+      const tables = {
+        bundle_patches: {
+          bundle_id: "bundle_id",
+          id: "patch_id",
+          order_index: "order_index",
+        },
+        bundles: {
+          id: "id",
+        },
+      };
+      const rootInsert = vi.fn(() => ({
+        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+      }));
+      const txInsert = vi.fn(() => ({
+        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+      }));
+      const createDb = (insert: typeof rootInsert) => ({
+        _: { fullSchema: tables },
+        $count: vi.fn(),
+        delete: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+        insert,
+        query: {
+          bundle_patches: {
+            findMany: vi.fn(),
+          },
+          bundles: {
+            findFirst: vi.fn(async () => undefined),
+            findMany: vi.fn(),
+          },
+        },
+        select: vi.fn(),
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn(async () => undefined),
+          })),
+        })),
+      });
+      const txDb = createDb(txInsert);
+      const transaction = vi.fn(
+        async (operation: (tx: typeof txDb) => Promise<unknown>) =>
+          operation(txDb),
+      );
+      const db = {
+        ...createDb(rootInsert),
+        transaction,
+      };
+      const plugin = drizzleAdapter({
+        db,
+        provider: "postgresql",
+      })();
+
+      await plugin.appendBundle(transactionBundle);
+      await plugin.commitBundle();
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(txInsert).toHaveBeenCalledTimes(1);
+      expect(rootInsert).not.toHaveBeenCalled();
+    });
+
+    it("commits MongoDB bundle changes inside a session transaction when available", async () => {
+      const session = {
+        endSession: vi.fn(async () => undefined),
+        withTransaction: vi.fn(async (operation: () => Promise<void>) =>
+          operation(),
+        ),
+      };
+      const bundles = {
+        countDocuments: vi.fn(),
+        deleteMany: vi.fn(),
+        distinct: vi.fn(),
+        find: vi.fn(),
+        findOne: vi.fn(),
+        updateOne: vi.fn(async () => undefined),
+      };
+      const patches = {
+        deleteMany: vi.fn(async () => undefined),
+        find: vi.fn(),
+        insertMany: vi.fn(),
+      };
+      const client = {
+        db: () => ({
+          collection: (name: string) =>
+            name === "bundle_patches" ? patches : bundles,
+        }),
+        startSession: vi.fn(() => session),
+      } as unknown as MongoClient;
+      const plugin = mongoAdapter({ client })();
+
+      await plugin.appendBundle(transactionBundle);
+      await plugin.commitBundle();
+
+      expect(client.startSession).toHaveBeenCalledTimes(1);
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(bundles.updateOne).toHaveBeenCalledWith(
+        { id: transactionBundle.id },
+        expect.any(Object),
+        expect.objectContaining({ session, upsert: true }),
+      );
+      expect(patches.deleteMany).toHaveBeenCalledWith(
+        { bundle_id: transactionBundle.id },
+        { session },
+      );
+      expect(session.endSession).toHaveBeenCalledTimes(1);
     });
   });
 
