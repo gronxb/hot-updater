@@ -8,6 +8,7 @@ import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 export * from "./createBundleDiff";
 import { createHandler, type HandlerRoutes } from "../handler";
 import { normalizeBasePath } from "../route";
+import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
 import { createStorageAccess } from "../storageAccess";
 import { createPluginDatabaseCore } from "./pluginCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
@@ -56,6 +57,37 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
   routes?: HandlerRoutes;
 }
 
+export class HotUpdaterSchemaMigrationRequiredError extends Error {
+  constructor(
+    readonly adapterName: string,
+    readonly currentVersion: string | undefined,
+  ) {
+    super(
+      currentVersion === undefined
+        ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
+        : `Hot Updater database schema version ${currentVersion} is not supported by ${adapterName}. Run \`hot-updater db migrate\` to upgrade to ${HOT_UPDATER_SCHEMA_VERSION}.`,
+    );
+    this.name = "HotUpdaterSchemaMigrationRequiredError";
+  }
+}
+
+const createSchemaReadinessChecker = (
+  adapterName: string,
+  createMigrator: (() => Migrator) | undefined,
+): (() => Promise<void>) => {
+  if (!createMigrator) return async () => {};
+
+  let ready = false;
+  return async () => {
+    if (ready) return;
+    const version = await createMigrator().getVersion();
+    if (version !== HOT_UPDATER_SCHEMA_VERSION) {
+      throw new HotUpdaterSchemaMigrationRequiredError(adapterName, version);
+    }
+    ready = true;
+  };
+};
+
 export function createHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
 ): HotUpdaterAPI<TContext> {
@@ -78,15 +110,21 @@ export function createHotUpdater<TContext = unknown>(
   const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
     ? database()
     : database;
+  const adapterName = capabilities.adapterName ?? plugin.name;
+  const assertSchemaReady = createSchemaReadinessChecker(
+    adapterName,
+    capabilities.createMigrator,
+  );
   const core = createPluginDatabaseCore<TContext>(
     () => plugin,
     resolveFileUrl,
     isDatabasePluginFactory(database)
       ? {
           createMutationPlugin: () => database(),
+          beforeOperation: assertSchemaReady,
           readStorageText,
         }
-      : { readStorageText },
+      : { beforeOperation: assertSchemaReady, readStorageText },
   );
 
   const generateSchema = capabilities.generateSchema ?? core.generateSchema;

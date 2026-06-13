@@ -703,9 +703,111 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         await migrationDb.close();
       }
     });
+
+    it("rejects runtime access when a Kysely schema is not initialized", async () => {
+      const migrationDb = new PGlite();
+      const migrationKysely = new Kysely({
+        dialect: new PGliteDialect(migrationDb),
+      });
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({
+          db: migrationKysely,
+          provider: "postgresql",
+        }),
+      });
+
+      try {
+        await expect(
+          migrationHotUpdater.getBundles({ limit: 10 }),
+        ).rejects.toThrow(
+          "Hot Updater database schema is not initialized for kysely.",
+        );
+      } finally {
+        await migrationKysely.destroy();
+        await migrationDb.close();
+      }
+    });
+
+    it("rejects runtime access when a Kysely schema is stale", async () => {
+      const migrationDb = new PGlite();
+      const migrationKysely = new Kysely({
+        dialect: new PGliteDialect(migrationDb),
+      });
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({
+          db: migrationKysely,
+          provider: "postgresql",
+        }),
+      });
+
+      try {
+        await migrationDb.exec(`
+          create table private_hot_updater_settings (
+            key varchar(255) primary key,
+            value text not null
+          );
+          insert into private_hot_updater_settings (key, value)
+          values ('version', '0.21.0');
+        `);
+
+        await expect(migrationHotUpdater.getChannels()).rejects.toThrow(
+          "Hot Updater database schema version 0.21.0 is not supported by kysely.",
+        );
+      } finally {
+        await migrationKysely.destroy();
+        await migrationDb.close();
+      }
+    });
+
+    it("rejects runtime access when a MongoDB schema is stale", async () => {
+      const settings = {
+        findOne: vi.fn(async () => ({ key: "version", value: "0.21.0" })),
+      };
+      const bundles = {
+        countDocuments: vi.fn(async () => 0),
+        find: vi.fn(),
+        findOne: vi.fn(),
+      };
+      const patches = {
+        find: vi.fn(),
+      };
+      const client = {
+        db: () => ({
+          collection: (name: string) => {
+            if (name === "private_hot_updater_settings") return settings;
+            if (name === "bundle_patches") return patches;
+            return bundles;
+          },
+        }),
+      } as unknown as MongoClient;
+      const mongoHotUpdater = createHotUpdater({
+        database: mongoAdapter({ client }),
+      });
+
+      await expect(mongoHotUpdater.getBundles({ limit: 10 })).rejects.toThrow(
+        "Hot Updater database schema version 0.21.0 is not supported by mongodb.",
+      );
+      expect(bundles.countDocuments).not.toHaveBeenCalled();
+    });
   });
 
   describe("adapter filters", () => {
+    it("returns an empty Kysely page for empty set filters", async () => {
+      const byId = await hotUpdater.getBundles({
+        limit: 10,
+        where: { id: { in: [] } },
+      });
+      const byTargetAppVersion = await hotUpdater.getBundles({
+        limit: 10,
+        where: { targetAppVersionIn: [] },
+      });
+
+      expect(byId.data).toEqual([]);
+      expect(byId.pagination.total).toBe(0);
+      expect(byTargetAppVersion.data).toEqual([]);
+      expect(byTargetAppVersion.pagination.total).toBe(0);
+    });
+
     it("combines Prisma targetAppVersion filters without overwriting", async () => {
       const bundles = {
         count: vi.fn(async () => 0),

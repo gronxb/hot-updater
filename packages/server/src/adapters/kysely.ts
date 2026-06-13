@@ -94,6 +94,11 @@ const applyWhere = <T extends object>(
   return next as T;
 };
 
+const hasEmptySetFilter = (
+  where: DatabaseBundleQueryWhere | undefined,
+): boolean =>
+  where?.targetAppVersionIn?.length === 0 || where?.id?.in?.length === 0;
+
 const toProviderBundleRow = (
   row: BundleRow,
   provider: ORMSQLProvider,
@@ -173,6 +178,15 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
         options: DatabaseBundleQueryOptions & { offset?: number },
       ) {
         const offset = options.offset ?? 0;
+        if (hasEmptySetFilter(options.where)) {
+          return {
+            data: [],
+            pagination: calculatePagination(0, {
+              limit: options.limit,
+              offset,
+            }),
+          };
+        }
         const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
         const countRow = await applyWhere(
           db.selectFrom("bundles"),
