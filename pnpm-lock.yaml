@@ -1733,15 +1733,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
-      drizzle-orm:
-        specifier: catalog:db
-        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@6.0.2))(typescript@6.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@6.0.2))
-      kysely:
-        specifier: catalog:db
-        version: 0.28.17
-      mongodb:
-        specifier: catalog:db
-        version: 6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9)
+      '@prisma/client':
+        specifier: '*'
+        version: 6.19.3(prisma@6.19.3(typescript@6.0.2))(typescript@6.0.2)
       rou3:
         specifier: 0.7.9
         version: 0.7.9
@@ -1764,12 +1758,21 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.7.1
+      drizzle-orm:
+        specifier: catalog:db
+        version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@6.0.2))(typescript@6.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@6.0.2))
       execa:
         specifier: catalog:tools
         version: 9.5.2
+      kysely:
+        specifier: catalog:db
+        version: 0.28.17
       kysely-pglite-dialect:
         specifier: catalog:db
         version: 1.2.0(@electric-sql/pglite@0.4.1)(kysely@0.28.17)
+      mongodb:
+        specifier: catalog:db
+        version: 6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9)
       msw:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@6.0.2)

@@ -58,11 +58,28 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "drizzle-orm": "catalog:db",
-    "kysely": "catalog:db",
-    "mongodb": "catalog:db",
     "rou3": "0.7.9",
     "semver": "^7.7.2"
+  },
+  "peerDependencies": {
+    "@prisma/client": "*",
+    "drizzle-orm": "*",
+    "kysely": "*",
+    "mongodb": "*"
+  },
+  "peerDependenciesMeta": {
+    "@prisma/client": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    },
+    "mongodb": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
@@ -70,8 +87,11 @@
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
+    "drizzle-orm": "catalog:db",
     "execa": "catalog:tools",
+    "kysely": "catalog:db",
     "kysely-pglite-dialect": "catalog:db",
+    "mongodb": "catalog:db",
     "msw": "^2.7.0",
     "uuidv7": "^1.0.2"
   }
