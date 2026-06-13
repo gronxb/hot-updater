@@ -184,8 +184,9 @@ express-server/
 
 ## Notes
 
-- The Prisma adapter uses FumaDB under the hood for database abstraction
-- Schema generation is handled by Hot Updater CLI (`db:generate`)
+- The Prisma adapter uses Hot Updater's DatabasePlugin contract with generated
+  Prisma schema artifacts
+- Schema generation is handled by Hot Updater CLI (`db generate`)
 - Database migrations use Prisma's built-in migration system
 - The server includes graceful shutdown handlers for SIGTERM/SIGINT
 - Integration tests automatically run schema generation and database push before starting the server
