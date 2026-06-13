@@ -296,7 +296,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   beforeAll(async () => {
-    // Initialize FumaDB schema to latest (creates tables under the hood)
     const migrator = hotUpdater.createMigrator();
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
@@ -576,7 +575,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       }
     });
 
-    it("honors fumadb relation mode by omitting SQL foreign keys", async () => {
+    it("honors soft relation mode by omitting SQL foreign keys", async () => {
       const migrationDb = new PGlite();
       const migrationKysely = new Kysely({
         dialect: new PGliteDialect(migrationDb),
@@ -677,6 +676,32 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           }),
         ]),
       );
+    });
+
+    it("rejects from-database migrations explicitly", async () => {
+      const migrationDb = new PGlite();
+      const migrationKysely = new Kysely({
+        dialect: new PGliteDialect(migrationDb),
+      });
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({
+          db: migrationKysely,
+          provider: "postgresql",
+        }),
+      });
+
+      try {
+        await expect(
+          migrationHotUpdater.createMigrator().migrateToLatest({
+            mode: "from-database",
+          }),
+        ).rejects.toThrow(
+          "Hot Updater migrations support only mode: 'from-schema'.",
+        );
+      } finally {
+        await migrationKysely.destroy();
+        await migrationDb.close();
+      }
     });
   });
 

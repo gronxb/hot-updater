@@ -38,6 +38,12 @@ const getEmptyResult = (): MigrationResult => ({
   getSQL: () => "",
 });
 
+const assertSupportedMigrationMode = (options: MigrateOptions): void => {
+  if (options.mode === "from-database") {
+    throw new Error("Hot Updater migrations support only mode: 'from-schema'.");
+  }
+};
+
 const isMissingSettingsTableError = (error: unknown): boolean => {
   if (!(error instanceof Error)) return false;
   const message = error.message.toLowerCase();
@@ -99,6 +105,8 @@ export const createKyselyMigrator = ({
   const makeResult = async (
     options: MigrateOptions = {},
   ): Promise<MigrationResult> => {
+    assertSupportedMigrationMode(options);
+
     const currentVersion = await getVersion();
     if (currentVersion === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
@@ -191,6 +199,8 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
   const makeResult = async (
     options: MigrateOptions = {},
   ): Promise<MigrationResult> => {
+    assertSupportedMigrationMode(options);
+
     if ((await getVersion()) === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
