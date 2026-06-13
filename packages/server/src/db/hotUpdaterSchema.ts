@@ -81,6 +81,15 @@ const sqlDefaultJson = (provider: ORMSQLProvider) =>
     ? "'{}'::json"
     : "'{}'";
 
+const sqlDefaultChannelClause = (provider: ORMSQLProvider): string =>
+  provider === "mysql" ? "" : " default 'production'";
+
+const sqlDefaultMetadataClause = (provider: ORMSQLProvider): string =>
+  provider === "mysql" ? "" : ` default ${sqlDefaultJson(provider)}`;
+
+const sqlSettingsKeyColumn = (provider: ORMSQLProvider): string =>
+  provider === "mysql" ? "`key`" : "key";
+
 const createForeignKeySql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode,
@@ -147,11 +156,11 @@ enabled ${getSqlType("bool", provider)} not null,
 file_hash ${getSqlType("string", provider)} not null,
 git_commit_hash ${getSqlType("string", provider)},
 message ${getSqlType("string", provider)},
-channel ${getSqlType("string", provider)} not null default 'production',
+channel ${getSqlType("string", provider)} not null${sqlDefaultChannelClause(provider)},
 storage_uri ${getSqlType("string", provider)} not null,
 target_app_version ${getSqlType("string", provider)},
 fingerprint_hash ${getSqlType("string", provider)},
-metadata ${getSqlType("json", provider)} not null default ${sqlDefaultJson(provider)},
+metadata ${getSqlType("json", provider)} not null${sqlDefaultMetadataClause(provider)},
 manifest_storage_uri ${getSqlType("string", provider)},
 	manifest_file_hash ${getSqlType("string", provider)},
 	asset_base_storage_uri ${getSqlType("string", provider)},
@@ -168,7 +177,7 @@ patch_storage_uri ${getSqlType("string", provider)} not null,
 order_index ${getSqlType("integer", provider)} not null default 0
 )`,
   `create table if not exists ${HOT_UPDATER_SETTINGS_TABLE} (
-key ${getSqlType("varchar(255)", provider)} primary key,
+${sqlSettingsKeyColumn(provider)} ${getSqlType("varchar(255)", provider)} primary key,
 value ${getSqlType("string", provider)} not null
 )`,
   provider === "mysql"

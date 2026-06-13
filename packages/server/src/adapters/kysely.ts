@@ -94,9 +94,24 @@ const applyWhere = <T extends object>(
   return next as T;
 };
 
+const toProviderBundleRow = (
+  row: BundleRow,
+  provider: ORMSQLProvider,
+): BundleRow => {
+  if (provider !== "mysql") return row;
+  return {
+    ...row,
+    metadata: JSON.stringify(row.metadata ?? {}),
+    target_cohorts:
+      row.target_cohorts === null || row.target_cohorts === undefined
+        ? null
+        : JSON.stringify(row.target_cohorts),
+  };
+};
+
 const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
   name: "kysely",
-  factory: ({ db }) => {
+  factory: ({ db, provider }) => {
     const fetchPatchMap = async (bundleIds: readonly string[]) => {
       const patchMap = new Map<string, BundlePatchRow[]>();
       if (bundleIds.length === 0) return patchMap;
@@ -118,13 +133,21 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
       executor: Kysely<Database> | Transaction<Database>,
       bundle: Bundle,
     ) => {
-      const row = bundleToRow(bundle);
+      const row = toProviderBundleRow(bundleToRow(bundle), provider);
       const { id: _id, ...updateRow } = row;
-      await executor
-        .insertInto("bundles")
-        .values(row)
-        .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
-        .execute();
+      if (provider === "mysql") {
+        await executor
+          .insertInto("bundles")
+          .values(row)
+          .onDuplicateKeyUpdate(updateRow)
+          .execute();
+      } else {
+        await executor
+          .insertInto("bundles")
+          .values(row)
+          .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
+          .execute();
+      }
       await executor
         .deleteFrom("bundle_patches")
         .where("bundle_id", "=", bundle.id)

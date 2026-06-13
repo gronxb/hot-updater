@@ -27,6 +27,7 @@ import {
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
+import { createTableSql } from "./hotUpdaterSchema";
 import { createHotUpdater } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePluginFactory, ORMProvider } from "./types";
@@ -406,6 +407,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   describe("migrator enhancements", () => {
+    it("omits MySQL defaults for text and JSON columns", () => {
+      const sql = createTableSql("mysql").join("\n");
+
+      expect(sql).toContain("channel text not null");
+      expect(sql).not.toContain("channel text not null default");
+      expect(sql).toContain("metadata json not null");
+      expect(sql).not.toContain("metadata json not null default");
+      expect(sql).toContain("`key` varchar(255) primary key");
+      expect(sql).not.toContain("\nkey varchar(255) primary key");
+    });
+
     it("adds custom indexes and constraints to generated SQL", async () => {
       const migrationDb = new PGlite();
       const migrationKysely = new Kysely({
