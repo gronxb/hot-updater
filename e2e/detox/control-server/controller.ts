@@ -340,6 +340,9 @@ const E2E_ANDROID_LAUNCH_SETTLE_MS = Number(
 const E2E_ANDROID_FOREGROUND_POLL_MS = Number(
   process.env.HOT_UPDATER_E2E_ANDROID_FOREGROUND_POLL_MS || 500,
 );
+const E2E_ANDROID_ANR_DISMISS_ATTEMPTS = Number(
+  process.env.HOT_UPDATER_E2E_ANDROID_ANR_DISMISS_ATTEMPTS || 6,
+);
 const E2E_IOS_LAUNCH_SETTLE_MS = Number(
   process.env.HOT_UPDATER_E2E_IOS_LAUNCH_SETTLE_MS || 1000,
 );
@@ -4031,8 +4034,15 @@ function getAndroidAnrPackage(windowOutput: string) {
   return match?.[1] ?? null;
 }
 
-function dismissAndroidAnrWindow(reason: string) {
-  const anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
+function androidAnrStopPackages(anrPackage: string) {
+  if (anrPackage === "system") {
+    return ["com.android.systemui"];
+  }
+  return [anrPackage];
+}
+
+async function dismissAndroidAnrWindow(reason: string) {
+  let anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
   if (!anrPackage) {
     return false;
   }
@@ -4041,11 +4051,41 @@ function dismissAndroidAnrWindow(reason: string) {
     anrPackage,
     reason,
   });
-  captureCommand(
-    "adb",
-    ["-s", deviceId as string, "shell", "am", "force-stop", anrPackage],
-    { allowFailure: true },
-  );
+
+  for (
+    let attempt = 1;
+    attempt <= E2E_ANDROID_ANR_DISMISS_ATTEMPTS;
+    attempt += 1
+  ) {
+    for (const stopPackage of androidAnrStopPackages(anrPackage)) {
+      captureCommand(
+        "adb",
+        ["-s", deviceId as string, "shell", "am", "force-stop", stopPackage],
+        { allowFailure: true },
+      );
+    }
+    captureCommand(
+      "adb",
+      ["-s", deviceId as string, "shell", "input", "keyevent", "KEYCODE_ENTER"],
+      { allowFailure: true },
+    );
+
+    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
+    anrPackage = getAndroidAnrPackage(getAndroidWindowOutput());
+    if (!anrPackage) {
+      logDetoxFixture("android anr window dismissed", {
+        attempt,
+        reason,
+      });
+      return true;
+    }
+  }
+
+  logDetoxFixture("android anr window still visible", {
+    anrPackage,
+    attempts: E2E_ANDROID_ANR_DISMISS_ATTEMPTS,
+    reason,
+  });
   return true;
 }
 
@@ -4292,9 +4332,7 @@ async function prepareAppLaunch() {
     targetAppId: fixtureSession.appId,
   });
 
-  if (dismissAndroidAnrWindow("prepare-app-launch")) {
-    await sleep(E2E_ANDROID_FOREGROUND_POLL_MS);
-  }
+  await dismissAndroidAnrWindow("prepare-app-launch");
 
   ensureAndroidReverse();
   ensureAndroidControlReverse();
