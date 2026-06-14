@@ -4,9 +4,7 @@ import {
   type HotUpdaterSchemaVersion,
 } from "./types";
 
-export const createSettingsTable = (
-  version: HotUpdaterSchemaVersion,
-) =>
+export const createSettingsTable = (version: HotUpdaterSchemaVersion) =>
   table(
     HOT_UPDATER_SETTINGS_TABLE,
     {

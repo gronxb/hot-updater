@@ -121,9 +121,8 @@ export const foreignKey = (
   onDelete: "cascade",
 });
 
-export const check = (
-  config: HotUpdaterCheckSchema,
-): HotUpdaterCheckSchema => config;
+export const check = (config: HotUpdaterCheckSchema): HotUpdaterCheckSchema =>
+  config;
 
 export const relation = (
   config: HotUpdaterRelationSchema,
