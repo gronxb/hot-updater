@@ -1,5 +1,5 @@
-import { sql, type Kysely } from "kysely";
-import { MongoServerError, type MongoClient } from "mongodb";
+import type { Kysely } from "kysely";
+import type { MongoClient } from "mongodb";
 
 import {
   HOT_UPDATER_SCHEMA_VERSION,
@@ -56,11 +56,14 @@ const isMissingSettingsTableError = (error: unknown): boolean => {
   );
 };
 
+const isMongoNamespaceExistsError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const mongoError = error as { code?: unknown; codeName?: unknown };
+  return mongoError.code === 48 || mongoError.codeName === "NamespaceExists";
+};
+
 const ignoreExistingCollection = (error: unknown): undefined => {
-  if (
-    error instanceof MongoServerError &&
-    (error.code === 48 || error.codeName === "NamespaceExists")
-  ) {
+  if (isMongoNamespaceExistsError(error)) {
     return undefined;
   }
   throw error;
@@ -159,6 +162,7 @@ export const createKyselyMigrator = ({
       operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: async () => {
+        const { sql } = await import("kysely");
         for (const statement of statements) {
           await sql.raw(statement).execute(db);
         }
