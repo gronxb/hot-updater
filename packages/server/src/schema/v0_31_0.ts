@@ -1,31 +1,67 @@
 import {
+  bool,
+  check,
   column,
   foreignKey,
   idColumn,
   index,
   integer,
+  json,
   relation,
   schema,
+  stringColumn,
   table,
   uuid,
   varchar,
 } from "./dsl";
 import { createSettingsTable } from "./settings";
-import {
-  HOT_UPDATER_SETTINGS_TABLE,
-  type HotUpdaterTableSchema,
-} from "./types";
-import { bundlesV029 } from "./v0_29_0";
+import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
 
-export const bundlesV031 = {
-  ...bundlesV029,
-  columns: [
-    ...bundlesV029.columns,
-    { ormName: "manifest_storage_uri", type: "string", nullable: true },
-    { ormName: "manifest_file_hash", type: "string", nullable: true },
-    { ormName: "asset_base_storage_uri", type: "string", nullable: true },
-  ],
-} as const satisfies HotUpdaterTableSchema;
+export const bundlesV031 = table(
+  "bundles",
+  {
+    id: idColumn("id", "uuid"),
+    platform: stringColumn("platform"),
+    should_force_update: bool("should_force_update"),
+    enabled: bool("enabled"),
+    file_hash: stringColumn("file_hash"),
+    git_commit_hash: stringColumn("git_commit_hash").nullable(),
+    message: stringColumn("message").nullable(),
+    channel: stringColumn("channel").defaultTo("production"),
+    storage_uri: stringColumn("storage_uri"),
+    target_app_version: stringColumn("target_app_version").nullable(),
+    fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
+    metadata: json("metadata").defaultTo({}),
+    rollout_cohort_count: integer("rollout_cohort_count").defaultTo(1000),
+    target_cohorts: json("target_cohorts").nullable(),
+    manifest_storage_uri: stringColumn("manifest_storage_uri").nullable(),
+    manifest_file_hash: stringColumn("manifest_file_hash").nullable(),
+    asset_base_storage_uri: stringColumn("asset_base_storage_uri").nullable(),
+  },
+  {
+    indexes: [
+      index("bundles_target_app_version_idx", ["target_app_version"]),
+      index("bundles_fingerprint_hash_idx", ["fingerprint_hash"]),
+      index("bundles_channel_idx", ["channel"]),
+      index("bundles_platform_idx", ["platform"], ["mongodb"]),
+      index("bundles_rollout_idx", ["rollout_cohort_count"]),
+    ],
+    checks: [
+      check({
+        name: "check_version_or_fingerprint",
+        expression:
+          "(target_app_version is not null) or (fingerprint_hash is not null)",
+        sqliteInline: true,
+      }),
+      check({
+        name: "bundles_rollout_cohort_count_check",
+        expression:
+          "rollout_cohort_count >= 0 and rollout_cohort_count <= 1000",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
 
 export const bundlePatchesV031 = table(
   "bundle_patches",

@@ -1,6 +1,7 @@
 import type {
   HotUpdaterColumnSchema,
   HotUpdaterColumnType,
+  HotUpdaterCheckSchema,
   HotUpdaterDefault,
   HotUpdaterForeignKeySchema,
   HotUpdaterIndexSchema,
@@ -87,6 +88,15 @@ export const uuid = (ormName: string): HotUpdaterColumnDsl =>
 export const integer = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "integer");
 
+export const bool = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "bool");
+
+export const json = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "json");
+
+export const stringColumn = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "string");
+
 export const index = (
   name: string,
   columns: readonly string[],
@@ -110,6 +120,10 @@ export const foreignKey = (
   onUpdate: "restrict",
   onDelete: "cascade",
 });
+
+export const check = (
+  config: HotUpdaterCheckSchema,
+): HotUpdaterCheckSchema => config;
 
 export const relation = (
   config: HotUpdaterRelationSchema,

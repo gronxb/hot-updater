@@ -1,20 +1,17 @@
+import { idColumn, stringColumn, table, varchar } from "./dsl";
 import {
   HOT_UPDATER_SETTINGS_TABLE,
   type HotUpdaterSchemaVersion,
-  type HotUpdaterTableSchema,
 } from "./types";
 
 export const createSettingsTable = (
   version: HotUpdaterSchemaVersion,
-): HotUpdaterTableSchema => ({
-  ormName: HOT_UPDATER_SETTINGS_TABLE,
-  internal: true,
-  columns: [
-    { ormName: "key", type: "varchar(255)", primaryKey: true },
+) =>
+  table(
+    HOT_UPDATER_SETTINGS_TABLE,
     {
-      ormName: "value",
-      type: "string",
-      default: { type: "literal", value: version },
+      key: idColumn("key", varchar(255)),
+      value: stringColumn("value").defaultTo(version),
     },
-  ],
-});
+    { internal: true },
+  );
