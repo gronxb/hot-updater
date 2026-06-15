@@ -1,5 +1,14 @@
 # @hot-updater/expo
 
+## 0.33.2
+
+### Patch Changes
+
+- d57a9cb: fix(expo): transform DOM components emitted by JSX runtime
+  - @hot-updater/cli-tools@0.33.2
+  - @hot-updater/bare@0.33.2
+  - @hot-updater/plugin-core@0.33.2
+
 ## 0.33.1
 
 ### Patch Changes
