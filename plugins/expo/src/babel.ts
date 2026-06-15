@@ -1,14 +1,25 @@
 import type * as babelTypes from "@babel/types";
 
+import {
+  buildHotUpdaterDomProps,
+  isSupportedWebViewCall,
+  isWebViewJsxName,
+} from "./babel-utils";
+
 type ObjectExpressionPath = {
   node: babelTypes.ObjectExpression;
   parent: babelTypes.Node;
 };
 
+type JSXOpeningElementPath = {
+  node: babelTypes.JSXOpeningElement;
+};
+
 type ProgramPath = {
   node: babelTypes.Program;
   traverse(visitor: {
-    ObjectExpression(path: ObjectExpressionPath): void;
+    ObjectExpression?(path: ObjectExpressionPath): void;
+    JSXOpeningElement?(path: JSXOpeningElementPath): void;
   }): void;
 };
 
@@ -21,12 +32,6 @@ type HotUpdaterBabelPlugin = {
   };
 };
 
-/**
- * Hot Updater Babel Plugin
- *
- * This plugin transforms Expo DOM component filePath to overrideUri for OTA
- * updates.
- */
 export default function ({
   types: t,
 }: {
@@ -37,7 +42,6 @@ export default function ({
     visitor: {
       Program: {
         exit(programPath) {
-          // Collect filePath declarations
           const filePathDeclarations = new Map<string, string>();
 
           programPath.node.body.forEach((node) => {
@@ -59,7 +63,6 @@ export default function ({
             }
           });
 
-          // Transform filePath properties
           programPath.traverse({
             ObjectExpression(objPath) {
               const filePathProp = objPath.node.properties.find(
@@ -73,29 +76,10 @@ export default function ({
 
               if (!filePathProp || !t.isObjectProperty(filePathProp)) return;
 
-              // Verify parent is createElement(WebView, ...)
               const parent = objPath.parent;
-              if (
-                !t.isCallExpression(parent) ||
-                !t.isMemberExpression(parent.callee) ||
-                !t.isIdentifier(parent.callee.property, {
-                  name: "createElement",
-                })
-              ) {
-                return;
-              }
+              if (!t.isCallExpression(parent)) return;
+              if (!isSupportedWebViewCall(t, parent, objPath.node)) return;
 
-              const firstArg = parent.arguments[0];
-              const isWebView =
-                (t.isIdentifier(firstArg) &&
-                  (firstArg.name === "WebView" ||
-                    firstArg.name.endsWith("WebView"))) ||
-                (t.isMemberExpression(firstArg) &&
-                  t.isIdentifier(firstArg.property, { name: "WebView" }));
-
-              if (!isWebView) return;
-
-              // Get fileName
               const filePathValue = filePathProp.value;
               let fileName: string;
 
@@ -111,117 +95,74 @@ export default function ({
                 return;
               }
 
-              // Find spread element
               const spreadElement = objPath.node.properties.find((prop) =>
                 t.isSpreadElement(prop),
               ) as babelTypes.SpreadElement | undefined;
 
-              // Create IIFE: ((baseURL) => baseURL ? { dom: {...}, filePath: "..." } : { filePath: "..." })(HotUpdaterGetBaseURL())
-              const conditionalObject = t.conditionalExpression(
-                t.identifier("baseURL"),
-                // If baseURL exists: { dom: { overrideUri: [...].join("/") }, filePath: "hash.html" }
-                t.objectExpression([
-                  t.objectProperty(
-                    t.identifier("dom"),
-                    t.objectExpression(
-                      spreadElement && t.isIdentifier(spreadElement.argument)
-                        ? [
-                            t.spreadElement(
-                              t.memberExpression(
-                                spreadElement.argument,
-                                t.identifier("dom"),
-                              ),
-                            ),
-                            t.objectProperty(
-                              t.identifier("overrideUri"),
-                              t.callExpression(
-                                t.memberExpression(
-                                  t.arrayExpression([
-                                    t.identifier("baseURL"),
-                                    t.stringLiteral("www.bundle"),
-                                    t.stringLiteral(fileName),
-                                  ]),
-                                  t.identifier("join"),
-                                ),
-                                [t.stringLiteral("/")],
-                              ),
-                            ),
-                          ]
-                        : [
-                            t.objectProperty(
-                              t.identifier("overrideUri"),
-                              t.callExpression(
-                                t.memberExpression(
-                                  t.arrayExpression([
-                                    t.identifier("baseURL"),
-                                    t.stringLiteral("www.bundle"),
-                                    t.stringLiteral(fileName),
-                                  ]),
-                                  t.identifier("join"),
-                                ),
-                                [t.stringLiteral("/")],
-                              ),
-                            ),
-                          ],
-                    ),
-                  ),
-                  t.objectProperty(
-                    t.identifier("filePath"),
-                    t.stringLiteral(fileName),
-                  ),
-                ]),
-                // Else: { filePath: "hash.html" }
-                t.objectExpression([
-                  t.objectProperty(
-                    t.identifier("filePath"),
-                    t.stringLiteral(fileName),
-                  ),
-                ]),
-              );
-
-              const arrowFunction = t.arrowFunctionExpression(
-                [t.identifier("baseURL")],
-                conditionalObject,
-              );
-
-              const safeGetBaseURL = t.conditionalExpression(
-                t.logicalExpression(
-                  "&&",
-                  t.binaryExpression(
-                    "!==",
-                    t.unaryExpression(
-                      "typeof",
-                      t.identifier("globalThis"),
-                      true,
-                    ),
-                    t.stringLiteral("undefined"),
-                  ),
-                  t.memberExpression(
-                    t.identifier("globalThis"),
-                    t.identifier("HotUpdaterGetBaseURL"),
-                  ),
-                ),
-                t.callExpression(
-                  t.memberExpression(
-                    t.identifier("globalThis"),
-                    t.identifier("HotUpdaterGetBaseURL"),
-                  ),
-                  [],
-                ),
-                t.unaryExpression("void", t.numericLiteral(0)),
-              );
-
-              const iifeCall = t.callExpression(arrowFunction, [
-                safeGetBaseURL,
-              ]);
-
-              // Replace only filePath so existing spread/forwarded props keep
-              // their original order and override behavior.
               const propIndex = objPath.node.properties.indexOf(filePathProp);
               objPath.node.properties.splice(
                 propIndex,
                 1,
-                t.spreadElement(iifeCall),
+                t.spreadElement(
+                  buildHotUpdaterDomProps(
+                    t,
+                    fileName,
+                    spreadElement && t.isIdentifier(spreadElement.argument)
+                      ? spreadElement.argument
+                      : undefined,
+                  ),
+                ),
+              );
+            },
+            JSXOpeningElement(jsxPath) {
+              if (!isWebViewJsxName(t, jsxPath.node.name)) return;
+
+              const filePathAttr = jsxPath.node.attributes.find(
+                (attr) =>
+                  t.isJSXAttribute(attr) &&
+                  t.isJSXIdentifier(attr.name, { name: "filePath" }) &&
+                  (t.isStringLiteral(attr.value) ||
+                    (t.isJSXExpressionContainer(attr.value) &&
+                      t.isIdentifier(attr.value.expression))),
+              );
+
+              if (!filePathAttr || !t.isJSXAttribute(filePathAttr)) return;
+
+              let fileName: string | undefined;
+              if (
+                t.isStringLiteral(filePathAttr.value) &&
+                filePathAttr.value.value.endsWith(".html")
+              ) {
+                fileName = filePathAttr.value.value;
+              } else if (
+                t.isJSXExpressionContainer(filePathAttr.value) &&
+                t.isIdentifier(filePathAttr.value.expression)
+              ) {
+                const declaredValue = filePathDeclarations.get(
+                  filePathAttr.value.expression.name,
+                );
+                if (declaredValue) fileName = declaredValue;
+              }
+
+              if (!fileName) return;
+
+              const spreadAttribute = jsxPath.node.attributes.find((attr) =>
+                t.isJSXSpreadAttribute(attr),
+              ) as babelTypes.JSXSpreadAttribute | undefined;
+
+              const attrIndex = jsxPath.node.attributes.indexOf(filePathAttr);
+              jsxPath.node.attributes.splice(
+                attrIndex,
+                1,
+                t.jsxSpreadAttribute(
+                  buildHotUpdaterDomProps(
+                    t,
+                    fileName,
+                    spreadAttribute && t.isIdentifier(spreadAttribute.argument)
+                      ? spreadAttribute.argument
+                      : undefined,
+                  ),
+                ),
               );
             },
           });
