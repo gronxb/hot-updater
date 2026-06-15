@@ -1,5 +1,13 @@
 # @hot-updater/android-helper
 
+## 0.33.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.33.2
+- @hot-updater/core@0.33.2
+- @hot-updater/plugin-core@0.33.2
+
 ## 0.33.1
 
 ### Patch Changes
