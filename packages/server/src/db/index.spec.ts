@@ -430,11 +430,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'key: varchar("key", { length: 255 }).primaryKey().notNull()',
+        'version: varchar("version", { length: 255 }).notNull().default("0.31.0")',
       );
-      expect(generatedCode).toContain(
-        'value: text("value").notNull().default("0.31.0")',
-      );
+      expect(generatedCode).not.toContain('key: varchar("key"');
+      expect(generatedCode).not.toContain('value: text("value"');
     });
   });
 

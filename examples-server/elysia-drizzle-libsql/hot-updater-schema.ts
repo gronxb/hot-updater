@@ -28,7 +28,7 @@ export const bundles = sqliteTable("bundles", {
 ])
 
 export const bundle_patches = sqliteTable("bundle_patches", {
-  id: text("id").primaryKey().notNull(),
+  id: text("id", { length: 255 }).primaryKey().notNull(),
   bundle_id: text("bundle_id").notNull(),
   base_bundle_id: text("base_bundle_id").notNull(),
   base_file_hash: text("base_file_hash").notNull(),
@@ -64,6 +64,6 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 }))
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
-  key: text("key").primaryKey().notNull(),
-  value: text("value").notNull().default("0.31.0")
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  version: text("version", { length: 255 }).notNull().default("0.31.0")
 })

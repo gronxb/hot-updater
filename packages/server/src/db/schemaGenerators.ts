@@ -1,10 +1,11 @@
-import type {
-  HotUpdaterColumnSchema,
-  HotUpdaterColumnType,
-  HotUpdaterDefault,
-  HotUpdaterRelationSchema,
-  HotUpdaterTableSchema,
-  HotUpdaterVersionedSchema,
+import {
+  HOT_UPDATER_SETTINGS_TABLE,
+  type HotUpdaterColumnSchema,
+  type HotUpdaterColumnType,
+  type HotUpdaterDefault,
+  type HotUpdaterRelationSchema,
+  type HotUpdaterTableSchema,
+  type HotUpdaterVersionedSchema,
 } from "../schema/types";
 import {
   getHotUpdaterSchemaVersion,
@@ -170,6 +171,12 @@ const drizzleColumnFn = (
         imports: ["blob"],
       };
     }
+    if (column.type.startsWith("varchar")) {
+      return {
+        code: `text(${literal(column.ormName)}, { length: 255 })`,
+        imports: ["text"],
+      };
+    }
     return { code: `text(${literal(column.ormName)})`, imports: ["text"] };
   }
 
@@ -234,12 +241,27 @@ const drizzleDefault = (value: HotUpdaterDefault | undefined): string => {
   return `.default(${JSON.stringify(value.value)})`;
 };
 
+const drizzleColumn = (
+  table: HotUpdaterTableSchema,
+  column: HotUpdaterColumnSchema,
+): HotUpdaterColumnSchema => {
+  if (table.ormName !== HOT_UPDATER_SETTINGS_TABLE) return column;
+  if (column.ormName === "key") {
+    return { ...column, ormName: "id", type: "varchar(255)" };
+  }
+  if (column.ormName === "value") {
+    return { ...column, ormName: "version", type: "varchar(255)" };
+  }
+  return column;
+};
+
 const drizzleTable = (
   table: HotUpdaterTableSchema,
   provider: ORMSQLProvider,
   imports: Set<string>,
 ): string => {
-  const columns = table.columns.map((column) => {
+  const columns = table.columns.map((sourceColumn) => {
+    const column = drizzleColumn(table, sourceColumn);
     const type = drizzleColumnFn(column, provider);
     for (const item of type.imports) imports.add(item);
     const chain = [
