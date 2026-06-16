@@ -4,7 +4,7 @@ import type {
   DatabasePlugin,
   RequestEnvContext,
 } from "@hot-updater/plugin-core";
-import { createDatabasePluginGetUpdateInfo } from "@hot-updater/plugin-core";
+import { resolveUpdateInfoFromBundles } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPluginDatabaseCore } from "./pluginCore";
@@ -449,11 +449,14 @@ describe("createPluginDatabaseCore", () => {
         throw new Error("unexpected provider bundle reread");
       },
     );
-    const getUpdateInfo = createDatabasePluginGetUpdateInfo<TestContext>({
-      getBundlesByFingerprint: async () => [],
-      getBundlesByTargetAppVersions: async () => [targetBundle],
-      listTargetAppVersions: async () => ["1.0.0"],
-    });
+    const getUpdateInfo: NonNullable<
+      DatabasePlugin<TestContext>["getUpdateInfo"]
+    > = async (args, context) =>
+      resolveUpdateInfoFromBundles({
+        args,
+        bundles: [targetBundle],
+        context,
+      });
     const plugin: DatabasePlugin<TestContext> = {
       name: "seeded-fast-path-plugin",
       async appendBundle() {},
@@ -547,11 +550,14 @@ describe("createPluginDatabaseCore", () => {
         throw new Error("unexpected provider current bundle reread");
       },
     );
-    const getUpdateInfo = createDatabasePluginGetUpdateInfo<TestContext>({
-      getBundlesByFingerprint: async () => [],
-      getBundlesByTargetAppVersions: async () => [targetBundle],
-      listTargetAppVersions: async () => ["1.0.0"],
-    });
+    const getUpdateInfo: NonNullable<
+      DatabasePlugin<TestContext>["getUpdateInfo"]
+    > = async (args, context) =>
+      resolveUpdateInfoFromBundles({
+        args,
+        bundles: [targetBundle],
+        context,
+      });
     const plugin: DatabasePlugin<TestContext> = {
       name: "seeded-current-miss-plugin",
       async appendBundle() {},

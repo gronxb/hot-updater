@@ -1,3 +1,4 @@
+import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
   DatabaseBundleQueryOptions,
@@ -6,6 +7,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -146,6 +149,16 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
       }
       return patchMap;
     };
+    const mapRowsToBundles = async (
+      rows: readonly Record<string, unknown>[],
+    ): Promise<Bundle[]> => {
+      const patchMap = await fetchPatchMap(
+        rows.map((row) => String(row["id"])),
+      );
+      return rows.map((row) =>
+        rowToBundle(row as BundleRow, patchMap.get(String(row["id"])) ?? []),
+      );
+    };
     const upsertBundle = async (
       client: Record<string, unknown>,
       bundle: Bundle,
@@ -204,6 +217,79 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
             offset,
           }),
         };
+      },
+      async getUpdateInfo(args, context) {
+        const bundles = getDelegate(prisma, "bundles");
+
+        if (args._updateStrategy === "appVersion") {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+          const rows = await bundles.findMany({
+            select: { target_app_version: true },
+            where: {
+              enabled: true,
+              platform: args.platform,
+              channel,
+              id: { gte: minBundleId },
+              target_app_version: { not: null },
+            },
+          });
+
+          const targetAppVersions = Array.from(
+            new Set(
+              rows
+                .map((row) => row["target_app_version"])
+                .filter(
+                  (value): value is string =>
+                    typeof value === "string" && value.length > 0,
+                ),
+            ),
+          );
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const updateBundles =
+            compatibleAppVersions.length > 0
+              ? await bundles
+                  .findMany({
+                    where: {
+                      enabled: true,
+                      platform: args.platform,
+                      channel,
+                      id: { gte: minBundleId },
+                      target_app_version: { in: compatibleAppVersions },
+                    },
+                    orderBy: { id: "desc" },
+                  })
+                  .then(mapRowsToBundles)
+              : [];
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles: updateBundles,
+            context,
+          });
+        }
+
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+        const rows = await bundles.findMany({
+          where: {
+            enabled: true,
+            platform: args.platform,
+            channel,
+            id: { gte: minBundleId },
+            fingerprint_hash: args.fingerprintHash,
+          },
+          orderBy: { id: "desc" },
+        });
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles: await mapRowsToBundles(rows),
+          context,
+        });
       },
       async getChannels() {
         const bundles = getDelegate(prisma, "bundles");

@@ -28,6 +28,7 @@ import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
+import { bundleToRow } from "./bundleRows";
 import {
   createSchemaMigrationSql,
   createTableSql,
@@ -227,6 +228,23 @@ const transactionBundle: Bundle = {
   storageUri: "s3://test-bucket/transaction.zip",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
+};
+
+const appVersionFastPathBundle: Bundle = {
+  ...transactionBundle,
+  id: "00000000-0000-0000-0000-000000000778",
+  fileHash: "app-version-fast-path-hash",
+  message: "app version fast path bundle",
+  targetAppVersion: "1.0.0",
+};
+
+const fingerprintFastPathBundle: Bundle = {
+  ...transactionBundle,
+  id: "00000000-0000-0000-0000-000000000779",
+  fileHash: "fingerprint-fast-path-hash",
+  fingerprintHash: "fingerprint-fast-path",
+  message: "fingerprint fast path bundle",
+  targetAppVersion: null,
 };
 
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
@@ -904,6 +922,280 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           { target_app_version: { $exists: true, $nin: [null, ""] } },
         ],
       });
+    });
+
+    it("uses Prisma update-check queries without generic list pagination", async () => {
+      const appVersionRow = bundleToRow(appVersionFastPathBundle);
+      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const bundles = {
+        count: vi.fn(async () => {
+          throw new Error("unexpected generic Prisma count");
+        }),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            { target_app_version: appVersionRow.target_app_version },
+          ])
+          .mockResolvedValueOnce([appVersionRow])
+          .mockResolvedValueOnce([fingerprintRow]),
+        upsert: vi.fn(),
+      };
+      const patches = {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(async () => []),
+        upsert: vi.fn(),
+      };
+      const plugin = prismaAdapter({
+        prisma: { bundles, bundle_patches: patches },
+        provider: "postgresql",
+      })();
+
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "appVersion",
+          appVersion: "1.0.0",
+          bundleId: NIL_UUID,
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: appVersionFastPathBundle.id,
+        status: "UPDATE",
+      });
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "fingerprint",
+          bundleId: NIL_UUID,
+          fingerprintHash: "fingerprint-fast-path",
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: fingerprintFastPathBundle.id,
+        status: "UPDATE",
+      });
+
+      expect(bundles.count).not.toHaveBeenCalled();
+      expect(bundles.findMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          select: { target_app_version: true },
+          where: expect.objectContaining({
+            channel: "production",
+            id: { gte: NIL_UUID },
+          }),
+        }),
+      );
+      expect(bundles.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            target_app_version: { in: ["1.0.0"] },
+          }),
+        }),
+      );
+      expect(bundles.findMany).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fingerprint_hash: "fingerprint-fast-path",
+          }),
+        }),
+      );
+      expect(patches.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it("uses Drizzle update-check queries without generic list pagination", async () => {
+      const appVersionRow = bundleToRow(appVersionFastPathBundle);
+      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const tables = {
+        bundle_patches: {
+          bundle_id: "bundle_id",
+          id: "patch_id",
+          order_index: "order_index",
+        },
+        bundles: {
+          channel: "channel",
+          enabled: "enabled",
+          fingerprint_hash: "fingerprint_hash",
+          id: "id",
+          platform: "platform",
+          target_app_version: "target_app_version",
+        },
+      };
+      const bundleFindMany = vi
+        .fn()
+        .mockResolvedValueOnce([
+          { target_app_version: appVersionRow.target_app_version },
+        ])
+        .mockResolvedValueOnce([appVersionRow])
+        .mockResolvedValueOnce([fingerprintRow]);
+      const patchFindMany = vi.fn(async () => []);
+      const db = {
+        _: { fullSchema: tables },
+        $count: vi.fn(async () => {
+          throw new Error("unexpected generic Drizzle count");
+        }),
+        delete: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+        insert: vi.fn(),
+        query: {
+          bundle_patches: {
+            findMany: patchFindMany,
+          },
+          bundles: {
+            findFirst: vi.fn(),
+            findMany: bundleFindMany,
+          },
+        },
+        select: vi.fn(),
+        update: vi.fn(),
+      };
+      const plugin = drizzleAdapter({
+        db,
+        provider: "postgresql",
+      })();
+
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "appVersion",
+          appVersion: "1.0.0",
+          bundleId: NIL_UUID,
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: appVersionFastPathBundle.id,
+        status: "UPDATE",
+      });
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "fingerprint",
+          bundleId: NIL_UUID,
+          fingerprintHash: "fingerprint-fast-path",
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: fingerprintFastPathBundle.id,
+        status: "UPDATE",
+      });
+
+      expect(db.$count).not.toHaveBeenCalled();
+      expect(bundleFindMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          columns: { target_app_version: true },
+        }),
+      );
+      const appVersionWhere = JSON.stringify(bundleFindMany.mock.calls[0]?.[0]);
+      const fingerprintWhere = JSON.stringify(
+        bundleFindMany.mock.calls[2]?.[0],
+      );
+      expect(appVersionWhere).toContain("production");
+      expect(appVersionWhere).toContain(NIL_UUID);
+      expect(fingerprintWhere).toContain("production");
+      expect(fingerprintWhere).toContain(NIL_UUID);
+      expect(fingerprintWhere).toContain("fingerprint-fast-path");
+      expect(bundleFindMany).toHaveBeenCalledTimes(3);
+      expect(patchFindMany).toHaveBeenCalledTimes(2);
+    });
+
+    it("uses MongoDB update-check queries without generic list pagination", async () => {
+      const appVersionRow = bundleToRow(appVersionFastPathBundle);
+      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const projectToArray = vi.fn(async () => [
+        { target_app_version: appVersionRow.target_app_version },
+      ]);
+      const sortToArray = vi
+        .fn()
+        .mockResolvedValueOnce([appVersionRow])
+        .mockResolvedValueOnce([fingerprintRow]);
+      const project = vi.fn(() => ({ toArray: projectToArray }));
+      const sort = vi.fn(() => ({ toArray: sortToArray }));
+      const bundles = {
+        countDocuments: vi.fn(async () => {
+          throw new Error("unexpected generic MongoDB count");
+        }),
+        deleteMany: vi.fn(),
+        distinct: vi.fn(),
+        find: vi.fn((filter: Record<string, unknown>) => {
+          const targetAppVersion = filter["target_app_version"];
+          if (
+            typeof targetAppVersion === "object" &&
+            targetAppVersion !== null &&
+            "$exists" in targetAppVersion
+          ) {
+            return { project };
+          }
+          return { sort };
+        }),
+        findOne: vi.fn(),
+        updateOne: vi.fn(),
+      };
+      const patches = {
+        deleteMany: vi.fn(),
+        find: vi.fn(() => ({
+          sort: vi.fn(() => ({ toArray: vi.fn(async () => []) })),
+        })),
+        insertMany: vi.fn(),
+      };
+      const client = {
+        db: () => ({
+          collection: (name: string) =>
+            name === "bundle_patches" ? patches : bundles,
+        }),
+      } as unknown as MongoClient;
+      const plugin = mongoAdapter({ client })();
+
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "appVersion",
+          appVersion: "1.0.0",
+          bundleId: NIL_UUID,
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: appVersionFastPathBundle.id,
+        status: "UPDATE",
+      });
+      await expect(
+        plugin.getUpdateInfo?.({
+          _updateStrategy: "fingerprint",
+          bundleId: NIL_UUID,
+          fingerprintHash: "fingerprint-fast-path",
+          platform: "ios",
+        }),
+      ).resolves.toMatchObject({
+        id: fingerprintFastPathBundle.id,
+        status: "UPDATE",
+      });
+
+      expect(bundles.countDocuments).not.toHaveBeenCalled();
+      expect(bundles.find).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          channel: "production",
+          id: { $gte: NIL_UUID },
+          target_app_version: { $exists: true, $nin: [null, ""] },
+        }),
+      );
+      expect(bundles.find).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          target_app_version: { $in: ["1.0.0"] },
+        }),
+      );
+      expect(bundles.find).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          fingerprint_hash: "fingerprint-fast-path",
+        }),
+      );
+      expect(patches.find).toHaveBeenCalledTimes(2);
     });
 
     it("commits Prisma bundle changes inside a transaction when available", async () => {

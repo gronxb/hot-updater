@@ -1,3 +1,4 @@
+import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
   DatabaseBundleQueryOptions,
@@ -6,6 +7,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 import {
   and,
@@ -175,6 +178,16 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
       }
       return patchMap;
     };
+    const mapRowsToBundles = async (
+      rows: readonly Record<string, unknown>[],
+    ): Promise<Bundle[]> => {
+      const patchMap = await fetchPatchMap(
+        rows.map((row) => String(row["id"])),
+      );
+      return rows.map((row) =>
+        rowToBundle(row as BundleRow, patchMap.get(String(row["id"])) ?? []),
+      );
+    };
     const upsertBundle = async (activeDb: DrizzleDb, bundle: Bundle) => {
       const row = bundleToRow(bundle);
       const current = await activeDb.query["bundles"]?.findFirst({
@@ -242,6 +255,75 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
             offset,
           }),
         };
+      },
+      async getUpdateInfo(args, context) {
+        if (args._updateStrategy === "appVersion") {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+          const rows = await db.query["bundles"]?.findMany({
+            columns: { target_app_version: true },
+            where: buildWhere(bundles, {
+              enabled: true,
+              platform: args.platform,
+              channel,
+              id: { gte: minBundleId },
+              targetAppVersionNotNull: true,
+            }),
+          });
+
+          const targetAppVersions = Array.from(
+            new Set(
+              (rows ?? [])
+                .map((row) => row["target_app_version"])
+                .filter(
+                  (value): value is string =>
+                    typeof value === "string" && value.length > 0,
+                ),
+            ),
+          );
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const updateRows =
+            compatibleAppVersions.length > 0
+              ? await db.query["bundles"]?.findMany({
+                  where: buildWhere(bundles, {
+                    enabled: true,
+                    platform: args.platform,
+                    channel,
+                    id: { gte: minBundleId },
+                    targetAppVersionIn: compatibleAppVersions,
+                  }),
+                  orderBy: [desc(column(bundles, "id"))],
+                })
+              : [];
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles: await mapRowsToBundles(updateRows ?? []),
+            context,
+          });
+        }
+
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+        const rows = await db.query["bundles"]?.findMany({
+          where: buildWhere(bundles, {
+            enabled: true,
+            platform: args.platform,
+            channel,
+            id: { gte: minBundleId },
+            fingerprintHash: args.fingerprintHash,
+          }),
+          orderBy: [desc(column(bundles, "id"))],
+        });
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles: await mapRowsToBundles(rows ?? []),
+          context,
+        });
       },
       async getChannels() {
         const rows = await db.query["bundles"]?.findMany({

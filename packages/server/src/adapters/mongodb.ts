@@ -1,3 +1,4 @@
+import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
   DatabaseBundleQueryOptions,
@@ -6,6 +7,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, Filter, MongoClient } from "mongodb";
 
@@ -96,6 +99,12 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
       }
       return patchMap;
     };
+    const mapRowsToBundles = async (
+      rows: readonly BundleRow[],
+    ): Promise<Bundle[]> => {
+      const patchMap = await fetchPatchMap(rows.map((row) => row.id));
+      return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
+    };
     const isTransactionUnsupported = (error: unknown): boolean =>
       error instanceof Error &&
       /Transaction numbers are only allowed|replica set member or mongos|Transaction API error/i.test(
@@ -179,6 +188,77 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
             offset,
           }),
         };
+      },
+      async getUpdateInfo(args, context) {
+        if (args._updateStrategy === "appVersion") {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+          const rows = await bundles
+            .find({
+              enabled: true,
+              platform: args.platform,
+              channel,
+              id: { $gte: minBundleId },
+              target_app_version: { $exists: true, $nin: [null, ""] },
+            })
+            .project<{ target_app_version?: string | null }>({
+              target_app_version: 1,
+            })
+            .toArray();
+
+          const targetAppVersions = Array.from(
+            new Set(
+              rows
+                .map((row) => row.target_app_version)
+                .filter(
+                  (value): value is string =>
+                    typeof value === "string" && value.length > 0,
+                ),
+            ),
+          );
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const updateRows =
+            compatibleAppVersions.length > 0
+              ? await bundles
+                  .find({
+                    enabled: true,
+                    platform: args.platform,
+                    channel,
+                    id: { $gte: minBundleId },
+                    target_app_version: { $in: compatibleAppVersions },
+                  })
+                  .sort({ id: -1 })
+                  .toArray()
+              : [];
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles: await mapRowsToBundles(updateRows),
+            context,
+          });
+        }
+
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+        const rows = await bundles
+          .find({
+            enabled: true,
+            platform: args.platform,
+            channel,
+            id: { $gte: minBundleId },
+            fingerprint_hash: args.fingerprintHash,
+          })
+          .sort({ id: -1 })
+          .toArray();
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles: await mapRowsToBundles(rows),
+          context,
+        });
       },
       async getChannels() {
         const channels = await bundles.distinct("channel");

@@ -4,6 +4,7 @@ import {
   getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
+  NIL_UUID,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
@@ -16,7 +17,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
-  createDatabasePluginGetUpdateInfo,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 
 type D1Result<T> = {
@@ -414,44 +416,65 @@ export const d1WorkerDatabase = <
       };
 
       return {
-        getUpdateInfo: createDatabasePluginGetUpdateInfo({
-          listTargetAppVersions: getTargetAppVersionsForUpdateInfo,
-          getBundlesByTargetAppVersions(
-            { platform, channel, minBundleId },
-            targetAppVersions,
-            context,
-          ) {
-            return queryBundlesForUpdateInfo(
+        async getUpdateInfo(args, context) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+
+          if (args._updateStrategy === "appVersion") {
+            const targetAppVersions = await getTargetAppVersionsForUpdateInfo(
               {
-                enabled: true,
-                platform,
+                platform: args.platform,
                 channel,
-                id: {
-                  gte: minBundleId,
-                },
-                targetAppVersionIn: targetAppVersions,
+                minBundleId,
               },
               context,
             );
-          },
-          getBundlesByFingerprint(
-            { platform, channel, minBundleId, fingerprintHash },
-            context,
-          ) {
-            return queryBundlesForUpdateInfo(
-              {
-                enabled: true,
-                platform,
-                channel,
-                id: {
-                  gte: minBundleId,
-                },
-                fingerprintHash,
-              },
-              context,
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
             );
-          },
-        }),
+            const bundles =
+              compatibleAppVersions.length > 0
+                ? await queryBundlesForUpdateInfo(
+                    {
+                      enabled: true,
+                      platform: args.platform,
+                      channel,
+                      id: {
+                        gte: minBundleId,
+                      },
+                      targetAppVersionIn: compatibleAppVersions,
+                    },
+                    context,
+                  )
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+              context,
+            });
+          }
+
+          const bundles = await queryBundlesForUpdateInfo(
+            {
+              enabled: true,
+              platform: args.platform,
+              channel,
+              id: {
+                gte: minBundleId,
+              },
+              fingerprintHash: args.fingerprintHash,
+            },
+            context,
+          );
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles,
+            context,
+          });
+        },
 
         async getBundleById(bundleId, context) {
           const [row, patchMap] = await Promise.all([

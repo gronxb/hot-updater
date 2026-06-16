@@ -1,3 +1,4 @@
+import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
   DatabaseBundleQueryOptions,
@@ -6,6 +7,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 import type { Kysely, Transaction } from "kysely";
 
@@ -133,6 +136,12 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
       }
       return patchMap;
     };
+    const mapRowsToBundles = async (
+      rows: readonly BundleRow[],
+    ): Promise<Bundle[]> => {
+      const patchMap = await fetchPatchMap(rows.map((row) => row.id));
+      return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
+    };
 
     const upsertBundle = async (
       executor: Kysely<Database> | Transaction<Database>,
@@ -211,6 +220,75 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
             offset,
           }),
         };
+      },
+      async getUpdateInfo(args, context) {
+        if (args._updateStrategy === "appVersion") {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+          const rows = await db
+            .selectFrom("bundles")
+            .select("target_app_version")
+            .where("enabled", "=", true)
+            .where("platform", "=", args.platform)
+            .where("channel", "=", channel)
+            .where("id", ">=", minBundleId)
+            .where("target_app_version", "is not", null)
+            .execute();
+
+          const targetAppVersions = Array.from(
+            new Set(
+              rows
+                .map((row) => row.target_app_version)
+                .filter(
+                  (value): value is string =>
+                    typeof value === "string" && value.length > 0,
+                ),
+            ),
+          );
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const bundles =
+            compatibleAppVersions.length > 0
+              ? await db
+                  .selectFrom("bundles")
+                  .selectAll()
+                  .where("enabled", "=", true)
+                  .where("platform", "=", args.platform)
+                  .where("channel", "=", channel)
+                  .where("id", ">=", minBundleId)
+                  .where("target_app_version", "in", compatibleAppVersions)
+                  .orderBy("id", "desc")
+                  .execute()
+                  .then(mapRowsToBundles)
+              : [];
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles,
+            context,
+          });
+        }
+
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+        const rows = await db
+          .selectFrom("bundles")
+          .selectAll()
+          .where("enabled", "=", true)
+          .where("platform", "=", args.platform)
+          .where("channel", "=", channel)
+          .where("id", ">=", minBundleId)
+          .where("fingerprint_hash", "=", args.fingerprintHash)
+          .orderBy("id", "desc")
+          .execute();
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles: await mapRowsToBundles(rows),
+          context,
+        });
       },
       async getChannels() {
         const rows = await db
