@@ -106,6 +106,9 @@ public class SignatureVerifier {
      * @return Public key PEM string or nil if not configured
      */
     private static func getPublicKeyFromConfig() -> String? {
+        if let override = HotUpdaterConfig.shared.publicKey, !override.isEmpty {
+            return override
+        }
         guard let publicKeyPEM = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY") as? String else {
             NSLog("[SignatureVerifier] HOT_UPDATER_PUBLIC_KEY not found in Info.plist")
             return nil
