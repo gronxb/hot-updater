@@ -1,4 +1,4 @@
-import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
@@ -10,17 +10,19 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { generatePrismaSchema } from "./generate-prisma-schema";
 import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
-  validateMigratorSupport,
-  validateSchemaGeneratorSupport,
-} from "./utils/adapter-strategies";
+  ensureMigratorSupport,
+  ensureSchemaGeneratorSupport,
+  GenerateExit,
+  requestGenerateExit,
+} from "./utils/generate-command-control";
 import { resolveGeneratedSchemaOutputPath } from "./utils/generated-schema-artifact";
 import {
   type LoadHotUpdaterResult,
   loadHotUpdater,
 } from "./utils/load-hot-updater";
-import { mergePrismaSchema } from "./utils/prisma-schema-merger";
 
 export interface GenerateOptions {
   configPath: string;
@@ -47,6 +49,7 @@ export async function generate(options: GenerateOptions) {
   }
 
   let loadedConfig: LoadHotUpdaterResult | undefined;
+  let exitCode: number | undefined;
 
   try {
     // Start spinner early to show progress during config loading
@@ -97,26 +100,36 @@ export async function generate(options: GenerateOptions) {
           "MongoDB does not support migration file generation. " +
             "Use `hot-updater db migrate` to create collections and indexes.",
         );
-        process.exit(1);
+        requestGenerateExit(1);
         break;
       default:
         p.log.error(
           `Unsupported adapter: ${adapterName}. Generation is not supported.`,
         );
-        process.exit(1);
+        requestGenerateExit(1);
         break;
     }
   } catch (error) {
-    p.log.error("Failed to generate");
-    if (error instanceof Error) {
+    if (error instanceof GenerateExit) {
+      exitCode = error.code;
+    } else if (error instanceof Error) {
+      p.log.error("Failed to generate");
       p.log.error(error.message);
       if (process.env["DEBUG"]) {
         console.error(error.stack);
       }
+      exitCode = 1;
+    } else {
+      p.log.error("Failed to generate");
+      p.log.error(String(error));
+      exitCode = 1;
     }
-    process.exit(1);
   } finally {
     await loadedConfig?.dispose();
+  }
+
+  if (exitCode !== undefined) {
+    process.exit(exitCode);
   }
 }
 
@@ -129,7 +142,7 @@ async function generateWithMigrator(
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
+  ensureMigratorSupport(hotUpdater, hotUpdater.adapterName);
 
   // Create migrator
   const migrator = hotUpdater.createMigrator();
@@ -143,15 +156,18 @@ async function generateWithMigrator(
   s.stop("Analysis complete");
 
   // Get SQL
-  if (!result.getSQL) {
+  const getSQL = result.getSQL;
+  let sql: string;
+  if (typeof getSQL === "function") {
+    sql = getSQL();
+  } else {
     p.log.error(
       "Migration result does not support SQL generation. " +
         "This may happen if you're not using an SQL-based database adapter.",
     );
-    process.exit(1);
+    requestGenerateExit(1);
+    return;
   }
-
-  const sql = result.getSQL();
 
   if (!sql || sql.trim() === "") {
     p.log.success("Schema is up to date.");
@@ -209,7 +225,7 @@ async function generateWithMigrator(
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
       p.cancel("Operation cancelled");
-      process.exit(0);
+      requestGenerateExit(0);
     }
   }
 
@@ -232,7 +248,7 @@ async function generateWithSchemaGenerator(
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  validateSchemaGeneratorSupport(hotUpdater, adapterName);
+  ensureSchemaGeneratorSupport(hotUpdater, adapterName);
 
   // Generate schema
   const schemaResult = hotUpdater.generateSchema("latest");
@@ -269,7 +285,7 @@ async function generateWithSchemaGenerator(
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
       p.cancel("Operation cancelled");
-      process.exit(0);
+      requestGenerateExit(0);
     }
   }
 
@@ -277,78 +293,4 @@ async function generateWithSchemaGenerator(
   await writeFile(outputPath, schemaCode, "utf-8");
 
   p.log.success(ui.line(["Created", ui.path(outputPath)]));
-}
-
-/**
- * Generate Prisma schema - directly modifies prisma/schema.prisma file
- * Similar to better-auth's approach
- */
-async function generatePrismaSchema(
-  schemaCode: string,
-  outputDir: string,
-  skipConfirm: boolean,
-) {
-  // Default Prisma schema path
-  const prismaSchemaPath = path.join(outputDir, "prisma", "schema.prisma");
-
-  // Check if prisma/schema.prisma exists
-  let schemaExists = false;
-  try {
-    await access(prismaSchemaPath);
-    schemaExists = true;
-  } catch {
-    // Schema file doesn't exist
-  }
-
-  let finalContent: string;
-  let message: string;
-
-  if (!schemaExists) {
-    // Warn about missing generator and datasource blocks
-    p.log.warn("Generated schema only contains model definitions.");
-
-    // Use the complete schema from generateSchema for initial creation
-    finalContent = schemaCode;
-    message = "Create prisma/schema.prisma?";
-  } else {
-    // Read existing schema and merge
-    const existingSchema = await readFile(prismaSchemaPath, "utf-8");
-    const { content, hadExistingModels } = mergePrismaSchema(
-      existingSchema,
-      schemaCode,
-    );
-    finalContent = content;
-    message = hadExistingModels
-      ? "Update hot-updater models in prisma/schema.prisma?"
-      : "Add hot-updater models to prisma/schema.prisma?";
-  }
-
-  // Confirm before writing
-  if (!skipConfirm) {
-    const shouldContinue = await p.confirm({
-      message,
-      initialValue: true,
-    });
-
-    if (p.isCancel(shouldContinue) || !shouldContinue) {
-      p.cancel("Operation cancelled");
-      process.exit(0);
-    }
-  }
-
-  // Create prisma directory if it doesn't exist
-  await mkdir(path.dirname(prismaSchemaPath), { recursive: true });
-
-  // Write schema file
-  await writeFile(prismaSchemaPath, finalContent, "utf-8");
-
-  p.log.success(
-    ui.line([schemaExists ? "Updated" : "Created", ui.path(prismaSchemaPath)]),
-  );
-  p.log.message(
-    ui.block("Run", [
-      ui.kv("Prisma", ui.command("npx prisma generate")),
-      ui.kv("Migrate", ui.command("npx prisma migrate dev")),
-    ]),
-  );
 }

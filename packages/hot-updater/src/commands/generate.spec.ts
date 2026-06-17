@@ -61,8 +61,11 @@ describe("generate command", () => {
     vi.restoreAllMocks();
   });
 
-  it("rejects MongoDB migration file generation with migrate guidance", async () => {
-    const dispose = vi.fn();
+  it("rejects MongoDB migration file generation after disposing loaded config", async () => {
+    const events: string[] = [];
+    const dispose = vi.fn(async () => {
+      events.push("dispose");
+    });
     const loadedConfig: LoadHotUpdaterResult = {
       absoluteConfigPath: "/repo/src/db.ts",
       adapterName: "mongodb",
@@ -74,6 +77,7 @@ describe("generate command", () => {
 
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      events.push(`exit:${code}`);
       throw new Error(`process.exit(${code})`);
     });
 
@@ -94,6 +98,7 @@ describe("generate command", () => {
     );
     expect(dispose).toHaveBeenCalledOnce();
     expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(events).toEqual(["dispose", "exit:1"]);
   });
 
   it("generates standalone MySQL SQL without a real connection pool", async () => {
@@ -164,5 +169,39 @@ describe("generate command", () => {
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }
+  });
+
+  it("disposes loaded config before exiting on schema generation cancellation", async () => {
+    const events: string[] = [];
+    const dispose = vi.fn(async () => {
+      events.push("dispose");
+    });
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "drizzle",
+      dispose,
+      hotUpdater: {
+        adapterName: "drizzle",
+        generateSchema: vi.fn(() => ({
+          code: "export const bundles = {};",
+          path: "hot-updater-schema.ts",
+        })),
+      },
+    };
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+    mockCli.confirm.mockResolvedValue(false);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      events.push(`exit:${code}`);
+      throw new Error(`process.exit(${code})`);
+    });
+
+    await expect(
+      generate({ configPath: "src/db.ts", skipConfirm: false }),
+    ).rejects.toThrow("process.exit(0)");
+
+    expect(mockCli.cancel).toHaveBeenCalledWith("Operation cancelled");
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(events).toEqual(["dispose", "exit:0"]);
   });
 });
