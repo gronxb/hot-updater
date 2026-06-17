@@ -36,6 +36,15 @@
 - (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 
 /**
+ * Programmatic configuration for brownfield / XCFramework setups where
+ * Info.plist (host) or string resources (Android) are not desirable.
+ */
++ (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
+                           publicKey:(nullable NSString *)publicKey
+                             channel:(nullable NSString *)channel
+                        isolationKey:(nullable NSString *)isolationKey;
+
+/**
  * 다운로드 진행 상황 업데이트 시간을 추적하는 속성
  */
 @property (nonatomic, assign) NSTimeInterval lastUpdateTime;

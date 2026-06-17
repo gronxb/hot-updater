@@ -456,6 +456,14 @@ RCT_EXPORT_MODULE();
     return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
 }
 
++ (void)configureWithFingerprintHash:(NSString *)fingerprintHash
+                           publicKey:(NSString *)publicKey
+                             channel:(NSString *)channel
+                        isolationKey:(NSString *)isolationKey {
+    HotUpdaterConfig *config = [HotUpdaterConfig shared];
+    [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey];
+}
+
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
 - (void)handleDownloadProgress:(NSNotification *)notification {

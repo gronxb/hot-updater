@@ -93,6 +93,9 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * Returns the app version from main bundle info.
      */
     public static var appChannel: String {
+        if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
+            return override
+        }
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
     }
     
@@ -101,8 +104,15 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
      */
     public static func getIsolationKey() -> String {
-        // Get fingerprint hash from Info.plist
-        let fingerprintHash = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+        // Programmatic override (brownfield/XCFramework). When set, it is used verbatim
+        // so the OTA cache can stay stable across host app version bumps.
+        if let override = HotUpdaterConfig.shared.isolationKey, !override.isEmpty {
+            return override
+        }
+
+        // Get fingerprint hash from programmatic override or Info.plist
+        let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
+            ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -126,6 +136,9 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * @return The channel name or nil if not set
      */
     public func getChannel() -> String {
+        if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
+            return override
+        }
         if let savedChannel = try? preferences.getItem(forKey: Self.CHANNEL_STORAGE_KEY),
            !savedChannel.isEmpty {
             return savedChannel
@@ -143,6 +156,9 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      * @return The fingerprint hash or nil if not set
      */
     public func getFingerprintHash() -> String? {
+        if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
+            return override
+        }
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
     }
 
