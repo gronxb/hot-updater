@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, rm } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generate } from "./generate";
@@ -25,6 +29,15 @@ const mockCli = vi.hoisted(() => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
+  colors: {
+    blue: (value: string) => value,
+    cyan: (value: string) => value,
+    dim: (value: string) => value,
+    green: (value: string) => value,
+    magenta: (value: string) => value,
+    red: (value: string) => value,
+    yellow: (value: string) => value,
+  },
   p: {
     cancel: mockCli.cancel,
     confirm: mockCli.confirm,
@@ -81,5 +94,31 @@ describe("generate command", () => {
     );
     expect(dispose).toHaveBeenCalledOnce();
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("generates standalone MySQL SQL without a real connection pool", async () => {
+    const outputDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-mysql-sql-"),
+    );
+
+    try {
+      await generate({
+        configPath: "",
+        outputDir,
+        skipConfirm: true,
+        sql: "mysql",
+      });
+
+      const sql = await readFile(
+        path.join(outputDir, "hot-updater.sql"),
+        "utf-8",
+      );
+
+      expect(sql).toContain("CREATE TABLE IF NOT EXISTS bundles");
+      expect(sql).toContain("`key` varchar(255) PRIMARY KEY");
+      expect(sql).toContain("ON DUPLICATE KEY UPDATE");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
   });
 });

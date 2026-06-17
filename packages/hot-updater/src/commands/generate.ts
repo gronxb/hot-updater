@@ -1,24 +1,16 @@
-import { createHash } from "crypto";
 import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
 import type { Migrator } from "@hot-updater/server";
 import {
-  type Dialect,
-  Kysely,
-  MysqlDialect,
-  PostgresDialect,
-  SqliteDialect,
-} from "kysely";
-import {
   formatDialect,
   mysql as mysqlDialect,
   postgresql as postgresqlDialect,
-  sqlite as sqliteDialect,
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,
@@ -28,10 +20,6 @@ import {
   loadHotUpdater,
 } from "./utils/load-hot-updater";
 import { mergePrismaSchema } from "./utils/prisma-schema-merger";
-
-// Supported database providers
-const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
-type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
 export interface GenerateOptions {
   configPath: string;
@@ -65,7 +53,9 @@ export async function generate(options: GenerateOptions) {
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    loadedConfig = await loadHotUpdater(configPath);
+    loadedConfig = await loadHotUpdater(configPath, {
+      allowGeneratedSchemaPlaceholder: true,
+    });
     const { hotUpdater, adapterName } = loadedConfig;
 
     // Set default outputDir based on adapter type
@@ -186,9 +176,6 @@ async function generateWithMigrator(
   // Create output directory
   await mkdir(absoluteOutputDir, { recursive: true });
 
-  // Check for duplicate SQL files using MD5 hash
-  const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
-
   try {
     const files = await readdir(absoluteOutputDir);
     const sqlFiles = files.filter((file) => file.endsWith(".sql"));
@@ -196,11 +183,8 @@ async function generateWithMigrator(
     for (const file of sqlFiles) {
       const filePath = path.join(absoluteOutputDir, file);
       const existingContent = await readFile(filePath, "utf-8");
-      const existingHash = createHash("md5")
-        .update(existingContent)
-        .digest("hex");
 
-      if (existingHash === newSqlHash) {
+      if (existingContent === formattedSql) {
         p.log.warn(`Identical migration already exists: ${file}`);
         p.outro("Done");
         return;
@@ -276,9 +260,6 @@ async function generateWithSchemaGenerator(
   // Create output directory
   await mkdir(absoluteOutputDir, { recursive: true });
 
-  // Check for duplicate schema files using MD5 hash
-  const newSchemaHash = createHash("md5").update(schemaCode).digest("hex");
-
   try {
     const files = await readdir(absoluteOutputDir);
     const schemaFiles = files.filter((file) => file.endsWith(".ts"));
@@ -286,11 +267,8 @@ async function generateWithSchemaGenerator(
     for (const file of schemaFiles) {
       const filePath = path.join(absoluteOutputDir, file);
       const existingContent = await readFile(filePath, "utf-8");
-      const existingHash = createHash("md5")
-        .update(existingContent)
-        .digest("hex");
 
-      if (existingHash === newSchemaHash) {
+      if (existingContent === schemaCode) {
         p.log.warn(`Identical schema already exists: ${file}`);
         p.outro("Done");
         return;
@@ -395,213 +373,4 @@ async function generatePrismaSchema(
       ui.kv("Migrate", ui.command("npx prisma migrate dev")),
     ]),
   );
-}
-
-/**
- * Creates a minimal dummy pool implementation for SQL-only generation
- * This won't be used for actual database operations
- */
-function createDummyPool() {
-  return {
-    connect: async () => ({
-      query: async () => ({
-        rows: [],
-        command: "SELECT" as const,
-        rowCount: 0,
-      }),
-      release: () => {},
-    }),
-    end: async () => {},
-  };
-}
-
-/**
- * Creates a minimal dummy SQLite database implementation for SQL-only generation
- * This won't be used for actual database operations
- */
-function createDummySqliteDatabase() {
-  return {
-    close: async () => {},
-    prepare: () => ({
-      all: async () => [],
-      get: async () => undefined,
-      run: async () => ({ changes: 0 }),
-      finalize: async () => {},
-    }),
-  };
-}
-
-/**
- * Creates a Kysely dialect based on the selected database provider
- */
-function createDialect(provider: SupportedProvider): Dialect {
-  switch (provider) {
-    case "postgresql":
-      return new PostgresDialect({ pool: createDummyPool() as never });
-    case "mysql":
-      return new MysqlDialect({ pool: createDummyPool() as never });
-    case "sqlite":
-      return new SqliteDialect({
-        database: createDummySqliteDatabase() as never,
-      });
-  }
-}
-
-/**
- * Generate standalone SQL file using Kysely preset without reading config
- */
-async function generateStandaloneSQL(options: {
-  outputDir: string;
-  skipConfirm: boolean;
-  provider?: string;
-}) {
-  const { outputDir, skipConfirm, provider } = options;
-
-  try {
-    // Validate and determine database provider
-    let dbType: SupportedProvider;
-
-    if (provider) {
-      if (!SUPPORTED_PROVIDERS.includes(provider as SupportedProvider)) {
-        p.log.error(
-          `Invalid provider: ${provider}\nValid options: ${SUPPORTED_PROVIDERS.join(", ")}`,
-        );
-        process.exit(1);
-      }
-      dbType = provider as SupportedProvider;
-    } else if (skipConfirm) {
-      // Default to postgresql when --yes is used without provider
-      dbType = "postgresql";
-    } else {
-      // Ask user to select database type
-      const selected = await p.select({
-        message: "Select database type",
-        options: [
-          { value: "postgresql", label: "PostgreSQL" },
-          { value: "mysql", label: "MySQL" },
-          { value: "sqlite", label: "SQLite" },
-        ],
-      });
-
-      if (p.isCancel(selected)) {
-        p.cancel("Operation cancelled");
-        process.exit(0);
-      }
-
-      dbType = selected as SupportedProvider;
-    }
-
-    const s = p.spinner();
-    s.start("Generating SQL from database schema");
-
-    // Create Kysely instance with appropriate dialect
-    // The dummy connection won't be used for SQL generation in from-schema mode
-    const db = new Kysely({ dialect: createDialect(dbType) });
-    const [{ createHotUpdater }, { kyselyAdapter }] = await Promise.all([
-      import("@hot-updater/server"),
-      import("@hot-updater/server/adapters/kysely"),
-    ]);
-
-    // Create the adapter with selected provider
-    const adapter = kyselyAdapter({
-      db,
-      provider: dbType,
-    });
-
-    const migrator = createHotUpdater({
-      database: adapter,
-    }).createMigrator();
-
-    // Generate SQL from schema
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: false,
-    });
-
-    s.stop("SQL generation complete");
-
-    // Get SQL
-    if (!result.getSQL) {
-      p.log.error(
-        "SQL generation is not supported by the database adapter.\n" +
-          "This may indicate a configuration issue.",
-      );
-      process.exit(1);
-    }
-
-    const sql = result.getSQL();
-
-    if (!sql || sql.trim() === "") {
-      p.log.error(
-        "No SQL was generated from the schema.\n" +
-          "The schema may be empty or invalid.",
-      );
-      process.exit(1);
-    }
-
-    // Format SQL for better readability
-    const formatterDialects = {
-      postgresql: postgresqlDialect,
-      mysql: mysqlDialect,
-      sqlite: sqliteDialect,
-    } as const satisfies Record<SupportedProvider, unknown>;
-
-    const formattedSql = formatDialect(sql, {
-      dialect: formatterDialects[dbType],
-      tabWidth: 2,
-      keywordCase: "upper",
-    });
-
-    // Create output directory
-    const absoluteOutputDir = path.resolve(process.cwd(), outputDir);
-    await mkdir(absoluteOutputDir, { recursive: true });
-
-    // Fixed filename
-    const filename = "hot-updater.sql";
-    const outputPath = path.join(absoluteOutputDir, filename);
-
-    // Check if file already exists
-    const fileExists = await access(outputPath)
-      .then(() => true)
-      .catch(() => false);
-
-    // Confirm before writing SQL file
-    if (!skipConfirm) {
-      // Show SQL preview before confirmation
-      p.log.message(ui.title("SQL preview"));
-      console.log(formattedSql);
-      console.log("");
-
-      if (fileExists) {
-        p.log.warn(`${filename} already exists and will be overwritten.`);
-      }
-
-      const shouldContinue = await p.confirm({
-        message: `Save to ${filename}?`,
-        initialValue: true,
-      });
-
-      if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.cancel("Operation cancelled");
-        process.exit(0);
-      }
-    } else if (fileExists) {
-      // When skipping confirmation, still show a warning about overwriting
-      p.log.warn(ui.line(["Overwriting", ui.path(outputPath)]));
-    }
-
-    // Write SQL file
-    await writeFile(outputPath, formattedSql, "utf-8");
-
-    p.log.success(ui.line(["Created", ui.path(outputPath)]));
-  } catch (error) {
-    p.log.error("Failed to generate standalone SQL");
-    if (error instanceof Error) {
-      p.log.error(error.message);
-      if (process.env["DEBUG"]) {
-        console.error(error.stack);
-      }
-    }
-    process.exit(1);
-  }
 }
