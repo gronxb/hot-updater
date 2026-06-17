@@ -4,6 +4,7 @@ import {
   getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
+  NIL_UUID,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
@@ -15,7 +16,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
-  createDatabasePluginGetUpdateInfo,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
@@ -405,39 +407,56 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
     }
 
     return {
-      getUpdateInfo: createDatabasePluginGetUpdateInfo({
-        listTargetAppVersions: getTargetAppVersionsForUpdateInfo,
-        getBundlesByTargetAppVersions(
-          { platform, channel, minBundleId },
-          targetAppVersions,
-        ) {
-          return queryBundlesForUpdateInfo({
-            enabled: true,
-            platform,
+      async getUpdateInfo(args, context) {
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+
+        if (args._updateStrategy === "appVersion") {
+          const targetAppVersions = await getTargetAppVersionsForUpdateInfo({
+            platform: args.platform,
             channel,
-            id: {
-              gte: minBundleId,
-            },
-            targetAppVersionIn: targetAppVersions,
+            minBundleId,
           });
-        },
-        getBundlesByFingerprint({
-          platform,
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const bundles =
+            compatibleAppVersions.length > 0
+              ? await queryBundlesForUpdateInfo({
+                  enabled: true,
+                  platform: args.platform,
+                  channel,
+                  id: {
+                    gte: minBundleId,
+                  },
+                  targetAppVersionIn: compatibleAppVersions,
+                })
+              : [];
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles,
+            context,
+          });
+        }
+
+        const bundles = await queryBundlesForUpdateInfo({
+          enabled: true,
+          platform: args.platform,
           channel,
-          minBundleId,
-          fingerprintHash,
-        }) {
-          return queryBundlesForUpdateInfo({
-            enabled: true,
-            platform,
-            channel,
-            id: {
-              gte: minBundleId,
-            },
-            fingerprintHash,
-          });
-        },
-      }),
+          id: {
+            gte: minBundleId,
+          },
+          fingerprintHash: args.fingerprintHash,
+        });
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles,
+          context,
+        });
+      },
 
       async getBundleById(bundleId) {
         const sql = minify(/* sql */ `

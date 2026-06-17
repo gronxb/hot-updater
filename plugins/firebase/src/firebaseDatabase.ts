@@ -8,6 +8,7 @@ import {
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
+  NIL_UUID,
   type SnakeCaseBundle,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
@@ -19,7 +20,8 @@ import type {
 import {
   calculatePagination,
   createDatabasePlugin,
-  createDatabasePluginGetUpdateInfo,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 
@@ -219,15 +221,18 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
     const targetAppVersionsCollection = db.collection("target_app_versions");
 
     return {
-      getUpdateInfo: createDatabasePluginGetUpdateInfo({
-        async listTargetAppVersions({ platform, channel }) {
+      async getUpdateInfo(args, context) {
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+
+        if (args._updateStrategy === "appVersion") {
           const querySnapshot = await targetAppVersionsCollection
-            .where("platform", "==", platform)
+            .where("platform", "==", args.platform)
             .where("channel", "==", channel)
             .select("target_app_version")
             .get();
 
-          return Array.from(
+          const targetAppVersions = Array.from(
             new Set(
               querySnapshot.docs
                 .map(
@@ -236,50 +241,55 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                 .filter((version): version is string => Boolean(version)),
             ),
           );
-        },
-
-        async getBundlesByTargetAppVersions(
-          { platform, channel, minBundleId },
-          targetAppVersions,
-        ) {
-          const results = await Promise.all(
-            chunkValues(targetAppVersions, 10).map((versions) =>
-              bundlesCollection
-                .where("platform", "==", platform)
-                .where("channel", "==", channel)
-                .where("enabled", "==", true)
-                .where("id", ">=", minBundleId)
-                .where("target_app_version", "in", versions)
-                .get(),
-            ),
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
           );
-
-          return results.flatMap((snapshot) =>
+          const results =
+            compatibleAppVersions.length > 0
+              ? await Promise.all(
+                  chunkValues(compatibleAppVersions, 10).map((versions) =>
+                    bundlesCollection
+                      .where("platform", "==", args.platform)
+                      .where("channel", "==", channel)
+                      .where("enabled", "==", true)
+                      .where("id", ">=", minBundleId)
+                      .where("target_app_version", "in", versions)
+                      .get(),
+                  ),
+                )
+              : [];
+          const bundles = results.flatMap((snapshot) =>
             snapshot.docs.map((doc) =>
               convertToBundle(doc.data() as SnakeCaseBundle),
             ),
           );
-        },
 
-        async getBundlesByFingerprint({
-          platform,
-          channel,
-          minBundleId,
-          fingerprintHash,
-        }) {
-          const querySnapshot = await bundlesCollection
-            .where("platform", "==", platform)
-            .where("channel", "==", channel)
-            .where("enabled", "==", true)
-            .where("id", ">=", minBundleId)
-            .where("fingerprint_hash", "==", fingerprintHash)
-            .get();
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles,
+            context,
+          });
+        }
 
-          return querySnapshot.docs.map((doc) =>
-            convertToBundle(doc.data() as SnakeCaseBundle),
-          );
-        },
-      }),
+        const querySnapshot = await bundlesCollection
+          .where("platform", "==", args.platform)
+          .where("channel", "==", channel)
+          .where("enabled", "==", true)
+          .where("id", ">=", minBundleId)
+          .where("fingerprint_hash", "==", args.fingerprintHash)
+          .get();
+
+        const bundles = querySnapshot.docs.map((doc) =>
+          convertToBundle(doc.data() as SnakeCaseBundle),
+        );
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles,
+          context,
+        });
+      },
 
       async getBundleById(bundleId) {
         const bundleRef = bundlesCollection.doc(bundleId);

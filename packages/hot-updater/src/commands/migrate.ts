@@ -13,9 +13,6 @@ export interface MigrateOptions {
   skipConfirm?: boolean;
 }
 
-/**
- * Minimal types for fumadb migration operations (not exported from fumadb)
- */
 interface MigrationOperation {
   type: string;
   [key: string]: unknown;
@@ -37,10 +34,17 @@ interface ColumnOperation {
   value?: { ormName?: string; type?: string };
 }
 
+interface CustomOperation extends MigrationOperation {
+  type: "custom";
+  key?: string;
+  sql?: string;
+  value?: unknown;
+}
+
 /**
  * Format migration operations into human-readable changes
  */
-function formatOperations(operations: MigrationOperation[]): string[] {
+export function formatOperations(operations: MigrationOperation[]): string[] {
   const changes: string[] = [];
 
   for (const op of operations) {
@@ -158,6 +162,18 @@ function formatOperations(operations: MigrationOperation[]): string[] {
         const table = (op as { table?: string }).table;
         const name = (op as { name?: string }).name;
         changes.push(`Drop unique constraint: ${table}.${name}`);
+        break;
+      }
+
+      case "custom": {
+        const customOp = op as CustomOperation;
+        if (customOp.sql) {
+          changes.push(`Run SQL: ${customOp.sql}`);
+        } else if (customOp.key) {
+          changes.push(
+            `Set setting: ${customOp.key}=${String(customOp.value)}`,
+          );
+        }
         break;
       }
     }

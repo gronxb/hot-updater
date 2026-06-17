@@ -33,7 +33,6 @@ catalogs:
     "@libsql/client": 0.15.15
     "@prisma/client": 6.19.3
     drizzle-orm: 0.45.2
-    fumadb: 0.2.2
     kysely: 0.28.17
     kysely-pglite-dialect: 1.2.0
     mongodb: 6.20.0

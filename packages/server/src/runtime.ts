@@ -1,12 +1,15 @@
 import type {
+  DatabasePlugin,
   HotUpdaterContext,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
 import { createPluginDatabaseCore } from "./db/pluginCore";
+import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
   type DatabaseAdapter,
+  type DatabaseAdapterCapabilities,
   type DatabaseAPI,
   isDatabasePlugin,
   isDatabasePluginFactory,
@@ -61,16 +64,25 @@ export function createHotUpdater<TContext = unknown>(
     );
   }
 
-  const plugin = isDatabasePluginFactory(database) ? database() : database;
+  const capabilities = database as DatabaseAdapterCapabilities;
+  const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
+    ? database()
+    : database;
+  const adapterName = capabilities.adapterName ?? plugin.name;
+  const assertSchemaReady = createSchemaReadinessChecker(
+    adapterName,
+    capabilities.createMigrator,
+  );
   const core = createPluginDatabaseCore<TContext>(
     () => plugin,
     resolveFileUrl,
     isDatabasePluginFactory(database)
       ? {
           createMutationPlugin: () => database(),
+          beforeOperation: assertSchemaReady,
           readStorageText,
         }
-      : { readStorageText },
+      : { beforeOperation: assertSchemaReady, readStorageText },
   );
 
   const internalHandler = createHandler(core.api, {
