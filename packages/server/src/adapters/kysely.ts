@@ -106,7 +106,7 @@ const toProviderBundleRow = (
   row: BundleRow,
   provider: ORMSQLProvider,
 ): BundleRow => {
-  if (provider !== "mysql") return row;
+  if (provider !== "mysql" && provider !== "sqlite") return row;
   return {
     ...row,
     metadata: JSON.stringify(row.metadata ?? {}),

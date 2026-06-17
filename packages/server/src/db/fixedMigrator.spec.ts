@@ -1,0 +1,56 @@
+import { PGlite } from "@electric-sql/pglite";
+import { Kysely } from "kysely";
+import { PGliteDialect } from "kysely-pglite-dialect";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createKyselyMigrator } from "./fixedMigrator";
+
+interface SettingsDatabase {
+  readonly private_hot_updater_settings: {
+    readonly key: string;
+    readonly value: string;
+  };
+}
+
+describe("createKyselyMigrator", () => {
+  const databases: PGlite[] = [];
+  const kyselyInstances: Kysely<SettingsDatabase>[] = [];
+
+  afterEach(async () => {
+    for (const kysely of kyselyInstances.splice(0)) {
+      await kysely.destroy();
+    }
+    for (const db of databases.splice(0)) {
+      await db.close();
+    }
+  });
+
+  it("includes the schema version row in fresh standalone SQL", async () => {
+    const db = new PGlite();
+    databases.push(db);
+    const kysely = new Kysely<SettingsDatabase>({
+      dialect: new PGliteDialect(db),
+    });
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "postgresql",
+    });
+
+    const migration = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: false,
+    });
+
+    expect(migration.getSQL?.()).toContain(
+      "insert into private_hot_updater_settings (key, value) values ('version', '0.31.0')",
+    );
+    expect(migration.operations).not.toContainEqual(
+      expect.objectContaining({
+        sql: expect.stringContaining(
+          "insert into private_hot_updater_settings",
+        ),
+      }),
+    );
+  });
+});

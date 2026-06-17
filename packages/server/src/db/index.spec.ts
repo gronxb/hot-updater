@@ -532,7 +532,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         expect(sql).toContain(
           "create index bundle_patches_bundle_id_idx on bundle_patches",
         );
-        expect(sql).not.toContain("insert into private_hot_updater_settings");
+        expect(sql).toContain("insert into private_hot_updater_settings");
+        expect(result.operations).not.toContainEqual(
+          expect.objectContaining({
+            sql: expect.stringContaining(
+              "insert into private_hot_updater_settings",
+            ),
+          }),
+        );
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();

@@ -123,11 +123,11 @@ export const createKyselyMigrator = ({
             type: "custom",
             sql: settingsStatement,
           } satisfies MigrationOperation);
-    const updateStatements =
+    const executableSettingsStatements =
       options.updateSettings === false ? [] : [settingsStatement];
     const statements =
       currentVersion === undefined
-        ? [...createTableSql(provider, relationMode), ...updateStatements]
+        ? [...createTableSql(provider, relationMode), settingsStatement]
         : [
             ...(currentVersion === "0.21.0"
               ? createV029AlterSql(provider)
@@ -135,7 +135,7 @@ export const createKyselyMigrator = ({
             ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
               ? createV031AlterSql(provider, relationMode)
               : []),
-            ...updateStatements,
+            ...executableSettingsStatements,
           ];
     const operations =
       currentVersion === undefined
