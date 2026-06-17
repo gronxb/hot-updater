@@ -1,24 +1,21 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "lib": [
-      "esnext"
-    ],
+    "lib": ["esnext"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "@hot-updater/server/runtime": [
-        "./packages/server/src/runtime.ts"
-      ]
+      "@hot-updater/core/dbSchemaArtifacts": [
+        "./packages/core/src/dbSchemaArtifacts.ts"
+      ],
+      "@hot-updater/server/runtime": ["./packages/server/src/runtime.ts"]
     },
     "rootDir": ".",
     "isolatedModules": true,
     "strict": true,
     "declaration": true,
     "noEmit": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "esModuleInterop": true,
     "skipLibCheck": true,
     "pretty": true

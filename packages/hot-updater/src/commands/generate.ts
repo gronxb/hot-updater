@@ -2,7 +2,7 @@ import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server";
+import type { Migrator, SchemaGenerator } from "@hot-updater/server";
 import {
   formatDialect,
   mysql as mysqlDialect,
@@ -15,6 +15,7 @@ import {
   validateMigratorSupport,
   validateSchemaGeneratorSupport,
 } from "./utils/adapter-strategies";
+import { resolveGeneratedSchemaOutputPath } from "./utils/generated-schema-artifact";
 import {
   type LoadHotUpdaterResult,
   loadHotUpdater,
@@ -223,13 +224,7 @@ async function generateWithMigrator(
  */
 async function generateWithSchemaGenerator(
   hotUpdater: {
-    generateSchema?: (
-      version: string | "latest",
-      name?: string,
-    ) => {
-      code: string;
-      path: string;
-    };
+    generateSchema?: SchemaGenerator;
     adapterName: string;
   },
   adapterName: string,
@@ -256,16 +251,21 @@ async function generateWithSchemaGenerator(
     return;
   }
 
-  // For other adapters (drizzle, typeorm), use the original logic
-  // Create output directory
-  await mkdir(absoluteOutputDir, { recursive: true });
+  const outputPath = resolveGeneratedSchemaOutputPath(
+    schemaResult,
+    absoluteOutputDir,
+  );
+  const outputDirectory = path.dirname(outputPath);
+  const filename = path.basename(outputPath);
+
+  await mkdir(outputDirectory, { recursive: true });
 
   try {
-    const files = await readdir(absoluteOutputDir);
+    const files = await readdir(outputDirectory);
     const schemaFiles = files.filter((file) => file.endsWith(".ts"));
 
     for (const file of schemaFiles) {
-      const filePath = path.join(absoluteOutputDir, file);
+      const filePath = path.join(outputDirectory, file);
       const existingContent = await readFile(filePath, "utf-8");
 
       if (existingContent === schemaCode) {
@@ -277,10 +277,6 @@ async function generateWithSchemaGenerator(
   } catch {
     // Directory doesn't exist yet or can't be read, continue with file creation
   }
-
-  // Use fixed filename for schema files
-  const filename = "hot-updater-schema.ts";
-  const outputPath = path.join(absoluteOutputDir, filename);
 
   // Confirm before writing schema file
   if (!skipConfirm) {

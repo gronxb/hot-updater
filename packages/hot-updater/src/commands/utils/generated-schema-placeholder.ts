@@ -1,7 +1,11 @@
+import { realpathSync } from "fs";
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import path from "path";
 
-const GENERATED_SCHEMA_BASENAME = "hot-updater-schema";
+import {
+  HOT_UPDATER_DB_SCHEMA_BASENAME,
+  HOT_UPDATER_DB_SCHEMA_FILENAME,
+} from "./generated-schema-artifact";
 
 const PLACEHOLDER_CONTENT = [
   "// Temporary placeholder for hot-updater db generate.",
@@ -24,18 +28,58 @@ const getRequireStack = (error: unknown): readonly string[] => {
   return maybeStack.filter((item): item is string => typeof item === "string");
 };
 
+const resolveExistingDirectory = (directory: string): string => {
+  try {
+    return realpathSync.native(directory);
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error) {
+      return path.resolve(directory);
+    }
+    throw error;
+  }
+};
+
 export const resolveGeneratedSchemaPlaceholderPath = (
   error: unknown,
+  cwd = process.cwd(),
 ): string | undefined => {
   const request = getMissingModuleRequest(error);
-  if (!request?.includes(GENERATED_SCHEMA_BASENAME)) return undefined;
-  if (!request.startsWith(".")) return undefined;
+  if (!request) return undefined;
+  if (!request.startsWith(".") && !path.isAbsolute(request)) {
+    return undefined;
+  }
 
   const [importer] = getRequireStack(error);
   if (!importer) return undefined;
 
-  const resolved = path.resolve(path.dirname(importer), request);
-  return path.extname(resolved) ? resolved : `${resolved}.ts`;
+  const extension = path.extname(request);
+  if (extension && extension !== ".ts") return undefined;
+
+  const requestedBasename = path.basename(request, extension);
+  if (requestedBasename !== HOT_UPDATER_DB_SCHEMA_BASENAME) {
+    return undefined;
+  }
+
+  const resolved = path.isAbsolute(request)
+    ? request
+    : path.resolve(path.dirname(importer), request);
+  const placeholderPath = extension
+    ? resolved
+    : path.join(path.dirname(resolved), HOT_UPDATER_DB_SCHEMA_FILENAME);
+  const projectRoot = resolveExistingDirectory(cwd);
+  const placeholderDirectory = resolveExistingDirectory(
+    path.dirname(placeholderPath),
+  );
+  const normalizedPlaceholderPath = path.join(
+    placeholderDirectory,
+    path.basename(placeholderPath),
+  );
+  const relativeToCwd = path.relative(projectRoot, normalizedPlaceholderPath);
+  if (relativeToCwd.startsWith("..") || path.isAbsolute(relativeToCwd)) {
+    return undefined;
+  }
+
+  return normalizedPlaceholderPath;
 };
 
 export const createGeneratedSchemaPlaceholder = async (

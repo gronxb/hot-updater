@@ -1,4 +1,5 @@
 import { NIL_UUID } from "@hot-updater/core";
+import { HOT_UPDATER_DB_SCHEMA_FILENAME } from "@hot-updater/core/dbSchemaArtifacts";
 import type {
   Bundle,
   DatabaseBundleQueryOptions,
@@ -370,7 +371,7 @@ export const drizzleAdapter = (
           ? hotUpdaterSchema
           : getHotUpdaterSchemaVersion(version),
       ),
-      path: "./db/hot_updater.ts",
+      path: HOT_UPDATER_DB_SCHEMA_FILENAME,
     }),
   });
 };

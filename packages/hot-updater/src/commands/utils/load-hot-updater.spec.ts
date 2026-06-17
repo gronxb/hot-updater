@@ -106,4 +106,49 @@ describe("loadHotUpdater", () => {
       await rm(projectDir, { recursive: true, force: true });
     }
   });
+
+  it("does not bootstrap non-contract schema-like missing imports", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-non-contract-schema-"),
+    );
+    const srcDir = path.join(projectDir, "src");
+    await mkdir(srcDir, { recursive: true });
+    await writeFile(
+      path.join(srcDir, "drizzle.ts"),
+      ['import "../custom-hot-updater-schema";'].join("\n"),
+      "utf-8",
+    );
+    await writeFile(
+      path.join(srcDir, "db.ts"),
+      [
+        'import "./drizzle";',
+        "export const hotUpdater = {",
+        '  adapterName: "drizzle",',
+        "};",
+      ].join("\n"),
+      "utf-8",
+    );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
+
+    try {
+      await expect(
+        loadHotUpdater("src/db.ts", {
+          cwd: projectDir,
+          allowGeneratedSchemaPlaceholder: true,
+        }),
+      ).rejects.toThrow("process.exit(1)");
+
+      await expect(
+        readFile(
+          path.join(projectDir, "custom-hot-updater-schema.ts"),
+          "utf-8",
+        ),
+      ).rejects.toThrow();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
 });

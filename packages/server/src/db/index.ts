@@ -23,6 +23,10 @@ import {
 } from "./types";
 
 export type { Migrator, SchemaGenerator } from "./types";
+export {
+  HOT_UPDATER_DB_SCHEMA_BASENAME,
+  HOT_UPDATER_DB_SCHEMA_FILENAME,
+} from "@hot-updater/core/dbSchemaArtifacts";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 

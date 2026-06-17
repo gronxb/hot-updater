@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "fs/promises";
+import { mkdtemp, readFile, rm, stat } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -117,6 +117,43 @@ describe("generate command", () => {
       expect(sql).toContain("CREATE TABLE IF NOT EXISTS bundles");
       expect(sql).toContain("`key` varchar(255) PRIMARY KEY");
       expect(sql).toContain("ON DUPLICATE KEY UPDATE");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes Drizzle schema generation to the adapter artifact path", async () => {
+    const outputDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-drizzle-schema-"),
+    );
+    const dispose = vi.fn();
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "drizzle",
+      dispose,
+      hotUpdater: {
+        adapterName: "drizzle",
+        generateSchema: vi.fn(() => ({
+          code: "export const bundles = {};",
+          path: "db/hot-updater-schema.ts",
+        })),
+      },
+    };
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+
+    try {
+      await generate({
+        configPath: "src/db.ts",
+        outputDir,
+        skipConfirm: true,
+      });
+
+      await expect(
+        readFile(path.join(outputDir, "db", "hot-updater-schema.ts"), "utf-8"),
+      ).resolves.toContain("export const bundles");
+      await expect(
+        stat(path.join(outputDir, "hot-updater-schema.ts")),
+      ).rejects.toThrow();
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

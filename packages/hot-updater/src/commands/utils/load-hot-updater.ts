@@ -128,7 +128,10 @@ export async function loadHotUpdater(
   } catch (importError) {
     const placeholderPath =
       options.allowGeneratedSchemaPlaceholder === true
-        ? resolveGeneratedSchemaPlaceholderPath(importError)
+        ? resolveGeneratedSchemaPlaceholderPath(
+            importError,
+            options.cwd ?? process.cwd(),
+          )
         : undefined;
 
     if (placeholderPath) {
