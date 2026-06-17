@@ -53,4 +53,37 @@ describe("createKyselyMigrator", () => {
       }),
     );
   });
+
+  it("rejects unknown schema versions before writing settings", async () => {
+    const db = new PGlite();
+    databases.push(db);
+    const kysely = new Kysely<SettingsDatabase>({
+      dialect: new PGliteDialect(db),
+    });
+    kyselyInstances.push(kysely);
+    await db.exec(`
+      create table private_hot_updater_settings (
+        key text primary key,
+        value text not null
+      );
+      insert into private_hot_updater_settings (key, value)
+      values ('version', '0.20.0');
+    `);
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "postgresql",
+    });
+
+    await expect(
+      migrator.migrateToLatest({
+        mode: "from-schema",
+        updateSettings: true,
+      }),
+    ).rejects.toThrow("Unsupported Hot Updater schema version: 0.20.0");
+
+    const version = await db.query<{ value: string }>(
+      "select value from private_hot_updater_settings where key = 'version'",
+    );
+    expect(version.rows[0]?.value).toBe("0.20.0");
+  });
 });

@@ -26,7 +26,9 @@ import type {
   RelationMode,
 } from "../db/types";
 
-export type { RelationMode, ORMSQLProvider as SQLProvider };
+type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
+
+export type { RelationMode, KyselySQLProvider as SQLProvider };
 
 interface Database {
   readonly bundles: BundleRow;
@@ -39,9 +41,17 @@ interface Database {
 
 export interface KyselyAdapterConfig<TDatabase extends object = Database> {
   readonly db: Kysely<TDatabase>;
-  readonly provider: ORMSQLProvider;
+  readonly provider: KyselySQLProvider;
   readonly relationMode?: RelationMode;
 }
+
+const assertKyselySQLProvider: (
+  provider: ORMSQLProvider,
+) => asserts provider is KyselySQLProvider = (provider) => {
+  if (provider === "mssql") {
+    throw new Error("Kysely adapter does not support provider: mssql.");
+  }
+};
 
 const applyWhere = <T extends object>(
   query: T,
@@ -104,7 +114,7 @@ const hasEmptySetFilter = (
 
 const toProviderBundleRow = (
   row: BundleRow,
-  provider: ORMSQLProvider,
+  provider: KyselySQLProvider,
 ): BundleRow => {
   if (provider !== "mysql" && provider !== "sqlite") return row;
   return {
@@ -327,6 +337,7 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabasePluginFactory => {
+  assertKyselySQLProvider(config.provider);
   return Object.assign(
     createKyselyPlugin(config as unknown as KyselyAdapterConfig<Database>),
     {

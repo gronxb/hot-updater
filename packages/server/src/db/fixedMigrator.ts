@@ -82,6 +82,20 @@ const toCustomOperations = (
   ...(settingsOperation ? [settingsOperation] : []),
 ];
 
+const assertSupportedSchemaVersion = (
+  currentVersion: string | undefined,
+): void => {
+  if (
+    currentVersion !== undefined &&
+    currentVersion !== "0.21.0" &&
+    currentVersion !== "0.29.0"
+  ) {
+    throw new Error(
+      `Unsupported Hot Updater schema version: ${currentVersion}`,
+    );
+  }
+};
+
 export const createKyselyMigrator = ({
   db,
   provider,
@@ -114,6 +128,7 @@ export const createKyselyMigrator = ({
     if (currentVersion === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
+    assertSupportedSchemaVersion(currentVersion);
 
     const settingsStatement = getSettingsInsertSql(provider);
     const settingsOperation =
@@ -151,12 +166,6 @@ export const createKyselyMigrator = ({
             ],
             settingsOperation,
           );
-
-    if (statements.length === 0) {
-      throw new Error(
-        `Unsupported Hot Updater schema version: ${currentVersion}`,
-      );
-    }
 
     return {
       operations,
