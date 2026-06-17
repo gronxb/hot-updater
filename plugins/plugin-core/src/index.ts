@@ -4,7 +4,6 @@ export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export * from "./createBlobDatabasePlugin";
 export * from "./createDatabasePlugin";
-export * from "./createDatabasePluginGetUpdateInfo";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./filterCompatibleAppVersions";

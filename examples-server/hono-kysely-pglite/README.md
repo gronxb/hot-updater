@@ -4,7 +4,7 @@ A production-ready Hot Updater server example using:
 - **Hono** - Fast web framework
 - **PGlite** - Lightweight PostgreSQL in Node.js (no server required)
 - **Kysely** - Type-safe SQL query builder
-- **FumaDB** - Database migration and ORM
+- **Hot Updater schema migrations** - Versioned schema setup through the CLI
 
 ## Features
 
@@ -97,7 +97,7 @@ GET /api/channels
 hono-server/
 ├── src/
 │   ├── index.ts      # Main server entry point
-│   ├── db.ts         # Database setup (PGlite + Kysely + FumaDB)
+│   ├── db.ts         # Database setup (PGlite + Kysely + Hot Updater schema)
 │   └── routes.ts     # API routes
 ├── data/             # PGlite database files (gitignored)
 ├── package.json
@@ -106,7 +106,9 @@ hono-server/
 
 ## Database
 
-The server uses PGlite with file-based storage at `./data/hot-updater.db`. The database schema is automatically created and migrated using FumaDB.
+The server uses PGlite with file-based storage at `./data/hot-updater.db`.
+The database schema is generated from Hot Updater's versioned schema and
+migrated through the Hot Updater CLI.
 
 On first run, the schema will be initialized automatically.
 

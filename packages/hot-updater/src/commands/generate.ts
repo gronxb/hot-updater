@@ -100,9 +100,17 @@ export async function generate(options: GenerateOptions) {
           s,
         );
         break;
+      case "mongodb":
+        s.stop("Generation not supported");
+        p.log.error(
+          "MongoDB does not support migration file generation. " +
+            "Use `hot-updater db migrate` to create collections and indexes.",
+        );
+        process.exit(1);
+        break;
       default:
         p.log.error(
-          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
+          `Unsupported adapter: ${adapterName}. Generation is not supported.`,
         );
         process.exit(1);
         break;

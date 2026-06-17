@@ -17,6 +17,8 @@ Valid profiles:
 - `standalone-s3`
 - `standalone-drizzle`
 - `standalone-prisma`
+- `standalone-kysely`
+- `standalone-mongodb`
 - `supabase`
 - `cloudflare`
 - `firebase`

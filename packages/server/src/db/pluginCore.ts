@@ -113,6 +113,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     cleanupMutationPlugin?: (
       plugin: DatabasePlugin<TContext>,
     ) => Promise<void> | void;
+    beforeOperation?: () => Promise<void>;
     readStorageText?: (
       storageUri: string,
       context?: HotUpdaterContext<TContext>,
@@ -124,16 +125,17 @@ export function createPluginDatabaseCore<TContext = unknown>(
   createMigrator: () => never;
   generateSchema: () => never;
 } {
+  const coreOptions = options;
   const runWithMutationPlugin = async <T>(
     operation: (plugin: DatabasePlugin<TContext>) => Promise<T>,
   ): Promise<T> => {
-    const plugin = options?.createMutationPlugin?.() ?? getPlugin();
+    const plugin = coreOptions?.createMutationPlugin?.() ?? getPlugin();
 
     try {
       return await operation(plugin);
     } finally {
-      if (options?.createMutationPlugin) {
-        await options.cleanupMutationPlugin?.(plugin);
+      if (coreOptions?.createMutationPlugin) {
+        await coreOptions.cleanupMutationPlugin?.(plugin);
       }
     }
   };
@@ -278,6 +280,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       id: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
+      await coreOptions?.beforeOperation?.();
       return getPlugin().getBundleById(id, context);
     },
 
@@ -285,6 +288,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
     ): Promise<UpdateInfo | null> {
+      await coreOptions?.beforeOperation?.();
       const plugin = getPlugin();
       const directGetUpdateInfo = plugin.getUpdateInfo;
       if (directGetUpdateInfo) {
@@ -350,7 +354,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       }
       const { storageUri, ...rest } = info;
 
-      const readStorageText = options?.readStorageText;
+      const readStorageText = coreOptions?.readStorageText;
       if (info.id === NIL_UUID || !readStorageText) {
         const fileUrl = await resolveFileUrl(storageUri ?? null, context);
         const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
@@ -400,10 +404,12 @@ export function createPluginDatabaseCore<TContext = unknown>(
     async getChannels(
       context?: HotUpdaterContext<TContext>,
     ): Promise<string[]> {
+      await coreOptions?.beforeOperation?.();
       return getPlugin().getChannels(context);
     },
 
     async getBundles(options, context?: HotUpdaterContext<TContext>) {
+      await coreOptions?.beforeOperation?.();
       return getPlugin().getBundles(options, context);
     },
 
@@ -411,6 +417,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      await coreOptions?.beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
         await plugin.appendBundle(bundle, context);
@@ -423,6 +430,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       newBundle: Partial<Bundle>,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
         const current = await plugin.getBundleById(bundleId, context);
         if (!current) {
@@ -438,6 +446,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       bundleId: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
+      await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
         const bundle = await plugin.getBundleById(bundleId, context);
         if (!bundle) {
@@ -454,12 +463,12 @@ export function createPluginDatabaseCore<TContext = unknown>(
     adapterName: getPlugin().name,
     createMigrator: () => {
       throw new Error(
-        "createMigrator is only available for Kysely/Prisma/Drizzle database adapters.",
+        "createMigrator is only available for Kysely/MongoDB database adapters.",
       );
     },
     generateSchema: () => {
       throw new Error(
-        "generateSchema is only available for Kysely/Prisma/Drizzle database adapters.",
+        "generateSchema is only available for Drizzle/Prisma database adapters.",
       );
     },
   };

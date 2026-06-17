@@ -10,34 +10,84 @@ import type {
   HotUpdaterContext,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { sqlProviders, type Provider, type SQLProvider } from "fumadb";
 
 import type { PaginatedResult } from "../types";
 
 export type DatabasePluginFactory<TContext = unknown> =
-  () => DatabasePlugin<TContext>;
+  (() => DatabasePlugin<TContext>) & Partial<DatabaseAdapterCapabilities>;
 
-export type ORMProvider = Provider;
-export type ORMSQLProvider = SQLProvider;
+export const sqlProviders = [
+  "sqlite",
+  "cockroachdb",
+  "mysql",
+  "postgresql",
+  "mssql",
+] as const;
 
-export interface ORMDatabaseAdapter {
-  name: string;
-  provider?: ORMProvider;
-  createORM(this: any, schema: any): unknown;
-  getSchemaVersion(this: any): Promise<string | undefined>;
-  generateSchema?: (
-    this: any,
-    schema: any,
-    schemaName: string,
-  ) => {
-    code: string;
-    path: string;
-  };
-  createMigrationEngine?: (this: any) => unknown;
+export const noSqlProviders = ["mongodb"] as const;
+export const providers = [...sqlProviders, ...noSqlProviders] as const;
+
+export type ORMProvider = (typeof providers)[number];
+export type ORMSQLProvider = (typeof sqlProviders)[number];
+export type RelationMode = "foreign-keys" | "fumadb";
+
+export interface MigrateOptions {
+  mode?: "from-schema" | "from-database";
+  updateSettings?: boolean;
+  unsafe?: boolean;
 }
 
+export type MigrationOperation =
+  | {
+      type: "create-table";
+      value: {
+        ormName: string;
+        columns: Record<string, { ormName: string; type: string }>;
+      };
+    }
+  | { type: "custom"; sql: string }
+  | { type: "custom"; key: string; value: unknown };
+
+export interface MigrationResult {
+  operations: MigrationOperation[];
+  execute: () => Promise<void>;
+  getSQL?: () => string;
+}
+
+export interface Migrator {
+  getVersion: () => Promise<string | undefined>;
+  getNameVariants: () => Promise<unknown>;
+  next: () => Promise<{ version: string } | undefined>;
+  previous: () => Promise<{ version: string } | undefined>;
+  up: (options?: MigrateOptions) => Promise<MigrationResult>;
+  down: (options?: MigrateOptions) => Promise<MigrationResult>;
+  migrateTo: (
+    version: string,
+    options?: MigrateOptions,
+  ) => Promise<MigrationResult>;
+  migrateToLatest: (options?: MigrateOptions) => Promise<MigrationResult>;
+}
+
+export type SchemaGenerator = (
+  version: string | "latest",
+  name?: string,
+) => {
+  code: string;
+  path: string;
+};
+
+export interface DatabaseAdapterCapabilities {
+  adapterName?: string;
+  provider?: ORMProvider;
+  createMigrator?: () => Migrator;
+  generateSchema?: SchemaGenerator;
+}
+
+export type DatabaseAdapterWithCapabilities<TContext = unknown> =
+  DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
+
 export type DatabaseAdapter<TContext = unknown> =
-  | ORMDatabaseAdapter
+  | DatabaseAdapterWithCapabilities<TContext>
   | DatabasePlugin<TContext>
   | DatabasePluginFactory<TContext>;
 
@@ -59,12 +109,6 @@ export function isDatabasePlugin<TContext = unknown>(
   );
 }
 
-export function isFumaAdapter<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is ORMDatabaseAdapter {
-  return !isDatabasePluginFactory(adapter) && !isDatabasePlugin(adapter);
-}
-
 export function getSQLProvider(
   provider: ORMProvider | undefined,
 ): ORMSQLProvider | undefined {
@@ -72,7 +116,7 @@ export function getSQLProvider(
     return undefined;
   }
 
-  return sqlProviders.includes(provider as ORMSQLProvider)
+  return (sqlProviders as readonly string[]).includes(provider)
     ? (provider as ORMSQLProvider)
     : undefined;
 }

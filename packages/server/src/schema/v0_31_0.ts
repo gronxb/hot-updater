@@ -1,58 +1,120 @@
-import { column, idColumn, schema, table } from "fumadb/schema";
+import {
+  bool,
+  check,
+  column,
+  foreignKey,
+  idColumn,
+  index,
+  integer,
+  json,
+  relation,
+  schema,
+  stringColumn,
+  table,
+  uuid,
+  varchar,
+} from "./dsl";
+import { createSettingsTable } from "./settings";
+import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
+
+export const bundlesV031 = table(
+  "bundles",
+  {
+    id: idColumn("id", "uuid"),
+    platform: stringColumn("platform"),
+    should_force_update: bool("should_force_update"),
+    enabled: bool("enabled"),
+    file_hash: stringColumn("file_hash"),
+    git_commit_hash: stringColumn("git_commit_hash").nullable(),
+    message: stringColumn("message").nullable(),
+    channel: stringColumn("channel").defaultTo("production"),
+    storage_uri: stringColumn("storage_uri"),
+    target_app_version: stringColumn("target_app_version").nullable(),
+    fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
+    metadata: json("metadata").defaultTo({}),
+    rollout_cohort_count: integer("rollout_cohort_count").defaultTo(1000),
+    target_cohorts: json("target_cohorts").nullable(),
+    manifest_storage_uri: stringColumn("manifest_storage_uri").nullable(),
+    manifest_file_hash: stringColumn("manifest_file_hash").nullable(),
+    asset_base_storage_uri: stringColumn("asset_base_storage_uri").nullable(),
+  },
+  {
+    indexes: [
+      index("bundles_target_app_version_idx", ["target_app_version"]),
+      index("bundles_fingerprint_hash_idx", ["fingerprint_hash"]),
+      index("bundles_channel_idx", ["channel"]),
+      index("bundles_platform_idx", ["platform"], ["mongodb"]),
+      index("bundles_rollout_idx", ["rollout_cohort_count"]),
+    ],
+    checks: [
+      check({
+        name: "check_version_or_fingerprint",
+        expression:
+          "(target_app_version is not null) or (fingerprint_hash is not null)",
+        sqliteInline: true,
+      }),
+      check({
+        name: "bundles_rollout_cohort_count_check",
+        expression:
+          "rollout_cohort_count >= 0 and rollout_cohort_count <= 1000",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const bundlePatchesV031 = table(
+  "bundle_patches",
+  {
+    id: idColumn("id", varchar(255)),
+    bundle_id: uuid("bundle_id"),
+    base_bundle_id: uuid("base_bundle_id"),
+    base_file_hash: column("base_file_hash", "string"),
+    patch_file_hash: column("patch_file_hash", "string"),
+    patch_storage_uri: column("patch_storage_uri", "string"),
+    order_index: integer("order_index").defaultTo(0),
+  },
+  {
+    indexes: [
+      index("bundle_patches_bundle_id_idx", ["bundle_id"]),
+      index("bundle_patches_base_bundle_id_idx", ["base_bundle_id"]),
+    ],
+    foreignKeys: [
+      foreignKey("bundle_patches_bundle_id_fk", ["bundle_id"], "bundles", [
+        "id",
+      ]),
+      foreignKey(
+        "bundle_patches_base_bundle_id_fk",
+        ["base_bundle_id"],
+        "bundles",
+        ["id"],
+      ),
+    ],
+    relations: [
+      relation({
+        name: "bundle",
+        fieldName: "patches",
+        targetFieldName: "bundle",
+        relationName: "bundle_patches_bundles_patches",
+        columns: ["bundle_id"],
+        referencedTable: "bundles",
+        referencedColumns: ["id"],
+      }),
+      relation({
+        name: "baseBundle",
+        fieldName: "baseForPatches",
+        targetFieldName: "baseBundle",
+        relationName: "bundle_patches_bundles_baseForPatches",
+        columns: ["base_bundle_id"],
+        referencedTable: "bundles",
+        referencedColumns: ["id"],
+      }),
+    ],
+  },
+);
 
 export const v0_31_0 = schema({
   version: "0.31.0",
-  tables: {
-    bundles: table("bundles", {
-      id: idColumn("id", "uuid"),
-      platform: column("platform", "string"),
-      should_force_update: column("should_force_update", "bool"),
-      enabled: column("enabled", "bool"),
-      file_hash: column("file_hash", "string"),
-      git_commit_hash: column("git_commit_hash", "string").nullable(),
-      message: column("message", "string").nullable(),
-      channel: column("channel", "string").defaultTo("production"),
-      storage_uri: column("storage_uri", "string"),
-      target_app_version: column("target_app_version", "string").nullable(),
-      fingerprint_hash: column("fingerprint_hash", "string").nullable(),
-      metadata: column("metadata", "json"),
-      manifest_storage_uri: column("manifest_storage_uri", "string").nullable(),
-      manifest_file_hash: column("manifest_file_hash", "string").nullable(),
-      asset_base_storage_uri: column(
-        "asset_base_storage_uri",
-        "string",
-      ).nullable(),
-      rollout_cohort_count: column("rollout_cohort_count", "integer").defaultTo(
-        1000,
-      ),
-      target_cohorts: column("target_cohorts", "json").nullable(),
-    }),
-    bundle_patches: table("bundle_patches", {
-      id: idColumn("id", "varchar(255)"),
-      bundle_id: column("bundle_id", "uuid"),
-      base_bundle_id: column("base_bundle_id", "uuid"),
-      base_file_hash: column("base_file_hash", "string"),
-      patch_file_hash: column("patch_file_hash", "string"),
-      patch_storage_uri: column("patch_storage_uri", "string"),
-      order_index: column("order_index", "integer").defaultTo(0),
-    }),
-  },
-  relations: {
-    bundle_patches: (builder) => ({
-      bundle: builder
-        .one("bundles", ["bundle_id", "id"])
-        .imply("patches")
-        .foreignKey({
-          name: "bundle_patches_bundle_id_fk",
-          onDelete: "CASCADE",
-        }),
-      baseBundle: builder
-        .one("bundles", ["base_bundle_id", "id"])
-        .imply("baseForPatches")
-        .foreignKey({
-          name: "bundle_patches_base_bundle_id_fk",
-          onDelete: "CASCADE",
-        }),
-    }),
-  },
+  settingsTable: HOT_UPDATER_SETTINGS_TABLE,
+  tables: [bundlesV031, bundlePatchesV031, createSettingsTable("0.31.0")],
 });
