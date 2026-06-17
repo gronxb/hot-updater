@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -142,6 +142,13 @@ describe("generate command", () => {
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
 
     try {
+      await mkdir(path.join(outputDir, "db"), { recursive: true });
+      await writeFile(
+        path.join(outputDir, "db", "hot-updater-schema.ts"),
+        "export const stale = true;",
+        "utf-8",
+      );
+
       await generate({
         configPath: "src/db.ts",
         outputDir,
@@ -150,7 +157,7 @@ describe("generate command", () => {
 
       await expect(
         readFile(path.join(outputDir, "db", "hot-updater-schema.ts"), "utf-8"),
-      ).resolves.toContain("export const bundles");
+      ).resolves.toBe("export const bundles = {};");
       await expect(
         stat(path.join(outputDir, "hot-updater-schema.ts")),
       ).rejects.toThrow();

@@ -260,24 +260,6 @@ async function generateWithSchemaGenerator(
 
   await mkdir(outputDirectory, { recursive: true });
 
-  try {
-    const files = await readdir(outputDirectory);
-    const schemaFiles = files.filter((file) => file.endsWith(".ts"));
-
-    for (const file of schemaFiles) {
-      const filePath = path.join(outputDirectory, file);
-      const existingContent = await readFile(filePath, "utf-8");
-
-      if (existingContent === schemaCode) {
-        p.log.warn(`Identical schema already exists: ${file}`);
-        p.outro("Done");
-        return;
-      }
-    }
-  } catch {
-    // Directory doesn't exist yet or can't be read, continue with file creation
-  }
-
   // Confirm before writing schema file
   if (!skipConfirm) {
     const shouldContinue = await p.confirm({
