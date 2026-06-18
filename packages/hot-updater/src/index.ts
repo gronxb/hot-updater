@@ -79,7 +79,22 @@ program
   .description(banner(version))
   .version(version as string);
 
-program.command("init").description("Initialize Hot Updater").action(init);
+program
+  .command("init")
+  .description("Initialize Hot Updater")
+  .addOption(
+    new Option(
+      "--provider <provider>",
+      "provider to use; skips the prompt",
+    ).choices(["cloudflare", "aws", "supabase", "firebase"]),
+  )
+  .addOption(
+    new Option(
+      "--build <plugin>",
+      "build plugin to use; skips the prompt",
+    ).choices(["bare", "rock", "expo"]),
+  )
+  .action((options) => init(options));
 
 program
   .command("doctor")
