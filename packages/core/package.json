@@ -12,10 +12,6 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
-    "./dbSchemaArtifacts": {
-      "import": "./dist/dbSchemaArtifacts.mjs",
-      "require": "./dist/dbSchemaArtifacts.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

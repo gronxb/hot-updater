@@ -1,2 +1,0 @@
-export const HOT_UPDATER_DB_SCHEMA_BASENAME = "hot-updater-schema";
-export const HOT_UPDATER_DB_SCHEMA_FILENAME = `${HOT_UPDATER_DB_SCHEMA_BASENAME}.ts`;

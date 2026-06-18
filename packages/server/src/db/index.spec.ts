@@ -1,7 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { HOT_UPDATER_DB_SCHEMA_FILENAME } from "@hot-updater/core/dbSchemaArtifacts";
 import type {
   RuntimeStoragePlugin,
   StorageResolveContext,
@@ -329,14 +328,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     }),
   });
 
-  it("uses the canonical generated schema artifact path for Drizzle", () => {
+  it("uses the default generated schema artifact path for Drizzle", () => {
     const adapter = drizzleAdapter({
       db: { _: { fullSchema: {} } },
       provider: "sqlite",
     });
 
     expect(adapter.generateSchema?.("latest").path).toBe(
-      HOT_UPDATER_DB_SCHEMA_FILENAME,
+      "hot-updater-schema.ts",
     );
   });
 

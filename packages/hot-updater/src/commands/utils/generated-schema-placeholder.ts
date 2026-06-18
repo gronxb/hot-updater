@@ -2,11 +2,6 @@ import { realpathSync } from "fs";
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import path from "path";
 
-import {
-  HOT_UPDATER_DB_SCHEMA_BASENAME,
-  HOT_UPDATER_DB_SCHEMA_FILENAME,
-} from "./generated-schema-artifact";
-
 const PLACEHOLDER_CONTENT = [
   "// Temporary placeholder for hot-updater db generate.",
   "// It is removed automatically unless generation overwrites it.",
@@ -55,17 +50,12 @@ export const resolveGeneratedSchemaPlaceholderPath = (
   const extension = path.extname(request);
   if (extension && extension !== ".ts") return undefined;
 
-  const requestedBasename = path.basename(request, extension);
-  if (requestedBasename !== HOT_UPDATER_DB_SCHEMA_BASENAME) {
-    return undefined;
-  }
-
   const resolved = path.isAbsolute(request)
     ? request
     : path.resolve(path.dirname(importer), request);
   const placeholderPath = extension
     ? resolved
-    : path.join(path.dirname(resolved), HOT_UPDATER_DB_SCHEMA_FILENAME);
+    : `${resolved}.ts`;
   const projectRoot = resolveExistingDirectory(cwd);
   const placeholderDirectory = resolveExistingDirectory(
     path.dirname(placeholderPath),

@@ -107,9 +107,9 @@ describe("loadHotUpdater", () => {
     }
   });
 
-  it("does not bootstrap non-contract schema-like missing imports", async () => {
+  it("bootstraps a custom generated schema import when allowed", async () => {
     const projectDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-non-contract-schema-"),
+      path.join(tmpdir(), "hot-updater-custom-schema-"),
     );
     const srcDir = path.join(projectDir, "src");
     await mkdir(srcDir, { recursive: true });
@@ -128,25 +128,25 @@ describe("loadHotUpdater", () => {
       ].join("\n"),
       "utf-8",
     );
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
 
     try {
-      await expect(
-        loadHotUpdater("src/db.ts", {
-          cwd: projectDir,
-          allowGeneratedSchemaPlaceholder: true,
-        }),
-      ).rejects.toThrow("process.exit(1)");
+      const loaded = await loadHotUpdater("src/db.ts", {
+        cwd: projectDir,
+        allowGeneratedSchemaPlaceholder: true,
+      });
+      expect(loaded.adapterName).toBe("drizzle");
 
-      await expect(
-        readFile(
-          path.join(projectDir, "custom-hot-updater-schema.ts"),
-          "utf-8",
-        ),
-      ).rejects.toThrow();
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      const placeholderPath = path.join(
+        projectDir,
+        "custom-hot-updater-schema.ts",
+      );
+      expect(await readFile(placeholderPath, "utf-8")).toContain(
+        "Temporary placeholder",
+      );
+
+      await loaded.dispose();
+
+      await expect(readFile(placeholderPath, "utf-8")).rejects.toThrow();
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }

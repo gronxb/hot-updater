@@ -1,5 +1,3 @@
-import { fileURLToPath } from "node:url";
-
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
@@ -23,23 +21,14 @@ const integrationInclude = [
   "plugins/**/*.integration.spec.ts",
   "examples-server/**/*.integration.spec.ts",
 ];
-const sourceAliases = {
-  "@hot-updater/core/dbSchemaArtifacts": fileURLToPath(
-    new URL("./packages/core/src/dbSchemaArtifacts.ts", import.meta.url),
-  ),
-};
 
 export default defineConfig({
   resolve: {
-    alias: sourceAliases,
     tsconfigPaths: true,
   },
   test: {
     projects: [
       defineProject({
-        resolve: {
-          alias: sourceAliases,
-        },
         test: {
           name: "unit:default",
           include: unitInclude,
@@ -55,9 +44,6 @@ export default defineConfig({
         },
       }),
       defineProject({
-        resolve: {
-          alias: sourceAliases,
-        },
         test: {
           name: "unit:e2e",
           include: e2eUnitInclude,
@@ -68,9 +54,6 @@ export default defineConfig({
         },
       }),
       defineProject({
-        resolve: {
-          alias: sourceAliases,
-        },
         test: {
           name: "unit:console",
           environment: "jsdom",
@@ -82,9 +65,6 @@ export default defineConfig({
         },
       }),
       defineProject({
-        resolve: {
-          alias: sourceAliases,
-        },
         test: {
           name: "integration:default",
           environment: "node",
@@ -104,9 +84,6 @@ export default defineConfig({
         },
       }),
       defineProject({
-        resolve: {
-          alias: sourceAliases,
-        },
         plugins: [
           cloudflareTest({
             wrangler: {
