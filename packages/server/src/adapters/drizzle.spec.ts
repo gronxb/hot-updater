@@ -56,4 +56,20 @@ describe("drizzleAdapter", () => {
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
     expect(getDb).toHaveBeenCalledOnce();
   });
+
+  it("requires schema for lazy runtime database configs", async () => {
+    const getDb = vi.fn(() => {
+      throw new Error("runtime database should not be opened");
+    });
+
+    const plugin = drizzleAdapter({
+      db: getDb,
+      provider: "postgresql",
+    })();
+
+    await expect(plugin.getChannels()).rejects.toThrow(
+      "[hot-updater] Drizzle adapter requires schema when db is lazy.",
+    );
+    expect(getDb).not.toHaveBeenCalled();
+  });
 });
