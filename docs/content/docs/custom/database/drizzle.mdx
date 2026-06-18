@@ -54,6 +54,18 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+For drivers that should not open a database while the CLI is only reading
+configuration, pass a lazy database factory and the generated Drizzle schema:
+
+```typescript title="src/hotUpdater.ts"
+import * as schema from "../hot-updater-schema";
+
+export const hotUpdater = createHotUpdater({
+  database: drizzleAdapter({ db: getDb, provider: "postgresql", schema }),
+  storages: [/* ... */],
+});
+```
+
 ## Schema Generation
 
 Generate the Drizzle schema for Hot Updater tables.
@@ -63,6 +75,15 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
 This command targets the `src/hotUpdater.ts` file and adds the necessary table definitions.
+Apply the generated schema with Drizzle's migration tooling:
+
+```bash
+npx drizzle-kit push
+```
+
+Hot Updater does not run Drizzle migrations directly. If you run
+`hot-updater db migrate` with a Drizzle adapter, the CLI will ask you to use
+`drizzle-kit`.
 
 <Callout>
 Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.

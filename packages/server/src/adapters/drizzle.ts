@@ -43,62 +43,17 @@ import type {
   ORMSQLProvider,
   SchemaGenerator,
 } from "../db/types";
+import {
+  createLazyDb,
+  type DrizzleDb,
+  type DrizzleTable,
+} from "./drizzleLazyDb";
 
 export interface DrizzleConfig {
-  readonly db: unknown;
+  readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: Exclude<ORMProvider, "cockroachdb" | "mongodb" | "mssql">;
+  readonly schema?: Record<string, unknown>;
 }
-
-type DrizzleTable = Record<string, unknown>;
-type DrizzleDb = {
-  readonly _: { readonly fullSchema: Record<string, DrizzleTable> };
-  readonly $count: (table: DrizzleTable, where?: unknown) => Promise<number>;
-  readonly delete: (table: DrizzleTable) => {
-    where: (condition: unknown) => Promise<unknown>;
-  };
-  readonly insert: (table: DrizzleTable) => {
-    values: (value: unknown) => {
-      onConflictDoUpdate?: (args: unknown) => Promise<unknown>;
-      onDuplicateKeyUpdate?: (args: unknown) => Promise<unknown>;
-      execute?: () => Promise<unknown>;
-    };
-  };
-  readonly query: Record<
-    string,
-    {
-      findFirst: (
-        args?: unknown,
-      ) => Promise<Record<string, unknown> | undefined>;
-      findMany: (args?: unknown) => Promise<Record<string, unknown>[]>;
-    }
-  >;
-  readonly select: (fields?: unknown) => {
-    from: (table: DrizzleTable) => {
-      where?: (condition: unknown) => unknown;
-      orderBy?: (order: unknown) => unknown;
-      limit?: (limit: number) => unknown;
-      offset?: (offset: number) => Promise<Record<string, unknown>[]>;
-    };
-  };
-  readonly update: (table: DrizzleTable) => {
-    set: (values: unknown) => {
-      where: (condition: unknown) => Promise<unknown>;
-    };
-  };
-  readonly transaction?: <T>(
-    operation: (tx: DrizzleDb) => Promise<T>,
-  ) => Promise<T>;
-};
-
-const asDb = (db: unknown): DrizzleDb => {
-  const typed = db as DrizzleDb;
-  if (!typed._?.fullSchema) {
-    throw new Error(
-      "[hot-updater] Drizzle adapter requires query mode with schema.",
-    );
-  }
-  return typed;
-};
 
 const getTable = (db: DrizzleDb, name: string) => {
   const table = db._.fullSchema[name];
@@ -154,7 +109,7 @@ const buildWhere = (
 const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
   name: "drizzle",
   factory: (config) => {
-    const db = asDb(config.db);
+    const db = createLazyDb(config);
     const bundles = getTable(db, "bundles");
     const patches = getTable(db, "bundle_patches");
     const runInTransaction = async <T>(

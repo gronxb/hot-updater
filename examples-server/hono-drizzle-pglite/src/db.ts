@@ -3,13 +3,14 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 
-import { client, db } from "./drizzle";
+import { closeClient, getDb, schema } from "./drizzle";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({
-    db,
+    db: getDb,
     provider: "postgresql",
+    schema,
   }),
   storages: [
     mockStorage({}),
@@ -32,5 +33,5 @@ export const hotUpdater = createHotUpdater({
 
 // Cleanup function for graceful shutdown
 export async function closeDatabase() {
-  await client.close();
+  await closeClient();
 }
