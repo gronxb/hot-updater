@@ -53,9 +53,7 @@ export const resolveGeneratedSchemaPlaceholderPath = (
   const resolved = path.isAbsolute(request)
     ? request
     : path.resolve(path.dirname(importer), request);
-  const placeholderPath = extension
-    ? resolved
-    : `${resolved}.ts`;
+  const placeholderPath = extension ? resolved : `${resolved}.ts`;
   const projectRoot = resolveExistingDirectory(cwd);
   const placeholderDirectory = resolveExistingDirectory(
     path.dirname(placeholderPath),
