@@ -95,7 +95,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-vi.mock("@hot-updater/server", () => ({
+vi.mock("@hot-updater/server/capabilities", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 

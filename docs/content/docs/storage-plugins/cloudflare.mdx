@@ -104,7 +104,7 @@ Cloudflare Workers should use the Worker runtime export instead:
 
 ```typescript
 import { r2Storage } from "@hot-updater/cloudflare/worker";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   storages: [

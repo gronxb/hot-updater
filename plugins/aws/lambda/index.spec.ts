@@ -26,10 +26,10 @@ vi.mock("../src/withCloudFrontSignedUrl", () => ({
   ),
 }));
 
-vi.mock("@hot-updater/server/runtime", async () => {
-  const actual = await vi.importActual<
-    typeof import("@hot-updater/server/runtime")
-  >("@hot-updater/server/runtime");
+vi.mock("@hot-updater/server", async () => {
+  const actual = await vi.importActual<typeof import("@hot-updater/server")>(
+    "@hot-updater/server",
+  );
 
   return {
     ...actual,

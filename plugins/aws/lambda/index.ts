@@ -1,4 +1,4 @@
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";

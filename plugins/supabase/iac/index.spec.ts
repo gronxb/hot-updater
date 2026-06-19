@@ -45,8 +45,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
-        "@hot-updater/server/runtime":
-          "./_hot-updater/hot-updater-server/dist/runtime.mjs",
+        "@hot-updater/server":
+          "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/supabase":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
@@ -74,7 +74,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         fs.readFile(
           path.join(
             targetDir,
-            "_hot-updater/hot-updater-server/dist/runtime.mjs",
+            "_hot-updater/hot-updater-server/dist/index.mjs",
           ),
           "utf8",
         ),

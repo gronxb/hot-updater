@@ -10,7 +10,7 @@ import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
-import { createHotUpdater } from "./runtime";
+import { createHotUpdater } from "./index";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const bundle: Bundle = {
@@ -97,6 +97,44 @@ const createSchemaManagedDatabase = (
 });
 
 describe("runtime createHotUpdater", () => {
+  it("exports the root runtime API without database capabilities", () => {
+    const database: DatabasePlugin<TestContext> = {
+      name: "testDatabase",
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      },
+      async getChannels() {
+        return [];
+      },
+      async updateBundle() {},
+    };
+
+    const hotUpdater = createHotUpdater({ database });
+
+    expect(hotUpdater.basePath).toBe("/api");
+    expect(hotUpdater.adapterName).toBe("testDatabase");
+    expect(hotUpdater.handler).toEqual(expect.any(Function));
+    expect("createMigrator" in hotUpdater).toBe(false);
+    expect("generateSchema" in hotUpdater).toBe(false);
+    expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
+    expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
+  });
+
   it("requires storages to implement the runtime profile", () => {
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",

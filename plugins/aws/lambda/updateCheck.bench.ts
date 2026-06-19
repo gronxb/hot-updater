@@ -1,6 +1,6 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import { bench, describe } from "vitest";
 
 const BASE_PATH = "/api/check-update";

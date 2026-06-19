@@ -2,7 +2,10 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator, SchemaGenerator } from "@hot-updater/server";
+import type {
+  Migrator,
+  SchemaGenerator,
+} from "@hot-updater/server/capabilities";
 import {
   formatDialect,
   mysql as mysqlDialect,

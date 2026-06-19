@@ -1,5 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   supabaseEdgeFunctionDatabase,
   supabaseEdgeFunctionStorage,

@@ -35,7 +35,7 @@ export const prisma = new PrismaClient();
 Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server/capabilities";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";

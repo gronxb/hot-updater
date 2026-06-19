@@ -17,7 +17,7 @@ import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,

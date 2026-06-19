@@ -1,5 +1,8 @@
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator, SchemaGenerator } from "@hot-updater/server";
+import type {
+  Migrator,
+  SchemaGenerator,
+} from "@hot-updater/server/capabilities";
 
 import type { HotUpdaterInstance } from "./load-hot-updater";
 

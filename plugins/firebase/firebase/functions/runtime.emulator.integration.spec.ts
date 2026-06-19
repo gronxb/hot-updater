@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,

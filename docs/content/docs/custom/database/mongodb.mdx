@@ -31,7 +31,7 @@ await client.connect();
 Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server";
+import { createHotUpdater } from "@hot-updater/server/capabilities";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";

@@ -45,6 +45,7 @@ describe("loadHotUpdater", () => {
         'import "./drizzle";',
         "export const hotUpdater = {",
         '  adapterName: "drizzle",',
+        "  generateSchema: () => ({ code: '', path: 'hot-updater-schema.ts' }),",
         "};",
       ].join("\n"),
       "utf-8",
@@ -124,6 +125,7 @@ describe("loadHotUpdater", () => {
         'import "./drizzle";',
         "export const hotUpdater = {",
         '  adapterName: "drizzle",',
+        "  generateSchema: () => ({ code: '', path: 'custom-hot-updater-schema.ts' }),",
         "};",
       ].join("\n"),
       "utf-8",
@@ -147,6 +149,35 @@ describe("loadHotUpdater", () => {
       await loaded.dispose();
 
       await expect(readFile(placeholderPath, "utf-8")).rejects.toThrow();
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects runtime-only configs for database capability commands", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-runtime-only-config-"),
+    );
+    await writeFile(
+      path.join(projectDir, "hot-updater.config.ts"),
+      ["export const hotUpdater = {", '  adapterName: "kysely",', "};"].join(
+        "\n",
+      ),
+      "utf-8",
+    );
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
+
+    try {
+      await expect(loadHotUpdater("", { cwd: projectDir })).rejects.toThrow(
+        "process.exit(1)",
+      );
+
+      expect(mockCli.log.error).toHaveBeenCalledWith(
+        expect.stringContaining("@hot-updater/server/capabilities"),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }

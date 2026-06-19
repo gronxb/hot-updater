@@ -1,4 +1,9 @@
-export * from "./db";
-export * from "./handler";
+export { createHandler } from "./handler";
+export { createHotUpdater } from "./runtime";
+export type {
+  CreateHotUpdaterOptions,
+  HotUpdaterAPI,
+  RuntimeHotUpdaterAPI,
+} from "./runtime";
 export * from "./types";
-export * from "./version";
+export { HOT_UPDATER_SERVER_VERSION } from "./version";
