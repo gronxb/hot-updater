@@ -119,6 +119,8 @@ project_id = "%%projectId%%"
 [db.seed]
 enabled = false
 `;
+const SUPABASE_DATABASE_CONNECTION_ERROR =
+  "Supabase database connection failed. Check your database password and project access.";
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -538,7 +540,7 @@ export const selectBucket = async (
   return JSON.parse(selectedBucketId);
 };
 
-const linkSupabase = async (
+export const linkSupabase = async (
   workdir: string,
   { projectId, dbPassword }: { projectId: string; dbPassword?: string },
 ) => {
@@ -558,17 +560,10 @@ const linkSupabase = async (
     // Link with password
     await execa(
       "npx",
-      [
-        "supabase",
-        "link",
-        "--project-ref",
-        projectId,
-        "--workdir",
-        workdir,
-        dbPassword ? ["--password", dbPassword] : [],
-      ].flat(),
+      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
       {
         cwd: workdir,
+        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -576,7 +571,9 @@ const linkSupabase = async (
     spinner.stop("Supabase linked ✔");
   } catch (err) {
     spinner.stop();
-    if (err instanceof ExecaError && err.stderr) {
+    if (err instanceof ExecaError && dbPassword) {
+      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
+    } else if (err instanceof ExecaError && err.stderr) {
       p.log.error(err.stderr);
     } else {
       console.error(err);
@@ -585,30 +582,26 @@ const linkSupabase = async (
   }
 };
 
-const pushDB = async (
+export const pushDB = async (
   workdir: string,
   { dbPassword }: { dbPassword?: string },
 ) => {
   try {
     const dbPush = await execa(
       "npx",
-      [
-        "supabase",
-        "db",
-        "push",
-        "--include-all",
-        dbPassword ? ["--password", dbPassword] : [],
-      ].flat(),
+      ["supabase", "db", "push", "--include-all"],
       {
         cwd: workdir,
-        stdio: "inherit",
-        shell: true,
+        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
+        stdio: ["pipe", "pipe", "pipe"],
       },
     );
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
   } catch (err) {
-    if (err instanceof ExecaError && err.stderr) {
+    if (err instanceof ExecaError && dbPassword) {
+      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
+    } else if (err instanceof ExecaError && err.stderr) {
       p.log.error(err.stderr);
     } else {
       console.error(err);
