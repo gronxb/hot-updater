@@ -39,10 +39,9 @@ vi.mock("execa", async (importOriginal) => {
 
 import {
   getLegacySupabaseConfigReference,
-  linkSupabase,
-  pushDB,
   resolveEdgeFunctionDenoConfig,
 } from "./index";
+import { linkSupabase, pushDB } from "./supabaseCli";
 
 const createExecaError = async (
   command: readonly string[],
@@ -227,6 +226,34 @@ describe("Supabase database password failures", () => {
         stdout: "inherit",
       }),
     );
+  });
+
+  it.each([
+    [
+      "postgres auth SQLSTATE",
+      "FATAL: password authentication failed (SQLSTATE 28P01)",
+    ],
+    ["Supabase SCRAM auth failure", "invalid SCRAM server-final-message"],
+  ])("prints a sanitized auth message for %s", async (_name, stderr) => {
+    // Given
+    const secret = "!Uh3cfmde";
+    const error = await createExecaError(
+      ["node", "-e", "process.exit(1)", "--password", secret],
+      stderr,
+    );
+    mockExeca.mockRejectedValue(error);
+    expectExit();
+
+    // When
+    await expect(
+      pushDB("/tmp/hot-updater-supabase-push", { dbPassword: secret }),
+    ).rejects.toThrow("process.exit(1)");
+
+    // Then
+    const output = collectUserFacingErrorOutput().join("\n");
+    expect(output).toContain("Supabase database connection failed");
+    expect(output).not.toContain(secret);
+    expect(output).not.toContain("--password");
   });
 
   it("does not replace Supabase db push non-auth failures with the auth message", async () => {

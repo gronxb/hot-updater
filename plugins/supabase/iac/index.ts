@@ -21,6 +21,7 @@ import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+import { linkSupabase, pushDB } from "./supabaseCli";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -112,46 +113,6 @@ export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
-
-const SUPABASE_CONFIG_TEMPLATE = `
-project_id = "%%projectId%%"
-
-[db.seed]
-enabled = false
-`;
-const SUPABASE_DATABASE_CONNECTION_ERROR =
-  "Supabase database connection failed. Check your database password and project access.";
-const SUPABASE_DATABASE_AUTH_ERROR_PATTERN =
-  /failed SASL auth|password authentication failed/i;
-
-const isSupabaseDatabaseAuthError = (err: ExecaError) =>
-  typeof err.stderr === "string" &&
-  SUPABASE_DATABASE_AUTH_ERROR_PATTERN.test(err.stderr);
-
-const handleSupabaseDatabaseCommandError = (
-  err: unknown,
-  {
-    dbPassword,
-    stderrInherited = false,
-  }: {
-    dbPassword?: string;
-    stderrInherited?: boolean;
-  },
-) => {
-  if (err instanceof ExecaError) {
-    if (dbPassword && isSupabaseDatabaseAuthError(err)) {
-      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
-    } else if (!stderrInherited && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-  } else {
-    console.error(err);
-  }
-
-  process.exit(1);
-};
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -569,67 +530,6 @@ export const selectBucket = async (
   }
 
   return JSON.parse(selectedBucketId);
-};
-
-export const linkSupabase = async (
-  workdir: string,
-  { projectId, dbPassword }: { projectId: string; dbPassword?: string },
-) => {
-  const spinner = p.spinner();
-
-  try {
-    // Write the config.toml with correct projectId
-    await fs.writeFile(
-      path.join(workdir, "supabase", "config.toml"),
-      transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
-        projectId,
-      }),
-    );
-
-    spinner.start("Linking Supabase...");
-
-    // Link with password
-    await execa(
-      "npx",
-      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
-      {
-        cwd: workdir,
-        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
-        input: "",
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    spinner.stop("Supabase linked ✔");
-  } catch (err) {
-    spinner.stop();
-    handleSupabaseDatabaseCommandError(err, { dbPassword });
-  }
-};
-
-export const pushDB = async (
-  workdir: string,
-  { dbPassword }: { dbPassword?: string },
-) => {
-  try {
-    const dbPush = await execa(
-      "npx",
-      ["supabase", "db", "push", "--include-all"],
-      {
-        cwd: workdir,
-        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
-        stderr: ["pipe", "inherit"],
-        stdin: "inherit",
-        stdout: "inherit",
-      },
-    );
-    p.log.success("DB pushed ✔");
-    return dbPush.stdout;
-  } catch (err) {
-    handleSupabaseDatabaseCommandError(err, {
-      dbPassword,
-      stderrInherited: true,
-    });
-  }
 };
 
 const deployEdgeFunction = async (workdir: string, projectId: string) => {
