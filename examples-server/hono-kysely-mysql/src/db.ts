@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { createHotUpdater } from "@hot-updater/server/capabilities";
+import { createHotUpdater } from "@hot-updater/server/node";
 import { config } from "dotenv";
 import { Kysely, MysqlDialect } from "kysely";
 import { createPool } from "mysql2";

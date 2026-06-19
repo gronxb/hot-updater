@@ -1,5 +1,5 @@
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server/capabilities";
+import type { Migrator } from "@hot-updater/server/node";
 
 import { ui } from "../utils/cli-ui";
 import {

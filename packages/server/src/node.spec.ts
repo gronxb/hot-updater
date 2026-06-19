@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { createHotUpdater } from "./capabilities";
 import type { DatabasePluginFactory, ORMProvider } from "./db/types";
+import { createHotUpdater } from "./node";
 
 const createSchemaOnlyAdapter = ({
   code,
@@ -50,8 +50,8 @@ const createSchemaOnlyAdapter = ({
   return factory;
 };
 
-describe("server capabilities", () => {
-  it("exposes database capabilities through the capabilities subpath", () => {
+describe("server node entry", () => {
+  it("exposes database maintenance APIs through the node subpath", () => {
     const hotUpdater = createHotUpdater({
       database: createSchemaOnlyAdapter({
         code: "export const bundles = {};",

@@ -20,7 +20,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/capabilities";
+import { createBundleDiff } from "@hot-updater/server/node";
 import isPortReachable from "is-port-reachable";
 import open from "open";
 import semverIntersects from "semver/ranges/intersects";

@@ -1,6 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
-import { createBundleDiff } from "@hot-updater/server/capabilities";
+import { createBundleDiff } from "@hot-updater/server/node";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { printBanner } from "@/utils/printBanner";

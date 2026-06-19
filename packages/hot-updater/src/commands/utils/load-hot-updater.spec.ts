@@ -175,7 +175,7 @@ describe("loadHotUpdater", () => {
       );
 
       expect(mockCli.log.error).toHaveBeenCalledWith(
-        expect.stringContaining("@hot-updater/server/capabilities"),
+        expect.stringContaining("@hot-updater/server/node"),
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {

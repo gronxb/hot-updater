@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { createHotUpdater } from "@hot-updater/server/capabilities";
+import { createHotUpdater } from "@hot-updater/server/node";
 import { config } from "dotenv";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";

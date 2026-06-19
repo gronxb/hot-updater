@@ -2,7 +2,7 @@ import path from "path";
 
 import { s3Database, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
-import { createHotUpdater } from "@hot-updater/server/capabilities";
+import { createHotUpdater } from "@hot-updater/server/node";
 import { config } from "dotenv";
 
 // Load optional .env.hotupdater file for local development

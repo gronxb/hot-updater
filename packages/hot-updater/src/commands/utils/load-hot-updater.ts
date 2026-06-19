@@ -2,10 +2,7 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type {
-  Migrator,
-  SchemaGenerator,
-} from "@hot-updater/server/capabilities";
+import type { Migrator, SchemaGenerator } from "@hot-updater/server/node";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -168,7 +165,7 @@ export async function loadHotUpdater(
     p.log.error(
       'Could not find "hotUpdater" export in the config file.\n\n' +
         "Your config file should export a hotUpdater instance:\n\n" +
-        "  import { createHotUpdater } from '@hot-updater/server/capabilities';\n" +
+        "  import { createHotUpdater } from '@hot-updater/server/node';\n" +
         "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
         "  export const hotUpdater = createHotUpdater({\n" +
         "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
@@ -188,7 +185,7 @@ export async function loadHotUpdater(
   ) {
     p.log.error(
       "The hotUpdater instance is not valid. " +
-        "Please ensure you're using @hot-updater/server/capabilities' createHotUpdater().",
+        "Please ensure you're using @hot-updater/server/node's createHotUpdater().",
     );
     await exitAfterPlaceholderCleanup();
     throw new Error("The hotUpdater instance is not valid.");
@@ -209,13 +206,11 @@ export async function loadHotUpdater(
   ) {
     p.log.error(
       "The hotUpdater config uses the runtime-only server API.\n\n" +
-        "Database generate and migrate commands require capabilities:\n\n" +
-        "  import { createHotUpdater } from '@hot-updater/server/capabilities';",
+        "Database generate and migrate commands require the Node-only server API:\n\n" +
+        "  import { createHotUpdater } from '@hot-updater/server/node';",
     );
     await exitAfterPlaceholderCleanup();
-    throw new Error(
-      "The hotUpdater config must use @hot-updater/server/capabilities.",
-    );
+    throw new Error("The hotUpdater config must use @hot-updater/server/node.");
   }
 
   return {
@@ -247,7 +242,7 @@ const reportConfigImportError = (importError: unknown): never => {
         "  2. The import statement is incorrect\n\n" +
         "Solutions:\n" +
         "  • Run: pnpm install @hot-updater/server\n" +
-        "  • Verify your import: import { createHotUpdater } from '@hot-updater/server/capabilities'\n" +
+        "  • Verify your import: import { createHotUpdater } from '@hot-updater/server/node'\n" +
         "  • Ensure you're exporting: export const hotUpdater = createHotUpdater({...})",
     );
   } else if (

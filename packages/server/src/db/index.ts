@@ -28,16 +28,21 @@ export type { CreateHotUpdaterOptions };
 export function createHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
 ): HotUpdaterAPI<TContext> {
-  const { api: runtimeApi, capabilities, core } = createHotUpdaterCore(options);
-  const generateSchema = capabilities.generateSchema ?? core.generateSchema;
+  const {
+    api: runtimeApi,
+    adapterCapabilities,
+    core,
+  } = createHotUpdaterCore(options);
+  const generateSchema =
+    adapterCapabilities.generateSchema ?? core.generateSchema;
   const api = {
     basePath: runtimeApi.basePath,
     adapterName: runtimeApi.adapterName,
-    createMigrator: capabilities.createMigrator ?? core.createMigrator,
+    createMigrator: adapterCapabilities.createMigrator ?? core.createMigrator,
     generateSchema: (...args: Parameters<SchemaGenerator>) =>
       generateSchemaFromHotUpdaterSchema(
         api.adapterName,
-        capabilities.provider,
+        adapterCapabilities.provider,
         args[0],
         generateSchema(...args),
       ),

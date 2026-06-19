@@ -1,5 +1,3 @@
-import type { HotUpdaterAPI } from "./types";
-
 /**
  * Node.js request/response types (compatible with Express, Connect, etc.)
  */
@@ -21,6 +19,24 @@ interface NodeResponse {
   [key: string]: unknown;
 }
 
+type HandlerHotUpdaterAPI = {
+  readonly handler: (request: Request) => Promise<Response>;
+};
+
+export {
+  createBundleDiff,
+  createHotUpdater,
+  HOT_UPDATER_SERVER_VERSION,
+  HotUpdaterSchemaMigrationRequiredError,
+} from "./db";
+export type {
+  CreateHotUpdaterOptions,
+  HotUpdaterAPI,
+  HotUpdaterAPI as HotUpdaterNodeAPI,
+  Migrator,
+  SchemaGenerator,
+} from "./db";
+
 /**
  * Converts a Hot Updater handler to a Node.js-compatible middleware
  * Works with Express, Connect, and other frameworks using Node.js req/res
@@ -40,7 +56,7 @@ interface NodeResponse {
  * ```
  */
 export function toNodeHandler(
-  hotUpdater: HotUpdaterAPI,
+  hotUpdater: HandlerHotUpdaterAPI,
 ): (req: any, res: any, next?: any) => Promise<void> {
   return async (req: NodeRequest, res: NodeResponse) => {
     try {

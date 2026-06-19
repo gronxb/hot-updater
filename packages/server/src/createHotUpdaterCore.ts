@@ -55,7 +55,7 @@ type PluginDatabaseCore<TContext> = {
 
 export type HotUpdaterCore<TContext = unknown> = {
   readonly api: RuntimeHotUpdaterAPI<TContext>;
-  readonly capabilities: DatabaseAdapterCapabilities;
+  readonly adapterCapabilities: DatabaseAdapterCapabilities;
   readonly core: PluginDatabaseCore<TContext>;
 };
 
@@ -78,14 +78,14 @@ export function createHotUpdaterCore<TContext = unknown>(
     throw new Error("@hot-updater/server only supports database plugins.");
   }
 
-  const capabilities = database as DatabaseAdapterCapabilities;
+  const adapterCapabilities = database as DatabaseAdapterCapabilities;
   const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
     ? database()
     : database;
-  const adapterName = capabilities.adapterName ?? plugin.name;
+  const adapterName = adapterCapabilities.adapterName ?? plugin.name;
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
-    capabilities.createMigrator,
+    adapterCapabilities.createMigrator,
   );
   const core = createPluginDatabaseCore<TContext>(
     () => plugin,
@@ -121,14 +121,14 @@ export function createHotUpdaterCore<TContext = unknown>(
 
   const api = {
     basePath,
-    adapterName: capabilities.adapterName ?? core.adapterName,
+    adapterName: adapterCapabilities.adapterName ?? core.adapterName,
     handler,
   };
   Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
 
   return {
     api: api as RuntimeHotUpdaterAPI<TContext>,
-    capabilities,
+    adapterCapabilities,
     core,
   };
 }

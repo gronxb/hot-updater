@@ -32,7 +32,7 @@ export const db = drizzle(sqlite);
 Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server/capabilities";
+import { createHotUpdater } from "@hot-updater/server/node";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";

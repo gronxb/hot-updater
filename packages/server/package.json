@@ -28,10 +28,6 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./capabilities": {
-      "import": "./dist/capabilities.mjs",
-      "require": "./dist/capabilities.cjs"
-    },
     "./node": {
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"

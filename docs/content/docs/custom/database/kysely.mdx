@@ -35,7 +35,7 @@ export const db = new Kysely({
 Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server/capabilities";
+import { createHotUpdater } from "@hot-updater/server/node";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
