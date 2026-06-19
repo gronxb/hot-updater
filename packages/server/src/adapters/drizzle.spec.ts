@@ -5,13 +5,13 @@ import { drizzleAdapter } from "./drizzle";
 
 describe("drizzleAdapter", () => {
   it("generates schema without resolving a lazy runtime database", () => {
-    const getDb = vi.fn(() => {
+    const getDB = vi.fn(() => {
       throw new Error("runtime database should not be opened");
     });
 
     const hotUpdater = createHotUpdater({
       database: drizzleAdapter({
-        db: getDb,
+        db: getDB,
         provider: "postgresql",
       }),
     });
@@ -20,7 +20,7 @@ describe("drizzleAdapter", () => {
 
     expect(schema.path).toBe("hot-updater-schema.ts");
     expect(schema.code).toContain("pgTable");
-    expect(getDb).not.toHaveBeenCalled();
+    expect(getDB).not.toHaveBeenCalled();
   });
 
   it("resolves a lazy runtime database only when a database operation runs", async () => {
@@ -43,33 +43,33 @@ describe("drizzleAdapter", () => {
       select: vi.fn(),
       update: vi.fn(),
     };
-    const getDb = vi.fn(async () => db);
+    const getDB = vi.fn(async () => db);
 
     const plugin = drizzleAdapter({
-      db: getDb,
+      db: getDB,
       provider: "postgresql",
       schema: { bundle_patches: bundlePatches, bundles },
     })();
 
-    expect(getDb).not.toHaveBeenCalled();
+    expect(getDB).not.toHaveBeenCalled();
 
     await expect(plugin.getChannels()).resolves.toEqual(["production"]);
-    expect(getDb).toHaveBeenCalledOnce();
+    expect(getDB).toHaveBeenCalledOnce();
   });
 
   it("requires schema for lazy runtime database configs", async () => {
-    const getDb = vi.fn(() => {
+    const getDB = vi.fn(() => {
       throw new Error("runtime database should not be opened");
     });
 
     const plugin = drizzleAdapter({
-      db: getDb,
+      db: getDB,
       provider: "postgresql",
     })();
 
     await expect(plugin.getChannels()).rejects.toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",
     );
-    expect(getDb).not.toHaveBeenCalled();
+    expect(getDB).not.toHaveBeenCalled();
   });
 });

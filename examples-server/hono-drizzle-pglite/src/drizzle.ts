@@ -20,7 +20,7 @@ let client: PGlite | undefined;
 let db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 let dbPromise: Promise<ReturnType<typeof drizzle<typeof schema>>> | undefined;
 
-export const getDb = async () => {
+export const getDB = async () => {
   dbPromise ??= (async () => {
     const nextClient = new PGlite(dbPath);
     await nextClient.waitReady;

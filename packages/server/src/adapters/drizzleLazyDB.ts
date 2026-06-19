@@ -2,7 +2,7 @@ import type { DrizzleConfig } from "./drizzle";
 
 export type DrizzleTable = Record<string, unknown>;
 
-export type DrizzleDb = {
+export type DrizzleDB = {
   readonly _: { readonly fullSchema: Record<string, DrizzleTable> };
   readonly $count: (table: DrizzleTable, where?: unknown) => Promise<number>;
   readonly delete: (table: DrizzleTable) => {
@@ -38,12 +38,12 @@ export type DrizzleDb = {
     };
   };
   readonly transaction?: <T>(
-    operation: (tx: DrizzleDb) => Promise<T>,
+    operation: (tx: DrizzleDB) => Promise<T>,
   ) => Promise<T>;
 };
 
-const asDb = (db: unknown): DrizzleDb => {
-  const typed = db as DrizzleDb;
+const asDB = (db: unknown): DrizzleDB => {
+  const typed = db as DrizzleDB;
   if (!typed._?.fullSchema) {
     throw new Error(
       "[hot-updater] Drizzle adapter requires query mode with schema.",
@@ -52,13 +52,13 @@ const asDb = (db: unknown): DrizzleDb => {
   return typed;
 };
 
-const isDbFactory = (
+const isDBFactory = (
   db: DrizzleConfig["db"],
 ): db is () => unknown | Promise<unknown> => typeof db === "function";
 
-export const createLazyDb = (config: DrizzleConfig): DrizzleDb => {
+export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
   const dbSource = config.db;
-  if (!isDbFactory(dbSource)) return asDb(dbSource);
+  if (!isDBFactory(dbSource)) return asDB(dbSource);
 
   if (!config.schema) {
     throw new Error(
@@ -66,29 +66,29 @@ export const createLazyDb = (config: DrizzleConfig): DrizzleDb => {
     );
   }
 
-  let resolvedDb: Promise<DrizzleDb> | undefined;
-  const getDb = async () => {
-    resolvedDb ??= Promise.resolve(dbSource()).then(asDb);
-    return resolvedDb;
+  let resolvedDB: Promise<DrizzleDB> | undefined;
+  const getDB = async () => {
+    resolvedDB ??= Promise.resolve(dbSource()).then(asDB);
+    return resolvedDB;
   };
   const fullSchema = config.schema as Record<string, DrizzleTable>;
   const runInserted = async (
     table: DrizzleTable,
     value: unknown,
     operation: (
-      inserted: ReturnType<ReturnType<DrizzleDb["insert"]>["values"]>,
+      inserted: ReturnType<ReturnType<DrizzleDB["insert"]>["values"]>,
     ) => Promise<unknown> | unknown,
   ) => {
-    const db = await getDb();
+    const db = await getDB();
     return operation(db.insert(table).values(value));
   };
 
   return {
     _: { fullSchema },
-    $count: async (table, where) => (await getDb()).$count(table, where),
+    $count: async (table, where) => (await getDB()).$count(table, where),
     delete: (table) => ({
       where: async (condition) =>
-        (await getDb()).delete(table).where(condition),
+        (await getDB()).delete(table).where(condition),
     }),
     insert: (table) => ({
       values: (value) => ({
@@ -124,26 +124,26 @@ export const createLazyDb = (config: DrizzleConfig): DrizzleDb => {
       {
         get: (_target, tableName) => ({
           findFirst: async (args?: unknown) =>
-            (await getDb()).query[String(tableName)]?.findFirst(args),
+            (await getDB()).query[String(tableName)]?.findFirst(args),
           findMany: async (args?: unknown) =>
-            (await getDb()).query[String(tableName)]?.findMany(args) ?? [],
+            (await getDB()).query[String(tableName)]?.findMany(args) ?? [],
         }),
       },
-    ) as DrizzleDb["query"],
+    ) as DrizzleDB["query"],
     select: (fields) => ({
       from: (table) => ({
         offset: async (offset) =>
-          (await getDb()).select(fields).from(table).offset?.(offset) ?? [],
+          (await getDB()).select(fields).from(table).offset?.(offset) ?? [],
       }),
     }),
     update: (table) => ({
       set: (values) => ({
         where: async (condition) =>
-          (await getDb()).update(table).set(values).where(condition),
+          (await getDB()).update(table).set(values).where(condition),
       }),
     }),
     transaction: async (operation) => {
-      const db = await getDb();
+      const db = await getDB();
       if (typeof db.transaction !== "function") return operation(db);
       return db.transaction(operation);
     },
