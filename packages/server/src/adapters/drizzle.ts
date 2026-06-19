@@ -43,64 +43,19 @@ import type {
   ORMSQLProvider,
   SchemaGenerator,
 } from "../db/types";
+import {
+  createLazyDB,
+  type DrizzleDB,
+  type DrizzleTable,
+} from "./drizzleLazyDB";
 
 export interface DrizzleConfig {
-  readonly db: unknown;
+  readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: Exclude<ORMProvider, "cockroachdb" | "mongodb" | "mssql">;
+  readonly schema?: Record<string, unknown>;
 }
 
-type DrizzleTable = Record<string, unknown>;
-type DrizzleDb = {
-  readonly _: { readonly fullSchema: Record<string, DrizzleTable> };
-  readonly $count: (table: DrizzleTable, where?: unknown) => Promise<number>;
-  readonly delete: (table: DrizzleTable) => {
-    where: (condition: unknown) => Promise<unknown>;
-  };
-  readonly insert: (table: DrizzleTable) => {
-    values: (value: unknown) => {
-      onConflictDoUpdate?: (args: unknown) => Promise<unknown>;
-      onDuplicateKeyUpdate?: (args: unknown) => Promise<unknown>;
-      execute?: () => Promise<unknown>;
-    };
-  };
-  readonly query: Record<
-    string,
-    {
-      findFirst: (
-        args?: unknown,
-      ) => Promise<Record<string, unknown> | undefined>;
-      findMany: (args?: unknown) => Promise<Record<string, unknown>[]>;
-    }
-  >;
-  readonly select: (fields?: unknown) => {
-    from: (table: DrizzleTable) => {
-      where?: (condition: unknown) => unknown;
-      orderBy?: (order: unknown) => unknown;
-      limit?: (limit: number) => unknown;
-      offset?: (offset: number) => Promise<Record<string, unknown>[]>;
-    };
-  };
-  readonly update: (table: DrizzleTable) => {
-    set: (values: unknown) => {
-      where: (condition: unknown) => Promise<unknown>;
-    };
-  };
-  readonly transaction?: <T>(
-    operation: (tx: DrizzleDb) => Promise<T>,
-  ) => Promise<T>;
-};
-
-const asDb = (db: unknown): DrizzleDb => {
-  const typed = db as DrizzleDb;
-  if (!typed._?.fullSchema) {
-    throw new Error(
-      "[hot-updater] Drizzle adapter requires query mode with schema.",
-    );
-  }
-  return typed;
-};
-
-const getTable = (db: DrizzleDb, name: string) => {
+const getTable = (db: DrizzleDB, name: string) => {
   const table = db._.fullSchema[name];
   if (!table) throw new Error(`Drizzle schema is missing table "${name}".`);
   return table;
@@ -154,11 +109,11 @@ const buildWhere = (
 const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
   name: "drizzle",
   factory: (config) => {
-    const db = asDb(config.db);
+    const db = createLazyDB(config);
     const bundles = getTable(db, "bundles");
     const patches = getTable(db, "bundle_patches");
     const runInTransaction = async <T>(
-      operation: (activeDb: DrizzleDb) => Promise<T>,
+      operation: (activeDB: DrizzleDB) => Promise<T>,
     ) => {
       if (typeof db.transaction !== "function") return operation(db);
       return db.transaction(operation);
@@ -188,27 +143,27 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
         rowToBundle(row as BundleRow, patchMap.get(String(row["id"])) ?? []),
       );
     };
-    const upsertBundle = async (activeDb: DrizzleDb, bundle: Bundle) => {
+    const upsertBundle = async (activeDB: DrizzleDB, bundle: Bundle) => {
       const row = bundleToRow(bundle);
-      const current = await activeDb.query["bundles"]?.findFirst({
+      const current = await activeDB.query["bundles"]?.findFirst({
         where: eq(column(bundles, "id"), bundle.id),
       });
       if (current) {
-        await activeDb
+        await activeDB
           .update(bundles)
           .set(row)
           .where(eq(column(bundles, "id"), bundle.id));
       } else {
-        const inserted = activeDb.insert(bundles).values(row);
+        const inserted = activeDB.insert(bundles).values(row);
         if (inserted.execute) await inserted.execute();
         else await inserted;
       }
-      await activeDb
+      await activeDB
         .delete(patches)
         .where(eq(column(patches, "bundle_id"), bundle.id));
       const patchRows = bundleToPatchRows(bundle);
       if (patchRows.length > 0) {
-        const inserted = activeDb.insert(patches).values(patchRows);
+        const inserted = activeDB.insert(patches).values(patchRows);
         if (inserted.execute) await inserted.execute();
         else await inserted;
       }
@@ -335,21 +290,21 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
         );
       },
       async commitBundle({ changedSets }) {
-        await runInTransaction(async (activeDb) => {
+        await runInTransaction(async (activeDB) => {
           for (const change of changedSets) {
             if (change.operation === "delete") {
-              await activeDb
+              await activeDB
                 .delete(patches)
                 .where(eq(column(patches, "bundle_id"), change.data.id));
-              await activeDb
+              await activeDB
                 .delete(patches)
                 .where(eq(column(patches, "base_bundle_id"), change.data.id));
-              await activeDb
+              await activeDB
                 .delete(bundles)
                 .where(eq(column(bundles, "id"), change.data.id));
               continue;
             }
-            await upsertBundle(activeDb, change.data);
+            await upsertBundle(activeDB, change.data);
           }
         });
       },
@@ -370,7 +325,7 @@ export const drizzleAdapter = (
           ? hotUpdaterSchema
           : getHotUpdaterSchemaVersion(version),
       ),
-      path: "./db/hot_updater.ts",
+      path: "hot-updater-schema.ts",
     }),
   });
 };

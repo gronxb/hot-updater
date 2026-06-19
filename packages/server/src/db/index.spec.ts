@@ -328,6 +328,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     }),
   });
 
+  it("uses the default generated schema artifact path for Drizzle", () => {
+    const adapter = drizzleAdapter({
+      db: { _: { fullSchema: {} } },
+      provider: "sqlite",
+    });
+
+    expect(adapter.generateSchema?.("latest").path).toBe(
+      "hot-updater-schema.ts",
+    );
+  });
+
   beforeAll(async () => {
     const migrator = hotUpdater.createMigrator();
     const result = await migrator.migrateToLatest({
