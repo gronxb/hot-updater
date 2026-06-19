@@ -226,17 +226,16 @@ The catch-all download route stays reachable, but each bundle download is still
 guarded by the signed `token` verified with `JWT_SECRET`.
 </Callout>
 
-## Schema Generation
+## Database Migrations
 
-Generate the Hot Updater schema from the top-level configuration module.
+Copy the packaged D1 migrations into your Worker project.
 
 ```bash
-npx hot-updater db generate src/hotUpdater.ts --yes
+mkdir -p migrations
+cp node_modules/@hot-updater/cloudflare/worker/migrations/*.sql migrations/
 ```
 
-## Database Migration
-
-Apply the generated migrations to D1.
+Apply the migrations to D1.
 
 ```bash
 npx wrangler d1 migrations apply hot-updater-db
