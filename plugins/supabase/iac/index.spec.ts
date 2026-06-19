@@ -44,14 +44,17 @@ import {
   resolveEdgeFunctionDenoConfig,
 } from "./index";
 
-const createExecaError = async (command: readonly string[]) => {
+const createExecaError = async (
+  command: readonly string[],
+  stderr = "failed SASL auth: password authentication failed",
+) => {
   const actual = await vi.importActual<typeof import("execa")>("execa");
 
   try {
     await actual.execa(command[0] ?? "node", command.slice(1));
   } catch (error) {
     if (error instanceof Error) {
-      Object.defineProperty(error, "stderr", { value: "" });
+      Object.defineProperty(error, "stderr", { value: stderr });
       return error;
     }
 
@@ -158,6 +161,39 @@ describe("Supabase database password failures", () => {
     }
   });
 
+  it("prints Supabase stderr when link fails for a non-auth reason", async () => {
+    // Given
+    const secret = "!Uh3cfmde";
+    const workdir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-link-"),
+    );
+    await fs.mkdir(path.join(workdir, "supabase"), { recursive: true });
+    const error = await createExecaError(
+      ["node", "-e", "process.exit(1)"],
+      "Unexpected Supabase CLI failure",
+    );
+    mockExeca.mockRejectedValue(error);
+    expectExit();
+
+    try {
+      // When
+      await expect(
+        linkSupabase(workdir, {
+          dbPassword: secret,
+          projectId: "project-ref",
+        }),
+      ).rejects.toThrow("process.exit(1)");
+
+      // Then
+      const output = collectUserFacingErrorOutput().join("\n");
+      expect(output).toContain("Unexpected Supabase CLI failure");
+      expect(output).not.toContain("Supabase database connection failed");
+      expect(output).not.toContain(secret);
+    } finally {
+      await fs.rm(workdir, { recursive: true, force: true });
+    }
+  });
+
   it("prints a sanitized auth message when Supabase db push fails with a database password", async () => {
     // Given
     const secret = "!Uh3cfmde";
@@ -186,9 +222,33 @@ describe("Supabase database password failures", () => {
       ["supabase", "db", "push", "--include-all"],
       expect.objectContaining({
         env: { SUPABASE_DB_PASSWORD: secret },
-        stdio: "inherit",
+        stderr: ["pipe", "inherit"],
+        stdin: "inherit",
+        stdout: "inherit",
       }),
     );
+  });
+
+  it("does not replace Supabase db push non-auth failures with the auth message", async () => {
+    // Given
+    const secret = "!Uh3cfmde";
+    const error = await createExecaError(
+      ["node", "-e", "process.exit(1)"],
+      "Remote migration failed",
+    );
+    mockExeca.mockRejectedValue(error);
+    expectExit();
+
+    // When
+    await expect(
+      pushDB("/tmp/hot-updater-supabase-push", { dbPassword: secret }),
+    ).rejects.toThrow("process.exit(1)");
+
+    // Then
+    const output = collectUserFacingErrorOutput().join("\n");
+    expect(output).not.toContain("Supabase database connection failed");
+    expect(output).not.toContain(secret);
+    expect(console.error).toHaveBeenCalledWith(error);
   });
 });
 

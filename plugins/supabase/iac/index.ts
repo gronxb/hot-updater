@@ -121,6 +121,37 @@ enabled = false
 `;
 const SUPABASE_DATABASE_CONNECTION_ERROR =
   "Supabase database connection failed. Check your database password and project access.";
+const SUPABASE_DATABASE_AUTH_ERROR_PATTERN =
+  /failed SASL auth|password authentication failed/i;
+
+const isSupabaseDatabaseAuthError = (err: ExecaError) =>
+  typeof err.stderr === "string" &&
+  SUPABASE_DATABASE_AUTH_ERROR_PATTERN.test(err.stderr);
+
+const handleSupabaseDatabaseCommandError = (
+  err: unknown,
+  {
+    dbPassword,
+    stderrInherited = false,
+  }: {
+    dbPassword?: string;
+    stderrInherited?: boolean;
+  },
+) => {
+  if (err instanceof ExecaError) {
+    if (dbPassword && isSupabaseDatabaseAuthError(err)) {
+      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
+    } else if (!stderrInherited && err.stderr) {
+      p.log.error(err.stderr);
+    } else {
+      console.error(err);
+    }
+  } else {
+    console.error(err);
+  }
+
+  process.exit(1);
+};
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -571,14 +602,7 @@ export const linkSupabase = async (
     spinner.stop("Supabase linked ✔");
   } catch (err) {
     spinner.stop();
-    if (err instanceof ExecaError && dbPassword) {
-      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
-    } else if (err instanceof ExecaError && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-    process.exit(1);
+    handleSupabaseDatabaseCommandError(err, { dbPassword });
   }
 };
 
@@ -593,20 +617,18 @@ export const pushDB = async (
       {
         cwd: workdir,
         env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
-        stdio: "inherit",
+        stderr: ["pipe", "inherit"],
+        stdin: "inherit",
+        stdout: "inherit",
       },
     );
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
   } catch (err) {
-    if (err instanceof ExecaError && dbPassword) {
-      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
-    } else if (err instanceof ExecaError && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-    process.exit(1);
+    handleSupabaseDatabaseCommandError(err, {
+      dbPassword,
+      stderrInherited: true,
+    });
   }
 };
 
