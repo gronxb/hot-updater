@@ -1,4 +1,5 @@
 export { createHandler } from "./handler";
+export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handler";
 export { createHotUpdater } from "./runtime";
 export type {
   CreateHotUpdaterOptions,

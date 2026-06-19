@@ -11,6 +11,7 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 import { createHotUpdater } from "./index";
+import type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./index";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const bundle: Bundle = {
@@ -97,6 +98,15 @@ const createSchemaManagedDatabase = (
 });
 
 describe("runtime createHotUpdater", () => {
+  it("exports runtime-safe handler types from the root entry", () => {
+    expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
+    expectTypeOf<HandlerOptions>().toHaveProperty("routes");
+    expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
+      updateCheck: boolean;
+      bundles: boolean;
+    }>();
+  });
+
   it("exports the root runtime API without database capabilities", () => {
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
