@@ -1,5 +1,18 @@
 # @hot-updater/server
 
+## 0.34.0
+
+### Patch Changes
+
+- 088f6c1: refactor(server): remove fumadb adapter split
+- 7244b65: Fix standalone database generation for provider SQL output and generated schema regeneration, and centralize the generated DB schema artifact contract.
+- Updated dependencies [088f6c1]
+- Updated dependencies [7244b65]
+  - @hot-updater/plugin-core@0.34.0
+  - @hot-updater/core@0.34.0
+  - @hot-updater/js@0.34.0
+  - @hot-updater/bsdiff@0.34.0
+
 ## 0.33.2
 
 ### Patch Changes

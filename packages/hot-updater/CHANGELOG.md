@@ -1,5 +1,35 @@
 # hot-updater
 
+## 0.34.0
+
+### Minor Changes
+
+- 8a4a269: feat(hot-updater): add `--provider` and `--build` flags to `init`
+
+  `hot-updater init` always prompts for the build plugin and the provider. These optional flags pre-answer those two prompts so `init` can run without interaction:
+
+  ```
+  hot-updater init --provider cloudflare --build expo
+  ```
+
+  When a flag is omitted, the prompt is shown as before. Values are validated against the known choices.
+
+  This is aimed at the Cloudflare redeploy flow described in #849: with a populated `.env.hotupdater`, re-running `init` redeploys the worker and applies pending migrations, and these flags remove the two prompts that otherwise block it from running unattended. Providers still prompt for any value that is not already present in `.env.hotupdater`.
+
+### Patch Changes
+
+- 088f6c1: refactor(server): remove fumadb adapter split
+- 7244b65: Fix standalone database generation for provider SQL output and generated schema regeneration, and centralize the generated DB schema artifact contract.
+- Updated dependencies [088f6c1]
+- Updated dependencies [7244b65]
+  - @hot-updater/server@0.34.0
+  - @hot-updater/plugin-core@0.34.0
+  - @hot-updater/core@0.34.0
+  - @hot-updater/console@0.34.0
+  - @hot-updater/android-helper@0.34.0
+  - @hot-updater/apple-helper@0.34.0
+  - @hot-updater/cli-tools@0.34.0
+
 ## 0.33.2
 
 ### Patch Changes
