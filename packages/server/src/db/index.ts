@@ -12,7 +12,7 @@ export type { Migrator, SchemaGenerator } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
-export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
+export type NodeHotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   readonly basePath: string;
   readonly handler: (
     request: Request,
@@ -23,11 +23,13 @@ export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   readonly generateSchema: SchemaGenerator;
 };
 
+export type HotUpdaterAPI<TContext = unknown> = NodeHotUpdaterAPI<TContext>;
+
 export type { CreateHotUpdaterOptions };
 
-export function createHotUpdater<TContext = unknown>(
+export function createNodeHotUpdater<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
-): HotUpdaterAPI<TContext> {
+): NodeHotUpdaterAPI<TContext> {
   const {
     api: runtimeApi,
     adapterCapabilities,
@@ -49,5 +51,5 @@ export function createHotUpdater<TContext = unknown>(
     handler: runtimeApi.handler,
   };
   Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
-  return api as HotUpdaterAPI<TContext>;
+  return api as NodeHotUpdaterAPI<TContext>;
 }

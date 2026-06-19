@@ -132,3 +132,9 @@ export function createHotUpdaterCore<TContext = unknown>(
     core,
   };
 }
+
+export function createHotUpdater<TContext = unknown>(
+  options: CreateHotUpdaterOptions<TContext>,
+): RuntimeHotUpdaterAPI<TContext> {
+  return createHotUpdaterCore(options).api;
+}

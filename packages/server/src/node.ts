@@ -25,15 +25,16 @@ type HandlerHotUpdaterAPI = {
 
 export {
   createBundleDiff,
-  createHotUpdater,
+  createNodeHotUpdater as createHotUpdater,
   HOT_UPDATER_SERVER_VERSION,
   HotUpdaterSchemaMigrationRequiredError,
 } from "./db";
 export type {
   CreateHotUpdaterOptions,
-  HotUpdaterAPI,
-  HotUpdaterAPI as HotUpdaterNodeAPI,
   Migrator,
+  NodeHotUpdaterAPI,
+  NodeHotUpdaterAPI as HotUpdaterAPI,
+  NodeHotUpdaterAPI as HotUpdaterNodeAPI,
   SchemaGenerator,
 } from "./db";
 

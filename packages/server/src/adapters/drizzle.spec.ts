@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createHotUpdater } from "../db";
+import { createNodeHotUpdater as createHotUpdater } from "../db";
 import { drizzleAdapter } from "./drizzle";
 
 describe("drizzleAdapter", () => {

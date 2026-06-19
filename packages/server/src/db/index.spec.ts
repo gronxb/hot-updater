@@ -34,7 +34,7 @@ import {
   createTableSql,
   hotUpdaterSchemaVersions,
 } from "./hotUpdaterSchema";
-import { createHotUpdater } from "./index";
+import { createNodeHotUpdater as createHotUpdater } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePluginFactory, ORMProvider } from "./types";
 

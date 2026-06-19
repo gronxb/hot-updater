@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
-import { createHotUpdater } from "./db";
+import { createNodeHotUpdater as createHotUpdater } from "./db";
 
 /**
  * Integration tests between @hot-updater/server handler and @hot-updater/standalone repository

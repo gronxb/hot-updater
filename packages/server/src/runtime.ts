@@ -1,19 +1,8 @@
-import {
-  createHotUpdaterCore,
-  type CreateHotUpdaterOptions,
-  type RuntimeHotUpdaterAPI,
-} from "./createHotUpdaterCore";
-
-export function createHotUpdater<TContext = unknown>(
-  options: CreateHotUpdaterOptions<TContext>,
-): RuntimeHotUpdaterAPI<TContext> {
-  return createHotUpdaterCore(options).api;
-}
-
+export { createHotUpdater } from "./createHotUpdaterCore";
 export { createHandler } from "./handler";
 export type {
   CreateHotUpdaterOptions,
   RuntimeHotUpdaterAPI,
   RuntimeHotUpdaterAPI as HotUpdaterAPI,
-};
+} from "./createHotUpdaterCore";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
