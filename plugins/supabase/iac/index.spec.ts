@@ -186,6 +186,7 @@ describe("Supabase database password failures", () => {
       ["supabase", "db", "push", "--include-all"],
       expect.objectContaining({
         env: { SUPABASE_DB_PASSWORD: secret },
+        stdio: "inherit",
       }),
     );
   });

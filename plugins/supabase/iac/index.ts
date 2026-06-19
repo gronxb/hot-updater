@@ -593,7 +593,7 @@ export const pushDB = async (
       {
         cwd: workdir,
         env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: "inherit",
       },
     );
     p.log.success("DB pushed ✔");
