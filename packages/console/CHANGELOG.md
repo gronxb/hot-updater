@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 0.34.0
+
+### Patch Changes
+
+- Updated dependencies [088f6c1]
+- Updated dependencies [7244b65]
+  - @hot-updater/server@0.34.0
+  - @hot-updater/bsdiff@0.34.0
+
 ## 0.33.2
 
 ### Patch Changes

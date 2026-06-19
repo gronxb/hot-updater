@@ -1,5 +1,14 @@
 # @hot-updater/plugin-core
 
+## 0.34.0
+
+### Patch Changes
+
+- 088f6c1: refactor(server): remove fumadb adapter split
+- Updated dependencies [7244b65]
+  - @hot-updater/core@0.34.0
+  - @hot-updater/js@0.34.0
+
 ## 0.33.2
 
 ### Patch Changes
