@@ -1,5 +1,18 @@
 # @hot-updater/server
 
+## 0.35.0
+
+### Minor Changes
+
+- 4e1b86d: Make the `@hot-updater/server` root export runtime-safe, remove the ambiguous `@hot-updater/server/runtime` subpath, keep `@hot-updater/server/node` focused on `toNodeHandler`, and move database generation, migration, and bundle diff APIs to `@hot-updater/server/db`.
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.0
+- @hot-updater/core@0.35.0
+- @hot-updater/js@0.35.0
+- @hot-updater/plugin-core@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes
