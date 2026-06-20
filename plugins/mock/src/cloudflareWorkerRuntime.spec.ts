@@ -1,7 +1,7 @@
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../../../packages/server/src/db";
+import { createHotUpdater } from "../../../packages/server/src/index";
 import { setupGetUpdateInfoTestSuite } from "../../../packages/test-utils/src/index";
 import { mockDatabase, mockStorage } from "./index";
 
