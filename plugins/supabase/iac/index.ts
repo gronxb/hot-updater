@@ -21,6 +21,7 @@ import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+import { linkSupabase, pushDB } from "./supabaseCli";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -112,13 +113,6 @@ export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
-
-const SUPABASE_CONFIG_TEMPLATE = `
-project_id = "%%projectId%%"
-
-[db.seed]
-enabled = false
-`;
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -536,85 +530,6 @@ export const selectBucket = async (
   }
 
   return JSON.parse(selectedBucketId);
-};
-
-const linkSupabase = async (
-  workdir: string,
-  { projectId, dbPassword }: { projectId: string; dbPassword?: string },
-) => {
-  const spinner = p.spinner();
-
-  try {
-    // Write the config.toml with correct projectId
-    await fs.writeFile(
-      path.join(workdir, "supabase", "config.toml"),
-      transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
-        projectId,
-      }),
-    );
-
-    spinner.start("Linking Supabase...");
-
-    // Link with password
-    await execa(
-      "npx",
-      [
-        "supabase",
-        "link",
-        "--project-ref",
-        projectId,
-        "--workdir",
-        workdir,
-        dbPassword ? ["--password", dbPassword] : [],
-      ].flat(),
-      {
-        cwd: workdir,
-        input: "",
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    spinner.stop("Supabase linked ✔");
-  } catch (err) {
-    spinner.stop();
-    if (err instanceof ExecaError && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-    process.exit(1);
-  }
-};
-
-const pushDB = async (
-  workdir: string,
-  { dbPassword }: { dbPassword?: string },
-) => {
-  try {
-    const dbPush = await execa(
-      "npx",
-      [
-        "supabase",
-        "db",
-        "push",
-        "--include-all",
-        dbPassword ? ["--password", dbPassword] : [],
-      ].flat(),
-      {
-        cwd: workdir,
-        stdio: "inherit",
-        shell: true,
-      },
-    );
-    p.log.success("DB pushed ✔");
-    return dbPush.stdout;
-  } catch (err) {
-    if (err instanceof ExecaError && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      console.error(err);
-    }
-    process.exit(1);
-  }
 };
 
 const deployEdgeFunction = async (workdir: string, projectId: string) => {
