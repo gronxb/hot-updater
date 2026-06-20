@@ -1,119 +1,47 @@
-import type {
-  DatabasePlugin,
-  HotUpdaterContext,
-  RuntimeStoragePlugin,
-} from "@hot-updater/plugin-core";
-import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  getHotUpdaterCoreMetadata,
+  type RuntimeHotUpdaterAPI,
+} from "../createHotUpdaterCore";
+import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
+import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
-import { createHandler, type HandlerRoutes } from "../handler";
-import { normalizeBasePath } from "../route";
-import { createStorageAccess } from "../storageAccess";
-import { createPluginDatabaseCore } from "./pluginCore";
-import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
-import { createSchemaReadinessChecker } from "./schemaReadiness";
-import {
-  type DatabaseAdapterCapabilities,
-  type DatabaseAdapter,
-  type DatabaseAPI,
-  type Migrator,
-  type SchemaGenerator,
-  isDatabasePluginFactory,
-  type StoragePluginFactory,
-} from "./types";
-
 export type { Migrator, SchemaGenerator } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
-export type HotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
-  basePath: string;
-  handler: (
-    request: Request,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Response>;
-  adapterName: string;
-  createMigrator: () => Migrator;
-  generateSchema: SchemaGenerator;
+export type HotUpdaterDBTarget = {
+  readonly adapterName: string;
 };
 
-export interface CreateHotUpdaterOptions<TContext = unknown> {
-  database: DatabaseAdapter<TContext>;
-  /**
-   * Storage plugins for handling file uploads and downloads.
-   */
-  storages?: (
-    | RuntimeStoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
-  /**
-   * @deprecated Use `storages` instead. This field will be removed in a future version.
-   */
-  storagePlugins?: (
-    | RuntimeStoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
-  basePath?: string;
-  cwd?: string;
-  routes?: HandlerRoutes;
+const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
+  const metadata = getHotUpdaterCoreMetadata(
+    hotUpdater as RuntimeHotUpdaterAPI,
+  );
+  if (!metadata) {
+    throw new Error(
+      "Database tooling requires a hotUpdater instance created by @hot-updater/server.",
+    );
+  }
+  return metadata;
+};
+
+export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
+  const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
+  return (adapterCapabilities.createMigrator ?? core.createMigrator)();
 }
 
-export function createHotUpdater<TContext = unknown>(
-  options: CreateHotUpdaterOptions<TContext>,
-): HotUpdaterAPI<TContext> {
-  const basePath = normalizeBasePath(options.basePath ?? "/api");
-
-  // Initialize storage plugins - call factories if they are functions
-  const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
-    (plugin) => {
-      const storagePlugin = typeof plugin === "function" ? plugin() : plugin;
-      assertRuntimeStoragePlugin(storagePlugin);
-      return storagePlugin;
-    },
+export function generateSchema(
+  hotUpdater: HotUpdaterDBTarget,
+  ...args: Parameters<SchemaGenerator>
+): ReturnType<SchemaGenerator> {
+  const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
+  const schemaGenerator =
+    adapterCapabilities.generateSchema ?? core.generateSchema;
+  return generateSchemaFromHotUpdaterSchema(
+    hotUpdater.adapterName,
+    adapterCapabilities.provider,
+    args[0],
+    schemaGenerator(...args),
   );
-  const { readStorageText, resolveFileUrl } =
-    createStorageAccess(storagePlugins);
-
-  const database = options.database;
-
-  const capabilities = database as DatabaseAdapterCapabilities;
-  const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
-    ? database()
-    : database;
-  const adapterName = capabilities.adapterName ?? plugin.name;
-  const assertSchemaReady = createSchemaReadinessChecker(
-    adapterName,
-    capabilities.createMigrator,
-  );
-  const core = createPluginDatabaseCore<TContext>(
-    () => plugin,
-    resolveFileUrl,
-    isDatabasePluginFactory(database)
-      ? {
-          createMutationPlugin: () => database(),
-          beforeOperation: assertSchemaReady,
-          readStorageText,
-        }
-      : { beforeOperation: assertSchemaReady, readStorageText },
-  );
-
-  const generateSchema = capabilities.generateSchema ?? core.generateSchema;
-  const api = {
-    basePath,
-    adapterName: capabilities.adapterName ?? core.adapterName,
-    createMigrator: capabilities.createMigrator ?? core.createMigrator,
-    generateSchema: (...args: Parameters<SchemaGenerator>) =>
-      generateSchemaFromHotUpdaterSchema(
-        api.adapterName,
-        capabilities.provider,
-        args[0],
-        generateSchema(...args),
-      ),
-    handler: createHandler(core.api, {
-      basePath,
-      routes: options.routes,
-    }),
-  };
-  Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
-  return api as HotUpdaterAPI<TContext>;
 }

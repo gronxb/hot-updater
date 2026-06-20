@@ -2,7 +2,6 @@ import { existsSync, statSync } from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
@@ -13,11 +12,6 @@ import {
 } from "./generated-schema-placeholder";
 
 export interface HotUpdaterInstance {
-  createMigrator?: () => Migrator;
-  generateSchema?: (
-    version: string | "latest",
-    name?: string,
-  ) => { code: string; path: string };
   adapterName: string;
 }
 

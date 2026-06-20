@@ -1,4 +1,4 @@
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
 import {

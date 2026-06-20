@@ -2,7 +2,10 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator, SchemaGenerator } from "@hot-updater/server";
+import {
+  createMigrator as createHotUpdaterMigrator,
+  generateSchema as generateHotUpdaterSchema,
+} from "@hot-updater/server/db";
 import {
   formatDialect,
   mysql as mysqlDialect,
@@ -13,8 +16,6 @@ import { ui } from "../utils/cli-ui";
 import { generatePrismaSchema } from "./generate-prisma-schema";
 import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
-  ensureMigratorSupport,
-  ensureSchemaGeneratorSupport,
   GenerateExit,
   requestGenerateExit,
 } from "./utils/generate-command-control";
@@ -137,15 +138,13 @@ export async function generate(options: GenerateOptions) {
  * Generate SQL migration files using createMigrator (for kysely/mongodb)
  */
 async function generateWithMigrator(
-  hotUpdater: { createMigrator?: () => Migrator; adapterName: string },
+  hotUpdater: LoadHotUpdaterResult["hotUpdater"],
   absoluteOutputDir: string,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  ensureMigratorSupport(hotUpdater, hotUpdater.adapterName);
-
   // Create migrator
-  const migrator = hotUpdater.createMigrator();
+  const migrator = createHotUpdaterMigrator(hotUpdater);
 
   // Generate migration
   const result = await migrator.migrateToLatest({
@@ -239,19 +238,14 @@ async function generateWithMigrator(
  * Generate TypeScript schema files using generateSchema (for drizzle/prisma/typeorm)
  */
 async function generateWithSchemaGenerator(
-  hotUpdater: {
-    generateSchema?: SchemaGenerator;
-    adapterName: string;
-  },
+  hotUpdater: LoadHotUpdaterResult["hotUpdater"],
   adapterName: string,
   absoluteOutputDir: string,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  ensureSchemaGeneratorSupport(hotUpdater, adapterName);
-
   // Generate schema
-  const schemaResult = hotUpdater.generateSchema("latest");
+  const schemaResult = generateHotUpdaterSchema(hotUpdater, "latest");
 
   s.stop("Analysis complete");
 

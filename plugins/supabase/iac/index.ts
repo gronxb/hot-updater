@@ -350,9 +350,9 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   };
 
   await addWorkspacePackage({
-    importSpecifier: "@hot-updater/server/runtime",
+    importSpecifier: "@hot-updater/server",
     packageName: "@hot-updater/server",
-    exportName: "./runtime",
+    exportName: ".",
   });
   await addWorkspacePackage({
     importSpecifier: "@hot-updater/supabase",

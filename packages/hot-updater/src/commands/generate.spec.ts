@@ -27,6 +27,10 @@ const mockCli = vi.hoisted(() => ({
     stop: vi.fn(),
   },
 }));
+const mockServer = vi.hoisted(() => ({
+  createMigrator: vi.fn(),
+  generateSchema: vi.fn(),
+}));
 
 vi.mock("@hot-updater/cli-tools", () => ({
   colors: {
@@ -52,9 +56,22 @@ vi.mock("./utils/load-hot-updater", () => ({
   loadHotUpdater: vi.fn(),
 }));
 
+vi.mock("@hot-updater/server/db", () => ({
+  createMigrator: mockServer.createMigrator,
+  generateSchema: mockServer.generateSchema,
+}));
+
 describe("generate command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServer.createMigrator.mockReturnValue({
+      migrateToLatest: vi.fn(async () => ({
+        getSQL: () =>
+          "create table if not exists bundles (id text primary key);\n" +
+          "create table if not exists private_hot_updater_settings (`key` varchar(255) primary key);\n" +
+          "insert into private_hot_updater_settings (`key`, value) values ('version', '0.34.0') on duplicate key update value = values(value);",
+      })),
+    });
   });
 
   afterEach(() => {
@@ -138,12 +155,12 @@ describe("generate command", () => {
       dispose,
       hotUpdater: {
         adapterName: "drizzle",
-        generateSchema: vi.fn(() => ({
-          code: "export const bundles = {};",
-          path: "db/hot-updater-schema.ts",
-        })),
       },
     };
+    mockServer.generateSchema.mockReturnValue({
+      code: "export const bundles = {};",
+      path: "db/hot-updater-schema.ts",
+    });
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
 
     try {
@@ -182,12 +199,12 @@ describe("generate command", () => {
       dispose,
       hotUpdater: {
         adapterName: "drizzle",
-        generateSchema: vi.fn(() => ({
-          code: "export const bundles = {};",
-          path: "hot-updater-schema.ts",
-        })),
       },
     };
+    mockServer.generateSchema.mockReturnValue({
+      code: "export const bundles = {};",
+      path: "hot-updater-schema.ts",
+    });
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
     mockCli.confirm.mockResolvedValue(false);
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {

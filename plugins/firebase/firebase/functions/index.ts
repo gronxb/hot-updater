@@ -1,4 +1,4 @@
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";

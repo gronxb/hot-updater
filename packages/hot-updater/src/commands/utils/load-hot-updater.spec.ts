@@ -45,6 +45,7 @@ describe("loadHotUpdater", () => {
         'import "./drizzle";',
         "export const hotUpdater = {",
         '  adapterName: "drizzle",',
+        "  generateSchema: () => ({ code: '', path: 'hot-updater-schema.ts' }),",
         "};",
       ].join("\n"),
       "utf-8",
@@ -124,6 +125,7 @@ describe("loadHotUpdater", () => {
         'import "./drizzle";',
         "export const hotUpdater = {",
         '  adapterName: "drizzle",',
+        "  generateSchema: () => ({ code: '', path: 'custom-hot-updater-schema.ts' }),",
         "};",
       ].join("\n"),
       "utf-8",
@@ -147,6 +149,28 @@ describe("loadHotUpdater", () => {
       await loaded.dispose();
 
       await expect(readFile(placeholderPath, "utf-8")).rejects.toThrow();
+    } finally {
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts root runtime configs without direct database tooling methods", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-root-runtime-config-"),
+    );
+    await writeFile(
+      path.join(projectDir, "hot-updater.config.ts"),
+      ["export const hotUpdater = {", '  adapterName: "kysely",', "};"].join(
+        "\n",
+      ),
+      "utf-8",
+    );
+
+    try {
+      const loaded = await loadHotUpdater("", { cwd: projectDir });
+      expect(loaded.adapterName).toBe("kysely");
+      expect("createMigrator" in loaded.hotUpdater).toBe(false);
+      expect("generateSchema" in loaded.hotUpdater).toBe(false);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }

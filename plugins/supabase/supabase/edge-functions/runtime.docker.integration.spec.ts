@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { createHotUpdater } from "@hot-updater/server/runtime";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -63,7 +63,7 @@ const REQUIRED_BUILD_ARTIFACTS = [
   },
   {
     command: "pnpm --filter @hot-updater/server build",
-    path: path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
+    path: path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/plugin-core build",
@@ -925,8 +925,8 @@ const writeSupabaseRuntimeFiles = async ({
   );
   const importMap = {
     imports: {
-      "@hot-updater/server/runtime": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
+      "@hot-updater/server": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
       "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),

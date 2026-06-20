@@ -6,11 +6,6 @@
     ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "paths": {
-      "@hot-updater/server/runtime": [
-        "./packages/server/src/runtime.ts"
-      ]
-    },
     "rootDir": ".",
     "isolatedModules": true,
     "strict": true,
