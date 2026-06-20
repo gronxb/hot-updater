@@ -1,5 +1,16 @@
 # @hot-updater/supabase
 
+## 0.35.0
+
+### Patch Changes
+
+- 338ab3d: fix(supabase): redact init database password failures
+- Updated dependencies [4e1b86d]
+  - @hot-updater/server@0.35.0
+  - @hot-updater/cli-tools@0.35.0
+  - @hot-updater/core@0.35.0
+  - @hot-updater/plugin-core@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes
