@@ -63,7 +63,7 @@ const REQUIRED_BUILD_ARTIFACTS = [
   },
   {
     command: "pnpm --filter @hot-updater/server build",
-    path: path.join(WORKSPACE_ROOT, "packages/server/dist/runtime.mjs"),
+    path: path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/plugin-core build",
