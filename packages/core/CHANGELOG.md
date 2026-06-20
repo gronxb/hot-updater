@@ -1,5 +1,11 @@
 # @hot-updater/core
 
+## 0.34.0
+
+### Patch Changes
+
+- 7244b65: Fix standalone database generation for provider SQL output and generated schema regeneration, and centralize the generated DB schema artifact contract.
+
 ## 0.33.2
 
 ## 0.33.1

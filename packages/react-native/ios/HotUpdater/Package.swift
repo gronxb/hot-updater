@@ -9,6 +9,7 @@ let archiveSources = [
     "DecompressionStrategy.swift",
     "FileManagerService.swift",
     "HashUtils.swift",
+    "HotUpdaterConfig.swift",
     "NotificationExtension.swift",
     "SignatureVerifier.swift",
     "StreamingTarArchiveExtractor.swift",

@@ -1,4 +1,5 @@
-import { sqliteTable, text, integer, blob, foreignKey, index } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+
 import { relations } from "drizzle-orm"
 
 export const bundles = sqliteTable("bundles", {
@@ -14,16 +15,16 @@ export const bundles = sqliteTable("bundles", {
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
   metadata: blob("metadata", { mode: "json" }).notNull().default({}),
+  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
+  target_cohorts: blob("target_cohorts", { mode: "json" }),
   manifest_storage_uri: text("manifest_storage_uri"),
   manifest_file_hash: text("manifest_file_hash"),
-  asset_base_storage_uri: text("asset_base_storage_uri"),
-  rollout_cohort_count: integer("rollout_cohort_count").notNull().default(1000),
-  target_cohorts: blob("target_cohorts", { mode: "json" })
+  asset_base_storage_uri: text("asset_base_storage_uri")
 }, (table) => [
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
   index("bundles_channel_idx").on(table.channel),
-  index("bundles_rollout_idx").on(table.rollout_cohort_count),
+  index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
 
 export const bundle_patches = sqliteTable("bundle_patches", {
@@ -46,7 +47,7 @@ export const bundle_patches = sqliteTable("bundle_patches", {
     name: "bundle_patches_base_bundle_id_fk"
   }).onUpdate("restrict").onDelete("cascade"),
   index("bundle_patches_bundle_id_idx").on(table.bundle_id),
-  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id),
+  index("bundle_patches_base_bundle_id_idx").on(table.base_bundle_id)
 ])
 
 export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
@@ -60,7 +61,7 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
     fields: [bundle_patches.base_bundle_id],
     references: [bundles.id]
   })
-}));
+}))
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),

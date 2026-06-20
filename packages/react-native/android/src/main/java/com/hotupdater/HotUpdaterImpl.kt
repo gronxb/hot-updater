@@ -105,6 +105,10 @@ class HotUpdaterImpl {
          * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
          */
         private fun getIsolationKey(context: Context): String {
+            // Programmatic override (brownfield/AAR). When set, it is used verbatim
+            // so the OTA cache can stay stable across host app version bumps.
+            HotUpdaterConfig.isolationKey?.takeIf { it.isNotEmpty() }?.let { return it }
+
             val fingerprintHash = getFingerprintHash(context)
 
             // Get app version and channel

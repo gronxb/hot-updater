@@ -1,10 +1,12 @@
+import { NIL_UUID } from "@hot-updater/core";
 import {
   type Bundle,
   calculatePagination,
   createDatabasePlugin,
-  createDatabasePluginGetUpdateInfo,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
+  filterCompatibleAppVersions,
+  resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
 
 import { minMax, sleep } from "./util/utils";
@@ -173,15 +175,18 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
 
     return {
       supportsCursorPagination: true,
-      getUpdateInfo: createDatabasePluginGetUpdateInfo({
-        async listTargetAppVersions({ platform, channel, minBundleId }) {
-          return Array.from(
+      async getUpdateInfo(args, context) {
+        const channel = args.channel ?? "production";
+        const minBundleId = args.minBundleId ?? NIL_UUID;
+
+        if (args._updateStrategy === "appVersion") {
+          const targetAppVersions = Array.from(
             new Set(
               bundles
                 .filter(
                   (bundle) =>
                     bundle.enabled &&
-                    bundle.platform === platform &&
+                    bundle.platform === args.platform &&
                     bundle.channel === channel &&
                     bundle.id.localeCompare(minBundleId) >= 0 &&
                     bundle.targetAppVersion,
@@ -190,38 +195,41 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
                 .filter((version): version is string => Boolean(version)),
             ),
           );
-        },
-
-        async getBundlesByTargetAppVersions(
-          { platform, channel, minBundleId },
-          targetAppVersions,
-        ) {
-          return bundles.filter(
+          const compatibleAppVersions = filterCompatibleAppVersions(
+            targetAppVersions,
+            args.appVersion,
+          );
+          const updateBundles = bundles.filter(
             (bundle) =>
               bundle.enabled &&
-              bundle.platform === platform &&
+              bundle.platform === args.platform &&
               bundle.channel === channel &&
               bundle.id.localeCompare(minBundleId) >= 0 &&
-              targetAppVersions.includes(bundle.targetAppVersion ?? ""),
+              compatibleAppVersions.includes(bundle.targetAppVersion ?? ""),
           );
-        },
 
-        async getBundlesByFingerprint({
-          platform,
-          channel,
-          minBundleId,
-          fingerprintHash,
-        }) {
-          return bundles.filter(
-            (bundle) =>
-              bundle.enabled &&
-              bundle.platform === platform &&
-              bundle.channel === channel &&
-              bundle.id.localeCompare(minBundleId) >= 0 &&
-              bundle.fingerprintHash === fingerprintHash,
-          );
-        },
-      }),
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles: updateBundles,
+            context,
+          });
+        }
+
+        const updateBundles = bundles.filter(
+          (bundle) =>
+            bundle.enabled &&
+            bundle.platform === args.platform &&
+            bundle.channel === channel &&
+            bundle.id.localeCompare(minBundleId) >= 0 &&
+            bundle.fingerprintHash === args.fingerprintHash,
+        );
+
+        return resolveUpdateInfoFromBundles({
+          args: { ...args, channel, minBundleId },
+          bundles: updateBundles,
+          context,
+        });
+      },
 
       async getBundleById(bundleId: string) {
         await sleep(minMax(config.latency.min, config.latency.max));

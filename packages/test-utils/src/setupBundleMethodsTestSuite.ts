@@ -650,9 +650,6 @@ export const setupBundleMethodsTestSuite = ({
     });
 
     it("should handle concurrent getBundles calls without errors", async () => {
-      // Test for fumadb getSchemaVersion bug fix
-      // Previously, concurrent calls would cause unique constraint violations
-      // because getSchemaVersion() performed delete+create instead of read
       const concurrentCalls = Array(10)
         .fill(null)
         .map(() =>

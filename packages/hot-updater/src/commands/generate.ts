@@ -1,37 +1,28 @@
-import { createHash } from "crypto";
-import { access, mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server";
-import {
-  type Dialect,
-  Kysely,
-  MysqlDialect,
-  PostgresDialect,
-  SqliteDialect,
-} from "kysely";
+import type { Migrator, SchemaGenerator } from "@hot-updater/server";
 import {
   formatDialect,
   mysql as mysqlDialect,
   postgresql as postgresqlDialect,
-  sqlite as sqliteDialect,
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import { generatePrismaSchema } from "./generate-prisma-schema";
+import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
-  validateMigratorSupport,
-  validateSchemaGeneratorSupport,
-} from "./utils/adapter-strategies";
+  ensureMigratorSupport,
+  ensureSchemaGeneratorSupport,
+  GenerateExit,
+  requestGenerateExit,
+} from "./utils/generate-command-control";
+import { resolveGeneratedSchemaOutputPath } from "./utils/generated-schema-artifact";
 import {
   type LoadHotUpdaterResult,
   loadHotUpdater,
 } from "./utils/load-hot-updater";
-import { mergePrismaSchema } from "./utils/prisma-schema-merger";
-
-// Supported database providers
-const SUPPORTED_PROVIDERS = ["postgresql", "mysql", "sqlite"] as const;
-type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
 export interface GenerateOptions {
   configPath: string;
@@ -58,6 +49,7 @@ export async function generate(options: GenerateOptions) {
   }
 
   let loadedConfig: LoadHotUpdaterResult | undefined;
+  let exitCode: number | undefined;
 
   try {
     // Start spinner early to show progress during config loading
@@ -65,7 +57,9 @@ export async function generate(options: GenerateOptions) {
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    loadedConfig = await loadHotUpdater(configPath);
+    loadedConfig = await loadHotUpdater(configPath, {
+      allowGeneratedSchemaPlaceholder: true,
+    });
     const { hotUpdater, adapterName } = loadedConfig;
 
     // Set default outputDir based on adapter type
@@ -100,24 +94,42 @@ export async function generate(options: GenerateOptions) {
           s,
         );
         break;
+      case "mongodb":
+        s.stop("Generation not supported");
+        p.log.error(
+          "MongoDB does not support migration file generation. " +
+            "Use `hot-updater db migrate` to create collections and indexes.",
+        );
+        requestGenerateExit(1);
+        break;
       default:
         p.log.error(
-          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
+          `Unsupported adapter: ${adapterName}. Generation is not supported.`,
         );
-        process.exit(1);
+        requestGenerateExit(1);
         break;
     }
   } catch (error) {
-    p.log.error("Failed to generate");
-    if (error instanceof Error) {
+    if (error instanceof GenerateExit) {
+      exitCode = error.code;
+    } else if (error instanceof Error) {
+      p.log.error("Failed to generate");
       p.log.error(error.message);
       if (process.env["DEBUG"]) {
         console.error(error.stack);
       }
+      exitCode = 1;
+    } else {
+      p.log.error("Failed to generate");
+      p.log.error(String(error));
+      exitCode = 1;
     }
-    process.exit(1);
   } finally {
     await loadedConfig?.dispose();
+  }
+
+  if (exitCode !== undefined) {
+    process.exit(exitCode);
   }
 }
 
@@ -130,7 +142,7 @@ async function generateWithMigrator(
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
+  ensureMigratorSupport(hotUpdater, hotUpdater.adapterName);
 
   // Create migrator
   const migrator = hotUpdater.createMigrator();
@@ -144,15 +156,18 @@ async function generateWithMigrator(
   s.stop("Analysis complete");
 
   // Get SQL
-  if (!result.getSQL) {
+  const getSQL = result.getSQL;
+  let sql: string;
+  if (typeof getSQL === "function") {
+    sql = getSQL();
+  } else {
     p.log.error(
       "Migration result does not support SQL generation. " +
         "This may happen if you're not using an SQL-based database adapter.",
     );
-    process.exit(1);
+    requestGenerateExit(1);
+    return;
   }
-
-  const sql = result.getSQL();
 
   if (!sql || sql.trim() === "") {
     p.log.success("Schema is up to date.");
@@ -178,9 +193,6 @@ async function generateWithMigrator(
   // Create output directory
   await mkdir(absoluteOutputDir, { recursive: true });
 
-  // Check for duplicate SQL files using MD5 hash
-  const newSqlHash = createHash("md5").update(formattedSql).digest("hex");
-
   try {
     const files = await readdir(absoluteOutputDir);
     const sqlFiles = files.filter((file) => file.endsWith(".sql"));
@@ -188,11 +200,8 @@ async function generateWithMigrator(
     for (const file of sqlFiles) {
       const filePath = path.join(absoluteOutputDir, file);
       const existingContent = await readFile(filePath, "utf-8");
-      const existingHash = createHash("md5")
-        .update(existingContent)
-        .digest("hex");
 
-      if (existingHash === newSqlHash) {
+      if (existingContent === formattedSql) {
         p.log.warn(`Identical migration already exists: ${file}`);
         p.outro("Done");
         return;
@@ -216,7 +225,7 @@ async function generateWithMigrator(
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
       p.cancel("Operation cancelled");
-      process.exit(0);
+      requestGenerateExit(0);
     }
   }
 
@@ -231,13 +240,7 @@ async function generateWithMigrator(
  */
 async function generateWithSchemaGenerator(
   hotUpdater: {
-    generateSchema?: (
-      version: string | "latest",
-      name?: string,
-    ) => {
-      code: string;
-      path: string;
-    };
+    generateSchema?: SchemaGenerator;
     adapterName: string;
   },
   adapterName: string,
@@ -245,7 +248,7 @@ async function generateWithSchemaGenerator(
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  validateSchemaGeneratorSupport(hotUpdater, adapterName);
+  ensureSchemaGeneratorSupport(hotUpdater, adapterName);
 
   // Generate schema
   const schemaResult = hotUpdater.generateSchema("latest");
@@ -264,37 +267,14 @@ async function generateWithSchemaGenerator(
     return;
   }
 
-  // For other adapters (drizzle, typeorm), use the original logic
-  // Create output directory
-  await mkdir(absoluteOutputDir, { recursive: true });
+  const outputPath = resolveGeneratedSchemaOutputPath(
+    schemaResult,
+    absoluteOutputDir,
+  );
+  const outputDirectory = path.dirname(outputPath);
+  const filename = path.basename(outputPath);
 
-  // Check for duplicate schema files using MD5 hash
-  const newSchemaHash = createHash("md5").update(schemaCode).digest("hex");
-
-  try {
-    const files = await readdir(absoluteOutputDir);
-    const schemaFiles = files.filter((file) => file.endsWith(".ts"));
-
-    for (const file of schemaFiles) {
-      const filePath = path.join(absoluteOutputDir, file);
-      const existingContent = await readFile(filePath, "utf-8");
-      const existingHash = createHash("md5")
-        .update(existingContent)
-        .digest("hex");
-
-      if (existingHash === newSchemaHash) {
-        p.log.warn(`Identical schema already exists: ${file}`);
-        p.outro("Done");
-        return;
-      }
-    }
-  } catch {
-    // Directory doesn't exist yet or can't be read, continue with file creation
-  }
-
-  // Use fixed filename for schema files
-  const filename = "hot-updater-schema.ts";
-  const outputPath = path.join(absoluteOutputDir, filename);
+  await mkdir(outputDirectory, { recursive: true });
 
   // Confirm before writing schema file
   if (!skipConfirm) {
@@ -305,7 +285,7 @@ async function generateWithSchemaGenerator(
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
       p.cancel("Operation cancelled");
-      process.exit(0);
+      requestGenerateExit(0);
     }
   }
 
@@ -313,287 +293,4 @@ async function generateWithSchemaGenerator(
   await writeFile(outputPath, schemaCode, "utf-8");
 
   p.log.success(ui.line(["Created", ui.path(outputPath)]));
-}
-
-/**
- * Generate Prisma schema - directly modifies prisma/schema.prisma file
- * Similar to better-auth's approach
- */
-async function generatePrismaSchema(
-  schemaCode: string,
-  outputDir: string,
-  skipConfirm: boolean,
-) {
-  // Default Prisma schema path
-  const prismaSchemaPath = path.join(outputDir, "prisma", "schema.prisma");
-
-  // Check if prisma/schema.prisma exists
-  let schemaExists = false;
-  try {
-    await access(prismaSchemaPath);
-    schemaExists = true;
-  } catch {
-    // Schema file doesn't exist
-  }
-
-  let finalContent: string;
-  let message: string;
-
-  if (!schemaExists) {
-    // Warn about missing generator and datasource blocks
-    p.log.warn("Generated schema only contains model definitions.");
-
-    // Use the complete schema from generateSchema for initial creation
-    finalContent = schemaCode;
-    message = "Create prisma/schema.prisma?";
-  } else {
-    // Read existing schema and merge
-    const existingSchema = await readFile(prismaSchemaPath, "utf-8");
-    const { content, hadExistingModels } = mergePrismaSchema(
-      existingSchema,
-      schemaCode,
-    );
-    finalContent = content;
-    message = hadExistingModels
-      ? "Update hot-updater models in prisma/schema.prisma?"
-      : "Add hot-updater models to prisma/schema.prisma?";
-  }
-
-  // Confirm before writing
-  if (!skipConfirm) {
-    const shouldContinue = await p.confirm({
-      message,
-      initialValue: true,
-    });
-
-    if (p.isCancel(shouldContinue) || !shouldContinue) {
-      p.cancel("Operation cancelled");
-      process.exit(0);
-    }
-  }
-
-  // Create prisma directory if it doesn't exist
-  await mkdir(path.dirname(prismaSchemaPath), { recursive: true });
-
-  // Write schema file
-  await writeFile(prismaSchemaPath, finalContent, "utf-8");
-
-  p.log.success(
-    ui.line([schemaExists ? "Updated" : "Created", ui.path(prismaSchemaPath)]),
-  );
-  p.log.message(
-    ui.block("Run", [
-      ui.kv("Prisma", ui.command("npx prisma generate")),
-      ui.kv("Migrate", ui.command("npx prisma migrate dev")),
-    ]),
-  );
-}
-
-/**
- * Creates a minimal dummy pool implementation for SQL-only generation
- * This won't be used for actual database operations
- */
-function createDummyPool() {
-  return {
-    connect: async () => ({
-      query: async () => ({
-        rows: [],
-        command: "SELECT" as const,
-        rowCount: 0,
-      }),
-      release: () => {},
-    }),
-    end: async () => {},
-  };
-}
-
-/**
- * Creates a minimal dummy SQLite database implementation for SQL-only generation
- * This won't be used for actual database operations
- */
-function createDummySqliteDatabase() {
-  return {
-    close: async () => {},
-    prepare: () => ({
-      all: async () => [],
-      get: async () => undefined,
-      run: async () => ({ changes: 0 }),
-      finalize: async () => {},
-    }),
-  };
-}
-
-/**
- * Creates a Kysely dialect based on the selected database provider
- */
-function createDialect(provider: SupportedProvider): Dialect {
-  switch (provider) {
-    case "postgresql":
-      return new PostgresDialect({ pool: createDummyPool() as never });
-    case "mysql":
-      return new MysqlDialect({ pool: createDummyPool() as never });
-    case "sqlite":
-      return new SqliteDialect({
-        database: createDummySqliteDatabase() as never,
-      });
-  }
-}
-
-/**
- * Generate standalone SQL file using Kysely preset without reading config
- */
-async function generateStandaloneSQL(options: {
-  outputDir: string;
-  skipConfirm: boolean;
-  provider?: string;
-}) {
-  const { outputDir, skipConfirm, provider } = options;
-
-  try {
-    // Validate and determine database provider
-    let dbType: SupportedProvider;
-
-    if (provider) {
-      if (!SUPPORTED_PROVIDERS.includes(provider as SupportedProvider)) {
-        p.log.error(
-          `Invalid provider: ${provider}\nValid options: ${SUPPORTED_PROVIDERS.join(", ")}`,
-        );
-        process.exit(1);
-      }
-      dbType = provider as SupportedProvider;
-    } else if (skipConfirm) {
-      // Default to postgresql when --yes is used without provider
-      dbType = "postgresql";
-    } else {
-      // Ask user to select database type
-      const selected = await p.select({
-        message: "Select database type",
-        options: [
-          { value: "postgresql", label: "PostgreSQL" },
-          { value: "mysql", label: "MySQL" },
-          { value: "sqlite", label: "SQLite" },
-        ],
-      });
-
-      if (p.isCancel(selected)) {
-        p.cancel("Operation cancelled");
-        process.exit(0);
-      }
-
-      dbType = selected as SupportedProvider;
-    }
-
-    const s = p.spinner();
-    s.start("Generating SQL from database schema");
-
-    // Create Kysely instance with appropriate dialect
-    // The dummy connection won't be used for SQL generation in from-schema mode
-    const db = new Kysely({ dialect: createDialect(dbType) });
-    const [{ createHotUpdater }, { kyselyAdapter }] = await Promise.all([
-      import("@hot-updater/server"),
-      import("@hot-updater/server/adapters/kysely"),
-    ]);
-
-    // Create the adapter with selected provider
-    const adapter = kyselyAdapter({
-      db,
-      provider: dbType,
-    });
-
-    const migrator = createHotUpdater({
-      database: adapter,
-    }).createMigrator();
-
-    // Generate SQL from schema
-    const result = await migrator.migrateToLatest({
-      mode: "from-schema",
-      updateSettings: false,
-    });
-
-    s.stop("SQL generation complete");
-
-    // Get SQL
-    if (!result.getSQL) {
-      p.log.error(
-        "SQL generation is not supported by the database adapter.\n" +
-          "This may indicate a configuration issue.",
-      );
-      process.exit(1);
-    }
-
-    const sql = result.getSQL();
-
-    if (!sql || sql.trim() === "") {
-      p.log.error(
-        "No SQL was generated from the schema.\n" +
-          "The schema may be empty or invalid.",
-      );
-      process.exit(1);
-    }
-
-    // Format SQL for better readability
-    const formatterDialects = {
-      postgresql: postgresqlDialect,
-      mysql: mysqlDialect,
-      sqlite: sqliteDialect,
-    } as const satisfies Record<SupportedProvider, unknown>;
-
-    const formattedSql = formatDialect(sql, {
-      dialect: formatterDialects[dbType],
-      tabWidth: 2,
-      keywordCase: "upper",
-    });
-
-    // Create output directory
-    const absoluteOutputDir = path.resolve(process.cwd(), outputDir);
-    await mkdir(absoluteOutputDir, { recursive: true });
-
-    // Fixed filename
-    const filename = "hot-updater.sql";
-    const outputPath = path.join(absoluteOutputDir, filename);
-
-    // Check if file already exists
-    const fileExists = await access(outputPath)
-      .then(() => true)
-      .catch(() => false);
-
-    // Confirm before writing SQL file
-    if (!skipConfirm) {
-      // Show SQL preview before confirmation
-      p.log.message(ui.title("SQL preview"));
-      console.log(formattedSql);
-      console.log("");
-
-      if (fileExists) {
-        p.log.warn(`${filename} already exists and will be overwritten.`);
-      }
-
-      const shouldContinue = await p.confirm({
-        message: `Save to ${filename}?`,
-        initialValue: true,
-      });
-
-      if (p.isCancel(shouldContinue) || !shouldContinue) {
-        p.cancel("Operation cancelled");
-        process.exit(0);
-      }
-    } else if (fileExists) {
-      // When skipping confirmation, still show a warning about overwriting
-      p.log.warn(ui.line(["Overwriting", ui.path(outputPath)]));
-    }
-
-    // Write SQL file
-    await writeFile(outputPath, formattedSql, "utf-8");
-
-    p.log.success(ui.line(["Created", ui.path(outputPath)]));
-  } catch (error) {
-    p.log.error("Failed to generate standalone SQL");
-    if (error instanceof Error) {
-      p.log.error(error.message);
-      if (process.env["DEBUG"]) {
-        console.error(error.stack);
-      }
-    }
-    process.exit(1);
-  }
 }

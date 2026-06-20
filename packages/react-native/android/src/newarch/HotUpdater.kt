@@ -100,6 +100,24 @@ class HotUpdater {
         fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
 
         /**
+         * Programmatic configuration for brownfield/AAR setups where manifest
+         * metadata or string resources in the host app are not desirable.
+         */
+        fun configure(
+            fingerprintHash: String? = null,
+            publicKey: String? = null,
+            channel: String? = null,
+            isolationKey: String? = null,
+        ) {
+            HotUpdaterConfig.configure(
+                fingerprintHash = fingerprintHash,
+                publicKey = publicKey,
+                channel = channel,
+                isolationKey = isolationKey,
+            )
+        }
+
+        /**
          * Sets the ReactHost for brownfield apps (New Architecture).
          * Sets the ReactHost for brownfield apps that don't have ReactApplication.
          * When set, reload() will use this ReactHost instead of accessing Application.
