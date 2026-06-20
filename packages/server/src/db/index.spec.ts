@@ -28,13 +28,14 @@ import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
+import { createHotUpdater } from "../index";
 import { bundleToRow } from "./bundleRows";
 import {
   createSchemaMigrationSql,
   createTableSql,
   hotUpdaterSchemaVersions,
 } from "./hotUpdaterSchema";
-import { createNodeHotUpdater as createHotUpdater } from "./index";
+import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabasePluginFactory, ORMProvider } from "./types";
 
@@ -340,7 +341,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   });
 
   beforeAll(async () => {
-    const migrator = hotUpdater.createMigrator();
+    const migrator = createMigrator(hotUpdater);
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: true,
@@ -382,7 +383,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   describe("schema generation", () => {
     it("includes relations, defaults, and indexes in Prisma output", () => {
-      const code = prismaSchemaHotUpdater.generateSchema("latest").code;
+      const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
 
       expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
@@ -407,14 +408,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("omits the metadata JSON default for SQLite Prisma output", () => {
-      const code = sqlitePrismaSchemaHotUpdater.generateSchema("latest").code;
+      const code = generateSchema(sqlitePrismaSchemaHotUpdater, "latest").code;
 
       expect(code).toContain("metadata Json");
       expect(code).not.toContain('metadata Json @default("{}")');
     });
 
     it("generates ORM schema from the requested version snapshot", () => {
-      const code = prismaSchemaHotUpdater.generateSchema("0.21.0").code;
+      const code = generateSchema(prismaSchemaHotUpdater, "0.21.0").code;
 
       expect(code).toContain('value String @default("0.21.0")');
       expect(code).not.toContain("rollout_cohort_count");
@@ -422,7 +423,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("includes foreign keys and indexes in Drizzle output", () => {
-      const code = drizzleSchemaHotUpdater.generateSchema("latest").code;
+      const code = generateSchema(drizzleSchemaHotUpdater, "latest").code;
       const bundlesBlock = code.match(
         /export const bundles = [\s\S]*?(?=\n\nexport const bundle_patches = )/,
       )?.[0];
@@ -526,7 +527,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       try {
-        const migrator = migrationHotUpdater.createMigrator();
+        const migrator = createMigrator(migrationHotUpdater);
         const result = await migrator.migrateToLatest({
           mode: "from-schema",
           updateSettings: false,
@@ -593,7 +594,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           values ('version', '0.21.0');
         `);
 
-        const migrator = migrationHotUpdater.createMigrator();
+        const migrator = createMigrator(migrationHotUpdater);
         const result = await migrator.migrateToLatest({
           mode: "from-schema",
           updateSettings: true,
@@ -639,7 +640,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       try {
-        const migrator = migrationHotUpdater.createMigrator();
+        const migrator = createMigrator(migrationHotUpdater);
         const result = await migrator.migrateToLatest({
           mode: "from-schema",
           updateSettings: false,
@@ -671,7 +672,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       try {
-        const migrator = migrationHotUpdater.createMigrator();
+        const migrator = createMigrator(migrationHotUpdater);
         const result = await migrator.migrateToLatest({
           mode: "from-schema",
           updateSettings: false,
@@ -703,9 +704,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const mongoHotUpdater = createHotUpdater({
         database: mongoAdapter({ client }),
       });
-      const result = await mongoHotUpdater
-        .createMigrator()
-        .migrateToLatest({ mode: "from-schema" });
+      const result = await createMigrator(mongoHotUpdater).migrateToLatest({
+        mode: "from-schema",
+      });
 
       expect(result.operations).toEqual(
         expect.arrayContaining([
@@ -742,7 +743,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       try {
         await expect(
-          migrationHotUpdater.createMigrator().migrateToLatest({
+          createMigrator(migrationHotUpdater).migrateToLatest({
             mode: "from-database",
           }),
         ).rejects.toThrow(

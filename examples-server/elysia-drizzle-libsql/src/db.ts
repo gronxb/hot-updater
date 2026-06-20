@@ -1,7 +1,7 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
+import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
-import { createHotUpdater } from "@hot-updater/server/node";
 
 import { db } from "./drizzle";
 

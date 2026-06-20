@@ -132,19 +132,22 @@ export async function generateStandaloneSQL(options: {
     s.start("Generating SQL from database schema");
 
     const db = new Kysely({ dialect: createDialect(dbType) });
-    const [{ createHotUpdater }, { kyselyAdapter }] = await Promise.all([
-      import("@hot-updater/server/node"),
-      import("@hot-updater/server/adapters/kysely"),
-    ]);
+    const [{ createHotUpdater }, { createMigrator }, { kyselyAdapter }] =
+      await Promise.all([
+        import("@hot-updater/server"),
+        import("@hot-updater/server/db"),
+        import("@hot-updater/server/adapters/kysely"),
+      ]);
 
     const adapter = kyselyAdapter({
       db,
       provider: dbType,
     });
 
-    const migrator = createHotUpdater({
+    const hotUpdater = createHotUpdater({
       database: adapter,
-    }).createMigrator();
+    });
+    const migrator = createMigrator(hotUpdater);
     const result = await migrator.migrateToLatest({
       mode: "from-schema",
       updateSettings: false,

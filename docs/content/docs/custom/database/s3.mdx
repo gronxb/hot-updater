@@ -34,7 +34,7 @@ set `S3_ENDPOINT` and use the region expected by that provider.
 Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server/node";
+import { createHotUpdater } from "@hot-updater/server";
 import { s3Database, s3Storage } from "@hot-updater/aws";
 
 const s3Config = {

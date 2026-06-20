@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createNodeHotUpdater as createHotUpdater } from "../db";
+import { generateSchema } from "../db";
+import { createHotUpdater } from "../index";
 import { drizzleAdapter } from "./drizzle";
 
 describe("drizzleAdapter", () => {
@@ -16,7 +17,7 @@ describe("drizzleAdapter", () => {
       }),
     });
 
-    const schema = hotUpdater.generateSchema("latest");
+    const schema = generateSchema(hotUpdater, "latest");
 
     expect(schema.path).toBe("hot-updater-schema.ts");
     expect(schema.code).toContain("pgTable");

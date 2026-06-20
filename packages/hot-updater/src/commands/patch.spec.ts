@@ -36,7 +36,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
   p: mockCli.p,
 }));
 
-vi.mock("@hot-updater/server/node", () => ({
+vi.mock("@hot-updater/server/db", () => ({
   createBundleDiff: mockServer.createBundleDiff,
 }));
 

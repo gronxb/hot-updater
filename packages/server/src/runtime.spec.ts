@@ -1,3 +1,5 @@
+import { readFile } from "fs/promises";
+
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
@@ -98,6 +100,17 @@ const createSchemaManagedDatabase = (
 });
 
 describe("runtime createHotUpdater", () => {
+  it("publishes db tooling subpath and removes the runtime subpath", async () => {
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf-8"),
+    ) as {
+      exports: Record<string, unknown>;
+    };
+
+    expect(packageJson.exports["./db"]).toBeDefined();
+    expect(packageJson.exports["./runtime"]).toBeUndefined();
+  });
+
   it("exports runtime-safe handler types from the root entry", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");

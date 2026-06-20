@@ -4,8 +4,8 @@ import { s3Storage } from "@hot-updater/aws";
 // import { firebaseStorage } from "@hot-updater/fir
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
+import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
-import { createHotUpdater } from "@hot-updater/server/node";
 import { config } from "dotenv";
 
 import { client, closeDatabase as closeMongo } from "./mongodb";

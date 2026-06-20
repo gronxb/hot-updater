@@ -154,9 +154,9 @@ describe("loadHotUpdater", () => {
     }
   });
 
-  it("rejects runtime-only configs for database capability commands", async () => {
+  it("accepts root runtime configs without direct database tooling methods", async () => {
     const projectDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-runtime-only-config-"),
+      path.join(tmpdir(), "hot-updater-root-runtime-config-"),
     );
     await writeFile(
       path.join(projectDir, "hot-updater.config.ts"),
@@ -165,19 +165,12 @@ describe("loadHotUpdater", () => {
       ),
       "utf-8",
     );
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
 
     try {
-      await expect(loadHotUpdater("", { cwd: projectDir })).rejects.toThrow(
-        "process.exit(1)",
-      );
-
-      expect(mockCli.log.error).toHaveBeenCalledWith(
-        expect.stringContaining("@hot-updater/server/node"),
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      const loaded = await loadHotUpdater("", { cwd: projectDir });
+      expect(loaded.adapterName).toBe("kysely");
+      expect("createMigrator" in loaded.hotUpdater).toBe(false);
+      expect("generateSchema" in loaded.hotUpdater).toBe(false);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }

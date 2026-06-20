@@ -48,7 +48,7 @@ export const db = drizzle(client);
 Create the Hot Updater instance.
 
 ```typescript title="src/hotUpdater.ts"
-import { createHotUpdater } from "@hot-updater/server/node";
+import { createHotUpdater } from "@hot-updater/server";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 import { db } from "./drizzle";
 

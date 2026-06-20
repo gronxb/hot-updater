@@ -1,11 +1,8 @@
 import { p } from "@hot-updater/cli-tools";
-import type { Migrator } from "@hot-updater/server/node";
+import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
 
 import { ui } from "../utils/cli-ui";
-import {
-  showMigrateUnsupportedError,
-  validateMigratorSupport,
-} from "./utils/adapter-strategies";
+import { showMigrateUnsupportedError } from "./utils/adapter-strategies";
 import { loadHotUpdater } from "./utils/load-hot-updater";
 
 export interface MigrateOptions {
@@ -231,14 +228,12 @@ export async function migrate(options: MigrateOptions) {
  * Run migrations using createMigrator (for kysely/mongodb)
  */
 async function migrateWithMigrator(
-  hotUpdater: { createMigrator?: () => Migrator; adapterName: string },
+  hotUpdater: Awaited<ReturnType<typeof loadHotUpdater>>["hotUpdater"],
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
 ) {
-  validateMigratorSupport(hotUpdater, hotUpdater.adapterName);
-
   // Create migrator
-  const migrator = hotUpdater.createMigrator();
+  const migrator = createHotUpdaterMigrator(hotUpdater);
 
   // Get current version
   const currentVersion = await migrator.getVersion();

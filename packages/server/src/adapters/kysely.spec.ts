@@ -4,7 +4,7 @@ import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createNodeHotUpdater as createHotUpdater } from "../db";
+import { createHotUpdater } from "../index";
 import {
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,

@@ -1,72 +1,50 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { DatabasePluginFactory, ORMProvider } from "./db/types";
-import { createHotUpdater } from "./node";
-
-const createSchemaOnlyAdapter = ({
-  code,
-  name,
-  provider,
-  path,
-}: {
-  readonly code: string;
-  readonly name: string;
-  readonly provider: ORMProvider;
-  readonly path: string;
-}): DatabasePluginFactory => {
-  const factory: DatabasePluginFactory = () => ({
-    name,
-    async getBundleById() {
-      return null;
-    },
-    async getBundles() {
-      return {
-        data: [],
-        pagination: {
-          currentPage: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          total: 0,
-          totalPages: 0,
-        },
-      };
-    },
-    async getChannels() {
-      return [];
-    },
-    async appendBundle() {},
-    async updateBundle() {},
-    async deleteBundle() {},
-    async commitBundle() {},
-  });
-  factory.adapterName = name;
-  factory.provider = provider;
-  factory.generateSchema = () => {
-    return {
-      code,
-      path,
-    };
-  };
-  return factory;
-};
+import { toNodeHandler } from "./node";
 
 describe("server node entry", () => {
-  it("exposes database maintenance APIs through the node subpath", () => {
-    const hotUpdater = createHotUpdater({
-      database: createSchemaOnlyAdapter({
-        code: "export const bundles = {};",
-        name: "drizzle",
-        path: "hot-updater-schema.ts",
-        provider: "postgresql",
-      }),
-    });
+  it("converts a Web Request handler to Node middleware", async () => {
+    const hotUpdater = {
+      handler: async (request: Request) =>
+        Response.json({
+          method: request.method,
+          pathname: new URL(request.url).pathname,
+        }),
+    };
+    const middleware = toNodeHandler(hotUpdater);
+    const headers = new Map<string, string | string[]>();
+    const response = {
+      body: "",
+      statusCode: 0,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name: string, value: string | string[]) {
+        headers.set(name, value);
+      },
+      send(body: string) {
+        this.body = body;
+      },
+      end() {},
+    };
 
-    expect(hotUpdater.adapterName).toBe("drizzle");
-    expect(hotUpdater.generateSchema("latest").path).toBe(
-      "hot-updater-schema.ts",
+    await middleware(
+      {
+        method: "GET",
+        url: "/api/check",
+        headers: { host: "example.com" },
+        protocol: "https",
+        get: (name: string) => (name === "host" ? "example.com" : undefined),
+      },
+      response,
     );
-    expect(hotUpdater.createMigrator).toEqual(expect.any(Function));
-    expectTypeOf(hotUpdater).toHaveProperty("generateSchema");
-    expectTypeOf(hotUpdater).toHaveProperty("createMigrator");
+
+    expect(response.statusCode).toBe(200);
+    expect(headers.get("content-type")).toContain("application/json");
+    expect(JSON.parse(response.body)).toEqual({
+      method: "GET",
+      pathname: "/api/check",
+    });
   });
 });

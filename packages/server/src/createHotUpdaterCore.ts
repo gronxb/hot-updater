@@ -28,6 +28,8 @@ export type RuntimeHotUpdaterAPI<TContext = unknown> = DatabaseAPI<TContext> & {
   readonly adapterName: string;
 };
 
+export type HotUpdaterAPI<TContext = unknown> = RuntimeHotUpdaterAPI<TContext>;
+
 export interface CreateHotUpdaterOptions<TContext = unknown> {
   readonly database: DatabaseAdapter<TContext>;
   readonly storages?: readonly (
@@ -53,11 +55,30 @@ type PluginDatabaseCore<TContext> = {
   readonly generateSchema: () => never;
 };
 
+export const hotUpdaterCoreMetadata = Symbol.for(
+  "@hot-updater/server/core-metadata",
+);
+
+export type HotUpdaterCoreMetadata<TContext = unknown> = {
+  readonly adapterCapabilities: DatabaseAdapterCapabilities;
+  readonly core: PluginDatabaseCore<TContext>;
+};
+
 export type HotUpdaterCore<TContext = unknown> = {
   readonly api: RuntimeHotUpdaterAPI<TContext>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
   readonly core: PluginDatabaseCore<TContext>;
 };
+
+export function getHotUpdaterCoreMetadata<TContext = unknown>(
+  hotUpdater: RuntimeHotUpdaterAPI<TContext>,
+): HotUpdaterCoreMetadata<TContext> | undefined {
+  return (
+    hotUpdater as RuntimeHotUpdaterAPI<TContext> & {
+      readonly [hotUpdaterCoreMetadata]?: HotUpdaterCoreMetadata<TContext>;
+    }
+  )[hotUpdaterCoreMetadata];
+}
 
 export function createHotUpdaterCore<TContext = unknown>(
   options: CreateHotUpdaterOptions<TContext>,
@@ -125,6 +146,13 @@ export function createHotUpdaterCore<TContext = unknown>(
     handler,
   };
   Object.defineProperties(api, Object.getOwnPropertyDescriptors(core.api));
+  Object.defineProperty(api, hotUpdaterCoreMetadata, {
+    enumerable: false,
+    value: {
+      adapterCapabilities,
+      core,
+    } satisfies HotUpdaterCoreMetadata<TContext>,
+  });
 
   return {
     api: api as RuntimeHotUpdaterAPI<TContext>,

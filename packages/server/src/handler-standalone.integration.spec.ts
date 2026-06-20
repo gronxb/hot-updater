@@ -11,7 +11,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
-import { createNodeHotUpdater as createHotUpdater } from "./db";
+import { createMigrator } from "./db";
+import { createHotUpdater } from "./index";
 
 /**
  * Integration tests between @hot-updater/server handler and @hot-updater/standalone repository
@@ -46,7 +47,7 @@ const server = setupServer();
 
 beforeAll(async () => {
   // Initialize database
-  const migrator = api.createMigrator();
+  const migrator = createMigrator(api);
   const result = await migrator.migrateToLatest({
     mode: "from-schema",
     updateSettings: true,

@@ -23,20 +23,7 @@ type HandlerHotUpdaterAPI = {
   readonly handler: (request: Request) => Promise<Response>;
 };
 
-export {
-  createBundleDiff,
-  createNodeHotUpdater as createHotUpdater,
-  HOT_UPDATER_SERVER_VERSION,
-  HotUpdaterSchemaMigrationRequiredError,
-} from "./db";
-export type {
-  CreateHotUpdaterOptions,
-  Migrator,
-  NodeHotUpdaterAPI,
-  NodeHotUpdaterAPI as HotUpdaterAPI,
-  NodeHotUpdaterAPI as HotUpdaterNodeAPI,
-  SchemaGenerator,
-} from "./db";
+export { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 /**
  * Converts a Hot Updater handler to a Node.js-compatible middleware

@@ -28,13 +28,13 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
+    "./db": {
+      "import": "./dist/db/index.mjs",
+      "require": "./dist/db/index.cjs"
+    },
     "./node": {
       "import": "./dist/node.mjs",
       "require": "./dist/node.cjs"
-    },
-    "./runtime": {
-      "import": "./dist/runtime.mjs",
-      "require": "./dist/runtime.cjs"
     },
     "./package.json": "./package.json"
   },
