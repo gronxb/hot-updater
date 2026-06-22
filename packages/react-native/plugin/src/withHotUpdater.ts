@@ -100,7 +100,7 @@ const getFingerprint = async () => {
  * 3. Public key file (derived from privateKeyPath)
  * 4. Skip with warning (graceful fallback)
  */
-const getPublicKeyFromConfig = async (
+export const getPublicKeyFromConfig = async (
   signingConfig: { enabled?: boolean; privateKeyPath?: string } | undefined,
 ): Promise<string | null> => {
   // If signing not enabled, no public key needed
@@ -108,12 +108,15 @@ const getPublicKeyFromConfig = async (
     return null;
   }
 
-  // Priority 1: Environment variable with private key PEM (EAS builds)
   const envPrivateKey = process.env.HOT_UPDATER_PRIVATE_KEY;
   if (envPrivateKey) {
     try {
-      const { getPublicKeyFromPrivate } = await loadHotUpdater();
-      const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKey);
+      const { getPublicKeyFromPrivate, loadPrivateKey } =
+        await loadHotUpdater();
+      const envPrivateKeyPEM = envPrivateKey.includes("-----BEGIN")
+        ? envPrivateKey
+        : await loadPrivateKey(envPrivateKey);
+      const publicKeyPEM = getPublicKeyFromPrivate(envPrivateKeyPEM);
       console.log(
         "[hot-updater] Using public key extracted from HOT_UPDATER_PRIVATE_KEY environment variable",
       );
