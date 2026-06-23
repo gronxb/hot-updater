@@ -1,6 +1,95 @@
-import { describe, expect, it } from "vitest";
+import {
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { transformAndroid, transformIOS } from "./transformers";
+import { getPublicKeyFromConfig } from "./withHotUpdater";
+
+const originalPrivateKeyEnv = process.env.HOT_UPDATER_PRIVATE_KEY;
+const tempDirs: string[] = [];
+
+const createKeyPair = () =>
+  generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+    },
+  });
+
+vi.mock("hot-updater", () => ({
+  getPublicKeyFromPrivate: (privateKeyPEM: string) => {
+    const privateKey = createPrivateKey(privateKeyPEM);
+    return createPublicKey(privateKey).export({
+      type: "spki",
+      format: "pem",
+    });
+  },
+  loadPrivateKey: async (privateKeyPath: string) =>
+    readFile(privateKeyPath, "utf-8"),
+}));
+
+afterEach(async () => {
+  if (originalPrivateKeyEnv === undefined) {
+    delete process.env.HOT_UPDATER_PRIVATE_KEY;
+  } else {
+    process.env.HOT_UPDATER_PRIVATE_KEY = originalPrivateKeyEnv;
+  }
+
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
+  );
+});
+
+describe("getPublicKeyFromConfig", () => {
+  it("reads HOT_UPDATER_PRIVATE_KEY as a file path", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-env-key-"));
+    tempDirs.push(dir);
+    const { privateKey, publicKey } = createKeyPair();
+    const privateKeyPath = path.join(dir, "eas-secret");
+
+    await writeFile(privateKeyPath, privateKey);
+    process.env.HOT_UPDATER_PRIVATE_KEY = privateKeyPath;
+
+    await expect(getPublicKeyFromConfig({ enabled: true })).resolves.toBe(
+      publicKey.trim(),
+    );
+  });
+
+  it("keeps inline private key env support", async () => {
+    const { privateKey, publicKey } = createKeyPair();
+
+    process.env.HOT_UPDATER_PRIVATE_KEY = privateKey;
+
+    await expect(getPublicKeyFromConfig({ enabled: true })).resolves.toBe(
+      publicKey.trim(),
+    );
+  });
+
+  it("falls back to signing.privateKeyPath", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-file-key-"));
+    tempDirs.push(dir);
+    const { privateKey, publicKey } = createKeyPair();
+    const privateKeyPath = path.join(dir, "private-key.pem");
+
+    await writeFile(privateKeyPath, privateKey);
+
+    await expect(
+      getPublicKeyFromConfig({ enabled: true, privateKeyPath }),
+    ).resolves.toBe(publicKey.trim());
+  });
+});
 
 describe("withHotUpdater - Test Cases", () => {
   describe("Android", () => {
