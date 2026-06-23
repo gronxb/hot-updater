@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.35.1
+
+### Patch Changes
+
+- 8b91835: Fix the Expo config plugin to read EAS private key secret files from the `HOT_UPDATER_PRIVATE_KEY` environment variable.
+  - @hot-updater/cli-tools@0.35.1
+  - @hot-updater/core@0.35.1
+  - @hot-updater/js@0.35.1
+  - @hot-updater/plugin-core@0.35.1
+
 ## 0.35.0
 
 ### Patch Changes
