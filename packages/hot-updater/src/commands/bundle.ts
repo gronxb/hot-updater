@@ -68,7 +68,14 @@ export interface BundleUpdateOptions extends BundleMutationOptions {
   targetCohorts?: string;
 }
 
+export interface BundleDeleteOptions extends BundleMutationOptions {
+  channel?: string;
+  platform?: Platform;
+}
+
 const DEFAULT_LIMIT = 20;
+// Page size used when enumerating a whole channel for `delete --channel`.
+const CHANNEL_PAGE_SIZE = 100;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
 
@@ -338,29 +345,102 @@ export const handleBundleUpdate = async (
   }
 };
 
+// Enumerate every bundle on a channel, paginating until the cursor is
+// exhausted so large (e.g. Pro, 1000-item) channels are fully covered.
+const collectChannelBundles = async (
+  databasePlugin: DatabasePlugin,
+  channel: string,
+  platform?: Platform,
+): Promise<Bundle[]> => {
+  const bundles: Bundle[] = [];
+  let after: string | undefined;
+  do {
+    const { data, pagination } = await databasePlugin.getBundles({
+      where: { channel, platform },
+      limit: CHANNEL_PAGE_SIZE,
+      cursor: after ? { after } : undefined,
+    });
+    bundles.push(...data);
+    after =
+      pagination.hasNextPage && pagination.nextCursor
+        ? pagination.nextCursor
+        : undefined;
+  } while (after);
+  return bundles;
+};
+
 export const handleBundleDelete = async (
-  bundleId: string,
-  options: BundleMutationOptions = {},
+  bundleIds: string[],
+  options: BundleDeleteOptions = {},
 ) => {
   printBanner();
+
+  const ids = bundleIds ?? [];
+  if (options.channel && ids.length > 0) {
+    p.log.error("Pass either bundle id(s) or --channel, not both.");
+    process.exit(1);
+  }
+  if (!options.channel && ids.length === 0) {
+    p.log.error(
+      "Provide at least one bundle id, or --channel to delete a whole channel.",
+    );
+    process.exit(1);
+  }
 
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
-    if (!bundle) {
-      p.log.info(`No bundle with id ${bundleId}. No changes.`);
-      return;
+    // Resolve the target set: an entire channel, or the given ids.
+    let targets: Bundle[];
+    if (options.channel) {
+      targets = await collectChannelBundles(
+        databasePlugin,
+        options.channel,
+        options.platform,
+      );
+      if (targets.length === 0) {
+        p.log.info(`No bundles on channel ${options.channel}. No changes.`);
+        return;
+      }
+    } else {
+      const fetched = await Promise.all(
+        ids.map((id) => databasePlugin.getBundleById(id)),
+      );
+      targets = [];
+      fetched.forEach((bundle, index) => {
+        if (bundle) {
+          targets.push(bundle);
+        } else {
+          p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
+        }
+      });
+      if (targets.length === 0) {
+        p.log.info("No matching bundle records. No changes.");
+        return;
+      }
     }
 
-    p.log.message(formatBundleSummary(bundle));
+    const [firstTarget] = targets;
+    if (firstTarget && targets.length === 1) {
+      p.log.message(formatBundleSummary(firstTarget));
+    } else {
+      const scope = options.channel
+        ? ` on channel ${ui.channel(options.channel)}`
+        : "";
+      p.log.message(
+        `${targets.length} bundle records${scope} will be deleted.`,
+      );
+    }
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
         refuseNonInteractiveMutation("delete");
       }
       const confirmed = await p.confirm({
-        message: "Delete this bundle record?",
+        message:
+          targets.length === 1
+            ? "Delete this bundle record?"
+            : `Delete ${targets.length} bundle records?`,
         initialValue: false,
       });
       if (p.isCancel(confirmed) || !confirmed) {
@@ -369,17 +449,33 @@ export const handleBundleDelete = async (
       }
     }
 
-    await databasePlugin.deleteBundle(bundle);
+    // Delete every target, then commit once — fewer index rewrites and CDN
+    // invalidations than committing per bundle.
+    for (const bundle of targets) {
+      await databasePlugin.deleteBundle(bundle);
+    }
     await databasePlugin.commitBundle();
 
-    const deleted = await waitForDeletedBundle(databasePlugin, bundleId);
-    if (!deleted) {
-      p.log.error(`Verification failed: ${bundleId} still exists.`);
+    const stillPresent: string[] = [];
+    for (const bundle of targets) {
+      const deleted = await waitForDeletedBundle(databasePlugin, bundle.id);
+      if (!deleted) {
+        stillPresent.push(bundle.id);
+      }
+    }
+    if (stillPresent.length > 0) {
+      p.log.error(
+        `Verification failed: ${stillPresent.length} bundle record(s) still exist (${stillPresent.join(", ")}).`,
+      );
       process.exit(1);
     }
 
-    p.log.success("Deleted bundle record.");
-    p.log.info(`  ${ui.id(bundleId)}`);
+    if (firstTarget && targets.length === 1) {
+      p.log.success("Deleted bundle record.");
+      p.log.info(`  ${ui.id(firstTarget.id)}`);
+    } else {
+      p.log.success(`Deleted ${targets.length} bundle records.`);
+    }
   } finally {
     await safeOnUnmount(databasePlugin);
   }
