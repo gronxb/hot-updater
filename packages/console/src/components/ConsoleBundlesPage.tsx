@@ -8,7 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useBundleQuery, useBundlesQuery } from "@/lib/api";
 
-export function ConsoleBundlesPage({ embedded = false }: { embedded?: boolean }) {
+export function ConsoleBundlesPage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { filters, bundleId, setBundleId } = useFilterParams();
   const [expandedBundleId, setExpandedBundleId] = useState<
     string | undefined
@@ -47,7 +51,9 @@ export function ConsoleBundlesPage({ embedded = false }: { embedded?: boolean })
 
   if (isLoading) {
     return (
-      <div className={embedded ? "flex h-full flex-col" : "flex h-svh flex-col"}>
+      <div
+        className={embedded ? "flex h-full flex-col" : "flex h-svh flex-col"}
+      >
         <FilterToolbar showSidebarTrigger={!embedded} />
         <div className="flex flex-1 flex-col gap-4 bg-muted/5 p-3 sm:p-6">
           <Skeleton className="h-12 w-full" />

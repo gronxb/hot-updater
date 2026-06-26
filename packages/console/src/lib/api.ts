@@ -6,7 +6,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { createContext, createElement, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  type ReactNode,
+} from "react";
 
 export type BundleFilters = {
   channel?: string;
@@ -40,9 +45,7 @@ export type ConsoleApiClient = {
   readonly deleteBundle: (params: {
     bundleId: string;
   }) => Promise<{ success: boolean }>;
-  readonly getBundle: (params: {
-    bundleId: string;
-  }) => Promise<Bundle | null>;
+  readonly getBundle: (params: { bundleId: string }) => Promise<Bundle | null>;
   readonly getBundleChildCounts: (params: {
     bundleIds: string[];
   }) => Promise<Record<string, number>>;
@@ -234,8 +237,7 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 
   return useQuery({
     queryKey: queryKeys.bundleChildren.counts(normalizedBundleIds),
-    queryFn: () =>
-      api.getBundleChildCounts({ bundleIds: normalizedBundleIds }),
+    queryFn: () => api.getBundleChildCounts({ bundleIds: normalizedBundleIds }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
   });
@@ -245,7 +247,8 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 export function useBundleDownloadUrlMutation() {
   const api = useConsoleApi();
   return useMutation({
-    mutationFn: (params: { bundleId: string }) => api.getBundleDownloadUrl(params),
+    mutationFn: (params: { bundleId: string }) =>
+      api.getBundleDownloadUrl(params),
   });
 }
 

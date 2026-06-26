@@ -123,11 +123,7 @@ function resolveNextFilters(
   return {
     channel: hasChannel ? newFilters.channel : filters.channel,
     platform: hasPlatform ? newFilters.platform : filters.platform,
-    page: shouldResetPagination
-      ? undefined
-      : hasPage
-        ? nextPage
-        : filters.page,
+    page: shouldResetPagination ? undefined : hasPage ? nextPage : filters.page,
     after: shouldResetPagination
       ? undefined
       : hasAfter
