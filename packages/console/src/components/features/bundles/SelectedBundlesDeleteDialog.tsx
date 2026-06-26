@@ -10,8 +10,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "#/components/ui/button";
+import { Card, CardContent } from "#/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "#/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -27,13 +27,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "#/components/ui/table";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useDeleteBundleMutation } from "@/lib/api";
+} from "#/components/ui/tooltip";
+import { useDeleteBundleMutation } from "#/lib/api";
 
 interface SelectedBundlesDeleteDialogProps {
   readonly bundles: readonly Bundle[];
@@ -100,7 +100,7 @@ function DeleteStatusIcon({ status }: { readonly status: DeleteItemStatus }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span aria-label={label}>
+        <span aria-label={label} role="img">
           <Icon className={className} />
         </span>
       </TooltipTrigger>

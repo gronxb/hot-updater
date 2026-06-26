@@ -1,8 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Moon, Package, Sun } from "lucide-react";
 
-import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
-import { useTheme } from "@/components/ThemeProvider";
+import { HotUpdaterLogo } from "#/components/HotUpdaterLogo";
+import { useTheme } from "#/components/ThemeProvider";
 import {
   Sidebar,
   SidebarContent,
@@ -14,7 +14,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
+} from "#/components/ui/sidebar";
 
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();

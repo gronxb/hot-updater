@@ -1,7 +1,7 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { PlatformIcon } from "@/components/PlatformIcon";
+import { BundleIdDisplay } from "#/components/BundleIdDisplay";
+import { PlatformIcon } from "#/components/PlatformIcon";
 
 interface BundleBasicInfoProps {
   bundle: Bundle;

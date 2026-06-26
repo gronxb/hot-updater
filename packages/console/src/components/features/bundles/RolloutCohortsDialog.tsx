@@ -6,15 +6,15 @@ import {
 import { List } from "lucide-react";
 import type { ComponentProps } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "#/components/ui/badge";
+import { Button } from "#/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "#/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -23,8 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { useIsMobile } from "@/hooks/use-mobile";
+} from "#/components/ui/dialog";
+import { useIsMobile } from "#/hooks/use-mobile";
 
 interface RolloutCohortsDialogProps {
   bundleId: string;

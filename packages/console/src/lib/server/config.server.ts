@@ -4,6 +4,11 @@ import {
   type NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
+import {
+  createHostedConfig,
+  getHostedConsoleContext,
+} from "./hosted-context.server";
+
 let configPromise: Promise<ConfigResponse> | null = null;
 let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
 
@@ -40,6 +45,18 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
 
 export const prepareConfig = async () => {
   try {
+    const hostedContext = getHostedConsoleContext();
+    if (hostedContext) {
+      const config = createHostedConfig(hostedContext);
+      const [databasePlugin, storagePlugin] = await Promise.all([
+        config.database(),
+        config.storage(),
+      ]);
+
+      assertNodeStoragePlugin(storagePlugin);
+      return { config, databasePlugin, storagePlugin };
+    }
+
     const config = await loadCachedConfig();
     const [databasePlugin, storagePlugin] = await Promise.all([
       config.database(),
@@ -57,4 +74,5 @@ export const prepareConfig = async () => {
   }
 };
 
-export const isConfigLoaded = () => Boolean(configPromise);
+export const isConfigLoaded = () =>
+  Boolean(getHostedConsoleContext()) || Boolean(configPromise);

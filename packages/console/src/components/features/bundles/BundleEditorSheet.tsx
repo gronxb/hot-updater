@@ -7,16 +7,16 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "#/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useIsMobile } from "@/hooks/use-mobile";
+} from "#/components/ui/sheet";
+import { Skeleton } from "#/components/ui/skeleton";
+import { useIsMobile } from "#/hooks/use-mobile";
 
 import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";

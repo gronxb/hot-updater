@@ -1,4 +1,13 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 export interface BundleFilters {
   channel?: string;
@@ -18,7 +27,121 @@ interface BundleSearchParams {
   expandedBundleId: string | undefined;
 }
 
-export function useFilterParams() {
+type FilterParamsState = {
+  readonly bundleId: string | undefined;
+  readonly expandedBundleId: string | undefined;
+  readonly filters: BundleFilters;
+  readonly resetFilters: () => void;
+  readonly setBundleId: (
+    bundleId: string | undefined,
+    filters?: Partial<BundleFilters>,
+  ) => void;
+  readonly setExpandedBundleId: (
+    bundleId: string | undefined,
+    filters?: Partial<BundleFilters>,
+  ) => void;
+  readonly setFilters: (filters: Partial<BundleFilters>) => void;
+};
+
+const FilterParamsContext = createContext<FilterParamsState | null>(null);
+
+type FilterParamsProviderProps = {
+  readonly children: ReactNode;
+  readonly initialBundleId?: string;
+  readonly initialExpandedBundleId?: string;
+  readonly initialFilters?: BundleFilters;
+};
+
+export function FilterParamsProvider({
+  children,
+  initialBundleId,
+  initialExpandedBundleId,
+  initialFilters,
+}: FilterParamsProviderProps) {
+  const [filters, setFiltersState] = useState<BundleFilters>(
+    initialFilters ?? {},
+  );
+  const [bundleId, setBundleIdState] = useState<string | undefined>(
+    initialBundleId,
+  );
+  const [expandedBundleId, setExpandedBundleIdState] = useState<
+    string | undefined
+  >(initialExpandedBundleId);
+
+  const getNextFilters = useCallback(
+    (newFilters: Partial<BundleFilters>) =>
+      resolveNextFilters(filters, newFilters),
+    [filters],
+  );
+
+  const value = useMemo<FilterParamsState>(
+    () => ({
+      bundleId,
+      expandedBundleId,
+      filters,
+      resetFilters: () => {
+        setFiltersState({});
+        setBundleIdState(undefined);
+        setExpandedBundleIdState(undefined);
+      },
+      setBundleId: (nextBundleId, newFilters = {}) => {
+        setFiltersState(getNextFilters(newFilters));
+        setBundleIdState(nextBundleId);
+        setExpandedBundleIdState(undefined);
+      },
+      setExpandedBundleId: (nextExpandedBundleId, newFilters = {}) => {
+        setFiltersState(getNextFilters(newFilters));
+        setExpandedBundleIdState(nextExpandedBundleId);
+      },
+      setFilters: (newFilters) => {
+        setFiltersState(getNextFilters(newFilters));
+        setBundleIdState(undefined);
+        setExpandedBundleIdState(undefined);
+      },
+    }),
+    [bundleId, expandedBundleId, filters, getNextFilters],
+  );
+
+  return createElement(FilterParamsContext.Provider, { value }, children);
+}
+
+function resolveNextFilters(
+  filters: BundleFilters,
+  newFilters: Partial<BundleFilters>,
+) {
+  const hasChannel = Object.hasOwn(newFilters, "channel");
+  const hasPlatform = Object.hasOwn(newFilters, "platform");
+  const hasPage = Object.hasOwn(newFilters, "page");
+  const hasAfter = Object.hasOwn(newFilters, "after");
+  const hasBefore = Object.hasOwn(newFilters, "before");
+  const shouldResetPagination = hasChannel || hasPlatform;
+  const nextPage =
+    hasPage && newFilters.page !== undefined && newFilters.page > 1
+      ? newFilters.page
+      : undefined;
+
+  return {
+    channel: hasChannel ? newFilters.channel : filters.channel,
+    platform: hasPlatform ? newFilters.platform : filters.platform,
+    page: shouldResetPagination
+      ? undefined
+      : hasPage
+        ? nextPage
+        : filters.page,
+    after: shouldResetPagination
+      ? undefined
+      : hasAfter
+        ? newFilters.after
+        : filters.after,
+    before: shouldResetPagination
+      ? undefined
+      : hasBefore
+        ? newFilters.before
+        : filters.before,
+  } satisfies BundleFilters;
+}
+
+function useRouterFilterParams(): FilterParamsState {
   const search = useSearch({ from: "/" });
   const navigate = useNavigate();
 
@@ -43,38 +166,8 @@ export function useFilterParams() {
     });
   };
 
-  const getNextFilters = (newFilters: Partial<BundleFilters>) => {
-    const hasChannel = Object.hasOwn(newFilters, "channel");
-    const hasPlatform = Object.hasOwn(newFilters, "platform");
-    const hasPage = Object.hasOwn(newFilters, "page");
-    const hasAfter = Object.hasOwn(newFilters, "after");
-    const hasBefore = Object.hasOwn(newFilters, "before");
-    const shouldResetPagination = hasChannel || hasPlatform;
-    const nextPage =
-      hasPage && newFilters.page !== undefined && newFilters.page > 1
-        ? newFilters.page
-        : undefined;
-
-    return {
-      channel: hasChannel ? newFilters.channel : filters.channel,
-      platform: hasPlatform ? newFilters.platform : filters.platform,
-      page: shouldResetPagination
-        ? undefined
-        : hasPage
-          ? nextPage
-          : filters.page,
-      after: shouldResetPagination
-        ? undefined
-        : hasAfter
-          ? newFilters.after
-          : filters.after,
-      before: shouldResetPagination
-        ? undefined
-        : hasBefore
-          ? newFilters.before
-          : filters.before,
-    } satisfies BundleFilters;
-  };
+  const getNextFilters = (newFilters: Partial<BundleFilters>) =>
+    resolveNextFilters(filters, newFilters);
 
   const setFilters = (newFilters: Partial<BundleFilters>) => {
     navigateWithSearch({
@@ -137,4 +230,14 @@ export function useFilterParams() {
     setExpandedBundleId,
     resetFilters,
   };
+}
+
+export function useFilterParams() {
+  const context = useContext(FilterParamsContext);
+
+  if (context) {
+    return context;
+  }
+
+  return useRouterFilterParams();
 }

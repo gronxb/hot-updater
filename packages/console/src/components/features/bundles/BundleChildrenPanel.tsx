@@ -1,11 +1,11 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ArrowRight } from "lucide-react";
 
-import { BundleIdDisplay } from "@/components/BundleIdDisplay";
-import { TimestampDisplay } from "@/components/TimestampDisplay";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { BundleIdDisplay } from "#/components/BundleIdDisplay";
+import { TimestampDisplay } from "#/components/TimestampDisplay";
+import { Badge } from "#/components/ui/badge";
+import { Button } from "#/components/ui/button";
+import { Skeleton } from "#/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -13,8 +13,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { useIsMobile } from "@/hooks/use-mobile";
+} from "#/components/ui/table";
+import { useIsMobile } from "#/hooks/use-mobile";
 
 interface BundleChildrenPanelProps {
   panelId: string;

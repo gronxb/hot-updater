@@ -1,6 +1,6 @@
 import { Check, Minus, X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { cn } from "#/lib/utils";
 
 interface EnabledStatusIconProps {
   enabled: boolean;

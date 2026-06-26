@@ -35,7 +35,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("@/hooks/useFilterParams", () => ({
+vi.mock("#/hooks/useFilterParams", () => ({
   useFilterParams: () => ({
     setBundleId: mockSetBundleId,
   }),
@@ -50,12 +50,12 @@ vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/api", () => ({
+vi.mock("#/lib/api", () => ({
   useChannelsQuery: () => ({ data: ["stable", "beta"] }),
   usePromoteBundleMutation: () => mockPromoteBundleMutation,
 }));
 
-vi.mock("@/components/ui/dialog", () => ({
+vi.mock("#/components/ui/dialog", () => ({
   Dialog: ({
     open,
     onOpenChange,
@@ -86,7 +86,7 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
 }));
 
-vi.mock("@/components/ui/select", async () => {
+vi.mock("#/components/ui/select", async () => {
   const React = await import("react");
 
   const SelectItem = ({ children }: { value: string; children: ReactNode }) => (

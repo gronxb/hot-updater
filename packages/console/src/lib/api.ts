@@ -1,4 +1,4 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
 import {
   type QueryClient,
   type QueryKey,
@@ -6,23 +6,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { createContext, createElement, useContext, type ReactNode } from "react";
 
-import {
-  createBundle as createBundleApi,
-  deleteBundle as deleteBundleApi,
-  getBundle,
-  getBundleChildCounts,
-  getBundleChildren,
-  getBundleDownloadUrl,
-  getBundles,
-  getChannels,
-  getConfig,
-  getConfigLoaded,
-  promoteBundle as promoteBundleApi,
-  updateBundle as updateBundleApi,
-} from "./api-rpc";
-
-type BundleFilters = {
+export type BundleFilters = {
   channel?: string;
   platform?: "ios" | "android";
   page?: number;
@@ -31,7 +17,96 @@ type BundleFilters = {
   before?: string;
 };
 
-type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
+type BundleListResult = {
+  data: Bundle[];
+  pagination?: PaginationInfo;
+};
+
+export type ConsoleConfigResult = {
+  readonly console: {
+    readonly gitUrl?: string;
+    readonly publicUrl?: string;
+  };
+  readonly hosted?: unknown;
+};
+
+type BundlesQueryData = Awaited<ReturnType<ConsoleApiClient["getBundles"]>>;
+
+export type ConsoleApiClient = {
+  readonly createBundle: (bundle: Bundle) => Promise<{
+    bundleId: string;
+    success: boolean;
+  }>;
+  readonly deleteBundle: (params: {
+    bundleId: string;
+  }) => Promise<{ success: boolean }>;
+  readonly getBundle: (params: {
+    bundleId: string;
+  }) => Promise<Bundle | null>;
+  readonly getBundleChildCounts: (params: {
+    bundleIds: string[];
+  }) => Promise<Record<string, number>>;
+  readonly getBundleChildren: (params: {
+    baseBundleId: string;
+  }) => Promise<Bundle[]>;
+  readonly getBundleDownloadUrl: (params: {
+    bundleId: string;
+  }) => Promise<{ fileUrl: string }>;
+  readonly getBundles: (filters?: BundleFilters) => Promise<BundleListResult>;
+  readonly getChannels: () => Promise<string[]>;
+  readonly getConfig: () => Promise<ConsoleConfigResult>;
+  readonly getConfigLoaded: () => Promise<{ configLoaded: boolean }>;
+  readonly promoteBundle: (params: {
+    action: "copy" | "move";
+    bundleId: string;
+    nextBundleId?: string;
+    targetChannel: string;
+  }) => Promise<{ bundle: Bundle; success: boolean }>;
+  readonly updateBundle: (params: {
+    bundleId: string;
+    bundle: Partial<Bundle>;
+  }) => Promise<{ bundle: Bundle; success: boolean }>;
+};
+
+const defaultConsoleApiClient: ConsoleApiClient = {
+  createBundle: async (bundle) =>
+    (await import("./api-rpc")).createBundle({ data: bundle }),
+  deleteBundle: async (params) =>
+    (await import("./api-rpc")).deleteBundle({ data: params }),
+  getBundle: async (params) =>
+    (await import("./api-rpc")).getBundle({ data: params }),
+  getBundleChildCounts: async (params) =>
+    (await import("./api-rpc")).getBundleChildCounts({ data: params }),
+  getBundleChildren: async (params) =>
+    (await import("./api-rpc")).getBundleChildren({ data: params }),
+  getBundleDownloadUrl: async (params) =>
+    (await import("./api-rpc")).getBundleDownloadUrl({ data: params }),
+  getBundles: async (filters) =>
+    (await import("./api-rpc")).getBundles({ data: filters }),
+  getChannels: async () => (await import("./api-rpc")).getChannels(),
+  getConfig: async () => (await import("./api-rpc")).getConfig(),
+  getConfigLoaded: async () => (await import("./api-rpc")).getConfigLoaded(),
+  promoteBundle: async (params) =>
+    (await import("./api-rpc")).promoteBundle({ data: params }),
+  updateBundle: async (params) =>
+    (await import("./api-rpc")).updateBundle({ data: params }),
+};
+
+const ConsoleApiContext = createContext<ConsoleApiClient | null>(null);
+
+export function ConsoleApiProvider({
+  children,
+  client,
+}: {
+  children: ReactNode;
+  client: ConsoleApiClient;
+}) {
+  return createElement(ConsoleApiContext.Provider, { value: client }, children);
+}
+
+function useConsoleApi() {
+  return useContext(ConsoleApiContext) ?? defaultConsoleApiClient;
+}
 
 const bundleListQueryKey = ["bundles"] as const;
 
@@ -95,57 +170,64 @@ const invalidateInBackground = (
 
 // Query Hooks
 export function useConfigQuery() {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.config,
-    queryFn: () => getConfig(),
+    queryFn: () => api.getConfig(),
     staleTime: Infinity,
   });
 }
 
 export function useChannelsQuery() {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.channels,
-    queryFn: () => getChannels(),
+    queryFn: () => api.getChannels(),
     staleTime: Infinity,
   });
 }
 
 export function useConfigLoadedQuery() {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.configLoaded,
-    queryFn: () => getConfigLoaded(),
+    queryFn: () => api.getConfigLoaded(),
     staleTime: Infinity,
   });
 }
 
 export function useBundlesQuery(filters?: BundleFilters) {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.bundles.list(filters),
-    queryFn: () => getBundles({ data: filters }),
+    queryFn: () => api.getBundles(filters),
     staleTime: Infinity,
     placeholderData: (previousData) => previousData,
   });
 }
 
 export function useBundleQuery(bundleId: string) {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.bundle(bundleId),
-    queryFn: () => getBundle({ data: { bundleId } }),
+    queryFn: () => api.getBundle({ bundleId }),
     staleTime: Infinity,
     enabled: !!bundleId,
   });
 }
 
 export function useBundleChildrenQuery(baseBundleId: string) {
+  const api = useConsoleApi();
   return useQuery({
     queryKey: queryKeys.bundleChildren.list(baseBundleId),
-    queryFn: () => getBundleChildren({ data: { baseBundleId } }),
+    queryFn: () => api.getBundleChildren({ baseBundleId }),
     staleTime: Infinity,
     enabled: !!baseBundleId,
   });
 }
 
 export function useBundleChildCountsQuery(bundleIds: string[]) {
+  const api = useConsoleApi();
   const normalizedBundleIds = [...bundleIds].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -153,7 +235,7 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
   return useQuery({
     queryKey: queryKeys.bundleChildren.counts(normalizedBundleIds),
     queryFn: () =>
-      getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
+      api.getBundleChildCounts({ bundleIds: normalizedBundleIds }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
   });
@@ -161,18 +243,19 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 
 // Mutation Hooks
 export function useBundleDownloadUrlMutation() {
+  const api = useConsoleApi();
   return useMutation({
-    mutationFn: (params: { bundleId: string }) =>
-      getBundleDownloadUrl({ data: params }),
+    mutationFn: (params: { bundleId: string }) => api.getBundleDownloadUrl(params),
   });
 }
 
 export function useUpdateBundleMutation() {
+  const api = useConsoleApi();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
-      updateBundleApi({ data: params }),
+      api.updateBundle(params),
     onSuccess: ({ bundle: updatedBundle }, vars) => {
       queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
       queryClient.setQueriesData(
@@ -199,10 +282,11 @@ export function useUpdateBundleMutation() {
 }
 
 export function useCreateBundleMutation() {
+  const api = useConsoleApi();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
+    mutationFn: (bundle: Bundle) => api.createBundle(bundle),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
@@ -216,6 +300,7 @@ export function useCreateBundleMutation() {
 }
 
 export function usePromoteBundleMutation() {
+  const api = useConsoleApi();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -224,7 +309,7 @@ export function usePromoteBundleMutation() {
       bundleId: string;
       nextBundleId?: string;
       targetChannel: string;
-    }) => promoteBundleApi({ data: params }),
+    }) => api.promoteBundle(params),
     onSuccess: async ({ bundle }) => {
       queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
 
@@ -243,11 +328,11 @@ export function usePromoteBundleMutation() {
 }
 
 export function useDeleteBundleMutation() {
+  const api = useConsoleApi();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { bundleId: string }) =>
-      deleteBundleApi({ data: params }),
+    mutationFn: (params: { bundleId: string }) => api.deleteBundle(params),
     onSuccess: (_, vars) => {
       queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
       queryClient.setQueriesData(

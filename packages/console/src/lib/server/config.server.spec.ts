@@ -140,4 +140,52 @@ describe("config.server", () => {
     );
     expect(consoleErrorSpy).toHaveBeenCalledOnce();
   });
+
+  it("uses hosted project context without loading a local config file", async () => {
+    const databasePlugin = createDatabasePlugin("hosted-db");
+    const storagePlugin = createStoragePlugin();
+    const { getHostedConsoleInfo, runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const hostedContext = {
+      project: {
+        id: "project_001",
+        workspaceId: "workspace_001",
+        name: "Hosted Project",
+      },
+      console: {
+        gitUrl: "https://github.com/gronxb/hot-updater",
+        port: 3000,
+      },
+      database: vi.fn().mockResolvedValue(databasePlugin),
+      storage: vi.fn().mockResolvedValue(storagePlugin),
+    };
+
+    const { isConfigLoaded, prepareConfig } = await import("./config.server");
+
+    expect(isConfigLoaded()).toBe(false);
+
+    const prepared = await runWithHostedConsoleContext(
+      hostedContext,
+      async () => {
+        expect(isConfigLoaded()).toBe(true);
+        expect(getHostedConsoleInfo()).toEqual({
+          mode: "hosted",
+          project: {
+            id: "project_001",
+            workspaceId: "workspace_001",
+            name: "Hosted Project",
+          },
+        });
+        return await prepareConfig();
+      },
+    );
+
+    expect(loadConfigMock).not.toHaveBeenCalled();
+    expect(prepared.databasePlugin).toBe(databasePlugin);
+    expect(prepared.storagePlugin).toBe(storagePlugin);
+    expect(prepared.config.console.gitUrl).toBe(
+      "https://github.com/gronxb/hot-updater",
+    );
+    expect(getHostedConsoleInfo()).toEqual({ mode: "local" });
+  });
 });

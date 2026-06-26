@@ -4,10 +4,19 @@
   "version": "0.35.0",
   "files": [
     ".output",
+    "src",
     "package.json"
   ],
   "exports": {
+    "./embedded": {
+      "types": "./src/embedded.d.ts",
+      "default": "./src/embedded.tsx"
+    },
+    "./hosted": "./src/lib/server/hosted.server.ts",
     "./package.json": "./package.json"
+  },
+  "imports": {
+    "#/*": "./src/*"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
