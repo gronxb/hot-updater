@@ -32,7 +32,7 @@ vi.mock("./BundleMetadata", () => ({
   BundleMetadata: () => <div>Bundle metadata</div>,
 }));
 
-vi.mock("#/components/ui/sheet", () => ({
+vi.mock("@/components/ui/sheet", () => ({
   Sheet: ({
     open,
     onOpenChange,
@@ -67,7 +67,7 @@ vi.mock("#/components/ui/sheet", () => ({
   SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-vi.mock("#/components/ui/skeleton", () => ({
+vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: () => <div>Skeleton</div>,
 }));
 

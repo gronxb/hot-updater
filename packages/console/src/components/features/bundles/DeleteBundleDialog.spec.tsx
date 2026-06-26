@@ -28,11 +28,11 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("#/lib/api", () => ({
+vi.mock("@/lib/api", () => ({
   useDeleteBundleMutation: () => mockDeleteBundleMutation,
 }));
 
-vi.mock("#/components/ui/alert-dialog", async () => {
+vi.mock("@/components/ui/alert-dialog", async () => {
   const React = await import("react");
 
   const DialogContext = React.createContext<{

@@ -29,7 +29,7 @@ const {
   mockToastSuccess: vi.fn(),
 }));
 
-vi.mock("#/lib/api", () => ({
+vi.mock("@/lib/api", () => ({
   useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
   useUpdateBundleMutation: () => mockUpdateBundleMutation,
 }));

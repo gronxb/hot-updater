@@ -27,11 +27,11 @@ vi.mock("sonner", () => ({
   },
 }));
 
-vi.mock("#/lib/api", () => ({
+vi.mock("@/lib/api", () => ({
   useDeleteBundleMutation: () => mockDeleteBundleMutation,
 }));
 
-vi.mock("#/components/ui/dialog", () => ({
+vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({
     open,
     onOpenChange,
