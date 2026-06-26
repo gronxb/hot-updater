@@ -1,16 +1,16 @@
 import { Filter, X } from "lucide-react";
 
-import { Button } from "#/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "#/components/ui/select";
-import { SidebarTrigger } from "#/components/ui/sidebar";
-import { useFilterParams } from "#/hooks/useFilterParams";
-import { useChannelsQuery } from "#/lib/api";
+} from "@/components/ui/select";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useFilterParams } from "@/hooks/useFilterParams";
+import { useChannelsQuery } from "@/lib/api";
 
 export function FilterToolbar({
   showSidebarTrigger = true,

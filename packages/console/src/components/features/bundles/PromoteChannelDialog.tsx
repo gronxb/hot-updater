@@ -3,7 +3,7 @@ import { createUUIDv7 } from "@hot-updater/plugin-core";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { Button } from "#/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,18 +11,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "#/components/ui/dialog";
-import { Input } from "#/components/ui/input";
-import { Label } from "#/components/ui/label";
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "#/components/ui/select";
-import { useFilterParams } from "#/hooks/useFilterParams";
-import { useChannelsQuery, usePromoteBundleMutation } from "#/lib/api";
+} from "@/components/ui/select";
+import { useFilterParams } from "@/hooks/useFilterParams";
+import { useChannelsQuery, usePromoteBundleMutation } from "@/lib/api";
 
 interface PromoteChannelDialogProps {
   bundle: Bundle;

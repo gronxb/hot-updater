@@ -10,8 +10,8 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "#/components/ui/alert-dialog";
-import { useDeleteBundleMutation } from "#/lib/api";
+} from "@/components/ui/alert-dialog";
+import { useDeleteBundleMutation } from "@/lib/api";
 
 interface DeleteBundleDialogProps {
   bundle: Bundle;

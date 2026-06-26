@@ -11,24 +11,24 @@ import { useEffect, useState } from "react";
 import semver from "semver";
 import { toast } from "sonner";
 
-import { Badge } from "#/components/ui/badge";
-import { Button } from "#/components/ui/button";
-import { Input } from "#/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
   InputGroupText,
-} from "#/components/ui/input-group";
-import { Label } from "#/components/ui/label";
-import { Separator } from "#/components/ui/separator";
-import { Slider } from "#/components/ui/slider";
-import { Switch } from "#/components/ui/switch";
-import { Textarea } from "#/components/ui/textarea";
+} from "@/components/ui/input-group";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import {
   useBundleDownloadUrlMutation,
   useUpdateBundleMutation,
-} from "#/lib/api";
+} from "@/lib/api";
 
 import { DeleteBundleDialog } from "./DeleteBundleDialog";
 import { PromoteChannelDialog } from "./PromoteChannelDialog";

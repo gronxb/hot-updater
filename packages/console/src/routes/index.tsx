@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { ConsoleBundlesPage } from "#/components/ConsoleBundlesPage";
+import { ConsoleBundlesPage } from "@/components/ConsoleBundlesPage";
 
 export const Route = createFileRoute("/")({
   component: ConsoleBundlesPage,

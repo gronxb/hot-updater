@@ -15,14 +15,14 @@ import {
 } from "lucide-react";
 import { Fragment, useState } from "react";
 
-import { BundleIdDisplay } from "#/components/BundleIdDisplay";
-import { ChannelBadge } from "#/components/ChannelBadge";
-import { EnabledStatusIcon } from "#/components/EnabledStatusIcon";
-import { HashValueDisplay } from "#/components/HashValueDisplay";
-import { PlatformIcon } from "#/components/PlatformIcon";
-import { RolloutPercentageBadge } from "#/components/RolloutPercentageBadge";
-import { TimestampDisplay } from "#/components/TimestampDisplay";
-import { Button } from "#/components/ui/button";
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ChannelBadge } from "@/components/ChannelBadge";
+import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { PlatformIcon } from "@/components/PlatformIcon";
+import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
+import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -30,12 +30,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "#/components/ui/table";
-import { useIsMobile } from "#/hooks/use-mobile";
-import { useFilterParams } from "#/hooks/useFilterParams";
-import { useBundleChildCountsQuery, useBundleChildrenQuery } from "#/lib/api";
-import { DEFAULT_PAGE_LIMIT } from "#/lib/constants";
-import { cn } from "#/lib/utils";
+} from "@/components/ui/table";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useFilterParams } from "@/hooks/useFilterParams";
+import { useBundleChildCountsQuery, useBundleChildrenQuery } from "@/lib/api";
+import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 import { BundleChildrenPanel } from "./BundleChildrenPanel";
 import { createBundleColumns } from "./BundleTableColumns";

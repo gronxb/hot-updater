@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { ConsoleBundlesPage } from "#/components/ConsoleBundlesPage";
+import { ConsoleBundlesPage } from "@/components/ConsoleBundlesPage";
 import {
   type BundleFilters,
   type ConsoleApiClient,
   ConsoleApiProvider,
-} from "#/lib/api";
-import { FilterParamsProvider } from "#/hooks/useFilterParams";
+} from "@/lib/api";
+import { FilterParamsProvider } from "@/hooks/useFilterParams";
 
 export type HotUpdaterConsoleProps = {
   readonly api: ConsoleApiClient;

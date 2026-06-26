@@ -6,11 +6,11 @@ import {
 import type { Bundle } from "@hot-updater/plugin-core";
 import { ExternalLink } from "lucide-react";
 
-import { BundleIdDisplay } from "#/components/BundleIdDisplay";
-import { HashValueDisplay } from "#/components/HashValueDisplay";
-import { Card, CardContent, CardHeader, CardTitle } from "#/components/ui/card";
-import { useConfigQuery } from "#/lib/api";
-import { getCommitUrl } from "#/lib/git";
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useConfigQuery } from "@/lib/api";
+import { getCommitUrl } from "@/lib/git";
 
 interface BundleMetadataProps {
   bundle: Bundle;

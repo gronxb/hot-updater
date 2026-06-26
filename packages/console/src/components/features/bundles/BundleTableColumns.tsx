@@ -3,16 +3,16 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { createColumnHelper } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight, Fingerprint, Package } from "lucide-react";
 
-import { BundleIdDisplay } from "#/components/BundleIdDisplay";
-import { ChannelBadge } from "#/components/ChannelBadge";
-import { EnabledStatusIcon } from "#/components/EnabledStatusIcon";
-import { HashValueDisplay } from "#/components/HashValueDisplay";
-import { PlatformIcon } from "#/components/PlatformIcon";
-import { RolloutPercentageBadge } from "#/components/RolloutPercentageBadge";
-import { TimestampDisplay } from "#/components/TimestampDisplay";
-import { Badge } from "#/components/ui/badge";
-import { Button } from "#/components/ui/button";
-import { cn } from "#/lib/utils";
+import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { ChannelBadge } from "@/components/ChannelBadge";
+import { EnabledStatusIcon } from "@/components/EnabledStatusIcon";
+import { HashValueDisplay } from "@/components/HashValueDisplay";
+import { PlatformIcon } from "@/components/PlatformIcon";
+import { RolloutPercentageBadge } from "@/components/RolloutPercentageBadge";
+import { TimestampDisplay } from "@/components/TimestampDisplay";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface BundleColumnsOptions {
   expandedBundleId?: string;
