@@ -615,6 +615,11 @@ RCT_EXPORT_MODULE();
     return [impl getCohort];
 }
 
+- (NSString *)getInstallId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getInstallId];
+}
+
 - (NSString * _Nullable)getBundleId {
     NSLog(@"[HotUpdater.mm] getBundleId called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -726,6 +731,11 @@ RCT_EXPORT_METHOD(setCohort:(NSString *)customId) {
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCohort) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return [impl getCohort];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getInstallId];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {

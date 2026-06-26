@@ -70,6 +70,16 @@ export interface ResolverNotifyAppReadyParams {
    */
   status: "RECOVERED" | "STABLE";
 
+  bundleId: string;
+
+  channel: string;
+
+  platform: "ios" | "android";
+
+  installId: string;
+
+  eventId: string;
+
   /**
    * Present only when status is "RECOVERED"
    */

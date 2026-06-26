@@ -29,6 +29,8 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getCohort(): String
 
+    abstract fun getInstallId(): String
+
     abstract fun getBundleId(): String?
 
     abstract fun getManifest(): String

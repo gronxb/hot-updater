@@ -18,6 +18,17 @@
         "default": "./lib/commonjs/index.js"
       }
     },
+    "./cloud": {
+      "source": "./src/cloud.ts",
+      "import": {
+        "types": "./lib/typescript/module/cloud.d.ts",
+        "default": "./lib/module/cloud.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/cloud.d.ts",
+        "default": "./lib/commonjs/cloud.js"
+      }
+    },
     "./package.json": "./package.json",
     "./app.plugin.js": "./app.plugin.js"
   },

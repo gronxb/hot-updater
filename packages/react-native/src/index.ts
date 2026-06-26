@@ -15,6 +15,7 @@ import {
   getCrashHistory,
   getDefaultChannel,
   getFingerprintHash,
+  getInstallId,
   getManifest,
   getMinBundleId,
   isChannelSwitched,
@@ -407,6 +408,8 @@ function createHotUpdaterClient() {
      * Gets the persisted cohort used for rollout calculations.
      */
     getCohort,
+
+    getInstallId,
 
     /**
      * Adds a listener to HotUpdater events.

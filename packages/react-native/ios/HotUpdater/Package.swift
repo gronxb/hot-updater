@@ -26,6 +26,7 @@ let archiveExcludedFiles = [
     "BsdiffPatchBridge.h",
     "BsdiffPatchBridge.mm",
     "CohortService.swift",
+    "InstallIdService.swift",
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
     "HotUpdaterCrashHandler.h",

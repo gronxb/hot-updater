@@ -11,6 +11,11 @@ export type BundleFilters = {
 
 export type ConsoleBundle = {
   readonly id: string;
+  readonly lifecycle?: {
+    readonly active: number;
+    readonly lastSeenAt?: string | null;
+    readonly recovered: number;
+  };
   readonly storageUri?: string;
   readonly [key: string]: unknown;
 };

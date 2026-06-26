@@ -70,6 +70,7 @@ class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
   private cachedCohort: string | undefined;
+  private cachedInstallId: string | undefined;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
@@ -149,6 +150,14 @@ class HotUpdaterSessionState {
 
   cacheBaseURL(baseURL: string | null) {
     this.setActiveBundleSnapshotValue("baseURL", baseURL);
+  }
+
+  getCachedInstallId(): string | undefined {
+    return this.cachedInstallId;
+  }
+
+  cacheInstallId(installId: string) {
+    this.cachedInstallId = installId;
   }
 
   getCachedCohort(): string | undefined {
@@ -827,4 +836,41 @@ export const getCohort = (): string => {
   const cohort = normalizeAndValidateCohort(HotUpdaterNative.getCohort());
   sessionState.cacheCohort(cohort);
   return cohort;
+};
+
+export const getInstallId = (): string => {
+  const cachedInstallId = sessionState.getCachedInstallId();
+  if (cachedInstallId !== undefined) {
+    return cachedInstallId;
+  }
+
+  const nativeInstallId =
+    typeof HotUpdaterNative.getInstallId === "function" ? HotUpdaterNative.getInstallId() : null;
+  const installId =
+    typeof nativeInstallId === "string" && nativeInstallId.length > 0
+      ? nativeInstallId
+      : createSessionInstallId();
+  sessionState.cacheInstallId(installId);
+  return installId;
+};
+
+const createSessionInstallId = (): string => {
+  const globalCrypto = getGlobalCrypto();
+  if (globalCrypto) {
+    return `ins_${globalCrypto.randomUUID()}`;
+  }
+  return `ins_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+};
+
+const getGlobalCrypto = (): { randomUUID: () => string } | null => {
+  const candidate = globalThis as typeof globalThis & {
+    readonly crypto?: { readonly randomUUID?: unknown };
+  };
+  const crypto = candidate.crypto;
+  const randomUUID = crypto?.randomUUID;
+  if (typeof randomUUID !== "function") {
+    return null;
+  }
+
+  return { randomUUID: () => randomUUID.call(crypto) as string };
 };

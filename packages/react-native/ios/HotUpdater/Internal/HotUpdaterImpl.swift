@@ -33,6 +33,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
     private let cohortService: CohortService
+    private let installIdService: InstallIdService
     private let recoveryManager: HotUpdaterRecoveryManager
     private var currentLaunchSelection: LaunchSelection?
 
@@ -72,6 +73,7 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         self.cohortService = CohortService()
+        self.installIdService = InstallIdService()
         self.recoveryManager = recoveryManager
         super.init()
 
@@ -170,6 +172,10 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
 
     public func getCohort() -> String {
         return cohortService.getCohort()
+    }
+
+    public func getInstallId() -> String {
+        return installIdService.getInstallId()
     }
 
     // MARK: - Bundle URL Management

@@ -7,8 +7,16 @@ const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
   getBundleId: vi.fn(() => "bundle-id"),
+  getChannel: vi.fn(() => "production"),
+  getInstallId: vi.fn(() => "install-id"),
   notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
   reload: vi.fn(),
+}));
+
+vi.mock("react-native", () => ({
+  Platform: {
+    OS: "ios",
+  },
 }));
 
 vi.mock("./checkForUpdate", () => ({
@@ -18,6 +26,8 @@ vi.mock("./checkForUpdate", () => ({
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
   getBundleId: mocks.getBundleId,
+  getChannel: mocks.getChannel,
+  getInstallId: mocks.getInstallId,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
 }));
@@ -35,6 +45,8 @@ describe("HotUpdater wrap initialization", () => {
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.addListener.mockReturnValue(() => {});
     mocks.getBundleId.mockReturnValue("bundle-id");
+    mocks.getChannel.mockReturnValue("production");
+    mocks.getInstallId.mockReturnValue("install-id");
     mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
   });
 
@@ -73,12 +85,17 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(mocks.notifyAppReady).toHaveBeenCalledWith();
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
-      status: "STABLE",
+      bundleId: "bundle-id",
+      channel: "production",
       crashedBundleId: undefined,
+      eventId: expect.any(String),
+      installId: "install-id",
+      platform: "ios",
       requestHeaders: {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
+      status: "STABLE",
     });
   });
 

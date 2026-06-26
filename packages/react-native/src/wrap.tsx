@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
   getBundleId,
+  getChannel,
+  getInstallId,
   type NotifyAppReadyResult,
   notifyAppReady as nativeNotifyAppReady,
   reload,
@@ -232,6 +235,12 @@ export type InternalWrapOptions =
   | InternalManualUpdateOptions;
 
 type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
+type LifecyclePlatform = "ios" | "android";
+type LifecycleCrypto = {
+  randomUUID?: () => string;
+};
+
+declare const crypto: LifecycleCrypto | undefined;
 
 let didWarnManualWrapDeprecation = false;
 
@@ -266,6 +275,19 @@ const waitForNextFrame = () =>
     void Promise.resolve().then(resolve);
   });
 
+const getLifecyclePlatform = (): LifecyclePlatform => {
+  if (Platform.OS === "android") return "android";
+  return "ios";
+};
+
+const createLifecycleEventId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+};
+
 /**
  * Helper function to handle notifyAppReady flow
  */
@@ -285,8 +307,13 @@ const handleNotifyAppReady = async (options: {
     if (options.resolver?.notifyAppReady) {
       await options.resolver
         .notifyAppReady({
+          bundleId: getBundleId(),
+          channel: getChannel(),
           status: nativeResult.status,
           crashedBundleId: nativeResult.crashedBundleId,
+          eventId: createLifecycleEventId(),
+          installId: getInstallId(),
+          platform: getLifecyclePlatform(),
           requestHeaders: options.requestHeaders,
           requestTimeout: options.requestTimeout,
         })

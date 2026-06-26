@@ -2,6 +2,12 @@
 
 ## 0.35.0
 
+### Minor Changes
+
+- Add vendor-neutral `notifyAppReady` lifecycle context and the opt-in
+  `@hot-updater/react-native/cloud` lifecycle notifier for HotUpdater Cloud
+  bundle `ACTIVE` and `RECOVERED` analytics.
+
 ### Patch Changes
 
 - @hot-updater/cli-tools@0.35.0

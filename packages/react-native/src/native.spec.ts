@@ -19,6 +19,7 @@ const nativeModuleMock = vi.hoisted(() => {
       FINGERPRINT_HASH: null,
       MIN_BUNDLE_ID: "min-bundle-id",
     })),
+    getInstallId: vi.fn<() => string>(() => "install-id"),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
     resetChannel: vi.fn(),
@@ -72,6 +73,8 @@ describe("notifyAppReady", () => {
       },
       bundleId: "bundle-id",
     });
+    nativeModuleMock.getInstallId.mockReset();
+    nativeModuleMock.getInstallId.mockReturnValue("install-id");
     nativeModuleMock.resetChannel.mockReset();
     nativeModuleMock.setCohort.mockReset();
     nativeModuleMock.updateBundle.mockReset();
@@ -160,6 +163,32 @@ describe("notifyAppReady", () => {
     const { getBundleId } = await import("./native");
 
     expect(getBundleId()).toBe("min-bundle-id");
+  });
+
+  it("returns a cached anonymous install id from native storage", async () => {
+    const { getInstallId } = await import("./native");
+
+    expect(getInstallId()).toBe("install-id");
+    expect(getInstallId()).toBe("install-id");
+    expect(nativeModuleMock.getInstallId).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to a session anonymous install id when native storage is unavailable", async () => {
+    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
+      getInstallId?: typeof nativeModuleMock.getInstallId | null;
+    };
+    const originalGetInstallId = nativeModule.getInstallId;
+    Reflect.set(nativeModule, "getInstallId", null);
+
+    try {
+      const { getInstallId } = await import("./native");
+      const installId = getInstallId();
+
+      expect(installId).toMatch(/^ins_/);
+      expect(getInstallId()).toBe(installId);
+    } finally {
+      Reflect.set(nativeModule, "getInstallId", originalGetInstallId);
+    }
   });
 
   it("returns manifest from native objects", async () => {

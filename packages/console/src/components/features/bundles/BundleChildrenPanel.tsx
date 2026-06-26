@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+import { BundleLifecycleBadges } from "./BundleLifecycleBadges";
+
 interface BundleChildrenPanelProps {
   panelId: string;
   bundle: Bundle;
@@ -45,9 +47,12 @@ export function BundleChildrenPanel({
             <span className="text-muted-foreground">Base bundle</span>
             <BundleIdDisplay bundleId={bundle.id} maxLength={18} fullOnMobile />
           </div>
-          <Badge variant="outline">
-            {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
-          </Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <BundleLifecycleBadges bundle={bundle} showLabel />
+            <Badge variant="outline">
+              {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
+            </Badge>
+          </div>
         </div>
 
         {loading ? (
@@ -104,12 +109,18 @@ export function BundleChildrenPanel({
                           <Badge variant="secondary">bsdiff</Badge>
                         </div>
                         <div className="space-y-1 text-right">
-                          <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
-                            Created
-                          </div>
-                          <div className="text-xs tabular-nums text-foreground">
-                            <TimestampDisplay uuid={childBundle.id} />
-                          </div>
+                          <BundleLifecycleBadges
+                            bundle={childBundle}
+                            className="justify-end"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-medium uppercase text-muted-foreground/70">
+                          Created
+                        </div>
+                        <div className="text-xs tabular-nums text-foreground">
+                          <TimestampDisplay uuid={childBundle.id} />
                         </div>
                       </div>
                       <Button
@@ -133,6 +144,7 @@ export function BundleChildrenPanel({
                       <TableHead>Patch Bundle</TableHead>
                       <TableHead>Relation</TableHead>
                       <TableHead>Artifact</TableHead>
+                      <TableHead>Lifecycle</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="w-[96px] text-right">
                         Detail
@@ -166,6 +178,16 @@ export function BundleChildrenPanel({
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">bsdiff</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <BundleLifecycleBadges
+                            bundle={childBundle}
+                            empty={
+                              <span className="text-sm text-muted-foreground">
+                                -
+                              </span>
+                            }
+                          />
                         </TableCell>
                         <TableCell className="tabular-nums">
                           <TimestampDisplay uuid={childBundle.id} />

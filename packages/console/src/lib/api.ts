@@ -13,6 +13,8 @@ import {
   type ReactNode,
 } from "react";
 
+import type { BundleWithLifecycle } from "./bundleLifecycle";
+
 export type BundleFilters = {
   channel?: string;
   platform?: "ios" | "android";
@@ -23,7 +25,7 @@ export type BundleFilters = {
 };
 
 type BundleListResult = {
-  data: Bundle[];
+  data: BundleWithLifecycle[];
   pagination?: PaginationInfo;
 };
 
@@ -45,13 +47,15 @@ export type ConsoleApiClient = {
   readonly deleteBundle: (params: {
     bundleId: string;
   }) => Promise<{ success: boolean }>;
-  readonly getBundle: (params: { bundleId: string }) => Promise<Bundle | null>;
+  readonly getBundle: (params: {
+    bundleId: string;
+  }) => Promise<BundleWithLifecycle | null>;
   readonly getBundleChildCounts: (params: {
     bundleIds: string[];
   }) => Promise<Record<string, number>>;
   readonly getBundleChildren: (params: {
     baseBundleId: string;
-  }) => Promise<Bundle[]>;
+  }) => Promise<BundleWithLifecycle[]>;
   readonly getBundleDownloadUrl: (params: {
     bundleId: string;
   }) => Promise<{ fileUrl: string }>;
@@ -64,11 +68,11 @@ export type ConsoleApiClient = {
     bundleId: string;
     nextBundleId?: string;
     targetChannel: string;
-  }) => Promise<{ bundle: Bundle; success: boolean }>;
+  }) => Promise<{ bundle: BundleWithLifecycle; success: boolean }>;
   readonly updateBundle: (params: {
     bundleId: string;
     bundle: Partial<Bundle>;
-  }) => Promise<{ bundle: Bundle; success: boolean }>;
+  }) => Promise<{ bundle: BundleWithLifecycle; success: boolean }>;
 };
 
 const defaultConsoleApiClient: ConsoleApiClient = {

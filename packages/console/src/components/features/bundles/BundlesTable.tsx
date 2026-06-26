@@ -38,6 +38,7 @@ import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { BundleChildrenPanel } from "./BundleChildrenPanel";
+import { BundleLifecycleBadges } from "./BundleLifecycleBadges";
 import { createBundleColumns } from "./BundleTableColumns";
 import { SelectedBundlesDeleteDialog } from "./SelectedBundlesDeleteDialog";
 
@@ -300,6 +301,12 @@ export function BundlesTable({
                             ) : null}
                           </div>
                         </div>
+                        <BundleLifecycleBadges
+                          bundle={bundle}
+                          empty={null}
+                          className="rounded-md bg-muted/40 p-3"
+                          showLabel
+                        />
                       </div>
 
                       <div className="grid gap-2 rounded-md border border-border/70 bg-background/80 p-3 text-sm">

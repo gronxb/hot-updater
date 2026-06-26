@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import { BundleLifecycleBadges } from "./BundleLifecycleBadges";
+
 interface BundleColumnsOptions {
   expandedBundleId?: string;
   patchCountsByBundleId: Record<string, number | undefined>;
@@ -76,6 +78,16 @@ function BundleIdCell({
         </span>
       </button>
     </div>
+  );
+}
+
+function BundleLifecycleCell({ bundle }: { bundle: Bundle }) {
+  return (
+    <BundleLifecycleBadges
+      bundle={bundle}
+      className="min-w-[156px]"
+      empty={<span className="text-sm text-muted-foreground">-</span>}
+    />
   );
 }
 
@@ -178,6 +190,11 @@ export const createBundleColumns = ({
 
       return <RolloutPercentageBadge percentage={percentage} />;
     },
+  }),
+  columnHelper.display({
+    id: "lifecycle",
+    header: "Lifecycle",
+    cell: (info) => <BundleLifecycleCell bundle={info.row.original} />,
   }),
   columnHelper.accessor("message", {
     header: "Message",

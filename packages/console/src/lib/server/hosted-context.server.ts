@@ -13,10 +13,25 @@ export type HostedConsoleProject = {
   slug?: string;
 };
 
+export type HostedConsoleBundleLifecycle = {
+  active: number;
+  recovered: number;
+  lastSeenAt?: string | null;
+};
+
+export type HostedConsoleBundleLifecycleProvider = {
+  getBundleLifecycle: (
+    bundleIds: readonly string[],
+  ) => Promise<Record<string, HostedConsoleBundleLifecycle>>;
+};
+
 export type HostedConsoleContext = {
   project: HostedConsoleProject;
   console?: ConfigResponse["console"];
   database: () => Promise<DatabasePlugin> | DatabasePlugin;
+  bundleLifecycle?: () =>
+    | Promise<HostedConsoleBundleLifecycleProvider>
+    | HostedConsoleBundleLifecycleProvider;
   storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
 };
 

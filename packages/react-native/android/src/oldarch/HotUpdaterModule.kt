@@ -20,6 +20,7 @@ class HotUpdaterModule internal constructor(
 ) : HotUpdaterSpec(context) {
     private val mReactApplicationContext: ReactApplicationContext = context
     private val cohortService = CohortService(context)
+    private val installIdService = InstallIdService(context)
 
     // Managed coroutine scope for the module lifecycle
     private val moduleScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -298,6 +299,9 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getCohort(): String = cohortService.getCohort()
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getInstallId(): String = installIdService.getInstallId()
 
     @ReactMethod
     override fun resetChannel(promise: Promise) {
