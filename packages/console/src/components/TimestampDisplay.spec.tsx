@@ -9,7 +9,9 @@ describe("TimestampDisplay", () => {
   });
 
   it("renders an empty timestamp fallback for non-uuid bundle ids", () => {
-    expect(() => render(<TimestampDisplay uuid="qa_lifecycle_new" />)).not.toThrow();
+    expect(() =>
+      render(<TimestampDisplay uuid="qa_lifecycle_new" />),
+    ).not.toThrow();
     expect(screen.getByText("-")).toBeTruthy();
   });
 });

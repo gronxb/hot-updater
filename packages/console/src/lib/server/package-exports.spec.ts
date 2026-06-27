@@ -59,7 +59,11 @@ const isPackageJson = (value: unknown): value is PackageJson => {
     return false;
   }
 
-  if (!("./css" in exports) || !("./embedded" in exports) || !("./hosted" in exports)) {
+  if (
+    !("./css" in exports) ||
+    !("./embedded" in exports) ||
+    !("./hosted" in exports)
+  ) {
     return false;
   }
 
