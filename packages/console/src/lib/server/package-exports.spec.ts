@@ -2,6 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -93,7 +94,7 @@ const readPackageJson = (): PackageJson => {
 };
 
 describe("console package exports", () => {
-  it("exports built embedded and hosted entrypoints instead of raw source", () => {
+  it("exports built embedded and hosted entrypoints instead of raw source", async () => {
     execFileSync("pnpm", ["run", "build:exports"], {
       cwd: process.cwd(),
       encoding: "utf8",
@@ -131,5 +132,12 @@ describe("console package exports", () => {
     ]) {
       expect(readFileSync(artifact, "utf8")).not.toContain("@/");
     }
+
+    await expect(
+      import(pathToFileURL("dist/embedded.mjs").href),
+    ).resolves.toHaveProperty("HotUpdaterConsole");
+    await expect(
+      import(pathToFileURL("dist/hosted.mjs").href),
+    ).resolves.toHaveProperty("getConfigOperation");
   }, 15_000);
 });

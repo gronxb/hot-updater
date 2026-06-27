@@ -11,9 +11,32 @@ const externalDependencies: RegExp[] = [
   /^react-dom(?:\/.*)?$/,
 ];
 
+const syncExternalStoreWithSelector = resolve(
+  import.meta.dirname,
+  "src/lib/use-sync-external-store-with-selector.ts",
+);
+
 export default defineConfig({
   plugins: [viteReact()],
   resolve: {
+    alias: [
+      {
+        find: "use-sync-external-store/shim/with-selector",
+        replacement: syncExternalStoreWithSelector,
+      },
+      {
+        find: "use-sync-external-store/shim/with-selector.js",
+        replacement: syncExternalStoreWithSelector,
+      },
+      {
+        find: "use-sync-external-store/with-selector",
+        replacement: syncExternalStoreWithSelector,
+      },
+      {
+        find: "use-sync-external-store/with-selector.js",
+        replacement: syncExternalStoreWithSelector,
+      },
+    ],
     tsconfigPaths: true,
   },
   build: {
