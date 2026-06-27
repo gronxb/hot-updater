@@ -132,6 +132,9 @@ describe("console package exports", () => {
     ]) {
       expect(readFileSync(artifact, "utf8")).not.toContain("@/");
     }
+    expect(readFileSync("dist/embedded.mjs", "utf8")).not.toContain(
+      "node:async_hooks",
+    );
 
     await expect(
       import(pathToFileURL("dist/embedded.mjs").href),

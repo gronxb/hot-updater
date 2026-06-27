@@ -15,6 +15,8 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ConsoleApiProvider } from "@/lib/api";
+import { createDefaultConsoleApiClient } from "@/lib/api-rpc-client";
 
 import appCss from "../styles.css?url";
 
@@ -58,6 +60,7 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  const [consoleApiClient] = useState(() => createDefaultConsoleApiClient());
   const [isLocalDebugHost, setIsLocalDebugHost] = useState(false);
 
   useEffect(() => {
@@ -85,23 +88,25 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body>
         <ThemeProvider defaultTheme="dark">
           <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              {children}
-              <Toaster />
-              {import.meta.env.DEV && isLocalDebugHost ? (
-                <TanStackDevtools
-                  config={{
-                    position: "bottom-right",
-                  }}
-                  plugins={[
-                    {
-                      name: "Tanstack Router",
-                      render: <TanStackRouterDevtoolsPanel />,
-                    },
-                  ]}
-                />
-              ) : null}
-            </TooltipProvider>
+            <ConsoleApiProvider client={consoleApiClient}>
+              <TooltipProvider>
+                {children}
+                <Toaster />
+                {import.meta.env.DEV && isLocalDebugHost ? (
+                  <TanStackDevtools
+                    config={{
+                      position: "bottom-right",
+                    }}
+                    plugins={[
+                      {
+                        name: "Tanstack Router",
+                        render: <TanStackRouterDevtoolsPanel />,
+                      },
+                    ]}
+                  />
+                ) : null}
+              </TooltipProvider>
+            </ConsoleApiProvider>
           </QueryClientProvider>
         </ThemeProvider>
         <Scripts />

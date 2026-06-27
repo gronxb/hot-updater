@@ -5,6 +5,7 @@ import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ConsoleApiProvider,
   queryKeys,
   useDeleteBundleMutation,
   useUpdateBundleMutation,
@@ -13,6 +14,7 @@ import {
   deleteBundle as deleteBundleApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
+import { createDefaultConsoleApiClient } from "./api-rpc-client";
 
 vi.mock("./api-rpc", () => ({
   createBundle: vi.fn(),
@@ -53,6 +55,16 @@ const timeout = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(() => resolve("timeout"), ms);
   });
+
+const createWrapper =
+  (queryClient: QueryClient) =>
+  ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={queryClient}>
+      <ConsoleApiProvider client={createDefaultConsoleApiClient()}>
+        {children}
+      </ConsoleApiProvider>
+    </QueryClientProvider>
+  );
 
 describe("useUpdateBundleMutation", () => {
   let queryClient: QueryClient;
@@ -100,9 +112,7 @@ describe("useUpdateBundleMutation", () => {
       },
     });
 
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
+    const wrapper = createWrapper(queryClient);
     const { result } = renderHook(() => useUpdateBundleMutation(), {
       wrapper,
     });
@@ -172,9 +182,7 @@ describe("useDeleteBundleMutation", () => {
       },
     });
 
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
+    const wrapper = createWrapper(queryClient);
     const { result } = renderHook(() => useDeleteBundleMutation(), {
       wrapper,
     });
@@ -229,9 +237,7 @@ describe("useDeleteBundleMutation", () => {
       },
     });
 
-    const wrapper = ({ children }: PropsWithChildren) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    );
+    const wrapper = createWrapper(queryClient);
     const { result } = renderHook(() => useDeleteBundleMutation(), {
       wrapper,
     });
