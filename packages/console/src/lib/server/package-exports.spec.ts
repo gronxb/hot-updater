@@ -12,6 +12,7 @@ type PackEntry = {
 
 type PackageJson = {
   readonly exports: {
+    readonly "./css": string;
     readonly "./embedded": {
       readonly types: string;
       readonly default: string;
@@ -58,14 +59,16 @@ const isPackageJson = (value: unknown): value is PackageJson => {
     return false;
   }
 
-  if (!("./embedded" in exports) || !("./hosted" in exports)) {
+  if (!("./css" in exports) || !("./embedded" in exports) || !("./hosted" in exports)) {
     return false;
   }
 
+  const css = exports["./css"];
   const embedded = exports["./embedded"];
   const hosted = exports["./hosted"];
 
   return (
+    typeof css === "string" &&
     typeof embedded === "object" &&
     embedded !== null &&
     "types" in embedded &&
@@ -117,16 +120,20 @@ describe("console package exports", () => {
       default: "./dist/hosted.mjs",
       types: "./dist/hosted.d.ts",
     });
+    expect(packageJson.exports["./css"]).toBe("./dist/embedded.css");
     expect(packedFiles).toContain("dist/embedded.mjs");
     expect(packedFiles).toContain("dist/embedded.d.ts");
+    expect(packedFiles).toContain("dist/embedded.css");
     expect(packedFiles).toContain("dist/hosted.mjs");
     expect(packedFiles).toContain("dist/hosted.d.ts");
     expect(packedFiles).not.toContain("src/embedded.tsx");
+    expect(packedFiles).not.toContain("src/embedded.css");
     expect(packedFiles).not.toContain("src/lib/server/hosted.server.ts");
 
     for (const artifact of [
       "dist/embedded.mjs",
       "dist/embedded.d.ts",
+      "dist/embedded.css",
       "dist/hosted.mjs",
       "dist/hosted.d.ts",
     ]) {

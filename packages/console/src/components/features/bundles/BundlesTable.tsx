@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Eye,
   Fingerprint,
   Package,
   Trash2,
@@ -211,12 +212,7 @@ export function BundlesTable({
                       Select bundle
                     </label>
 
-                    <button
-                      type="button"
-                      aria-label={`Open bundle ${bundle.id}`}
-                      className="flex w-full flex-col gap-4 p-4 text-left"
-                      onClick={() => onDetailClick(bundle)}
-                    >
+                    <div className="flex w-full flex-col gap-4 p-4 text-left">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 space-y-2">
                           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">
@@ -230,8 +226,18 @@ export function BundlesTable({
                             />
                           </div>
                         </div>
-                        <div className="shrink-0">
+                        <div className="flex shrink-0 items-center gap-2">
                           <ChannelBadge channel={bundle.channel} />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            aria-label={`Open bundle ${bundle.id}`}
+                            onClick={() => onDetailClick(bundle)}
+                          >
+                            <Eye aria-hidden="true" />
+                            Details
+                          </Button>
                         </div>
                       </div>
 
@@ -346,7 +352,7 @@ export function BundlesTable({
                           </span>
                         </div>
                       </div>
-                    </button>
+                    </div>
 
                     <div className="border-t border-border/60 px-4 py-3">
                       <Button

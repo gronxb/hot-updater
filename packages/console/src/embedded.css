@@ -1,0 +1,20 @@
+:where([data-hot-updater-console="embedded"]) {
+  background: var(--background);
+  border-color: var(--surface-border, var(--border));
+  box-shadow: var(--shadow-card, 0 1px 2px hsl(0 0% 0% / 12%));
+}
+
+:where([data-hot-updater-console="embedded"] header) {
+  border-color: var(--surface-border, var(--border));
+}
+
+:where([data-hot-updater-console="embedded"] div:has(> [data-slot="table-container"])) {
+  background: var(--hot-updater-console-table-background, hsl(0 0% 6.2%));
+  border-color: var(--surface-border, var(--border));
+  box-shadow: var(--shadow-border, inset 0 0 0 1px var(--border));
+}
+
+:where([data-hot-updater-console="embedded"] [data-slot="table-row"]),
+:where([data-hot-updater-console="embedded"] [data-slot="table-header"] tr) {
+  border-color: var(--surface-border, var(--border));
+}

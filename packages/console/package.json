@@ -16,6 +16,7 @@
       "types": "./dist/hosted.d.ts",
       "default": "./dist/hosted.mjs"
     },
+    "./css": "./dist/embedded.css",
     "./package.json": "./package.json"
   },
   "scripts": {

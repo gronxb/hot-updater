@@ -62,6 +62,10 @@ export function TimestampDisplay({
   format = "relative",
 }: TimestampDisplayProps) {
   const timestamp = extractTimestampFromUUIDv7(uuid);
+  if (!Number.isFinite(timestamp)) {
+    return <span className="text-sm text-muted-foreground">-</span>;
+  }
+
   const relativeTime = formatRelativeTime(timestamp);
   const absoluteDate = formatAbsoluteDate(timestamp);
 
