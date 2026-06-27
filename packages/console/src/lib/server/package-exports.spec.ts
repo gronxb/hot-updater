@@ -11,6 +11,7 @@ type PackEntry = {
 };
 
 type PackageJson = {
+  readonly dependencies?: Readonly<Record<string, string>>;
   readonly exports: {
     readonly "./css": string;
     readonly "./embedded": {
@@ -22,6 +23,7 @@ type PackageJson = {
       readonly default: string;
     };
   };
+  readonly peerDependencies?: Readonly<Record<string, string>>;
 };
 
 const parseJson = (value: string): unknown => JSON.parse(value);
@@ -125,6 +127,14 @@ describe("console package exports", () => {
       types: "./dist/hosted.d.ts",
     });
     expect(packageJson.exports["./css"]).toBe("./dist/embedded.css");
+    const dependencies = packageJson.dependencies ?? {};
+    expect(dependencies).not.toHaveProperty("@hot-updater/bsdiff");
+    expect(dependencies).not.toHaveProperty("@hot-updater/server");
+    expect(packageJson.peerDependencies).toMatchObject({
+      "@hot-updater/cli-tools": "*",
+      "@hot-updater/core": "*",
+      "@hot-updater/plugin-core": "*",
+    });
     expect(packedFiles).toContain("dist/embedded.mjs");
     expect(packedFiles).toContain("dist/embedded.d.ts");
     expect(packedFiles).toContain("dist/embedded.css");

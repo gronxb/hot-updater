@@ -30,11 +30,9 @@
     "test:type": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@hot-updater/cli-tools": "*"
-  },
-  "dependencies": {
-    "@hot-updater/bsdiff": "workspace:*",
-    "@hot-updater/server": "workspace:*"
+    "@hot-updater/cli-tools": "*",
+    "@hot-updater/core": "*",
+    "@hot-updater/plugin-core": "*"
   },
   "devDependencies": {
     "@base-ui/react": "^1.3.0",
