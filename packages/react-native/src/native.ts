@@ -845,7 +845,9 @@ export const getInstallId = (): string => {
   }
 
   const nativeInstallId =
-    typeof HotUpdaterNative.getInstallId === "function" ? HotUpdaterNative.getInstallId() : null;
+    typeof HotUpdaterNative.getInstallId === "function"
+      ? HotUpdaterNative.getInstallId()
+      : null;
   const installId =
     typeof nativeInstallId === "string" && nativeInstallId.length > 0
       ? nativeInstallId
