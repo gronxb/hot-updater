@@ -4,20 +4,24 @@
   "version": "0.35.0",
   "files": [
     ".output",
-    "src",
+    "dist",
     "package.json"
   ],
   "exports": {
     "./embedded": {
-      "types": "./src/embedded.d.ts",
-      "default": "./src/embedded.tsx"
+      "types": "./dist/embedded.d.ts",
+      "default": "./dist/embedded.mjs"
     },
-    "./hosted": "./src/lib/server/hosted.server.ts",
+    "./hosted": {
+      "types": "./dist/hosted.d.ts",
+      "default": "./dist/hosted.mjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build && node copy-assets.mjs",
+    "build": "pnpm run build:exports && vite build && node copy-assets.mjs",
+    "build:exports": "vite build --config vite.package.config.ts && node copy-package-types.mjs",
     "check": "oxfmt --write \"**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously .",
     "format": "oxfmt --write \"**/*.{ts,tsx}\"",
     "preview": "vite preview",
