@@ -43,7 +43,19 @@ jobs:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.76.1-new-arch
           rm -f ios/Podfile.lock
-          bundle exec pod install --project-directory=ios
+          install_pods() {
+            for attempt in 1 2 3; do
+              if bundle exec pod install --project-directory=ios; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                return 1
+              fi
+              echo "pod install failed; retrying ($attempt/3)"
+              rm -rf ios/Pods ios/Podfile.lock
+            done
+          }
+          install_pods
           xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
@@ -81,7 +93,19 @@ jobs:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           cd examples/v0.74.1
           rm -f ios/Podfile.lock
-          bundle exec pod install --project-directory=ios
+          install_pods() {
+            for attempt in 1 2 3; do
+              if bundle exec pod install --project-directory=ios; then
+                return 0
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                return 1
+              fi
+              echo "pod install failed; retrying ($attempt/3)"
+              rm -rf ios/Pods ios/Podfile.lock
+            done
+          }
+          install_pods
           xcodebuild -workspace ios/HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator
           cd ../..
         env:
