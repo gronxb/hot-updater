@@ -21,7 +21,7 @@
   ## Documentation
 
   Full documentation is available at:
-  https://hot-updater.dev
+  https://docs.hot-updater.dev
 
   ## AI Skills
 
@@ -37,7 +37,7 @@
   `$hot-updater deploy using the current app version` or
   `$hot-updater roll back the most recently deployed bundle`.
 
-  See the [AI Agent Guide](https://hot-updater.dev/docs/guides/ai-agents) for
+  See the [AI Agent Guide](https://docs.hot-updater.dev/docs/guides/ai-agents) for
   the full workflow.
 
   ## Key Features
@@ -62,7 +62,7 @@
 
   ### Configuration Example
 
-  * [Supabase](https://hot-updater.dev/docs/managed/supabase)
+  * [Supabase](https://docs.hot-updater.dev/docs/managed/supabase)
   ```tsx
   import { bare } from "@hot-updater/bare";
   import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
@@ -85,7 +85,7 @@
   });
   ```
 
-* [Cloudflare](https://hot-updater.dev/docs/managed/cloudflare)
+* [Cloudflare](https://docs.hot-updater.dev/docs/managed/cloudflare)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare";
@@ -109,7 +109,7 @@ export default defineConfig({
 });
 ```
 
-* [AWS S3 + Lambda@Edge](https://hot-updater.dev/docs/managed/aws)
+* [AWS S3 + Lambda@Edge](https://docs.hot-updater.dev/docs/managed/aws)
 ```tsx
 import { bare } from "@hot-updater/bare";
 import { s3Storage, s3Database } from "@hot-updater/aws";
@@ -134,7 +134,7 @@ export default defineConfig({
 });
 ```
 
-* [Firebase](https://hot-updater.dev/docs/managed/firebase)
+* [Firebase](https://docs.hot-updater.dev/docs/managed/firebase)
 ```tsx
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';

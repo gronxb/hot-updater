@@ -497,7 +497,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
+      "https://docs.hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
     )}`,
   );
   p.log.message(

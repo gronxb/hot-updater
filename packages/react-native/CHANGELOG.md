@@ -837,7 +837,7 @@
 
 ### Patch Changes
 
-- 2b408f2: docs: revamp hot-updater.dev
+- 2b408f2: docs: revamp docs.hot-updater.dev
 - Updated dependencies [2b408f2]
   - @hot-updater/plugin-core@0.21.7
   - hot-updater@0.21.7

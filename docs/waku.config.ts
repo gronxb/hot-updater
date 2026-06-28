@@ -12,7 +12,7 @@ export default defineConfig({
       tailwindcss(),
       mdx(MdxConfig),
       llmsTxtPlugin({
-        baseUrl: "https://hot-updater.dev",
+        baseUrl: "https://docs.hot-updater.dev",
       }),
       deadLinkCheckerPlugin({
         contentDir: "content/docs",

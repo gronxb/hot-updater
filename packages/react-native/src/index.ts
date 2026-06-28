@@ -102,7 +102,7 @@ type HotUpdaterWrap = {
    * ```
    *
    * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
-   * See https://hot-updater.dev/docs/guides/custom-update
+   * See https://docs.hot-updater.dev/docs/guides/custom-update
    */
   (options: ManualUpdateOptions): ReturnType<typeof wrap>;
   (options: HotUpdaterOptions): ReturnType<typeof wrap>;
@@ -136,7 +136,7 @@ function createHotUpdaterClient() {
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
+          `For manual update flows, visit: https://docs.hot-updater.dev/docs/guides/custom-update`,
       );
     }
 
@@ -151,7 +151,7 @@ function createHotUpdaterClient() {
         `Configure HotUpdater.wrap with the standard baseURL setup:\n\n` +
         baseURLExample +
         `For manual update flows, use HotUpdater.init() and visit: ` +
-        `https://hot-updater.dev/docs/guides/custom-update`,
+        `https://docs.hot-updater.dev/docs/guides/custom-update`,
     );
   };
 
@@ -244,7 +244,7 @@ function createHotUpdaterClient() {
           `  HotUpdater.init({\n` +
           `    baseURL: "<your-update-server-url>",\n` +
           `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
+          `For manual update flows, visit: https://docs.hot-updater.dev/docs/guides/custom-update`,
       );
     }
     return globalConfig.resolver;

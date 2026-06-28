@@ -139,7 +139,7 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      * When an update exists and the bundle is being downloaded, this component will block access
      * to the entry point and show download progress.
      *
-     * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#fallback-component}
+     * @see {@link https://docs.hot-updater.dev/docs/react-native-api/wrap#fallback-component}
      *
      * ```tsx
      * HotUpdater.wrap({
@@ -170,7 +170,7 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
     /**
      * Callback function that is called when the update process is completed.
      *
-     * @see {@link https://hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
+     * @see {@link https://docs.hot-updater.dev/docs/react-native-api/wrap#onupdateprocesscompleted}
      */
     onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
   };
@@ -191,7 +191,7 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
      * ```
      *
      * Then call `HotUpdater.checkForUpdate(...)` from your manual update flow.
-     * See https://hot-updater.dev/docs/guides/custom-update
+     * See https://docs.hot-updater.dev/docs/guides/custom-update
      */
     updateMode: "manual";
   };
@@ -246,7 +246,7 @@ const warnManualWrapDeprecation = () => {
       "Move the same baseURL/resolver options to HotUpdater.init({ ... }), " +
       "export your root component directly, and call " +
       "HotUpdater.checkForUpdate(...) from your manual update flow. " +
-      "See https://hot-updater.dev/docs/guides/custom-update",
+      "See https://docs.hot-updater.dev/docs/guides/custom-update",
   );
 };
 

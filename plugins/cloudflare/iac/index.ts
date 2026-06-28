@@ -685,7 +685,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   p.log.message(
     `Next step: ${link(
-      "https://hot-updater.dev/docs/managed/cloudflare#step-4-add-hotupdater-to-your-project",
+      "https://docs.hot-updater.dev/docs/managed/cloudflare#step-4-add-hotupdater-to-your-project",
     )}`,
   );
   p.log.success("Done! 🎉");

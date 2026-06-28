@@ -43,7 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
       {/* Open Graph / Facebook */}
       <meta property="og:type" content="website" />
-      <meta property="og:url" content={"https://hot-updater.dev"} />
+      <meta property="og:url" content={"https://docs.hot-updater.dev"} />
       <meta
         property="og:title"
         content="Hot Updater - Self-hosted OTA updates for React Native"
@@ -52,7 +52,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         property="og:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta property="og:image" content="https://hot-updater.dev/og.png" />
+      <meta property="og:image" content="https://docs.hot-updater.dev/og.png" />
       <meta property="og:image:width" content="4800" />
       <meta property="og:image:height" content="2520" />
       <meta property="og:image:type" content="image/png" />
@@ -62,7 +62,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:url" content="https://hot-updater.dev" />
+      <meta name="twitter:url" content="https://docs.hot-updater.dev" />
       <meta
         name="twitter:title"
         content="Hot Updater - Self-hosted OTA updates for React Native"
@@ -71,7 +71,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         name="twitter:description"
         content="Self-hosted over-the-air updates for React Native"
       />
-      <meta name="twitter:image" content="https://hot-updater.dev/og.png" />
+      <meta
+        name="twitter:image"
+        content="https://docs.hot-updater.dev/og.png"
+      />
 
       <Provider>
         {children}
