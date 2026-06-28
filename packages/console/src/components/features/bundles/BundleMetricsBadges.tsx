@@ -2,25 +2,25 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { getBundleLifecycle } from "@/lib/bundleLifecycle";
+import { getBundleMetrics } from "@/lib/bundleMetrics";
 import { cn } from "@/lib/utils";
 
-type BundleLifecycleBadgesProps = {
+type BundleMetricsBadgesProps = {
   readonly bundle: Bundle;
   readonly className?: string;
   readonly empty?: ReactNode;
   readonly showLabel?: boolean;
 };
 
-export function BundleLifecycleBadges({
+export function BundleMetricsBadges({
   bundle,
   className,
   empty = null,
   showLabel = false,
-}: BundleLifecycleBadgesProps) {
-  const lifecycle = getBundleLifecycle(bundle);
+}: BundleMetricsBadgesProps) {
+  const metrics = getBundleMetrics(bundle);
 
-  if (!lifecycle) {
+  if (!metrics) {
     return empty;
   }
 
@@ -30,12 +30,12 @@ export function BundleLifecycleBadges({
     >
       {showLabel ? (
         <span className="mr-0.5 font-semibold uppercase text-muted-foreground/70">
-          Lifecycle
+          Metrics
         </span>
       ) : null}
-      <Badge variant="secondary">{lifecycle.active} ACTIVE</Badge>
-      <Badge variant={lifecycle.recovered > 0 ? "outline" : "secondary"}>
-        {lifecycle.recovered} RECOVERED
+      <Badge variant="secondary">{metrics.active} ACTIVE</Badge>
+      <Badge variant={metrics.recovered > 0 ? "outline" : "secondary"}>
+        {metrics.recovered} RECOVERED
       </Badge>
     </div>
   );

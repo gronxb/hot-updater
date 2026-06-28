@@ -1,13 +1,13 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 
-export type ConsoleBundleLifecycle = {
+export type ConsoleBundleMetrics = {
   readonly active: number;
   readonly recovered: number;
   readonly lastSeenAt?: string | null;
 };
 
-export type BundleWithLifecycle = Bundle & {
-  readonly lifecycle?: ConsoleBundleLifecycle;
+export type BundleWithMetrics = Bundle & {
+  readonly metrics?: ConsoleBundleMetrics;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -16,27 +16,27 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNonNegativeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
 
-export function getBundleLifecycle(
+export function getBundleMetrics(
   bundle: Bundle,
-): ConsoleBundleLifecycle | undefined {
-  const lifecycle = (bundle as { readonly lifecycle?: unknown }).lifecycle;
+): ConsoleBundleMetrics | undefined {
+  const metrics = (bundle as { readonly metrics?: unknown }).metrics;
 
   if (
-    !isRecord(lifecycle) ||
-    !isNonNegativeInteger(lifecycle.active) ||
-    !isNonNegativeInteger(lifecycle.recovered)
+    !isRecord(metrics) ||
+    !isNonNegativeInteger(metrics.active) ||
+    !isNonNegativeInteger(metrics.recovered)
   ) {
     return undefined;
   }
 
   const lastSeenAt =
-    typeof lifecycle.lastSeenAt === "string" || lifecycle.lastSeenAt === null
-      ? lifecycle.lastSeenAt
+    typeof metrics.lastSeenAt === "string" || metrics.lastSeenAt === null
+      ? metrics.lastSeenAt
       : undefined;
 
   return {
-    active: lifecycle.active,
-    recovered: lifecycle.recovered,
+    active: metrics.active,
+    recovered: metrics.recovered,
     ...(lastSeenAt === undefined ? {} : { lastSeenAt }),
   };
 }

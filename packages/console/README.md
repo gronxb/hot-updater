@@ -118,6 +118,35 @@ The console integrates with Hot Updater's plugin system through TanStack Start s
 - `createBundle(bundle)` - Create new bundle
 - `deleteBundle(bundleId)` - Delete bundle
 
+### Optional bundle bundle metrics
+
+Embedded and hosted console providers can expose bundle metrics by
+implementing `getBundleMetrics({ bundleId })`. The bundle editor sheet
+automatically enables the metrics panel when the method exists, and hides it
+when the host provider does not support bundle metrics.
+
+```typescript
+import type { ConsoleApiClient } from "@hot-updater/console/embedded";
+
+const api: ConsoleApiClient = {
+  // ...required console methods
+  async getBundleMetrics({ bundleId }) {
+    return {
+      active: 1284,
+      recovered: 37,
+      lastSeenAt: new Date().toISOString(),
+      series: [
+        {
+          active: 1180,
+          recovered: 28,
+          bucketStart: "2026-06-01T00:00:00.000Z",
+        },
+      ],
+    };
+  },
+};
+```
+
 ## 🎯 Configuration
 
 Configure Hot Updater in `hot-updater.config.ts`:

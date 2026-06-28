@@ -1,14 +1,16 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ConsoleApiProvider,
   queryKeys,
+  useBundleMetricsQuery,
   useDeleteBundleMutation,
   useUpdateBundleMutation,
+  type ConsoleApiClient,
 } from "./api";
 import {
   deleteBundle as deleteBundleApi,
@@ -57,14 +59,85 @@ const timeout = (ms: number) =>
   });
 
 const createWrapper =
-  (queryClient: QueryClient) =>
+  (
+    queryClient: QueryClient,
+    client: ConsoleApiClient = createDefaultConsoleApiClient(),
+  ) =>
   ({ children }: PropsWithChildren) => (
     <QueryClientProvider client={queryClient}>
-      <ConsoleApiProvider client={createDefaultConsoleApiClient()}>
-        {children}
-      </ConsoleApiProvider>
+      <ConsoleApiProvider client={client}>{children}</ConsoleApiProvider>
     </QueryClientProvider>
   );
+
+describe("useBundleMetricsQuery", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  it("stays disabled when the provider does not support bundle metrics", () => {
+    const wrapper = createWrapper(queryClient);
+    const { result } = renderHook(() => useBundleMetricsQuery("bundle-001"), {
+      wrapper,
+    });
+
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.fetchStatus).toBe("idle");
+  });
+
+  it("loads provider supplied bundle metrics when supported", async () => {
+    const getBundleMetrics = vi.fn(async () => ({
+      active: 7,
+      lastSeenAt: "2026-06-28T12:00:00.000Z",
+      recovered: 2,
+      series: [
+        {
+          active: 7,
+          bucketStart: "2026-06-28T12:00:00.000Z",
+          recovered: 2,
+        },
+      ],
+    }));
+    const wrapper = createWrapper(queryClient, {
+      ...createDefaultConsoleApiClient(),
+      getBundleMetrics,
+    });
+    const { result } = renderHook(() => useBundleMetricsQuery("bundle-001"), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual({
+        active: 7,
+        lastSeenAt: "2026-06-28T12:00:00.000Z",
+        recovered: 2,
+        series: [
+          {
+            active: 7,
+            bucketStart: "2026-06-28T12:00:00.000Z",
+            recovered: 2,
+          },
+        ],
+      });
+    });
+
+    expect(getBundleMetrics).toHaveBeenCalledWith({
+      bundleId: "bundle-001",
+    });
+  });
+});
 
 describe("useUpdateBundleMutation", () => {
   let queryClient: QueryClient;

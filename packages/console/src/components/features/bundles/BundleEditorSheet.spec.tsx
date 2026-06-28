@@ -1,7 +1,10 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ConsoleApiProvider, type ConsoleApiClient } from "@/lib/api";
 
 import { BundleEditorSheet } from "./BundleEditorSheet";
 
@@ -71,6 +74,12 @@ vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: () => <div>Skeleton</div>,
 }));
 
+class ResizeObserverMock implements ResizeObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+
 const bundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
   channel: "production",
@@ -87,26 +96,68 @@ const bundle: Bundle = {
   targetCohorts: [],
 };
 
+function createConsoleApi(
+  overrides: Partial<ConsoleApiClient> = {},
+): ConsoleApiClient {
+  return {
+    createBundle: vi.fn(),
+    deleteBundle: vi.fn(),
+    getBundle: vi.fn(),
+    getBundleChildCounts: vi.fn(),
+    getBundleChildren: vi.fn(),
+    getBundleDownloadUrl: vi.fn(),
+    getBundles: vi.fn(),
+    getChannels: vi.fn(),
+    getConfig: vi.fn(),
+    getConfigLoaded: vi.fn(),
+    promoteBundle: vi.fn(),
+    updateBundle: vi.fn(),
+    ...overrides,
+  };
+}
+
+function renderBundleEditorSheet({
+  api = createConsoleApi(),
+  onOpenChange = vi.fn(),
+}: {
+  api?: ConsoleApiClient;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ConsoleApiProvider client={api}>
+        <BundleEditorSheet bundle={bundle} open onOpenChange={onOpenChange} />
+      </ConsoleApiProvider>
+    </QueryClientProvider>,
+  );
+
+  return { queryClient };
+}
+
 describe("BundleEditorSheet", () => {
   const mockOnOpenChange = vi.fn();
 
   beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
     mockOnOpenChange.mockReset();
     mockBundleEditorForm.mockReset();
   });
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it("ignores dismiss requests while the editor is saving", () => {
-    render(
-      <BundleEditorSheet
-        bundle={bundle}
-        open
-        onOpenChange={mockOnOpenChange}
-      />,
-    );
+    renderBundleEditorSheet({ onOpenChange: mockOnOpenChange });
 
     fireEvent.click(screen.getByRole("button", { name: "Mark busy" }));
     fireEvent.click(screen.getByRole("button", { name: "Dismiss sheet" }));
@@ -116,17 +167,41 @@ describe("BundleEditorSheet", () => {
   });
 
   it("allows successful saves to close the sheet even after entering a busy state", () => {
-    render(
-      <BundleEditorSheet
-        bundle={bundle}
-        open
-        onOpenChange={mockOnOpenChange}
-      />,
-    );
+    renderBundleEditorSheet({ onOpenChange: mockOnOpenChange });
 
     fireEvent.click(screen.getByRole("button", { name: "Mark busy" }));
     fireEvent.click(screen.getByRole("button", { name: "Finish save" }));
 
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("renders provider supplied bundle metrics in the bundle details sheet", async () => {
+    renderBundleEditorSheet({
+      api: createConsoleApi({
+        getBundleMetrics: vi.fn(async () => ({
+          active: 7,
+          lastSeenAt: "2026-06-28T12:00:00.000Z",
+          recovered: 2,
+          series: [
+            {
+              active: 7,
+              bucketStart: "2026-06-28T12:00:00.000Z",
+              recovered: 2,
+            },
+          ],
+        })),
+      }),
+    });
+
+    expect(await screen.findByText("Bundle metrics")).toBeTruthy();
+    expect(screen.getByText("7 active")).toBeTruthy();
+    expect(screen.getByText("2 recovered")).toBeTruthy();
+    expect(screen.getByText("Recovery pressure")).toBeTruthy();
+  });
+
+  it("hides bundle metrics when the provider does not support them", () => {
+    renderBundleEditorSheet();
+
+    expect(screen.queryByText("Bundle metrics")).toBeNull();
   });
 });

@@ -6,6 +6,8 @@ import { ConsoleBundlesPage } from "@/components/ConsoleBundlesPage";
 import { FilterParamsProvider } from "@/hooks/useFilterParams";
 import {
   type BundleFilters,
+  type BundleMetrics,
+  type BundleMetricsPoint,
   type ConsoleApiClient,
   ConsoleApiProvider,
 } from "@/lib/api";
@@ -55,4 +57,9 @@ export function HotUpdaterConsole({
   );
 }
 
-export type { BundleFilters, ConsoleApiClient };
+export type {
+  BundleFilters,
+  BundleMetrics as ConsoleBundleMetrics,
+  BundleMetricsPoint as ConsoleBundleMetricsPoint,
+  ConsoleApiClient,
+};

@@ -21,6 +21,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { BundleBasicInfo } from "./BundleBasicInfo";
 import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
+import { BundleMetricsPanel } from "./BundleMetricsPanel";
 
 interface BundleEditorSheetProps {
   bundleId?: string;
@@ -98,6 +99,7 @@ export function BundleEditorSheet({
 
   const bodyContent = bundle ? (
     <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
+      <BundleMetricsPanel bundleId={bundle.id} />
       <BundleEditorForm
         key={bundle.id}
         bundle={bundle}
@@ -170,7 +172,9 @@ export function BundleEditorSheet({
       >
         <SheetHeader>
           <SheetTitle>{bundle ? "Bundle Detail" : "Bundle Details"}</SheetTitle>
-          <SheetDescription>{headerContent}</SheetDescription>
+          <SheetDescription asChild>
+            <div>{headerContent}</div>
+          </SheetDescription>
         </SheetHeader>
         {bodyContent}
       </SheetContent>

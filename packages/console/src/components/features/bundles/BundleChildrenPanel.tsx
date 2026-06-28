@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-import { BundleLifecycleBadges } from "./BundleLifecycleBadges";
+import { BundleMetricsBadges } from "./BundleMetricsBadges";
 
 interface BundleChildrenPanelProps {
   panelId: string;
@@ -48,7 +48,7 @@ export function BundleChildrenPanel({
             <BundleIdDisplay bundleId={bundle.id} maxLength={18} fullOnMobile />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <BundleLifecycleBadges bundle={bundle} showLabel />
+            <BundleMetricsBadges bundle={bundle} showLabel />
             <Badge variant="outline">
               {bundles.length} {bundles.length === 1 ? "patch" : "patches"}
             </Badge>
@@ -109,7 +109,7 @@ export function BundleChildrenPanel({
                           <Badge variant="secondary">bsdiff</Badge>
                         </div>
                         <div className="space-y-1 text-right">
-                          <BundleLifecycleBadges
+                          <BundleMetricsBadges
                             bundle={childBundle}
                             className="justify-end"
                           />
@@ -144,7 +144,7 @@ export function BundleChildrenPanel({
                       <TableHead>Patch Bundle</TableHead>
                       <TableHead>Relation</TableHead>
                       <TableHead>Artifact</TableHead>
-                      <TableHead>Lifecycle</TableHead>
+                      <TableHead>Metrics</TableHead>
                       <TableHead>Created</TableHead>
                       <TableHead className="w-[96px] text-right">
                         Detail
@@ -180,7 +180,7 @@ export function BundleChildrenPanel({
                           <Badge variant="secondary">bsdiff</Badge>
                         </TableCell>
                         <TableCell>
-                          <BundleLifecycleBadges
+                          <BundleMetricsBadges
                             bundle={childBundle}
                             empty={
                               <span className="text-sm text-muted-foreground">

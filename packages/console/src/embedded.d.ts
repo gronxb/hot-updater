@@ -11,13 +11,26 @@ export type BundleFilters = {
 
 export type ConsoleBundle = {
   readonly id: string;
-  readonly lifecycle?: {
+  readonly metrics?: {
     readonly active: number;
     readonly lastSeenAt?: string | null;
     readonly recovered: number;
   };
   readonly storageUri?: string;
   readonly [key: string]: unknown;
+};
+
+export type ConsoleBundleMetricsPoint = {
+  readonly active: number;
+  readonly bucketStart: string;
+  readonly recovered: number;
+};
+
+export type ConsoleBundleMetrics = {
+  readonly active: number;
+  readonly lastSeenAt?: string | null;
+  readonly recovered: number;
+  readonly series: readonly ConsoleBundleMetricsPoint[];
 };
 
 export type ConsoleApiClient = {
@@ -40,6 +53,9 @@ export type ConsoleApiClient = {
   readonly getBundleDownloadUrl: (params: {
     readonly bundleId: string;
   }) => Promise<{ readonly fileUrl: string }>;
+  readonly getBundleMetrics?: (params: {
+    readonly bundleId: string;
+  }) => Promise<ConsoleBundleMetrics | null>;
   readonly getBundles: (filters?: BundleFilters) => Promise<{
     readonly data: ConsoleBundle[];
     readonly pagination?: unknown;

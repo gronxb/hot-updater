@@ -39,7 +39,7 @@ import { DEFAULT_PAGE_LIMIT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 import { BundleChildrenPanel } from "./BundleChildrenPanel";
-import { BundleLifecycleBadges } from "./BundleLifecycleBadges";
+import { BundleMetricsBadges } from "./BundleMetricsBadges";
 import { createBundleColumns } from "./BundleTableColumns";
 import { SelectedBundlesDeleteDialog } from "./SelectedBundlesDeleteDialog";
 
@@ -307,7 +307,7 @@ export function BundlesTable({
                             ) : null}
                           </div>
                         </div>
-                        <BundleLifecycleBadges
+                        <BundleMetricsBadges
                           bundle={bundle}
                           empty={null}
                           className="rounded-md bg-muted/40 p-3"

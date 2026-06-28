@@ -12,25 +12,41 @@ export type HostedConsoleProject = {
   readonly slug?: string;
 };
 
-export type HostedConsoleBundleLifecycle = {
+export type HostedConsoleBundleMetricsSummary = {
   readonly active: number;
   readonly recovered: number;
   readonly lastSeenAt?: string | null;
 };
 
-export type HostedConsoleBundleLifecycleProvider = {
-  readonly getBundleLifecycle: (
+export type HostedConsoleBundleMetricsPoint = {
+  readonly active: number;
+  readonly bucketStart: string;
+  readonly recovered: number;
+};
+
+export type HostedConsoleBundleMetrics = {
+  readonly active: number;
+  readonly recovered: number;
+  readonly lastSeenAt?: string | null;
+  readonly series: readonly HostedConsoleBundleMetricsPoint[];
+};
+
+export type HostedConsoleBundleMetricsProvider = {
+  readonly getBundleMetricsSummaries: (
     bundleIds: readonly string[],
-  ) => Promise<Record<string, HostedConsoleBundleLifecycle>>;
+  ) => Promise<Record<string, HostedConsoleBundleMetricsSummary>>;
+  readonly getBundleMetrics?: (
+    bundleId: string,
+  ) => Promise<HostedConsoleBundleMetrics | null>;
 };
 
 export type HostedConsoleContext = {
   readonly project: HostedConsoleProject;
   readonly console?: ConfigResponse["console"];
   readonly database: () => Promise<DatabasePlugin> | DatabasePlugin;
-  readonly bundleLifecycle?: () =>
-    | Promise<HostedConsoleBundleLifecycleProvider>
-    | HostedConsoleBundleLifecycleProvider;
+  readonly bundleMetrics?: () =>
+    | Promise<HostedConsoleBundleMetricsProvider>
+    | HostedConsoleBundleMetricsProvider;
   readonly storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
 };
 

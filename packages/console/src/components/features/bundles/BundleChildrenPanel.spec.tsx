@@ -4,15 +4,15 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { BundleChildrenPanel } from "./BundleChildrenPanel";
 
-type LifecycleBundle = Bundle & {
-  readonly lifecycle?: {
+type MetricsBundle = Bundle & {
+  readonly metrics?: {
     readonly active: number;
     readonly recovered: number;
     readonly lastSeenAt?: string | null;
   };
 };
 
-const baseBundle: LifecycleBundle = {
+const baseBundle: MetricsBundle = {
   id: "0195a408-8f13-7d9b-8df4-basebundle1",
   channel: "production",
   platform: "ios",
@@ -26,14 +26,14 @@ const baseBundle: LifecycleBundle = {
   fingerprintHash: null,
   rolloutCohortCount: 1000,
   targetCohorts: [],
-  lifecycle: {
+  metrics: {
     active: 4,
     recovered: 1,
     lastSeenAt: "2026-06-26T06:00:00.000Z",
   },
 };
 
-const childBundle: LifecycleBundle = {
+const childBundle: MetricsBundle = {
   ...baseBundle,
   id: "0195a408-8f13-7d9b-8df4-childbundl1",
   fileHash: "child-hash",
@@ -46,7 +46,7 @@ const childBundle: LifecycleBundle = {
       patchStorageUri: "s3://bucket/patch.zip",
     },
   ],
-  lifecycle: {
+  metrics: {
     active: 9,
     recovered: 0,
     lastSeenAt: "2026-06-26T06:05:00.000Z",
@@ -58,7 +58,7 @@ describe("BundleChildrenPanel", () => {
     cleanup();
   });
 
-  it("renders provider supplied lifecycle counts for related bundles", () => {
+  it("renders provider supplied metrics counts for related bundles", () => {
     render(
       <BundleChildrenPanel
         panelId="bundle-lineage-panel"
@@ -69,23 +69,23 @@ describe("BundleChildrenPanel", () => {
       />,
     );
 
-    expect(screen.getAllByText("Lifecycle").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Metrics").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("4 ACTIVE")).toBeTruthy();
     expect(screen.getByText("1 RECOVERED")).toBeTruthy();
     expect(screen.getByText("9 ACTIVE")).toBeTruthy();
     expect(screen.getByText("0 RECOVERED")).toBeTruthy();
   });
 
-  it("keeps a neutral relationship surface when lifecycle data is absent", () => {
-    const bundleWithoutLifecycle: Bundle = {
+  it("keeps a neutral relationship surface when metrics data is absent", () => {
+    const bundleWithoutMetrics: Bundle = {
       ...baseBundle,
-      lifecycle: undefined,
+      metrics: undefined,
     } as Bundle;
 
     render(
       <BundleChildrenPanel
         panelId="bundle-lineage-panel"
-        bundle={bundleWithoutLifecycle}
+        bundle={bundleWithoutMetrics}
         bundles={[]}
         loading={false}
         onDetailClick={() => undefined}

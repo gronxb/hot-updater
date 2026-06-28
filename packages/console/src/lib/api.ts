@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 
-import type { BundleWithLifecycle } from "./bundleLifecycle";
+import type { BundleWithMetrics } from "./bundleMetrics";
 
 export type BundleFilters = {
   channel?: string;
@@ -25,8 +25,21 @@ export type BundleFilters = {
 };
 
 type BundleListResult = {
-  data: BundleWithLifecycle[];
+  data: BundleWithMetrics[];
   pagination?: PaginationInfo;
+};
+
+export type BundleMetricsPoint = {
+  readonly active: number;
+  readonly bucketStart: string;
+  readonly recovered: number;
+};
+
+export type BundleMetrics = {
+  readonly active: number;
+  readonly lastSeenAt?: string | null;
+  readonly recovered: number;
+  readonly series: readonly BundleMetricsPoint[];
 };
 
 export type ConsoleConfigResult = {
@@ -49,16 +62,19 @@ export type ConsoleApiClient = {
   }) => Promise<{ success: boolean }>;
   readonly getBundle: (params: {
     bundleId: string;
-  }) => Promise<BundleWithLifecycle | null>;
+  }) => Promise<BundleWithMetrics | null>;
   readonly getBundleChildCounts: (params: {
     bundleIds: string[];
   }) => Promise<Record<string, number>>;
   readonly getBundleChildren: (params: {
     baseBundleId: string;
-  }) => Promise<BundleWithLifecycle[]>;
+  }) => Promise<BundleWithMetrics[]>;
   readonly getBundleDownloadUrl: (params: {
     bundleId: string;
   }) => Promise<{ fileUrl: string }>;
+  readonly getBundleMetrics?: (params: {
+    bundleId: string;
+  }) => Promise<BundleMetrics | null>;
   readonly getBundles: (filters?: BundleFilters) => Promise<BundleListResult>;
   readonly getChannels: () => Promise<string[]>;
   readonly getConfig: () => Promise<ConsoleConfigResult>;
@@ -68,11 +84,11 @@ export type ConsoleApiClient = {
     bundleId: string;
     nextBundleId?: string;
     targetChannel: string;
-  }) => Promise<{ bundle: BundleWithLifecycle; success: boolean }>;
+  }) => Promise<{ bundle: BundleWithMetrics; success: boolean }>;
   readonly updateBundle: (params: {
     bundleId: string;
     bundle: Partial<Bundle>;
-  }) => Promise<{ bundle: BundleWithLifecycle; success: boolean }>;
+  }) => Promise<{ bundle: BundleWithMetrics; success: boolean }>;
 };
 
 const ConsoleApiContext = createContext<ConsoleApiClient | null>(null);
@@ -114,6 +130,7 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
+  bundleMetrics: (bundleId: string) => ["bundle-metrics", bundleId] as const,
 };
 
 function replaceBundleInQueryData(
@@ -202,6 +219,25 @@ export function useBundleQuery(bundleId: string) {
     staleTime: Infinity,
     enabled: !!bundleId,
   });
+}
+
+export function useBundleMetricsQuery(bundleId: string) {
+  const api = useConsoleApi();
+  const isSupported = typeof api.getBundleMetrics === "function";
+  const query = useQuery({
+    queryKey: queryKeys.bundleMetrics(bundleId),
+    queryFn: () =>
+      api.getBundleMetrics
+        ? api.getBundleMetrics({ bundleId })
+        : Promise.resolve(null),
+    staleTime: 30_000,
+    enabled: isSupported && !!bundleId,
+  });
+
+  return {
+    ...query,
+    isSupported,
+  };
 }
 
 export function useBundleChildrenQuery(baseBundleId: string) {
