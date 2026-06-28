@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 
+import tailwindcss from "@tailwindcss/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -17,7 +18,7 @@ const syncExternalStoreWithSelector = resolve(
 );
 
 export default defineConfig({
-  plugins: [viteReact()],
+  plugins: [tailwindcss(), viteReact()],
   resolve: {
     alias: [
       {
@@ -46,6 +47,7 @@ export default defineConfig({
         embedded: resolve(import.meta.dirname, "src/embedded.tsx"),
         hosted: resolve(import.meta.dirname, "src/lib/server/hosted.server.ts"),
       },
+      cssFileName: "embedded",
       formats: ["es"],
     },
     outDir: "dist",

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
+import "./embedded.css";
 import { ConsoleBundlesPage } from "@/components/ConsoleBundlesPage";
 import { FilterParamsProvider } from "@/hooks/useFilterParams";
 import {

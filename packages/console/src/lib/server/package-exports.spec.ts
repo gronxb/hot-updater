@@ -157,11 +157,23 @@ describe("console package exports", () => {
       "node:async_hooks",
     );
 
+    const embeddedCss = readFileSync("dist/embedded.css", "utf8");
+    expect(embeddedCss).toContain(
+      "h-\\[min\\(760px\\,calc\\(100svh-11rem\\)\\)\\]",
+    );
+    expect(embeddedCss).toContain("data-\\[side\\=right\\]\\:right-0");
+    expect(embeddedCss).toContain("data-open\\:animate-in");
+    expect(embeddedCss).toContain(
+      "supports-backdrop-filter\\:backdrop-blur-xs",
+    );
+    expect(embeddedCss).not.toContain("body{");
+    expect(embeddedCss).not.toContain("@fontsource-variable/inter");
+
     await expect(
       import(pathToFileURL("dist/embedded.mjs").href),
     ).resolves.toHaveProperty("HotUpdaterConsole");
     await expect(
       import(pathToFileURL("dist/hosted.mjs").href),
     ).resolves.toHaveProperty("getConfigOperation");
-  }, 15_000);
+  }, 30_000);
 });
