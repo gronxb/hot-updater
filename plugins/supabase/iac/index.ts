@@ -20,6 +20,8 @@ import {
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { createSupabaseTelemetryOperations } from "../src/supabaseTelemetry";
+import type { TelemetryKeyResponse } from "../src/supabaseTelemetryTypes";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
 
@@ -102,7 +104,7 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
   process.exit(1);
 };
 
-const SOURCE_TEMPLATE = `// add this to your App.tsx
+export const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
@@ -111,8 +113,23 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  analytics: {
+    telemetryKey: "%%telemetryKey%%",
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const seedSupabaseTelemetryKey = async ({
+  serviceRoleKey,
+  supabaseUrl,
+}: {
+  readonly serviceRoleKey: string;
+  readonly supabaseUrl: string;
+}): Promise<TelemetryKeyResponse> =>
+  createSupabaseTelemetryOperations({
+    supabaseServiceRoleKey: serviceRoleKey,
+    supabaseUrl,
+  }).issueTelemetryKey();
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -669,6 +686,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   await pushDB(tmpDir, { dbPassword });
   await deployEdgeFunction(tmpDir, project.id);
+  const supabaseUrl = `https://${project.id}.supabase.co`;
+  const telemetryKey = await seedSupabaseTelemetryKey({
+    serviceRoleKey: serviceRoleApiKey.api_key,
+    supabaseUrl,
+  });
 
   await removeTmpDir();
 
@@ -680,7 +702,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   await makeEnv({
     HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
-    HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+    HOT_UPDATER_SUPABASE_URL: supabaseUrl,
   });
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
   if (configWriteResult.status === "created") {
@@ -700,6 +722,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
       source: `https://${project.id}.supabase.co/functions/v1/update-server`,
+      telemetryKey: telemetryKey.telemetryKey,
     }),
   );
 

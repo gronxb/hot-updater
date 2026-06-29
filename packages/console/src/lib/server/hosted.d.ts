@@ -3,6 +3,8 @@ import type {
   Bundle,
   DatabasePlugin,
   NodeStoragePlugin,
+  TelemetryKeyResult,
+  TelemetryKeyState,
 } from "@hot-updater/plugin-core";
 
 export type HostedConsoleProject = {
@@ -110,6 +112,10 @@ export declare const createHostedConfig: (
 ) => ConfigResponse;
 
 export declare const getConfigOperation: () => Promise<{
+  readonly capabilities: {
+    readonly telemetry: boolean;
+    readonly telemetryKey: boolean;
+  };
   readonly console: ConfigResponse["console"];
   readonly hosted: ReturnType<typeof getHostedConsoleInfo>;
 }>;
@@ -119,6 +125,12 @@ export declare const getChannelsOperation: () => Promise<string[]>;
 export declare const getConfigLoadedOperation: () => Promise<{
   readonly configLoaded: boolean;
 }>;
+
+export declare const getTelemetryKeyStateOperation: () => Promise<TelemetryKeyState | null>;
+
+export declare const issueTelemetryKeyOperation: () => Promise<TelemetryKeyResult>;
+
+export declare const rotateTelemetryKeyOperation: () => Promise<TelemetryKeyResult>;
 
 export declare const getBundlesOperation: (
   input?: GetBundlesInput,

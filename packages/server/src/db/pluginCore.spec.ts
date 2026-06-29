@@ -4,7 +4,10 @@ import type {
   DatabasePlugin,
   RequestEnvContext,
 } from "@hot-updater/plugin-core";
-import { resolveUpdateInfoFromBundles } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  resolveUpdateInfoFromBundles,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createPluginDatabaseCore } from "./pluginCore";
@@ -35,6 +38,81 @@ type TestContext = RequestEnvContext<{
 }>;
 
 describe("createPluginDatabaseCore", () => {
+  it("forwards telemetry methods from getter-backed database plugins", async () => {
+    const authenticateTelemetryKey = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["authenticateTelemetryKey"]>
+    >(async () => true);
+    const recordLifecycleEvent = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["recordLifecycleEvent"]>
+    >(async () => ({
+      accepted: true,
+      deduped: false,
+    }));
+    const getPlugin = createDatabasePlugin<Record<string, never>, TestContext>({
+      name: "getter-telemetry-plugin",
+      factory: () => ({
+        authenticateTelemetryKey,
+        async commitBundle() {},
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              currentPage: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              total: 0,
+              totalPages: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return ["production"];
+        },
+        recordLifecycleEvent,
+      }),
+    })({});
+
+    const core = createPluginDatabaseCore(
+      getPlugin,
+      async () => null,
+    );
+    const context: TestContext = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+    const payload = {
+      appId: "app-1",
+      appVersion: "1.0.0",
+      bundleId: baseBundle.id,
+      channel: "production",
+      eventId: "event-1",
+      eventType: "app_ready",
+      installId: "install-1",
+      platform: "ios",
+      status: "ACTIVE",
+      telemetryKey: "key-1",
+    } as const;
+
+    await expect(
+      core.api.authenticateTelemetryKey?.("key-1", context),
+    ).resolves.toBe(true);
+    await expect(
+      core.api.recordLifecycleEvent?.(payload, context),
+    ).resolves.toEqual({
+      accepted: true,
+      deduped: false,
+    });
+
+    expect(authenticateTelemetryKey).toHaveBeenCalledWith("key-1", context);
+    expect(recordLifecycleEvent).toHaveBeenCalledWith(payload, context);
+    expect(core.api.issueTelemetryKey).toBeUndefined();
+  });
+
   it("prefers plugin getUpdateInfo fast-path when provided", async () => {
     const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>();
     const expected: UpdateInfo = {

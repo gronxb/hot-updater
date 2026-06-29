@@ -18,8 +18,14 @@ export const createDefaultConsoleApiClient = (): ConsoleApiClient => ({
   getChannels: async () => (await import("./api-rpc")).getChannels(),
   getConfig: async () => (await import("./api-rpc")).getConfig(),
   getConfigLoaded: async () => (await import("./api-rpc")).getConfigLoaded(),
+  getTelemetryKeyState: async () =>
+    (await import("./api-rpc")).getTelemetryKeyState(),
+  issueTelemetryKey: async () =>
+    (await import("./api-rpc")).issueTelemetryKey(),
   promoteBundle: async (params) =>
     (await import("./api-rpc")).promoteBundle({ data: params }),
+  rotateTelemetryKey: async () =>
+    (await import("./api-rpc")).rotateTelemetryKey(),
   updateBundle: async (params) =>
     (await import("./api-rpc")).updateBundle({ data: params }),
 });

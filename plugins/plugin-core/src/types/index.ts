@@ -92,11 +92,87 @@ export interface DatabaseBundleQueryOptions {
   orderBy?: DatabaseBundleQueryOrder;
 }
 
+export type TelemetryLifecycleStatus = "ACTIVE" | "RECOVERED";
+
+export type TelemetryLifecyclePayload = {
+  readonly bundleId: string;
+  readonly channel: string;
+  readonly crashedBundleId?: string;
+  readonly eventId: string;
+  readonly installId: string;
+  readonly observedAt?: string;
+  readonly platform: Platform;
+  readonly status: TelemetryLifecycleStatus;
+};
+
+export type TelemetryLifecycleRecordResult = {
+  readonly accepted: true;
+  readonly deduped: boolean;
+};
+
+export type TelemetryKeyResult = {
+  readonly telemetryKey: string;
+  readonly telemetryKeySuffix: string;
+};
+
+export type TelemetryKeyState = {
+  readonly telemetryKeySuffix: string;
+};
+
+export type TelemetryLifecycleMetricsBundle = {
+  readonly active: number;
+  readonly bundleId: string;
+  readonly channel?: string;
+  readonly lastSeenAt: string | null;
+  readonly platform?: Platform;
+  readonly recovered: number;
+};
+
+export type TelemetryLifecycleMetricsPoint = {
+  readonly active: number;
+  readonly bucketStart: string;
+  readonly bundleId: string;
+  readonly recovered: number;
+};
+
+export type TelemetryLifecycleMetrics = {
+  readonly bundles: readonly TelemetryLifecycleMetricsBundle[];
+  readonly series: readonly TelemetryLifecycleMetricsPoint[];
+  readonly totals: {
+    readonly active: number;
+    readonly recovered: number;
+  };
+};
+
+export interface DatabaseTelemetryCapabilities<TContext = unknown> {
+  authenticateTelemetryKey?: (
+    telemetryKey: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<boolean>;
+  getTelemetryKeyState?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryKeyState | null>;
+  issueTelemetryKey?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryKeyResult>;
+  readLifecycleMetrics?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryLifecycleMetrics>;
+  recordLifecycleEvent?: (
+    payload: TelemetryLifecyclePayload,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryLifecycleRecordResult>;
+  rotateTelemetryKey?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryKeyResult>;
+}
+
 export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin<TContext = unknown> {
+export interface DatabasePlugin<TContext = unknown>
+  extends DatabaseTelemetryCapabilities<TContext> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   getBundleById: (
     bundleId: string,

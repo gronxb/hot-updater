@@ -5,6 +5,10 @@ import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import {
+  createFirebaseTelemetryApp,
+  createFirebaseTelemetryOperations,
+} from "../../src/firebaseTelemetry";
 
 declare global {
   var HotUpdater: {
@@ -50,6 +54,12 @@ app.get("/ping", (c) => {
   return c.text("pong");
 });
 
+app.route(
+  "/",
+  createFirebaseTelemetryApp(
+    createFirebaseTelemetryOperations(admin.firestore()),
+  ),
+);
 app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
 
 const handler = onRequest(

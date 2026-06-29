@@ -129,6 +129,112 @@ describe("console api operations", () => {
     expect(secondResult.data).toEqual([secondBundle]);
   });
 
+  it("reports telemetry capability from optional database methods", async () => {
+    const unsupportedDatabase = createDatabasePlugin("unsupported-db", []);
+    const supportedDatabase = {
+      ...createDatabasePlugin("supported-db", []),
+      authenticateTelemetryKey: vi.fn(async () => true),
+      getTelemetryKeyState: vi.fn(async () => ({
+        telemetryKeySuffix: "abcd1234",
+      })),
+      issueTelemetryKey: vi.fn(async () => ({
+        telemetryKey: "hutk_issued",
+        telemetryKeySuffix: "issued",
+      })),
+      recordLifecycleEvent: vi.fn(
+        async () =>
+          ({
+            accepted: true,
+            deduped: false,
+          }) as const,
+      ),
+      rotateTelemetryKey: vi.fn(async () => ({
+        telemetryKey: "hutk_rotated",
+        telemetryKeySuffix: "rotated",
+      })),
+    } satisfies DatabasePlugin;
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const { getConfigOperation } = await import("./api-operations.server");
+
+    const unsupportedConfig = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => unsupportedDatabase,
+        storage: () => storagePlugin,
+      },
+      () => getConfigOperation(),
+    );
+    const supportedConfig = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => supportedDatabase,
+        storage: () => storagePlugin,
+      },
+      () => getConfigOperation(),
+    );
+
+    expect(unsupportedConfig.capabilities.telemetry).toBe(false);
+    expect(unsupportedConfig.capabilities.telemetryKey).toBe(false);
+    expect(supportedConfig.capabilities.telemetry).toBe(true);
+    expect(supportedConfig.capabilities.telemetryKey).toBe(true);
+  });
+
+  it("uses provider telemetry key operations", async () => {
+    const databasePlugin = {
+      ...createDatabasePlugin("telemetry-db", []),
+      getTelemetryKeyState: vi.fn(async () => ({
+        telemetryKeySuffix: "abcd1234",
+      })),
+      issueTelemetryKey: vi.fn(async () => ({
+        telemetryKey: "hutk_issued",
+        telemetryKeySuffix: "issued",
+      })),
+      rotateTelemetryKey: vi.fn(async () => ({
+        telemetryKey: "hutk_rotated",
+        telemetryKeySuffix: "rotated",
+      })),
+    } satisfies DatabasePlugin;
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const {
+      getTelemetryKeyStateOperation,
+      issueTelemetryKeyOperation,
+      rotateTelemetryKeyOperation,
+    } = await import("./api-operations.server");
+
+    const result = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => databasePlugin,
+        storage: () => storagePlugin,
+      },
+      async () => ({
+        state: await getTelemetryKeyStateOperation(),
+        issued: await issueTelemetryKeyOperation(),
+        rotated: await rotateTelemetryKeyOperation(),
+      }),
+    );
+
+    expect(result).toEqual({
+      state: { telemetryKeySuffix: "abcd1234" },
+      issued: { telemetryKey: "hutk_issued", telemetryKeySuffix: "issued" },
+      rotated: {
+        telemetryKey: "hutk_rotated",
+        telemetryKeySuffix: "rotated",
+      },
+    });
+    expect(databasePlugin.getTelemetryKeyState).toHaveBeenCalledOnce();
+    expect(databasePlugin.issueTelemetryKey).toHaveBeenCalledOnce();
+    expect(databasePlugin.rotateTelemetryKey).toHaveBeenCalledOnce();
+  });
+
   it("resolves runtime download URLs through the hosted storage profile", async () => {
     const databasePlugin = createDatabasePlugin("hosted-db", [baseBundle]);
     const getDownloadUrl = vi.fn<RuntimeStorageProfile["getDownloadUrl"]>(

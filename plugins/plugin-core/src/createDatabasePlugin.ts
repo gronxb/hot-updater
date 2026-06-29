@@ -11,13 +11,15 @@ import type {
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
   DatabasePlugin,
+  DatabaseTelemetryCapabilities,
   DatabasePluginHooks,
   HotUpdaterContext,
   PaginationInfo,
   Paginated,
 } from "./types";
 
-export interface AbstractDatabasePlugin<TContext = unknown> {
+export interface AbstractDatabasePlugin<TContext = unknown>
+  extends DatabaseTelemetryCapabilities<TContext> {
   supportsCursorPagination?: boolean;
   getBundleById: (
     bundleId: string,
@@ -607,6 +609,30 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           return wrappedGetUpdateInfo;
         },
       });
+
+      for (const capability of [
+        "authenticateTelemetryKey",
+        "getTelemetryKeyState",
+        "issueTelemetryKey",
+        "readLifecycleMetrics",
+        "recordLifecycleEvent",
+        "rotateTelemetryKey",
+      ] as const satisfies readonly (keyof DatabaseTelemetryCapabilities<TContext>)[]) {
+        Object.defineProperty(plugin, capability, {
+          configurable: true,
+          enumerable: true,
+          get() {
+            const method = getMethods()[capability];
+
+            Object.defineProperty(plugin, capability, {
+              configurable: true,
+              enumerable: true,
+              value: method,
+            });
+            return method;
+          },
+        });
+      }
 
       return plugin;
     };

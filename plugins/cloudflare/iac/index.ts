@@ -20,6 +20,11 @@ import { Cloudflare } from "cloudflare";
 import dayjs from "dayjs";
 import { execa } from "execa";
 
+import {
+  CLOUDFLARE_TELEMETRY_KEY_PREFIX,
+  CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH,
+  type CloudflareTelemetryKeyResponse,
+} from "../src/cloudflareTelemetryKey";
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
@@ -52,7 +57,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   );
 };
 
-const SOURCE_TEMPLATE = `// add this to your App.tsx
+export const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
@@ -61,8 +66,19 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  analytics: {
+    telemetryKey: "%%telemetryKey%%",
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const getCloudflareRuntimeBaseURL = ({
+  subdomain,
+  workerName,
+}: {
+  readonly subdomain: string;
+  readonly workerName: string;
+}) => `https://${workerName}.${subdomain}.workers.dev`;
 
 const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
 
@@ -108,6 +124,76 @@ const readHotUpdaterEnv = async (cwd: string) => {
 const getEnvValue = (env: Record<string, string>, key: string) => {
   const value = process.env[key]?.trim() || env[key]?.trim();
   return value || undefined;
+};
+
+export const createCloudflareTelemetrySeed = ():
+  CloudflareTelemetryKeyResponse & { readonly telemetryKeyHash: string } => {
+  const telemetryKey = `${CLOUDFLARE_TELEMETRY_KEY_PREFIX}${crypto
+    .randomBytes(32)
+    .toString("hex")}`;
+  const telemetryKeySuffix = telemetryKey.slice(
+    -CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH,
+  );
+
+  return {
+    telemetryKey,
+    telemetryKeyHash: crypto
+      .createHash("sha256")
+      .update(telemetryKey)
+      .digest("hex"),
+    telemetryKeySuffix,
+  };
+};
+
+type CloudflareD1QueryClient = {
+  readonly d1: {
+    readonly database: {
+      readonly query: (
+        databaseId: string,
+        options: {
+          readonly account_id: string;
+          readonly params: string[];
+          readonly sql: string;
+        },
+      ) => unknown;
+    };
+  };
+};
+
+export const seedCloudflareTelemetryKey = async ({
+  accountId,
+  cf,
+  databaseId,
+}: {
+  readonly accountId: string;
+  readonly cf: CloudflareD1QueryClient;
+  readonly databaseId: string;
+}): Promise<CloudflareTelemetryKeyResponse> => {
+  const seed = createCloudflareTelemetrySeed();
+  const now = new Date().toISOString();
+  await cf.d1.database.query(databaseId, {
+    account_id: accountId,
+    params: [
+      "default",
+      seed.telemetryKeyHash,
+      seed.telemetryKeySuffix,
+      now,
+      now,
+    ],
+    sql: `
+      INSERT INTO telemetry_keys (id, key_hash, key_suffix, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        key_hash = excluded.key_hash,
+        key_suffix = excluded.key_suffix,
+        updated_at = excluded.updated_at
+    `,
+  });
+
+  return {
+    telemetryKey: seed.telemetryKey,
+    telemetryKeySuffix: seed.telemetryKeySuffix,
+  };
 };
 
 const inputR2ApiCredentials = async ({
@@ -646,6 +732,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     r2BucketName: selectedBucketName,
     workerName: existingWorkerName,
   });
+  const telemetryKey = await seedCloudflareTelemetryKey({
+    accountId,
+    cf,
+    databaseId: selectedD1DatabaseId,
+  });
 
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build),
@@ -678,7 +769,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   if (subdomains.subdomain) {
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
-        source: `https://${workerName}.${subdomains.subdomain}.workers.dev/api/check-update`,
+        source: getCloudflareRuntimeBaseURL({
+          subdomain: subdomains.subdomain,
+          workerName,
+        }),
+        telemetryKey: telemetryKey.telemetryKey,
       }),
     );
   }

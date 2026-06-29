@@ -9,6 +9,8 @@ import {
   queryKeys,
   useBundleMetricsQuery,
   useDeleteBundleMutation,
+  useIssueTelemetryKeyMutation,
+  useRotateTelemetryKeyMutation,
   useUpdateBundleMutation,
   type ConsoleApiClient,
 } from "./api";
@@ -29,7 +31,10 @@ vi.mock("./api-rpc", () => ({
   getChannels: vi.fn(),
   getConfig: vi.fn(),
   getConfigLoaded: vi.fn(),
+  getTelemetryKeyState: vi.fn(),
+  issueTelemetryKey: vi.fn(),
   promoteBundle: vi.fn(),
+  rotateTelemetryKey: vi.fn(),
   updateBundle: vi.fn(),
 }));
 
@@ -210,6 +215,80 @@ describe("useUpdateBundleMutation", () => {
     expect(invalidateQueries).toHaveBeenCalledTimes(1);
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.bundles.all,
+    });
+  });
+});
+
+describe("telemetry key mutations", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        mutations: {
+          retry: false,
+        },
+        queries: {
+          retry: false,
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    queryClient.clear();
+  });
+
+  it("keeps issued plaintext out of the telemetry key query cache", async () => {
+    const issueTelemetryKey = vi.fn(async () => ({
+      telemetryKey: "hutk_plaintext",
+      telemetryKeySuffix: "aintext",
+    }));
+    const wrapper = createWrapper(queryClient, {
+      ...createDefaultConsoleApiClient(),
+      issueTelemetryKey,
+    });
+    const { result } = renderHook(() => useIssueTelemetryKeyMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(issueTelemetryKey).toHaveBeenCalledOnce();
+    expect(queryClient.getQueryData(queryKeys.telemetryKey)).toEqual({
+      telemetryKeySuffix: "aintext",
+    });
+  });
+
+  it("refreshes telemetry key state after rotation", async () => {
+    const rotateTelemetryKey = vi.fn(async () => ({
+      telemetryKey: "hutk_rotated",
+      telemetryKeySuffix: "rotated",
+    }));
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const wrapper = createWrapper(queryClient, {
+      ...createDefaultConsoleApiClient(),
+      rotateTelemetryKey,
+    });
+    const { result } = renderHook(() => useRotateTelemetryKeyMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync();
+    });
+
+    expect(rotateTelemetryKey).toHaveBeenCalledOnce();
+    expect(queryClient.getQueryData(queryKeys.telemetryKey)).toEqual({
+      telemetryKeySuffix: "rotated",
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.telemetryKey,
     });
   });
 });

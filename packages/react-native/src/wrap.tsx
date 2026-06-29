@@ -13,7 +13,11 @@ import {
   reload,
 } from "./native";
 import { type HotUpdaterState, useHotUpdaterStore } from "./store";
-import type { HotUpdaterBaseURL, HotUpdaterResolver } from "./types";
+import type {
+  HotUpdaterAnalyticsOptions,
+  HotUpdaterBaseURL,
+  HotUpdaterResolver,
+} from "./types";
 
 export interface RunUpdateProcessResponse {
   status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
@@ -51,6 +55,8 @@ interface CommonHotUpdaterOptions {
    * @default 5000
    */
   requestTimeout?: number;
+
+  analytics?: HotUpdaterAnalyticsOptions;
 
   /**
    * Callback invoked when the app is ready and the native launch report is available.
@@ -97,9 +103,11 @@ interface BaseURLConfig {
   baseURL: HotUpdaterBaseURL;
 
   /**
-   * Resolver is not allowed when using baseURL
+   * Optional custom resolver. When analytics telemetry is configured,
+   * resolver.notifyAppReady wins if supplied; otherwise the SDK composes the
+   * default lifecycle notifier from baseURL.
    */
-  resolver?: never;
+  resolver?: HotUpdaterResolver;
 }
 
 /**
@@ -118,7 +126,8 @@ interface ResolverConfig {
 }
 
 /**
- * Union type ensuring baseURL and resolver are mutually exclusive
+ * Union type ensuring standard baseURL setup is available when the SDK needs
+ * default network behavior, while resolver-only custom runtimes remain valid.
  */
 type NetworkConfig = BaseURLConfig | ResolverConfig;
 

@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 
-export interface SupabaseBundleRow {
+export type SupabaseBundleRow = {
   id: string;
   channel: string;
   enabled: boolean;
@@ -18,9 +18,9 @@ export interface SupabaseBundleRow {
   asset_base_storage_uri: string | null;
   rollout_cohort_count: number | null;
   target_cohorts: string[] | null;
-}
+};
 
-export interface SupabaseBundlePatchRow {
+export type SupabaseBundlePatchRow = {
   id: string;
   bundle_id: string;
   base_bundle_id: string;
@@ -28,7 +28,36 @@ export interface SupabaseBundlePatchRow {
   patch_file_hash: string;
   patch_storage_uri: string;
   order_index: number;
-}
+};
+
+export type SupabaseTelemetryKeyRow = {
+  id: string;
+  key_hash: string;
+  key_suffix: string;
+  updated_at: string;
+};
+
+export type SupabaseBundleLifecycleEventRow = {
+  bundle_id: string;
+  channel: string;
+  crashed_bundle_id: string | null;
+  event_id: string;
+  install_id: string;
+  observed_at: string;
+  platform: Bundle["platform"];
+  received_at: string;
+  status: "ACTIVE" | "RECOVERED";
+};
+
+export type SupabaseBundleLifecycleMetricRow = {
+  active_count: number;
+  bucket_start: string;
+  bundle_id: string;
+  channel: string;
+  last_seen_at: string;
+  platform: Bundle["platform"];
+  recovered_count: number;
+};
 
 export type Database = {
   public: {
@@ -45,10 +74,36 @@ export type Database = {
         Update: SupabaseBundlePatchRow;
         Relationships: [];
       };
+      telemetry_keys: {
+        Row: SupabaseTelemetryKeyRow;
+        Insert: SupabaseTelemetryKeyRow;
+        Update: SupabaseTelemetryKeyRow;
+        Relationships: [];
+      };
+      bundle_lifecycle_events: {
+        Row: SupabaseBundleLifecycleEventRow;
+        Insert: SupabaseBundleLifecycleEventRow;
+        Update: SupabaseBundleLifecycleEventRow;
+        Relationships: [];
+      };
+      bundle_lifecycle_metrics: {
+        Row: SupabaseBundleLifecycleMetricRow;
+        Insert: SupabaseBundleLifecycleMetricRow;
+        Update: SupabaseBundleLifecycleMetricRow;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
-    Functions: any;
+    Enums: {
+      platforms: Bundle["platform"];
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
 };

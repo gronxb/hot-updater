@@ -3,6 +3,7 @@ import {
   checkForUpdate,
   type InternalCheckForUpdateOptions,
 } from "./checkForUpdate";
+import { createHotUpdaterLifecycleNotifier } from "./cloud";
 import { createDefaultResolver } from "./DefaultResolver";
 import {
   addListener,
@@ -27,7 +28,11 @@ import {
   updateBundle,
 } from "./native";
 import { hotUpdaterStore } from "./store";
-import type { HotUpdaterResolver } from "./types";
+import type {
+  HotUpdaterAnalyticsOptions,
+  HotUpdaterBaseURL,
+  HotUpdaterResolver,
+} from "./types";
 import {
   type AutoUpdateOptions,
   type HotUpdaterInitOptions,
@@ -114,6 +119,34 @@ const isManualWrapOptions = (
 ): options is ManualUpdateOptions =>
   "updateMode" in options && options.updateMode === "manual";
 
+const createResolver = (
+  baseURL: HotUpdaterBaseURL,
+  analytics?: HotUpdaterAnalyticsOptions,
+  customResolver?: HotUpdaterResolver,
+): HotUpdaterResolver => {
+  const defaultResolver = createDefaultResolver(baseURL);
+  const resolver = customResolver
+    ? {
+        ...defaultResolver,
+        ...customResolver,
+      }
+    : defaultResolver;
+
+  if (!analytics) {
+    return resolver;
+  }
+
+  const analyticsNotifyAppReady = createHotUpdaterLifecycleNotifier({
+    baseURL,
+    telemetryKey: analytics.telemetryKey,
+  });
+
+  return {
+    ...resolver,
+    notifyAppReady: customResolver?.notifyAppReady ?? analyticsNotifyAppReady,
+  };
+};
+
 /**
  * Creates a HotUpdater client instance with all update management methods.
  * This function is called once on module initialization to create a singleton instance.
@@ -161,17 +194,24 @@ function createHotUpdaterClient() {
   ): InternalWrapOptions => {
     if (isManualWrapOptions(options)) {
       if ("baseURL" in options && options.baseURL) {
-        const { baseURL, ...rest } = options;
+        const { analytics, baseURL, resolver, ...rest } = options;
         return {
           ...rest,
-          resolver: createDefaultResolver(baseURL),
+          resolver: createResolver(baseURL, analytics, resolver),
           updateMode: "manual",
         };
       }
 
       if ("resolver" in options && options.resolver) {
+        const {
+          analytics: _analytics,
+          baseURL: _baseURL,
+          resolver,
+          ...rest
+        } = options;
         return {
-          ...options,
+          ...rest,
+          resolver,
           updateMode: "manual",
         };
       }
@@ -180,17 +220,24 @@ function createHotUpdaterClient() {
     const autoOptions = options as AutoUpdateOptions;
 
     if ("baseURL" in autoOptions && autoOptions.baseURL) {
-      const { baseURL, ...rest } = autoOptions;
+      const { analytics, baseURL, resolver, ...rest } = autoOptions;
       return {
         ...rest,
-        resolver: createDefaultResolver(baseURL),
+        resolver: createResolver(baseURL, analytics, resolver),
         updateMode: "auto",
       };
     }
 
     if ("resolver" in autoOptions && autoOptions.resolver) {
+      const {
+        analytics: _analytics,
+        baseURL: _baseURL,
+        resolver,
+        ...rest
+      } = autoOptions;
       return {
-        ...autoOptions,
+        ...rest,
+        resolver,
         updateMode: "auto",
       };
     }
@@ -207,15 +254,24 @@ function createHotUpdaterClient() {
       };
 
     if ("baseURL" in rest && rest.baseURL) {
-      const { baseURL, ...baseURLRest } = rest;
+      const { analytics, baseURL, resolver, ...baseURLRest } = rest;
       return {
         ...baseURLRest,
-        resolver: createDefaultResolver(baseURL),
+        resolver: createResolver(baseURL, analytics, resolver),
       };
     }
 
     if ("resolver" in rest && rest.resolver) {
-      return rest;
+      const {
+        analytics: _analytics,
+        baseURL: _baseURL,
+        resolver,
+        ...resolverRest
+      } = rest;
+      return {
+        ...resolverRest,
+        resolver,
+      };
     }
 
     throw createMissingNetworkConfigError("init");

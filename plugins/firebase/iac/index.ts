@@ -13,11 +13,14 @@ import {
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
+import admin from "firebase-admin";
 
+import { createFirebaseTelemetryOperations } from "../src/firebaseTelemetry";
+import type { TelemetryKeyResult } from "../src/firebaseTelemetryTypes";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { initFirebaseUser, setEnv } from "./select";
 
-const SOURCE_TEMPLATE = `// add this to your App.tsx
+export const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
 
 function App() {
@@ -26,8 +29,22 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  analytics: {
+    telemetryKey: "%%telemetryKey%%",
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const getFirebaseRuntimeBaseURL = (functionInfo: {
+  readonly serviceConfig?: { readonly uri?: string };
+  readonly url?: string;
+}) => {
+  const runtimeBaseURL = functionInfo.serviceConfig?.uri ?? functionInfo.url;
+  if (!runtimeBaseURL) {
+    throw new Error("Failed to resolve Firebase function URL");
+  }
+  return runtimeBaseURL;
+};
 
 const REGIONS = [
   { value: "us-central1", label: "US Central (Iowa)" },
@@ -54,6 +71,31 @@ const REGIONS = [
     label: "Australia Southeast (Sydney)",
   },
 ];
+
+export const seedFirebaseTelemetryKey = async (
+  projectId: string,
+): Promise<TelemetryKeyResult> => {
+  const existingApp = admin.apps.find(
+    (app) => app?.options.projectId === projectId,
+  );
+  const app =
+    existingApp ??
+    admin.initializeApp(
+      { projectId },
+      `hot-updater-init-${projectId.replace(/[^a-zA-Z0-9-]/g, "-")}`,
+    );
+
+  try {
+    return await createFirebaseTelemetryOperations(
+      admin.firestore(app),
+    ).issueTelemetryKey();
+  } catch (error) {
+    throw new Error(
+      "Failed to seed Firebase telemetry key. Ensure Application Default Credentials can write Firestore, then run hot-updater init again.",
+      { cause: error },
+    );
+  }
+};
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -239,7 +281,15 @@ const deployFunctions = async (cwd: string) => {
   }
 };
 
-const printTemplate = async (projectId: string, region: string) => {
+const printTemplate = async ({
+  projectId,
+  region,
+  telemetryKey,
+}: {
+  readonly projectId: string;
+  readonly region: string;
+  readonly telemetryKey: string;
+}) => {
   try {
     const { stdout } = await execa(
       "gcloud",
@@ -257,14 +307,16 @@ const printTemplate = async (projectId: string, region: string) => {
         shell: true,
       },
     );
-    const parsedData = JSON.parse(stdout);
-    const url = parsedData?.serviceConfig?.uri ?? parsedData.url;
-
-    const functionUrl = `${url}/api/check-update`;
+    const parsedData: {
+      readonly serviceConfig?: { readonly uri?: string };
+      readonly url?: string;
+    } = JSON.parse(stdout);
+    const runtimeBaseURL = getFirebaseRuntimeBaseURL(parsedData);
 
     p.note(
       transformTemplate(SOURCE_TEMPLATE, {
-        source: functionUrl,
+        source: runtimeBaseURL,
+        telemetryKey,
       }),
     );
   } catch (error) {
@@ -403,6 +455,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   await deployFirestore(tmpDir);
   await deployFunctions(tmpDir);
+  const telemetryKey = await seedFirebaseTelemetryKey(
+    initializeVariable.projectId,
+  );
 
   await p.tasks([
     {
@@ -492,7 +547,11 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     await removeTmpDir();
     process.exit(1);
   }
-  await printTemplate(initializeVariable.projectId, currentRegion);
+  await printTemplate({
+    projectId: initializeVariable.projectId,
+    region: currentRegion,
+    telemetryKey: telemetryKey.telemetryKey,
+  });
   await removeTmpDir();
 
   p.log.message(

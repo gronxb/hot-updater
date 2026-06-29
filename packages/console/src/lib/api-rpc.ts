@@ -48,6 +48,45 @@ export const getConfigLoaded = createServerFn().handler(async () => {
   }
 });
 
+export const getTelemetryKeyState = createServerFn({ method: "GET" }).handler(
+  async () => {
+    try {
+      const { getTelemetryKeyStateOperation } =
+        await import("./server/api-operations.server");
+      return await getTelemetryKeyStateOperation();
+    } catch (error) {
+      console.error("Error during telemetry key retrieval:", error);
+      throw error;
+    }
+  },
+);
+
+export const issueTelemetryKey = createServerFn({ method: "POST" }).handler(
+  async () => {
+    try {
+      const { issueTelemetryKeyOperation } =
+        await import("./server/api-operations.server");
+      return await issueTelemetryKeyOperation();
+    } catch (error) {
+      console.error("Error during telemetry key issue:", error);
+      throw error;
+    }
+  },
+);
+
+export const rotateTelemetryKey = createServerFn({ method: "POST" }).handler(
+  async () => {
+    try {
+      const { rotateTelemetryKeyOperation } =
+        await import("./server/api-operations.server");
+      return await rotateTelemetryKeyOperation();
+    } catch (error) {
+      console.error("Error during telemetry key rotation:", error);
+      throw error;
+    }
+  },
+);
+
 // GET /api/bundles
 export const getBundles = createServerFn({ method: "GET" })
   .inputValidator((input: GetBundlesInput | undefined) => input)

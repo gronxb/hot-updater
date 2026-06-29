@@ -5,10 +5,13 @@ import type {
   ResolverNotifyAppReadyParams,
 } from "./types";
 
-export interface HotUpdaterCloudLifecycleNotifierOptions {
+export interface HotUpdaterLifecycleNotifierOptions {
   baseURL: HotUpdaterBaseURL;
   telemetryKey: string;
 }
+
+export type HotUpdaterCloudLifecycleNotifierOptions =
+  HotUpdaterLifecycleNotifierOptions;
 
 type HotUpdaterCloudLifecycleStatus = "ACTIVE" | "RECOVERED";
 
@@ -30,6 +33,12 @@ const validateTelemetryKey = (telemetryKey: string): void => {
   if (!telemetryKey.startsWith(TELEMETRY_KEY_PREFIX)) {
     throw new Error("HotUpdater Cloud telemetryKey must start with hutk_");
   }
+
+  if (telemetryKey.length === TELEMETRY_KEY_PREFIX.length) {
+    throw new Error(
+      "HotUpdater Cloud telemetryKey must start with hutk_ and include a key suffix",
+    );
+  }
 };
 
 const cloudLifecycleStatusFor = (
@@ -50,8 +59,8 @@ const createRequestBody = (params: ResolverNotifyAppReadyParams) => ({
   status: cloudLifecycleStatusFor(params),
 });
 
-export const createHotUpdaterCloudLifecycleNotifier = (
-  options: HotUpdaterCloudLifecycleNotifierOptions,
+export const createHotUpdaterLifecycleNotifier = (
+  options: HotUpdaterLifecycleNotifierOptions,
 ): NonNullable<HotUpdaterResolver["notifyAppReady"]> => {
   validateTelemetryKey(options.telemetryKey);
 
@@ -92,3 +101,6 @@ export const createHotUpdaterCloudLifecycleNotifier = (
     }
   };
 };
+
+export const createHotUpdaterCloudLifecycleNotifier =
+  createHotUpdaterLifecycleNotifier;

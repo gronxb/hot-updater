@@ -1,4 +1,9 @@
-import type { Bundle, PaginationInfo } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  PaginationInfo,
+  TelemetryKeyResult,
+  TelemetryKeyState,
+} from "@hot-updater/plugin-core";
 import {
   type QueryClient,
   type QueryKey,
@@ -43,6 +48,10 @@ export type BundleMetrics = {
 };
 
 export type ConsoleConfigResult = {
+  readonly capabilities?: {
+    readonly telemetry: boolean;
+    readonly telemetryKey?: boolean;
+  };
   readonly console: {
     readonly gitUrl?: string;
     readonly publicUrl?: string;
@@ -79,12 +88,15 @@ export type ConsoleApiClient = {
   readonly getChannels: () => Promise<string[]>;
   readonly getConfig: () => Promise<ConsoleConfigResult>;
   readonly getConfigLoaded: () => Promise<{ configLoaded: boolean }>;
+  readonly getTelemetryKeyState?: () => Promise<TelemetryKeyState | null>;
+  readonly issueTelemetryKey?: () => Promise<TelemetryKeyResult>;
   readonly promoteBundle: (params: {
     action: "copy" | "move";
     bundleId: string;
     nextBundleId?: string;
     targetChannel: string;
   }) => Promise<{ bundle: BundleWithMetrics; success: boolean }>;
+  readonly rotateTelemetryKey?: () => Promise<TelemetryKeyResult>;
   readonly updateBundle: (params: {
     bundleId: string;
     bundle: Partial<Bundle>;
@@ -131,6 +143,7 @@ export const queryKeys = {
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
   bundleMetrics: (bundleId: string) => ["bundle-metrics", bundleId] as const,
+  telemetryKey: ["telemetry-key"] as const,
 };
 
 function replaceBundleInQueryData(
@@ -240,6 +253,28 @@ export function useBundleMetricsQuery(bundleId: string) {
   };
 }
 
+export function useTelemetryKeyQuery(enabled = true) {
+  const api = useConsoleApi();
+  const isSupported =
+    typeof api.getTelemetryKeyState === "function" &&
+    typeof api.issueTelemetryKey === "function" &&
+    typeof api.rotateTelemetryKey === "function";
+  const query = useQuery({
+    queryKey: queryKeys.telemetryKey,
+    queryFn: () =>
+      api.getTelemetryKeyState
+        ? api.getTelemetryKeyState()
+        : Promise.resolve(null),
+    staleTime: 30_000,
+    enabled: enabled && isSupported,
+  });
+
+  return {
+    ...query,
+    isSupported,
+  };
+}
+
 export function useBundleChildrenQuery(baseBundleId: string) {
   const api = useConsoleApi();
   return useQuery({
@@ -270,6 +305,48 @@ export function useBundleDownloadUrlMutation() {
   return useMutation({
     mutationFn: (params: { bundleId: string }) =>
       api.getBundleDownloadUrl(params),
+  });
+}
+
+export function useIssueTelemetryKeyMutation() {
+  const api = useConsoleApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      if (!api.issueTelemetryKey) {
+        throw new Error("Telemetry key is not supported by this provider.");
+      }
+
+      return api.issueTelemetryKey();
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(queryKeys.telemetryKey, {
+        telemetryKeySuffix: result.telemetryKeySuffix,
+      } satisfies TelemetryKeyState);
+      invalidateInBackground(queryClient, queryKeys.telemetryKey);
+    },
+  });
+}
+
+export function useRotateTelemetryKeyMutation() {
+  const api = useConsoleApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      if (!api.rotateTelemetryKey) {
+        throw new Error("Telemetry key is not supported by this provider.");
+      }
+
+      return api.rotateTelemetryKey();
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(queryKeys.telemetryKey, {
+        telemetryKeySuffix: result.telemetryKeySuffix,
+      } satisfies TelemetryKeyState);
+      invalidateInBackground(queryClient, queryKeys.telemetryKey);
+    },
   });
 }
 

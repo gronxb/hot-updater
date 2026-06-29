@@ -33,6 +33,15 @@ export type ConsoleBundleMetrics = {
   readonly series: readonly ConsoleBundleMetricsPoint[];
 };
 
+export type ConsoleTelemetryKeyState = {
+  readonly telemetryKeySuffix: string;
+};
+
+export type ConsoleTelemetryKeyResult = {
+  readonly telemetryKey: string;
+  readonly telemetryKeySuffix: string;
+};
+
 export type ConsoleApiClient = {
   readonly createBundle: (bundle: ConsoleBundle) => Promise<{
     readonly bundleId: string;
@@ -61,14 +70,24 @@ export type ConsoleApiClient = {
     readonly pagination?: unknown;
   }>;
   readonly getChannels: () => Promise<string[]>;
-  readonly getConfig: () => Promise<unknown>;
+  readonly getConfig: () => Promise<{
+    readonly capabilities?: {
+      readonly telemetry: boolean;
+      readonly telemetryKey?: boolean;
+    };
+    readonly console?: unknown;
+    readonly hosted?: unknown;
+  }>;
   readonly getConfigLoaded: () => Promise<{ readonly configLoaded: boolean }>;
+  readonly getTelemetryKeyState?: () => Promise<ConsoleTelemetryKeyState | null>;
+  readonly issueTelemetryKey?: () => Promise<ConsoleTelemetryKeyResult>;
   readonly promoteBundle: (params: {
     readonly action: "copy" | "move";
     readonly bundleId: string;
     readonly nextBundleId?: string;
     readonly targetChannel: string;
   }) => Promise<{ readonly bundle: ConsoleBundle; readonly success: boolean }>;
+  readonly rotateTelemetryKey?: () => Promise<ConsoleTelemetryKeyResult>;
   readonly updateBundle: (params: {
     readonly bundle: Partial<ConsoleBundle>;
     readonly bundleId: string;

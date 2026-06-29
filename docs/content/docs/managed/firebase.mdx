@@ -58,6 +58,10 @@ HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json
 ```
 
+`hot-updater init` also prints a React Native snippet with a `hutk_` telemetry
+key. That plaintext key is shown once for `analytics.telemetryKey`; it is stored
+in Firestore only as a hash/suffix and is not written to env files or provider
+config.
 
 <Callout type="warn">
 
@@ -129,7 +133,10 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<your-firebase-function-url>/api/check-update", // [!code ++]
+  baseURL: "https://<your-firebase-function-url>", // [!code ++]
+  analytics: {
+    telemetryKey: "hutk_publishable_project_telemetry_key", // [!code ++]
+  },
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -162,7 +169,7 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Firebase runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
+The managed Firebase runtime exposes the public update-check endpoints, `POST /api/notify-app-ready`, and `/version`. Runtime telemetry must use the `x-hot-updater-telemetry-key` header; deploy API keys and signing keys are separate credentials. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

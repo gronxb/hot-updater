@@ -64,6 +64,16 @@ const createManagementHandler = (
     },
   });
 
+const notifyAppReadyPayload = {
+  bundleId: "bundle-1",
+  channel: "production",
+  eventId: "event-1",
+  installId: "install-1",
+  observedAt: "2026-06-29T00:00:00.000Z",
+  platform: "ios",
+  status: "ACTIVE",
+} as const;
+
 describe("createHandler", () => {
   it("supports the app-version route without a cohort segment", async () => {
     const api = createApi();
@@ -250,6 +260,91 @@ describe("createHandler", () => {
     expect(versionResponse.status).toBe(200);
     expect(bundlesResponse.status).toBe(404);
     expect(updateResponse.status).toBe(200);
+  });
+
+  it("mounts telemetry routes only when lifecycle methods are supported", async () => {
+    const unsupportedHandler = createHandler(createApi(), {
+      basePath: "/hot-updater",
+    });
+    const supportedApi = {
+      ...createApi(),
+      authenticateTelemetryKey: vi.fn(async () => true),
+      recordLifecycleEvent: vi.fn(async () => ({
+        accepted: true,
+        deduped: false,
+      }) as const),
+    } satisfies HandlerAPI<TestContext>;
+    const supportedHandler = createHandler(supportedApi, {
+      basePath: "/hot-updater",
+    });
+
+    const unsupportedResponse = await unsupportedHandler(
+      new Request("http://localhost/hot-updater/api/notify-app-ready", {
+        method: "POST",
+      }),
+    );
+    const supportedResponse = await supportedHandler(
+      new Request("http://localhost/hot-updater/api/notify-app-ready", {
+        body: JSON.stringify(notifyAppReadyPayload),
+        headers: {
+          "content-type": "application/json",
+          "x-hot-updater-telemetry-key": "hutk_test",
+        },
+        method: "POST",
+      }),
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
+    );
+
+    expect(unsupportedResponse.status).toBe(404);
+    expect(supportedResponse.status).toBe(202);
+    expect(supportedApi.authenticateTelemetryKey).toHaveBeenCalledWith(
+      "hutk_test",
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
+    );
+    expect(supportedApi.recordLifecycleEvent).toHaveBeenCalledWith(
+      notifyAppReadyPayload,
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
+    );
+  });
+
+  it("keeps telemetry routes disabled when explicitly disabled", async () => {
+    const api = {
+      ...createApi(),
+      authenticateTelemetryKey: vi.fn(async () => true),
+      recordLifecycleEvent: vi.fn(async () => ({
+        accepted: true,
+        deduped: false,
+      }) as const),
+    } satisfies HandlerAPI<TestContext>;
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: {
+        updateCheck: true,
+        bundles: false,
+        telemetry: false,
+      },
+    });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/notify-app-ready", {
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(api.authenticateTelemetryKey).not.toHaveBeenCalled();
   });
 
   it("mounts bundle routes when explicitly enabled", async () => {

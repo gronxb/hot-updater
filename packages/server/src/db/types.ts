@@ -6,6 +6,7 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
+  DatabaseTelemetryCapabilities,
   DatabasePlugin,
   HotUpdaterContext,
   RuntimeStoragePlugin,
@@ -121,7 +122,8 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<TContext = unknown> {
+export interface DatabaseAPI<TContext = unknown>
+  extends DatabaseTelemetryCapabilities<TContext> {
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,

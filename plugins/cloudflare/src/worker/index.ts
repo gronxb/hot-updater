@@ -12,6 +12,16 @@ import {
   r2WorkerStorage,
 } from "../r2WorkerStorage";
 
+export {
+  authenticateCloudflareTelemetryKey,
+  getCloudflareLifecycleMetrics,
+  getCloudflareTelemetryKeyState,
+  issueCloudflareTelemetryKey,
+  parseCloudflareLifecycleRecord,
+  readCloudflareTelemetryCredential,
+  recordCloudflareLifecycleEvent,
+  rotateCloudflareTelemetryKey,
+} from "../cloudflareTelemetry";
 export type { CloudflareWorkerDatabaseEnv, CloudflareWorkerStorageEnv };
 
 export interface CloudflareWorkerRuntimeEnv

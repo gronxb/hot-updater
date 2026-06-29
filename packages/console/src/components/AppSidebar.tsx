@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Moon, Package, Sun } from "lucide-react";
+import { Moon, Package, Settings, Sun } from "lucide-react";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -22,6 +22,7 @@ export function AppSidebar() {
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
+  const isSettingsActive = currentPath === "/settings";
 
   return (
     <Sidebar collapsible="icon">
@@ -76,6 +77,18 @@ export function AppSidebar() {
                   >
                     <Package />
                     <span>Bundles</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isSettingsActive}
+                  tooltip="Settings"
+                >
+                  <Link to="/settings">
+                    <Settings />
+                    <span>Settings</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -131,6 +131,36 @@ describe("createHotUpdaterCloudLifecycleNotifier", () => {
     ).toThrow("telemetryKey must start with hutk_");
   });
 
+  it("rejects telemetry keys without a suffix after the prefix", () => {
+    expect(() =>
+      createHotUpdaterCloudLifecycleNotifier({
+        baseURL: "https://runtime.example.com/p/prj_123",
+        telemetryKey: "hutk_",
+      }),
+    ).toThrow("telemetryKey must start with hutk_ and include a key suffix");
+  });
+
+  it("respects the request timeout when lifecycle telemetry hangs", async () => {
+    fetchMock.mockImplementationOnce((_url, init) => {
+      const abortError = new Error("aborted");
+      abortError.name = "AbortError";
+
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(abortError));
+      });
+    });
+    const notifyAppReady = createHotUpdaterCloudLifecycleNotifier({
+      baseURL: "https://runtime.example.com/p/prj_123",
+      telemetryKey: "hutk_publishable",
+    });
+
+    const promise = notifyAppReady(createParams({ requestTimeout: 25 }));
+    const assertion = expect(promise).rejects.toThrow("Request timed out");
+    await vi.advanceTimersByTimeAsync(25);
+
+    await assertion;
+  });
+
   it("throws when the runtime rejects lifecycle telemetry", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response("forbidden", { status: 403, statusText: "Forbidden" }),

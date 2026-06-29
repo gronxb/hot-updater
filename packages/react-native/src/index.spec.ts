@@ -127,6 +127,148 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
+  it("composes analytics telemetry key into baseURL init app-ready telemetry", async () => {
+    vi.useFakeTimers({
+      now: new Date("2026-06-26T12:00:00.000Z"),
+    });
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const resolver = {
+      checkUpdate: vi.fn(),
+    };
+    mocks.createDefaultResolver.mockReturnValue(resolver);
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      analytics: {
+        telemetryKey: "hutk_publishable",
+      },
+      baseURL: "https://runtime.example.com/p/prj_123/",
+      requestTimeout: 1000,
+    });
+
+    const normalizedOptions = mocks.init.mock.calls[0]?.[0];
+    expect(normalizedOptions?.resolver.checkUpdate).toBe(resolver.checkUpdate);
+    expect(normalizedOptions?.resolver.notifyAppReady).toBeTypeOf("function");
+
+    await normalizedOptions?.resolver.notifyAppReady?.({
+      bundleId: "bundle-id",
+      channel: "production",
+      eventId: "event-id",
+      installId: "install-id",
+      platform: "ios",
+      requestTimeout: 1000,
+      status: "STABLE",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://runtime.example.com/p/prj_123/api/notify-app-ready",
+      {
+        body: JSON.stringify({
+          bundleId: "bundle-id",
+          channel: "production",
+          eventId: "event-id",
+          installId: "install-id",
+          observedAt: "2026-06-26T12:00:00.000Z",
+          platform: "ios",
+          status: "ACTIVE",
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "Hot-Updater-SDK-Version": "test-sdk-version",
+          "x-hot-updater-telemetry-key": "hutk_publishable",
+        },
+        method: "POST",
+        signal: expect.any(AbortSignal),
+      },
+    );
+  });
+
+  it("rejects malformed analytics telemetry keys before init starts", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    expect(() =>
+      HotUpdater.init({
+        analytics: {
+          telemetryKey: "not_publishable",
+        },
+        baseURL: "https://runtime.example.com/p/prj_123",
+      }),
+    ).toThrow("telemetryKey must start with hutk_");
+    expect(mocks.init).not.toHaveBeenCalled();
+  });
+
+  it("does not override explicit custom resolver notifyAppReady with analytics", async () => {
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn(),
+    };
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      analytics: {
+        telemetryKey: "hutk_publishable",
+      },
+      resolver,
+    });
+
+    expect(mocks.createDefaultResolver).not.toHaveBeenCalled();
+    expect(mocks.init).toHaveBeenCalledWith({
+      resolver,
+    });
+  });
+
+  it("composes analytics notifyAppReady for a custom resolver without one", async () => {
+    vi.useFakeTimers({
+      now: new Date("2026-06-26T12:00:00.000Z"),
+    });
+    const fetchMock = vi.fn<typeof fetch>();
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const resolver = {
+      checkUpdate: vi.fn(),
+    };
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      analytics: {
+        telemetryKey: "hutk_publishable",
+      },
+      baseURL: "https://runtime.example.com/p/prj_123/",
+      resolver,
+    });
+
+    const normalizedOptions = mocks.init.mock.calls[0]?.[0];
+    expect(mocks.createDefaultResolver).toHaveBeenCalledWith(
+      "https://runtime.example.com/p/prj_123/",
+    );
+    expect(normalizedOptions?.resolver.checkUpdate).toBe(resolver.checkUpdate);
+    expect(normalizedOptions?.resolver.notifyAppReady).toBeTypeOf("function");
+
+    await normalizedOptions?.resolver.notifyAppReady?.({
+      bundleId: "bundle-id",
+      channel: "production",
+      eventId: "event-id",
+      installId: "install-id",
+      platform: "ios",
+      requestTimeout: 1000,
+      status: "STABLE",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://runtime.example.com/p/prj_123/api/notify-app-ready",
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          "Hot-Updater-SDK-Version": "test-sdk-version",
+          "x-hot-updater-telemetry-key": "hutk_publishable",
+        },
+        method: "POST",
+      }),
+    );
+  });
+
   it("accepts dynamic baseURL resolvers for manual update flows", async () => {
     const resolver = {
       checkUpdate: vi.fn(),
@@ -285,6 +427,9 @@ describe("HotUpdater client initialization", () => {
 
   it("types public init options with onError", () => {
     const options = {
+      analytics: {
+        telemetryKey: "hutk_publishable",
+      },
       baseURL: "https://updates.example.com",
       onError: vi.fn(),
     } satisfies HotUpdaterInitOptions;

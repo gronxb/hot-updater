@@ -2,7 +2,11 @@ import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
 import {
+  authenticateCloudflareTelemetryKey,
   d1Database,
+  parseCloudflareLifecycleRecord,
+  readCloudflareTelemetryCredential,
+  recordCloudflareLifecycleEvent,
   type RequestEnvContext,
   r2Storage,
   verifyJwtSignedUrl,
@@ -58,6 +62,53 @@ app.mount(
     optionHandler: (c) => [c.env],
   },
 );
+
+const readJsonBody = async (request: Request): Promise<unknown | null> => {
+  try {
+    return await request.json();
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+app.post("/api/notify-app-ready", async (c) => {
+  const credential = readCloudflareTelemetryCredential(c.req.raw);
+  if (credential.kind === "rejected") {
+    return c.json(
+      {
+        error:
+          credential.reason === "invalid_credential_channel"
+            ? "Runtime telemetry must use x-hot-updater-telemetry-key"
+            : "Telemetry key rejected",
+      },
+      401,
+    );
+  }
+
+  const authenticated = await authenticateCloudflareTelemetryKey(
+    c.env.DB,
+    credential.telemetryKey,
+  );
+  if (!authenticated) {
+    return c.json({ error: "Telemetry key rejected" }, 401);
+  }
+
+  const body = await readJsonBody(c.req.raw);
+  if (body === null) {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const event = parseCloudflareLifecycleRecord(body);
+  if (!event) {
+    return c.json({ error: "Invalid notifyAppReady payload" }, 400);
+  }
+
+  const result = await recordCloudflareLifecycleEvent(c.env.DB, event);
+  return c.json(result, 202);
+});
 
 app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({

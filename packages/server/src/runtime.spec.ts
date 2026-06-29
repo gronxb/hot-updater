@@ -117,6 +117,7 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       updateCheck: boolean;
       bundles: boolean;
+      telemetry?: boolean;
     }>();
   });
 
@@ -837,7 +838,7 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
-  it("keeps optional maintenance capabilities lazy", () => {
+  it("initializes the database plugin once for optional capability discovery", () => {
     const factory = vi.fn(() => ({
       async getBundleById() {
         return null;
@@ -869,7 +870,71 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
     });
 
-    expect(factory).not.toHaveBeenCalled();
+    expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it("mounts telemetry route for getter-backed database plugin methods", async () => {
+    const authenticateTelemetryKey = vi.fn(async () => true);
+    const recordLifecycleEvent = vi.fn(async () => ({
+      accepted: true,
+      deduped: false,
+    }) as const);
+    const database = createDatabasePlugin({
+      name: "telemetryRuntimePlugin",
+      factory: () => ({
+        authenticateTelemetryKey,
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+        recordLifecycleEvent,
+      }),
+    })({});
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/hot-updater",
+    });
+    const payload = {
+      bundleId: "bundle-1",
+      channel: "production",
+      eventId: "event-1",
+      installId: "install-1",
+      platform: "ios",
+      status: "ACTIVE",
+    } as const;
+
+    const response = await hotUpdater.handler(
+      new Request("https://updates.example.com/hot-updater/api/notify-app-ready", {
+        body: JSON.stringify(payload),
+        headers: {
+          "content-type": "application/json",
+          "x-hot-updater-telemetry-key": "hutk_test",
+        },
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    expect(authenticateTelemetryKey).toHaveBeenCalledWith(
+      "hutk_test",
+      undefined,
+    );
+    expect(recordLifecycleEvent).toHaveBeenCalledWith(payload, undefined);
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {

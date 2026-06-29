@@ -88,6 +88,34 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
   );
 };
 
+const getTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
+  const getTelemetryKeyState = databasePlugin.getTelemetryKeyState;
+  const issueTelemetryKey = databasePlugin.issueTelemetryKey;
+  const rotateTelemetryKey = databasePlugin.rotateTelemetryKey;
+
+  if (!getTelemetryKeyState || !issueTelemetryKey || !rotateTelemetryKey) {
+    return null;
+  }
+
+  return {
+    getTelemetryKeyState,
+    issueTelemetryKey,
+    rotateTelemetryKey,
+  };
+};
+
+const requireTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
+  const capabilities = getTelemetryKeyCapabilities(databasePlugin);
+
+  if (!capabilities) {
+    throw new ConsoleOperationError(
+      "Telemetry key is not supported by this provider.",
+    );
+  }
+
+  return capabilities;
+};
+
 const toBundleQueryOptions = (
   input: GetBundlesInput | undefined,
 ): DatabaseBundleQueryOptions => {
@@ -118,8 +146,17 @@ const toBundleQueryOptions = (
 };
 
 export const getConfigOperation = async () => {
-  const { config } = await prepareConfig();
-  return { console: config.console, hosted: getHostedConsoleInfo() };
+  const { config, databasePlugin } = await prepareConfig();
+  return {
+    capabilities: {
+      telemetry:
+        typeof databasePlugin.authenticateTelemetryKey === "function" &&
+        typeof databasePlugin.recordLifecycleEvent === "function",
+      telemetryKey: Boolean(getTelemetryKeyCapabilities(databasePlugin)),
+    },
+    console: config.console,
+    hosted: getHostedConsoleInfo(),
+  };
 };
 
 export const getChannelsOperation = async () => {
@@ -130,6 +167,26 @@ export const getChannelsOperation = async () => {
 export const getConfigLoadedOperation = async () => ({
   configLoaded: isConfigLoaded(),
 });
+
+export const getTelemetryKeyStateOperation = async () => {
+  const { databasePlugin } = await prepareConfig();
+  const { getTelemetryKeyState } =
+    requireTelemetryKeyCapabilities(databasePlugin);
+  return (await getTelemetryKeyState()) ?? null;
+};
+
+export const issueTelemetryKeyOperation = async () => {
+  const { databasePlugin } = await prepareConfig();
+  const { issueTelemetryKey } = requireTelemetryKeyCapabilities(databasePlugin);
+  return await issueTelemetryKey();
+};
+
+export const rotateTelemetryKeyOperation = async () => {
+  const { databasePlugin } = await prepareConfig();
+  const { rotateTelemetryKey } =
+    requireTelemetryKeyCapabilities(databasePlugin);
+  return await rotateTelemetryKey();
+};
 
 export const getBundlesOperation = async (input?: GetBundlesInput) => {
   const { databasePlugin } = await prepareConfig();

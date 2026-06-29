@@ -70,6 +70,10 @@ HOT_UPDATER_CLOUDFLARE_API_TOKEN=your-api-token
 HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
 ```
 
+`hot-updater init` also prints a React Native snippet with a `hutk_` telemetry
+key. That plaintext key is shown once for `analytics.telemetryKey`; it is stored
+in D1 only as a hash/suffix and is not written to env files or provider config.
+
 <Callout type="warn">
 
 If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
@@ -127,8 +131,10 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL:
-    "https://<your-worker-name>.<your-subdomain>.workers.dev/api/check-update", // [!code ++]
+  baseURL: "https://<your-worker-name>.<your-subdomain>.workers.dev", // [!code ++]
+  analytics: {
+    telemetryKey: "hutk_publishable_project_telemetry_key", // [!code ++]
+  },
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     // if you want to use the request headers, you can add them here
@@ -160,7 +166,7 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Cloudflare runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public worker URL.
+The managed Cloudflare runtime exposes the public update-check endpoints, `POST /api/notify-app-ready`, and `/version`. Runtime telemetry must use the `x-hot-updater-telemetry-key` header; deploy API keys and signing keys are separate credentials. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public worker URL.
 </Callout>
 
 ## Step 5: If You Use Expo, Add the Config Plugin

@@ -4,6 +4,10 @@ import type { NotifyAppReadyResult } from "./native";
 
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
 
+export interface HotUpdaterAnalyticsOptions {
+  telemetryKey: string;
+}
+
 /**
  * Parameters passed to resolver.checkUpdate method
  */

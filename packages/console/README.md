@@ -117,8 +117,11 @@ The console integrates with Hot Updater's plugin system through TanStack Start s
 - `updateBundle(bundleId, data)` - Update bundle configuration
 - `createBundle(bundle)` - Create new bundle
 - `deleteBundle(bundleId)` - Delete bundle
+- `getTelemetryKey()` - Read the telemetry key suffix when supported
+- `issueTelemetryKey()` / `rotateTelemetryKey()` - Return a plaintext `hutk_`
+  telemetry key once for SDK configuration
 
-### Optional bundle bundle metrics
+### Optional bundle metrics
 
 Embedded and hosted console providers can expose bundle metrics by
 implementing `getBundleMetrics({ bundleId })`. The bundle editor sheet
@@ -146,6 +149,14 @@ const api: ConsoleApiClient = {
   },
 };
 ```
+
+### Optional telemetry keys
+
+Providers that support runtime lifecycle analytics can expose
+`getTelemetryKey`, `issueTelemetryKey`, and `rotateTelemetryKey`. The console
+shows the saved suffix after the plaintext key leaves the issue/rotate response.
+Rotating replaces the active key immediately; stale keys fail on the next
+`POST /api/notify-app-ready`.
 
 ## 🎯 Configuration
 

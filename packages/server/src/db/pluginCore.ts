@@ -458,6 +458,50 @@ export function createPluginDatabaseCore<TContext = unknown>(
     },
   };
 
+  const plugin = getPlugin();
+  const authenticateTelemetryKey = plugin.authenticateTelemetryKey;
+  if (authenticateTelemetryKey) {
+    api.authenticateTelemetryKey = async (telemetryKey, context) => {
+      await coreOptions?.beforeOperation?.();
+      return authenticateTelemetryKey(telemetryKey, context);
+    };
+  }
+  const getTelemetryKeyState = plugin.getTelemetryKeyState;
+  if (getTelemetryKeyState) {
+    api.getTelemetryKeyState = async (context) => {
+      await coreOptions?.beforeOperation?.();
+      return getTelemetryKeyState(context);
+    };
+  }
+  const issueTelemetryKey = plugin.issueTelemetryKey;
+  if (issueTelemetryKey) {
+    api.issueTelemetryKey = async (context) => {
+      await coreOptions?.beforeOperation?.();
+      return issueTelemetryKey(context);
+    };
+  }
+  const readLifecycleMetrics = plugin.readLifecycleMetrics;
+  if (readLifecycleMetrics) {
+    api.readLifecycleMetrics = async (context) => {
+      await coreOptions?.beforeOperation?.();
+      return readLifecycleMetrics(context);
+    };
+  }
+  const recordLifecycleEvent = plugin.recordLifecycleEvent;
+  if (recordLifecycleEvent) {
+    api.recordLifecycleEvent = async (payload, context) => {
+      await coreOptions?.beforeOperation?.();
+      return recordLifecycleEvent(payload, context);
+    };
+  }
+  const rotateTelemetryKey = plugin.rotateTelemetryKey;
+  if (rotateTelemetryKey) {
+    api.rotateTelemetryKey = async (context) => {
+      await coreOptions?.beforeOperation?.();
+      return rotateTelemetryKey(context);
+    };
+  }
+
   return {
     api,
     adapterName: getPlugin().name,

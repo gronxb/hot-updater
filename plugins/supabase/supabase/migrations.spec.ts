@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
 );
+const telemetryMigrationPath = path.resolve(
+  "plugins/supabase/supabase/migrations/20260629000000_hot-updater_telemetry.sql",
+);
 const migrationsDir = path.dirname(rlsMigrationPath);
 
 describe("Supabase RLS migration", () => {
@@ -14,7 +17,10 @@ describe("Supabase RLS migration", () => {
       .filter((file) => file.endsWith(".sql"))
       .sort();
 
-    expect(migrations.at(-1)).toBe(path.basename(rlsMigrationPath));
+    expect(migrations.indexOf(path.basename(rlsMigrationPath))).toBeGreaterThan(
+      migrations.indexOf("20260422000000_hot-updater_0.31.0.sql"),
+    );
+    expect(migrations.at(-1)).toBe(path.basename(telemetryMigrationPath));
   });
 
   it("enables RLS on Hot Updater tables", async () => {
@@ -63,5 +69,48 @@ describe("Supabase RLS migration", () => {
 
     expect(sql).not.toContain("REVOKE EXECUTE");
     expect(sql).not.toContain("GRANT EXECUTE");
+  });
+
+  it("creates telemetry key and lifecycle storage without raw keys", async () => {
+    const sql = await fs.readFile(telemetryMigrationPath, "utf8");
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.telemetry_keys");
+    expect(sql).toContain(
+      "CREATE TABLE IF NOT EXISTS public.bundle_lifecycle_events",
+    );
+    expect(sql).toContain(
+      "CREATE TABLE IF NOT EXISTS public.bundle_lifecycle_metrics",
+    );
+    expect(sql).toContain("key_hash text NOT NULL");
+    expect(sql).toContain("key_suffix text NOT NULL");
+    expect(sql).toContain(
+      "ALTER TABLE public.telemetry_keys ENABLE ROW LEVEL SECURITY;",
+    );
+    expect(sql).toContain(
+      "ALTER TABLE public.bundle_lifecycle_events ENABLE ROW LEVEL SECURITY;",
+    );
+    expect(sql).toContain(
+      "ALTER TABLE public.bundle_lifecycle_metrics ENABLE ROW LEVEL SECURITY;",
+    );
+    expect(sql).not.toMatch(/\btelemetry_key\s+text\b/i);
+    expect(sql).not.toMatch(/\bkey\s+text\b/i);
+  });
+
+  it("creates an atomic lifecycle metric increment function", async () => {
+    const sql = await fs.readFile(telemetryMigrationPath, "utf8");
+
+    expect(sql).toContain(
+      "CREATE OR REPLACE FUNCTION public.increment_bundle_lifecycle_metric",
+    );
+    expect(sql).toContain("ON CONFLICT (bundle_id, bucket_start) DO UPDATE");
+    expect(sql).toContain(
+      "active_count = metrics.active_count + EXCLUDED.active_count",
+    );
+    expect(sql).toContain(
+      "recovered_count = metrics.recovered_count + EXCLUDED.recovered_count",
+    );
+    expect(sql).toContain(
+      "last_seen_at = GREATEST(metrics.last_seen_at, EXCLUDED.last_seen_at)",
+    );
   });
 });

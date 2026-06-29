@@ -8,6 +8,7 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
+  TelemetryLifecyclePayload,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import semver from "semver";
@@ -44,6 +45,14 @@ export interface HandlerAPI<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  authenticateTelemetryKey?: (
+    telemetryKey: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<boolean>;
+  recordLifecycleEvent?: (
+    payload: TelemetryLifecyclePayload,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<{ readonly accepted: true; readonly deduped: boolean }>;
 }
 
 export interface HandlerOptions {
@@ -54,7 +63,8 @@ export interface HandlerOptions {
   basePath?: string;
   /**
    * Route groups to mount. Omit this option to use the default route groups.
-   * When provided, both route groups must be specified explicitly.
+   * When provided, update-check and bundle route groups must be specified
+   * explicitly. Telemetry still mounts only when supported by the database.
    * The `/version` endpoint is always mounted for diagnostics.
    */
   routes?: HandlerRoutes;
@@ -73,6 +83,7 @@ export interface HandlerRoutes {
    * Defaults to `false` only when `routes` is omitted.
    */
   bundles: boolean;
+  telemetry?: boolean;
 }
 
 type RouteHandler<TContext = unknown> = (
@@ -224,6 +235,92 @@ const requirePlatformParam = (params: Record<string, string>): Platform => {
 
   return platform;
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readRequiredString = (
+  value: Record<string, unknown>,
+  key: string,
+): string | null => {
+  const field = value[key];
+  return typeof field === "string" && field.length > 0 ? field : null;
+};
+
+const readOptionalString = (
+  value: Record<string, unknown>,
+  key: string,
+): string | undefined => {
+  const field = value[key];
+  return typeof field === "string" && field.length > 0 ? field : undefined;
+};
+
+const parseTelemetryLifecyclePayload = (
+  value: unknown,
+): TelemetryLifecyclePayload | null => {
+  if (!isRecord(value)) return null;
+
+  const bundleId = readRequiredString(value, "bundleId");
+  const channel = readRequiredString(value, "channel");
+  const eventId = readRequiredString(value, "eventId");
+  const installId = readRequiredString(value, "installId");
+  const observedAt = readOptionalString(value, "observedAt");
+  const platform = readRequiredString(value, "platform");
+  const status = readRequiredString(value, "status");
+  const crashedBundleId = readOptionalString(value, "crashedBundleId");
+
+  if (
+    !bundleId ||
+    !channel ||
+    !eventId ||
+    !installId ||
+    (platform !== "ios" && platform !== "android") ||
+    (status !== "ACTIVE" && status !== "RECOVERED") ||
+    (status === "RECOVERED" && crashedBundleId === undefined)
+  ) {
+    return null;
+  }
+
+  return {
+    bundleId,
+    channel,
+    crashedBundleId,
+    eventId,
+    installId,
+    observedAt,
+    platform,
+    status,
+  };
+};
+
+const readJsonBody = async (request: Request): Promise<unknown | null> => {
+  try {
+    return await request.json();
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const hasTelemetryCredentialInQuery = (url: URL): boolean =>
+  url.searchParams.has("telemetryKey") ||
+  url.searchParams.has("telemetry_key") ||
+  url.searchParams.has("x-hot-updater-telemetry-key");
+
+const hasTelemetryRoutes = <TContext>(
+  api: HandlerAPI<TContext>,
+): api is HandlerAPI<TContext> & {
+  readonly authenticateTelemetryKey: NonNullable<
+    HandlerAPI<TContext>["authenticateTelemetryKey"]
+  >;
+  readonly recordLifecycleEvent: NonNullable<
+    HandlerAPI<TContext>["recordLifecycleEvent"]
+  >;
+} =>
+  typeof api.authenticateTelemetryKey === "function" &&
+  typeof api.recordLifecycleEvent === "function";
 
 type BundlePatchPayload = Partial<Bundle> & {
   id?: string;
@@ -512,6 +609,77 @@ const handleGetChannels: RouteHandler = async (
   });
 };
 
+const handleNotifyAppReady: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
+  if (!hasTelemetryRoutes(api)) {
+    return new Response(JSON.stringify({ error: "Not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const url = new URL(request.url);
+  if (
+    request.headers.has("authorization") ||
+    request.headers.has("cookie") ||
+    hasTelemetryCredentialInQuery(url)
+  ) {
+    return new Response(
+      JSON.stringify({
+        error: "Runtime telemetry must use x-hot-updater-telemetry-key",
+      }),
+      {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  const telemetryKey = request.headers.get("x-hot-updater-telemetry-key");
+  if (!telemetryKey?.startsWith("hutk_")) {
+    return new Response(JSON.stringify({ error: "Telemetry key rejected" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (!(await api.authenticateTelemetryKey(telemetryKey, context))) {
+    return new Response(JSON.stringify({ error: "Telemetry key rejected" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const body = await readJsonBody(request);
+  if (body === null) {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const payload = parseTelemetryLifecyclePayload(body);
+  if (!payload) {
+    return new Response(
+      JSON.stringify({ error: "Invalid notifyAppReady payload" }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  const result = await api.recordLifecycleEvent(payload, context);
+  return new Response(JSON.stringify(result), {
+    status: 202,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 // Route handlers map
 const routes: Record<string, RouteHandler<any>> = {
   version: handleVersion,
@@ -523,6 +691,7 @@ const routes: Record<string, RouteHandler<any>> = {
   updateBundle: handleUpdateBundle,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
+  notifyAppReady: handleNotifyAppReady,
 };
 
 /**
@@ -541,6 +710,7 @@ export function createHandler<TContext = unknown>(
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
+    telemetry: (options.routes?.telemetry ?? true) && hasTelemetryRoutes(api),
   };
 
   // Create and configure router
@@ -583,6 +753,10 @@ export function createHandler<TContext = unknown>(
     addRoute(router, "POST", "/api/bundles", "createBundles");
     addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
     addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
+  }
+
+  if (routeOptions.telemetry) {
+    addRoute(router, "POST", "/api/notify-app-ready", "notifyAppReady");
   }
 
   return async (
