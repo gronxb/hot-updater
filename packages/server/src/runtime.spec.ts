@@ -873,6 +873,55 @@ describe("runtime createHotUpdater", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
+  it("keeps notify-app-ready unmounted for lazy plugins without telemetry", async () => {
+    const factory = vi.fn(() => ({
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 0,
+          },
+        };
+      },
+      async getChannels() {
+        return [];
+      },
+      async commitBundle() {},
+    }));
+    const database = createDatabasePlugin({
+      name: "lazyNoTelemetryPlugin",
+      factory,
+    })({});
+    const hotUpdater = createHotUpdater({
+      database,
+      basePath: "/hot-updater",
+    });
+
+    const response = await hotUpdater.handler(
+      new Request(
+        "https://updates.example.com/hot-updater/api/notify-app-ready",
+        {
+          body: "{}",
+          headers: {
+            "content-type": "application/json",
+            "x-hot-updater-telemetry-key": "hutk_test",
+          },
+          method: "POST",
+        },
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(factory).not.toHaveBeenCalled();
+  });
+
   it("mounts telemetry route for getter-backed database plugin methods", async () => {
     const authenticateTelemetryKey = vi.fn(async () => true);
     const recordLifecycleEvent = vi.fn(
@@ -884,10 +933,7 @@ describe("runtime createHotUpdater", () => {
     );
     const database = createDatabasePlugin({
       name: "telemetryRuntimePlugin",
-      telemetryCapabilities: [
-        "authenticateTelemetryKey",
-        "recordLifecycleEvent",
-      ],
+      telemetry: true,
       factory: () => ({
         authenticateTelemetryKey,
         async getBundleById() {
@@ -908,8 +954,35 @@ describe("runtime createHotUpdater", () => {
         async getChannels() {
           return [];
         },
+        async getTelemetryKeyState() {
+          return {
+            telemetryKeySuffix: "k_test",
+          };
+        },
+        async issueTelemetryKey() {
+          return {
+            telemetryKey: "hutk_test",
+            telemetryKeySuffix: "k_test",
+          };
+        },
+        async readLifecycleMetrics() {
+          return {
+            bundles: [],
+            series: [],
+            totals: {
+              active: 0,
+              recovered: 0,
+            },
+          };
+        },
         async commitBundle() {},
         recordLifecycleEvent,
+        async rotateTelemetryKey() {
+          return {
+            telemetryKey: "hutk_rotated",
+            telemetryKeySuffix: "rotated",
+          };
+        },
       }),
     })({});
     const hotUpdater = createHotUpdater({

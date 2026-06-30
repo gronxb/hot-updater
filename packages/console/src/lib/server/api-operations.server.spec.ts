@@ -183,6 +183,45 @@ describe("console api operations", () => {
     expect(supportedConfig.capabilities.telemetryKey).toBe(true);
   });
 
+  it("does not report telemetry key capability for runtime-only telemetry", async () => {
+    const runtimeOnlyDatabase = {
+      ...createDatabasePlugin("runtime-only-db", []),
+      authenticateTelemetryKey: vi.fn(async () => true),
+      recordLifecycleEvent: vi.fn(
+        async () =>
+          ({
+            accepted: true,
+            deduped: false,
+          }) as const,
+      ),
+    } satisfies DatabasePlugin;
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const { getConfigOperation, issueTelemetryKeyOperation } =
+      await import("./api-operations.server");
+
+    const result = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => runtimeOnlyDatabase,
+        storage: () => storagePlugin,
+      },
+      async () => ({
+        config: await getConfigOperation(),
+        issue: issueTelemetryKeyOperation(),
+      }),
+    );
+
+    expect(result.config.capabilities.telemetry).toBe(true);
+    expect(result.config.capabilities.telemetryKey).toBe(false);
+    await expect(result.issue).rejects.toThrow(
+      "Telemetry key is not supported by this provider.",
+    );
+  });
+
   it("uses provider telemetry key operations", async () => {
     const databasePlugin = {
       ...createDatabasePlugin("telemetry-db", []),

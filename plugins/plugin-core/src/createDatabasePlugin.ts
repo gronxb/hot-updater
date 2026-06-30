@@ -62,6 +62,11 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
   config: TConfig,
 ) => DatabasePluginMethods<TContext>;
 
+type TelemetryDatabasePluginFactory<TConfig, TContext = unknown> = (
+  config: TConfig,
+) => DatabasePluginMethods<TContext> &
+  Required<DatabaseTelemetryCapabilities<TContext>>;
+
 const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
 
@@ -230,17 +235,17 @@ function adjustPaginationTotal(
 /**
  * Configuration options for creating a database plugin
  */
-export interface CreateDatabasePluginOptions<TConfig, TContext = unknown> {
-  /**
-   * The name of the database plugin (e.g., "postgres", "d1Database")
-   */
-  name: string;
-  telemetryCapabilities?: readonly (keyof DatabaseTelemetryCapabilities<TContext>)[];
-  /**
-   * Function that creates the database plugin methods
-   */
-  factory: DatabasePluginFactory<TConfig, TContext>;
-}
+export type CreateDatabasePluginOptions<TConfig, TContext = unknown> =
+  | {
+      name: string;
+      telemetry?: false;
+      factory: DatabasePluginFactory<TConfig, TContext>;
+    }
+  | {
+      name: string;
+      telemetry: true;
+      factory: TelemetryDatabasePluginFactory<TConfig, TContext>;
+    };
 
 /**
  * Creates a database plugin with lazy initialization and automatic hook execution.
@@ -612,52 +617,38 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         },
       });
 
-      const telemetryCapabilities = new Set(
-        options.telemetryCapabilities ?? [],
-      );
-
-      if (telemetryCapabilities.has("authenticateTelemetryKey")) {
+      if (options.telemetry) {
         plugin.authenticateTelemetryKey = async (telemetryKey, context) => {
           const method = getMethods().authenticateTelemetryKey;
           if (!method)
             throw new Error("authenticateTelemetryKey is unavailable");
           return method(telemetryKey, context);
         };
-      }
 
-      if (telemetryCapabilities.has("getTelemetryKeyState")) {
         plugin.getTelemetryKeyState = async (context) => {
           const method = getMethods().getTelemetryKeyState;
           if (!method) throw new Error("getTelemetryKeyState is unavailable");
           return method(context);
         };
-      }
 
-      if (telemetryCapabilities.has("issueTelemetryKey")) {
         plugin.issueTelemetryKey = async (context) => {
           const method = getMethods().issueTelemetryKey;
           if (!method) throw new Error("issueTelemetryKey is unavailable");
           return method(context);
         };
-      }
 
-      if (telemetryCapabilities.has("readLifecycleMetrics")) {
         plugin.readLifecycleMetrics = async (context) => {
           const method = getMethods().readLifecycleMetrics;
           if (!method) throw new Error("readLifecycleMetrics is unavailable");
           return method(context);
         };
-      }
 
-      if (telemetryCapabilities.has("recordLifecycleEvent")) {
         plugin.recordLifecycleEvent = async (payload, context) => {
           const method = getMethods().recordLifecycleEvent;
           if (!method) throw new Error("recordLifecycleEvent is unavailable");
           return method(payload, context);
         };
-      }
 
-      if (telemetryCapabilities.has("rotateTelemetryKey")) {
         plugin.rotateTelemetryKey = async (context) => {
           const method = getMethods().rotateTelemetryKey;
           if (!method) throw new Error("rotateTelemetryKey is unavailable");

@@ -48,12 +48,15 @@ describe("createPluginDatabaseCore", () => {
       accepted: true,
       deduped: false,
     }));
+    const issueTelemetryKey = vi.fn<
+      NonNullable<DatabasePlugin<TestContext>["issueTelemetryKey"]>
+    >(async () => ({
+      telemetryKey: "hutk_issued",
+      telemetryKeySuffix: "issued",
+    }));
     const getPlugin = createDatabasePlugin<Record<string, never>, TestContext>({
       name: "getter-telemetry-plugin",
-      telemetryCapabilities: [
-        "authenticateTelemetryKey",
-        "recordLifecycleEvent",
-      ],
+      telemetry: true,
       factory: () => ({
         authenticateTelemetryKey,
         async commitBundle() {},
@@ -75,7 +78,29 @@ describe("createPluginDatabaseCore", () => {
         async getChannels() {
           return ["production"];
         },
+        async getTelemetryKeyState() {
+          return {
+            telemetryKeySuffix: "issued",
+          };
+        },
+        issueTelemetryKey,
+        async readLifecycleMetrics() {
+          return {
+            bundles: [],
+            series: [],
+            totals: {
+              active: 0,
+              recovered: 0,
+            },
+          };
+        },
         recordLifecycleEvent,
+        async rotateTelemetryKey() {
+          return {
+            telemetryKey: "hutk_rotated",
+            telemetryKeySuffix: "rotated",
+          };
+        },
       }),
     })({});
 
@@ -111,7 +136,10 @@ describe("createPluginDatabaseCore", () => {
 
     expect(authenticateTelemetryKey).toHaveBeenCalledWith("key-1", context);
     expect(recordLifecycleEvent).toHaveBeenCalledWith(payload, context);
-    expect(core.api.issueTelemetryKey).toBeUndefined();
+    await expect(core.api.issueTelemetryKey?.(context)).resolves.toEqual({
+      telemetryKey: "hutk_issued",
+      telemetryKeySuffix: "issued",
+    });
   });
 
   it("prefers plugin getUpdateInfo fast-path when provided", async () => {
