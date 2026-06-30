@@ -235,6 +235,7 @@ export interface CreateDatabasePluginOptions<TConfig, TContext = unknown> {
    * The name of the database plugin (e.g., "postgres", "d1Database")
    */
   name: string;
+  telemetryCapabilities?: readonly (keyof DatabaseTelemetryCapabilities<TContext>)[];
   /**
    * Function that creates the database plugin methods
    */
@@ -611,28 +612,57 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         },
       });
 
-      for (const capability of [
-        "authenticateTelemetryKey",
-        "getTelemetryKeyState",
-        "issueTelemetryKey",
-        "readLifecycleMetrics",
-        "recordLifecycleEvent",
-        "rotateTelemetryKey",
-      ] as const satisfies readonly (keyof DatabaseTelemetryCapabilities<TContext>)[]) {
-        Object.defineProperty(plugin, capability, {
-          configurable: true,
-          enumerable: true,
-          get() {
-            const method = getMethods()[capability];
+      const telemetryCapabilities = new Set(
+        options.telemetryCapabilities ?? [],
+      );
 
-            Object.defineProperty(plugin, capability, {
-              configurable: true,
-              enumerable: true,
-              value: method,
-            });
-            return method;
-          },
-        });
+      if (telemetryCapabilities.has("authenticateTelemetryKey")) {
+        plugin.authenticateTelemetryKey = async (telemetryKey, context) => {
+          const method = getMethods().authenticateTelemetryKey;
+          if (!method)
+            throw new Error("authenticateTelemetryKey is unavailable");
+          return method(telemetryKey, context);
+        };
+      }
+
+      if (telemetryCapabilities.has("getTelemetryKeyState")) {
+        plugin.getTelemetryKeyState = async (context) => {
+          const method = getMethods().getTelemetryKeyState;
+          if (!method) throw new Error("getTelemetryKeyState is unavailable");
+          return method(context);
+        };
+      }
+
+      if (telemetryCapabilities.has("issueTelemetryKey")) {
+        plugin.issueTelemetryKey = async (context) => {
+          const method = getMethods().issueTelemetryKey;
+          if (!method) throw new Error("issueTelemetryKey is unavailable");
+          return method(context);
+        };
+      }
+
+      if (telemetryCapabilities.has("readLifecycleMetrics")) {
+        plugin.readLifecycleMetrics = async (context) => {
+          const method = getMethods().readLifecycleMetrics;
+          if (!method) throw new Error("readLifecycleMetrics is unavailable");
+          return method(context);
+        };
+      }
+
+      if (telemetryCapabilities.has("recordLifecycleEvent")) {
+        plugin.recordLifecycleEvent = async (payload, context) => {
+          const method = getMethods().recordLifecycleEvent;
+          if (!method) throw new Error("recordLifecycleEvent is unavailable");
+          return method(payload, context);
+        };
+      }
+
+      if (telemetryCapabilities.has("rotateTelemetryKey")) {
+        plugin.rotateTelemetryKey = async (context) => {
+          const method = getMethods().rotateTelemetryKey;
+          if (!method) throw new Error("rotateTelemetryKey is unavailable");
+          return method(context);
+        };
       }
 
       return plugin;

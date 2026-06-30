@@ -50,6 +50,10 @@ describe("createPluginDatabaseCore", () => {
     }));
     const getPlugin = createDatabasePlugin<Record<string, never>, TestContext>({
       name: "getter-telemetry-plugin",
+      telemetryCapabilities: [
+        "authenticateTelemetryKey",
+        "recordLifecycleEvent",
+      ],
       factory: () => ({
         authenticateTelemetryKey,
         async commitBundle() {},

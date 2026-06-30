@@ -939,6 +939,7 @@ const writeSupabaseRuntimeFiles = async ({
     `
 export { supabaseEdgeFunctionDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
 export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { createSupabaseNotifyAppReadyResult, createSupabaseTelemetryOperations } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseTelemetry.ts")).href)};
 `.trim(),
   );
   await writeFile(

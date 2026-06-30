@@ -323,16 +323,22 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         ),
       ).resolves.toContain("./handler.mjs");
 
-      const supabaseDistFiles = await fs.readdir(
-        path.join(targetDir, "_hot-updater/hot-updater-supabase/dist"),
+      const supabaseDistDir = path.join(
+        targetDir,
+        "_hot-updater/hot-updater-supabase/dist",
       );
-      expect(
-        supabaseDistFiles.some(
-          (file) =>
-            file.startsWith("supabaseEdgeFunctionStorage-") &&
-            file.endsWith(".mjs"),
-        ),
-      ).toBe(true);
+      const supabaseDistFiles = await fs.readdir(supabaseDistDir);
+      const supabaseEdgeSource = await fs.readFile(
+        path.join(supabaseDistDir, "edge.mjs"),
+        "utf8",
+      );
+      const supabaseEdgeImports = [
+        ...supabaseEdgeSource.matchAll(/"\.\/(supabaseTelemetry-[^"]+\.mjs)"/g),
+      ].map((match) => match[1]);
+      expect(supabaseEdgeImports.length).toBeGreaterThan(0);
+      for (const file of supabaseEdgeImports) {
+        expect(supabaseDistFiles).toContain(file);
+      }
     } finally {
       await fs.rm(targetDir, { recursive: true, force: true });
     }

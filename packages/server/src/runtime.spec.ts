@@ -838,7 +838,7 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
-  it("initializes the database plugin once for optional capability discovery", () => {
+  it("does not initialize the database plugin for optional capability discovery", () => {
     const factory = vi.fn(() => ({
       async getBundleById() {
         return null;
@@ -870,7 +870,7 @@ describe("runtime createHotUpdater", () => {
       basePath: "/api/check-update",
     });
 
-    expect(factory).toHaveBeenCalledOnce();
+    expect(factory).not.toHaveBeenCalled();
   });
 
   it("mounts telemetry route for getter-backed database plugin methods", async () => {
@@ -884,6 +884,10 @@ describe("runtime createHotUpdater", () => {
     );
     const database = createDatabasePlugin({
       name: "telemetryRuntimePlugin",
+      telemetryCapabilities: [
+        "authenticateTelemetryKey",
+        "recordLifecycleEvent",
+      ],
       factory: () => ({
         authenticateTelemetryKey,
         async getBundleById() {

@@ -234,6 +234,16 @@ vi.mock("@supabase/supabase-js", () => ({
 
 export const tables = supabaseMock.tables;
 
+export const createSupabaseNotifyAppReadyResult = async (
+  input: Parameters<
+    typeof import("./supabaseTelemetry").createSupabaseNotifyAppReadyResult
+  >[0],
+) => {
+  const { createSupabaseNotifyAppReadyResult } =
+    await import("./supabaseTelemetry");
+  return createSupabaseNotifyAppReadyResult(input);
+};
+
 export const createOperations = () =>
   createSupabaseTelemetryOperations({
     supabaseAnonKey: "test-anon-key",
