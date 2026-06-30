@@ -269,10 +269,13 @@ describe("createHandler", () => {
     const supportedApi = {
       ...createApi(),
       authenticateTelemetryKey: vi.fn(async () => true),
-      recordLifecycleEvent: vi.fn(async () => ({
-        accepted: true,
-        deduped: false,
-      }) as const),
+      recordLifecycleEvent: vi.fn(
+        async () =>
+          ({
+            accepted: true,
+            deduped: false,
+          }) as const,
+      ),
     } satisfies HandlerAPI<TestContext>;
     const supportedHandler = createHandler(supportedApi, {
       basePath: "/hot-updater",
@@ -323,10 +326,13 @@ describe("createHandler", () => {
     const api = {
       ...createApi(),
       authenticateTelemetryKey: vi.fn(async () => true),
-      recordLifecycleEvent: vi.fn(async () => ({
-        accepted: true,
-        deduped: false,
-      }) as const),
+      recordLifecycleEvent: vi.fn(
+        async () =>
+          ({
+            accepted: true,
+            deduped: false,
+          }) as const,
+      ),
     } satisfies HandlerAPI<TestContext>;
     const handler = createHandler(api, {
       basePath: "/hot-updater",

@@ -30,8 +30,10 @@ describe("Supabase telemetry init seed", () => {
     const telemetryKey = "hutk_supabase_seed";
 
     // When
-    const snippet = SOURCE_TEMPLATE.replace("%%source%%", "https://example.com")
-      .replace("%%telemetryKey%%", telemetryKey);
+    const snippet = SOURCE_TEMPLATE.replace(
+      "%%source%%",
+      "https://example.com",
+    ).replace("%%telemetryKey%%", telemetryKey);
 
     // Then
     expect(snippet).toContain("analytics");

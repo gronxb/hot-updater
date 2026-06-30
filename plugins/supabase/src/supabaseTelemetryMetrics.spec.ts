@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createSupabaseNotifyAppReadyResult } from "./supabaseTelemetry";
 import {
   createNotifyRequest,
   createOperations,
@@ -7,7 +8,6 @@ import {
   recoveredPayload,
   tables,
 } from "./supabaseTelemetryTestSupport";
-import { createSupabaseNotifyAppReadyResult } from "./supabaseTelemetry";
 
 describe("supabase telemetry lifecycle metrics", () => {
   beforeEach(() => {

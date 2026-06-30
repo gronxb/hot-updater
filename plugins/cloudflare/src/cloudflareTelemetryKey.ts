@@ -5,8 +5,7 @@ import {
 } from "./cloudflareTelemetryD1";
 
 export const CLOUDFLARE_TELEMETRY_KEY_PREFIX = "hutk_";
-export const CLOUDFLARE_TELEMETRY_KEY_HEADER =
-  "x-hot-updater-telemetry-key";
+export const CLOUDFLARE_TELEMETRY_KEY_HEADER = "x-hot-updater-telemetry-key";
 export const CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH = 8;
 
 export type CloudflareTelemetryKeyResponse = {

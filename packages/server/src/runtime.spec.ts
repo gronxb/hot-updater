@@ -875,10 +875,13 @@ describe("runtime createHotUpdater", () => {
 
   it("mounts telemetry route for getter-backed database plugin methods", async () => {
     const authenticateTelemetryKey = vi.fn(async () => true);
-    const recordLifecycleEvent = vi.fn(async () => ({
-      accepted: true,
-      deduped: false,
-    }) as const);
+    const recordLifecycleEvent = vi.fn(
+      async () =>
+        ({
+          accepted: true,
+          deduped: false,
+        }) as const,
+    );
     const database = createDatabasePlugin({
       name: "telemetryRuntimePlugin",
       factory: () => ({
@@ -919,14 +922,17 @@ describe("runtime createHotUpdater", () => {
     } as const;
 
     const response = await hotUpdater.handler(
-      new Request("https://updates.example.com/hot-updater/api/notify-app-ready", {
-        body: JSON.stringify(payload),
-        headers: {
-          "content-type": "application/json",
-          "x-hot-updater-telemetry-key": "hutk_test",
+      new Request(
+        "https://updates.example.com/hot-updater/api/notify-app-ready",
+        {
+          body: JSON.stringify(payload),
+          headers: {
+            "content-type": "application/json",
+            "x-hot-updater-telemetry-key": "hutk_test",
+          },
+          method: "POST",
         },
-        method: "POST",
-      }),
+      ),
     );
 
     expect(response.status).toBe(202);

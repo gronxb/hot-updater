@@ -18,11 +18,10 @@ export type CloudflareLifecycleRecordInput = {
   readonly status: CloudflareLifecycleStatus;
 };
 
-export type ParsedCloudflareLifecycleRecord =
-  CloudflareLifecycleRecordInput & {
-    readonly eventType: CloudflareLifecycleEventType;
-    readonly observedAt: string;
-  };
+export type ParsedCloudflareLifecycleRecord = CloudflareLifecycleRecordInput & {
+  readonly eventType: CloudflareLifecycleEventType;
+  readonly observedAt: string;
+};
 
 export type CloudflareNotifyAppReadyResponse = {
   readonly accepted: true;

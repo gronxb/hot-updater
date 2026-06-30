@@ -29,7 +29,9 @@ const parseObservedAt = (value: string | undefined): string | undefined => {
   return new Date(timestamp).toISOString();
 };
 
-const parseLifecyclePayload = (value: unknown): LifecyclePayload | undefined => {
+const parseLifecyclePayload = (
+  value: unknown,
+): LifecyclePayload | undefined => {
   if (!isRecord(value)) return undefined;
 
   const bundleId = readString(value, "bundleId");
@@ -82,10 +84,12 @@ const hasQueryCredential = (request: Request): boolean => {
 
 const readTelemetryKey = (
   request: Request,
-): { readonly kind: "accepted"; readonly telemetryKey: string } | {
-  readonly kind: "rejected";
-  readonly invalidChannel: boolean;
-} => {
+):
+  | { readonly kind: "accepted"; readonly telemetryKey: string }
+  | {
+      readonly kind: "rejected";
+      readonly invalidChannel: boolean;
+    } => {
   if (
     request.headers.has("authorization") ||
     request.headers.has("cookie") ||

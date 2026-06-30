@@ -122,8 +122,9 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<TContext = unknown>
-  extends DatabaseTelemetryCapabilities<TContext> {
+export interface DatabaseAPI<
+  TContext = unknown,
+> extends DatabaseTelemetryCapabilities<TContext> {
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,

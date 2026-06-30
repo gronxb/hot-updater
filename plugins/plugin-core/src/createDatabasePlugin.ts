@@ -18,8 +18,9 @@ import type {
   Paginated,
 } from "./types";
 
-export interface AbstractDatabasePlugin<TContext = unknown>
-  extends DatabaseTelemetryCapabilities<TContext> {
+export interface AbstractDatabasePlugin<
+  TContext = unknown,
+> extends DatabaseTelemetryCapabilities<TContext> {
   supportsCursorPagination?: boolean;
   getBundleById: (
     bundleId: string,

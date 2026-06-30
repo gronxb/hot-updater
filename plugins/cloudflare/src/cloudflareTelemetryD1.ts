@@ -18,14 +18,21 @@ export const queryFirst = async <TRow>(
   db: CloudflareTelemetryD1Database,
   sql: string,
   params: readonly unknown[] = [],
-): Promise<TRow | null> => db.prepare(sql).bind(...params).first<TRow>();
+): Promise<TRow | null> =>
+  db
+    .prepare(sql)
+    .bind(...params)
+    .first<TRow>();
 
 export const queryAll = async <TRow>(
   db: CloudflareTelemetryD1Database,
   sql: string,
   params: readonly unknown[] = [],
 ): Promise<readonly TRow[]> => {
-  const result = await db.prepare(sql).bind(...params).all<TRow>();
+  const result = await db
+    .prepare(sql)
+    .bind(...params)
+    .all<TRow>();
   return result.results ?? [];
 };
 
@@ -33,4 +40,8 @@ export const runD1 = (
   db: CloudflareTelemetryD1Database,
   sql: string,
   params: readonly unknown[] = [],
-) => db.prepare(sql).bind(...params).run();
+) =>
+  db
+    .prepare(sql)
+    .bind(...params)
+    .run();

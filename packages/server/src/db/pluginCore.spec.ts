@@ -75,10 +75,7 @@ describe("createPluginDatabaseCore", () => {
       }),
     })({});
 
-    const core = createPluginDatabaseCore(
-      getPlugin,
-      async () => null,
-    );
+    const core = createPluginDatabaseCore(getPlugin, async () => null);
     const context: TestContext = {
       env: {
         assetHost: "https://assets.example.com",

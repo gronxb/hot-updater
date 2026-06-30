@@ -5,8 +5,7 @@ export const TELEMETRY_KEY_DOC_ID = "current";
 export const TELEMETRY_KEYS_COLLECTION = "telemetry_keys";
 export const LIFECYCLE_EVENTS_COLLECTION = "bundle_lifecycle_events";
 export const LIFECYCLE_METRICS_COLLECTION = "bundle_lifecycle_metrics";
-export const LIFECYCLE_BUCKETS_COLLECTION =
-  "bundle_lifecycle_metric_buckets";
+export const LIFECYCLE_BUCKETS_COLLECTION = "bundle_lifecycle_metric_buckets";
 
 export const LifecycleStatus = {
   Active: "ACTIVE",

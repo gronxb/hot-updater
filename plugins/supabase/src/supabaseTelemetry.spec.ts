@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createSupabaseNotifyAppReadyResult } from "./supabaseTelemetry";
 import {
   createNotifyRequest,
   createOperations,
   notifyPayload,
   tables,
 } from "./supabaseTelemetryTestSupport";
-import { createSupabaseNotifyAppReadyResult } from "./supabaseTelemetry";
 
 describe("supabase telemetry key auth", () => {
   beforeEach(() => {

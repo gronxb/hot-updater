@@ -99,10 +99,7 @@ export const isRecord = (
 ): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-export const createSupabaseError = (
-  message: string,
-  error: unknown,
-): Error => {
+export const createSupabaseError = (message: string, error: unknown): Error => {
   if (isRecord(error) && typeof error.message === "string") {
     return new Error(`${message}: ${error.message}`);
   }

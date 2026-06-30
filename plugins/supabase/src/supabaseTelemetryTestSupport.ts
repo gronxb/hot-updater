@@ -51,12 +51,6 @@ type QueryFilter = {
   readonly value: unknown;
 };
 
-type TelemetryTables = {
-  readonly lifecycleEvents: Map<string, LifecycleEventRow>;
-  readonly lifecycleMetrics: Map<string, LifecycleMetricRow>;
-  readonly telemetryKeys: Map<string, TelemetryKeyRow>;
-};
-
 type QueryResult = {
   readonly data?: unknown;
   readonly error: { readonly code?: string; readonly message: string } | null;
@@ -96,8 +90,7 @@ const supabaseMock = vi.hoisted(() => {
     const metricKey = `${params.p_bundle_id}:${params.p_bucket_start}`;
     const current = tables.lifecycleMetrics.get(metricKey);
     tables.lifecycleMetrics.set(metricKey, {
-      active_count:
-        (current?.active_count ?? 0) + params.p_active_delta,
+      active_count: (current?.active_count ?? 0) + params.p_active_delta,
       bucket_start: params.p_bucket_start,
       bundle_id: params.p_bundle_id,
       channel: params.p_channel,
@@ -142,7 +135,9 @@ const supabaseMock = vi.hoisted(() => {
       onfulfilled?:
         | ((value: QueryResult) => TResult1 | PromiseLike<TResult1>)
         | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      onrejected?:
+        | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+        | null,
     ) {
       return this.execute().then(onfulfilled, onrejected);
     }

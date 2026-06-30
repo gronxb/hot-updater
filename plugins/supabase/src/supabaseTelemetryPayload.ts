@@ -117,7 +117,8 @@ export const parseNotifyAppReadyPayload = (
 export const readJsonBody = async (
   request: Request,
 ): Promise<
-  { readonly kind: "valid"; readonly value: unknown } | { readonly kind: "invalid" }
+  | { readonly kind: "valid"; readonly value: unknown }
+  | { readonly kind: "invalid" }
 > => {
   try {
     return { kind: "valid", value: await request.json() };

@@ -1,14 +1,14 @@
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
+import preparedTelemetrySql from "../../sql/telemetry.sql?raw";
 import {
   getCloudflareLifecycleMetrics,
   issueCloudflareTelemetryKey,
   rotateCloudflareTelemetryKey,
 } from "../../src/cloudflareTelemetry";
-import preparedTelemetrySql from "../../sql/telemetry.sql?raw";
-import worker from "./index";
 import telemetryMigration from "../migrations/0006_hot-updater_telemetry.sql?raw";
+import worker from "./index";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -136,11 +136,15 @@ describe.sequential("cloudflare telemetry runtime", () => {
   it("rejects authorization, cookie, and query-string telemetry credentials", async () => {
     const issued = await issueCloudflareTelemetryKey(env.DB);
 
-    const authorizationResponse = await postNotifyAppReady(null, notifyPayload, {
-      headers: {
-        authorization: `Bearer ${issued.telemetryKey}`,
+    const authorizationResponse = await postNotifyAppReady(
+      null,
+      notifyPayload,
+      {
+        headers: {
+          authorization: `Bearer ${issued.telemetryKey}`,
+        },
       },
-    });
+    );
     const cookieResponse = await postNotifyAppReady(null, notifyPayload, {
       headers: {
         cookie: `telemetryKey=${issued.telemetryKey}`,

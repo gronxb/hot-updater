@@ -27,10 +27,7 @@ describe("Cloudflare telemetry init seed", () => {
       "database-id",
       expect.objectContaining({
         account_id: "account-id",
-        params: expect.arrayContaining([
-          "default",
-          issued.telemetryKeySuffix,
-        ]),
+        params: expect.arrayContaining(["default", issued.telemetryKeySuffix]),
       }),
     );
     expect(JSON.stringify(query.mock.calls)).not.toContain(issued.telemetryKey);
@@ -57,12 +54,16 @@ describe("Cloudflare telemetry init seed", () => {
     });
 
     // When
-    const snippet = SOURCE_TEMPLATE.replace("%%source%%", runtimeBaseURL)
-      .replace("%%telemetryKey%%", telemetryKey);
+    const snippet = SOURCE_TEMPLATE.replace(
+      "%%source%%",
+      runtimeBaseURL,
+    ).replace("%%telemetryKey%%", telemetryKey);
 
     // Then
     expect(snippet).toContain(`baseURL: "${runtimeBaseURL}"`);
-    expect(snippet).not.toContain(`baseURL: "${runtimeBaseURL}/api/check-update"`);
+    expect(snippet).not.toContain(
+      `baseURL: "${runtimeBaseURL}/api/check-update"`,
+    );
     expect(snippet).toContain("analytics: {");
     expect(snippet).toContain(`telemetryKey: "${telemetryKey}"`);
   });

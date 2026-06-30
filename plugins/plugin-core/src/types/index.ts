@@ -171,8 +171,9 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin<TContext = unknown>
-  extends DatabaseTelemetryCapabilities<TContext> {
+export interface DatabasePlugin<
+  TContext = unknown,
+> extends DatabaseTelemetryCapabilities<TContext> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   getBundleById: (
     bundleId: string,

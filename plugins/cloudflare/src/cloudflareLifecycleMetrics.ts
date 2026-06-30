@@ -46,9 +46,7 @@ type LifecycleAccumulator = {
   readonly recovered: number;
 };
 
-const emptyLifecycleAccumulator = (
-  bundleId: string,
-): LifecycleAccumulator => ({
+const emptyLifecycleAccumulator = (bundleId: string): LifecycleAccumulator => ({
   active: 0,
   bundleId,
   lastSeenAt: null,

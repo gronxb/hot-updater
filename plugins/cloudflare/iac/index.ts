@@ -126,24 +126,26 @@ const getEnvValue = (env: Record<string, string>, key: string) => {
   return value || undefined;
 };
 
-export const createCloudflareTelemetrySeed = ():
-  CloudflareTelemetryKeyResponse & { readonly telemetryKeyHash: string } => {
-  const telemetryKey = `${CLOUDFLARE_TELEMETRY_KEY_PREFIX}${crypto
-    .randomBytes(32)
-    .toString("hex")}`;
-  const telemetryKeySuffix = telemetryKey.slice(
-    -CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH,
-  );
+export const createCloudflareTelemetrySeed =
+  (): CloudflareTelemetryKeyResponse & {
+    readonly telemetryKeyHash: string;
+  } => {
+    const telemetryKey = `${CLOUDFLARE_TELEMETRY_KEY_PREFIX}${crypto
+      .randomBytes(32)
+      .toString("hex")}`;
+    const telemetryKeySuffix = telemetryKey.slice(
+      -CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH,
+    );
 
-  return {
-    telemetryKey,
-    telemetryKeyHash: crypto
-      .createHash("sha256")
-      .update(telemetryKey)
-      .digest("hex"),
-    telemetryKeySuffix,
+    return {
+      telemetryKey,
+      telemetryKeyHash: crypto
+        .createHash("sha256")
+        .update(telemetryKey)
+        .digest("hex"),
+      telemetryKeySuffix,
+    };
   };
-};
 
 type CloudflareD1QueryClient = {
   readonly d1: {
