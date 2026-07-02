@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-const issueTelemetryKey = vi.fn(async () => ({
-  telemetryKey: "hutk_supabase_seed",
-  telemetryKeySuffix: "e_seed",
-}));
+const upsertTelemetryKeyCredential = vi.fn(async () => {});
 
 vi.mock("../src/supabaseTelemetry", () => ({
-  createSupabaseTelemetryOperations: vi.fn(() => ({ issueTelemetryKey })),
+  createSupabaseTelemetryOperations: vi.fn(() => ({
+    upsertTelemetryKeyCredential,
+  })),
 }));
 
 import { seedSupabaseTelemetryKey, SOURCE_TEMPLATE } from "./index";
@@ -22,7 +21,13 @@ describe("Supabase telemetry init seed", () => {
     // Then
     expect(issued.telemetryKey).toMatch(/^hutk_.+/);
     expect(issued.telemetryKey.endsWith(issued.telemetryKeySuffix)).toBe(true);
-    expect(issueTelemetryKey).toHaveBeenCalledOnce();
+    expect(upsertTelemetryKeyCredential).toHaveBeenCalledWith(
+      {
+        keyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        telemetryKeySuffix: issued.telemetryKeySuffix,
+      },
+      undefined,
+    );
   });
 
   it("prints the plaintext key only in the SDK setup snippet", () => {

@@ -5,7 +5,7 @@ import { BundleUnitOfWork } from "./bundleUnitOfWork";
 import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
 import type {
-  DatabaseAnalytics,
+  DatabaseAnalyticsOperations,
   DatabaseBundleCursor,
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
@@ -19,7 +19,7 @@ import type {
 } from "./types";
 
 export interface AbstractDatabasePlugin<TContext = unknown> {
-  analytics?: DatabaseAnalytics<TContext>;
+  analytics?: DatabaseAnalyticsOperations<TContext>;
   bundles: {
     supportsCursorPagination?: boolean;
     getBundleById: (
@@ -67,6 +67,13 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
 
 const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
+
+class DatabasePaginationInvariantError extends Error {
+  constructor() {
+    super("Expected at least one bundle after a non-empty pagination query.");
+    this.name = "DatabasePaginationInvariantError";
+  }
+}
 
 function normalizePage(value: number | undefined): number | undefined {
   if (!Number.isInteger(value) || value === undefined || value < 1) {
@@ -375,7 +382,11 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           };
         }
 
-        const firstBundleId = data[0]!.id;
+        const firstBundle = data[0];
+        if (!firstBundle) {
+          throw new DatabasePaginationInvariantError();
+        }
+        const firstBundleId = firstBundle.id;
         const countBeforeResult = await runGetBundles(
           {
             where: buildCountBeforeWhere(baseWhere, firstBundleId, orderBy),

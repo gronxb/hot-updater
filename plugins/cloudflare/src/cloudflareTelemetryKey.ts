@@ -1,4 +1,11 @@
 import {
+  createDatabaseAnalyticsRuntime,
+  type TelemetryKeyCredential,
+  type TelemetryKeyResult,
+  type TelemetryKeyState,
+} from "@hot-updater/plugin-core";
+
+import {
   type CloudflareTelemetryD1Database,
   queryFirst,
   runD1,
@@ -8,14 +15,9 @@ export const CLOUDFLARE_TELEMETRY_KEY_PREFIX = "hutk_";
 export const CLOUDFLARE_TELEMETRY_KEY_HEADER = "x-hot-updater-telemetry-key";
 export const CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH = 8;
 
-export type CloudflareTelemetryKeyResponse = {
-  readonly telemetryKey: string;
-  readonly telemetryKeySuffix: string;
-};
+export type CloudflareTelemetryKeyResponse = TelemetryKeyResult;
 
-export type CloudflareTelemetryKeyState = {
-  readonly telemetryKeySuffix: string;
-};
+export type CloudflareTelemetryKeyState = TelemetryKeyState;
 
 export type CloudflareTelemetryCredentialResult =
   | {
@@ -32,38 +34,14 @@ type TelemetryKeyRow = {
   readonly key_suffix: string;
 };
 
-const TELEMETRY_KEY_ROW_ID = "default";
-
-const createTelemetryKey = (): string => {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const random = Array.from(bytes, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-  return `${CLOUDFLARE_TELEMETRY_KEY_PREFIX}${random}`;
-};
-
-const keySuffix = (telemetryKey: string): string =>
-  telemetryKey.slice(-CLOUDFLARE_TELEMETRY_KEY_SUFFIX_LENGTH);
-
-const digestHex = async (value: string): Promise<string> => {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-};
-
-const safeEqual = (left: string, right: string): boolean => {
-  const maxLength = Math.max(left.length, right.length);
-  let difference = left.length ^ right.length;
-
-  for (let index = 0; index < maxLength; index++) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+class CloudflareTelemetryRuntimeConfigurationError extends Error {
+  constructor(capability: "reads" | "writes") {
+    super(`Cloudflare telemetry key ${capability} are not configured.`);
+    this.name = "CloudflareTelemetryRuntimeConfigurationError";
   }
+}
 
-  return difference === 0;
-};
+const TELEMETRY_KEY_ROW_ID = "default";
 
 const isTelemetryKeyShape = (value: string | null): value is string =>
   typeof value === "string" &&
@@ -95,10 +73,26 @@ export const readCloudflareTelemetryCredential = (
   return { kind: "accepted", telemetryKey };
 };
 
-export const issueCloudflareTelemetryKey = async (
+export const getCloudflareTelemetryKeyCredential = async (
   db: CloudflareTelemetryD1Database,
-): Promise<CloudflareTelemetryKeyResponse> => {
-  const telemetryKey = createTelemetryKey();
+): Promise<TelemetryKeyCredential | null> => {
+  const row = await queryFirst<TelemetryKeyRow>(
+    db,
+    "SELECT key_hash, key_suffix FROM telemetry_keys WHERE id = ? LIMIT 1",
+    [TELEMETRY_KEY_ROW_ID],
+  );
+  return row
+    ? {
+        keyHash: row.key_hash,
+        telemetryKeySuffix: row.key_suffix,
+      }
+    : null;
+};
+
+export const upsertCloudflareTelemetryKeyCredential = async (
+  db: CloudflareTelemetryD1Database,
+  credential: TelemetryKeyCredential,
+): Promise<void> => {
   const now = new Date().toISOString();
   await runD1(
     db,
@@ -112,48 +106,62 @@ export const issueCloudflareTelemetryKey = async (
     `,
     [
       TELEMETRY_KEY_ROW_ID,
-      await digestHex(telemetryKey),
-      keySuffix(telemetryKey),
+      credential.keyHash,
+      credential.telemetryKeySuffix,
       now,
       now,
     ],
   );
-
-  return {
-    telemetryKey,
-    telemetryKeySuffix: keySuffix(telemetryKey),
-  };
 };
 
-export const rotateCloudflareTelemetryKey = issueCloudflareTelemetryKey;
+const createCloudflareTelemetryRuntime = (db: CloudflareTelemetryD1Database) =>
+  createDatabaseAnalyticsRuntime({
+    getTelemetryKeyCredential: () => getCloudflareTelemetryKeyCredential(db),
+    upsertTelemetryKeyCredential: (credential) =>
+      upsertCloudflareTelemetryKeyCredential(db, credential),
+  });
+
+export const issueCloudflareTelemetryKey = async (
+  db: CloudflareTelemetryD1Database,
+): Promise<CloudflareTelemetryKeyResponse> => {
+  const runtime = createCloudflareTelemetryRuntime(db);
+  if (!runtime.issueTelemetryKey) {
+    throw new CloudflareTelemetryRuntimeConfigurationError("writes");
+  }
+
+  return runtime.issueTelemetryKey();
+};
+
+export const rotateCloudflareTelemetryKey = async (
+  db: CloudflareTelemetryD1Database,
+): Promise<CloudflareTelemetryKeyResponse> => {
+  const runtime = createCloudflareTelemetryRuntime(db);
+  if (!runtime.rotateTelemetryKey) {
+    throw new CloudflareTelemetryRuntimeConfigurationError("writes");
+  }
+
+  return runtime.rotateTelemetryKey();
+};
 
 export const getCloudflareTelemetryKeyState = async (
   db: CloudflareTelemetryD1Database,
 ): Promise<CloudflareTelemetryKeyState | null> => {
-  const row = await queryFirst<TelemetryKeyRow>(
-    db,
-    "SELECT key_suffix FROM telemetry_keys WHERE id = ? LIMIT 1",
-    [TELEMETRY_KEY_ROW_ID],
-  );
-  return row ? { telemetryKeySuffix: row.key_suffix } : null;
+  const runtime = createCloudflareTelemetryRuntime(db);
+  if (!runtime.getTelemetryKeyState) {
+    throw new CloudflareTelemetryRuntimeConfigurationError("reads");
+  }
+
+  return runtime.getTelemetryKeyState();
 };
 
 export const authenticateCloudflareTelemetryKey = async (
   db: CloudflareTelemetryD1Database,
   telemetryKey: string,
 ): Promise<boolean> => {
-  if (!isTelemetryKeyShape(telemetryKey)) {
-    return false;
+  const runtime = createCloudflareTelemetryRuntime(db);
+  if (!runtime.authenticateTelemetryKey) {
+    throw new CloudflareTelemetryRuntimeConfigurationError("reads");
   }
 
-  const row = await queryFirst<TelemetryKeyRow>(
-    db,
-    "SELECT key_hash, key_suffix FROM telemetry_keys WHERE id = ? LIMIT 1",
-    [TELEMETRY_KEY_ROW_ID],
-  );
-  if (!row || keySuffix(telemetryKey) !== row.key_suffix) {
-    return false;
-  }
-
-  return safeEqual(await digestHex(telemetryKey), row.key_hash);
+  return runtime.authenticateTelemetryKey(telemetryKey);
 };

@@ -11,6 +11,7 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
+import { createDatabaseAnalyticsRuntime } from "@hot-updater/plugin-core";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import admin from "firebase-admin";
@@ -86,9 +87,13 @@ export const seedFirebaseTelemetryKey = async (
     );
 
   try {
-    return await createFirebaseTelemetryOperations(
-      admin.firestore(app),
-    ).issueTelemetryKey();
+    const analytics = createDatabaseAnalyticsRuntime(
+      createFirebaseTelemetryOperations(admin.firestore(app)),
+    );
+    if (!analytics.issueTelemetryKey) {
+      throw new Error("Firebase telemetry key writes are not configured.");
+    }
+    return await analytics.issueTelemetryKey();
   } catch (error) {
     throw new Error(
       "Failed to seed Firebase telemetry key. Ensure Application Default Credentials can write Firestore, then run hot-updater init again.",
@@ -232,7 +237,11 @@ const deployFirestore = async (cwd: string) => {
   try {
     const originalStdout = JSON.parse(original.stdout);
     originalIndexes = originalStdout ?? { indexes: [], fieldOverrides: [] };
-  } catch {}
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error;
+    }
+  }
 
   const newIndexes = JSON.parse(
     await fs.promises.readFile(
@@ -421,7 +430,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
             currentRegion = hotUpdater.region;
             isFunctionsExist = true;
           }
-        } catch {
+        } catch (error) {
+          if (!(error instanceof Error)) {
+            throw error;
+          }
           // no-op
         }
 

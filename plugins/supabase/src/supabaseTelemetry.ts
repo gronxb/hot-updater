@@ -1,14 +1,14 @@
+import { createDatabaseAnalyticsRuntime } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import { resolveSupabaseServiceRoleKey } from "./supabaseConfig";
 import {
-  assertTelemetryKeyShape,
-  createKeyResponse,
-  hashTelemetryKey,
+  getTelemetryKeyCredential,
+  upsertTelemetryKeyCredential,
 } from "./supabaseTelemetryKey";
 import {
+  getLifecycleMetrics,
   normalizeObservedAt,
-  readLifecycleMetrics,
   recordMetricDelta,
 } from "./supabaseTelemetryMetrics";
 import {
@@ -16,7 +16,6 @@ import {
   readJsonBody,
 } from "./supabaseTelemetryPayload";
 import {
-  TELEMETRY_KEY_ROW_ID,
   createSupabaseError,
   isDuplicateError,
   type NotifyAppReadyResult,
@@ -45,49 +44,27 @@ export const createSupabaseTelemetryOperations = (
   );
 
   return {
-    authenticateTelemetryKey: async (telemetryKey) => {
-      if (!assertTelemetryKeyShape(telemetryKey)) return false;
+    getTelemetryKeyCredential: () => getTelemetryKeyCredential(supabase),
+    upsertTelemetryKeyCredential: (credential) =>
+      upsertTelemetryKeyCredential(supabase, credential),
 
-      const { data, error } = await supabase
-        .from("telemetry_keys")
-        .select("key_hash")
-        .eq("id", TELEMETRY_KEY_ROW_ID)
-        .maybeSingle();
-
-      if (error) {
-        throw createSupabaseError("Failed to read telemetry key", error);
-      }
-      if (!data) return false;
-
-      return data.key_hash === (await hashTelemetryKey(telemetryKey));
-    },
-
-    getTelemetryKeyState: async () => {
-      const { data, error } = await supabase
-        .from("telemetry_keys")
-        .select("key_suffix")
-        .eq("id", TELEMETRY_KEY_ROW_ID)
-        .maybeSingle();
-
-      if (error) {
-        throw createSupabaseError("Failed to read telemetry key state", error);
+    insertLifecycleEvent: async (payload) => {
+      const recoveredBundleId =
+        payload.status === "RECOVERED"
+          ? (payload.crashedBundleId ?? null)
+          : null;
+      if (payload.status === "RECOVERED" && recoveredBundleId === null) {
+        throw new TypeError(
+          "Recovered lifecycle events require crashedBundleId.",
+        );
       }
 
-      return data ? { telemetryKeySuffix: data.key_suffix } : null;
-    },
-
-    issueTelemetryKey: () => createKeyResponse(supabase),
-    rotateTelemetryKey: () => createKeyResponse(supabase),
-
-    recordLifecycleEvent: async (payload) => {
       const observedAt = normalizeObservedAt(payload.observedAt);
       const receivedAt = new Date().toISOString();
-      const crashedBundleId =
-        payload.status === "RECOVERED" ? payload.crashedBundleId : null;
       const { error } = await supabase.from("bundle_lifecycle_events").insert({
         bundle_id: payload.bundleId,
         channel: payload.channel,
-        crashed_bundle_id: crashedBundleId,
+        crashed_bundle_id: recoveredBundleId ?? null,
         event_id: payload.eventId,
         install_id: payload.installId,
         observed_at: observedAt,
@@ -112,25 +89,21 @@ export const createSupabaseTelemetryOperations = (
         recovered: 0,
       });
 
-      switch (payload.status) {
-        case "ACTIVE":
-          break;
-        case "RECOVERED":
-          await recordMetricDelta(supabase, {
-            active: 0,
-            bundleId: payload.crashedBundleId,
-            channel: payload.channel,
-            observedAt,
-            platform: payload.platform,
-            recovered: 1,
-          });
-          break;
+      if (recoveredBundleId !== null) {
+        await recordMetricDelta(supabase, {
+          active: 0,
+          bundleId: recoveredBundleId,
+          channel: payload.channel,
+          observedAt,
+          platform: payload.platform,
+          recovered: 1,
+        });
       }
 
       return { accepted: true, deduped: false };
     },
 
-    readLifecycleMetrics: () => readLifecycleMetrics(supabase),
+    getLifecycleMetrics: () => getLifecycleMetrics(supabase),
   };
 };
 
@@ -155,13 +128,20 @@ export const createSupabaseNotifyAppReadyResult = async ({
   }
 
   const telemetryKey = request.headers.get("x-hot-updater-telemetry-key");
-  if (!telemetryKey || !assertTelemetryKeyShape(telemetryKey)) {
+  const analytics = createDatabaseAnalyticsRuntime(operations);
+  const authenticateTelemetryKey = analytics.authenticateTelemetryKey;
+  const recordLifecycleEvent = analytics.recordLifecycleEvent;
+  if (!telemetryKey) {
     return { body: { error: "Telemetry key rejected" }, status: 401 };
   }
 
-  const authenticated = await operations.authenticateTelemetryKey(telemetryKey);
+  const authenticated =
+    (await authenticateTelemetryKey?.(telemetryKey)) ?? false;
   if (!authenticated) {
     return { body: { error: "Telemetry key rejected" }, status: 401 };
+  }
+  if (!recordLifecycleEvent) {
+    return { body: { error: "Lifecycle telemetry write failed" }, status: 500 };
   }
 
   const body = await readJsonBody(request);
@@ -176,7 +156,7 @@ export const createSupabaseNotifyAppReadyResult = async ({
 
   try {
     return {
-      body: await operations.recordLifecycleEvent(parsed.payload),
+      body: await recordLifecycleEvent(parsed.payload),
       status: 202,
     };
   } catch (error: unknown) {

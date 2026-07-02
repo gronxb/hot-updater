@@ -1,5 +1,6 @@
 import { promoteBundle as promoteBundleWithConfig } from "@hot-updater/cli-tools";
 import {
+  createDatabaseAnalyticsRuntime,
   isRuntimeStoragePlugin,
   type Bundle,
   type DatabaseBundleQueryOptions,
@@ -89,9 +90,12 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
 };
 
 const getTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
-  const getTelemetryKeyState = databasePlugin.analytics?.getTelemetryKeyState;
-  const issueTelemetryKey = databasePlugin.analytics?.issueTelemetryKey;
-  const rotateTelemetryKey = databasePlugin.analytics?.rotateTelemetryKey;
+  const analytics = databasePlugin.analytics
+    ? createDatabaseAnalyticsRuntime(databasePlugin.analytics)
+    : undefined;
+  const getTelemetryKeyState = analytics?.getTelemetryKeyState;
+  const issueTelemetryKey = analytics?.issueTelemetryKey;
+  const rotateTelemetryKey = analytics?.rotateTelemetryKey;
 
   if (!getTelemetryKeyState || !issueTelemetryKey || !rotateTelemetryKey) {
     return null;
@@ -147,7 +151,9 @@ const toBundleQueryOptions = (
 
 export const getConfigOperation = async () => {
   const { config, databasePlugin } = await prepareConfig();
-  const analytics = databasePlugin.analytics;
+  const analytics = databasePlugin.analytics
+    ? createDatabaseAnalyticsRuntime(databasePlugin.analytics)
+    : undefined;
   return {
     capabilities: {
       telemetry:

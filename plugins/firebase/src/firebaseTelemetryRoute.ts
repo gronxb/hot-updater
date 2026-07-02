@@ -1,3 +1,4 @@
+import { createDatabaseAnalyticsRuntime } from "@hot-updater/plugin-core";
 import { Hono } from "hono";
 
 import {
@@ -113,6 +114,9 @@ export const createNotifyAppReadyResult = async ({
   readonly operations: FirebaseTelemetryOperations;
   readonly request: Request;
 }): Promise<NotifyAppReadyResult> => {
+  const analytics = createDatabaseAnalyticsRuntime(operations);
+  const authenticateTelemetryKey = analytics.authenticateTelemetryKey;
+  const recordLifecycleEvent = analytics.recordLifecycleEvent;
   const credential = readTelemetryKey(request);
   if (credential.kind === "rejected") {
     return {
@@ -125,8 +129,11 @@ export const createNotifyAppReadyResult = async ({
     };
   }
 
-  if (!(await operations.authenticateTelemetryKey(credential.telemetryKey))) {
+  if (!(await authenticateTelemetryKey?.(credential.telemetryKey))) {
     return { body: { error: "Telemetry key rejected" }, status: 401 };
+  }
+  if (!recordLifecycleEvent) {
+    return { body: { error: "Lifecycle telemetry write failed" }, status: 500 };
   }
 
   let body: unknown;
@@ -146,7 +153,7 @@ export const createNotifyAppReadyResult = async ({
 
   try {
     return {
-      body: await operations.recordLifecycleEvent(payload),
+      body: await recordLifecycleEvent(payload),
       status: 202,
     };
   } catch (error: unknown) {

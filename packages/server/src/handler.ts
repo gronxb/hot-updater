@@ -7,7 +7,7 @@ import type {
   Platform,
 } from "@hot-updater/core";
 import type {
-  DatabaseAnalytics,
+  DatabaseAnalyticsRuntime,
   DatabaseBundleQueryOptions,
   TelemetryLifecyclePayload,
   HotUpdaterContext,
@@ -47,7 +47,7 @@ export interface HandlerAPI<TContext = unknown> {
   ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   analytics?: Pick<
-    DatabaseAnalytics<TContext>,
+    DatabaseAnalyticsRuntime<TContext>,
     "authenticateTelemetryKey" | "recordLifecycleEvent"
   >;
 }
@@ -311,10 +311,10 @@ const hasAnalyticsRoutes = <TContext>(
 ): api is HandlerAPI<TContext> & {
   readonly analytics: {
     readonly authenticateTelemetryKey: NonNullable<
-      DatabaseAnalytics<TContext>["authenticateTelemetryKey"]
+      DatabaseAnalyticsRuntime<TContext>["authenticateTelemetryKey"]
     >;
     readonly recordLifecycleEvent: NonNullable<
-      DatabaseAnalytics<TContext>["recordLifecycleEvent"]
+      DatabaseAnalyticsRuntime<TContext>["recordLifecycleEvent"]
     >;
   };
 } => {

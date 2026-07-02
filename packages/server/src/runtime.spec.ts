@@ -977,8 +977,12 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("mounts analytics route for getter-backed database plugin methods", async () => {
-    const authenticateTelemetryKey = vi.fn(async () => true);
-    const recordLifecycleEvent = vi.fn(
+    const getTelemetryKeyCredential = vi.fn(async () => ({
+      keyHash:
+        "1721fec3b8042903822cb190ac47f755b6ca00b153d03e087200297f9299b92e",
+      telemetryKeySuffix: "12345678",
+    }));
+    const insertLifecycleEvent = vi.fn(
       async () =>
         ({
           accepted: true,
@@ -991,19 +995,7 @@ describe("runtime createHotUpdater", () => {
       factory: () =>
         createNestedDatabaseFactoryResult({
           analytics: {
-            authenticateTelemetryKey,
-            async getTelemetryKeyState() {
-              return {
-                telemetryKeySuffix: "k_test",
-              };
-            },
-            async issueTelemetryKey() {
-              return {
-                telemetryKey: "hutk_test",
-                telemetryKeySuffix: "k_test",
-              };
-            },
-            async readLifecycleMetrics() {
+            async getLifecycleMetrics() {
               return {
                 bundles: [],
                 series: [],
@@ -1013,13 +1005,9 @@ describe("runtime createHotUpdater", () => {
                 },
               };
             },
-            recordLifecycleEvent,
-            async rotateTelemetryKey() {
-              return {
-                telemetryKey: "hutk_rotated",
-                telemetryKeySuffix: "rotated",
-              };
-            },
+            getTelemetryKeyCredential,
+            insertLifecycleEvent,
+            async upsertTelemetryKeyCredential() {},
           },
           async getBundleById() {
             return null;
@@ -1062,7 +1050,7 @@ describe("runtime createHotUpdater", () => {
           body: JSON.stringify(payload),
           headers: {
             "content-type": "application/json",
-            "x-hot-updater-telemetry-key": "hutk_test",
+            "x-hot-updater-telemetry-key": "hutk_12345678",
           },
           method: "POST",
         },
@@ -1070,11 +1058,8 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(authenticateTelemetryKey).toHaveBeenCalledWith(
-      "hutk_test",
-      undefined,
-    );
-    expect(recordLifecycleEvent).toHaveBeenCalledWith(payload, undefined);
+    expect(getTelemetryKeyCredential).toHaveBeenCalledWith(undefined);
+    expect(insertLifecycleEvent).toHaveBeenCalledWith(payload, undefined);
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {

@@ -1,3 +1,8 @@
+import type {
+  DatabaseAnalyticsOperations,
+  TelemetryKeyResult as PluginTelemetryKeyResult,
+} from "@hot-updater/plugin-core";
+
 export const TELEMETRY_KEY_PREFIX = "hutk_";
 export const TELEMETRY_KEY_SUFFIX_LENGTH = 8;
 export const TELEMETRY_KEY_BYTES = 32;
@@ -17,10 +22,7 @@ export type LifecycleStatusValue =
 
 export type Platform = "ios" | "android";
 
-export type TelemetryKeyResult = {
-  readonly telemetryKey: string;
-  readonly telemetryKeySuffix: string;
-};
+export type TelemetryKeyResult = PluginTelemetryKeyResult;
 
 export type LifecyclePayload = {
   readonly bundleId: string;
@@ -63,15 +65,15 @@ export type FirebaseBundleLifecycleMetrics = {
   };
 };
 
-export type FirebaseTelemetryOperations = {
-  readonly issueTelemetryKey: () => Promise<TelemetryKeyResult>;
-  readonly rotateTelemetryKey: () => Promise<TelemetryKeyResult>;
-  readonly authenticateTelemetryKey: (telemetryKey: string) => Promise<boolean>;
-  readonly recordLifecycleEvent: (
-    payload: LifecyclePayload,
-  ) => Promise<LifecycleRecordResult>;
-  readonly readLifecycleMetrics: () => Promise<FirebaseBundleLifecycleMetrics>;
-};
+export type FirebaseTelemetryOperations = Required<
+  Pick<
+    DatabaseAnalyticsOperations,
+    | "getLifecycleMetrics"
+    | "getTelemetryKeyCredential"
+    | "insertLifecycleEvent"
+    | "upsertTelemetryKeyCredential"
+  >
+>;
 
 export type NotifyAppReadyResult = {
   readonly body:

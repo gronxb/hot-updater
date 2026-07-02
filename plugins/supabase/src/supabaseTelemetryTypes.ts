@@ -1,3 +1,8 @@
+import type {
+  DatabaseAnalyticsOperations,
+  TelemetryKeyResult,
+  TelemetryKeyState as PluginTelemetryKeyState,
+} from "@hot-updater/plugin-core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { SupabaseServiceRoleConfig } from "./supabaseConfig";
@@ -40,14 +45,8 @@ export type NotifyAppReadyResult = {
   readonly status: 202 | 400 | 401 | 500;
 };
 
-export type TelemetryKeyResponse = {
-  readonly telemetryKey: string;
-  readonly telemetryKeySuffix: string;
-};
-
-export type TelemetryKeyState = {
-  readonly telemetryKeySuffix: string;
-};
+export type TelemetryKeyResponse = TelemetryKeyResult;
+export type TelemetryKeyState = PluginTelemetryKeyState;
 
 export type LifecycleMetricsBundle = {
   readonly active: number;
@@ -83,16 +82,15 @@ export type MetricsDelta = {
   readonly recovered: number;
 };
 
-export type SupabaseTelemetryOperations = {
-  readonly authenticateTelemetryKey: (telemetryKey: string) => Promise<boolean>;
-  readonly getTelemetryKeyState: () => Promise<TelemetryKeyState | null>;
-  readonly issueTelemetryKey: () => Promise<TelemetryKeyResponse>;
-  readonly readLifecycleMetrics: () => Promise<LifecycleMetrics>;
-  readonly recordLifecycleEvent: (
-    payload: NotifyAppReadyPayload,
-  ) => Promise<NotifyAppReadyResponse>;
-  readonly rotateTelemetryKey: () => Promise<TelemetryKeyResponse>;
-};
+export type SupabaseTelemetryOperations = Required<
+  Pick<
+    DatabaseAnalyticsOperations,
+    | "getLifecycleMetrics"
+    | "getTelemetryKeyCredential"
+    | "insertLifecycleEvent"
+    | "upsertTelemetryKeyCredential"
+  >
+>;
 
 export const isRecord = (
   value: unknown,

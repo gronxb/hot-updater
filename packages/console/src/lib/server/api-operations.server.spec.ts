@@ -138,25 +138,18 @@ describe("console api operations", () => {
     const supportedDatabase = {
       ...createDatabasePlugin("supported-db", []),
       analytics: {
-        authenticateTelemetryKey: vi.fn(async () => true),
-        getTelemetryKeyState: vi.fn(async () => ({
+        getTelemetryKeyCredential: vi.fn(async () => ({
+          keyHash: "hash",
           telemetryKeySuffix: "abcd1234",
         })),
-        issueTelemetryKey: vi.fn(async () => ({
-          telemetryKey: "hutk_issued",
-          telemetryKeySuffix: "issued",
-        })),
-        recordLifecycleEvent: vi.fn(
+        insertLifecycleEvent: vi.fn(
           async () =>
             ({
               accepted: true,
               deduped: false,
             }) as const,
         ),
-        rotateTelemetryKey: vi.fn(async () => ({
-          telemetryKey: "hutk_rotated",
-          telemetryKeySuffix: "rotated",
-        })),
+        upsertTelemetryKeyCredential: vi.fn(async () => {}),
       },
     } satisfies DatabasePlugin;
     const storagePlugin = createStoragePlugin(async () => ({
@@ -193,8 +186,11 @@ describe("console api operations", () => {
     const runtimeOnlyDatabase = {
       ...createDatabasePlugin("runtime-only-db", []),
       analytics: {
-        authenticateTelemetryKey: vi.fn(async () => true),
-        recordLifecycleEvent: vi.fn(
+        getTelemetryKeyCredential: vi.fn(async () => ({
+          keyHash: "hash",
+          telemetryKeySuffix: "abcd1234",
+        })),
+        insertLifecycleEvent: vi.fn(
           async () =>
             ({
               accepted: true,
@@ -234,17 +230,11 @@ describe("console api operations", () => {
     const databasePlugin = {
       ...createDatabasePlugin("telemetry-db", []),
       analytics: {
-        getTelemetryKeyState: vi.fn(async () => ({
+        getTelemetryKeyCredential: vi.fn(async () => ({
+          keyHash: "hash",
           telemetryKeySuffix: "abcd1234",
         })),
-        issueTelemetryKey: vi.fn(async () => ({
-          telemetryKey: "hutk_issued",
-          telemetryKeySuffix: "issued",
-        })),
-        rotateTelemetryKey: vi.fn(async () => ({
-          telemetryKey: "hutk_rotated",
-          telemetryKeySuffix: "rotated",
-        })),
+        upsertTelemetryKeyCredential: vi.fn(async () => {}),
       },
     } satisfies DatabasePlugin;
     const storagePlugin = createStoragePlugin(async () => ({
@@ -271,19 +261,17 @@ describe("console api operations", () => {
       }),
     );
 
-    expect(result).toEqual({
-      state: { telemetryKeySuffix: "abcd1234" },
-      issued: { telemetryKey: "hutk_issued", telemetryKeySuffix: "issued" },
-      rotated: {
-        telemetryKey: "hutk_rotated",
-        telemetryKeySuffix: "rotated",
-      },
-    });
+    expect(result.state).toEqual({ telemetryKeySuffix: "abcd1234" });
+    expect(result.issued.telemetryKey).toMatch(/^hutk_/);
+    expect(result.issued.telemetryKeySuffix).toHaveLength(8);
+    expect(result.rotated.telemetryKey).toMatch(/^hutk_/);
+    expect(result.rotated.telemetryKeySuffix).toHaveLength(8);
     expect(
-      databasePlugin.analytics.getTelemetryKeyState,
+      databasePlugin.analytics.getTelemetryKeyCredential,
     ).toHaveBeenCalledOnce();
-    expect(databasePlugin.analytics.issueTelemetryKey).toHaveBeenCalledOnce();
-    expect(databasePlugin.analytics.rotateTelemetryKey).toHaveBeenCalledOnce();
+    expect(
+      databasePlugin.analytics.upsertTelemetryKeyCredential,
+    ).toHaveBeenCalledTimes(2);
   });
 
   it("resolves runtime download URLs through the hosted storage profile", async () => {

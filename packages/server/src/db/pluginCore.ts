@@ -9,7 +9,8 @@ import type {
 } from "@hot-updater/core";
 import { isCohortEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
 import {
-  type DatabaseAnalytics,
+  createDatabaseAnalyticsRuntime,
+  type DatabaseAnalyticsRuntime,
   type DatabaseBundleQueryOptions,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
@@ -464,7 +465,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
   Object.defineProperty(api, "analytics", {
     configurable: true,
     enumerable: true,
-    get(): DatabaseAnalytics<TContext> | undefined {
+    get(): DatabaseAnalyticsRuntime<TContext> | undefined {
       const analytics = getPlugin().analytics;
       if (!analytics) {
         Object.defineProperty(api, "analytics", {
@@ -475,8 +476,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
         return undefined;
       }
 
-      const forwardedAnalytics: DatabaseAnalytics<TContext> = {};
-      const authenticateTelemetryKey = analytics.authenticateTelemetryKey;
+      const runtimeAnalytics = createDatabaseAnalyticsRuntime(analytics);
+      const forwardedAnalytics: DatabaseAnalyticsRuntime<TContext> = {};
+      const authenticateTelemetryKey =
+        runtimeAnalytics.authenticateTelemetryKey;
       if (authenticateTelemetryKey) {
         forwardedAnalytics.authenticateTelemetryKey = async (
           telemetryKey,
@@ -486,35 +489,35 @@ export function createPluginDatabaseCore<TContext = unknown>(
           return authenticateTelemetryKey(telemetryKey, context);
         };
       }
-      const getTelemetryKeyState = analytics.getTelemetryKeyState;
+      const getTelemetryKeyState = runtimeAnalytics.getTelemetryKeyState;
       if (getTelemetryKeyState) {
         forwardedAnalytics.getTelemetryKeyState = async (context) => {
           await coreOptions?.beforeOperation?.();
           return getTelemetryKeyState(context);
         };
       }
-      const issueTelemetryKey = analytics.issueTelemetryKey;
+      const issueTelemetryKey = runtimeAnalytics.issueTelemetryKey;
       if (issueTelemetryKey) {
         forwardedAnalytics.issueTelemetryKey = async (context) => {
           await coreOptions?.beforeOperation?.();
           return issueTelemetryKey(context);
         };
       }
-      const readLifecycleMetrics = analytics.readLifecycleMetrics;
+      const readLifecycleMetrics = runtimeAnalytics.readLifecycleMetrics;
       if (readLifecycleMetrics) {
         forwardedAnalytics.readLifecycleMetrics = async (context) => {
           await coreOptions?.beforeOperation?.();
           return readLifecycleMetrics(context);
         };
       }
-      const recordLifecycleEvent = analytics.recordLifecycleEvent;
+      const recordLifecycleEvent = runtimeAnalytics.recordLifecycleEvent;
       if (recordLifecycleEvent) {
         forwardedAnalytics.recordLifecycleEvent = async (payload, context) => {
           await coreOptions?.beforeOperation?.();
           return recordLifecycleEvent(payload, context);
         };
       }
-      const rotateTelemetryKey = analytics.rotateTelemetryKey;
+      const rotateTelemetryKey = runtimeAnalytics.rotateTelemetryKey;
       if (rotateTelemetryKey) {
         forwardedAnalytics.rotateTelemetryKey = async (context) => {
           await coreOptions?.beforeOperation?.();

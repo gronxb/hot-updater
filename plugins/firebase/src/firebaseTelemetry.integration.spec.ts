@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  createDatabaseAnalyticsRuntime,
+  type TelemetryLifecyclePayload,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
@@ -12,6 +16,21 @@ import {
 const PROJECT_ID = "firebase-telemetry-test";
 
 const { firestore } = createFirestoreMock(PROJECT_ID);
+
+const createRequiredAnalytics = (
+  telemetry: ReturnType<typeof createFirebaseTelemetryOperations>,
+) => {
+  const analytics = createDatabaseAnalyticsRuntime(telemetry);
+  const { issueTelemetryKey, readLifecycleMetrics, rotateTelemetryKey } =
+    analytics;
+  if (!issueTelemetryKey || !readLifecycleMetrics || !rotateTelemetryKey) {
+    throw new TypeError(
+      "Firebase telemetry test runtime is missing analytics operations.",
+    );
+  }
+
+  return { issueTelemetryKey, readLifecycleMetrics, rotateTelemetryKey };
+};
 
 const clearCollection = async (collectionName: string) => {
   const snapshot = await firestore.collection(collectionName).get();
@@ -29,16 +48,19 @@ const createLifecyclePayload = (
     readonly eventId: string;
     readonly status: "ACTIVE" | "RECOVERED";
   }> = {},
-) => ({
-  bundleId: overrides.bundleId ?? `bundle-${randomUUID()}`,
-  channel: "production",
-  crashedBundleId: overrides.crashedBundleId,
-  eventId: overrides.eventId ?? randomUUID(),
-  installId: randomUUID(),
-  observedAt: "2026-06-29T00:00:00.000Z",
-  platform: "ios",
-  status: overrides.status ?? "ACTIVE",
-});
+): TelemetryLifecyclePayload => {
+  const crashedBundleId = overrides.crashedBundleId;
+  return {
+    bundleId: overrides.bundleId ?? `bundle-${randomUUID()}`,
+    channel: "production",
+    ...(crashedBundleId ? { crashedBundleId } : {}),
+    eventId: overrides.eventId ?? randomUUID(),
+    installId: randomUUID(),
+    observedAt: "2026-06-29T00:00:00.000Z",
+    platform: "ios",
+    status: overrides.status ?? "ACTIVE",
+  };
+};
 
 const createNotifyRequest = (
   telemetryKey: string,
@@ -71,8 +93,9 @@ describe("firebase telemetry", () => {
 
   it("writes only telemetry key hash and suffix when issuing and rotating", async () => {
     const telemetry = createFirebaseTelemetryOperations(firestore);
+    const analytics = createRequiredAnalytics(telemetry);
 
-    const issued = await telemetry.issueTelemetryKey();
+    const issued = await analytics.issueTelemetryKey();
     const issuedDocument = await firestore
       .collection("telemetry_keys")
       .doc("current")
@@ -88,7 +111,7 @@ describe("firebase telemetry", () => {
       issued.telemetryKey,
     );
 
-    const rotated = await telemetry.rotateTelemetryKey();
+    const rotated = await analytics.rotateTelemetryKey();
     const rotatedDocument = await firestore
       .collection("telemetry_keys")
       .doc("current")
@@ -106,7 +129,8 @@ describe("firebase telemetry", () => {
 
   it("accepts notifyAppReady only with the current telemetry key", async () => {
     const telemetry = createFirebaseTelemetryOperations(firestore);
-    const issued = await telemetry.issueTelemetryKey();
+    const analytics = createRequiredAnalytics(telemetry);
+    const issued = await analytics.issueTelemetryKey();
 
     const accepted = await createNotifyAppReadyResult({
       operations: telemetry,
@@ -118,7 +142,7 @@ describe("firebase telemetry", () => {
       status: 202,
     });
 
-    const rotated = await telemetry.rotateTelemetryKey();
+    const rotated = await analytics.rotateTelemetryKey();
     const stale = await createNotifyAppReadyResult({
       operations: telemetry,
       request: createNotifyRequest(issued.telemetryKey),
@@ -134,8 +158,9 @@ describe("firebase telemetry", () => {
 
   it("mounts POST /api/notify-app-ready for Firebase Functions runtime", async () => {
     const telemetry = createFirebaseTelemetryOperations(firestore);
+    const analytics = createRequiredAnalytics(telemetry);
     const app = createFirebaseTelemetryApp(telemetry);
-    const issued = await telemetry.issueTelemetryKey();
+    const issued = await analytics.issueTelemetryKey();
 
     const response = await app.fetch(createNotifyRequest(issued.telemetryKey));
 
@@ -148,7 +173,8 @@ describe("firebase telemetry", () => {
 
   it("rejects malformed telemetry keys and credential channels", async () => {
     const telemetry = createFirebaseTelemetryOperations(firestore);
-    const issued = await telemetry.issueTelemetryKey();
+    const analytics = createRequiredAnalytics(telemetry);
+    const issued = await analytics.issueTelemetryKey();
     const randomKey = `hutk_${randomUUID().replaceAll("-", "")}`;
 
     const attempts = [
@@ -178,9 +204,26 @@ describe("firebase telemetry", () => {
     }
   });
 
+  it("rejects recovered lifecycle operations without crashed bundle before writing", async () => {
+    const telemetry = createFirebaseTelemetryOperations(firestore);
+    const analytics = createRequiredAnalytics(telemetry);
+
+    await expect(
+      telemetry.insertLifecycleEvent(
+        createLifecyclePayload({ status: "RECOVERED" }),
+      ),
+    ).rejects.toThrow("Recovered lifecycle events require crashedBundleId.");
+
+    const metrics = await analytics.readLifecycleMetrics();
+    expect(metrics.totals).toEqual({ active: 0, recovered: 0 });
+    expect(metrics.bundles).toEqual([]);
+    expect(metrics.series).toEqual([]);
+  });
+
   it("records ACTIVE and RECOVERED lifecycle metrics for console bundle metrics", async () => {
     const telemetry = createFirebaseTelemetryOperations(firestore);
-    const issued = await telemetry.issueTelemetryKey();
+    const analytics = createRequiredAnalytics(telemetry);
+    const issued = await analytics.issueTelemetryKey();
     const bundleId = `bundle-${randomUUID()}`;
 
     await createNotifyAppReadyResult({
@@ -209,7 +252,7 @@ describe("firebase telemetry", () => {
         createLifecyclePayload({ bundleId, status: "RECOVERED" }),
       ),
     });
-    const metrics = await telemetry.readLifecycleMetrics();
+    const metrics = await analytics.readLifecycleMetrics();
 
     expect(rejectedRecovered.status).toBe(400);
     expect(metrics.totals).toEqual({ active: 1, recovered: 1 });

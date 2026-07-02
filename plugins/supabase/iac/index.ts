@@ -17,6 +17,7 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { createDatabaseAnalyticsRuntime } from "@hot-updater/plugin-core";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -125,11 +126,18 @@ export const seedSupabaseTelemetryKey = async ({
 }: {
   readonly serviceRoleKey: string;
   readonly supabaseUrl: string;
-}): Promise<TelemetryKeyResponse> =>
-  createSupabaseTelemetryOperations({
-    supabaseServiceRoleKey: serviceRoleKey,
-    supabaseUrl,
-  }).issueTelemetryKey();
+}): Promise<TelemetryKeyResponse> => {
+  const analytics = createDatabaseAnalyticsRuntime(
+    createSupabaseTelemetryOperations({
+      supabaseServiceRoleKey: serviceRoleKey,
+      supabaseUrl,
+    }),
+  );
+  if (!analytics.issueTelemetryKey) {
+    throw new Error("Supabase telemetry key writes are not configured.");
+  }
+  return analytics.issueTelemetryKey();
+};
 
 const resolvePackageExportPath = async (
   packageName: string,
@@ -408,7 +416,8 @@ export const selectProject = async (): Promise<{
         : JSON.parse(listProjects?.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
-    console.error("Failed to fetch Supabase projects:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Failed to fetch Supabase projects:", message);
     process.exit(1);
   }
 
@@ -541,7 +550,8 @@ export const selectBucket = async (
       }
       return { id: newBucket.id, name: newBucket.name };
     } catch (err) {
-      p.log.error(`Failed to create new bucket: ${err}`);
+      const message = err instanceof Error ? err.message : String(err);
+      p.log.error(`Failed to create new bucket: ${message}`);
       process.exit(1);
     }
   }
@@ -632,7 +642,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     apiKeys = JSON.parse(keysProcess.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
-    console.error("Failed to get API keys:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Failed to get API keys:", message);
     process.exit(1);
   }
   spinner.stop();

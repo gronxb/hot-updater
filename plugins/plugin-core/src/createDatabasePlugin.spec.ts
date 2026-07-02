@@ -4,7 +4,39 @@ import {
   type AbstractDatabasePlugin,
   createDatabasePlugin,
 } from "./createDatabasePlugin";
-import type { Bundle, GetBundlesArgs, RequestEnvContext } from "./types";
+import type {
+  Bundle,
+  DatabaseAnalyticsOperations,
+  DatabasePlugin,
+  GetBundlesArgs,
+  RequestEnvContext,
+} from "./types";
+
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends <
+    Value,
+  >() => Value extends Right ? 1 : 2
+    ? true
+    : false;
+
+type Expect<T extends true> = T;
+
+type AnalyticsOperationKeys = keyof NonNullable<DatabasePlugin["analytics"]>;
+type ExpectedAnalyticsOperationKeys =
+  | "getLifecycleMetrics"
+  | "getTelemetryKeyCredential"
+  | "insertLifecycleEvent"
+  | "upsertTelemetryKeyCredential";
+
+type _AnalyticsOperationsMatchDatabasePlugin = Expect<
+  Equal<
+    NonNullable<DatabasePlugin["analytics"]>,
+    DatabaseAnalyticsOperations<unknown>
+  >
+>;
+type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
+  Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
+>;
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",

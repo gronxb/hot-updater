@@ -119,6 +119,11 @@ export type TelemetryKeyState = {
   readonly telemetryKeySuffix: string;
 };
 
+export type TelemetryKeyCredential = {
+  readonly keyHash: string;
+  readonly telemetryKeySuffix: string;
+};
+
 export type TelemetryLifecycleMetricsBundle = {
   readonly active: number;
   readonly bundleId: string;
@@ -144,27 +149,21 @@ export type TelemetryLifecycleMetrics = {
   };
 };
 
-export interface DatabaseAnalytics<TContext = unknown> {
-  authenticateTelemetryKey?: (
-    telemetryKey: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<boolean>;
-  getTelemetryKeyState?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<TelemetryKeyState | null>;
-  issueTelemetryKey?: (
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<TelemetryKeyResult>;
-  readLifecycleMetrics?: (
+export interface DatabaseAnalyticsOperations<TContext = unknown> {
+  getLifecycleMetrics?: (
     context?: HotUpdaterContext<TContext>,
   ) => Promise<TelemetryLifecycleMetrics>;
-  recordLifecycleEvent?: (
+  getTelemetryKeyCredential?: (
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<TelemetryKeyCredential | null>;
+  insertLifecycleEvent?: (
     payload: TelemetryLifecyclePayload,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<TelemetryLifecycleRecordResult>;
-  rotateTelemetryKey?: (
+  upsertTelemetryKeyCredential?: (
+    credential: TelemetryKeyCredential,
     context?: HotUpdaterContext<TContext>,
-  ) => Promise<TelemetryKeyResult>;
+  ) => Promise<void>;
 }
 
 export interface BuildPluginConfig {
@@ -206,7 +205,7 @@ export interface DatabaseChannelOperations<TContext = unknown> {
 }
 
 export interface DatabasePlugin<TContext = unknown> {
-  analytics?: DatabaseAnalytics<TContext>;
+  analytics?: DatabaseAnalyticsOperations<TContext>;
   bundles: DatabaseBundleOperations<TContext>;
   channels: DatabaseChannelOperations<TContext>;
   onUnmount?: () => Promise<void>;

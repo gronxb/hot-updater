@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-const issueTelemetryKey = vi.fn(async () => ({
-  telemetryKey: "hutk_firebase_seed",
-  telemetryKeySuffix: "e_seed",
-}));
+const upsertTelemetryKeyCredential = vi.fn(async () => {});
 
 vi.mock("../src/firebaseTelemetry", () => ({
-  createFirebaseTelemetryOperations: vi.fn(() => ({ issueTelemetryKey })),
+  createFirebaseTelemetryOperations: vi.fn(() => ({
+    upsertTelemetryKeyCredential,
+  })),
 }));
 
 vi.mock("firebase-admin", () => ({
@@ -31,7 +30,13 @@ describe("Firebase telemetry init seed", () => {
     // Then
     expect(issued.telemetryKey).toMatch(/^hutk_.+/);
     expect(issued.telemetryKey.endsWith(issued.telemetryKeySuffix)).toBe(true);
-    expect(issueTelemetryKey).toHaveBeenCalledOnce();
+    expect(upsertTelemetryKeyCredential).toHaveBeenCalledWith(
+      {
+        keyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        telemetryKeySuffix: issued.telemetryKeySuffix,
+      },
+      undefined,
+    );
   });
 
   it("prints the plaintext key only in the SDK setup snippet", () => {

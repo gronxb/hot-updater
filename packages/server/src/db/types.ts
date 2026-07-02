@@ -5,7 +5,7 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
-  DatabaseAnalytics,
+  DatabaseAnalyticsRuntime,
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   HotUpdaterContext,
@@ -122,7 +122,7 @@ export function getSQLProvider(
 }
 
 export interface DatabaseAPI<TContext = unknown> {
-  analytics?: DatabaseAnalytics<TContext>;
+  analytics?: DatabaseAnalyticsRuntime<TContext>;
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,

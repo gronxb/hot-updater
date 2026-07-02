@@ -63,7 +63,7 @@ export const recordMetricDelta = async (
   }
 };
 
-export const readLifecycleMetrics = async (
+export const getLifecycleMetrics = async (
   supabase: SupabaseTelemetryClient,
 ): Promise<LifecycleMetrics> => {
   const { data, error } = await supabase

@@ -1,5 +1,3 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-
 import type { Firestore } from "firebase-admin/firestore";
 
 import {
@@ -7,40 +5,14 @@ import {
   LIFECYCLE_EVENTS_COLLECTION,
   LIFECYCLE_METRICS_COLLECTION,
   LifecycleStatus,
-  TELEMETRY_KEY_BYTES,
   TELEMETRY_KEY_DOC_ID,
-  TELEMETRY_KEY_PREFIX,
-  TELEMETRY_KEY_SUFFIX_LENGTH,
   TELEMETRY_KEYS_COLLECTION,
-  isTelemetryKeyFormat,
   parsePlatform,
   readCount,
   readString,
   type FirebaseTelemetryOperations,
   type LifecycleStatusValue,
-  type TelemetryKeyResult,
 } from "./firebaseTelemetryTypes";
-
-const hashTelemetryKey = (telemetryKey: string): string =>
-  createHash("sha256").update(telemetryKey).digest("hex");
-
-const createTelemetryKey = (): TelemetryKeyResult => {
-  const telemetryKey = `${TELEMETRY_KEY_PREFIX}${randomBytes(
-    TELEMETRY_KEY_BYTES,
-  ).toString("base64url")}`;
-
-  return {
-    telemetryKey,
-    telemetryKeySuffix: telemetryKey.slice(-TELEMETRY_KEY_SUFFIX_LENGTH),
-  };
-};
-
-const isSameHash = (left: string, right: string): boolean => {
-  const leftBuffer = Buffer.from(left, "hex");
-  const rightBuffer = Buffer.from(right, "hex");
-  if (leftBuffer.length !== rightBuffer.length) return false;
-  return timingSafeEqual(leftBuffer, rightBuffer);
-};
 
 const metricIncrementFor = (
   status: LifecycleStatusValue,
@@ -59,6 +31,17 @@ const bucketStartFor = (observedAt: string): string => {
   return date.toISOString();
 };
 
+const assertLifecyclePayload = (
+  payload: Parameters<FirebaseTelemetryOperations["insertLifecycleEvent"]>[0],
+) => {
+  if (
+    payload.status === LifecycleStatus.Recovered &&
+    !payload.crashedBundleId
+  ) {
+    throw new TypeError("Recovered lifecycle events require crashedBundleId.");
+  }
+};
+
 export const createFirebaseTelemetryOperations = (
   firestore: Firestore,
 ): FirebaseTelemetryOperations => {
@@ -69,38 +52,32 @@ export const createFirebaseTelemetryOperations = (
   const metricsCollection = firestore.collection(LIFECYCLE_METRICS_COLLECTION);
   const bucketsCollection = firestore.collection(LIFECYCLE_BUCKETS_COLLECTION);
 
-  const writeTelemetryKey = async (): Promise<TelemetryKeyResult> => {
-    const telemetryKey = createTelemetryKey();
-    await keyDocument.set({
-      telemetry_key_hash: hashTelemetryKey(telemetryKey.telemetryKey),
-      telemetry_key_suffix: telemetryKey.telemetryKeySuffix,
-    });
-    return telemetryKey;
-  };
-
   return {
-    issueTelemetryKey: writeTelemetryKey,
-    rotateTelemetryKey: writeTelemetryKey,
-
-    async authenticateTelemetryKey(telemetryKey) {
-      if (!isTelemetryKeyFormat(telemetryKey)) return false;
-
+    async getTelemetryKeyCredential() {
       const snapshot = await keyDocument.get();
       const data = snapshot.data();
-      const storedHash =
-        typeof data?.telemetry_key_hash === "string"
-          ? data.telemetry_key_hash
-          : undefined;
+      const keyHash = readString(data ?? {}, "telemetry_key_hash");
+      const telemetryKeySuffix = readString(data ?? {}, "telemetry_key_suffix");
 
-      if (!storedHash) return false;
-      return isSameHash(hashTelemetryKey(telemetryKey), storedHash);
+      return keyHash && telemetryKeySuffix
+        ? { keyHash, telemetryKeySuffix }
+        : null;
     },
 
-    async recordLifecycleEvent(payload) {
+    async upsertTelemetryKeyCredential(credential) {
+      await keyDocument.set({
+        telemetry_key_hash: credential.keyHash,
+        telemetry_key_suffix: credential.telemetryKeySuffix,
+      });
+    },
+
+    async insertLifecycleEvent(payload) {
+      assertLifecyclePayload(payload);
+      const observedAt = payload.observedAt ?? new Date().toISOString();
       return await firestore.runTransaction(async (transaction) => {
         const eventRef = eventsCollection.doc(payload.eventId);
         const metricRef = metricsCollection.doc(payload.bundleId);
-        const bucketStart = bucketStartFor(payload.observedAt);
+        const bucketStart = bucketStartFor(observedAt);
         const bucketRef = bucketsCollection.doc(
           `${payload.bundleId}:${bucketStart}`,
         );
@@ -132,7 +109,7 @@ export const createFirebaseTelemetryOperations = (
           crashed_bundle_id: payload.crashedBundleId ?? null,
           event_id: payload.eventId,
           install_id: payload.installId,
-          observed_at: payload.observedAt,
+          observed_at: observedAt,
           platform: payload.platform,
           status: payload.status,
         });
@@ -140,7 +117,7 @@ export const createFirebaseTelemetryOperations = (
           active: nextMetricActive,
           bundle_id: payload.bundleId,
           channel: payload.channel,
-          last_seen_at: payload.observedAt,
+          last_seen_at: observedAt,
           platform: payload.platform,
           recovered: nextMetricRecovered,
         });
@@ -155,7 +132,7 @@ export const createFirebaseTelemetryOperations = (
       });
     },
 
-    async readLifecycleMetrics() {
+    async getLifecycleMetrics() {
       const [metricsSnapshot, bucketsSnapshot] = await Promise.all([
         metricsCollection.get(),
         bucketsCollection.get(),
